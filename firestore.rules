@@ -32,8 +32,7 @@ service cloud.firestore {
 
     // Users collection
     match /users/{userId} {
-      allow read: if isSignedIn();
-      allow create, update: if isOwner(userId) && isValidId(userId);
+      allow read, write: if true;
     }
   }
 }

@@ -255,9 +255,21 @@ export async function safeFetchProjects(): Promise<Project[] | null> {
 }
 
 /**
- * Synchronizes all registered users with backend REST API.
+ * Synchronizes all registered users with backend REST API and Firebase Firestore.
  */
 export async function safeSyncUsers(users: AppUser[]): Promise<void> {
+  // Sync to Firestore if authenticated user or client present
+  try {
+    for (const u of users) {
+      if (u && u.username) {
+        const userDocRef = doc(db, 'users', u.username.toLowerCase());
+        await setDoc(userDocRef, { ...u, updatedAt: new Date().toISOString() }, { merge: true }).catch(() => {});
+      }
+    }
+  } catch (e) {
+    console.warn('Firestore user sync notice:', e);
+  }
+
   try {
     const response = await fetch('/api/users/sync', {
       method: 'POST',
@@ -273,22 +285,51 @@ export async function safeSyncUsers(users: AppUser[]): Promise<void> {
 }
 
 /**
- * Fetches synchronized users list from backend REST API.
+ * Fetches synchronized users list from backend REST API or Firestore fallback.
  */
 export async function safeFetchUsers(): Promise<AppUser[] | null> {
+  let fetched: AppUser[] | null = null;
   try {
     const response = await fetch('/api/users/sync');
     if (response.ok) {
       const json = await response.json();
-      if (json.success && json.data && Array.isArray(json.data)) {
+      if (json.success && json.data && Array.isArray(json.data) && json.data.length > 0) {
         console.log('Successfully fetched users from backend REST API');
-        return json.data;
+        fetched = json.data;
       }
     }
   } catch (err: any) {
     console.warn('Backend fetch users failed:', err?.message || err);
   }
-  return null;
+
+  try {
+    const querySnapshot = await getDocs(collection(db, 'users')).catch(() => null);
+    if (querySnapshot && !querySnapshot.empty) {
+      const fsUsers: AppUser[] = [];
+      querySnapshot.forEach(docSnap => {
+        const data = docSnap.data() as AppUser;
+        if (data && data.username) fsUsers.push(data);
+      });
+      if (fsUsers.length > 0) {
+        if (!fetched) {
+          fetched = fsUsers;
+        } else {
+          // Merge Firestore users into fetched users
+          const map = new Map<string, AppUser>();
+          fetched.forEach(u => map.set(u.username.toLowerCase(), u));
+          fsUsers.forEach(u => {
+            const existing = map.get(u.username.toLowerCase());
+            map.set(u.username.toLowerCase(), existing ? { ...existing, ...u } : u);
+          });
+          fetched = Array.from(map.values());
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Firestore fetch users notice:', e);
+  }
+
+  return fetched;
 }
 
 /**
