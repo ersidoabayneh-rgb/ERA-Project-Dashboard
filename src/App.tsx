@@ -157,7 +157,7 @@ import { defaultProjectTemplate, blankProjectTemplate, generateKpiAllocated } fr
 import { safeSyncProject, safeDeleteProject, safeFetchProjects, safeSyncUsers, safeFetchUsers, safeSyncApprovals, safeFetchApprovals, safeSyncConfig, safeFetchConfig, reactivateSync, isSyncSuspended } from './lib/apiSync';
 import { getAccessToken } from './lib/auth';
 import { safeSetItem } from './lib/storage';
-import { collection, onSnapshot } from 'firebase/firestore';
+import { collection, onSnapshot, doc } from 'firebase/firestore';
 import { db } from './lib/firebase';
 
 function AnimatedCounter({ value, prefix = "" }: { value: number; prefix?: string }) {
@@ -1103,8 +1103,12 @@ let isBatchSyncRunning = false;
     initWebSocket();
     initSSE();
 
-    // Subscribe to Firestore real-time snapshot listener on 'users' collection
+    // Subscribe to real-time Firestore snapshot listeners across all collections
     let unsubscribeUsersListener: (() => void) | null = null;
+    let unsubscribeProjectsListener: (() => void) | null = null;
+    let unsubscribeApprovalsListener: (() => void) | null = null;
+    let unsubscribeConfigListener: (() => void) | null = null;
+
     try {
       unsubscribeUsersListener = onSnapshot(collection(db, 'users'), (snapshot) => {
         if (snapshot && !snapshot.empty) {
@@ -1113,15 +1117,67 @@ let isBatchSyncRunning = false;
             const data = docSnap.data() as User;
             if (data && data.username) liveUsers.push(data);
           });
-          if (liveUsers.length > 0) {
-            mergeAndApplyUsers(liveUsers);
+          if (liveUsers.length > 0) mergeAndApplyUsers(liveUsers);
+        }
+      }, err => console.warn('[Firestore Users Listener Notice]:', err?.message || err));
+
+      unsubscribeProjectsListener = onSnapshot(collection(db, 'projects'), (snapshot) => {
+        if (snapshot && !snapshot.empty) {
+          const liveProjects: Project[] = [];
+          snapshot.forEach(docSnap => {
+            const data = docSnap.data() as Project;
+            if (data && data.id) liveProjects.push(syncProjectPayment(data));
+          });
+          if (liveProjects.length > 0) {
+            setProjects(prev => {
+              let deletedIds: string[] = [];
+              try {
+                const delStr = localStorage.getItem('era_deleted_project_ids') || '[]';
+                deletedIds = JSON.parse(delStr);
+              } catch {}
+              const merged = [...prev];
+              liveProjects.forEach(inc => {
+                if (deletedIds.includes(inc.id)) return;
+                const idx = merged.findIndex(p => p.id === inc.id);
+                if (idx === -1) {
+                  merged.push(inc);
+                } else {
+                  const existingTime = merged[idx].lastModifiedAt ? new Date(merged[idx].lastModifiedAt!).getTime() : 0;
+                  const incTime = inc.lastModifiedAt ? new Date(inc.lastModifiedAt!).getTime() : 0;
+                  if (incTime >= existingTime) merged[idx] = inc;
+                }
+              });
+              const filtered = merged.filter(p => !deletedIds.includes(p.id));
+              safeSetItem('era_proj_v28', JSON.stringify(filtered));
+              return filtered;
+            });
           }
         }
-      }, (err) => {
-        console.warn('[Firestore Realtime Listener Notice]:', err?.message || err);
-      });
+      }, err => console.warn('[Firestore Projects Listener Notice]:', err?.message || err));
+
+      unsubscribeApprovalsListener = onSnapshot(collection(db, 'approvals'), (snapshot) => {
+        if (snapshot && !snapshot.empty) {
+          const liveApprovals: ApprovalRequest[] = [];
+          snapshot.forEach(docSnap => {
+            const data = docSnap.data() as ApprovalRequest;
+            if (data && data.id) liveApprovals.push(data);
+          });
+          if (liveApprovals.length > 0) {
+            setPendingApprovals(liveApprovals);
+            safeSetItem('era_appr_v28', JSON.stringify(liveApprovals));
+          }
+        }
+      }, err => console.warn('[Firestore Approvals Listener Notice]:', err?.message || err));
+
+      unsubscribeConfigListener = onSnapshot(doc(db, 'config', 'taxonomy'), (docSnap) => {
+        if (docSnap && docSnap.exists()) {
+          const data = docSnap.data();
+          if (data && Array.isArray(data.pmos)) setPmos(data.pmos);
+          if (data && Array.isArray(data.directorates)) setProgramDirectorates(data.directorates);
+        }
+      }, err => console.warn('[Firestore Config Listener Notice]:', err?.message || err));
     } catch (e) {
-      console.warn('[Firestore Listener Setup Notice]:', e);
+      console.warn('[Firestore Listeners Setup Notice]:', e);
     }
 
     const pollAllBackendData = () => {
@@ -1204,6 +1260,15 @@ let isBatchSyncRunning = false;
       }
       if (unsubscribeUsersListener) {
         try { unsubscribeUsersListener(); } catch (e) {}
+      }
+      if (unsubscribeProjectsListener) {
+        try { unsubscribeProjectsListener(); } catch (e) {}
+      }
+      if (unsubscribeApprovalsListener) {
+        try { unsubscribeApprovalsListener(); } catch (e) {}
+      }
+      if (unsubscribeConfigListener) {
+        try { unsubscribeConfigListener(); } catch (e) {}
       }
       clearTimeout(wsReconnectTimeout);
       clearTimeout(sseReconnectTimeout);

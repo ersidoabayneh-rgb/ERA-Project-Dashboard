@@ -83,32 +83,31 @@ export async function safeSyncProject(proj: Project, isBackgroundQueueSync = fal
   }
 
   // Firestore Sync
-  if (auth.currentUser) {
-    try {
-      await setDoc(doc(db, 'projects', proj.id), {
-        id: proj.id,
-        name: proj.name || '',
-        client: proj.client || '',
-        consultant: proj.consultant || '',
-        contractor: proj.contractor || '',
-        signDate: proj.signDate || '',
-        startDate: proj.startDate || '',
-        origDays: String(proj.origDays || 0),
-        eotDays: String(proj.eotDays || 0),
-        variation: String(proj.variation || 0),
-        origAmount: String(proj.origAmount || 0),
-        lengthKm: String(proj.lengthKm || 0),
-        classification: proj.classification || '',
-        contractType: proj.contractType || '',
-        programDirectorate: proj.programDirectorate || '',
-        pmo: proj.pmo || '',
-        physicalProgress: String(proj.physicalProgress || 0),
-        provisionalSum: String(proj.provisionalSum || 0),
-        updatedAt: new Date().toISOString()
-      }, { merge: true });
-    } catch (fsErr) {
-      console.warn('Firestore sync failed:', fsErr);
-    }
+  try {
+    await setDoc(doc(db, 'projects', proj.id), {
+      id: proj.id,
+      name: proj.name || '',
+      client: proj.client || '',
+      consultant: proj.consultant || '',
+      contractor: proj.contractor || '',
+      signDate: proj.signDate || '',
+      startDate: proj.startDate || '',
+      origDays: String(proj.origDays || 0),
+      eotDays: String(proj.eotDays || 0),
+      variation: String(proj.variation || 0),
+      origAmount: String(proj.origAmount || 0),
+      lengthKm: String(proj.lengthKm || 0),
+      classification: proj.classification || '',
+      contractType: proj.contractType || '',
+      programDirectorate: proj.programDirectorate || '',
+      pmo: proj.pmo || '',
+      physicalProgress: String(proj.physicalProgress || 0),
+      provisionalSum: String(proj.provisionalSum || 0),
+      lastModifiedAt: proj.lastModifiedAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }, { merge: true });
+  } catch (fsErr) {
+    console.warn('Firestore project sync failed:', fsErr);
   }
 
   // Relational Database Sync: custom Express REST API (/api/projects/sync)
@@ -196,11 +195,9 @@ export async function safeDeleteProject(id: string): Promise<void> {
   const syncPromises: Promise<any>[] = [];
 
   // Delete from Firestore
-  if (auth.currentUser) {
-    syncPromises.push(
-      deleteDoc(doc(db, 'projects', id)).catch(fsErr => handleFirestoreError(fsErr, OperationType.DELETE, `projects/${id}`))
-    );
-  }
+  syncPromises.push(
+    deleteDoc(doc(db, 'projects', id)).catch(fsErr => console.warn('Firestore delete project notice:', fsErr))
+  );
 
   // Delete from relational REST API backend
   syncPromises.push(
@@ -223,35 +220,56 @@ export async function safeDeleteProject(id: string): Promise<void> {
  * Fetches all synchronized projects from standalone Express backend or Firestore.
  */
 export async function safeFetchProjects(): Promise<Project[] | null> {
+  let fetched: Project[] | null = null;
   try {
     const response = await fetch('/api/projects/sync');
     if (response.ok) {
       const json = await response.json();
-      if (json.success && json.data && Array.isArray(json.data)) {
+      if (json.success && json.data && Array.isArray(json.data) && json.data.length > 0) {
         console.log('Successfully fetched projects from backend REST API');
-        return json.data;
+        fetched = json.data;
       }
     }
   } catch (err: any) {
     console.warn('Backend DB Fetch failed:', err?.message || err);
   }
 
-  if (auth.currentUser) {
-    try {
-      const querySnapshot = await getDocs(collection(db, 'projects'));
-      const projects: Project[] = [];
+  try {
+    const querySnapshot = await getDocs(collection(db, 'projects')).catch(() => null);
+    if (querySnapshot && !querySnapshot.empty) {
+      const fsProjects: Project[] = [];
       querySnapshot.forEach(docSnap => {
-        projects.push(docSnap.data() as Project);
+        const data = docSnap.data() as Project;
+        if (data && data.id) fsProjects.push(data);
       });
-      if (projects.length > 0) {
-        return projects;
+      if (fsProjects.length > 0) {
+        if (!fetched) {
+          fetched = fsProjects;
+        } else {
+          // Merge Firestore projects into fetched projects
+          const map = new Map<string, Project>();
+          fetched.forEach(p => map.set(p.id, p));
+          fsProjects.forEach(p => {
+            const existing = map.get(p.id);
+            if (!existing) {
+              map.set(p.id, p);
+            } else {
+              const existingTime = existing.lastModifiedAt ? new Date(existing.lastModifiedAt).getTime() : 0;
+              const fsTime = p.lastModifiedAt ? new Date(p.lastModifiedAt).getTime() : 0;
+              if (fsTime >= existingTime) {
+                map.set(p.id, { ...existing, ...p });
+              }
+            }
+          });
+          fetched = Array.from(map.values());
+        }
       }
-    } catch (fsErr) {
-      handleFirestoreError(fsErr, OperationType.LIST, 'projects');
     }
+  } catch (e) {
+    console.warn('Firestore fetch projects notice:', e);
   }
 
-  return null;
+  return fetched;
 }
 
 /**
@@ -333,9 +351,19 @@ export async function safeFetchUsers(): Promise<AppUser[] | null> {
 }
 
 /**
- * Synchronizes all variance approvals with backend REST API.
+ * Synchronizes all variance approvals with backend REST API and Firestore.
  */
 export async function safeSyncApprovals(approvals: ApprovalRequest[]): Promise<void> {
+  try {
+    for (const a of approvals) {
+      if (a && a.id) {
+        await setDoc(doc(db, 'approvals', a.id), { ...a, updatedAt: new Date().toISOString() }, { merge: true }).catch(() => {});
+      }
+    }
+  } catch (e) {
+    console.warn('Firestore approvals sync notice:', e);
+  }
+
   try {
     const response = await fetch('/api/approvals/sync', {
       method: 'POST',
@@ -351,28 +379,59 @@ export async function safeSyncApprovals(approvals: ApprovalRequest[]): Promise<v
 }
 
 /**
- * Fetches synchronized approvals list from backend REST API.
+ * Fetches synchronized approvals list from backend REST API or Firestore.
  */
 export async function safeFetchApprovals(): Promise<ApprovalRequest[] | null> {
+  let fetched: ApprovalRequest[] | null = null;
   try {
     const response = await fetch('/api/approvals/sync');
     if (response.ok) {
       const json = await response.json();
-      if (json.success && json.data && Array.isArray(json.data)) {
+      if (json.success && json.data && Array.isArray(json.data) && json.data.length > 0) {
         console.log('Successfully fetched approvals from backend REST API');
-        return json.data;
+        fetched = json.data;
       }
     }
   } catch (err: any) {
     console.warn('Backend fetch approvals failed:', err?.message || err);
   }
-  return null;
+
+  try {
+    const querySnapshot = await getDocs(collection(db, 'approvals')).catch(() => null);
+    if (querySnapshot && !querySnapshot.empty) {
+      const fsApprovals: ApprovalRequest[] = [];
+      querySnapshot.forEach(docSnap => {
+        const data = docSnap.data() as ApprovalRequest;
+        if (data && data.id) fsApprovals.push(data);
+      });
+      if (fsApprovals.length > 0) {
+        if (!fetched) {
+          fetched = fsApprovals;
+        } else {
+          const map = new Map<string, ApprovalRequest>();
+          fetched.forEach(a => map.set(a.id, a));
+          fsApprovals.forEach(a => map.set(a.id, a));
+          fetched = Array.from(map.values());
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Firestore fetch approvals notice:', e);
+  }
+
+  return fetched;
 }
 
 /**
- * Synchronizes PMO and Directorate taxonomy with backend REST API.
+ * Synchronizes PMO and Directorate taxonomy with backend REST API and Firestore.
  */
 export async function safeSyncConfig(pmos: string[], directorates: string[]): Promise<void> {
+  try {
+    await setDoc(doc(db, 'config', 'taxonomy'), { pmos, directorates, updatedAt: new Date().toISOString() }, { merge: true }).catch(() => {});
+  } catch (e) {
+    console.warn('Firestore config sync notice:', e);
+  }
+
   try {
     const response = await fetch('/api/config/sync', {
       method: 'POST',
@@ -388,21 +447,42 @@ export async function safeSyncConfig(pmos: string[], directorates: string[]): Pr
 }
 
 /**
- * Fetches synchronized PMO and Directorate configuration from backend REST API.
+ * Fetches synchronized PMO and Directorate configuration from backend REST API or Firestore.
  */
 export async function safeFetchConfig(): Promise<{ pmos: string[], directorates: string[] } | null> {
+  let fetched: { pmos: string[], directorates: string[] } | null = null;
   try {
     const response = await fetch('/api/config/sync');
     if (response.ok) {
       const json = await response.json();
       if (json.success && json.data) {
         console.log('Successfully fetched config from backend REST API');
-        return json.data;
+        fetched = json.data;
       }
     }
   } catch (err: any) {
     console.warn('Backend fetch config failed:', err?.message || err);
   }
-  return null;
+
+  try {
+    const querySnapshot = await getDocs(collection(db, 'config')).catch(() => null);
+    if (querySnapshot && !querySnapshot.empty) {
+      querySnapshot.forEach(docSnap => {
+        if (docSnap.id === 'taxonomy') {
+          const data = docSnap.data();
+          if (data && (Array.isArray(data.pmos) || Array.isArray(data.directorates))) {
+            fetched = {
+              pmos: data.pmos || fetched?.pmos || [],
+              directorates: data.directorates || fetched?.directorates || []
+            };
+          }
+        }
+      });
+    }
+  } catch (e) {
+    console.warn('Firestore fetch config notice:', e);
+  }
+
+  return fetched;
 }
 
