@@ -157,6 +157,8 @@ import { defaultProjectTemplate, blankProjectTemplate, generateKpiAllocated } fr
 import { safeSyncProject, safeDeleteProject, safeFetchProjects, safeSyncUsers, safeFetchUsers, safeSyncApprovals, safeFetchApprovals, safeSyncConfig, safeFetchConfig, reactivateSync, isSyncSuspended } from './lib/apiSync';
 import { getAccessToken } from './lib/auth';
 import { safeSetItem } from './lib/storage';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { db } from './lib/firebase';
 
 function AnimatedCounter({ value, prefix = "" }: { value: number; prefix?: string }) {
   const [displayValue, setDisplayValue] = useState(value);
@@ -1101,6 +1103,27 @@ let isBatchSyncRunning = false;
     initWebSocket();
     initSSE();
 
+    // Subscribe to Firestore real-time snapshot listener on 'users' collection
+    let unsubscribeUsersListener: (() => void) | null = null;
+    try {
+      unsubscribeUsersListener = onSnapshot(collection(db, 'users'), (snapshot) => {
+        if (snapshot && !snapshot.empty) {
+          const liveUsers: User[] = [];
+          snapshot.forEach(docSnap => {
+            const data = docSnap.data() as User;
+            if (data && data.username) liveUsers.push(data);
+          });
+          if (liveUsers.length > 0) {
+            mergeAndApplyUsers(liveUsers);
+          }
+        }
+      }, (err) => {
+        console.warn('[Firestore Realtime Listener Notice]:', err?.message || err);
+      });
+    } catch (e) {
+      console.warn('[Firestore Listener Setup Notice]:', e);
+    }
+
     const pollAllBackendData = () => {
       if (!navigator.onLine) return;
       safeFetchUsers().then(cloudUsers => {
@@ -1178,6 +1201,9 @@ let isBatchSyncRunning = false;
       }
       if (wsSocket) {
         try { wsSocket.close(); } catch (e) {}
+      }
+      if (unsubscribeUsersListener) {
+        try { unsubscribeUsersListener(); } catch (e) {}
       }
       clearTimeout(wsReconnectTimeout);
       clearTimeout(sseReconnectTimeout);
