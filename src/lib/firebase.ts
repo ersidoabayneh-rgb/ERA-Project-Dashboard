@@ -1,31 +1,63 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
-import { getFirestore, doc, getDocFromServer, enableIndexedDbPersistence, enableMultiTabIndexedDbPersistence } from 'firebase/firestore';
+import { 
+  initializeFirestore, 
+  getFirestore, 
+  persistentLocalCache, 
+  persistentMultipleTabManager,
+  memoryLocalCache,
+  doc, 
+  getDocFromServer 
+} from 'firebase/firestore';
 import { getAnalytics, isSupported } from 'firebase/analytics';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
+
 const dbId = (firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== '(default)') 
   ? firebaseConfig.firestoreDatabaseId 
   : undefined;
 
-export const db = dbId ? getFirestore(app, dbId) : getFirestore(app);
+let dbInstance;
+
+if (typeof window !== 'undefined') {
+  try {
+    dbInstance = initializeFirestore(app, {
+      localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager()
+      })
+    }, dbId);
+  } catch (e) {
+    try {
+      dbInstance = initializeFirestore(app, {
+        localCache: memoryLocalCache()
+      }, dbId);
+    } catch (err) {
+      dbInstance = dbId ? getFirestore(app, dbId) : getFirestore(app);
+    }
+  }
+} else {
+  dbInstance = dbId ? getFirestore(app, dbId) : getFirestore(app);
+}
+
+export const db = dbInstance;
 export const googleProvider = new GoogleAuthProvider();
 
-// Configure Firebase Firestore offline persistence using IndexedDB
+// Catch and handle transient browser IndexedDB tab-closing / visibility state rejections
 if (typeof window !== 'undefined') {
-  enableIndexedDbPersistence(db).catch((err) => {
-    if (err.code === 'failed-precondition') {
-      // Multiple tabs open; attempt multi-tab persistence fallback if supported
-      console.warn('Firestore single-tab persistence warning: Multiple tabs open. Attempting multi-tab enablement...');
-      enableMultiTabIndexedDbPersistence(db).catch((multiErr) => {
-        console.warn('Firestore multi-tab persistence fallback notice:', multiErr?.message || multiErr);
-      });
-    } else if (err.code === 'unimplemented') {
-      console.warn('Firestore offline persistence is not supported by this browser environment.');
-    } else {
-      console.warn('Firestore offline persistence initialization notice:', err?.message || err);
+  window.addEventListener('unhandledrejection', (event) => {
+    const reason = event.reason;
+    const msg = reason?.message || String(reason || '');
+    if (
+      msg.includes('Database is closing') ||
+      msg.includes('Database is hidden') ||
+      msg.includes('database is closing') ||
+      msg.includes('database is hidden') ||
+      msg.includes('IndexedDB')
+    ) {
+      event.preventDefault();
+      console.warn('Handled background Firestore IndexedDB state event gracefully.');
     }
   });
 }
@@ -48,11 +80,11 @@ export async function testFirestoreConnection() {
     await getDocFromServer(doc(db, 'test', 'connection'));
     console.log("Firestore connection test passed.");
   } catch (error: any) {
-    // If doc doesn't exist or permission issues occur, log debug info without failing app state
     console.log("Firestore connection check finished:", error?.message || error);
   }
 }
 
 testFirestoreConnection();
+
 
 
