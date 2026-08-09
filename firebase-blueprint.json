@@ -38,6 +38,26 @@
         "role": { "type": "string", "maxLength": 50 }
       },
       "required": ["uid", "email"]
+    },
+    "Approval": {
+      "title": "Approval",
+      "description": "Variance approval request entry",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "projectId": { "type": "string", "maxLength": 128 },
+        "status": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["id", "projectId"]
+    },
+    "Config": {
+      "title": "Config",
+      "description": "System taxonomy configuration",
+      "type": "object",
+      "properties": {
+        "pmos": { "type": "string", "maxLength": 500 },
+        "directorates": { "type": "string", "maxLength": 500 }
+      }
     }
   },
   "firestore": {
@@ -48,6 +68,14 @@
     "/users/{userId}": {
       "schema": { "$ref": "#/entities/User" },
       "description": "Collection of user profile entries"
+    },
+    "/approvals/{approvalId}": {
+      "schema": { "$ref": "#/entities/Approval" },
+      "description": "Collection of variance approval requests"
+    },
+    "/config/{configId}": {
+      "schema": { "$ref": "#/entities/Config" },
+      "description": "Collection of global app taxonomy config"
     }
   }
 }

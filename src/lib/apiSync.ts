@@ -59,6 +59,20 @@ export async function reactivateSync(): Promise<void> {
   syncSuspendedState = false;
 }
 
+export function normalizeProject(p: any): Project {
+  if (!p) return p;
+  return {
+    ...p,
+    origDays: typeof p.origDays === 'string' ? parseFloat(p.origDays) || 0 : (p.origDays || 0),
+    eotDays: typeof p.eotDays === 'string' ? parseFloat(p.eotDays) || 0 : (p.eotDays || 0),
+    variation: typeof p.variation === 'string' ? parseFloat(p.variation) || 0 : (p.variation || 0),
+    origAmount: typeof p.origAmount === 'string' ? parseFloat(p.origAmount) || 0 : (p.origAmount || 0),
+    lengthKm: typeof p.lengthKm === 'string' ? parseFloat(p.lengthKm) || 0 : (p.lengthKm || 0),
+    provisionalSum: typeof p.provisionalSum === 'string' ? parseFloat(p.provisionalSum) || 0 : (p.provisionalSum || 0),
+    physicalProgress: typeof p.physicalProgress === 'string' ? parseFloat(p.physicalProgress) || 0 : (p.physicalProgress || 0),
+  };
+}
+
 /**
  * Robust, self-healing project sync function that handles Firebase Cloud Firestore & REST Backend Sync.
  */
@@ -82,28 +96,30 @@ export async function safeSyncProject(proj: Project, isBackgroundQueueSync = fal
     window.dispatchEvent(new CustomEvent('local_project_mutated'));
   }
 
+  const normalized = normalizeProject(proj);
+
   // Firestore Sync
   try {
-    await setDoc(doc(db, 'projects', proj.id), {
-      id: proj.id,
-      name: proj.name || '',
-      client: proj.client || '',
-      consultant: proj.consultant || '',
-      contractor: proj.contractor || '',
-      signDate: proj.signDate || '',
-      startDate: proj.startDate || '',
-      origDays: String(proj.origDays || 0),
-      eotDays: String(proj.eotDays || 0),
-      variation: String(proj.variation || 0),
-      origAmount: String(proj.origAmount || 0),
-      lengthKm: String(proj.lengthKm || 0),
-      classification: proj.classification || '',
-      contractType: proj.contractType || '',
-      programDirectorate: proj.programDirectorate || '',
-      pmo: proj.pmo || '',
-      physicalProgress: String(proj.physicalProgress || 0),
-      provisionalSum: String(proj.provisionalSum || 0),
-      lastModifiedAt: proj.lastModifiedAt || new Date().toISOString(),
+    await setDoc(doc(db, 'projects', normalized.id), {
+      id: normalized.id,
+      name: normalized.name || '',
+      client: normalized.client || '',
+      consultant: normalized.consultant || '',
+      contractor: normalized.contractor || '',
+      signDate: normalized.signDate || '',
+      startDate: normalized.startDate || '',
+      origDays: Number(normalized.origDays || 0),
+      eotDays: Number(normalized.eotDays || 0),
+      variation: Number(normalized.variation || 0),
+      origAmount: Number(normalized.origAmount || 0),
+      lengthKm: Number(normalized.lengthKm || 0),
+      classification: normalized.classification || '',
+      contractType: normalized.contractType || '',
+      programDirectorate: normalized.programDirectorate || '',
+      pmo: normalized.pmo || '',
+      physicalProgress: Number(normalized.physicalProgress || 0),
+      provisionalSum: Number(normalized.provisionalSum || 0),
+      lastModifiedAt: normalized.lastModifiedAt || new Date().toISOString(),
       updatedAt: new Date().toISOString()
     }, { merge: true });
   } catch (fsErr) {
@@ -227,7 +243,7 @@ export async function safeFetchProjects(): Promise<Project[] | null> {
       const json = await response.json();
       if (json.success && json.data && Array.isArray(json.data) && json.data.length > 0) {
         console.log('Successfully fetched projects from backend REST API');
-        fetched = json.data;
+        fetched = json.data.map((p: any) => normalizeProject(p));
       }
     }
   } catch (err: any) {
@@ -240,7 +256,7 @@ export async function safeFetchProjects(): Promise<Project[] | null> {
       const fsProjects: Project[] = [];
       querySnapshot.forEach(docSnap => {
         const data = docSnap.data() as Project;
-        if (data && data.id) fsProjects.push(data);
+        if (data && data.id) fsProjects.push(normalizeProject(data));
       });
       if (fsProjects.length > 0) {
         if (!fetched) {

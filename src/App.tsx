@@ -154,7 +154,7 @@ import UserGuideManualModal from './components/UserGuideManualModal';
 import eraLogo from './assets/logo.png';
 
 import { defaultProjectTemplate, blankProjectTemplate, generateKpiAllocated } from './data/defaultProject';
-import { safeSyncProject, safeDeleteProject, safeFetchProjects, safeSyncUsers, safeFetchUsers, safeSyncApprovals, safeFetchApprovals, safeSyncConfig, safeFetchConfig, reactivateSync, isSyncSuspended } from './lib/apiSync';
+import { safeSyncProject, safeDeleteProject, safeFetchProjects, safeSyncUsers, safeFetchUsers, safeSyncApprovals, safeFetchApprovals, safeSyncConfig, safeFetchConfig, reactivateSync, isSyncSuspended, normalizeProject } from './lib/apiSync';
 import { getAccessToken } from './lib/auth';
 import { safeSetItem } from './lib/storage';
 import { collection, onSnapshot, doc } from 'firebase/firestore';
@@ -1294,7 +1294,8 @@ let isBatchSyncRunning = false;
   }, [isMasterAdmin, usersListState, currentUserObj]);
 
   // Helper to synchronize 'Total Todate Bill Summary' and 'Remaining' with series sums, and calculate G = F + E
-  const syncProjectPayment = (project: Project): Project => {
+  const syncProjectPayment = (rawProject: Project): Project => {
+    const project = normalizeProject(rawProject);
     const isDB = project.contractType === 'DB';
     const tc = (project.series || []).reduce((sum, item) => sum + (item.contractAmt || 0), 0);
     const teVal = (project.series || []).reduce((sum, item) => sum + (item.execAmt || 0), 0);
@@ -1415,7 +1416,7 @@ let isBatchSyncRunning = false;
     let projList: Project[] = [];
     try {
       const s = localStorage.getItem('era_proj_v28');
-      if (s) projList = JSON.parse(s);
+      if (s) projList = JSON.parse(s).map((p: any) => normalizeProject(p));
     } catch {}
 
     if (projList.length === 0) {

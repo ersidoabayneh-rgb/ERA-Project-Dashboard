@@ -21,17 +21,26 @@ service cloud.firestore {
 
     // Health check
     match /test/{testId} {
-      allow read: if true;
+      allow read, write: if true;
     }
 
     // Projects collection
     match /projects/{projectId} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn() && isValidId(projectId);
+      allow read, write: if true;
     }
 
     // Users collection
     match /users/{userId} {
+      allow read, write: if true;
+    }
+
+    // Approvals collection
+    match /approvals/{approvalId} {
+      allow read, write: if true;
+    }
+
+    // Config collection
+    match /config/{configId} {
       allow read, write: if true;
     }
   }
