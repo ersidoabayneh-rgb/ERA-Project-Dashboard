@@ -1,6 +1,7 @@
 import { Project, User as AppUser, ApprovalRequest } from '../types';
 import { db, auth } from './firebase';
 import { doc, setDoc, deleteDoc, getDocs, collection } from 'firebase/firestore';
+import { defaultProjectTemplate } from '../data/defaultProject';
 
 export enum OperationType {
   CREATE = 'create',
@@ -61,6 +62,7 @@ export async function reactivateSync(): Promise<void> {
 
 export function normalizeProject(p: any): Project {
   if (!p) return p;
+  const tmpl = defaultProjectTemplate();
   return {
     ...p,
     origDays: typeof p.origDays === 'string' ? parseFloat(p.origDays) || 0 : (p.origDays || 0),
@@ -70,6 +72,17 @@ export function normalizeProject(p: any): Project {
     lengthKm: typeof p.lengthKm === 'string' ? parseFloat(p.lengthKm) || 0 : (p.lengthKm || 0),
     provisionalSum: typeof p.provisionalSum === 'string' ? parseFloat(p.provisionalSum) || 0 : (p.provisionalSum || 0),
     physicalProgress: typeof p.physicalProgress === 'string' ? parseFloat(p.physicalProgress) || 0 : (p.physicalProgress || 0),
+    rowMetrics: Array.isArray(p.rowMetrics) && p.rowMetrics.length > 0 ? p.rowMetrics : tmpl.rowMetrics,
+    quantities: Array.isArray(p.quantities) && p.quantities.length > 0 ? p.quantities : tmpl.quantities,
+    series: Array.isArray(p.series) ? p.series : tmpl.series,
+    monthly: Array.isArray(p.monthly) ? p.monthly : tmpl.monthly,
+    payment: Array.isArray(p.payment) ? p.payment : tmpl.payment,
+    bonds: Array.isArray(p.bonds) ? p.bonds : tmpl.bonds,
+    ipcTracker: Array.isArray(p.ipcTracker) ? p.ipcTracker : tmpl.ipcTracker,
+    workProgram: Array.isArray(p.workProgram) ? p.workProgram : tmpl.workProgram,
+    history: Array.isArray(p.history) ? p.history : tmpl.history,
+    annual: Array.isArray(p.annual) ? p.annual : tmpl.annual,
+    images: Array.isArray(p.images) ? p.images : tmpl.images,
   };
 }
 

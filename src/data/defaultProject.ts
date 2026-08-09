@@ -737,7 +737,7 @@ export function getIntegratedKpiAllocated(project: Project): KpiAllocatedItem[] 
   // 4. EVM Calculations for SC4.2 (Schedule Variance)
   const MILLION = 1_000_000;
   const BAC = project.origAmount * MILLION;
-  const te = project.series.reduce((sum, item) => sum + (item.execAmt || 0), 0);
+  const te = (project.series || []).reduce((sum, item) => sum + (item.execAmt || 0), 0);
   const totalOrigExec = te * 1.15;
   const pa = ((project.payment || []).find(x => x.item === 'Price Adjustment') || { amount: 0 }).amount;
   const AC = ((project.payment || []).find(x => x.item.trim().toLowerCase() === 'total todate certified ipc') || { amount: 0 }).amount;

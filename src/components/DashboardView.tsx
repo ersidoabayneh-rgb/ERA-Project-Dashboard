@@ -179,10 +179,10 @@ export default function DashboardView({
   onUpdateProjectStatus
 }: DashboardViewProps) {
   const [selectedRowMetric, setSelectedRowMetric] = useState(
-    project.rowMetrics[4]?.name || 'ROW Obstruction free Section'
+    (project.rowMetrics && project.rowMetrics[4] ? project.rowMetrics[4].name : null) || project.rowMetrics?.[0]?.name || 'ROW Obstruction free Section'
   );
   const [selectedQtyItem, setSelectedQtyItem] = useState(
-    project.quantities[8]?.name || 'Asphalt Concrete (Km)'
+    (project.quantities && project.quantities[8] ? project.quantities[8].name : null) || project.quantities?.[0]?.name || 'Asphalt Concrete (Km)'
   );
   const [selectedMonthSource, setSelectedMonthSource] = useState<string>('current');
   const [selectedQuarterSource, setSelectedQuarterSource] = useState<string>('current');
