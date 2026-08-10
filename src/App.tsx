@@ -949,44 +949,47 @@ let isBatchSyncRunning = false;
           }
         });
         const merged = deduplicateUsers(Array.from(map.values()));
-        safeSetItem('era_users_v28', JSON.stringify(merged));
 
-        // Check for new pending user approvals for admin popup
-        const isMasterAdmin = currentUserObj?.role === 'admin' || 
-                              currentUserObj?.role === 'master_admin' || 
-                              currentUserObj?.username === 'proj_1781786415663' ||
-                              (currentUserObj?.username && currentUserObj.username.toLowerCase().includes('ersido'));
+        setTimeout(() => {
+          safeSetItem('era_users_v28', JSON.stringify(merged));
 
-        if (isMasterAdmin) {
-          const pendingList = merged.filter(u => u.isPendingApproval);
-          const newUnseen = pendingList.filter(u => !seenPendingUsersRef.current.has(u.username.toLowerCase()));
-          if (newUnseen.length > 0) {
-            newUnseen.forEach(u => seenPendingUsersRef.current.add(u.username.toLowerCase()));
-            setPendingUserPopups(prev => {
-              const mapPop = new Map<string, User>();
-              prev.forEach(p => mapPop.set(p.username.toLowerCase(), p));
-              newUnseen.forEach(p => mapPop.set(p.username.toLowerCase(), p));
-              return Array.from(mapPop.values());
-            });
-          }
-        }
+          // Check for new pending user approvals for admin popup
+          const isMasterAdmin = currentUserObj?.role === 'admin' || 
+                                currentUserObj?.role === 'master_admin' || 
+                                currentUserObj?.username === 'proj_1781786415663' ||
+                                (currentUserObj?.username && currentUserObj.username.toLowerCase().includes('ersido'));
 
-        // Auto-update logged-in user state if admin approved or updated their account
-        if (currentUserObj && currentUserObj.username) {
-          const updatedSelf = merged.find(u => u.username.toLowerCase() === currentUserObj.username.toLowerCase());
-          if (updatedSelf) {
-            if (
-              updatedSelf.isPendingApproval !== currentUserObj.isPendingApproval ||
-              updatedSelf.status !== currentUserObj.status ||
-              updatedSelf.role !== currentUserObj.role ||
-              JSON.stringify(updatedSelf.accessibleProjects) !== JSON.stringify(currentUserObj.accessibleProjects) ||
-              JSON.stringify(updatedSelf.assignedPages) !== JSON.stringify(currentUserObj.assignedPages)
-            ) {
-              setCurrentUserObj(updatedSelf);
-              safeSetItem('era_current_user_obj', JSON.stringify(updatedSelf));
+          if (isMasterAdmin) {
+            const pendingList = merged.filter(u => u.isPendingApproval);
+            const newUnseen = pendingList.filter(u => !seenPendingUsersRef.current.has(u.username.toLowerCase()));
+            if (newUnseen.length > 0) {
+              newUnseen.forEach(u => seenPendingUsersRef.current.add(u.username.toLowerCase()));
+              setPendingUserPopups(prev => {
+                const mapPop = new Map<string, User>();
+                prev.forEach(p => mapPop.set(p.username.toLowerCase(), p));
+                newUnseen.forEach(p => mapPop.set(p.username.toLowerCase(), p));
+                return Array.from(mapPop.values());
+              });
             }
           }
-        }
+
+          // Auto-update logged-in user state if admin approved or updated their account
+          if (currentUserObj && currentUserObj.username) {
+            const updatedSelf = merged.find(u => u.username.toLowerCase() === currentUserObj.username.toLowerCase());
+            if (updatedSelf) {
+              if (
+                updatedSelf.isPendingApproval !== currentUserObj.isPendingApproval ||
+                updatedSelf.status !== currentUserObj.status ||
+                updatedSelf.role !== currentUserObj.role ||
+                JSON.stringify(updatedSelf.accessibleProjects) !== JSON.stringify(currentUserObj.accessibleProjects) ||
+                JSON.stringify(updatedSelf.assignedPages) !== JSON.stringify(currentUserObj.assignedPages)
+              ) {
+                setCurrentUserObj(updatedSelf);
+                safeSetItem('era_current_user_obj', JSON.stringify(updatedSelf));
+              }
+            }
+          }
+        }, 0);
 
         return merged;
       });
@@ -1148,7 +1151,9 @@ let isBatchSyncRunning = false;
                 }
               });
               const filtered = merged.filter(p => !deletedIds.includes(p.id));
-              safeSetItem('era_proj_v28', JSON.stringify(filtered));
+              setTimeout(() => {
+                safeSetItem('era_proj_v28', JSON.stringify(filtered));
+              }, 0);
               return filtered;
             });
           }
@@ -1164,7 +1169,9 @@ let isBatchSyncRunning = false;
           });
           if (liveApprovals.length > 0) {
             setPendingApprovals(liveApprovals);
-            safeSetItem('era_appr_v28', JSON.stringify(liveApprovals));
+            setTimeout(() => {
+              safeSetItem('era_appr_v28', JSON.stringify(liveApprovals));
+            }, 0);
           }
         }
       }, err => console.warn('[Firestore Approvals Listener Notice]:', err?.message || err));
@@ -1233,6 +1240,59 @@ let isBatchSyncRunning = false;
       }).catch(() => {});
     };
 
+    // Cross-tab and local state synchronization listener
+    const reloadLocalState = () => {
+      try {
+        const localProjsStr = localStorage.getItem('era_proj_v28');
+        if (localProjsStr) {
+          const parsed = JSON.parse(localProjsStr);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            let deletedIds: string[] = [];
+            try {
+              const delStr = localStorage.getItem('era_deleted_project_ids') || '[]';
+              deletedIds = JSON.parse(delStr);
+            } catch {}
+            const filtered = parsed.filter((p: Project) => !deletedIds.includes(p.id));
+            setProjects(filtered.map(syncProjectPayment));
+          }
+        }
+        const localUsersStr = localStorage.getItem('era_users_v28');
+        if (localUsersStr) {
+          const parsedUsers = JSON.parse(localUsersStr);
+          if (Array.isArray(parsedUsers) && parsedUsers.length > 0) {
+            mergeAndApplyUsers(parsedUsers);
+          }
+        }
+        const localApprStr = localStorage.getItem('era_appr_v28');
+        if (localApprStr) {
+          const parsedAppr = JSON.parse(localApprStr);
+          if (Array.isArray(parsedAppr)) {
+            setPendingApprovals(parsedAppr);
+          }
+        }
+      } catch (e) {
+        console.warn('Local state reload notice:', e);
+      }
+    };
+
+    const handleStorageChange = (e: StorageEvent) => {
+      if (!e.key || e.key.startsWith('era_')) {
+        reloadLocalState();
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+
+    let broadcastChannel: BroadcastChannel | null = null;
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      try {
+        broadcastChannel = new BroadcastChannel('era_frontend_sync');
+        broadcastChannel.onmessage = () => {
+          reloadLocalState();
+        };
+      } catch (e) {}
+    }
+
     // Run initial sync on mount
     pollAllBackendData();
 
@@ -1252,6 +1312,10 @@ let isBatchSyncRunning = false;
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('storage', handleStorageChange);
+      if (broadcastChannel) {
+        try { broadcastChannel.close(); } catch (e) {}
+      }
       if (eventSource) {
         try { eventSource.close(); } catch (e) {}
       }

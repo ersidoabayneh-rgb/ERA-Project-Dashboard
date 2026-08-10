@@ -1,6 +1,3 @@
-import { auth as firebaseAuth } from './firebase.ts';
-import { onAuthStateChanged, signOut as firebaseSignOut, User as FirebaseUser } from 'firebase/auth';
-
 export interface User {
   uid: string;
   email: string | null;
@@ -18,36 +15,19 @@ export const auth = {
 };
 
 export function initAuth(
-  onAuthSuccess?: (user: User, token: string) => void,
-  onAuthFailure?: () => void
+  _onAuthSuccess?: (user: User, token: string) => void,
+  _onAuthFailure?: () => void
 ): () => void {
-  const unsubscribe = onAuthStateChanged(firebaseAuth, async (fbUser: FirebaseUser | null) => {
-    if (fbUser) {
-      currentUser = {
-        uid: fbUser.uid,
-        email: fbUser.email,
-        displayName: fbUser.displayName || fbUser.email?.split('@')[0] || 'User',
-        getIdToken: (forceRefresh?: boolean) => fbUser.getIdToken(forceRefresh),
-      };
-      const token = await fbUser.getIdToken();
-      onAuthSuccess?.(currentUser, token);
-    } else {
-      currentUser = null;
-      onAuthFailure?.();
-    }
-    authListeners.forEach(listener => listener(currentUser));
-  });
-
-  return unsubscribe;
+  // Application authentication managed locally / via application users
+  return () => {};
 }
 
 export async function signOutUser(): Promise<void> {
-  await firebaseSignOut(firebaseAuth);
   currentUser = null;
   authListeners.forEach(listener => listener(currentUser));
 }
 
 export async function getAccessToken(): Promise<string | null> {
-  return currentUser ? currentUser.getIdToken() : null;
+  return null;
 }
 

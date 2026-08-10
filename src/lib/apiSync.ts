@@ -1,5 +1,5 @@
 import { Project, User as AppUser, ApprovalRequest } from '../types';
-import { db, auth } from './firebase';
+import { db } from './firebase';
 import { doc, setDoc, deleteDoc, getDocs, collection } from 'firebase/firestore';
 import { defaultProjectTemplate } from '../data/defaultProject';
 
@@ -19,13 +19,6 @@ export interface FirestoreErrorInfo {
   authInfo: {
     userId?: string | null;
     email?: string | null;
-    emailVerified?: boolean | null;
-    isAnonymous?: boolean | null;
-    tenantId?: string | null;
-    providerInfo?: {
-      providerId?: string | null;
-      email?: string | null;
-    }[];
   };
 }
 
@@ -33,15 +26,8 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
     authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-      isAnonymous: auth.currentUser?.isAnonymous,
-      tenantId: auth.currentUser?.tenantId,
-      providerInfo: auth.currentUser?.providerData?.map(provider => ({
-        providerId: provider.providerId,
-        email: provider.email,
-      })) || []
+      userId: null,
+      email: null,
     },
     operationType,
     path
@@ -113,28 +99,9 @@ export async function safeSyncProject(proj: Project, isBackgroundQueueSync = fal
 
   // Firestore Sync
   try {
-    await setDoc(doc(db, 'projects', normalized.id), {
-      id: normalized.id,
-      name: normalized.name || '',
-      client: normalized.client || '',
-      consultant: normalized.consultant || '',
-      contractor: normalized.contractor || '',
-      signDate: normalized.signDate || '',
-      startDate: normalized.startDate || '',
-      origDays: Number(normalized.origDays || 0),
-      eotDays: Number(normalized.eotDays || 0),
-      variation: Number(normalized.variation || 0),
-      origAmount: Number(normalized.origAmount || 0),
-      lengthKm: Number(normalized.lengthKm || 0),
-      classification: normalized.classification || '',
-      contractType: normalized.contractType || '',
-      programDirectorate: normalized.programDirectorate || '',
-      pmo: normalized.pmo || '',
-      physicalProgress: Number(normalized.physicalProgress || 0),
-      provisionalSum: Number(normalized.provisionalSum || 0),
-      lastModifiedAt: normalized.lastModifiedAt || new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    }, { merge: true });
+    const cleanNormalized = JSON.parse(JSON.stringify(normalized));
+    cleanNormalized.updatedAt = new Date().toISOString();
+    await setDoc(doc(db, 'projects', normalized.id), cleanNormalized, { merge: true });
   } catch (fsErr) {
     console.warn('Firestore project sync failed:', fsErr);
   }

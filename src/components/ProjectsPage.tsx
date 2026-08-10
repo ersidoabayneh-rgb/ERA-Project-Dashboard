@@ -88,7 +88,7 @@ export default function ProjectsPage({
     value: string | null;
   }>({ type: 'none', value: null });
   const [selectedPeer, setSelectedPeer] = useState<string | null>(null);
-  const [sortBy, setSortBy] = useState<'name' | 'bondWarnings' | 'progress' | 'budget' | 'length'>('name');
+  const [sortBy, setSortBy] = useState<'name' | 'id' | 'directorate' | 'bondWarnings' | 'progress' | 'budget' | 'length'>('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
   // Group report generator toggle state
@@ -164,32 +164,56 @@ export default function ProjectsPage({
   
   const hasNoProjects = !isMasterAdmin && currentUserObj.role !== 'directorate_admin' && currentUserObj.role !== 'pmo_admin' && (currentUserObj.accessibleProjects || []).length === 0;
 
-  const filteredProjects = projects
-    .filter(isAccessible)
-    .filter(p => {
-      if (selectedDirectorate === 'All') return true;
-      return (p.programDirectorate || 'Southern') === selectedDirectorate;
-    })
-    .filter(p => {
-      if (selectedStatusFilter === 'All') return true;
-      return (p.status || 'In Progress') === selectedStatusFilter;
-    })
-    .filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                 p.client.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                 p.contractor.toLowerCase().includes(searchQuery.toLowerCase()))
-    .filter(p => {
-      if (similarityFilter.type === 'none') return true;
-      if (similarityFilter.type === 'contractType') return p.contractType === similarityFilter.value;
-      if (similarityFilter.type === 'classification') return p.classification === similarityFilter.value;
-      if (similarityFilter.type === 'client') return p.client === similarityFilter.value;
-      if (similarityFilter.type === 'contractor') return p.contractor === similarityFilter.value;
-      return true;
-    });
+  const filteredProjects = useMemo(() => {
+    return projects
+      .filter(isAccessible)
+      .filter(p => {
+        if (selectedDirectorate === 'All') return true;
+        return (p.programDirectorate || 'Southern') === selectedDirectorate;
+      })
+      .filter(p => {
+        if (selectedStatusFilter === 'All') return true;
+        return (p.status || 'In Progress') === selectedStatusFilter;
+      })
+      .filter(p => {
+        if (!searchQuery.trim()) return true;
+        const q = searchQuery.toLowerCase().trim();
+        return (
+          (p.name && p.name.toLowerCase().includes(q)) || 
+          (p.id && p.id.toLowerCase().includes(q)) ||
+          (p.programDirectorate && p.programDirectorate.toLowerCase().includes(q)) ||
+          (p.pmo && p.pmo.toLowerCase().includes(q)) ||
+          (p.client && p.client.toLowerCase().includes(q)) ||
+          (p.contractor && p.contractor.toLowerCase().includes(q)) ||
+          (p.consultant && p.consultant.toLowerCase().includes(q))
+        );
+      })
+      .filter(p => {
+        if (similarityFilter.type === 'none') return true;
+        if (similarityFilter.type === 'contractType') return p.contractType === similarityFilter.value;
+        if (similarityFilter.type === 'classification') return p.classification === similarityFilter.value;
+        if (similarityFilter.type === 'client') return p.client === similarityFilter.value;
+        if (similarityFilter.type === 'contractor') return p.contractor === similarityFilter.value;
+        return true;
+      });
+  }, [projects, isMasterAdmin, currentUserObj, selectedDirectorate, selectedStatusFilter, searchQuery, similarityFilter]);
 
   const sortedProjects = useMemo(() => {
     return [...filteredProjects].sort((a, b) => {
       if (sortBy === 'name') {
-        const comp = a.name.localeCompare(b.name);
+        const comp = (a.name || '').localeCompare(b.name || '');
+        return sortOrder === 'asc' ? comp : -comp;
+      }
+
+      if (sortBy === 'id') {
+        const comp = (a.id || '').localeCompare(b.id || '');
+        return sortOrder === 'asc' ? comp : -comp;
+      }
+
+      if (sortBy === 'directorate') {
+        const dirA = a.programDirectorate || '';
+        const dirB = b.programDirectorate || '';
+        const comp = dirA.localeCompare(dirB);
         return sortOrder === 'asc' ? comp : -comp;
       }
       
@@ -586,89 +610,149 @@ export default function ProjectsPage({
 
         {/* Search & Sort & Directorate Panel */}
         {!hasNoProjects && (
-          <div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center">
-            <div className="relative flex-1">
-              <Search className="absolute left-3.5 top-3 w-4 h-4 text-slate-400 dark:text-slate-500" />
-              <input
-                type="text"
-                placeholder="Search by contract name, client, or contractor..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 rounded-2xl py-2.5 pl-11 pr-4 text-sm text-slate-800 dark:text-slate-100 shadow-sm outline-none focus:ring-2 focus:ring-blue-500/10 transition"
-              />
+          <div className="space-y-3">
+            <div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center">
+              <div className="relative flex-1">
+                <Search className="absolute left-3.5 top-3 w-4 h-4 text-slate-400 dark:text-slate-500" />
+                <input
+                  type="text"
+                  placeholder="Search by contract name, ID, Directorate, client, contractor..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 rounded-2xl py-2.5 pl-11 pr-10 text-sm text-slate-800 dark:text-slate-100 shadow-sm outline-none focus:ring-2 focus:ring-blue-500/10 transition"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-3.5 top-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition cursor-pointer"
+                    title="Clear search query"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Program Directorate selector */}
+                <div className="flex items-center gap-2 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 p-1.5 rounded-2xl shadow-sm shrink-0">
+                  <span className="text-[10px] font-extrabold text-indigo-500 uppercase tracking-wider pl-2.5 pr-1">
+                    Directorate:
+                  </span>
+                  <select
+                    value={selectedDirectorate}
+                    onChange={(e) => setSelectedDirectorate(e.target.value)}
+                    className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-xs font-bold outline-none text-slate-700 dark:text-zinc-200 focus:border-indigo-500 transition cursor-pointer"
+                  >
+                    <option value="All">🌐 All Directorates</option>
+                    {programDirectorates.map(pd => (
+                      <option key={pd} value={pd}>🏢 {pd}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Status Filter selector */}
+                <div className="flex items-center gap-2 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 p-1.5 rounded-2xl shadow-sm shrink-0">
+                  <span className="text-[10px] font-extrabold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider pl-2.5 pr-1">
+                    Status:
+                  </span>
+                  <select
+                    value={selectedStatusFilter}
+                    onChange={(e) => setSelectedStatusFilter(e.target.value)}
+                    className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-xs font-bold outline-none text-slate-700 dark:text-zinc-200 focus:border-emerald-500 transition cursor-pointer"
+                  >
+                    <option value="All">🌐 All Statuses</option>
+                    <option value="In Progress">🟢 In Progress</option>
+                    <option value="Completed">✅ Completed</option>
+                    <option value="Completed and Closed">🔒 Completed & Closed</option>
+                    <option value="Suspended">⏸️ Suspended</option>
+                    <option value="Terminated">🛑 Terminated</option>
+                  </select>
+                </div>
+
+                {/* Sort Panel */}
+                <div className="flex items-center gap-2 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 p-1.5 rounded-2xl shadow-sm shrink-0">
+                  <span className="text-[10px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-wider pl-2.5 pr-1">
+                    Sort By:
+                  </span>
+                  <select
+                    value={sortBy}
+                    onChange={(e) => {
+                      const val = e.target.value as any;
+                      setSortBy(val);
+                      if (val === 'bondWarnings' || val === 'progress' || val === 'budget') {
+                        setSortOrder('desc');
+                      } else {
+                        setSortOrder('asc');
+                      }
+                    }}
+                    className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-xs font-bold outline-none text-slate-700 dark:text-zinc-200 focus:border-blue-500 transition cursor-pointer"
+                  >
+                    <option value="name">🔤 Contract Name</option>
+                    <option value="id">🆔 Contract ID</option>
+                    <option value="directorate">🏢 Directorate</option>
+                    <option value="progress">📊 Physical Progress</option>
+                    <option value="budget">💰 Budget Amount</option>
+                    <option value="length">🛣️ Corridor Length</option>
+                    <option value="bondWarnings">⚠️ Bond Warning</option>
+                  </select>
+
+                  <button
+                    onClick={() => setSortOrder(o => o === 'asc' ? 'desc' : 'asc')}
+                    className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 dark:bg-slate-900 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-black text-blue-600 dark:text-blue-400 transition flex items-center gap-1 shrink-0 cursor-pointer"
+                    title="Toggle sort direction asc / desc"
+                  >
+                    {sortOrder === 'asc' ? '▲ ASC' : '▼ DESC'}
+                  </button>
+                </div>
+              </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              {/* Program Directorate selector */}
-              <div className="flex items-center gap-2 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 p-1.5 rounded-2xl shadow-sm shrink-0">
-                <span className="text-[10px] font-extrabold text-indigo-500 uppercase tracking-wider pl-2.5 pr-1">
-                  Directorate:
+            {/* Filter Status & Count summary bar */}
+            <div className="flex items-center justify-between text-xs px-2 text-slate-500 dark:text-slate-400">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span>
+                  Showing <strong className="text-slate-800 dark:text-slate-100 font-extrabold">{sortedProjects.length}</strong> of{' '}
+                  <strong className="text-slate-800 dark:text-slate-100">{projects.filter(isAccessible).length}</strong> contracts
                 </span>
-                <select
-                  value={selectedDirectorate}
-                  onChange={(e) => setSelectedDirectorate(e.target.value)}
-                  className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-xs font-bold outline-none text-slate-700 dark:text-zinc-200 focus:border-indigo-500 transition cursor-pointer"
-                >
-                  <option value="All">🌐 All Directorates</option>
-                  {programDirectorates.map(pd => (
-                    <option key={pd} value={pd}>🏢 {pd}</option>
-                  ))}
-                </select>
+                {searchQuery && (
+                  <span className="bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/50 px-2 py-0.5 rounded-md font-semibold text-[11px] flex items-center gap-1">
+                    Search: "{searchQuery}"
+                    <button onClick={() => setSearchQuery('')} className="hover:text-blue-900 dark:hover:text-white cursor-pointer ml-0.5">✕</button>
+                  </span>
+                )}
+                {selectedDirectorate !== 'All' && (
+                  <span className="bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/50 px-2 py-0.5 rounded-md font-semibold text-[11px] flex items-center gap-1">
+                    Directorate: {selectedDirectorate}
+                    <button onClick={() => setSelectedDirectorate('All')} className="hover:text-indigo-900 dark:hover:text-white cursor-pointer ml-0.5">✕</button>
+                  </span>
+                )}
+                {selectedStatusFilter !== 'All' && (
+                  <span className="bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/50 px-2 py-0.5 rounded-md font-semibold text-[11px] flex items-center gap-1">
+                    Status: {selectedStatusFilter}
+                    <button onClick={() => setSelectedStatusFilter('All')} className="hover:text-emerald-900 dark:hover:text-white cursor-pointer ml-0.5">✕</button>
+                  </span>
+                )}
+                {similarityFilter.type !== 'none' && (
+                  <span className="bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/50 px-2 py-0.5 rounded-md font-semibold text-[11px] flex items-center gap-1">
+                    Filter: {similarityFilter.value}
+                    <button onClick={() => setSimilarityFilter({ type: 'none', value: null })} className="hover:text-amber-900 dark:hover:text-white cursor-pointer ml-0.5">✕</button>
+                  </span>
+                )}
               </div>
 
-              {/* Status Filter selector */}
-              <div className="flex items-center gap-2 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 p-1.5 rounded-2xl shadow-sm shrink-0">
-                <span className="text-[10px] font-extrabold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider pl-2.5 pr-1">
-                  Status:
-                </span>
-                <select
-                  value={selectedStatusFilter}
-                  onChange={(e) => setSelectedStatusFilter(e.target.value)}
-                  className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-xs font-bold outline-none text-slate-700 dark:text-zinc-200 focus:border-emerald-500 transition cursor-pointer"
-                >
-                  <option value="All">🌐 All Statuses</option>
-                  <option value="In Progress">🟢 In Progress</option>
-                  <option value="Completed">✅ Completed</option>
-                  <option value="Completed and Closed">🔒 Completed & Closed</option>
-                  <option value="Suspended">⏸️ Suspended</option>
-                  <option value="Terminated">🛑 Terminated</option>
-                </select>
-              </div>
-
-              {/* Sort Panel */}
-              <div className="flex items-center gap-2 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 p-1.5 rounded-2xl shadow-sm shrink-0">
-                <span className="text-[10px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-wider pl-2.5 pr-1">
-                  Sort By:
-                </span>
-                <select
-                  value={sortBy}
-                  onChange={(e) => {
-                    const val = e.target.value as any;
-                    setSortBy(val);
-                    // Intuitively toggle default sorting directions
-                    if (val === 'bondWarnings' || val === 'progress' || val === 'budget') {
-                      setSortOrder('desc');
-                    } else {
-                      setSortOrder('asc');
-                    }
-                  }}
-                  className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-1.5 text-xs font-bold outline-none text-slate-700 dark:text-zinc-200 focus:border-blue-500 transition cursor-pointer"
-                >
-                  <option value="name">🔤 spelling (A - Z)</option>
-                  <option value="bondWarnings">⚠️ Bond & Guarantee Warning</option>
-                  <option value="progress">📊 Physical Progress</option>
-                  <option value="budget">💰 orig budget Amount</option>
-                  <option value="length">🛣️ corridor Length</option>
-                </select>
-
+              {(searchQuery || selectedDirectorate !== 'All' || selectedStatusFilter !== 'All' || similarityFilter.type !== 'none') && (
                 <button
-                  onClick={() => setSortOrder(o => o === 'asc' ? 'desc' : 'asc')}
-                  className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 dark:bg-slate-900 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-black text-blue-600 dark:text-blue-400 transition flex items-center gap-1 shrink-0"
-                  title="Toggle sort direction asc / desc"
+                  onClick={() => {
+                    setSearchQuery('');
+                    setSelectedDirectorate('All');
+                    setSelectedStatusFilter('All');
+                    setSimilarityFilter({ type: 'none', value: null });
+                  }}
+                  className="text-xs font-bold text-rose-600 dark:text-rose-400 hover:underline cursor-pointer transition shrink-0 ml-2"
                 >
-                  {sortOrder === 'asc' ? '▲ ASC' : '▼ DESC'}
+                  Reset All Filters
                 </button>
-              </div>
+              )}
             </div>
           </div>
         )}
@@ -690,6 +774,27 @@ export default function ProjectsPage({
             <p className="text-xs text-slate-400 dark:text-slate-500 mt-4 leading-relaxed bg-slate-50 dark:bg-slate-900/40 p-3 rounded-xl border border-slate-100 dark:border-slate-850">
               Please contact an Administrator or Coordinator to assign road projects to your profile. You will be able to access reports, dashboards, and KPI tracking once assigned.
             </p>
+          </div>
+        ) : sortedProjects.length === 0 ? (
+          <div className="text-center py-12 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/60 p-8 rounded-2xl shadow-sm max-w-md mx-auto">
+            <div className="w-12 h-12 bg-slate-100 dark:bg-slate-700/50 text-slate-400 rounded-full flex items-center justify-center mx-auto mb-3">
+              <Search className="w-6 h-6" />
+            </div>
+            <h3 className="text-sm font-extrabold text-slate-800 dark:text-slate-100">No Matching Contracts Found</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              No contracts matched your current search query or filter criteria.
+            </p>
+            <button
+              onClick={() => {
+                setSearchQuery('');
+                setSelectedDirectorate('All');
+                setSelectedStatusFilter('All');
+                setSimilarityFilter({ type: 'none', value: null });
+              }}
+              className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
+            >
+              Reset Search & Filters
+            </button>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

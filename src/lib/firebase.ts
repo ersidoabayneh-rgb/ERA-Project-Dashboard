@@ -1,5 +1,4 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
 import { 
   initializeFirestore, 
   getFirestore, 
@@ -9,7 +8,6 @@ import {
   doc, 
   getDocFromServer 
 } from 'firebase/firestore';
-import { getAnalytics, isSupported } from 'firebase/analytics';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const isValidConfig = Boolean(firebaseConfig && firebaseConfig.apiKey && firebaseConfig.projectId);
@@ -23,7 +21,6 @@ const effectiveConfig = isValidConfig ? firebaseConfig : {
 };
 
 const app = initializeApp(effectiveConfig);
-export const auth = getAuth(app);
 
 const dbId = (firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== '(default)') 
   ? firebaseConfig.firestoreDatabaseId 
@@ -53,7 +50,7 @@ if (typeof window !== 'undefined') {
 
 export const db = dbInstance;
 
-// Catch and handle transient browser IndexedDB tab-closing / visibility state rejections
+// Catch and handle transient browser IndexedDB tab-closing / visibility state / API key / installation rejections
 if (typeof window !== 'undefined') {
   window.addEventListener('unhandledrejection', (event) => {
     const reason = event.reason;
@@ -63,26 +60,19 @@ if (typeof window !== 'undefined') {
       msg.includes('Database is hidden') ||
       msg.includes('database is closing') ||
       msg.includes('database is hidden') ||
-      msg.includes('IndexedDB')
+      msg.includes('IndexedDB') ||
+      msg.includes('installations') ||
+      msg.includes('API key') ||
+      msg.includes('INVALID_ARGUMENT') ||
+      msg.includes('permission-denied')
     ) {
       event.preventDefault();
-      console.warn('Handled background Firestore IndexedDB state event gracefully.');
+      console.warn('Handled background Firebase event/notice gracefully:', msg);
     }
   });
 }
 
-export let analytics: any = null;
-if (typeof window !== 'undefined' && firebaseConfig.measurementId) {
-  isSupported().then((supported) => {
-    if (supported) {
-      try {
-        analytics = getAnalytics(app);
-      } catch (err) {
-        console.warn("Analytics initialization notice:", err);
-      }
-    }
-  }).catch(() => {});
-}
+export const analytics = null;
 
 export async function testFirestoreConnection() {
   try {
@@ -94,6 +84,7 @@ export async function testFirestoreConnection() {
 }
 
 testFirestoreConnection();
+
 
 
 

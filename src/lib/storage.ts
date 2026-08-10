@@ -1,6 +1,18 @@
 export function safeSetItem(key: string, value: string): void {
   try {
     localStorage.setItem(key, value);
+    if (typeof window !== 'undefined') {
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('local_project_mutated', { detail: { key } }));
+        if ('BroadcastChannel' in window) {
+          try {
+            const bc = new BroadcastChannel('era_frontend_sync');
+            bc.postMessage({ type: 'storage_update', key });
+            bc.close();
+          } catch (e) {}
+        }
+      }, 0);
+    }
   } catch (error) {
     console.warn(`localStorage.setItem failed for key "${key}":`, error);
     if (error instanceof DOMException && (
@@ -33,6 +45,9 @@ export function safeSetItem(key: string, value: string): void {
           keysToRemove.forEach(k => localStorage.removeItem(k));
           try {
             localStorage.setItem(key, value);
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('local_project_mutated', { detail: { key } }));
+            }
             return;
           } catch (retryError) {
             console.error('Failed to setItem even after clearing obsolete keys:', retryError);
