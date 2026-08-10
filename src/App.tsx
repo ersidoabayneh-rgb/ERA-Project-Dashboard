@@ -1602,8 +1602,6 @@ let isBatchSyncRunning = false;
   }, []);
 
 
-  // --- Google Drive Real-Time Sync is Disabled ---
-
 
   // Update light/dark modes
   const handleToggleDarkMode = () => {

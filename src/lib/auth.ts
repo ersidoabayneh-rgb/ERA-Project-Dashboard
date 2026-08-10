@@ -1,5 +1,5 @@
-import { auth as firebaseAuth, googleProvider } from './firebase.ts';
-import { onAuthStateChanged, signInWithPopup, signOut as firebaseSignOut, User as FirebaseUser } from 'firebase/auth';
+import { auth as firebaseAuth } from './firebase.ts';
+import { onAuthStateChanged, signOut as firebaseSignOut, User as FirebaseUser } from 'firebase/auth';
 
 export interface User {
   uid: string;
@@ -39,24 +39,6 @@ export function initAuth(
   });
 
   return unsubscribe;
-}
-
-export async function googleSignIn(): Promise<User | null> {
-  try {
-    const result = await signInWithPopup(firebaseAuth, googleProvider);
-    const fbUser = result.user;
-    currentUser = {
-      uid: fbUser.uid,
-      email: fbUser.email,
-      displayName: fbUser.displayName || fbUser.email?.split('@')[0] || 'User',
-      getIdToken: (forceRefresh?: boolean) => fbUser.getIdToken(forceRefresh),
-    };
-    authListeners.forEach(listener => listener(currentUser));
-    return currentUser;
-  } catch (error) {
-    console.error("Firebase Google Sign-In error:", error);
-    throw error;
-  }
 }
 
 export async function signOutUser(): Promise<void> {

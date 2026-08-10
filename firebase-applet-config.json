@@ -1,11 +1,11 @@
 {
-  "projectId": "era-dashboard-2ab03",
-  "appId": "1:213063820175:web:a91976e68d1d840efea1fa",
-  "apiKey": "AIzaSyCPLOJmL1ZZ7DLbfvPCk6JAyuQ_uyJqu_4",
-  "authDomain": "era-dashboard-2ab03.firebaseapp.com",
-  "firestoreDatabaseId": "(default)",
-  "storageBucket": "era-dashboard-2ab03.firebasestorage.app",
-  "messagingSenderId": "213063820175",
-  "measurementId": "G-56S9DBVVL0",
+  "projectId": "",
+  "appId": "",
+  "apiKey": "",
+  "authDomain": "",
+  "firestoreDatabaseId": "",
+  "storageBucket": "",
+  "messagingSenderId": "",
+  "measurementId": "",
   "recaptchaSiteKey": ""
 }

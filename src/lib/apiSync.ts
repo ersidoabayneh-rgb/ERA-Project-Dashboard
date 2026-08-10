@@ -104,7 +104,7 @@ export async function safeSyncProject(proj: Project, isBackgroundQueueSync = fal
     }
   } catch {}
 
-  // Emit event for Drive Auto-Sync to pick up
+  // Emit event for Local Mutation Listener to pick up
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('local_project_mutated'));
   }

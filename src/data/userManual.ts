@@ -1429,7 +1429,7 @@ export function downloadUserManual() {
     [
       { label: '1. Central Document Vault:', detail: 'Archives contract agreements, design reviews, IPC certificates, and EOT approval letters.' },
       { label: '2. Metadata Tagging:', detail: 'Categorizes files by type, upload date, file size, and authorization access levels.' },
-      { label: '3. Cloud File Attachments:', detail: 'Integrates with Google Drive / server storage for persistent document downloads.' },
+      { label: '3. Cloud File Attachments:', detail: 'Integrates with cloud database / server storage for persistent document downloads.' },
       { label: '4. Secure Version Control:', detail: 'Prevents unauthorized overwriting of official contractual documents.' }
     ]
   );

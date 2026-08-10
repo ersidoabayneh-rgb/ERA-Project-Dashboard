@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider } from 'firebase/auth';
+import { getAuth } from 'firebase/auth';
 import { 
   initializeFirestore, 
   getFirestore, 
@@ -12,7 +12,17 @@ import {
 import { getAnalytics, isSupported } from 'firebase/analytics';
 import firebaseConfig from '../../firebase-applet-config.json';
 
-const app = initializeApp(firebaseConfig);
+const isValidConfig = Boolean(firebaseConfig && firebaseConfig.apiKey && firebaseConfig.projectId);
+
+const effectiveConfig = isValidConfig ? firebaseConfig : {
+  apiKey: "AIzaSy_Disconnected_Dummy_Key",
+  projectId: "disconnected-app",
+  appId: "1:000000000000:web:0000000000000000000000",
+  authDomain: "",
+  storageBucket: ""
+};
+
+const app = initializeApp(effectiveConfig);
 export const auth = getAuth(app);
 
 const dbId = (firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== '(default)') 
@@ -42,7 +52,6 @@ if (typeof window !== 'undefined') {
 }
 
 export const db = dbInstance;
-export const googleProvider = new GoogleAuthProvider();
 
 // Catch and handle transient browser IndexedDB tab-closing / visibility state rejections
 if (typeof window !== 'undefined') {
