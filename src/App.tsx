@@ -1100,8 +1100,8 @@ let isBatchSyncRunning = false;
       }
     };
 
-    initWebSocket();
-    initSSE();
+    // Real-time synchronization powered directly by Cloud Firestore client listeners
+    // (Local WS/SSE backend stream initialization omitted for client-side deployment)
 
     // Subscribe to real-time Firestore snapshot listeners across all collections
     let unsubscribeUsersListener: (() => void) | null = null;
