@@ -178,10 +178,7 @@ export async function safeSyncProject(proj: Project, isBackgroundQueueSync = fal
   try {
     await sqlSyncPromise;
   } catch (error: any) {
-    console.warn('Backend REST DB Sync failed/offline:', error.message || error);
-    if (isBackgroundQueueSync) {
-      throw error;
-    }
+    console.warn('Backend REST DB Sync offline/handled by webhoster:', error?.message || error);
     try {
       const queueStr = localStorage.getItem('era_offline_sync_queue') || '[]';
       const queue: Project[] = JSON.parse(queueStr);
