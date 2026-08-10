@@ -49,7 +49,7 @@ interface ProjectsPageProps {
   onOpenAdmin: () => void;
   onOpenDrafts: () => void;
   onOpenUserGuide?: () => void;
-  onSaveToCloud: () => void;
+  onSaveToCloud?: () => void;
   onlineUsers: string[];
   programDirectorates?: string[];
   pmos?: string[];
@@ -416,15 +416,6 @@ export default function ProjectsPage({
           </div>
 
           <div className="flex flex-wrap items-center gap-1.5 self-start md:self-auto">
-            {!hasNoProjects && (
-              <button 
-                onClick={onSaveToCloud}
-                className="flex items-center gap-1.5 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white px-3 py-1.5 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer"
-              >
-                <CheckCircle className="w-3.5 h-3.5" />
-                Save to Database
-              </button>
-            )}
             <button 
               onClick={onOpenProfile}
               className="flex items-center gap-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer"

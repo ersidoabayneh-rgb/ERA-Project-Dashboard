@@ -2563,7 +2563,7 @@ let isBatchSyncRunning = false;
                         const updatedProjs = projects.map(p => p.id === weightedProject.id ? weightedProject : p);
                         setProjects(updatedProjs);
                         safeSetItem('era_proj_v28', JSON.stringify(updatedProjs));
-                        alert('Changes successfully synchronized and certified directly into the database.');
+                        alert('💾 DATA RECORDED & SAVED TO DATABASE!\n\nAll modified project parameters have been synchronized and recorded into the unified database. The saved state is locked in the database until your next project modification and database save.');
                       } catch (err) {
                         console.error('Failed to sync to database:', err);
                         alert('Failed to sync to the database. Please try again.');
