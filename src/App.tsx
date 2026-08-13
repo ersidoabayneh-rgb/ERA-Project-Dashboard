@@ -5020,31 +5020,7 @@ let isBatchSyncRunning = false;
                                 </div>
                               </div>
 
-                              {/* Primitive Core Fields Side-by-Side Table */}
-                              {primitiveFields.length > 0 && (
-                                <div className="space-y-1.5">
-                                  <div className="text-2xs font-extrabold text-slate-400 uppercase tracking-wide">Core Metadata & Specifications</div>
-                                  <div className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden divide-y divide-slate-150 dark:divide-slate-800/80 bg-white dark:bg-slate-900/50">
-                                    {primitiveFields.map(f => {
-                                      const formattedOld = formatValDisplay(f.key, f.oldVal);
-                                      const formattedNew = formatValDisplay(f.key, f.newVal);
-                                      return (
-                                        <div key={f.key} className="grid grid-cols-1 md:grid-cols-12 text-2xs p-2.5 items-center gap-2 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition">
-                                          <div className="md:col-span-4 font-bold text-slate-700 dark:text-slate-300">
-                                            {f.label}
-                                          </div>
-                                          <div className="md:col-span-4 p-1.5 bg-rose-50/60 dark:bg-rose-950/20 rounded-lg border border-rose-200/40 dark:border-rose-900/30 text-rose-800 dark:text-rose-300 font-medium">
-                                            <span className="line-through opacity-80">{formattedOld}</span>
-                                          </div>
-                                          <div className="md:col-span-4 p-1.5 bg-emerald-50/70 dark:bg-emerald-950/30 rounded-lg border border-emerald-200/50 dark:border-emerald-900/40 text-emerald-800 dark:text-emerald-300 font-bold">
-                                            <span>{formattedNew}</span>
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-                              )}
+                              {/* Primitive Core Fields Side-by-Side Table hidden per request */}
 
                               {/* Array Complex Collections Side-by-Side comparison */}
                               {arrayFields.map(f => {
