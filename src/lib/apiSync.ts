@@ -37,13 +37,30 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 }
 
 let syncSuspendedState = false;
+let quotaExhaustedState = false;
 
 export function isSyncSuspended(): boolean {
-  return syncSuspendedState;
+  return syncSuspendedState || quotaExhaustedState;
+}
+
+export function isQuotaExhausted(): boolean {
+  return quotaExhaustedState;
 }
 
 export async function reactivateSync(): Promise<void> {
   syncSuspendedState = false;
+  quotaExhaustedState = false;
+}
+
+export function handleFsError(err: any): void {
+  const msg = err?.message || String(err);
+  if (msg.includes('resource-exhausted') || msg.includes('Quota limit exceeded') || msg.includes('code=resource-exhausted')) {
+    if (!quotaExhaustedState) {
+      quotaExhaustedState = true;
+      syncSuspendedState = true;
+      console.warn('[Firestore Notice]: Cloud Firestore daily write quota reached. Operating seamlessly in local mode.');
+    }
+  }
 }
 
 export function normalizeProject(p: any): Project {
@@ -98,12 +115,14 @@ export async function safeSyncProject(proj: Project, isBackgroundQueueSync = fal
   const normalized = normalizeProject(proj);
 
   // Firestore Sync
-  try {
-    const cleanNormalized = JSON.parse(JSON.stringify(normalized));
-    cleanNormalized.updatedAt = new Date().toISOString();
-    await setDoc(doc(db, 'projects', normalized.id), cleanNormalized, { merge: true });
-  } catch (fsErr) {
-    console.warn('Firestore project sync failed:', fsErr);
+  if (!isSyncSuspended()) {
+    try {
+      const cleanNormalized = JSON.parse(JSON.stringify(normalized));
+      cleanNormalized.updatedAt = new Date().toISOString();
+      await setDoc(doc(db, 'projects', normalized.id), cleanNormalized, { merge: true });
+    } catch (fsErr) {
+      handleFsError(fsErr);
+    }
   }
 
   // Relational Database Sync: optional Express REST API (/api/projects/sync)
@@ -189,9 +208,14 @@ export async function safeDeleteProject(id: string): Promise<void> {
   const syncPromises: Promise<any>[] = [];
 
   // Delete from Firestore
-  syncPromises.push(
-    deleteDoc(doc(db, 'projects', id)).catch(fsErr => console.warn('Firestore delete project notice:', fsErr))
-  );
+  if (!isSyncSuspended()) {
+    syncPromises.push(
+      deleteDoc(doc(db, 'projects', id)).catch(fsErr => {
+        handleFsError(fsErr);
+        console.warn('Firestore delete project notice:', fsErr);
+      })
+    );
+  }
 
   // Delete from relational REST API backend if active
   syncPromises.push(
@@ -270,15 +294,18 @@ export async function safeFetchProjects(): Promise<Project[] | null> {
  */
 export async function safeSyncUsers(users: AppUser[]): Promise<void> {
   // Sync to Firestore if authenticated user or client present
-  try {
-    for (const u of users) {
-      if (u && u.username) {
-        const userDocRef = doc(db, 'users', u.username.toLowerCase());
-        await setDoc(userDocRef, { ...u, updatedAt: new Date().toISOString() }, { merge: true }).catch(() => {});
+  if (!isSyncSuspended()) {
+    try {
+      for (const u of users) {
+        if (u && u.username) {
+          const userDocRef = doc(db, 'users', u.username.toLowerCase());
+          await setDoc(userDocRef, { ...u, updatedAt: new Date().toISOString() }, { merge: true }).catch(err => handleFsError(err));
+        }
       }
+    } catch (e) {
+      handleFsError(e);
+      console.warn('Firestore user sync notice:', e);
     }
-  } catch (e) {
-    console.warn('Firestore user sync notice:', e);
   }
 
   try {
@@ -345,14 +372,17 @@ export async function safeFetchUsers(): Promise<AppUser[] | null> {
  * Synchronizes all variance approvals with backend REST API and Firestore.
  */
 export async function safeSyncApprovals(approvals: ApprovalRequest[]): Promise<void> {
-  try {
-    for (const a of approvals) {
-      if (a && a.id) {
-        await setDoc(doc(db, 'approvals', a.id), { ...a, updatedAt: new Date().toISOString() }, { merge: true }).catch(() => {});
+  if (!isSyncSuspended()) {
+    try {
+      for (const a of approvals) {
+        if (a && a.id) {
+          await setDoc(doc(db, 'approvals', a.id), { ...a, updatedAt: new Date().toISOString() }, { merge: true }).catch(err => handleFsError(err));
+        }
       }
+    } catch (e) {
+      handleFsError(e);
+      console.warn('Firestore approvals sync notice:', e);
     }
-  } catch (e) {
-    console.warn('Firestore approvals sync notice:', e);
   }
 
   try {
@@ -415,10 +445,13 @@ export async function safeFetchApprovals(): Promise<ApprovalRequest[] | null> {
  * Synchronizes PMO and Directorate taxonomy with backend REST API and Firestore.
  */
 export async function safeSyncConfig(pmos: string[], directorates: string[]): Promise<void> {
-  try {
-    await setDoc(doc(db, 'config', 'taxonomy'), { pmos, directorates, updatedAt: new Date().toISOString() }, { merge: true }).catch(() => {});
-  } catch (e) {
-    console.warn('Firestore config sync notice:', e);
+  if (!isSyncSuspended()) {
+    try {
+      await setDoc(doc(db, 'config', 'taxonomy'), { pmos, directorates, updatedAt: new Date().toISOString() }, { merge: true }).catch(err => handleFsError(err));
+    } catch (e) {
+      handleFsError(e);
+      console.warn('Firestore config sync notice:', e);
+    }
   }
 
   try {

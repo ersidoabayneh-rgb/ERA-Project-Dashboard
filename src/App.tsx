@@ -154,7 +154,7 @@ import UserGuideManualModal from './components/UserGuideManualModal';
 import eraLogo from './assets/logo.png';
 
 import { defaultProjectTemplate, blankProjectTemplate, generateKpiAllocated } from './data/defaultProject';
-import { safeSyncProject, safeDeleteProject, safeFetchProjects, safeSyncUsers, safeFetchUsers, safeSyncApprovals, safeFetchApprovals, safeSyncConfig, safeFetchConfig, reactivateSync, isSyncSuspended, normalizeProject } from './lib/apiSync';
+import { safeSyncProject, safeDeleteProject, safeFetchProjects, safeSyncUsers, safeFetchUsers, safeSyncApprovals, safeFetchApprovals, safeSyncConfig, safeFetchConfig, reactivateSync, isSyncSuspended, handleFsError, normalizeProject } from './lib/apiSync';
 import { getAccessToken } from './lib/auth';
 import { safeSetItem } from './lib/storage';
 import { collection, onSnapshot, doc } from 'firebase/firestore';
@@ -1122,7 +1122,10 @@ let isBatchSyncRunning = false;
           });
           if (liveUsers.length > 0) mergeAndApplyUsers(liveUsers);
         }
-      }, err => console.warn('[Firestore Users Listener Notice]:', err?.message || err));
+      }, err => {
+        handleFsError(err);
+        console.warn('[Firestore Users Listener Notice]:', err?.message || err);
+      });
 
       unsubscribeProjectsListener = onSnapshot(collection(db, 'projects'), (snapshot) => {
         if (snapshot && !snapshot.empty) {
@@ -1158,7 +1161,10 @@ let isBatchSyncRunning = false;
             });
           }
         }
-      }, err => console.warn('[Firestore Projects Listener Notice]:', err?.message || err));
+      }, err => {
+        handleFsError(err);
+        console.warn('[Firestore Projects Listener Notice]:', err?.message || err);
+      });
 
       unsubscribeApprovalsListener = onSnapshot(collection(db, 'approvals'), (snapshot) => {
         if (snapshot && !snapshot.empty) {
@@ -1174,7 +1180,10 @@ let isBatchSyncRunning = false;
             }, 0);
           }
         }
-      }, err => console.warn('[Firestore Approvals Listener Notice]:', err?.message || err));
+      }, err => {
+        handleFsError(err);
+        console.warn('[Firestore Approvals Listener Notice]:', err?.message || err);
+      });
 
       unsubscribeConfigListener = onSnapshot(doc(db, 'config', 'taxonomy'), (docSnap) => {
         if (docSnap && docSnap.exists()) {
@@ -1182,7 +1191,10 @@ let isBatchSyncRunning = false;
           if (data && Array.isArray(data.pmos)) setPmos(data.pmos);
           if (data && Array.isArray(data.directorates)) setProgramDirectorates(data.directorates);
         }
-      }, err => console.warn('[Firestore Config Listener Notice]:', err?.message || err));
+      }, err => {
+        handleFsError(err);
+        console.warn('[Firestore Config Listener Notice]:', err?.message || err);
+      });
     } catch (e) {
       console.warn('[Firestore Listeners Setup Notice]:', e);
     }
@@ -4945,7 +4957,10 @@ let isBatchSyncRunning = false;
                             }
                           });
 
-                          if (primitiveFields.length === 0 && arrayFields.length === 0) {
+                          if (primitiveFields.length === 0 && !arrayFields.some(f => {
+                            const diff = computeArrayDiff(f.key, f.oldVal, f.newVal);
+                            return diff.added.length > 0 || diff.removed.length > 0 || diff.modified.length > 0;
+                          })) {
                             return <p className="text-slate-500 italic font-bold text-center py-2 text-xs">No material changes detected between Current Baseline and Requested Changes.</p>;
                           }
 
@@ -5020,11 +5035,55 @@ let isBatchSyncRunning = false;
                                 </div>
                               </div>
 
-                              {/* Primitive Core Fields Side-by-Side Table hidden per request */}
+                              {/* Primitive Changed Fields Side-by-Side Table */}
+                              {primitiveFields.length > 0 && (
+                                <div className="space-y-1.5">
+                                  <div className="text-2xs font-extrabold text-slate-500 uppercase tracking-wide">
+                                    Changed Fields & Specifications ({primitiveFields.length})
+                                  </div>
+                                  <div className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden divide-y divide-slate-150 dark:divide-slate-800/80 bg-white dark:bg-slate-900/50">
+                                    {primitiveFields.map(f => {
+                                      const formattedOld = formatValDisplay(f.key, f.oldVal);
+                                      const formattedNew = formatValDisplay(f.key, f.newVal);
+                                      return (
+                                        <div key={f.key} className="grid grid-cols-1 md:grid-cols-12 text-2xs p-2.5 items-center gap-2 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition">
+                                          <div className="md:col-span-4 font-bold text-slate-700 dark:text-slate-300">
+                                            {f.label}
+                                          </div>
+                                          <div className="md:col-span-4 p-1.5 bg-rose-50/60 dark:bg-rose-950/20 rounded-lg border border-rose-200/40 dark:border-rose-900/30 text-rose-800 dark:text-rose-300 font-medium">
+                                            <span className="line-through opacity-80">{formattedOld}</span>
+                                          </div>
+                                          <div className="md:col-span-4 p-1.5 bg-emerald-50/70 dark:bg-emerald-950/30 rounded-lg border border-emerald-200/50 dark:border-emerald-900/40 text-emerald-800 dark:text-emerald-300 font-bold">
+                                            <span>{formattedNew}</span>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
 
-                              {/* Array Complex Collections Side-by-Side comparison */}
+                              {/* Array Complex Collections Side-by-Side comparison (Only collections & items with changes) */}
                               {arrayFields.map(f => {
                                 const diff = computeArrayDiff(f.key, f.oldVal, f.newVal);
+                                if (diff.added.length === 0 && diff.removed.length === 0 && diff.modified.length === 0) {
+                                  return null;
+                                }
+
+                                const oldChangedItems = f.oldVal.filter(item => {
+                                  const label = item[diff.idKey] || item.name || item.desc || item.item || '';
+                                  const isRemoved = diff.removed.some(r => String(r[diff.idKey] || r.name || r.desc) === String(label));
+                                  const isMod = diff.modified.some(m => String(m.itemKey) === String(label));
+                                  return isRemoved || isMod;
+                                });
+
+                                const newChangedItems = f.newVal.filter(item => {
+                                  const label = item[diff.idKey] || item.name || item.desc || item.item || '';
+                                  const isAdded = diff.added.some(aItem => String(aItem[diff.idKey] || aItem.name || aItem.desc) === String(label));
+                                  const modObj = diff.modified.find(m => String(m.itemKey) === String(label));
+                                  return isAdded || !!modObj;
+                                });
+
                                 return (
                                   <div key={f.key} className="space-y-2 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 bg-slate-50/40 dark:bg-slate-900/30">
                                     <div className="flex justify-between items-center text-2xs border-b border-slate-200 dark:border-slate-800 pb-1.5 font-bold">
@@ -5035,18 +5094,20 @@ let isBatchSyncRunning = false;
                                     </div>
 
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-2xs">
-                                      {/* Left Column: Current Baseline Items */}
+                                      {/* Left Column: Current Baseline Changed Items */}
                                       <div className="space-y-1.5 bg-white dark:bg-slate-950 p-2.5 rounded-xl border border-rose-100 dark:border-rose-950/40">
-                                        <div className="text-[10px] font-bold text-rose-600 dark:text-rose-400 border-b pb-1">Current State ({f.oldVal.length} items)</div>
-                                        {f.oldVal.length === 0 ? (
-                                          <p className="text-slate-400 italic text-[10px]">No baseline items</p>
+                                        <div className="text-[10px] font-bold text-rose-600 dark:text-rose-400 border-b pb-1">
+                                          Current State ({oldChangedItems.length} altered items)
+                                        </div>
+                                        {oldChangedItems.length === 0 ? (
+                                          <p className="text-slate-400 italic text-[10px]">No baseline items altered or removed</p>
                                         ) : (
-                                          f.oldVal.map((item, idx) => {
+                                          oldChangedItems.map((item, idx) => {
                                             const label = item[diff.idKey] || item.name || item.desc || item.item || `Item #${idx + 1}`;
                                             const isRemoved = diff.removed.some(r => String(r[diff.idKey] || r.name || r.desc) === String(label));
                                             const isMod = diff.modified.some(m => String(m.itemKey) === String(label));
                                             return (
-                                              <div key={idx} className={`p-2 rounded-lg border text-[10px] space-y-0.5 ${isRemoved ? 'bg-rose-50 border-rose-200 text-rose-800 dark:bg-rose-950/40 dark:border-rose-900/60 dark:text-rose-300 line-through' : isMod ? 'bg-amber-50/50 border-amber-200 text-slate-700 dark:bg-amber-950/20 dark:border-amber-900/40 dark:text-slate-300' : 'bg-slate-50 border-slate-150 text-slate-700 dark:bg-slate-900/50 dark:border-slate-800 dark:text-slate-300'}`}>
+                                              <div key={idx} className={`p-2 rounded-lg border text-[10px] space-y-0.5 ${isRemoved ? 'bg-rose-50 border-rose-200 text-rose-800 dark:bg-rose-950/40 dark:border-rose-900/60 dark:text-rose-300 line-through' : 'bg-amber-50/50 border-amber-200 text-slate-700 dark:bg-amber-950/20 dark:border-amber-900/40 dark:text-slate-300'}`}>
                                                 <div className="font-bold flex justify-between">
                                                   <span>{String(label)}</span>
                                                   {isRemoved && <span className="no-underline text-2xs font-extrabold text-rose-600">REMOVED IN DRAFT</span>}
@@ -5063,17 +5124,19 @@ let isBatchSyncRunning = false;
 
                                       {/* Right Column: Requested Changes Items */}
                                       <div className="space-y-1.5 bg-white dark:bg-slate-950 p-2.5 rounded-xl border border-emerald-100 dark:border-emerald-950/40">
-                                        <div className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 border-b pb-1">Requested Changes ({f.newVal.length} items)</div>
-                                        {f.newVal.length === 0 ? (
-                                          <p className="text-slate-400 italic text-[10px]">No items in requested draft</p>
+                                        <div className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 border-b pb-1">
+                                          Requested Changes ({newChangedItems.length} altered items)
+                                        </div>
+                                        {newChangedItems.length === 0 ? (
+                                          <p className="text-slate-400 italic text-[10px]">No new or modified items in draft</p>
                                         ) : (
-                                          f.newVal.map((item, idx) => {
+                                          newChangedItems.map((item, idx) => {
                                             const label = item[diff.idKey] || item.name || item.desc || item.item || `Item #${idx + 1}`;
                                             const isAdded = diff.added.some(aItem => String(aItem[diff.idKey] || aItem.name || aItem.desc) === String(label));
                                             const modObj = diff.modified.find(m => String(m.itemKey) === String(label));
 
                                             return (
-                                              <div key={idx} className={`p-2 rounded-lg border text-[10px] space-y-1 ${isAdded ? 'bg-emerald-50 border-emerald-200 text-emerald-900 dark:bg-emerald-950/40 dark:border-emerald-900/60 dark:text-emerald-300' : modObj ? 'bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-900/50' : 'bg-slate-50 border-slate-150 text-slate-700 dark:bg-slate-900/50 dark:border-slate-800 dark:text-slate-300'}`}>
+                                              <div key={idx} className={`p-2 rounded-lg border text-[10px] space-y-1 ${isAdded ? 'bg-emerald-50 border-emerald-200 text-emerald-900 dark:bg-emerald-950/40 dark:border-emerald-900/60 dark:text-emerald-300' : 'bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-900/50'}`}>
                                                 <div className="font-bold flex justify-between items-center">
                                                   <span>{String(label)}</span>
                                                   {isAdded && <span className="bg-emerald-600 text-white text-[9px] px-1.5 py-0.2 rounded font-extrabold">+ ADDED</span>}
