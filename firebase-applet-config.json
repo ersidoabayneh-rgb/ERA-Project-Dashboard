@@ -1,11 +1,12 @@
 {
-  "projectId": "eradashboard-98bba",
-  "appId": "1:664428088364:web:51b1deef362d34bf655589",
-  "apiKey": "AIzaSyAW9qH8H2Nh2rfzhhc-oybojhQyZicrO9A",
-  "authDomain": "eradashboard-98bba.firebaseapp.com",
-  "firestoreDatabaseId": "(default)",
-  "storageBucket": "eradashboard-98bba.firebasestorage.app",
-  "messagingSenderId": "664428088364",
-  "measurementId": "G-Z537YW8BED",
+  "projectId": "eradashbaord-505304",
+  "appId": "1:476195546395:web:4822364faaf3b1bbe39fbe",
+  "apiKey": "AIzaSyA7Ew5fG5_avUwmNnnOAQHEvf9axnKmHdw",
+  "authDomain": "eradashbaord-505304.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-ethiopianroadsad-837a6a4f-078a-48dd-85b0-c355f26b6dd8",
+  "storageBucket": "eradashbaord-505304.firebasestorage.app",
+  "messagingSenderId": "476195546395",
+  "measurementId": "",
+  "oAuthClientId": "476195546395-oh0q15rcnvhpcrn09vfrofft8us6jt8k.apps.googleusercontent.com",
   "recaptchaSiteKey": ""
 }

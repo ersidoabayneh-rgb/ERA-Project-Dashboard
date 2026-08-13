@@ -1,10 +1,6 @@
-import { initializeApp } from 'firebase/app';
+import { initializeApp, getApps, getApp } from 'firebase/app';
 import { 
-  initializeFirestore, 
   getFirestore, 
-  persistentLocalCache, 
-  persistentMultipleTabManager,
-  memoryLocalCache,
   doc, 
   getDocFromServer 
 } from 'firebase/firestore';
@@ -20,35 +16,13 @@ const effectiveConfig = isValidConfig ? firebaseConfig : {
   storageBucket: ""
 };
 
-const app = initializeApp(effectiveConfig);
+const app = getApps().length > 0 ? getApp() : initializeApp(effectiveConfig);
 
 const dbId = (firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== '(default)') 
   ? firebaseConfig.firestoreDatabaseId 
   : undefined;
 
-let dbInstance;
-
-if (typeof window !== 'undefined') {
-  try {
-    dbInstance = initializeFirestore(app, {
-      localCache: persistentLocalCache({
-        tabManager: persistentMultipleTabManager()
-      })
-    }, dbId);
-  } catch (e) {
-    try {
-      dbInstance = initializeFirestore(app, {
-        localCache: memoryLocalCache()
-      }, dbId);
-    } catch (err) {
-      dbInstance = dbId ? getFirestore(app, dbId) : getFirestore(app);
-    }
-  }
-} else {
-  dbInstance = dbId ? getFirestore(app, dbId) : getFirestore(app);
-}
-
-export const db = dbInstance;
+export const db = dbId ? getFirestore(app, dbId) : getFirestore(app);
 
 // Catch and handle transient browser IndexedDB tab-closing / visibility state / API key / installation rejections
 if (typeof window !== 'undefined') {

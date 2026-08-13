@@ -106,7 +106,7 @@ export async function safeSyncProject(proj: Project, isBackgroundQueueSync = fal
     console.warn('Firestore project sync failed:', fsErr);
   }
 
-  // Relational Database Sync: custom Express REST API (/api/projects/sync)
+  // Relational Database Sync: optional Express REST API (/api/projects/sync)
   const sqlSyncPromise = (async () => {
     if (!proj.id || typeof proj.id !== 'string') {
       throw new Error("Client Validation Failed: Project ID must be a non-empty string.");
@@ -118,34 +118,37 @@ export async function safeSyncProject(proj: Project, isBackgroundQueueSync = fal
       throw new Error("Client Validation Failed: Client Name is required.");
     }
 
-    const response = await fetch('/api/projects/sync', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(proj)
-    });
-
-    if (!response.ok) {
-      const errJson = await response.json().catch(() => ({}));
-      throw new Error(errJson.error || `HTTP ${response.status} Server Error`);
-    }
-
-    // Clean from offline queue if present
     try {
-      const queueStr = localStorage.getItem('era_offline_sync_queue') || '[]';
-      const queue: Project[] = JSON.parse(queueStr);
-      const filtered = queue.filter(p => p.id !== proj.id);
-      localStorage.setItem('era_offline_sync_queue', JSON.stringify(filtered));
-    } catch {}
+      const response = await fetch('/api/projects/sync', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify(proj)
+      });
 
-    console.log('Project successfully synchronized with backend REST API.');
+      if (response.ok && response.headers.get('content-type')?.includes('application/json')) {
+        const resJson = await response.json().catch(() => null);
+        if (resJson && resJson.success) {
+          // Clean from offline queue if present
+          try {
+            const queueStr = localStorage.getItem('era_offline_sync_queue') || '[]';
+            const queue: Project[] = JSON.parse(queueStr);
+            const filtered = queue.filter(p => p.id !== proj.id);
+            localStorage.setItem('era_offline_sync_queue', JSON.stringify(filtered));
+          } catch {}
+          console.log('Project successfully synchronized with backend REST API.');
+        }
+      }
+    } catch (e) {
+      // Optional REST backend offline or not deployed
+    }
   })();
 
   try {
     await sqlSyncPromise;
   } catch (error: any) {
-    console.warn('Backend REST DB Sync offline/handled by webhoster:', error?.message || error);
     try {
       const queueStr = localStorage.getItem('era_offline_sync_queue') || '[]';
       const queue: Project[] = JSON.parse(queueStr);
@@ -153,9 +156,7 @@ export async function safeSyncProject(proj: Project, isBackgroundQueueSync = fal
         queue.push(proj);
         localStorage.setItem('era_offline_sync_queue', JSON.stringify(queue));
       }
-    } catch (e) {
-      console.error('Failed to write to offline sync queue:', e);
-    }
+    } catch (e) {}
   }
 }
 
@@ -192,17 +193,14 @@ export async function safeDeleteProject(id: string): Promise<void> {
     deleteDoc(doc(db, 'projects', id)).catch(fsErr => console.warn('Firestore delete project notice:', fsErr))
   );
 
-  // Delete from relational REST API backend
+  // Delete from relational REST API backend if active
   syncPromises.push(
     fetch(`/api/projects/${id}`, { method: 'DELETE' })
       .then(res => {
-        if (res.ok) console.log('Project deleted from backend DB:', id);
+        if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
+          console.log('Project deleted from backend DB:', id);
+        }
       })
-      .catch(err => console.warn('Backend delete warning:', err))
-  );
-
-  syncPromises.push(
-    fetch(`/api/projects/sync/${id}`, { method: 'DELETE' })
       .catch(() => {})
   );
 
@@ -215,16 +213,18 @@ export async function safeDeleteProject(id: string): Promise<void> {
 export async function safeFetchProjects(): Promise<Project[] | null> {
   let fetched: Project[] | null = null;
   try {
-    const response = await fetch('/api/projects/sync');
-    if (response.ok) {
+    const response = await fetch('/api/projects/sync', {
+      headers: { 'Accept': 'application/json' }
+    });
+    if (response.ok && response.headers.get('content-type')?.includes('application/json')) {
       const json = await response.json();
-      if (json.success && json.data && Array.isArray(json.data) && json.data.length > 0) {
+      if (json && json.success && Array.isArray(json.data) && json.data.length > 0) {
         console.log('Successfully fetched projects from backend REST API');
         fetched = json.data.map((p: any) => normalizeProject(p));
       }
     }
   } catch (err: any) {
-    console.warn('Backend DB Fetch failed:', err?.message || err);
+    // Optional backend REST disabled/not present
   }
 
   try {
@@ -284,15 +284,13 @@ export async function safeSyncUsers(users: AppUser[]): Promise<void> {
   try {
     const response = await fetch('/api/users/sync', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify(users)
     });
-    if (response.ok) {
+    if (response.ok && response.headers.get('content-type')?.includes('application/json')) {
       console.log('Users successfully synchronized with backend REST API');
     }
-  } catch (err: any) {
-    console.warn('Backend users sync failed:', err?.message || err);
-  }
+  } catch (err: any) {}
 }
 
 /**
@@ -301,17 +299,17 @@ export async function safeSyncUsers(users: AppUser[]): Promise<void> {
 export async function safeFetchUsers(): Promise<AppUser[] | null> {
   let fetched: AppUser[] | null = null;
   try {
-    const response = await fetch('/api/users/sync');
-    if (response.ok) {
+    const response = await fetch('/api/users/sync', {
+      headers: { 'Accept': 'application/json' }
+    });
+    if (response.ok && response.headers.get('content-type')?.includes('application/json')) {
       const json = await response.json();
-      if (json.success && json.data && Array.isArray(json.data) && json.data.length > 0) {
+      if (json && json.success && Array.isArray(json.data) && json.data.length > 0) {
         console.log('Successfully fetched users from backend REST API');
         fetched = json.data;
       }
     }
-  } catch (err: any) {
-    console.warn('Backend fetch users failed:', err?.message || err);
-  }
+  } catch (err: any) {}
 
   try {
     const querySnapshot = await getDocs(collection(db, 'users')).catch(() => null);
@@ -360,15 +358,13 @@ export async function safeSyncApprovals(approvals: ApprovalRequest[]): Promise<v
   try {
     const response = await fetch('/api/approvals/sync', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify(approvals)
     });
-    if (response.ok) {
+    if (response.ok && response.headers.get('content-type')?.includes('application/json')) {
       console.log('Approvals successfully synchronized with backend REST API');
     }
-  } catch (err: any) {
-    console.warn('Backend approvals sync failed:', err?.message || err);
-  }
+  } catch (err: any) {}
 }
 
 /**
@@ -377,17 +373,17 @@ export async function safeSyncApprovals(approvals: ApprovalRequest[]): Promise<v
 export async function safeFetchApprovals(): Promise<ApprovalRequest[] | null> {
   let fetched: ApprovalRequest[] | null = null;
   try {
-    const response = await fetch('/api/approvals/sync');
-    if (response.ok) {
+    const response = await fetch('/api/approvals/sync', {
+      headers: { 'Accept': 'application/json' }
+    });
+    if (response.ok && response.headers.get('content-type')?.includes('application/json')) {
       const json = await response.json();
-      if (json.success && json.data && Array.isArray(json.data) && json.data.length > 0) {
+      if (json && json.success && Array.isArray(json.data) && json.data.length > 0) {
         console.log('Successfully fetched approvals from backend REST API');
         fetched = json.data;
       }
     }
-  } catch (err: any) {
-    console.warn('Backend fetch approvals failed:', err?.message || err);
-  }
+  } catch (err: any) {}
 
   try {
     const querySnapshot = await getDocs(collection(db, 'approvals')).catch(() => null);
@@ -428,15 +424,13 @@ export async function safeSyncConfig(pmos: string[], directorates: string[]): Pr
   try {
     const response = await fetch('/api/config/sync', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify({ pmos, directorates })
     });
-    if (response.ok) {
+    if (response.ok && response.headers.get('content-type')?.includes('application/json')) {
       console.log('Config successfully synchronized with backend REST API');
     }
-  } catch (err: any) {
-    console.warn('Backend config sync failed:', err?.message || err);
-  }
+  } catch (err: any) {}
 }
 
 /**
@@ -445,17 +439,17 @@ export async function safeSyncConfig(pmos: string[], directorates: string[]): Pr
 export async function safeFetchConfig(): Promise<{ pmos: string[], directorates: string[] } | null> {
   let fetched: { pmos: string[], directorates: string[] } | null = null;
   try {
-    const response = await fetch('/api/config/sync');
-    if (response.ok) {
+    const response = await fetch('/api/config/sync', {
+      headers: { 'Accept': 'application/json' }
+    });
+    if (response.ok && response.headers.get('content-type')?.includes('application/json')) {
       const json = await response.json();
-      if (json.success && json.data) {
+      if (json && json.success && json.data) {
         console.log('Successfully fetched config from backend REST API');
         fetched = json.data;
       }
     }
-  } catch (err: any) {
-    console.warn('Backend fetch config failed:', err?.message || err);
-  }
+  } catch (err: any) {}
 
   try {
     const querySnapshot = await getDocs(collection(db, 'config')).catch(() => null);

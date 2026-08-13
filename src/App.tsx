@@ -1534,6 +1534,12 @@ let isBatchSyncRunning = false;
           console.log('Successfully merged and initialized active contracts with cloud authoritative database.');
         } else {
           console.log('Cloud database is empty or inaccessible. Keeping local baseline data.');
+          if (normalizedLocal && normalizedLocal.length > 0) {
+            console.log('Seeding baseline projects into Cloud Firestore database...');
+            normalizedLocal.forEach(p => {
+              safeSyncProject(p).catch(err => console.warn('Failed to seed baseline project to cloud:', err));
+            });
+          }
         }
       } catch (err) {
         console.warn('Cloud database offline or table does not exist yet. Relying on localStorage:', err);
