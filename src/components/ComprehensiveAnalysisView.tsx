@@ -39,18 +39,18 @@ export default function ComprehensiveAnalysisView({ project }: ComprehensiveAnal
   const monthlyList = project.monthly || [];
   let plannedPct = 100;
   if (monthlyList.length > 0) {
-    const reportingMonths = monthlyList.filter(m => m.actual > 0);
+    const reportingMonths = monthlyList.filter(m => typeof m.actual === 'number' && m.actual > 0);
     const targetIdx = reportingMonths.length > 0 
       ? monthlyList.indexOf(reportingMonths[reportingMonths.length - 1]) 
-      : (monthlyList.findIndex(m => m.originalPlan > 0) !== -1 ? monthlyList.findIndex(m => m.originalPlan > 0) : 0);
+      : (monthlyList.findIndex(m => typeof m.originalPlan === 'number' && m.originalPlan > 0) !== -1 ? monthlyList.findIndex(m => typeof m.originalPlan === 'number' && m.originalPlan > 0) : 0);
     
     if (targetIdx !== -1) {
       const targetMonth = monthlyList[targetIdx];
-      const hasReached100 = monthlyList.slice(0, targetIdx + 1).some(m => m.originalPlan >= 100);
+      const hasReached100 = monthlyList.slice(0, targetIdx + 1).some(m => typeof m.originalPlan === 'number' && m.originalPlan >= 100);
       if (hasReached100) {
         plannedPct = 100;
       } else {
-        plannedPct = targetMonth ? targetMonth.originalPlan : 100;
+        plannedPct = (targetMonth && typeof targetMonth.originalPlan === 'number') ? targetMonth.originalPlan : 100;
       }
     }
   }

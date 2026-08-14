@@ -38,7 +38,12 @@ export default function CircularGauge({
         if (entry.contentRect) {
           const { width, height } = entry.contentRect;
           if (width > 0 && height > 0) {
-            setContainerDimensions({ width, height });
+            setContainerDimensions(prev => {
+              if (Math.abs(prev.width - width) < 2 && Math.abs(prev.height - height) < 2) {
+                return prev;
+              }
+              return { width: Math.round(width), height: Math.round(height) };
+            });
           }
         }
       }

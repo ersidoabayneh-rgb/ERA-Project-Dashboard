@@ -1,8 +1,11 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { 
   getFirestore, 
+  initializeFirestore,
   doc, 
-  getDocFromServer 
+  getDocFromServer,
+  persistentLocalCache,
+  persistentMultipleTabManager
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
@@ -22,9 +25,25 @@ const dbId = (firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreData
   ? firebaseConfig.firestoreDatabaseId 
   : undefined;
 
-export const db = dbId ? getFirestore(app, dbId) : getFirestore(app);
+function createFirestoreInstance() {
+  try {
+    const settings = {
+      experimentalAutoDetectLongPolling: true,
+      localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager()
+      })
+    };
+    return dbId 
+      ? initializeFirestore(app, settings, dbId) 
+      : initializeFirestore(app, settings);
+  } catch {
+    return dbId ? getFirestore(app, dbId) : getFirestore(app);
+  }
+}
 
-// Catch and handle transient browser IndexedDB tab-closing / visibility state / API key / installation rejections
+export const db = createFirestoreInstance();
+
+// Catch and handle transient browser IndexedDB tab-closing / visibility state / offline / connection rejections
 if (typeof window !== 'undefined') {
   window.addEventListener('unhandledrejection', (event) => {
     const reason = event.reason;
@@ -38,10 +57,13 @@ if (typeof window !== 'undefined') {
       msg.includes('installations') ||
       msg.includes('API key') ||
       msg.includes('INVALID_ARGUMENT') ||
-      msg.includes('permission-denied')
+      msg.includes('permission-denied') ||
+      msg.includes('unavailable') ||
+      msg.includes('Could not reach Cloud Firestore backend') ||
+      msg.includes('client is offline')
     ) {
       event.preventDefault();
-      console.warn('Handled background Firebase event/notice gracefully:', msg);
+      console.warn('Handled background Firebase notice gracefully:', msg);
     }
   });
 }
@@ -49,15 +71,26 @@ if (typeof window !== 'undefined') {
 export const analytics = null;
 
 export async function testFirestoreConnection() {
+  if (!isValidConfig) return;
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
     console.log("Firestore connection test passed.");
   } catch (error: any) {
-    console.log("Firestore connection check finished:", error?.message || error);
+    if (error instanceof Error && error.message.includes('the client is offline')) {
+      console.warn("Firestore running in offline mode. Local persistence active.");
+    } else {
+      console.log("Firestore connection check finished (operating with resilient offline cache).");
+    }
   }
 }
 
-testFirestoreConnection();
+// Safely test connection after initial load without blocking
+if (typeof window !== 'undefined') {
+  setTimeout(() => {
+    testFirestoreConnection();
+  }, 1000);
+}
+
 
 
 

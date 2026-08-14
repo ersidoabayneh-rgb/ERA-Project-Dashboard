@@ -193,32 +193,32 @@ export function getDefaultMonthly(): MonthlyProgress[] {
     { month: 'Oct-23', originalPlan: 96, revisedPlan: 55, actual: 55 },
     { month: 'Nov-23', originalPlan: 98, revisedPlan: 57, actual: 57 },
     { month: 'Dec-23', originalPlan: 100, revisedPlan: 58, actual: 58 },
-    { month: 'Jan-24', originalPlan: 0, revisedPlan: 60, actual: 60 },
-    { month: 'Feb-24', originalPlan: 0, revisedPlan: 62, actual: 62 },
-    { month: 'Mar-24', originalPlan: 0, revisedPlan: 63, actual: 63 },
-    { month: 'Apr-24', originalPlan: 0, revisedPlan: 65, actual: 65 },
-    { month: 'May-24', originalPlan: 0, revisedPlan: 67, actual: 67 },
-    { month: 'Jun-24', originalPlan: 0, revisedPlan: 68, actual: 68 },
-    { month: 'Jul-24', originalPlan: 0, revisedPlan: 70, actual: 70 },
-    { month: 'Aug-24', originalPlan: 0, revisedPlan: 71, actual: 71 },
-    { month: 'Sep-24', originalPlan: 0, revisedPlan: 73, actual: 73 },
-    { month: 'Oct-24', originalPlan: 0, revisedPlan: 75, actual: 75 },
-    { month: 'Nov-24', originalPlan: 0, revisedPlan: 76, actual: 76 },
-    { month: 'Dec-24', originalPlan: 0, revisedPlan: 78, actual: 78 },
-    { month: 'Jan-25', originalPlan: 0, revisedPlan: 80, actual: 0 },
-    { month: 'Feb-25', originalPlan: 0, revisedPlan: 81, actual: 0 },
-    { month: 'Mar-25', originalPlan: 0, revisedPlan: 83, actual: 0 },
-    { month: 'Apr-25', originalPlan: 0, revisedPlan: 84, actual: 0 },
-    { month: 'May-25', originalPlan: 0, revisedPlan: 86, actual: 0 },
-    { month: 'Jun-25', originalPlan: 0, revisedPlan: 88, actual: 0 },
-    { month: 'Jul-25', originalPlan: 0, revisedPlan: 89, actual: 0 },
-    { month: 'Aug-25', originalPlan: 0, revisedPlan: 91, actual: 0 },
-    { month: 'Sep-25', originalPlan: 0, revisedPlan: 93, actual: 0 },
-    { month: 'Oct-25', originalPlan: 0, revisedPlan: 94, actual: 0 },
-    { month: 'Nov-25', originalPlan: 0, revisedPlan: 96, actual: 0 },
-    { month: 'Dec-25', originalPlan: 0, revisedPlan: 97, actual: 0 },
-    { month: 'Jan-26', originalPlan: 0, revisedPlan: 99, actual: 0 },
-    { month: 'Feb-26', originalPlan: 0, revisedPlan: 100, actual: 0 }
+    { month: 'Jan-24', revisedPlan: 60, actual: 60 },
+    { month: 'Feb-24', revisedPlan: 62, actual: 62 },
+    { month: 'Mar-24', revisedPlan: 63, actual: 63 },
+    { month: 'Apr-24', revisedPlan: 65, actual: 65 },
+    { month: 'May-24', revisedPlan: 67, actual: 67 },
+    { month: 'Jun-24', revisedPlan: 68, actual: 68 },
+    { month: 'Jul-24', revisedPlan: 70, actual: 70 },
+    { month: 'Aug-24', revisedPlan: 71, actual: 71 },
+    { month: 'Sep-24', revisedPlan: 73, actual: 73 },
+    { month: 'Oct-24', revisedPlan: 75, actual: 75 },
+    { month: 'Nov-24', revisedPlan: 76, actual: 76 },
+    { month: 'Dec-24', revisedPlan: 78, actual: 78 },
+    { month: 'Jan-25', revisedPlan: 80 },
+    { month: 'Feb-25', revisedPlan: 81 },
+    { month: 'Mar-25', revisedPlan: 83 },
+    { month: 'Apr-25', revisedPlan: 84 },
+    { month: 'May-25', revisedPlan: 86 },
+    { month: 'Jun-25', revisedPlan: 88 },
+    { month: 'Jul-25', revisedPlan: 89 },
+    { month: 'Aug-25', revisedPlan: 91 },
+    { month: 'Sep-25', revisedPlan: 93 },
+    { month: 'Oct-25', revisedPlan: 94 },
+    { month: 'Nov-25', revisedPlan: 96 },
+    { month: 'Dec-25', revisedPlan: 97 },
+    { month: 'Jan-26', revisedPlan: 99 },
+    { month: 'Feb-26', revisedPlan: 100 }
   ];
 }
 
@@ -745,18 +745,18 @@ export function getIntegratedKpiAllocated(project: Project): KpiAllocatedItem[] 
   const monthlyList = project.monthly || [];
   let plannedPct = 100;
   if (monthlyList.length > 0) {
-    const reportingMonths = monthlyList.filter(m => m.actual > 0);
+    const reportingMonths = monthlyList.filter(m => typeof m.actual === 'number' && m.actual > 0);
     const targetIdx = reportingMonths.length > 0 
       ? monthlyList.indexOf(reportingMonths[reportingMonths.length - 1]) 
-      : (monthlyList.findIndex(m => m.originalPlan > 0) !== -1 ? monthlyList.findIndex(m => m.originalPlan > 0) : 0);
+      : (monthlyList.findIndex(m => typeof m.originalPlan === 'number' && m.originalPlan > 0) !== -1 ? monthlyList.findIndex(m => typeof m.originalPlan === 'number' && m.originalPlan > 0) : 0);
     
     if (targetIdx !== -1) {
       const targetMonth = monthlyList[targetIdx];
-      const hasReached100 = monthlyList.slice(0, targetIdx + 1).some(m => m.originalPlan >= 100);
+      const hasReached100 = monthlyList.slice(0, targetIdx + 1).some(m => typeof m.originalPlan === 'number' && m.originalPlan >= 100);
       if (hasReached100) {
         plannedPct = 100;
       } else {
-        plannedPct = targetMonth ? targetMonth.originalPlan : 100;
+        plannedPct = (targetMonth && typeof targetMonth.originalPlan === 'number') ? targetMonth.originalPlan : 100;
       }
     }
   }
@@ -836,7 +836,7 @@ export function getIntegratedKpiAllocated(project: Project): KpiAllocatedItem[] 
 
     if (k.itemId === 'PP-1') {
       const plannedSum = project.monthly.length 
-        ? Math.max(...project.monthly.map(m => m.revisedPlan || m.originalPlan || 0), 100) 
+        ? Math.max(...project.monthly.map(m => Number(m.revisedPlan || m.originalPlan || 0) || 0), 100) 
         : 100;
       computedAlloc = Math.min(100, plannedSum > 0 ? (project.physicalProgress / plannedSum) * 100 : 0);
     } else if (k.itemId === 'PT-1') {

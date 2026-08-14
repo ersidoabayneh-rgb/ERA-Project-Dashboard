@@ -222,18 +222,19 @@ export default function GroupReportGenerator({
     const monthlyList = p.monthly || [];
     let plannedPct = 100;
     if (monthlyList.length > 0) {
-      const reportingMonths = monthlyList.filter(m => m.actual > 0);
+      const reportingMonths = monthlyList.filter(m => typeof m.actual === 'number' && m.actual > 0);
       const targetIdx = reportingMonths.length > 0 
         ? monthlyList.indexOf(reportingMonths[reportingMonths.length - 1]) 
-        : (monthlyList.findIndex(m => m.originalPlan > 0) !== -1 ? monthlyList.findIndex(m => m.originalPlan > 0) : 0);
+        : (monthlyList.findIndex(m => typeof m.originalPlan === 'number' && m.originalPlan > 0) !== -1 ? monthlyList.findIndex(m => typeof m.originalPlan === 'number' && m.originalPlan > 0) : 0);
       
       if (targetIdx !== -1) {
         const targetMonth = monthlyList[targetIdx];
-        const hasReached100 = monthlyList.slice(0, targetIdx + 1).some(m => m.originalPlan >= 100);
+        const hasReached100 = monthlyList.slice(0, targetIdx + 1).some(m => typeof m.originalPlan === 'number' && m.originalPlan >= 100);
         if (hasReached100) {
           plannedPct = 100;
         } else {
-          plannedPct = targetMonth ? targetMonth.originalPlan : 100;
+          const val = targetMonth ? targetMonth.originalPlan : 100;
+          plannedPct = typeof val === 'number' ? val : (Number(val) || 100);
         }
       }
     }
@@ -524,7 +525,7 @@ export default function GroupReportGenerator({
     const progressVal = p.physicalProgress || 0;
     const monthlyList = p.monthly || [];
     const plannedPct = monthlyList.length 
-      ? Math.max(...monthlyList.map(m => m.revisedPlan || m.originalPlan || 0)) 
+      ? Math.max(...monthlyList.map(m => Number(m.revisedPlan || m.originalPlan || 0) || 0), 100) 
       : 100;
     const audit = getAuditMetrics(p);
     const isDB = p.contractType === 'DB';

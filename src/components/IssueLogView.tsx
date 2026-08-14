@@ -194,6 +194,8 @@ const defaultSampleIssues: IssueLogItem[] = [
     timeImpactDays: 14,
     priority: 'Medium',
     currentStatus: 'Resolved / Approved',
+    resolvedDate: '2025-12-26',
+    turnaroundDays: 21,
     currentStage: 'Stage 4: Approval Issued & Quarry Operation Cleared',
     latestProgressSummary: 'Central Lab released certified test certificate confirming LA Abrasion value of 26.4% (under 30% limit). Resident Engineer issued formal quarry clearance.',
     currentBottleneck: 'Resolved - No active bottleneck.',
@@ -388,6 +390,12 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
   const issuesList = (project.issues && project.issues.length > 0) ? project.issues : defaultSampleIssues;
 
   const currentUsername = currentUserObj?.username || 'ErsidoAbayneh';
+  const effectiveIsAdmin = Boolean(
+    isAdmin ||
+    currentUserObj?.role === 'admin' ||
+    currentUserObj?.username === 'ErsidoAbayneh' ||
+    currentUserObj?.username === 'proj_1781786415663'
+  );
 
   const [selectedIssueId, setSelectedIssueId] = useState<string>(issuesList[0]?.id || '');
   const [searchQuery, setSearchQuery] = useState('');
@@ -433,9 +441,52 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
     return Math.floor(diffTime / (1000 * 60 * 60 * 24));
   };
 
+  const calculateTurnaroundDays = (submittedDate?: string, resolvedDate?: string) => {
+    if (!submittedDate || !resolvedDate) return 0;
+    const sub = new Date(submittedDate);
+    const res = new Date(resolvedDate);
+    if (isNaN(sub.getTime()) || isNaN(res.getTime())) return 0;
+    const diffTime = res.getTime() - sub.getTime();
+    return Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
+  };
+
   const isPendingStatus = (status: string) => {
     const s = (status || '').toLowerCase();
     return !s.includes('resolved') && !s.includes('approved') && !s.includes('rejected');
+  };
+
+  const getIssueTurnaroundInfo = (item: IssueLogItem) => {
+    const isResolved = !isPendingStatus(item.currentStatus);
+    let resolvedDate = item.resolvedDate;
+    
+    if (!resolvedDate && item.history && item.history.length > 0) {
+      const resHist = item.history.find(h => 
+        h.newStatus === 'Resolved / Approved' || 
+        h.newStatus === 'Rejected / Closed' ||
+        (h.newStatus && (h.newStatus.toLowerCase().includes('resolved') || h.newStatus.toLowerCase().includes('approved') || h.newStatus.toLowerCase().includes('rejected') || h.newStatus.toLowerCase().includes('closed')))
+      );
+      if (resHist && resHist.timestamp) {
+        resolvedDate = resHist.timestamp.split(' ')[0];
+      }
+    }
+
+    let turnaroundDays = item.turnaroundDays;
+    if ((turnaroundDays === undefined || turnaroundDays === null) && item.submittedDate && resolvedDate) {
+      turnaroundDays = calculateTurnaroundDays(item.submittedDate, resolvedDate);
+    }
+
+    const daysPending = calculateDaysPending(item.submittedDate);
+    const totalDaysTaken = isResolved ? (turnaroundDays !== undefined ? turnaroundDays : calculateTurnaroundDays(item.submittedDate, resolvedDate)) : daysPending;
+
+    return {
+      isResolved,
+      resolvedDate,
+      turnaroundDays: totalDaysTaken,
+      daysPending,
+      displayText: isResolved
+        ? `${totalDaysTaken} Day${totalDaysTaken === 1 ? '' : 's'} (from ${item.submittedDate || 'Submission'} to ${resolvedDate || 'Resolution'})`
+        : `${daysPending} Day${daysPending === 1 ? '' : 's'} (Open & Pending)`
+    };
   };
 
   const isOverduePending = (item: IssueLogItem, threshold: number) => {
@@ -689,6 +740,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
     e.preventDefault();
     if (!selectedIssue) return;
     const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
+    const turnaroundInfo = getIssueTurnaroundInfo(selectedIssue);
 
     const historyRecord: IssueHistoryRecord = {
       id: `hist-${Date.now()}`,
@@ -698,7 +750,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
       newStatus: selectedIssue.currentStatus,
       stage: selectedIssue.currentStage,
       changeType: 'Lessons Learned Review',
-      notes: `Lessons learned review recorded by ${currentUsername}.`
+      notes: `Lessons learned review recorded by ${currentUsername}. Turnaround Duration: ${turnaroundInfo.turnaroundDays} Days (${turnaroundInfo.displayText}).`
     };
 
     const updatedIssue: IssueLogItem = {
@@ -707,6 +759,8 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
       reviewNotes: reviewNotesInput,
       lessonsLearnedUpdatedBy: currentUsername,
       lessonsLearnedUpdatedAt: nowStr,
+      resolvedDate: selectedIssue.resolvedDate || (turnaroundInfo.isResolved ? turnaroundInfo.resolvedDate : undefined),
+      turnaroundDays: selectedIssue.turnaroundDays ?? (turnaroundInfo.isResolved ? turnaroundInfo.turnaroundDays : undefined),
       history: [historyRecord, ...(selectedIssue.history || [])]
     };
 
@@ -715,11 +769,52 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
     setShowLessonsModal(false);
   };
 
+  const handleDeleteLessonsLearned = (issueIdToTarget?: string) => {
+    const targetId = issueIdToTarget || selectedIssue?.id;
+    if (!targetId) return;
+    const targetIssue = issuesList.find(i => i.id === targetId);
+    if (!targetIssue) return;
+
+    if (!window.confirm(`Are you sure you want to permanently delete the lesson learned for Issue ${targetIssue.issueCode}? This will clear the lesson narrative, review notes, and author attributions.`)) {
+      return;
+    }
+
+    const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
+    const historyRecord: IssueHistoryRecord = {
+      id: `hist-${Date.now()}`,
+      timestamp: nowStr,
+      user: currentUsername,
+      previousStatus: targetIssue.currentStatus,
+      newStatus: targetIssue.currentStatus,
+      stage: targetIssue.currentStage,
+      changeType: 'Lessons Learned Deleted',
+      notes: `Lesson learned record deleted by administrator ${currentUsername}. (Previous lesson: "${(targetIssue.lessonsLearned || '').substring(0, 60)}...")`
+    };
+
+    const updatedIssue: IssueLogItem = {
+      ...targetIssue,
+      lessonsLearned: undefined,
+      reviewNotes: undefined,
+      lessonsLearnedUpdatedBy: undefined,
+      lessonsLearnedUpdatedAt: undefined,
+      history: [historyRecord, ...(targetIssue.history || [])]
+    };
+
+    const updatedList = issuesList.map(item => item.id === targetId ? updatedIssue : item);
+    saveIssues(updatedList, `Lesson learned deleted for issue ${targetIssue.issueCode}`);
+    setLessonsInput('');
+    setReviewNotesInput('');
+    setShowLessonsModal(false);
+  };
+
   const handleAddManualHistoryNote = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedIssue || !historyNoteInput) return;
     const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
     const targetStatus = (historyNewStatusInput || selectedIssue.currentStatus) as IssueLogItem['currentStatus'];
+    const isBecomingResolved = targetStatus === 'Resolved / Approved' || targetStatus === 'Rejected / Closed';
+    const resolutionDate = isBecomingResolved ? nowStr.split(' ')[0] : undefined;
+    const turnaround = isBecomingResolved ? calculateTurnaroundDays(selectedIssue.submittedDate, resolutionDate) : undefined;
 
     const historyRecord: IssueHistoryRecord = {
       id: `hist-${Date.now()}`,
@@ -729,12 +824,16 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
       newStatus: targetStatus,
       stage: selectedIssue.currentStage,
       changeType: targetStatus !== selectedIssue.currentStatus ? 'Status Change' : 'Audit Note',
-      notes: historyNoteInput
+      notes: isBecomingResolved && turnaround !== undefined 
+        ? `${historyNoteInput} [Resolution Turnaround Recorded: ${turnaround} Days from submission on ${selectedIssue.submittedDate}]`
+        : historyNoteInput
     };
 
     const updatedIssue: IssueLogItem = {
       ...selectedIssue,
       currentStatus: targetStatus,
+      resolvedDate: isBecomingResolved ? (selectedIssue.resolvedDate || resolutionDate) : undefined,
+      turnaroundDays: isBecomingResolved ? (selectedIssue.turnaroundDays ?? turnaround) : undefined,
       history: [historyRecord, ...(selectedIssue.history || [])]
     };
 
@@ -1037,7 +1136,11 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
 
     // 5. Lessons Learned & Retrospective Review
     drawSectionHeader("5. Lessons Learned & Retrospective Review", [13, 148, 136]);
-    const lessonsText = item.lessonsLearned || "No explicit lesson learned or retrospective review logged for this issue entry yet.";
+    const turnaroundInfo = getIssueTurnaroundInfo(item);
+    const turnaroundDurationText = `Total Issue Turnaround: ${turnaroundInfo.turnaroundDays} Calendar Days (${turnaroundInfo.displayText})`;
+    const lessonsText = item.lessonsLearned 
+      ? `[${turnaroundDurationText}]\n\n${item.lessonsLearned}`
+      : `[${turnaroundDurationText}]\n\nNo explicit lesson learned or retrospective review logged for this issue entry yet.`;
     const lessonsLines = doc.splitTextToSize(lessonsText, contentWidth - 24);
     const lessonsBoxHeight = Math.max(36, (lessonsLines.length * 9) + 22);
 
@@ -1104,21 +1207,26 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
   // Export Issue Log Registry to CSV / Excel
   const handleExportCsv = () => {
     if (!issuesList.length) return;
-    const headers = ["Issue Code", "Category", "Title", "Date Submitted", "Submitted By", "Submitted To", "Priority", "Status", "Contract Ref", "Financial Exposure (ETB)", "Time Exposure (Days)", "Lessons Learned"];
-    const rows = issuesList.map(item => [
-      `"${item.issueCode || ''}"`,
-      `"${(item.category || '').replace(/"/g, '""')}"`,
-      `"${(item.title || '').replace(/"/g, '""')}"`,
-      `"${item.submittedDate || ''}"`,
-      `"${(item.submittedBy || '').replace(/"/g, '""')}"`,
-      `"${(item.submittedTo || '').replace(/"/g, '""')}"`,
-      `"${item.priority || ''}"`,
-      `"${item.currentStatus || ''}"`,
-      `"${(item.clauseReference || '').replace(/"/g, '""')}"`,
-      `"${item.financialImpactEtb || 0}"`,
-      `"${item.timeImpactDays || 0}"`,
-      `"${(item.lessonsLearned || '').replace(/"/g, '""')}"`
-    ]);
+    const headers = ["Issue Code", "Category", "Title", "Date Submitted", "Date Resolved / Approved", "Turnaround Duration (Days)", "Submitted By", "Submitted To", "Priority", "Status", "Contract Ref", "Financial Exposure (ETB)", "Time Exposure (Days)", "Lessons Learned"];
+    const rows = issuesList.map(item => {
+      const turnaroundInfo = getIssueTurnaroundInfo(item);
+      return [
+        `"${item.issueCode || ''}"`,
+        `"${(item.category || '').replace(/"/g, '""')}"`,
+        `"${(item.title || '').replace(/"/g, '""')}"`,
+        `"${item.submittedDate || ''}"`,
+        `"${item.resolvedDate || turnaroundInfo.resolvedDate || ''}"`,
+        `"${turnaroundInfo.turnaroundDays ?? ''}"`,
+        `"${(item.submittedBy || '').replace(/"/g, '""')}"`,
+        `"${(item.submittedTo || '').replace(/"/g, '""')}"`,
+        `"${item.priority || ''}"`,
+        `"${item.currentStatus || ''}"`,
+        `"${(item.clauseReference || '').replace(/"/g, '""')}"`,
+        `"${item.financialImpactEtb || 0}"`,
+        `"${item.timeImpactDays || 0}"`,
+        `"${(item.lessonsLearned || '').replace(/"/g, '""')}"`
+      ];
+    });
 
     const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -2547,17 +2655,65 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                     <BookOpen className="w-3.5 h-3.5 text-teal-600" />
                     PART 5: Lessons Learned & Retrospective Review
                   </h3>
-                  <button
-                    onClick={() => {
-                      setLessonsInput(selectedIssue.lessonsLearned || '');
-                      setReviewNotesInput(selectedIssue.reviewNotes || '');
-                      setShowLessonsModal(true);
-                    }}
-                    className="no-print text-2xs font-bold text-teal-700 dark:text-teal-300 hover:underline flex items-center gap-1 bg-teal-50 dark:bg-teal-950/60 px-2.5 py-1 rounded-lg border border-teal-200 dark:border-teal-800 cursor-pointer"
-                  >
-                    <PenTool className="w-3 h-3" /> Record / Edit Lessons Learned
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {effectiveIsAdmin && selectedIssue.lessonsLearned && (
+                      <button
+                        onClick={() => handleDeleteLessonsLearned(selectedIssue.id)}
+                        className="no-print text-2xs font-bold text-rose-700 dark:text-rose-300 hover:underline flex items-center gap-1 bg-rose-50 dark:bg-rose-950/60 px-2.5 py-1 rounded-lg border border-rose-200 dark:border-rose-800 cursor-pointer transition hover:bg-rose-100 dark:hover:bg-rose-900/60"
+                        title="Delete this lesson learned entry (Admin Only)"
+                      >
+                        <Trash2 className="w-3 h-3 text-rose-600 dark:text-rose-400" /> Delete Lesson
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        setLessonsInput(selectedIssue.lessonsLearned || '');
+                        setReviewNotesInput(selectedIssue.reviewNotes || '');
+                        setShowLessonsModal(true);
+                      }}
+                      className="no-print text-2xs font-bold text-teal-700 dark:text-teal-300 hover:underline flex items-center gap-1 bg-teal-50 dark:bg-teal-950/60 px-2.5 py-1 rounded-lg border border-teal-200 dark:border-teal-800 cursor-pointer"
+                    >
+                      <PenTool className="w-3 h-3" /> Record / Edit Lessons Learned
+                    </button>
+                  </div>
                 </div>
+
+                {/* Resolution & Turnaround Duration Bar */}
+                {(() => {
+                  const info = getIssueTurnaroundInfo(selectedIssue);
+                  return (
+                    <div className="bg-gradient-to-r from-teal-50/70 via-slate-50 to-teal-50/40 dark:from-teal-950/30 dark:via-slate-900/40 dark:to-teal-950/20 p-3 rounded-xl border border-teal-200/80 dark:border-teal-800/50 flex flex-wrap items-center justify-between gap-3 text-xs shadow-2xs">
+                      <div className="flex items-center gap-2.5">
+                        <div className="p-2 bg-teal-600 text-white rounded-lg shadow-xs shrink-0">
+                          <Clock className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="text-[10px] uppercase font-black tracking-wider text-teal-800 dark:text-teal-300">
+                            {info.isResolved ? 'Total Issue Lifecycle Turnaround' : 'Active Duration (Open / In-Progress)'}
+                          </div>
+                          <div className="font-extrabold text-sm text-slate-900 dark:text-white flex items-baseline gap-1.5 flex-wrap">
+                            <span className="text-teal-700 dark:text-teal-300">{info.turnaroundDays} Calendar Days</span>
+                            <span className="text-[11px] font-normal text-slate-500 dark:text-slate-400">
+                              ({info.isResolved ? `Submitted: ${selectedIssue.submittedDate || 'N/A'} → Determined / Closed: ${info.resolvedDate || 'N/A'}` : `Submitted on: ${selectedIssue.submittedDate || 'N/A'}`})
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2.5 py-1 rounded-full text-2xs font-extrabold border ${
+                          selectedIssue.currentStatus === 'Resolved / Approved'
+                            ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800'
+                            : selectedIssue.currentStatus === 'Rejected / Closed'
+                            ? 'bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 border-rose-300 dark:border-rose-800'
+                            : 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-800'
+                        }`}>
+                          {selectedIssue.currentStatus}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {selectedIssue.lessonsLearned ? (
                   <div className="bg-gradient-to-br from-teal-50/60 to-emerald-50/40 dark:from-teal-950/30 dark:to-emerald-950/20 p-4 rounded-xl border border-teal-200/80 dark:border-teal-800/50 space-y-2.5">
@@ -3033,7 +3189,18 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                     <select
                       value={selectedIssue.currentStatus}
                       onChange={(e) => {
-                        const updated = issuesList.map(item => item.id === selectedIssue.id ? { ...item, currentStatus: e.target.value as any } : item);
+                        const newSt = e.target.value as any;
+                        const isResolved = newSt === 'Resolved / Approved' || newSt === 'Rejected / Closed';
+                        const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
+                        const resDate = isResolved ? (selectedIssue.resolvedDate || nowStr.split(' ')[0]) : undefined;
+                        const tDays = isResolved ? (selectedIssue.turnaroundDays ?? calculateTurnaroundDays(selectedIssue.submittedDate, resDate)) : undefined;
+
+                        const updated = issuesList.map(item => item.id === selectedIssue.id ? { 
+                          ...item, 
+                          currentStatus: newSt,
+                          resolvedDate: resDate,
+                          turnaroundDays: tDays
+                        } : item);
                         saveIssues(updated, 'Status updated');
                       }}
                       className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
@@ -3123,12 +3290,35 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                 </button>
               </div>
 
-              <div className="bg-teal-50 dark:bg-teal-950/30 p-3 rounded-xl border border-teal-100 dark:border-teal-900/50 text-xs space-y-1">
-                <span className="font-bold text-teal-900 dark:text-teal-200 block">Issue Code: {selectedIssue.issueCode}</span>
+              <div className="bg-teal-50 dark:bg-teal-950/30 p-3 rounded-xl border border-teal-100 dark:border-teal-900/50 text-xs space-y-1.5">
+                <div className="flex justify-between items-center flex-wrap gap-2">
+                  <span className="font-bold text-teal-900 dark:text-teal-200">Issue Code: {selectedIssue.issueCode}</span>
+                  <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${
+                    selectedIssue.currentStatus === 'Resolved / Approved'
+                      ? 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800'
+                      : selectedIssue.currentStatus === 'Rejected / Closed'
+                      ? 'bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950 dark:text-rose-300 dark:border-rose-800'
+                      : 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800'
+                  }`}>
+                    {selectedIssue.currentStatus}
+                  </span>
+                </div>
                 <span className="text-teal-800 dark:text-teal-300 font-medium truncate block">{selectedIssue.title}</span>
-                <span className="text-[10px] text-teal-600 dark:text-teal-400 font-mono block pt-1">
-                  Reviewer Attribution: <strong className="font-bold">{currentUsername}</strong>
-                </span>
+                
+                {(() => {
+                  const info = getIssueTurnaroundInfo(selectedIssue);
+                  return (
+                    <div className="pt-1.5 border-t border-teal-200/60 dark:border-teal-900/40 flex items-center justify-between text-2xs text-teal-700 dark:text-teal-300 flex-wrap gap-1 font-semibold">
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-3 h-3 text-teal-600" />
+                        <strong>Turnaround Taken:</strong> {info.turnaroundDays} Days ({info.displayText})
+                      </span>
+                      <span className="font-mono">
+                        Reviewer: <strong className="font-bold">{currentUsername}</strong>
+                      </span>
+                    </div>
+                  );
+                })()}
               </div>
 
               <form onSubmit={handleSaveLessonsLearned} className="space-y-4 text-xs">
@@ -3159,20 +3349,33 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                   />
                 </div>
 
-                <div className="flex justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-700">
-                  <button
-                    type="button"
-                    onClick={() => setShowLessonsModal(false)}
-                    className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 font-bold cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <BookOpen className="w-4 h-4" /> Save Lessons Learned
-                  </button>
+                <div className="flex justify-between items-center pt-3 border-t border-slate-100 dark:border-slate-700">
+                  {effectiveIsAdmin && selectedIssue.lessonsLearned ? (
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteLessonsLearned(selectedIssue.id)}
+                      className="px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 font-bold flex items-center gap-1.5 cursor-pointer text-xs transition"
+                      title="Permanently remove recorded lesson learned (Admin Only)"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" /> Delete Lesson Learned
+                    </button>
+                  ) : <div />}
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowLessonsModal(false)}
+                      className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 font-bold cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <BookOpen className="w-4 h-4" /> Save Lessons Learned
+                    </button>
+                  </div>
                 </div>
               </form>
             </motion.div>
@@ -3340,8 +3543,17 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                           </span>
                         </div>
 
-                        <div className="text-2xs text-slate-400 font-mono">
-                          Submitted: {item.submittedDate} • By: {item.submittedBy}
+                        <div className="flex items-center gap-2 flex-wrap text-2xs text-slate-500 font-mono">
+                          <span>Submitted: {item.submittedDate}</span>
+                          {(() => {
+                            const info = getIssueTurnaroundInfo(item);
+                            return (
+                              <span className="flex items-center gap-1 bg-teal-50 dark:bg-teal-950/80 text-teal-700 dark:text-teal-300 font-bold px-2 py-0.5 rounded border border-teal-200 dark:border-teal-800">
+                                <Clock className="w-3 h-3" />
+                                Turnaround: {info.turnaroundDays} Days
+                              </span>
+                            );
+                          })()}
                         </div>
                       </div>
 
@@ -3393,6 +3605,15 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                         </div>
 
                         <div className="flex items-center gap-2">
+                          {effectiveIsAdmin && item.lessonsLearned && (
+                            <button
+                              onClick={() => handleDeleteLessonsLearned(item.id)}
+                              className="px-2.5 py-1 rounded-lg bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 font-bold hover:bg-rose-100 dark:hover:bg-rose-900/60 flex items-center gap-1 cursor-pointer transition"
+                              title="Permanently remove recorded lesson learned (Admin Only)"
+                            >
+                              <Trash2 className="w-3 h-3 text-rose-600 dark:text-rose-400" /> Delete Lesson
+                            </button>
+                          )}
                           <button
                             onClick={() => {
                               setSelectedIssueId(item.id);

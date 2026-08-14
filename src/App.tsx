@@ -287,7 +287,7 @@ export default function App() {
         setCurrentPage('projects');
       }
     }
-  }, [currentUserObj, currentProject]);
+  }, [currentUserObj?.username, currentUserObj?.role, currentUserObj?.assignedDirectorate, currentUserObj?.assignedPmo, currentProject?.id, currentProject?.programDirectorate, currentProject?.pmo]);
 
   // Enforce page viewing scope: auto-switch to first assigned page if activeTab is unassigned
   useEffect(() => {
@@ -298,7 +298,7 @@ export default function App() {
         setActiveTab(currentUserObj.assignedPages[0]);
       }
     }
-  }, [currentUserObj, activeTab]);
+  }, [currentUserObj?.username, currentUserObj?.role, activeTab, currentUserObj?.assignedPages?.join(',')]);
 
   // Synchronize currentProject when projects array updates in real-time
   useEffect(() => {
@@ -1367,7 +1367,7 @@ let isBatchSyncRunning = false;
         });
       }
     }
-  }, [isMasterAdmin, usersListState, currentUserObj]);
+  }, [isMasterAdmin, usersListState, currentUserObj?.username]);
 
   // Helper to synchronize 'Total Todate Bill Summary' and 'Remaining' with series sums, and calculate G = F + E
   const syncProjectPayment = (rawProject: Project): Project => {

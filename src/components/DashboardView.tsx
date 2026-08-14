@@ -411,44 +411,62 @@ export default function DashboardView({
     });
   }
 
-  let origHasHit100 = false;
-  let revHasHit100 = false;
-  let actHasHit100 = false;
+  let origStop = false;
+  let revStop = false;
+  let actStop = false;
 
-  const sCurveChartData = (project.monthly || []).map(m => {
-    let orig: number | null = m.originalPlan;
-    if (origHasHit100) {
-      orig = null; // Do not plot anything after hitting 100%
-    } else if (orig >= 100) {
-      orig = 100;
-      origHasHit100 = true;
-    }
+  const sCurveChartData = (project.monthly && project.monthly.length > 0)
+    ? project.monthly.map((m, idx) => {
+        let orig: number | null = null;
+        if (!origStop) {
+          const raw = m.originalPlan;
+          if (raw !== '' && raw !== null && raw !== undefined && !isNaN(Number(raw))) {
+            const num = Number(raw);
+            if (num >= 100) {
+              orig = 100;
+              origStop = true;
+            } else if (num >= 0) {
+              orig = num;
+            }
+          }
+        }
 
-    let rev: number | null = m.revisedPlan;
-    if (revHasHit100) {
-      rev = null; // Do not plot anything after hitting 100%
-    } else if (rev >= 100) {
-      rev = 100;
-      revHasHit100 = true;
-    }
+        let rev: number | null = null;
+        if (!revStop) {
+          const raw = m.revisedPlan;
+          if (raw !== '' && raw !== null && raw !== undefined && !isNaN(Number(raw))) {
+            const num = Number(raw);
+            if (num >= 100) {
+              rev = 100;
+              revStop = true;
+            } else if (num >= 0) {
+              rev = num;
+            }
+          }
+        }
 
-    let act: number | null = m.actual > 0 ? m.actual : null;
-    if (act !== null) {
-      if (actHasHit100) {
-        act = null; // Do not plot anything after hitting 100%
-      } else if (act >= 100) {
-        act = 100;
-        actHasHit100 = true;
-      }
-    }
+        let act: number | null = null;
+        if (!actStop) {
+          const raw = m.actual;
+          if (raw !== '' && raw !== null && raw !== undefined && !isNaN(Number(raw))) {
+            const num = Number(raw);
+            if (num >= 100) {
+              act = 100;
+              actStop = true;
+            } else if (num > 0 || (idx === 0 && num === 0)) {
+              act = num;
+            }
+          }
+        }
 
-    return {
-      name: m.month,
-      'Original Plan (%)': orig,
-      'Revised Plan (%)': rev,
-      'To-Date Actual (%)': act
-    };
-  });
+        return {
+          name: m.month,
+          'Original Plan (%)': orig,
+          'Revised Plan (%)': rev,
+          'To-Date Actual (%)': act
+        };
+      })
+    : [];
 
   const exchangeRate = project.usdExchangeRate !== undefined ? project.usdExchangeRate : 57.50;
 
@@ -671,18 +689,19 @@ export default function DashboardView({
   const monthlyList = project.monthly || [];
   let plannedPct = 100;
   if (monthlyList.length > 0) {
-    const reportingMonths = monthlyList.filter(m => m.actual > 0);
+    const reportingMonths = monthlyList.filter(m => typeof m.actual === 'number' && m.actual > 0);
     const targetIdx = reportingMonths.length > 0 
       ? monthlyList.indexOf(reportingMonths[reportingMonths.length - 1]) 
-      : (monthlyList.findIndex(m => m.originalPlan > 0) !== -1 ? monthlyList.findIndex(m => m.originalPlan > 0) : 0);
+      : (monthlyList.findIndex(m => typeof m.originalPlan === 'number' && m.originalPlan > 0) !== -1 ? monthlyList.findIndex(m => typeof m.originalPlan === 'number' && m.originalPlan > 0) : 0);
     
     if (targetIdx !== -1) {
       const targetMonth = monthlyList[targetIdx];
-      const hasReached100 = monthlyList.slice(0, targetIdx + 1).some(m => m.originalPlan >= 100);
+      const hasReached100 = monthlyList.slice(0, targetIdx + 1).some(m => typeof m.originalPlan === 'number' && m.originalPlan >= 100);
       if (hasReached100) {
         plannedPct = 100;
       } else {
-        plannedPct = targetMonth ? (targetMonth.revisedPlan || targetMonth.originalPlan || 0) : 100;
+        const val = targetMonth ? (targetMonth.revisedPlan ?? targetMonth.originalPlan) : 100;
+        plannedPct = typeof val === 'number' ? val : (Number(val) || 100);
       }
     }
   }
@@ -1892,12 +1911,11 @@ export default function DashboardView({
         </div>
       </div>
 
-
       {/* Charts Section */}
       <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
         
         {/* ROW Clearance chart */}
-        <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-4 rounded-2xl shadow-sm space-y-3">
+        <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-4 rounded-2xl shadow-sm space-y-3 min-w-0">
           <div className="flex justify-between items-center flex-wrap gap-2">
             <span className="text-xs font-bold text-slate-800 dark:text-zinc-150">Right-of-Way (ROW) status</span>
             <div className="relative">
@@ -1916,12 +1934,12 @@ export default function DashboardView({
             </div>
           </div>
 
-          <div className="h-44 w-full">
+          <div className="h-52 w-full min-w-0">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={rowChartData} layout="vertical" margin={{ top: 10, right: 15, left: isNumericCompare ? 15 : -20, bottom: 5 }}>
+              <BarChart data={rowChartData} layout="vertical" margin={{ top: 10, right: 30, left: 10, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-slate-100 dark:stroke-slate-700/30" />
                 <XAxis type="number" stroke="#94a3b8" tick={{ fontSize: 9 }} />
-                <YAxis type="category" dataKey="name" stroke="#94a3b8" tick={isNumericCompare ? { fontSize: 8 } : false} />
+                <YAxis type="category" dataKey="name" stroke="#94a3b8" width={isNumericCompare ? 90 : 120} tick={{ fontSize: 8 }} />
                 <Tooltip 
                   formatter={(v: any, name: any) => [
                     v !== null && v !== undefined && !isNaN(Number(v)) ? Number(v).toFixed(2) : '0.00', 
@@ -1932,7 +1950,7 @@ export default function DashboardView({
                 <Legend iconSize={10} wrapperStyle={{ fontSize: '10px' }} />
                 {isNumericCompare ? (
                   <>
-                    <Bar dataKey="Requested (No)" fill="#ff3b30" radius={[0, 6, 6, 0]}>
+                    <Bar dataKey="Requested (No)" fill="#ef4444" radius={[0, 6, 6, 0]}>
                       <LabelList dataKey="Requested (No)" position="right" formatter={(v: any) => v !== null && v !== undefined ? Number(v).toFixed(2) : ''} style={{ fontSize: '8px', fill: '#ef4444', fontWeight: 'bold' }} />
                     </Bar>
                     <Bar dataKey="Handed Over (No)" fill="#10b981" radius={[0, 6, 6, 0]}>
@@ -1944,8 +1962,8 @@ export default function DashboardView({
                     <Bar dataKey="Cleared KM" stackId="a" fill="#3b82f6" radius={[6, 0, 0, 6]}>
                       <LabelList dataKey="Cleared KM" position="center" formatter={(v: any) => v !== null && v !== undefined ? Number(v).toFixed(2) : ''} style={{ fontSize: '8px', fill: '#ffffff', fontWeight: 'bold' }} />
                     </Bar>
-                    <Bar dataKey="Remaining KM" stackId="a" fill="#e2e8f0" radius={[0, 6, 6, 0]}>
-                      <LabelList dataKey="Remaining KM" position="center" formatter={(v: any) => v !== null && v !== undefined ? Number(v).toFixed(2) : ''} style={{ fontSize: '8px', fill: '#475569', fontWeight: 'bold' }} />
+                    <Bar dataKey="Remaining KM" stackId="a" fill="#64748b" radius={[0, 6, 6, 0]}>
+                      <LabelList dataKey="Remaining KM" position="center" formatter={(v: any) => v !== null && v !== undefined ? Number(v).toFixed(2) : ''} style={{ fontSize: '8px', fill: '#ffffff', fontWeight: 'bold' }} />
                     </Bar>
                   </>
                 )}
@@ -1955,7 +1973,7 @@ export default function DashboardView({
         </div>
 
         {/* Quantities design vs actual */}
-        <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-4 rounded-2xl shadow-sm space-y-3">
+        <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-4 rounded-2xl shadow-sm space-y-3 min-w-0">
           <div className="flex justify-between items-center flex-wrap gap-2">
             <span className="text-xs font-bold text-slate-800 dark:text-zinc-150">Quantities: Plan vs Completed</span>
             <div className="relative">
@@ -1972,18 +1990,18 @@ export default function DashboardView({
             </div>
           </div>
 
-          <div className="h-44 w-full">
+          <div className="h-52 w-full min-w-0">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={qtyChartData} margin={{ top: 10, right: 0, left: -25, bottom: 5 }}>
+              <BarChart data={qtyChartData} margin={{ top: 15, right: 15, left: 10, bottom: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-slate-100/50 dark:stroke-slate-700/30" />
                 <XAxis dataKey="name" stroke="#94a3b8" tick={{ fontSize: 9 }} />
-                <YAxis stroke="#94a3b8" tick={{ fontSize: 9 }} />
+                <YAxis stroke="#94a3b8" width={55} tick={{ fontSize: 9 }} />
                 <Tooltip formatter={(v) => [v, 'Value']} contentStyle={{ backgroundColor: '#0f172a', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '10px' }} />
                 <Bar dataKey="Value" radius={[6, 6, 0, 0]}>
                   {qtyChartData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.fill} />
                   ))}
-                  <LabelList dataKey="Value" position="top" formatter={(v: any) => v !== null && v !== undefined ? Number(v).toFixed(2) : ''} style={{ fontSize: '8px', fill: '#64748b', fontWeight: 'bold' }} />
+                  <LabelList dataKey="Value" position="top" formatter={(v: any) => v !== null && v !== undefined ? Number(v).toFixed(2) : ''} style={{ fontSize: '8.5px', fill: '#64748b', fontWeight: 'bold' }} />
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
@@ -1991,18 +2009,18 @@ export default function DashboardView({
         </div>
 
         {/* Series Bar Chart */}
-        <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-4 rounded-2xl shadow-sm space-y-3">
+        <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-4 rounded-2xl shadow-sm space-y-3 min-w-0">
           <div className="flex justify-between items-center">
             <span className="text-xs font-bold text-slate-800 dark:text-zinc-150">Bill Series Progress</span>
             <span className="text-[10px] text-slate-400 font-medium">To-Date Progress %</span>
           </div>
 
-          <div className="h-64 w-full">
+          <div className="h-72 w-full min-w-0">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart 
                 data={seriesBarData} 
                 layout="vertical" 
-                margin={{ top: 5, right: 25, left: -20, bottom: 5 }}
+                margin={{ top: 10, right: 45, left: 10, bottom: 5 }}
               >
                 <CartesianGrid strokeDasharray="3 3" className="stroke-slate-100 dark:stroke-slate-700/30" />
                 <XAxis type="number" domain={[0, 100]} stroke="#94a3b8" tick={{ fontSize: 9 }} tickFormatter={(v) => `${Number(v).toFixed(2)}%`} />
@@ -2011,7 +2029,7 @@ export default function DashboardView({
                   dataKey="name" 
                   stroke="#94a3b8" 
                   tick={{ fontSize: 8 }} 
-                  width={110}
+                  width={130}
                 />
                 <Tooltip 
                   formatter={(v) => [`${parseFloat(v.toString()).toFixed(2)}%`]} 
@@ -2035,10 +2053,10 @@ export default function DashboardView({
                   })}
                   <LabelList 
                     dataKey="Progress %" 
-                    position="insideRight" 
-                    dx={-6}
+                    position="right" 
+                    dx={4}
                     formatter={(v: any) => `${Number(v).toFixed(2)}%`} 
-                    style={{ fontSize: '9px', fill: '#ffffff', fontWeight: 'extrabold' }} 
+                    style={{ fontSize: '9px', fill: '#64748b', fontWeight: 'bold' }} 
                   />
                 </Bar>
               </BarChart>
@@ -2047,7 +2065,7 @@ export default function DashboardView({
         </div>
 
         {/* Progress target column chart */}
-        <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-4 rounded-2xl shadow-sm space-y-3">
+        <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-4 rounded-2xl shadow-sm space-y-3 min-w-0">
           <div className="flex flex-col gap-3 border-b border-slate-100 dark:border-slate-700/50 pb-3">
             <div className="flex justify-between items-center flex-wrap gap-2">
               <span className="text-xs font-bold text-slate-800 dark:text-zinc-150">Progress Comparison</span>
@@ -2134,12 +2152,12 @@ export default function DashboardView({
             </div>
           </div>
 
-          <div className="h-44 w-full">
+          <div className="h-52 w-full min-w-0">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={progressPlanChartData} margin={{ top: 10, right: 0, left: -25, bottom: 5 }}>
+              <BarChart data={progressPlanChartData} margin={{ top: 15, right: 15, left: 10, bottom: 10 }}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-slate-100/50 dark:stroke-slate-700/30" />
                 <XAxis dataKey="name" stroke="#94a3b8" tick={{ fontSize: 9 }} />
-                <YAxis stroke="#94a3b8" tick={{ fontSize: 9 }} />
+                <YAxis stroke="#94a3b8" width={45} tick={{ fontSize: 9 }} unit="%" />
                 <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '10px' }} />
                 <Legend iconSize={8} wrapperStyle={{ fontSize: '10px' }} />
                 <Bar dataKey="Contractor" fill="#3b82f6" radius={[4, 4, 0, 0]}>
@@ -2161,17 +2179,17 @@ export default function DashboardView({
       <div className="grid grid-cols-1 gap-4 mb-4">
         
         {/* Annual Payments Chart */}
-        <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-5 rounded-2xl shadow-sm space-y-4">
+        <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-5 rounded-2xl shadow-sm space-y-4 min-w-0">
           <div>
             <span className="text-xs font-bold text-slate-800 dark:text-zinc-150 block">EFY Progress</span>
           </div>
 
-          <div className="h-48">
+          <div className="h-52 w-full min-w-0">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={annualChartData} margin={{ top: 5, right: 0, left: -30, bottom: 0 }}>
+              <BarChart data={annualChartData} margin={{ top: 15, right: 15, left: 10, bottom: 10 }}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-slate-100 dark:stroke-slate-700/30" />
                 <XAxis dataKey="name" stroke="#94a3b8" tick={{ fontSize: 9 }} />
-                <YAxis stroke="#94a3b8" tick={{ fontSize: 9 }} suffix="%" domain={[0, 'auto']} />
+                <YAxis stroke="#94a3b8" width={45} tick={{ fontSize: 9 }} unit="%" domain={[0, 'auto']} />
                 <Tooltip 
                   formatter={(v: any) => {
                     const parsed = parseFloat(v);
@@ -2208,7 +2226,7 @@ export default function DashboardView({
         />
 
         {/* Payment Road-Profile-Style Chart */}
-        <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-5 rounded-2xl shadow-sm space-y-4">
+        <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-5 rounded-2xl shadow-sm space-y-4 min-w-0">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
               <span className="text-xs font-bold text-slate-800 dark:text-zinc-150 block">Payment Chart</span>
@@ -2273,7 +2291,7 @@ export default function DashboardView({
         </div>
 
         {/* S-Curve Chart (Now beautifully placed as the bottom-most full-width chart option) */}
-        <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-5 rounded-2xl shadow-sm space-y-4">
+        <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-5 rounded-2xl shadow-sm space-y-4 min-w-0">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
               <span className="text-xs font-bold text-slate-800 dark:text-zinc-150 block">Cumulative S-Curve Performance</span>
@@ -2283,55 +2301,66 @@ export default function DashboardView({
             </span>
           </div>
 
-          <div className="h-72 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={sCurveChartData} margin={{ top: 10, right: 10, left: -25, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-slate-100 dark:stroke-slate-700/30" />
-                <XAxis dataKey="name" tick={{ fontSize: 9 }} stroke="#94a3b8" />
-                <YAxis tick={{ fontSize: 9 }} stroke="#94a3b8" domain={[0, 100]} unit="%" />
-                <Tooltip 
-                  formatter={(val: any) => [`${Number(val || 0).toFixed(2)}%`]}
-                  contentStyle={{ 
-                    backgroundColor: '#0f172a', 
-                    borderRadius: '12px', 
-                    border: 'none', 
-                    color: '#fff',
-                    fontSize: '11px',
-                    boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
-                  }} 
-                />
-                <Legend verticalAlign="top" height={36} wrapperStyle={{ fontSize: '11px' }} />
-                <Line 
-                  name="Original Plan (%)"
-                  type="monotone" 
-                  dataKey="Original Plan (%)" 
-                  stroke="#eab308" 
-                  strokeDasharray="4 4"
-                  strokeWidth={2}
-                  dot={false}
-                  activeDot={{ r: 4 }}
-                />
-                <Line 
-                  name="Revised Plan (%)"
-                  type="monotone" 
-                  dataKey="Revised Plan (%)" 
-                  stroke="#3b82f6" 
-                  strokeDasharray="3 3"
-                  strokeWidth={2}
-                  dot={false}
-                  activeDot={{ r: 4 }}
-                />
-                <Line 
-                  name="To-Date Actual (%)"
-                  type="monotone" 
-                  dataKey="To-Date Actual (%)" 
-                  stroke="#10b981" 
-                  strokeWidth={3}
-                  dot={{ r: 3 }}
-                  activeDot={{ r: 6 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
+          <div className="h-80 w-full min-w-0">
+            {sCurveChartData.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 text-center p-6 space-y-2">
+                <Activity className="w-8 h-8 text-emerald-500 opacity-60" />
+                <p className="text-xs font-bold text-slate-700 dark:text-slate-300">No Monthly Baseline Curve Points Defined</p>
+                <p className="text-[11px] text-slate-500 max-w-sm">Monthly physical progress targets will populate here automatically once configured.</p>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={sCurveChartData} margin={{ top: 15, right: 25, left: 15, bottom: 10 }}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-slate-100 dark:stroke-slate-700/30" />
+                  <XAxis dataKey="name" tick={{ fontSize: 9 }} stroke="#94a3b8" />
+                  <YAxis tick={{ fontSize: 9 }} stroke="#94a3b8" width={45} domain={[0, 100]} unit="%" />
+                  <Tooltip 
+                    formatter={(val: any) => [val !== null && val !== undefined ? `${Number(val).toFixed(2)}%` : 'N/A']}
+                    contentStyle={{ 
+                      backgroundColor: '#0f172a', 
+                      borderRadius: '12px', 
+                      border: 'none', 
+                      color: '#fff',
+                      fontSize: '11px',
+                      boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+                    }} 
+                  />
+                  <Legend verticalAlign="top" height={36} wrapperStyle={{ fontSize: '11px' }} />
+                  <Line 
+                    name="Original Plan (%)"
+                    type="monotone" 
+                    dataKey="Original Plan (%)" 
+                    stroke="#eab308" 
+                    strokeDasharray="4 4"
+                    strokeWidth={2}
+                    dot={false}
+                    connectNulls={false}
+                    activeDot={{ r: 4 }}
+                  />
+                  <Line 
+                    name="Revised Plan (%)"
+                    type="monotone" 
+                    dataKey="Revised Plan (%)" 
+                    stroke="#3b82f6" 
+                    strokeDasharray="3 3"
+                    strokeWidth={2}
+                    dot={false}
+                    connectNulls={false}
+                    activeDot={{ r: 4 }}
+                  />
+                  <Line 
+                    name="To-Date Actual (%)"
+                    type="monotone" 
+                    dataKey="To-Date Actual (%)" 
+                    stroke="#10b981" 
+                    strokeWidth={3} 
+                    dot={{ r: 3 }}
+                    connectNulls={false}
+                    activeDot={{ r: 6 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </div>
       </section>

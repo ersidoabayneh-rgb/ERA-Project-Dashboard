@@ -15,7 +15,9 @@ interface KpiEditorViewProps {
 export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, onProjectUpdate }: KpiEditorViewProps) {
   const [selectedGroupId, setSelectedGroupId] = React.useState<string>('all');
   const kpis = getIntegratedKpiAllocated(project);
-  const hierarchy = buildKpiHierarchy(project.contractType || 'DBB', project);
+  const hierarchy = React.useMemo(() => {
+    return buildKpiHierarchy(project.contractType || 'DBB', project);
+  }, [project.contractType, project.id, project.kpiAllocated?.length]);
 
   const isAdmin = currentUserObj?.role === 'admin' || currentUserObj?.username === 'proj_1781786415663';
 

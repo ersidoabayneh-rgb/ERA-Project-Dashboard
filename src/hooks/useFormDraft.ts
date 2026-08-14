@@ -39,6 +39,7 @@ export function useFormDraft<T>({
   // Keep latest values in refs to avoid re-triggering effects
   const formDataRef = useRef<T>(formData);
   const authUserRef = useRef<User | null>(authUser);
+  const onRestoreRef = useRef(onRestore);
   const localTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const serverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -50,21 +51,26 @@ export function useFormDraft<T>({
     authUserRef.current = authUser;
   }, [authUser]);
 
+  useEffect(() => {
+    onRestoreRef.current = onRestore;
+  }, [onRestore]);
+
   // Storage key generator
-  const getLocalKey = useCallback(() => {
-    const uid = authUser?.uid || 'anonymous';
-    return `draft:${uid}:${formId}`;
-  }, [formId, authUser]);
+  const getLocalKey = useCallback((uid?: string | null) => {
+    const userId = uid ?? authUserRef.current?.uid ?? 'anonymous';
+    return `draft:${userId}:${formId}`;
+  }, [formId]);
 
   // Clean draft from local and server
   const clearDraft = useCallback(async () => {
+    const currentAuth = authUserRef.current;
     // 1. Clear local
     try {
-      localStorage.removeItem(getLocalKey());
+      localStorage.removeItem(getLocalKey(currentAuth?.uid));
       // Also clear any fallback keys
       localStorage.removeItem(`draft:anonymous:${formId}`);
-      if (authUser?.uid) {
-        localStorage.removeItem(`draft:${authUser.uid}:${formId}`);
+      if (currentAuth?.uid) {
+        localStorage.removeItem(`draft:${currentAuth.uid}:${formId}`);
       }
     } catch (e) {
       console.warn('Failed to clear local draft:', e);
@@ -74,9 +80,9 @@ export function useFormDraft<T>({
     setConflict(null);
 
     // 2. Clear server if authenticated
-    if (authUser) {
+    if (currentAuth) {
       try {
-        const token = await authUser.getIdToken();
+        const token = await currentAuth.getIdToken();
         const res = await fetch(`/api/drafts/${formId}`, {
           method: 'DELETE',
           headers: {
@@ -90,7 +96,7 @@ export function useFormDraft<T>({
         console.warn('Failed to delete server draft:', e);
       }
     }
-  }, [formId, authUser, getLocalKey]);
+  }, [formId, getLocalKey]);
 
   // Get server draft
   const fetchServerDraft = useCallback(async (user: User): Promise<DraftPayload<T> | null> => {
@@ -149,10 +155,10 @@ export function useFormDraft<T>({
   }, [formId]);
 
   // Save to local storage
-  const saveToLocal = useCallback((data: T, updatedAt: string) => {
+  const saveToLocal = useCallback((data: T, updatedAt: string, uid?: string | null) => {
     try {
       const payload: DraftPayload<T> = { data, updatedAt };
-      localStorage.setItem(getLocalKey(), JSON.stringify(payload));
+      localStorage.setItem(getLocalKey(uid), JSON.stringify(payload));
       setHasDraft(true);
       setLastSaved(new Date().toLocaleTimeString());
     } catch (e) {
@@ -225,7 +231,7 @@ export function useFormDraft<T>({
 
           setFormData(newer.data);
           setHasDraft(true);
-          if (onRestore) onRestore(newer.data);
+          if (onRestoreRef.current) onRestoreRef.current(newer.data);
 
           // If there is a significant timestamp gap and they are structurally different, align them automatically
           if (Math.abs(localTime - serverTime) > 2000) {
@@ -237,35 +243,35 @@ export function useFormDraft<T>({
               if (isLocalNewer) {
                 saveToServer(localDraft.data, localDraft.updatedAt);
               } else {
-                saveToLocal(serverDraft.data, serverDraft.updatedAt);
+                saveToLocal(serverDraft.data, serverDraft.updatedAt, user.uid);
               }
             }
           }
         } else if (serverDraft) {
           // Restore server-only draft
           setFormData(serverDraft.data);
-          saveToLocal(serverDraft.data, serverDraft.updatedAt);
+          saveToLocal(serverDraft.data, serverDraft.updatedAt, user.uid);
           setHasDraft(true);
-          if (onRestore) onRestore(serverDraft.data);
+          if (onRestoreRef.current) onRestoreRef.current(serverDraft.data);
         } else if (localDraft) {
           // Restore local-only draft and sync it to server
           setFormData(localDraft.data);
           setHasDraft(true);
           saveToServer(localDraft.data, localDraft.updatedAt);
-          if (onRestore) onRestore(localDraft.data);
+          if (onRestoreRef.current) onRestoreRef.current(localDraft.data);
         }
       } else {
         // Unauthenticated: Restore local draft
         if (localDraft) {
           setFormData(localDraft.data);
           setHasDraft(true);
-          if (onRestore) onRestore(localDraft.data);
+          if (onRestoreRef.current) onRestoreRef.current(localDraft.data);
         }
       }
     } catch (e) {
       console.error('Failed to load form draft:', e);
     }
-  }, [formId, onRestore, fetchServerDraft, saveToLocal, saveToServer]);
+  }, [formId, fetchServerDraft, saveToLocal, saveToServer]);
 
   // Conflict resolver
   const resolveConflict = useCallback((choice: 'local' | 'server') => {
@@ -274,25 +280,27 @@ export function useFormDraft<T>({
     const chosenData = choice === 'local' ? conflict.localData : conflict.serverData;
     const chosenTime = choice === 'local' ? conflict.localTime : conflict.serverTime;
     const nowIso = new Date(chosenTime).toISOString();
+    const currentAuth = authUserRef.current;
 
     setFormData(chosenData);
     setConflict(null);
 
     // Save chosen one everywhere
-    saveToLocal(chosenData, nowIso);
-    if (authUser) {
+    saveToLocal(chosenData, nowIso, currentAuth?.uid);
+    if (currentAuth) {
       saveToServer(chosenData, nowIso);
     }
 
-    if (onRestore) {
-      onRestore(chosenData);
+    if (onRestoreRef.current) {
+      onRestoreRef.current(chosenData);
     }
-  }, [conflict, authUser, saveToLocal, saveToServer, onRestore]);
+  }, [conflict, saveToLocal, saveToServer]);
 
   // Monitor auth state changes
   useEffect(() => {
     const unsubscribe = initAuth((user) => {
       setAuthUser(user);
+      authUserRef.current = user;
       loadAndRestoreDraft(user);
     });
 
@@ -301,7 +309,7 @@ export function useFormDraft<T>({
       if (localTimeoutRef.current) clearTimeout(localTimeoutRef.current);
       if (serverTimeoutRef.current) clearTimeout(serverTimeoutRef.current);
     };
-  }, [loadAndRestoreDraft]);
+  }, [formId, loadAndRestoreDraft]);
 
   return {
     formData,

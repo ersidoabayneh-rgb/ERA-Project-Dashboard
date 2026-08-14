@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { CalendarRange, Plus, Trash2, TrendingUp, Info } from 'lucide-react';
+import { CalendarRange, Plus, Trash2, TrendingUp, Info, Activity } from 'lucide-react';
 import { 
   ResponsiveContainer, 
   LineChart, 
@@ -23,7 +23,7 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
 
   React.useEffect(() => {
     setMonths(project.monthly || []);
-  }, [project.monthly]);
+  }, [project.id]);
 
   const convertToInputMonthFormat = (monthStr: string): string => {
     try {
@@ -65,15 +65,23 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
       // If a previous row reached 100%, do not allow changes
       const isColDisabled = idx > 0 && months.slice(0, idx).some(m => {
         const val = m[field];
-        return typeof val === 'number' && val >= 100;
+        return (val !== '' && val !== null && val !== undefined && !isNaN(Number(val)) && Number(val) >= 100);
       });
       if (isColDisabled) return;
     }
 
-    let parsedVal = field === 'month' ? value : (parseFloat(value) || 0);
-    if (field !== 'month' && typeof parsedVal === 'number') {
-      if (parsedVal > 100) parsedVal = 100;
-      if (parsedVal < 0) parsedVal = 0;
+    let parsedVal: any = value;
+    if (field !== 'month') {
+      if (value === '' || value === null || value === undefined) {
+        parsedVal = ''; // Leave it empty when user deletes/leaves blank - NEVER fill with zero
+      } else {
+        const num = parseFloat(value);
+        if (isNaN(num)) {
+          parsedVal = '';
+        } else {
+          parsedVal = Math.min(100, Math.max(0, num));
+        }
+      }
     }
 
     const updated = months.map((m, i) => {
@@ -85,16 +93,6 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
       }
       return m;
     });
-
-    // If the active field reached 100%, clear subsequent rows' values on this column to 0
-    if (field !== 'month' && typeof parsedVal === 'number' && parsedVal >= 100) {
-      for (let i = idx + 1; i < updated.length; i++) {
-        updated[i] = {
-          ...updated[i],
-          [field]: 0
-        };
-      }
-    }
 
     setMonths(updated);
     onUpdateMonthly(updated);
@@ -118,7 +116,8 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
       }
     }
 
-    const updated = [...months, { month: nextName, originalPlan: 0, revisedPlan: 0, actual: 0 }];
+    // Do NOT fill with zero - leave fields empty
+    const updated = [...months, { month: nextName, originalPlan: '', revisedPlan: '', actual: '' }];
     setMonths(updated);
     onUpdateMonthly(updated);
   };
@@ -131,13 +130,64 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
     }
   };
 
-  // Convert for Recharts presentation
-  const chartData = months.map(m => ({
-    name: m.month,
-    'Original Plan (%)': m.originalPlan,
-    'Revised Plan (%)': m.revisedPlan,
-    'To-Date Actual (%)': m.actual > 0 ? m.actual : null // don't draw zero flatlines for future months
-  }));
+  // Convert for Recharts presentation - STOP drawing the line once 100% is reached
+  let origStop = false;
+  let revStop = false;
+  let actStop = false;
+
+  const chartData = months.map((m, idx) => {
+    // 1. Original Plan: Stop after reaching 100%
+    let orig: number | null = null;
+    if (!origStop) {
+      const raw = m.originalPlan;
+      if (raw !== '' && raw !== null && raw !== undefined && !isNaN(Number(raw))) {
+        const num = Number(raw);
+        if (num >= 100) {
+          orig = 100;
+          origStop = true; // Stop drawing subsequent points
+        } else if (num >= 0) {
+          orig = num;
+        }
+      }
+    }
+
+    // 2. Revised Plan: Stop after reaching 100%
+    let rev: number | null = null;
+    if (!revStop) {
+      const raw = m.revisedPlan;
+      if (raw !== '' && raw !== null && raw !== undefined && !isNaN(Number(raw))) {
+        const num = Number(raw);
+        if (num >= 100) {
+          rev = 100;
+          revStop = true; // Stop drawing subsequent points
+        } else if (num >= 0) {
+          rev = num;
+        }
+      }
+    }
+
+    // 3. To-Date Actual: Stop after reaching 100%
+    let act: number | null = null;
+    if (!actStop) {
+      const raw = m.actual;
+      if (raw !== '' && raw !== null && raw !== undefined && !isNaN(Number(raw))) {
+        const num = Number(raw);
+        if (num >= 100) {
+          act = 100;
+          actStop = true; // Stop drawing subsequent points
+        } else if (num > 0 || (idx === 0 && num === 0)) {
+          act = num;
+        }
+      }
+    }
+
+    return {
+      name: m.month,
+      'Original Plan (%)': orig,
+      'Revised Plan (%)': rev,
+      'To-Date Actual (%)': act
+    };
+  });
 
   return (
     <div className="space-y-4">
@@ -148,19 +198,22 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
             <CalendarRange className="w-5 h-5 text-blue-500" />
             S‑Curve Analysis (Monthly Cumulative %)
           </h2>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Enter monthly cumulative targets. Graphs automatically stop plotting once a series reaches 100%. Unentered cells remain clean and empty.
+          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5 self-start md:self-auto">
           <button
             onClick={handleAddRow}
-            className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-250 text-xs font-bold py-1.5 px-3 rounded-xl transition flex items-center gap-1"
+            className="bg-blue-50 hover:bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-900/40 text-xs font-bold py-1.5 px-3 rounded-xl transition flex items-center gap-1 cursor-pointer border border-blue-200/60 dark:border-blue-800/40"
           >
             <Plus className="w-3.5 h-3.5" />
             Add Month
           </button>
           <button
             onClick={handleRemoveRow}
-            className="bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/20 dark:text-rose-455 px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1"
+            className="bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/20 dark:text-rose-455 px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer border border-rose-200/60 dark:border-rose-900/30"
           >
             <Trash2 className="w-3.5 h-3.5" />
             Remove Month
@@ -168,7 +221,88 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
         </div>
       </div>
 
+      {/* S-Curve Interactive Graph Visualization Card */}
+      <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-5 rounded-2xl shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <span className="text-xs font-bold text-slate-800 dark:text-zinc-150 block">Cumulative S-Curve Performance Preview</span>
+            <span className="text-[10px] text-slate-400">Live physical progress trajectory (lines terminate immediately upon reaching 100%)</span>
+          </div>
+          <div className="flex items-center gap-3 text-xs">
+            <span className="flex items-center gap-1 text-amber-500 font-medium text-[11px]">
+              <span className="w-2.5 h-0.5 bg-amber-500 inline-block border-b border-dashed border-amber-500" /> Original Plan
+            </span>
+            <span className="flex items-center gap-1 text-blue-500 font-medium text-[11px]">
+              <span className="w-2.5 h-0.5 bg-blue-500 inline-block border-b border-dashed border-blue-500" /> Revised Plan
+            </span>
+            <span className="flex items-center gap-1 text-emerald-500 font-medium text-[11px]">
+              <span className="w-2.5 h-0.5 bg-emerald-500 inline-block" /> To-Date Actual
+            </span>
+          </div>
+        </div>
 
+        <div className="h-72 w-full min-w-0">
+          {chartData.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 text-center p-6 space-y-2">
+              <TrendingUp className="w-8 h-8 text-blue-500 opacity-60" />
+              <p className="text-xs font-bold text-slate-700 dark:text-slate-300">No Monthly Baseline Curve Points Defined</p>
+              <p className="text-[11px] text-slate-500 max-w-sm">Monthly physical progress targets will populate here automatically once entered below.</p>
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={chartData} margin={{ top: 15, right: 25, left: 15, bottom: 10 }}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-slate-100 dark:stroke-slate-700/30" />
+                <XAxis dataKey="name" tick={{ fontSize: 9 }} stroke="#94a3b8" />
+                <YAxis tick={{ fontSize: 9 }} stroke="#94a3b8" width={45} domain={[0, 100]} unit="%" />
+                <Tooltip 
+                  formatter={(val: any) => [val !== null && val !== undefined ? `${Number(val).toFixed(2)}%` : 'N/A']}
+                  contentStyle={{ 
+                    backgroundColor: '#0f172a', 
+                    borderRadius: '12px', 
+                    border: 'none', 
+                    color: '#fff',
+                    fontSize: '11px',
+                    boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+                  }} 
+                />
+                <Legend verticalAlign="top" height={32} wrapperStyle={{ fontSize: '11px' }} />
+                <Line 
+                  name="Original Plan (%)"
+                  type="monotone" 
+                  dataKey="Original Plan (%)" 
+                  stroke="#eab308" 
+                  strokeDasharray="4 4"
+                  strokeWidth={2}
+                  dot={false}
+                  connectNulls={false}
+                  activeDot={{ r: 4 }}
+                />
+                <Line 
+                  name="Revised Plan (%)"
+                  type="monotone" 
+                  dataKey="Revised Plan (%)" 
+                  stroke="#3b82f6" 
+                  strokeDasharray="3 3"
+                  strokeWidth={2}
+                  dot={false}
+                  connectNulls={false}
+                  activeDot={{ r: 4 }}
+                />
+                <Line 
+                  name="To-Date Actual (%)"
+                  type="monotone" 
+                  dataKey="To-Date Actual (%)" 
+                  stroke="#10b981" 
+                  strokeWidth={3} 
+                  dot={{ r: 3 }}
+                  connectNulls={false}
+                  activeDot={{ r: 6 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </div>
 
       {/* Raw spreadsheet fields table */}
       <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 rounded-2xl overflow-hidden shadow-sm">
@@ -185,9 +319,18 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
             </thead>
             <tbody className="divide-y divide-slate-55 dark:divide-slate-700/40">
               {months.map((m, idx) => {
-                const isOrigDisabled = idx > 0 && months.slice(0, idx).some(prev => prev.originalPlan >= 100);
-                const isRevDisabled = idx > 0 && months.slice(0, idx).some(prev => prev.revisedPlan >= 100);
-                const isActDisabled = idx > 0 && months.slice(0, idx).some(prev => prev.actual >= 100);
+                const isOrigDisabled = idx > 0 && months.slice(0, idx).some(prev => {
+                  const v = prev.originalPlan;
+                  return (v !== '' && v !== null && v !== undefined && !isNaN(Number(v)) && Number(v) >= 100);
+                });
+                const isRevDisabled = idx > 0 && months.slice(0, idx).some(prev => {
+                  const v = prev.revisedPlan;
+                  return (v !== '' && v !== null && v !== undefined && !isNaN(Number(v)) && Number(v) >= 100);
+                });
+                const isActDisabled = idx > 0 && months.slice(0, idx).some(prev => {
+                  const v = prev.actual;
+                  return (v !== '' && v !== null && v !== undefined && !isNaN(Number(v)) && Number(v) >= 100);
+                });
 
                 return (
                   <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/10 border-b border-slate-100 dark:border-slate-800">
@@ -198,7 +341,7 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
                         <div className="relative flex-1">
                           <input
                             type="text"
-                            value={m.month}
+                            value={m.month || ''}
                             onChange={(e) => handleFieldChange(idx, 'month', e.target.value)}
                             className="w-full bg-slate-50 dark:bg-slate-900/60 border border-slate-350 dark:border-slate-755 text-xs text-slate-850 dark:text-zinc-50 pl-2.5 pr-8 py-1 rounded-lg outline-none focus:border-blue-500 dark:focus:border-blue-450 focus:ring-2 focus:ring-blue-500/20 focus:bg-white dark:focus:bg-slate-950 transition-all duration-150 h-8"
                             placeholder="Dec-20"
@@ -215,7 +358,7 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
                           <div className="relative hidden md:flex items-center">
                             <input
                               type="month"
-                              value={convertToInputMonthFormat(m.month)}
+                              value={convertToInputMonthFormat(m.month || '')}
                               onChange={(e) => {
                                 const val = e.target.value;
                                 if (val) {
@@ -239,7 +382,7 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
                           <div className="relative block md:hidden">
                             <input
                               type="month"
-                              value={convertToInputMonthFormat(m.month)}
+                              value={convertToInputMonthFormat(m.month || '')}
                               onChange={(e) => {
                                 const val = e.target.value;
                                 if (val) {
@@ -258,12 +401,13 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
                       <input
                         type="number"
                         step="0.01"
-                        value={m.originalPlan}
+                        value={m.originalPlan === null || m.originalPlan === undefined ? '' : m.originalPlan}
                         disabled={isOrigDisabled}
                         onChange={(e) => handleFieldChange(idx, 'originalPlan', e.target.value)}
+                        placeholder={isOrigDisabled ? '-' : ''}
                         className={`w-full text-center font-mono font-bold text-xs px-2 py-1 rounded-lg outline-none transition-all duration-150 h-7 ${
                           isOrigDisabled 
-                            ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed border-none' 
+                            ? 'bg-slate-100 dark:bg-slate-800/80 text-slate-400 dark:text-slate-500 cursor-not-allowed border-none' 
                             : 'bg-slate-50 dark:bg-slate-900/60 border border-slate-350 dark:border-slate-755 hover:border-slate-400 dark:hover:border-slate-500 focus:border-blue-500 dark:focus:border-blue-450 focus:ring-2 focus:ring-blue-500/20 focus:bg-white dark:focus:bg-slate-950 text-slate-850 dark:text-zinc-50'
                         }`}
                         title={isOrigDisabled ? "Column locked: a previous row reached 100%" : ""}
@@ -273,12 +417,13 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
                       <input
                         type="number"
                         step="0.01"
-                        value={m.revisedPlan}
+                        value={m.revisedPlan === null || m.revisedPlan === undefined ? '' : m.revisedPlan}
                         disabled={isRevDisabled}
                         onChange={(e) => handleFieldChange(idx, 'revisedPlan', e.target.value)}
+                        placeholder={isRevDisabled ? '-' : ''}
                         className={`w-full text-center font-mono font-bold text-xs px-2 py-1 rounded-lg outline-none transition-all duration-150 h-7 ${
                           isRevDisabled 
-                            ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed border-none' 
+                            ? 'bg-slate-100 dark:bg-slate-800/80 text-slate-400 dark:text-slate-500 cursor-not-allowed border-none' 
                             : 'bg-slate-50 dark:bg-slate-900/60 border border-slate-350 dark:border-slate-755 hover:border-slate-400 dark:hover:border-slate-500 focus:border-blue-500 dark:focus:border-blue-450 focus:ring-2 focus:ring-blue-500/20 focus:bg-white dark:focus:bg-slate-950 text-slate-850 dark:text-zinc-50'
                         }`}
                         title={isRevDisabled ? "Column locked: a previous row reached 100%" : ""}
@@ -288,12 +433,13 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
                       <input
                         type="number"
                         step="0.01"
-                        value={m.actual}
+                        value={m.actual === null || m.actual === undefined ? '' : m.actual}
                         disabled={isActDisabled}
                         onChange={(e) => handleFieldChange(idx, 'actual', e.target.value)}
+                        placeholder={isActDisabled ? '-' : ''}
                         className={`w-full text-center font-mono font-black text-xs px-2 py-1 rounded-lg outline-none transition-all duration-150 h-7 ${
                           isActDisabled 
-                            ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed border-none' 
+                            ? 'bg-slate-100 dark:bg-slate-800/80 text-slate-400 dark:text-slate-500 cursor-not-allowed border-none' 
                             : 'bg-slate-50 dark:bg-slate-900/60 border border-slate-350 dark:border-slate-755 hover:border-slate-400 dark:hover:border-slate-500 focus:border-blue-500 dark:focus:border-blue-450 focus:ring-2 focus:ring-blue-500/20 focus:bg-white dark:focus:bg-slate-950 text-blue-600 dark:text-blue-400'
                         }`}
                         title={isActDisabled ? "Column locked: a previous row reached 100%" : ""}

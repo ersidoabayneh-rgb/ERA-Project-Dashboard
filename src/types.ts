@@ -56,9 +56,9 @@ export function formatAccounting(v: number, currency: string = 'Br.'): string {
 
 export interface MonthlyProgress {
   month: string;
-  originalPlan: number;
-  revisedPlan: number;
-  actual: number;
+  originalPlan?: number | null | string;
+  revisedPlan?: number | null | string;
+  actual?: number | null | string;
 }
 
 export interface SeriesItem {
@@ -267,6 +267,10 @@ export interface IssueLogItem {
   lessonsLearnedUpdatedBy?: string;
   lessonsLearnedUpdatedAt?: string;
   reviewNotes?: string;
+  
+  // Resolution / Closure timing & turnaround metrics
+  resolvedDate?: string; // Date when approved/resolved or rejected (YYYY-MM-DD)
+  turnaroundDays?: number; // Total calendar days taken from submission to approval or rejection
   
   // Status history timeline & user change log
   history?: IssueHistoryRecord[];

@@ -279,166 +279,178 @@ export default function BillSummaryPriceAdjChart({
       </div>
 
       {/* Main Chart Canvas */}
-      <div className="h-72 w-full pt-2">
-        <ResponsiveContainer width="100%" height="100%">
-          {viewMode === 'combined' ? (
-            <LineChart data={chartData} margin={{ top: 15, right: 20, left: -10, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-slate-100 dark:stroke-slate-700/30" />
-              <XAxis dataKey="ipcNo" stroke="#94a3b8" tick={{ fontSize: 9 }} />
-              <YAxis 
-                yAxisId="left" 
-                stroke="#6366f1" 
-                tick={{ fontSize: 9 }} 
-                unit={unitMode === 'millions' ? 'M' : ''}
-                label={{ value: unitMode === 'millions' ? 'Monthly (M ETB)' : 'Monthly (ETB)', angle: -90, position: 'insideLeft', style: { fontSize: '9px', fill: '#6366f1' } }}
-              />
-              <YAxis 
-                yAxisId="right" 
-                orientation="right" 
-                stroke="#10b981" 
-                tick={{ fontSize: 9 }} 
-                unit={unitMode === 'millions' ? 'M' : ''}
-                label={{ value: unitMode === 'millions' ? 'Cumulative (M ETB)' : 'Cumulative (ETB)', angle: 90, position: 'insideRight', style: { fontSize: '9px', fill: '#10b981' } }}
-              />
-              <Tooltip content={<CustomTooltip />} />
-              <Legend verticalAlign="top" height={32} wrapperStyle={{ fontSize: '10px' }} />
+      <div className="h-72 w-full pt-2 min-w-0">
+        {chartData.length === 0 ? (
+          <div className="h-full flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 text-center p-6 space-y-2">
+            <Coins className="w-8 h-8 text-indigo-400 opacity-60" />
+            <p className="text-xs font-bold text-slate-700 dark:text-slate-300">No IPC Payment Certificate Records Available</p>
+            <p className="text-[11px] text-slate-500 max-w-sm">Enter interim payment certificates (IPC) in the Financial/IPC tracker tab to display monthly & cumulative bill progress curves.</p>
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height="100%">
+            {viewMode === 'combined' ? (
+              <LineChart data={chartData} margin={{ top: 15, right: 25, left: 15, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-slate-100 dark:stroke-slate-700/30" />
+                <XAxis dataKey="ipcNo" stroke="#94a3b8" tick={{ fontSize: 9 }} />
+                <YAxis 
+                  yAxisId="left" 
+                  stroke="#6366f1" 
+                  tick={{ fontSize: 9 }} 
+                  width={55}
+                  unit={unitMode === 'millions' ? 'M' : ''}
+                  label={{ value: unitMode === 'millions' ? 'Monthly (M ETB)' : 'Monthly (ETB)', angle: -90, position: 'insideLeft', style: { fontSize: '9px', fill: '#6366f1' } }}
+                />
+                <YAxis 
+                  yAxisId="right" 
+                  orientation="right" 
+                  stroke="#10b981" 
+                  tick={{ fontSize: 9 }} 
+                  width={55}
+                  unit={unitMode === 'millions' ? 'M' : ''}
+                  label={{ value: unitMode === 'millions' ? 'Cumulative (M ETB)' : 'Cumulative (ETB)', angle: 90, position: 'insideRight', style: { fontSize: '9px', fill: '#10b981' } }}
+                />
+                <Tooltip content={<CustomTooltip />} />
+                <Legend verticalAlign="top" height={32} wrapperStyle={{ fontSize: '10px' }} />
 
-              {/* Monthly Trend Lines (Replacing former Bar columns) */}
-              <Line 
-                yAxisId="left" 
-                name="Monthly Bill Summary" 
-                type="monotone"
-                dataKey={unitMode === 'millions' ? 'monthlyGrossM' : 'monthlyGross'} 
-                stroke="#6366f1" 
-                strokeWidth={2}
-                dot={{ r: 3 }}
-              />
-              <Line 
-                yAxisId="left" 
-                name="Monthly Price Adj." 
-                type="monotone"
-                dataKey={unitMode === 'millions' ? 'monthlyPriceAdjM' : 'monthlyPriceAdj'} 
-                stroke="#f59e0b" 
-                strokeWidth={2}
-                dot={{ r: 3 }}
-              />
+                {/* Monthly Trend Lines (Replacing former Bar columns) */}
+                <Line 
+                  yAxisId="left" 
+                  name="Monthly Bill Summary" 
+                  type="monotone"
+                  dataKey={unitMode === 'millions' ? 'monthlyGrossM' : 'monthlyGross'} 
+                  stroke="#6366f1" 
+                  strokeWidth={2}
+                  dot={{ r: 3 }}
+                />
+                <Line 
+                  yAxisId="left" 
+                  name="Monthly Price Adj." 
+                  type="monotone"
+                  dataKey={unitMode === 'millions' ? 'monthlyPriceAdjM' : 'monthlyPriceAdj'} 
+                  stroke="#f59e0b" 
+                  strokeWidth={2}
+                  dot={{ r: 3 }}
+                />
 
-              {/* Cumulative Trend Lines */}
-              <Line 
-                yAxisId="right" 
-                name="Cum. Bill Summary" 
-                type="monotone" 
-                dataKey={unitMode === 'millions' ? 'cumGrossM' : 'cumGross'} 
-                stroke="#4f46e5" 
-                strokeWidth={2} 
-                strokeDasharray="4 4"
-                dot={{ r: 3 }}
-              />
-              <Line 
-                yAxisId="right" 
-                name="Cum. Price Adjustment" 
-                type="monotone" 
-                dataKey={unitMode === 'millions' ? 'cumPriceAdjM' : 'cumPriceAdj'} 
-                stroke="#d97706" 
-                strokeWidth={2.5} 
-                dot={{ r: 4 }}
-              />
-              <Line 
-                yAxisId="right" 
-                name="Cum. Net Certified" 
-                type="monotone" 
-                dataKey={unitMode === 'millions' ? 'cumCertifiedM' : 'cumCertified'} 
-                stroke="#10b981" 
-                strokeWidth={3} 
-                dot={{ r: 4 }}
-                activeDot={{ r: 7 }}
-              />
-            </LineChart>
-          ) : viewMode === 'monthly' ? (
-            <BarChart data={chartData} margin={{ top: 15, right: 10, left: -10, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-slate-100 dark:stroke-slate-700/30" />
-              <XAxis dataKey="ipcNo" stroke="#94a3b8" tick={{ fontSize: 9 }} />
-              <YAxis 
-                stroke="#94a3b8" 
-                tick={{ fontSize: 9 }} 
-                unit={unitMode === 'millions' ? 'M' : ''}
-              />
-              <Tooltip content={<CustomTooltip />} />
-              <Legend verticalAlign="top" height={32} wrapperStyle={{ fontSize: '10px' }} />
-              <Bar 
-                name="Monthly Bill Summary" 
-                dataKey={unitMode === 'millions' ? 'monthlyGrossM' : 'monthlyGross'} 
-                fill="#6366f1" 
-                radius={[4, 4, 0, 0]} 
-              />
-              <Bar 
-                name="Monthly Price Adj." 
-                dataKey={unitMode === 'millions' ? 'monthlyPriceAdjM' : 'monthlyPriceAdj'} 
-                fill="#f59e0b" 
-                radius={[4, 4, 0, 0]} 
-              />
-              <Bar 
-                name="Monthly Certified Net" 
-                dataKey={unitMode === 'millions' ? 'monthlyCertifiedM' : 'monthlyCertified'} 
-                fill="#10b981" 
-                radius={[4, 4, 0, 0]} 
-              />
-            </BarChart>
-          ) : (
-            <AreaChart data={chartData} margin={{ top: 15, right: 10, left: -10, bottom: 5 }}>
-              <defs>
-                <linearGradient id="colorCumGross" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
-                  <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
-                </linearGradient>
-                <linearGradient id="colorCumPriceAdj" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.4}/>
-                  <stop offset="95%" stopColor="#f59e0b" stopOpacity={0}/>
-                </linearGradient>
-                <linearGradient id="colorCumCert" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#10b981" stopOpacity={0.4}/>
-                  <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-slate-100 dark:stroke-slate-700/30" />
-              <XAxis dataKey="ipcNo" stroke="#94a3b8" tick={{ fontSize: 9 }} />
-              <YAxis 
-                stroke="#94a3b8" 
-                tick={{ fontSize: 9 }} 
-                unit={unitMode === 'millions' ? 'M' : ''}
-              />
-              <Tooltip content={<CustomTooltip />} />
-              <Legend verticalAlign="top" height={32} wrapperStyle={{ fontSize: '10px' }} />
-              <Area 
-                name="Cum. Bill Summary" 
-                type="monotone" 
-                dataKey={unitMode === 'millions' ? 'cumGrossM' : 'cumGross'} 
-                stroke="#6366f1" 
-                fillOpacity={1} 
-                fill="url(#colorCumGross)" 
-                strokeWidth={2}
-              />
-              <Area 
-                name="Cum. Price Adjustment" 
-                type="monotone" 
-                dataKey={unitMode === 'millions' ? 'cumPriceAdjM' : 'cumPriceAdj'} 
-                stroke="#f59e0b" 
-                fillOpacity={1} 
-                fill="url(#colorCumPriceAdj)" 
-                strokeWidth={2.5}
-              />
-              <Area 
-                name="Cum. Net Certified" 
-                type="monotone" 
-                dataKey={unitMode === 'millions' ? 'cumCertifiedM' : 'cumCertified'} 
-                stroke="#10b981" 
-                fillOpacity={1} 
-                fill="url(#colorCumCert)" 
-                strokeWidth={3}
-              />
-            </AreaChart>
-          )}
-        </ResponsiveContainer>
+                {/* Cumulative Trend Lines */}
+                <Line 
+                  yAxisId="right" 
+                  name="Cum. Bill Summary" 
+                  type="monotone" 
+                  dataKey={unitMode === 'millions' ? 'cumGrossM' : 'cumGross'} 
+                  stroke="#4f46e5" 
+                  strokeWidth={2} 
+                  strokeDasharray="4 4"
+                  dot={{ r: 3 }}
+                />
+                <Line 
+                  yAxisId="right" 
+                  name="Cum. Price Adjustment" 
+                  type="monotone" 
+                  dataKey={unitMode === 'millions' ? 'cumPriceAdjM' : 'cumPriceAdj'} 
+                  stroke="#d97706" 
+                  strokeWidth={2.5} 
+                  dot={{ r: 4 }}
+                />
+                <Line 
+                  yAxisId="right" 
+                  name="Cum. Net Certified" 
+                  type="monotone" 
+                  dataKey={unitMode === 'millions' ? 'cumCertifiedM' : 'cumCertified'} 
+                  stroke="#10b981" 
+                  strokeWidth={3} 
+                  dot={{ r: 4 }}
+                  activeDot={{ r: 7 }}
+                />
+              </LineChart>
+            ) : viewMode === 'monthly' ? (
+              <BarChart data={chartData} margin={{ top: 15, right: 15, left: 15, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-slate-100 dark:stroke-slate-700/30" />
+                <XAxis dataKey="ipcNo" stroke="#94a3b8" tick={{ fontSize: 9 }} />
+                <YAxis 
+                  stroke="#94a3b8" 
+                  tick={{ fontSize: 9 }} 
+                  width={55}
+                  unit={unitMode === 'millions' ? 'M' : ''}
+                />
+                <Tooltip content={<CustomTooltip />} />
+                <Legend verticalAlign="top" height={32} wrapperStyle={{ fontSize: '10px' }} />
+                <Bar 
+                  name="Monthly Bill Summary" 
+                  dataKey={unitMode === 'millions' ? 'monthlyGrossM' : 'monthlyGross'} 
+                  fill="#6366f1" 
+                  radius={[4, 4, 0, 0]} 
+                />
+                <Bar 
+                  name="Monthly Price Adj." 
+                  dataKey={unitMode === 'millions' ? 'monthlyPriceAdjM' : 'monthlyPriceAdj'} 
+                  fill="#f59e0b" 
+                  radius={[4, 4, 0, 0]} 
+                />
+                <Bar 
+                  name="Monthly Certified Net" 
+                  dataKey={unitMode === 'millions' ? 'monthlyCertifiedM' : 'monthlyCertified'} 
+                  fill="#10b981" 
+                  radius={[4, 4, 0, 0]} 
+                />
+              </BarChart>
+            ) : (
+              <AreaChart data={chartData} margin={{ top: 15, right: 15, left: 15, bottom: 5 }}>
+                <defs>
+                  <linearGradient id="colorCumGross" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                  </linearGradient>
+                  <linearGradient id="colorCumPriceAdj" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.4}/>
+                    <stop offset="95%" stopColor="#f59e0b" stopOpacity={0}/>
+                  </linearGradient>
+                  <linearGradient id="colorCumCert" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.4}/>
+                    <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-slate-100 dark:stroke-slate-700/30" />
+                <XAxis dataKey="ipcNo" stroke="#94a3b8" tick={{ fontSize: 9 }} />
+                <YAxis 
+                  stroke="#94a3b8" 
+                  tick={{ fontSize: 9 }} 
+                  width={55}
+                  unit={unitMode === 'millions' ? 'M' : ''}
+                />
+                <Tooltip content={<CustomTooltip />} />
+                <Legend verticalAlign="top" height={32} wrapperStyle={{ fontSize: '10px' }} />
+                <Area 
+                  name="Cum. Bill Summary" 
+                  type="monotone" 
+                  dataKey={unitMode === 'millions' ? 'cumGrossM' : 'cumGross'} 
+                  stroke="#6366f1" 
+                  fillOpacity={1} 
+                  fill="url(#colorCumGross)" 
+                  strokeWidth={2}
+                />
+                <Area 
+                  name="Cum. Price Adjustment" 
+                  type="monotone" 
+                  dataKey={unitMode === 'millions' ? 'cumPriceAdjM' : 'cumPriceAdj'} 
+                  stroke="#f59e0b" 
+                  fillOpacity={1} 
+                  fill="url(#colorCumPriceAdj)" 
+                  strokeWidth={2.5}
+                />
+                <Area 
+                  name="Cum. Net Certified" 
+                  type="monotone" 
+                  dataKey={unitMode === 'millions' ? 'cumCertifiedM' : 'cumCertified'} 
+                  stroke="#10b981" 
+                  fillOpacity={1} 
+                  fill="url(#colorCumCert)" 
+                  strokeWidth={3}
+                />
+              </AreaChart>
+            )}
+          </ResponsiveContainer>
+        )}
       </div>
 
       {/* Collapsible Data Breakdown Table */}

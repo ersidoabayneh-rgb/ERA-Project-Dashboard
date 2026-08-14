@@ -49,18 +49,18 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory }:
   const monthlyList = p.monthly || [];
   let plannedPct = 100;
   if (monthlyList.length > 0) {
-    const reportingMonths = monthlyList.filter(m => m.actual > 0);
+    const reportingMonths = monthlyList.filter(m => typeof m.actual === 'number' && m.actual > 0);
     const targetIdx = reportingMonths.length > 0 
       ? monthlyList.indexOf(reportingMonths[reportingMonths.length - 1]) 
-      : (monthlyList.findIndex(m => m.originalPlan > 0) !== -1 ? monthlyList.findIndex(m => m.originalPlan > 0) : 0);
+      : (monthlyList.findIndex(m => typeof m.originalPlan === 'number' && m.originalPlan > 0) !== -1 ? monthlyList.findIndex(m => typeof m.originalPlan === 'number' && m.originalPlan > 0) : 0);
     
     if (targetIdx !== -1) {
       const targetMonth = monthlyList[targetIdx];
-      const hasReached100 = monthlyList.slice(0, targetIdx + 1).some(m => m.originalPlan >= 100);
+      const hasReached100 = monthlyList.slice(0, targetIdx + 1).some(m => typeof m.originalPlan === 'number' && m.originalPlan >= 100);
       if (hasReached100) {
         plannedPct = 100;
       } else {
-        plannedPct = targetMonth ? targetMonth.originalPlan : 100;
+        plannedPct = (targetMonth && typeof targetMonth.originalPlan === 'number') ? targetMonth.originalPlan : 100;
       }
     }
   }
@@ -383,9 +383,9 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory }:
 
     // 3. Monthly S-Curve Cumulative Actual vs Header Physical Progress
     const latestMonthlyItem = p.monthly && p.monthly.length > 0 
-      ? [...p.monthly].reverse().find(m => m.actual > 0) 
+      ? [...p.monthly].reverse().find(m => typeof m.actual === 'number' && m.actual > 0) 
       : null;
-    const latestMonthlyActual = latestMonthlyItem ? latestMonthlyItem.actual : null;
+    const latestMonthlyActual = latestMonthlyItem && typeof latestMonthlyItem.actual === 'number' ? latestMonthlyItem.actual : null;
 
     if (latestMonthlyActual !== null && Math.abs(latestMonthlyActual - p.physicalProgress) > 0.5) {
       const diffProg = latestMonthlyActual - p.physicalProgress;
