@@ -45,17 +45,14 @@ export default function BillSummaryPriceAdjChart({
   // Compute monthly and running cumulative data
   let runningCumGross = 0;
   let runningCumPriceAdj = 0;
-  let runningCumCertified = 0;
 
   const chartData = ipcTracker.map((item, index) => {
     const periodName = item.period ? `${item.paymentNo} (${item.period})` : item.paymentNo;
     const gross = item.grossBillEtb || 0;
     const priceAdj = item.priceAdjustmentEtb || 0;
-    const certified = item.certifiedEtb || 0;
 
     runningCumGross += gross;
     runningCumPriceAdj += priceAdj;
-    runningCumCertified += certified;
 
     const priceAdjRatio = gross > 0 ? (priceAdj / gross) * 100 : 0;
 
@@ -67,24 +64,19 @@ export default function BillSummaryPriceAdjChart({
       // Monthly values
       monthlyGross: gross,
       monthlyPriceAdj: priceAdj,
-      monthlyCertified: certified,
       monthlyGrossM: Number((gross / 1_000_000).toFixed(2)),
       monthlyPriceAdjM: Number((priceAdj / 1_000_000).toFixed(2)),
-      monthlyCertifiedM: Number((certified / 1_000_000).toFixed(2)),
       // Cumulative values
       cumGross: runningCumGross,
       cumPriceAdj: runningCumPriceAdj,
-      cumCertified: runningCumCertified,
       cumGrossM: Number((runningCumGross / 1_000_000).toFixed(2)),
       cumPriceAdjM: Number((runningCumPriceAdj / 1_000_000).toFixed(2)),
-      cumCertifiedM: Number((runningCumCertified / 1_000_000).toFixed(2)),
       priceAdjRatio: Number(priceAdjRatio.toFixed(2))
     };
   });
 
   const totalGross = runningCumGross;
   const totalPriceAdj = runningCumPriceAdj;
-  const totalCertified = runningCumCertified;
   const overallPriceAdjRatio = totalGross > 0 ? (totalPriceAdj / totalGross) * 100 : 0;
 
   const formatValue = (val: number) => {
@@ -120,10 +112,6 @@ export default function BillSummaryPriceAdjChart({
             <span>Price Adjustment:</span>
             <span className="font-bold">+{formatValue(dataItem?.monthlyPriceAdj || 0)}</span>
           </div>
-          <div className="flex justify-between items-center text-emerald-400">
-            <span>Certified Net:</span>
-            <span className="font-bold">{formatValue(dataItem?.monthlyCertified || 0)}</span>
-          </div>
 
           <div className="text-[10px] font-sans font-bold text-slate-400 uppercase tracking-wider pt-1 border-t border-slate-800">
             Cumulative To-Date
@@ -135,10 +123,6 @@ export default function BillSummaryPriceAdjChart({
           <div className="flex justify-between items-center text-amber-300">
             <span>Cum. Price Adjustment:</span>
             <span className="font-bold">+{formatValue(dataItem?.cumPriceAdj || 0)}</span>
-          </div>
-          <div className="flex justify-between items-center text-emerald-300">
-            <span>Cum. Certified Net:</span>
-            <span className="font-bold">{formatValue(dataItem?.cumCertified || 0)}</span>
           </div>
         </div>
       </div>
@@ -228,7 +212,7 @@ export default function BillSummaryPriceAdjChart({
       </div>
 
       {/* KPI Cards Strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
         <div className="bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/40 p-3 rounded-xl">
           <span className="text-[10px] font-bold text-indigo-700 dark:text-indigo-300 uppercase tracking-wider block">
             Total Bill Summary
@@ -250,18 +234,6 @@ export default function BillSummaryPriceAdjChart({
           </span>
           <span className="text-[10px] text-amber-600/80 dark:text-amber-400 mt-0.5 block font-semibold">
             {overallPriceAdjRatio.toFixed(2)}% of Bill Summary
-          </span>
-        </div>
-
-        <div className="bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-100 dark:border-emerald-900/40 p-3 rounded-xl">
-          <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 uppercase tracking-wider block">
-            Total Certified Net
-          </span>
-          <span className="text-base font-extrabold font-mono text-emerald-900 dark:text-emerald-200 mt-0.5 block">
-            {formatValue(totalCertified)}
-          </span>
-          <span className="text-[10px] text-emerald-600/80 dark:text-emerald-400 mt-0.5 block">
-            Net IPC certified payout
           </span>
         </div>
 
@@ -303,16 +275,16 @@ export default function BillSummaryPriceAdjChart({
                 <YAxis 
                   yAxisId="right" 
                   orientation="right" 
-                  stroke="#10b981" 
+                  stroke="#f59e0b" 
                   tick={{ fontSize: 9 }} 
                   width={55}
                   unit={unitMode === 'millions' ? 'M' : ''}
-                  label={{ value: unitMode === 'millions' ? 'Cumulative (M ETB)' : 'Cumulative (ETB)', angle: 90, position: 'insideRight', style: { fontSize: '9px', fill: '#10b981' } }}
+                  label={{ value: unitMode === 'millions' ? 'Cumulative (M ETB)' : 'Cumulative (ETB)', angle: 90, position: 'insideRight', style: { fontSize: '9px', fill: '#f59e0b' } }}
                 />
                 <Tooltip content={<CustomTooltip />} />
                 <Legend verticalAlign="top" height={32} wrapperStyle={{ fontSize: '10px' }} />
 
-                {/* Monthly Trend Lines (Replacing former Bar columns) */}
+                {/* Monthly Trend Lines */}
                 <Line 
                   yAxisId="left" 
                   name="Monthly Bill Summary" 
@@ -352,16 +324,6 @@ export default function BillSummaryPriceAdjChart({
                   strokeWidth={2.5} 
                   dot={{ r: 4 }}
                 />
-                <Line 
-                  yAxisId="right" 
-                  name="Cum. Net Certified" 
-                  type="monotone" 
-                  dataKey={unitMode === 'millions' ? 'cumCertifiedM' : 'cumCertified'} 
-                  stroke="#10b981" 
-                  strokeWidth={3} 
-                  dot={{ r: 4 }}
-                  activeDot={{ r: 7 }}
-                />
               </LineChart>
             ) : viewMode === 'monthly' ? (
               <BarChart data={chartData} margin={{ top: 15, right: 15, left: 15, bottom: 5 }}>
@@ -387,12 +349,6 @@ export default function BillSummaryPriceAdjChart({
                   fill="#f59e0b" 
                   radius={[4, 4, 0, 0]} 
                 />
-                <Bar 
-                  name="Monthly Certified Net" 
-                  dataKey={unitMode === 'millions' ? 'monthlyCertifiedM' : 'monthlyCertified'} 
-                  fill="#10b981" 
-                  radius={[4, 4, 0, 0]} 
-                />
               </BarChart>
             ) : (
               <AreaChart data={chartData} margin={{ top: 15, right: 15, left: 15, bottom: 5 }}>
@@ -404,10 +360,6 @@ export default function BillSummaryPriceAdjChart({
                   <linearGradient id="colorCumPriceAdj" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.4}/>
                     <stop offset="95%" stopColor="#f59e0b" stopOpacity={0}/>
-                  </linearGradient>
-                  <linearGradient id="colorCumCert" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.4}/>
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-slate-100 dark:stroke-slate-700/30" />
@@ -438,15 +390,6 @@ export default function BillSummaryPriceAdjChart({
                   fill="url(#colorCumPriceAdj)" 
                   strokeWidth={2.5}
                 />
-                <Area 
-                  name="Cum. Net Certified" 
-                  type="monotone" 
-                  dataKey={unitMode === 'millions' ? 'cumCertifiedM' : 'cumCertified'} 
-                  stroke="#10b981" 
-                  fillOpacity={1} 
-                  fill="url(#colorCumCert)" 
-                  strokeWidth={3}
-                />
               </AreaChart>
             )}
           </ResponsiveContainer>
@@ -471,10 +414,8 @@ export default function BillSummaryPriceAdjChart({
                   <th className="py-2.5 px-3">IPC No. / Period</th>
                   <th className="py-2.5 px-3 text-right">Monthly Bill Summary</th>
                   <th className="py-2.5 px-3 text-right text-amber-700 dark:text-amber-400">Monthly Price Adj.</th>
-                  <th className="py-2.5 px-3 text-right text-emerald-700 dark:text-emerald-400">Monthly Certified</th>
                   <th className="py-2.5 px-3 text-right font-extrabold text-indigo-900 dark:text-indigo-300">Cum. Bill Summary</th>
                   <th className="py-2.5 px-3 text-right font-extrabold text-amber-900 dark:text-amber-300">Cum. Price Adj.</th>
-                  <th className="py-2.5 px-3 text-right font-extrabold text-emerald-900 dark:text-emerald-300">Cum. Certified</th>
                   <th className="py-2.5 px-3 text-center">Price Adj. %</th>
                 </tr>
               </thead>
@@ -490,17 +431,11 @@ export default function BillSummaryPriceAdjChart({
                     <td className="py-2 px-3 text-right font-semibold text-amber-600 dark:text-amber-400">
                       +{formatAccounting(row.monthlyPriceAdj, 'Br.')}
                     </td>
-                    <td className="py-2 px-3 text-right font-semibold text-emerald-600 dark:text-emerald-400">
-                      {formatAccounting(row.monthlyCertified, 'Br.')}
-                    </td>
                     <td className="py-2 px-3 text-right font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50/20 dark:bg-indigo-950/20">
                       {formatAccounting(row.cumGross, 'Br.')}
                     </td>
                     <td className="py-2 px-3 text-right font-bold text-amber-700 dark:text-amber-300 bg-amber-50/20 dark:bg-amber-950/20">
                       +{formatAccounting(row.cumPriceAdj, 'Br.')}
-                    </td>
-                    <td className="py-2 px-3 text-right font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50/20 dark:bg-emerald-950/20">
-                      {formatAccounting(row.cumCertified, 'Br.')}
                     </td>
                     <td className="py-2 px-3 text-center font-sans font-extrabold text-slate-600 dark:text-slate-300">
                       <span className="bg-amber-100/70 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 px-2 py-0.5 rounded-full text-[10px]">
@@ -515,10 +450,8 @@ export default function BillSummaryPriceAdjChart({
                   <td className="py-2.5 px-3 font-sans font-extrabold">Total To-Date</td>
                   <td className="py-2.5 px-3 text-right">{formatAccounting(totalGross, 'Br.')}</td>
                   <td className="py-2.5 px-3 text-right text-amber-600 dark:text-amber-400">+{formatAccounting(totalPriceAdj, 'Br.')}</td>
-                  <td className="py-2.5 px-3 text-right text-emerald-600 dark:text-emerald-400">{formatAccounting(totalCertified, 'Br.')}</td>
                   <td className="py-2.5 px-3 text-right text-indigo-700 dark:text-indigo-300">{formatAccounting(totalGross, 'Br.')}</td>
                   <td className="py-2.5 px-3 text-right text-amber-700 dark:text-amber-300">+{formatAccounting(totalPriceAdj, 'Br.')}</td>
-                  <td className="py-2.5 px-3 text-right text-emerald-700 dark:text-emerald-300">{formatAccounting(totalCertified, 'Br.')}</td>
                   <td className="py-2.5 px-3 text-center font-sans text-amber-700 dark:text-amber-300 font-extrabold">
                     {overallPriceAdjRatio.toFixed(2)}%
                   </td>
