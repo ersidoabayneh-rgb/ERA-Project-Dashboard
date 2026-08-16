@@ -2330,33 +2330,33 @@ export default function DashboardView({
                     name="Original Plan (%)"
                     type="monotone" 
                     dataKey="Original Plan (%)" 
-                    stroke="#eab308" 
-                    strokeDasharray="4 4"
-                    strokeWidth={2}
+                    stroke="#f59e0b" 
+                    strokeDasharray="5 5"
+                    strokeWidth={2.5}
                     dot={false}
                     connectNulls={false}
-                    activeDot={{ r: 4 }}
+                    activeDot={{ r: 5, fill: '#f59e0b' }}
                   />
                   <Line 
                     name="Revised Plan (%)"
                     type="monotone" 
                     dataKey="Revised Plan (%)" 
-                    stroke="#3b82f6" 
+                    stroke="#2563eb" 
                     strokeDasharray="3 3"
-                    strokeWidth={2}
+                    strokeWidth={2.5}
                     dot={false}
                     connectNulls={false}
-                    activeDot={{ r: 4 }}
+                    activeDot={{ r: 5, fill: '#2563eb' }}
                   />
                   <Line 
                     name="To-Date Actual (%)"
                     type="monotone" 
                     dataKey="To-Date Actual (%)" 
                     stroke="#10b981" 
-                    strokeWidth={3} 
-                    dot={{ r: 3 }}
+                    strokeWidth={3.5} 
+                    dot={false}
                     connectNulls={false}
-                    activeDot={{ r: 6 }}
+                    activeDot={{ r: 5, fill: '#10b981' }}
                   />
                 </LineChart>
               </ResponsiveContainer>

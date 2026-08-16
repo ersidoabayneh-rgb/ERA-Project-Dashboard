@@ -5,9 +5,15 @@ import {
   doc, 
   getDocFromServer,
   persistentLocalCache,
-  persistentMultipleTabManager
+  persistentMultipleTabManager,
+  setLogLevel
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
+
+// Suppress non-critical Firestore connection debug noise in sandboxed/iframe preview environments
+try {
+  setLogLevel('error');
+} catch {}
 
 const isValidConfig = Boolean(firebaseConfig && firebaseConfig.apiKey && firebaseConfig.projectId);
 
@@ -28,7 +34,7 @@ const dbId = (firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreData
 function createFirestoreInstance() {
   try {
     const settings = {
-      experimentalAutoDetectLongPolling: true,
+      experimentalForceLongPolling: true,
       localCache: persistentLocalCache({
         tabManager: persistentMultipleTabManager()
       })
@@ -60,6 +66,7 @@ if (typeof window !== 'undefined') {
       msg.includes('permission-denied') ||
       msg.includes('unavailable') ||
       msg.includes('Could not reach Cloud Firestore backend') ||
+      msg.includes('Backend didn\'t respond') ||
       msg.includes('client is offline')
     ) {
       event.preventDefault();
@@ -73,13 +80,19 @@ export const analytics = null;
 export async function testFirestoreConnection() {
   if (!isValidConfig) return;
   try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Connection check timeout')), 3500)
+    );
+    await Promise.race([
+      getDocFromServer(doc(db, 'test', 'connection')),
+      timeoutPromise
+    ]);
     console.log("Firestore connection test passed.");
   } catch (error: any) {
     if (error instanceof Error && error.message.includes('the client is offline')) {
       console.warn("Firestore running in offline mode. Local persistence active.");
     } else {
-      console.log("Firestore connection check finished (operating with resilient offline cache).");
+      console.log("Firestore running with resilient offline-first cache.");
     }
   }
 }
