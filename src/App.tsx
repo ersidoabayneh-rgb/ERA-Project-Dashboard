@@ -1743,8 +1743,17 @@ let isBatchSyncRunning = false;
     }
   };
 
-  const handleAddNewProject = (customId?: string, customName?: string) => {
-    if (currentUserObj?.role !== 'admin' && currentUserObj?.role !== 'editor' && currentUserObj?.username !== 'proj_1781786415663') return;
+  const handleAddNewProject = (customId?: string, customName?: string, customDir?: string, customPmo?: string) => {
+    const isMasterAdmin = currentUserObj?.role === 'admin' || 
+                          currentUserObj?.role === 'master_admin' || 
+                          currentUserObj?.role === 'cpm_admin' ||
+                          currentUserObj?.username === 'proj_1781786415663' ||
+                          (currentUserObj?.username && currentUserObj.username.toLowerCase().includes('ersido'));
+    const isDirAdmin = currentUserObj?.role === 'directorate_admin';
+    const isPmoAdmin = currentUserObj?.role === 'pmo_admin';
+    const isEditor = currentUserObj?.role === 'editor';
+
+    if (!isMasterAdmin && !isDirAdmin && !isPmoAdmin && !isEditor) return;
     
     const np = blankProjectTemplate();
     if (customId) {
@@ -1753,11 +1762,23 @@ let isBatchSyncRunning = false;
     if (customName) {
       np.name = customName.trim();
     }
+
+    if (isDirAdmin) {
+      np.programDirectorate = currentUserObj.assignedDirectorate || customDir || 'Southern';
+      if (customPmo) np.pmo = customPmo;
+    } else if (isPmoAdmin) {
+      np.pmo = currentUserObj.assignedPmo || customPmo || 'PMO 1';
+      np.programDirectorate = currentUserObj.assignedDirectorate || customDir || 'Southern';
+    } else if (customDir || customPmo) {
+      if (customDir) np.programDirectorate = customDir;
+      if (customPmo) np.pmo = customPmo;
+    }
+
     np.lastModifiedAt = new Date().toISOString();
     np.lastModifiedBy = currentUserObj.username;
 
     // Route to approvals if editor
-    if (currentUserObj?.role === 'editor') {
+    if (isEditor && !isMasterAdmin && !isDirAdmin && !isPmoAdmin) {
       const reason = prompt(
         '🔑 NEW PROJECT CREATION: SUBMISSION FOR APPROVAL REQUIRED\n\n' +
         'You are logged in with role "editor".\n' +
@@ -1812,17 +1833,29 @@ let isBatchSyncRunning = false;
   const handleDeleteProject = (id: string) => {
     const isMasterAdmin = currentUserObj?.role === 'admin' || 
                           currentUserObj?.role === 'master_admin' || 
-                          currentUserObj?.role === 'directorate_admin' || 
-                          currentUserObj?.role === 'pmo_admin' || 
+                          currentUserObj?.role === 'cpm_admin' ||
                           currentUserObj?.username === 'proj_1781786415663' ||
                           (currentUserObj?.username && currentUserObj.username.toLowerCase().includes('ersido'));
-    if (!isMasterAdmin) {
-      alert("Access Denied: Only System Administrators with Admin credentials are authorized to delete projects.");
-      return;
-    }
+    const isDirAdmin = currentUserObj?.role === 'directorate_admin';
+    const isPmoAdmin = currentUserObj?.role === 'pmo_admin';
 
     const projToDelete = projects.find(p => p.id === id);
     if (!projToDelete) return;
+
+    if (isDirAdmin) {
+      if ((projToDelete.programDirectorate || 'Southern') !== currentUserObj.assignedDirectorate) {
+        alert("Access Denied: You can only delete projects within your assigned Directorate.");
+        return;
+      }
+    } else if (isPmoAdmin) {
+      if ((projToDelete.pmo || '') !== currentUserObj.assignedPmo) {
+        alert("Access Denied: You can only delete projects within your assigned PMO.");
+        return;
+      }
+    } else if (!isMasterAdmin) {
+      alert("Access Denied: Only System Administrators with Admin credentials are authorized to delete projects.");
+      return;
+    }
 
     // Record deleted ID and filter from offline queue so sync daemon doesn't push it back
     try {
@@ -3516,7 +3549,13 @@ let isBatchSyncRunning = false;
       )}
 
       {/* Admin User Management Modal Overlay */}
-      {showAdmin && (currentUserObj?.role === 'admin' || currentUserObj?.role === 'master_admin' || currentUserObj?.username === 'proj_1781786415663') && currentUserObj?.role !== 'cpm_admin' && (
+      {showAdmin && (
+        currentUserObj?.role === 'admin' || 
+        currentUserObj?.role === 'master_admin' || 
+        currentUserObj?.role === 'directorate_admin' || 
+        currentUserObj?.role === 'pmo_admin' || 
+        currentUserObj?.username === 'proj_1781786415663'
+      ) && currentUserObj?.role !== 'cpm_admin' && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-3">
           <motion.div 
             initial={{ opacity: 0, scale: 0.95 }}
@@ -3524,15 +3563,24 @@ let isBatchSyncRunning = false;
             className="w-full max-w-4xl bg-white dark:bg-slate-800 rounded-3xl border border-slate-150 dark:border-slate-700/60 shadow-xl flex flex-col max-h-[90vh] overflow-hidden"
           >
             <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-750 p-5 pb-3.5 shrink-0">
-              <div className="flex items-center gap-2">
-                <h3 className="font-bold text-sm text-slate-800 dark:text-zinc-100 uppercase tracking-wider">
-                  User Access Administration
-                </h3>
-                {Object.keys(editedUsers).some(un => hasUserChanges(un)) && (
-                  <span className="bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-900 text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full animate-pulse">
-                    Unsaved Changes
-                  </span>
-                )}
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-sm text-slate-800 dark:text-zinc-100 uppercase tracking-wider">
+                    User Access Administration
+                  </h3>
+                  {Object.keys(editedUsers).some(un => hasUserChanges(un)) && (
+                    <span className="bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-900 text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full animate-pulse">
+                      Unsaved Changes
+                    </span>
+                  )}
+                </div>
+                <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-lg border bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800/60">
+                  {currentUserObj?.role === 'directorate_admin'
+                    ? `🏢 Directorate Admin: ${currentUserObj.assignedDirectorate || 'Assigned Directorate'}`
+                    : currentUserObj?.role === 'pmo_admin'
+                    ? `📁 PMO Admin: ${currentUserObj.assignedPmo || 'Assigned PMO'} (${currentUserObj.assignedDirectorate || 'Directorate'})`
+                    : '🛡️ Master System Administration'}
+                </span>
               </div>
               <button 
                 onClick={() => {
@@ -3570,22 +3618,35 @@ let isBatchSyncRunning = false;
                 return;
               }
 
+              const isMasterAdmin = currentUserObj?.role === 'admin' || currentUserObj?.role === 'master_admin' || currentUserObj?.username === 'proj_1781786415663';
+              const isDirAdmin = currentUserObj?.role === 'directorate_admin';
+              const isPmoAdmin = currentUserObj?.role === 'pmo_admin';
+
               const newUser: User = { 
                 username: un, 
                 password: pw, 
                 role: rl, 
-                status: frm.st?.value as 'Active' | 'Inactive' || 'Active', 
+                status: (frm.st?.value as 'Active' | 'Inactive') || 'Active', 
                 accessibleProjects: [],
                 assignedBy: currentUserObj?.username
               };
               
-              if (rl === 'directorate_admin') {
-                 newUser.assignedDirectorate = frm.dir?.value;
-              } else if (rl === 'pmo_admin') {
-                 newUser.assignedPmo = frm.pmo?.value;
+              if (isPmoAdmin) {
+                newUser.assignedDirectorate = currentUserObj?.assignedDirectorate || 'Southern';
+                newUser.assignedPmo = currentUserObj?.assignedPmo || 'PMO 1';
+              } else if (isDirAdmin) {
+                newUser.assignedDirectorate = currentUserObj?.assignedDirectorate || 'Southern';
+                if (frm.pmo?.value) newUser.assignedPmo = frm.pmo.value;
               } else {
-                 if (frm.dir?.value) newUser.assignedDirectorate = frm.dir.value;
-                 if (frm.pmo?.value) newUser.assignedPmo = frm.pmo.value;
+                if (rl === 'directorate_admin') {
+                   newUser.assignedDirectorate = frm.dir?.value;
+                } else if (rl === 'pmo_admin') {
+                   newUser.assignedPmo = frm.pmo?.value;
+                   if (frm.dir?.value) newUser.assignedDirectorate = frm.dir.value;
+                } else {
+                   if (frm.dir?.value) newUser.assignedDirectorate = frm.dir.value;
+                   if (frm.pmo?.value) newUser.assignedPmo = frm.pmo.value;
+                }
               }
 
               saveUsers([...ua, newUser]);
@@ -3634,22 +3695,45 @@ let isBatchSyncRunning = false;
                   <option value="Inactive">🔴 Inactive</option>
                 </select>
               </div>
+
               {newUserRole !== 'master_admin' && newUserRole !== 'admin' && newUserRole !== 'cpm_admin' && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
                   <div className="flex flex-col gap-1">
-                    <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wide">Assign Directorate {newUserRole !== 'directorate_admin' ? '(Optional)' : ''}</label>
-                    <select name="dir" className="bg-white dark:bg-slate-800 text-xs py-1 px-2 border rounded-lg font-semibold">
-                      {newUserRole !== 'directorate_admin' && <option value="">-- None / All --</option>}
-                      {programDirectorates.map(d => <option key={d} value={d}>{d}</option>)}
-                    </select>
-                  </div>
-                  {(newUserRole !== 'directorate_admin') && (
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wide">Assign PMO {newUserRole !== 'pmo_admin' ? '(Optional)' : ''}</label>
-                      <select name="pmo" className="bg-white dark:bg-slate-800 text-xs py-1 px-2 border rounded-lg font-semibold">
-                        {newUserRole !== 'pmo_admin' && <option value="">-- None / All --</option>}
-                        {pmos.map(p => <option key={p} value={p}>{p}</option>)}
+                    <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wide">
+                      Assign Directorate {newUserRole !== 'directorate_admin' ? '(Optional)' : ''}
+                    </label>
+                    {currentUserObj?.role === 'directorate_admin' || currentUserObj?.role === 'pmo_admin' ? (
+                      <input 
+                        type="text" 
+                        disabled 
+                        value={currentUserObj?.assignedDirectorate || 'Southern'} 
+                        className="bg-slate-100 dark:bg-slate-800/60 text-xs py-1 px-2 border rounded-lg font-semibold text-slate-600 dark:text-slate-400 cursor-not-allowed"
+                      />
+                    ) : (
+                      <select name="dir" className="bg-white dark:bg-slate-800 text-xs py-1 px-2 border rounded-lg font-semibold">
+                        {newUserRole !== 'directorate_admin' && <option value="">-- None / All --</option>}
+                        {programDirectorates.map(d => <option key={d} value={d}>{d}</option>)}
                       </select>
+                    )}
+                  </div>
+                  {newUserRole !== 'directorate_admin' && (
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wide">
+                        Assign PMO {newUserRole !== 'pmo_admin' ? '(Optional)' : ''}
+                      </label>
+                      {currentUserObj?.role === 'pmo_admin' ? (
+                        <input 
+                          type="text" 
+                          disabled 
+                          value={currentUserObj?.assignedPmo || 'PMO 1'} 
+                          className="bg-slate-100 dark:bg-slate-800/60 text-xs py-1 px-2 border rounded-lg font-semibold text-slate-600 dark:text-slate-400 cursor-not-allowed"
+                        />
+                      ) : (
+                        <select name="pmo" className="bg-white dark:bg-slate-800 text-xs py-1 px-2 border rounded-lg font-semibold">
+                          {newUserRole !== 'pmo_admin' && <option value="">-- None / All --</option>}
+                          {pmos.map(p => <option key={p} value={p}>{p}</option>)}
+                        </select>
+                      )}
                     </div>
                   )}
                 </div>
@@ -3705,10 +3789,39 @@ let isBatchSyncRunning = false;
 
               {(() => {
                 const isMasterAdmin = currentUserObj?.role === 'admin' || currentUserObj?.role === 'master_admin' || currentUserObj?.username === 'proj_1781786415663';
+                const isDirAdmin = currentUserObj?.role === 'directorate_admin';
+                const isPmoAdmin = currentUserObj?.role === 'pmo_admin';
+
                 const filteredUsers = getUsers().filter(u => {
                   if (isMasterAdmin) return true;
+                  
+                  // Directorate Admin can manage users assigned to their Directorate, created by them, or unassigned pending approvals
+                  if (isDirAdmin) {
+                    if (u.role === 'master_admin' || u.role === 'admin' || u.role === 'cpm_admin') {
+                      return u.username === currentUserObj?.username;
+                    }
+                    if (u.assignedDirectorate === currentUserObj?.assignedDirectorate) return true;
+                    if (u.assignedBy === currentUserObj?.username) return true;
+                    if (u.username === currentUserObj?.username) return true;
+                    if (u.isPendingApproval && (!u.assignedDirectorate || u.assignedDirectorate === currentUserObj?.assignedDirectorate)) return true;
+                    return false;
+                  }
+
+                  // PMO Admin can manage users assigned to their PMO, created by them, or with project access in that PMO
+                  if (isPmoAdmin) {
+                    if (u.role === 'master_admin' || u.role === 'admin' || u.role === 'directorate_admin' || u.role === 'cpm_admin') {
+                      return u.username === currentUserObj?.username;
+                    }
+                    if (u.assignedPmo === currentUserObj?.assignedPmo) return true;
+                    if (u.assignedBy === currentUserObj?.username) return true;
+                    if (u.username === currentUserObj?.username) return true;
+                    if (u.isPendingApproval && (!u.assignedPmo || u.assignedPmo === currentUserObj?.assignedPmo)) return true;
+                    return false;
+                  }
+
                   return u.assignedBy === currentUserObj?.username || u.username === currentUserObj?.username;
                 });
+
                 const adminUsersList = deduplicateUsers(filteredUsers);
                 const currentSelectedUser = adminUsersList.find(u => u.username === selectedAdminUser) || adminUsersList[0] || null;
 
@@ -3880,6 +3993,13 @@ let isBatchSyncRunning = false;
 
                                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-2xs max-h-52 overflow-y-auto pr-1">
                                     {projects.filter(proj => {
+                                      // Restrict visible projects to admin's scope
+                                      if (isDirAdmin) {
+                                        return (proj.programDirectorate || 'Southern') === currentUserObj?.assignedDirectorate;
+                                      }
+                                      if (isPmoAdmin) {
+                                        return (proj.pmo || '') === currentUserObj?.assignedPmo;
+                                      }
                                       if (uDraft.role === 'admin' || uDraft.role === 'master_admin') return true;
                                       if (uDraft.assignedDirectorate && uDraft.assignedPmo) {
                                          return (proj.programDirectorate || 'Southern') === uDraft.assignedDirectorate && (proj.pmo || '') === uDraft.assignedPmo;
@@ -3891,10 +4011,10 @@ let isBatchSyncRunning = false;
                                       return true;
                                     }).map((proj) => {
                                       const isMaster = uDraft.role === 'admin' || uDraft.role === 'master_admin';
-                                      const isDirAdmin = uDraft.role === 'directorate_admin' && (proj.programDirectorate || 'Southern') === uDraft.assignedDirectorate;
-                                      const isPmoAdmin = uDraft.role === 'pmo_admin' && (proj.pmo || '') === uDraft.assignedPmo;
+                                      const isDirAdminUser = uDraft.role === 'directorate_admin' && (proj.programDirectorate || 'Southern') === uDraft.assignedDirectorate;
+                                      const isPmoAdminUser = uDraft.role === 'pmo_admin' && (proj.pmo || '') === uDraft.assignedPmo;
 
-                                      const hasAutoAccess = isMaster || isDirAdmin || isPmoAdmin;
+                                      const hasAutoAccess = isMaster || isDirAdminUser || isPmoAdminUser;
                                       const accessible = hasAutoAccess || (uDraft.accessibleProjects || []).includes(proj.id);
                                       const originalAccessible = (u.accessibleProjects || []).includes(proj.id);
                                       const isChanged = !hasAutoAccess && (accessible !== originalAccessible);
@@ -4150,32 +4270,50 @@ let isBatchSyncRunning = false;
                                       {uDraft.role !== 'pmo_admin' && (
                                         <div>
                                           <label className="text-[10px] text-slate-400 block font-bold mb-1">Directorate Scope:</label>
-                                          <select 
-                                            value={uDraft.assignedDirectorate || ''}
-                                            onChange={(e) => updateUserDraft(u.username, 'assignedDirectorate', e.target.value || undefined)}
-                                            className={`bg-white dark:bg-slate-800 text-[10px] py-1.5 px-2 border rounded-lg font-bold w-full outline-none ${
-                                              uDraft.assignedDirectorate !== u.assignedDirectorate ? 'border-amber-400 ring-1 ring-amber-300 dark:ring-amber-900 text-amber-600 dark:text-amber-400 font-extrabold' : 'border-slate-200 dark:border-slate-700 text-slate-800 dark:text-zinc-100'
-                                            }`}
-                                          >
-                                            <option value="">-- None / All --</option>
-                                            {programDirectorates.map(d => <option key={d} value={d}>{d}</option>)}
-                                          </select>
+                                          {isDirAdmin || isPmoAdmin ? (
+                                            <input 
+                                              type="text" 
+                                              disabled 
+                                              value={currentUserObj?.assignedDirectorate || uDraft.assignedDirectorate || 'Southern'} 
+                                              className="bg-slate-100 dark:bg-slate-800/60 text-[10px] py-1.5 px-2 border border-slate-200 dark:border-slate-700 rounded-lg font-bold w-full text-slate-600 dark:text-slate-400 cursor-not-allowed"
+                                            />
+                                          ) : (
+                                            <select 
+                                              value={uDraft.assignedDirectorate || ''}
+                                              onChange={(e) => updateUserDraft(u.username, 'assignedDirectorate', e.target.value || undefined)}
+                                              className={`bg-white dark:bg-slate-800 text-[10px] py-1.5 px-2 border rounded-lg font-bold w-full outline-none ${
+                                                uDraft.assignedDirectorate !== u.assignedDirectorate ? 'border-amber-400 ring-1 ring-amber-300 dark:ring-amber-900 text-amber-600 dark:text-amber-400 font-extrabold' : 'border-slate-200 dark:border-slate-700 text-slate-800 dark:text-zinc-100'
+                                              }`}
+                                            >
+                                              <option value="">-- None / All --</option>
+                                              {programDirectorates.map(d => <option key={d} value={d}>{d}</option>)}
+                                            </select>
+                                          )}
                                         </div>
                                       )}
                                       
                                       {uDraft.role !== 'directorate_admin' && (
                                         <div>
                                           <label className="text-[10px] text-slate-400 block font-bold mb-1">PMO Group Scope:</label>
-                                          <select 
-                                            value={uDraft.assignedPmo || ''}
-                                            onChange={(e) => updateUserDraft(u.username, 'assignedPmo', e.target.value || undefined)}
-                                            className={`bg-white dark:bg-slate-800 text-[10px] py-1.5 px-2 border rounded-lg font-bold w-full outline-none ${
-                                              uDraft.assignedPmo !== u.assignedPmo ? 'border-amber-400 ring-1 ring-amber-300 dark:ring-amber-900 text-amber-600 dark:text-amber-400 font-extrabold' : 'border-slate-200 dark:border-slate-700 text-slate-800 dark:text-zinc-100'
-                                            }`}
-                                          >
-                                            <option value="">-- None / All --</option>
-                                            {pmos.map(p => <option key={p} value={p}>{p}</option>)}
-                                          </select>
+                                          {isPmoAdmin ? (
+                                            <input 
+                                              type="text" 
+                                              disabled 
+                                              value={currentUserObj?.assignedPmo || uDraft.assignedPmo || 'PMO 1'} 
+                                              className="bg-slate-100 dark:bg-slate-800/60 text-[10px] py-1.5 px-2 border border-slate-200 dark:border-slate-700 rounded-lg font-bold w-full text-slate-600 dark:text-slate-400 cursor-not-allowed"
+                                            />
+                                          ) : (
+                                            <select 
+                                              value={uDraft.assignedPmo || ''}
+                                              onChange={(e) => updateUserDraft(u.username, 'assignedPmo', e.target.value || undefined)}
+                                              className={`bg-white dark:bg-slate-800 text-[10px] py-1.5 px-2 border rounded-lg font-bold w-full outline-none ${
+                                                uDraft.assignedPmo !== u.assignedPmo ? 'border-amber-400 ring-1 ring-amber-300 dark:ring-amber-900 text-amber-600 dark:text-amber-400 font-extrabold' : 'border-slate-200 dark:border-slate-700 text-slate-800 dark:text-zinc-100'
+                                              }`}
+                                            >
+                                              <option value="">-- None / All --</option>
+                                              {pmos.map(p => <option key={p} value={p}>{p}</option>)}
+                                            </select>
+                                          )}
                                         </div>
                                       )}
                                     </div>
@@ -4184,7 +4322,7 @@ let isBatchSyncRunning = false;
                               </div>
                             )}
 
-                            {/* TAB 3: SECURITY & ADMIN APPROVAL GOVERNANCE */}
+                            {/* TAB 4: SECURITY & ADMIN APPROVAL GOVERNANCE */}
                             {selectedAdminTab === 'activities' && (
                               <div className="space-y-3 animate-fade-in">
                                 <div className="bg-white dark:bg-slate-850 border border-slate-150 dark:border-slate-750 p-3.5 rounded-2xl space-y-3.5">
@@ -4280,209 +4418,236 @@ let isBatchSyncRunning = false;
 
             {/* PMOs and Program Directorates management */}
             <div className="border-t border-slate-150 dark:border-slate-700/60 pt-4 space-y-4">
-              <h4 className="text-xs font-extrabold text-slate-800 dark:text-zinc-100 uppercase tracking-wider block flex items-center gap-1.5">
-                🏢 Program Directorates & PMO Management
-              </h4>
+              <div className="flex justify-between items-center">
+                <h4 className="text-xs font-extrabold text-slate-800 dark:text-zinc-100 uppercase tracking-wider flex items-center gap-1.5">
+                  🏢 Program Directorates & PMO Management
+                </h4>
+                {currentUserObj?.role === 'pmo_admin' && (
+                  <span className="text-[10px] text-slate-450 dark:text-slate-400 italic">
+                    Assigned PMO: <strong>{currentUserObj?.assignedPmo}</strong> ({currentUserObj?.assignedDirectorate})
+                  </span>
+                )}
+              </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Program Directorates */}
-                <div className="bg-slate-50 dark:bg-slate-900/40 p-3 rounded-2xl border border-slate-150 dark:border-slate-700/60 space-y-2.5">
-                  <span className="text-2xs font-extrabold text-slate-400 uppercase tracking-wider block">Program Directorates</span>
-                  <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl">
-                    {programDirectorates.map(pd => {
-                      const isEditing = editingPd === pd;
-                      return isEditing ? (
-                        <div key={pd} className="inline-flex items-center gap-1.5 bg-indigo-50 dark:bg-indigo-950/40 px-2 py-0.5 rounded-lg text-2xs font-bold border border-indigo-200 dark:border-indigo-900">
-                          <input
-                            type="text"
-                            value={editingPdVal}
-                            onChange={(e) => setEditingPdVal(e.target.value)}
-                            className="bg-white dark:bg-slate-800 border border-indigo-300 dark:border-indigo-700 rounded px-1 py-0.5 text-2xs font-bold outline-none max-w-[90px] text-slate-850 dark:text-zinc-100"
-                            autoFocus
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
+              {currentUserObj?.role === 'pmo_admin' ? (
+                <div className="p-3.5 bg-slate-50 dark:bg-slate-900/40 rounded-2xl border border-slate-200 dark:border-slate-700 text-xs text-slate-600 dark:text-slate-400">
+                  <p>
+                    You are administering <strong>{currentUserObj?.assignedPmo}</strong> under the <strong>{currentUserObj?.assignedDirectorate}</strong> Directorate. Project creation, user management, and contract credentials under your PMO can be configured above. Directorate architecture is administered by Directorate Admins and Master Admins.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Program Directorates */}
+                  <div className="bg-slate-50 dark:bg-slate-900/40 p-3 rounded-2xl border border-slate-150 dark:border-slate-700/60 space-y-2.5">
+                    <span className="text-2xs font-extrabold text-slate-400 uppercase tracking-wider block">
+                      Program Directorates {currentUserObj?.role === 'directorate_admin' ? '(Read Only)' : ''}
+                    </span>
+                    <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl">
+                      {programDirectorates.map(pd => {
+                        const isEditing = editingPd === pd;
+                        const canManageDir = currentUserObj?.role === 'admin' || currentUserObj?.role === 'master_admin' || currentUserObj?.username === 'proj_1781786415663';
+
+                        return isEditing && canManageDir ? (
+                          <div key={pd} className="inline-flex items-center gap-1.5 bg-indigo-50 dark:bg-indigo-950/40 px-2 py-0.5 rounded-lg text-2xs font-bold border border-indigo-200 dark:border-indigo-900">
+                            <input
+                              type="text"
+                              value={editingPdVal}
+                              onChange={(e) => setEditingPdVal(e.target.value)}
+                              className="bg-white dark:bg-slate-800 border border-indigo-300 dark:border-indigo-700 rounded px-1 py-0.5 text-2xs font-bold outline-none max-w-[90px] text-slate-850 dark:text-zinc-100"
+                              autoFocus
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  handleEditDirectorate(pd, editingPdVal);
+                                  setEditingPd(null);
+                                } else if (e.key === 'Escape') {
+                                  setEditingPd(null);
+                                }
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
                                 handleEditDirectorate(pd, editingPdVal);
                                 setEditingPd(null);
-                              } else if (e.key === 'Escape') {
-                                setEditingPd(null);
-                              }
-                            }}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => {
-                              handleEditDirectorate(pd, editingPdVal);
-                              setEditingPd(null);
-                            }}
-                            className="text-emerald-600 hover:text-emerald-800 font-extrabold text-xs cursor-pointer"
-                            title="Save"
-                          >
-                            ✓
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setEditingPd(null)}
-                            className="text-rose-500 hover:text-rose-700 font-extrabold text-xs cursor-pointer"
-                            title="Cancel"
-                          >
-                            ×
-                          </button>
-                        </div>
-                      ) : (
-                        <span key={pd} className="inline-flex items-center gap-1.5 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-400 px-2 py-1 rounded-lg text-2xs font-bold border border-indigo-150 dark:border-indigo-900/50">
-                          <span>{pd}</span>
-                          <div className="flex items-center gap-1 ml-0.5 border-l border-indigo-200 dark:border-indigo-900 pl-1.5 shrink-0">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEditingPd(pd);
-                                setEditingPdVal(pd);
                               }}
-                              className="text-blue-500 hover:text-blue-750 font-bold text-2xs cursor-pointer"
-                              title="Edit Directorate Name"
+                              className="text-emerald-600 hover:text-emerald-800 font-extrabold text-xs cursor-pointer"
+                              title="Save"
                             >
-                              ✏️
+                              ✓
                             </button>
                             <button
                               type="button"
-                              onClick={() => {
-                                if (programDirectorates.length <= 1) {
-                                  alert("Cannot delete the last directorate.");
-                                  return;
-                                }
-                                handleDeleteDirectorate(pd);
-                              }}
-                              className="text-rose-500 hover:text-rose-700 font-bold text-xs cursor-pointer"
-                              title="Delete Directorate"
+                              onClick={() => setEditingPd(null)}
+                              className="text-rose-500 hover:text-rose-700 font-extrabold text-xs cursor-pointer"
+                              title="Cancel"
                             >
                               ×
                             </button>
                           </div>
-                        </span>
-                      );
-                    })}
+                        ) : (
+                          <span key={pd} className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-2xs font-bold border ${
+                            currentUserObj?.assignedDirectorate === pd
+                              ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                              : 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-400 border-indigo-150 dark:border-indigo-900/50'
+                          }`}>
+                            <span>{pd}</span>
+                            {canManageDir && (
+                              <div className="flex items-center gap-1 ml-0.5 border-l border-indigo-200 dark:border-indigo-900 pl-1.5 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingPd(pd);
+                                    setEditingPdVal(pd);
+                                  }}
+                                  className="text-blue-500 hover:text-blue-750 font-bold text-2xs cursor-pointer"
+                                  title="Edit Directorate Name"
+                                >
+                                  ✏️
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (programDirectorates.length <= 1) {
+                                      alert("Cannot delete the last directorate.");
+                                      return;
+                                    }
+                                    handleDeleteDirectorate(pd);
+                                  }}
+                                  className="text-rose-500 hover:text-rose-700 font-bold text-xs cursor-pointer"
+                                  title="Delete Directorate"
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            )}
+                          </span>
+                        );
+                      })}
+                    </div>
+
+                    {(currentUserObj?.role === 'admin' || currentUserObj?.role === 'master_admin' || currentUserObj?.username === 'proj_1781786415663') && (
+                      <form onSubmit={(e) => {
+                        e.preventDefault();
+                        const frm = e.target as any;
+                        const val = frm.newPd.value.trim();
+                        if (!val) return;
+                        handleAddDirectorate(val);
+                        frm.reset();
+                      }} className="flex gap-1.5">
+                        <input
+                          required
+                          name="newPd"
+                          type="text"
+                          placeholder="New Directorate"
+                          className="bg-white dark:bg-slate-800 text-xs px-2.5 py-1 border border-slate-200 dark:border-slate-700 rounded-lg flex-1 text-slate-850 dark:text-zinc-100 outline-none focus:border-indigo-500"
+                        />
+                        <button type="submit" className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-3 text-xs font-bold uppercase shrink-0">
+                          Add
+                        </button>
+                      </form>
+                    )}
                   </div>
 
-                  <form onSubmit={(e) => {
-                    e.preventDefault();
-                    const frm = e.target as any;
-                    const val = frm.newPd.value.trim();
-                    if (!val) return;
-                    handleAddDirectorate(val);
-                    frm.reset();
-                  }} className="flex gap-1.5">
-                    <input
-                      required
-                      name="newPd"
-                      type="text"
-                      placeholder="New Directorate"
-                      className="bg-white dark:bg-slate-800 text-xs px-2.5 py-1 border border-slate-200 dark:border-slate-700 rounded-lg flex-1 text-slate-850 dark:text-zinc-100 outline-none focus:border-indigo-500"
-                    />
-                    <button type="submit" className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-3 text-xs font-bold uppercase shrink-0">
-                      Add
-                    </button>
-                  </form>
-                </div>
-
-                {/* PMO */}
-                <div className="bg-slate-50 dark:bg-slate-900/40 p-3 rounded-2xl border border-slate-150 dark:border-slate-700/60 space-y-2.5">
-                  <span className="text-2xs font-extrabold text-slate-400 uppercase tracking-wider block">PMO Groupings</span>
-                  <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl">
-                    {pmos.map(p => {
-                      const isEditing = editingPmo === p;
-                      return isEditing ? (
-                        <div key={p} className="inline-flex items-center gap-1.5 bg-purple-50 dark:bg-purple-950/40 px-2 py-0.5 rounded-lg text-2xs font-bold border border-purple-200 dark:border-purple-900">
-                          <input
-                            type="text"
-                            value={editingPmoVal}
-                            onChange={(e) => setEditingPmoVal(e.target.value)}
-                            className="bg-white dark:bg-slate-800 border border-purple-300 dark:border-purple-700 rounded px-1 py-0.5 text-2xs font-bold outline-none max-w-[90px] text-slate-850 dark:text-zinc-100"
-                            autoFocus
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
+                  {/* PMO */}
+                  <div className="bg-slate-50 dark:bg-slate-900/40 p-3 rounded-2xl border border-slate-150 dark:border-slate-700/60 space-y-2.5">
+                    <span className="text-2xs font-extrabold text-slate-400 uppercase tracking-wider block">PMO Groupings</span>
+                    <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl">
+                      {pmos.map(p => {
+                        const isEditing = editingPmo === p;
+                        return isEditing ? (
+                          <div key={p} className="inline-flex items-center gap-1.5 bg-purple-50 dark:bg-purple-950/40 px-2 py-0.5 rounded-lg text-2xs font-bold border border-purple-200 dark:border-purple-900">
+                            <input
+                              type="text"
+                              value={editingPmoVal}
+                              onChange={(e) => setEditingPmoVal(e.target.value)}
+                              className="bg-white dark:bg-slate-800 border border-purple-300 dark:border-purple-700 rounded px-1 py-0.5 text-2xs font-bold outline-none max-w-[90px] text-slate-850 dark:text-zinc-100"
+                              autoFocus
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  handleEditPmo(p, editingPmoVal);
+                                  setEditingPmo(null);
+                                } else if (e.key === 'Escape') {
+                                  setEditingPmo(null);
+                                }
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
                                 handleEditPmo(p, editingPmoVal);
                                 setEditingPmo(null);
-                              } else if (e.key === 'Escape') {
-                                setEditingPmo(null);
-                              }
-                            }}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => {
-                              handleEditPmo(p, editingPmoVal);
-                              setEditingPmo(null);
-                            }}
-                            className="text-emerald-600 hover:text-emerald-800 font-extrabold text-xs cursor-pointer"
-                            title="Save"
-                          >
-                            ✓
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setEditingPmo(null)}
-                            className="text-rose-500 hover:text-rose-700 font-extrabold text-xs cursor-pointer"
-                            title="Cancel"
-                          >
-                            ×
-                          </button>
-                        </div>
-                      ) : (
-                        <span key={p} className="inline-flex items-center gap-1.5 bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-400 px-2 py-1 rounded-lg text-2xs font-bold border border-purple-150 dark:border-purple-900/50">
-                          <span>{p}</span>
-                          <div className="flex items-center gap-1 ml-0.5 border-l border-purple-200 dark:border-purple-900 pl-1.5 shrink-0">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEditingPmo(p);
-                                setEditingPmoVal(p);
                               }}
-                              className="text-blue-500 hover:text-blue-750 font-bold text-2xs cursor-pointer"
-                              title="Edit PMO Name"
+                              className="text-emerald-600 hover:text-emerald-800 font-extrabold text-xs cursor-pointer"
+                              title="Save"
                             >
-                              ✏️
+                              ✓
                             </button>
                             <button
                               type="button"
-                              onClick={() => {
-                                if (pmos.length <= 1) {
-                                  alert("Cannot delete the last PMO.");
-                                  return;
-                                }
-                                handleDeletePmo(p);
-                              }}
-                              className="text-rose-500 hover:text-rose-700 font-bold text-xs cursor-pointer"
-                              title="Delete PMO"
+                              onClick={() => setEditingPmo(null)}
+                              className="text-rose-500 hover:text-rose-700 font-extrabold text-xs cursor-pointer"
+                              title="Cancel"
                             >
                               ×
                             </button>
                           </div>
-                        </span>
-                      );
-                    })}
-                  </div>
+                        ) : (
+                          <span key={p} className="inline-flex items-center gap-1.5 bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-400 px-2 py-1 rounded-lg text-2xs font-bold border border-purple-150 dark:border-purple-900/50">
+                            <span>{p}</span>
+                            <div className="flex items-center gap-1 ml-0.5 border-l border-purple-200 dark:border-purple-900 pl-1.5 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingPmo(p);
+                                  setEditingPmoVal(p);
+                                }}
+                                className="text-blue-500 hover:text-blue-750 font-bold text-2xs cursor-pointer"
+                                title="Edit PMO Name"
+                              >
+                                ✏️
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (pmos.length <= 1) {
+                                    alert("Cannot delete the last PMO.");
+                                    return;
+                                  }
+                                  handleDeletePmo(p);
+                                }}
+                                className="text-rose-500 hover:text-rose-700 font-bold text-xs cursor-pointer"
+                                title="Delete PMO"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          </span>
+                        );
+                      })}
+                    </div>
 
-                  <form onSubmit={(e) => {
-                    e.preventDefault();
-                    const frm = e.target as any;
-                    const val = frm.newPmo.value.trim();
-                    if (!val) return;
-                    handleAddPmo(val);
-                    frm.reset();
-                  }} className="flex gap-1.5">
-                    <input
-                      required
-                      name="newPmo"
-                      type="text"
-                      placeholder="New PMO"
-                      className="bg-white dark:bg-slate-800 text-xs px-2.5 py-1 border border-slate-200 dark:border-slate-700 rounded-lg flex-1 text-slate-850 dark:text-zinc-100 outline-none focus:border-purple-500"
-                    />
-                    <button type="submit" className="bg-purple-600 hover:bg-purple-700 text-white rounded-lg px-3 text-xs font-bold uppercase shrink-0">
-                      Add
-                    </button>
-                  </form>
+                    <form onSubmit={(e) => {
+                      e.preventDefault();
+                      const frm = e.target as any;
+                      const val = frm.newPmo.value.trim();
+                      if (!val) return;
+                      handleAddPmo(val);
+                      frm.reset();
+                    }} className="flex gap-1.5">
+                      <input
+                        required
+                        name="newPmo"
+                        type="text"
+                        placeholder="New PMO"
+                        className="bg-white dark:bg-slate-800 text-xs px-2.5 py-1 border border-slate-200 dark:border-slate-700 rounded-lg flex-1 text-slate-850 dark:text-zinc-100 outline-none focus:border-purple-500"
+                      />
+                      <button type="submit" className="bg-purple-600 hover:bg-purple-700 text-white rounded-lg px-3 text-xs font-bold uppercase shrink-0">
+                        Add
+                      </button>
+                    </form>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
             {/* Firebase Cloud Firestore Live Sync Manager */}

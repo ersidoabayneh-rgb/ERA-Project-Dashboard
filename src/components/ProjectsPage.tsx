@@ -40,7 +40,7 @@ interface ProjectsPageProps {
   currentUserObj: User;
   pendingApprovals: ApprovalRequest[];
   onSelectProject: (id: string) => void;
-  onAddNewProject: (customId?: string, customName?: string) => void;
+  onAddNewProject: (customId?: string, customName?: string, customDir?: string, customPmo?: string) => void;
   onDeleteProject: (id: string) => void;
   onUpdateProjectStatus?: (id: string, status: ProjectLifecycleStatus) => void;
   onLogout: () => void;
@@ -97,12 +97,67 @@ export default function ProjectsPage({
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [newProjectId, setNewProjectId] = useState('');
   const [newProjectName, setNewProjectName] = useState('New Project');
+  const [newProjectDirectorate, setNewProjectDirectorate] = useState('Southern');
+  const [newProjectPmo, setNewProjectPmo] = useState('PMO 1');
   const [createError, setCreateError] = useState('');
+
+  const isMasterAdmin = currentUserObj?.role === 'admin' || 
+                        currentUserObj?.role === 'master_admin' || 
+                        currentUserObj?.role === 'cpm_admin' ||
+                        currentUserObj?.username === 'proj_1781786415663' ||
+                        (currentUserObj?.username && currentUserObj.username.toLowerCase().includes('ersido'));
+  const isDirAdmin = currentUserObj?.role === 'directorate_admin';
+  const isPmoAdmin = currentUserObj?.role === 'pmo_admin';
+
+  const canManageStatus = (p: Project) => {
+    if (isMasterAdmin) return true;
+    if (isDirAdmin) return (p.programDirectorate || 'Southern') === currentUserObj.assignedDirectorate;
+    if (isPmoAdmin) return (p.pmo || '') === currentUserObj.assignedPmo;
+    return false;
+  };
+
+  const canDeleteProject = (p: Project) => {
+    if (isMasterAdmin) return true;
+    if (isDirAdmin) return (p.programDirectorate || 'Southern') === currentUserObj.assignedDirectorate;
+    if (isPmoAdmin) return (p.pmo || '') === currentUserObj.assignedPmo;
+    return false;
+  };
+
+  const canCreateProject = isMasterAdmin || isDirAdmin || isPmoAdmin || currentUserObj?.role === 'editor';
+
+  const canAccessUserAdmin = (
+    isMasterAdmin || 
+    isDirAdmin || 
+    isPmoAdmin || 
+    currentUserObj?.username === 'proj_1781786415663'
+  ) && currentUserObj?.role !== 'cpm_admin';
+
+  const pendingUserSignupsCount = allUsers ? allUsers.filter(u => {
+    if (!u.isPendingApproval) return false;
+    if (isMasterAdmin) return true;
+    if (isDirAdmin) {
+      return !u.assignedDirectorate || u.assignedDirectorate === currentUserObj.assignedDirectorate;
+    }
+    if (isPmoAdmin) {
+      return !u.assignedPmo || u.assignedPmo === currentUserObj.assignedPmo;
+    }
+    return false;
+  }).length : 0;
 
   const handleOpenCreateModal = () => {
     const proposedId = 'proj_' + Date.now();
     setNewProjectId(proposedId);
     setNewProjectName('New Project');
+    if (isDirAdmin) {
+      setNewProjectDirectorate(currentUserObj.assignedDirectorate || 'Southern');
+      setNewProjectPmo(pmos[0] || 'PMO 1');
+    } else if (isPmoAdmin) {
+      setNewProjectDirectorate(currentUserObj.assignedDirectorate || 'Southern');
+      setNewProjectPmo(currentUserObj.assignedPmo || 'PMO 1');
+    } else {
+      setNewProjectDirectorate(programDirectorates[0] || 'Southern');
+      setNewProjectPmo(pmos[0] || 'PMO 1');
+    }
     setCreateError('');
     setIsCreateModalOpen(true);
   };
@@ -127,34 +182,21 @@ export default function ProjectsPage({
       setCreateError('Project Name cannot be empty.');
       return;
     }
-    onAddNewProject(trimmedId, trimmedName);
+
+    const assignedDir = isDirAdmin ? (currentUserObj.assignedDirectorate || newProjectDirectorate) : newProjectDirectorate;
+    const assignedPmoVal = isPmoAdmin ? (currentUserObj.assignedPmo || newProjectPmo) : newProjectPmo;
+
+    onAddNewProject(trimmedId, trimmedName, assignedDir, assignedPmoVal);
     setIsCreateModalOpen(false);
   };
-
-  const isMasterAdmin = currentUserObj?.role === 'admin' || 
-                        currentUserObj?.role === 'master_admin' || 
-                        currentUserObj?.role === 'cpm_admin' ||
-                        currentUserObj?.role === 'directorate_admin' || 
-                        currentUserObj?.role === 'pmo_admin' || 
-                        currentUserObj?.username === 'proj_1781786415663' ||
-                        (currentUserObj?.username && currentUserObj.username.toLowerCase().includes('ersido'));
-  const canManageStatus = isMasterAdmin;
-  const canAccessUserAdmin = (currentUserObj?.role === 'admin' || 
-                              currentUserObj?.role === 'master_admin' || 
-                              currentUserObj?.role === 'directorate_admin' || 
-                              currentUserObj?.role === 'pmo_admin' || 
-                              currentUserObj?.username === 'proj_1781786415663') && 
-                             currentUserObj?.role !== 'cpm_admin';
-
-  const pendingUserSignupsCount = allUsers ? allUsers.filter(u => u.isPendingApproval).length : 0;
   
   // Filter projects based on permissions - all users share the single database to work together
   const isAccessible = (p: Project) => {
     if (isMasterAdmin) return true;
-    if (currentUserObj.role === 'directorate_admin') {
+    if (isDirAdmin) {
       return (p.programDirectorate || 'Southern') === currentUserObj.assignedDirectorate;
     }
-    if (currentUserObj.role === 'pmo_admin') {
+    if (isPmoAdmin) {
       return (p.pmo || '') === currentUserObj.assignedPmo;
     }
     
@@ -162,7 +204,7 @@ export default function ProjectsPage({
     return allowed.includes(p.id);
   };
   
-  const hasNoProjects = !isMasterAdmin && currentUserObj.role !== 'directorate_admin' && currentUserObj.role !== 'pmo_admin' && (currentUserObj.accessibleProjects || []).length === 0;
+  const hasNoProjects = !isMasterAdmin && !isDirAdmin && !isPmoAdmin && (currentUserObj.accessibleProjects || []).length === 0;
 
   const filteredProjects = useMemo(() => {
     return projects
@@ -945,7 +987,7 @@ export default function ProjectsPage({
                           Lifecycle Status:
                         </span>
 
-                        {canManageStatus ? (
+                        {canManageStatus(p) ? (
                           <div 
                             className="flex items-center gap-1.5" 
                             onClick={(e) => e.stopPropagation()}
@@ -1065,8 +1107,8 @@ export default function ProjectsPage({
                         </div>
                       )}
 
-                      {/* Project Deleting Icon / Action below the critical notification icon */}
-                      {isMasterAdmin && (
+                      {/* Project Deleting Icon / Action */}
+                      {canDeleteProject(p) && (
                         <div 
                           className="pt-2.5 flex justify-end items-center border-t border-slate-100 dark:border-slate-700/50 mt-3" 
                           onClick={(e) => e.stopPropagation()}
@@ -1112,11 +1154,11 @@ export default function ProjectsPage({
           </div>
         )}
 
-        {/* Add Project trigger button for admin */}
-        {isMasterAdmin && (
+        {/* Add Project trigger button for admin / directorate admin / pmo admin */}
+        {canCreateProject && (
           <button
             onClick={handleOpenCreateModal}
-            className="w-full py-4 bg-gradient-to-r from-slate-100 to-slate-200 hover:from-slate-200 hover:to-slate-300 dark:from-slate-800/80 dark:to-slate-800 dark:hover:from-slate-700 dark:hover:to-slate-750 border border-dashed border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold rounded-2xl text-sm transition-all duration-200 flex items-center justify-center gap-2 shadow-sm"
+            className="w-full py-4 bg-gradient-to-r from-slate-100 to-slate-200 hover:from-slate-200 hover:to-slate-300 dark:from-slate-800/80 dark:to-slate-800 dark:hover:from-slate-700 dark:hover:to-slate-750 border border-dashed border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold rounded-2xl text-sm transition-all duration-200 flex items-center justify-center gap-2 shadow-sm cursor-pointer"
           >
             <Plus className="w-5 h-5" />
             Issue New Road Construction Project Template
@@ -1183,6 +1225,40 @@ export default function ProjectsPage({
                   placeholder="e.g. Modjo - Hawassa Expressway"
                   className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 font-sans font-black text-xs text-slate-800 dark:text-zinc-100 outline-none focus:border-blue-500 transition-colors"
                 />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 dark:text-zinc-400 tracking-wider uppercase block">
+                    Program Directorate
+                  </label>
+                  <select
+                    value={isDirAdmin ? (currentUserObj.assignedDirectorate || newProjectDirectorate) : newProjectDirectorate}
+                    disabled={isDirAdmin || isPmoAdmin}
+                    onChange={(e) => setNewProjectDirectorate(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 dark:text-zinc-100 outline-none focus:border-blue-500 disabled:opacity-70 disabled:cursor-not-allowed"
+                  >
+                    {programDirectorates.map(pd => (
+                      <option key={pd} value={pd}>{pd}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 dark:text-zinc-400 tracking-wider uppercase block">
+                    PMO Group
+                  </label>
+                  <select
+                    value={isPmoAdmin ? (currentUserObj.assignedPmo || newProjectPmo) : newProjectPmo}
+                    disabled={isPmoAdmin}
+                    onChange={(e) => setNewProjectPmo(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 dark:text-zinc-100 outline-none focus:border-blue-500 disabled:opacity-70 disabled:cursor-not-allowed"
+                  >
+                    {pmos.map(p => (
+                      <option key={p} value={p}>{p}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               {createError && (
