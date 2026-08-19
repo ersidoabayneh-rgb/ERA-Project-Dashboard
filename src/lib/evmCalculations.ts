@@ -42,28 +42,41 @@ export interface EvmMetrics {
 /**
  * Computes unified, standard Earned Value Management (EVM) metrics for any Project.
  * Single source of truth across all views, executive summaries, audit modules, and reports.
+ * 
+ * EVM Fundamentals:
+ * - BAC (Budget At Completion): Original Contract Amount (in ETB).
+ * - AC (Actual Cost): Total Certified IPC Value (in ETB).
+ * - EV (Earned Value): BAC * (Physical Progress % / 100).
+ * - PV (Planned Value): BAC * (Original Plan % / 100) from the monthly cumulative page.
+ *   If the original plan reaches or exceeds 100%, PV = 100% * Original Contract Amount (BAC).
+ * - CPI (Cost Performance Index): EV / AC.
+ * - SPI (Schedule Performance Index): EV / PV = Physical Progress % / Original Plan %.
  */
 export function calculateProjectEvm(project: Project): EvmMetrics {
   const MILLION = 1_000_000;
   
-  // 1. Budget At Completion (BAC)
-  const BAC = project.revisedContractAmountEtb 
-    || project.contractAmountEtb 
+  // 1. Budget At Completion (BAC) = Original Contract Amount
+  const BAC = project.contractAmountEtb 
     || ((project.origAmount || 0) * MILLION) 
+    || project.revisedContractAmountEtb 
     || 1;
 
-  // 2. Actual Cost (AC) - Certified expenditure
+  // 2. Actual Cost (AC) = Total Certified IPC Value
   const rateIpc = project.usdExchangeRate || 57.50;
   const trackerIpcs = project.ipcTracker || [];
 
+  // Certified total from IPC Tracker (ETB + USD converted to ETB)
   const trackerCertifiedCombined = trackerIpcs.reduce((sum, item) => {
     return sum + (item.certifiedEtb || 0) + ((item.certifiedUsd || 0) * rateIpc);
   }, 0);
 
+  // Certified total from Payment Table
   const paymentList = project.payment || [];
   const paymentIpc = (paymentList.find(x => x.item.trim().toLowerCase().includes('total todate certified ipc')) || { amount: 0 }).amount;
 
-  const actualPct = project.physicalProgress || 0;
+  const actualPct = typeof project.physicalProgress === 'number' 
+    ? project.physicalProgress 
+    : (Number(project.physicalProgress) || 0);
 
   let AC = 0;
   if (trackerCertifiedCombined > 0) {
@@ -71,51 +84,88 @@ export function calculateProjectEvm(project: Project): EvmMetrics {
   } else if (paymentIpc > 0) {
     AC = paymentIpc;
   } else {
-    // Fallback if no IPCs are entered yet
-    AC = BAC * (actualPct / 100) * 0.95;
+    // If no IPC records exist yet, fallback to 0 or estimated output
+    AC = actualPct > 0 ? BAC * (actualPct / 100) * 0.95 : 0;
   }
 
   // 3. Earned Value (EV) = BAC * Physical Progress %
   const EV = BAC * (actualPct / 100);
 
-  // 4. Planned Progress % and Planned Value (PV)
+  // 4. Planned Value (PV) based on Monthly Cumulative Original Plan %
   const monthlyList = project.monthly || [];
   let plannedPct = 100;
 
+  const parseNum = (val: any): number | null => {
+    if (val === null || val === undefined || val === '') return null;
+    const n = Number(val);
+    return isNaN(n) ? null : n;
+  };
+
   if (monthlyList.length > 0) {
-    const reportingMonths = monthlyList.filter(m => typeof m.actual === 'number' && m.actual > 0);
-    const targetIdx = reportingMonths.length > 0 
-      ? monthlyList.indexOf(reportingMonths[reportingMonths.length - 1]) 
-      : (monthlyList.findIndex(m => typeof m.originalPlan === 'number' && m.originalPlan > 0) !== -1 
-          ? monthlyList.findIndex(m => typeof m.originalPlan === 'number' && m.originalPlan > 0) 
-          : 0);
-    
+    // Find reporting months with active actual progress
+    const reportingMonths = monthlyList.filter(m => {
+      const act = parseNum(m.actual);
+      return act !== null && act > 0;
+    });
+
+    let targetIdx = -1;
+    if (reportingMonths.length > 0) {
+      targetIdx = monthlyList.indexOf(reportingMonths[reportingMonths.length - 1]);
+    } else {
+      // If no actual progress is recorded yet, find the first month where originalPlan > 0
+      targetIdx = monthlyList.findIndex(m => {
+        const op = parseNum(m.originalPlan);
+        return op !== null && op > 0;
+      });
+      if (targetIdx === -1) targetIdx = 0;
+    }
+
     if (targetIdx !== -1) {
-      const targetMonth = monthlyList[targetIdx];
-      const hasReached100 = monthlyList.slice(0, targetIdx + 1).some(m => typeof m.originalPlan === 'number' && m.originalPlan >= 100);
+      // Check if original plan has reached 100% at or prior to the target reporting month
+      const hasReached100 = monthlyList.slice(0, targetIdx + 1).some(m => {
+        const op = parseNum(m.originalPlan);
+        return op !== null && op >= 100;
+      });
+
       if (hasReached100) {
+        // If it reached 100%, take 100% of original contract amount
         plannedPct = 100;
       } else {
-        const val = targetMonth ? (targetMonth.revisedPlan ?? targetMonth.originalPlan) : 100;
-        plannedPct = typeof val === 'number' ? val : (Number(val) || 100);
+        const targetMonth = monthlyList[targetIdx];
+        const rawOriginalPlan = parseNum(targetMonth?.originalPlan);
+        
+        if (rawOriginalPlan !== null) {
+          if (rawOriginalPlan >= 100) {
+            plannedPct = 100;
+          } else {
+            plannedPct = Math.max(0, rawOriginalPlan);
+          }
+        } else {
+          // Fallback to revisedPlan or 100 if originalPlan is absent
+          const rawRevisedPlan = parseNum(targetMonth?.revisedPlan);
+          plannedPct = rawRevisedPlan !== null ? Math.min(100, Math.max(0, rawRevisedPlan)) : 100;
+        }
       }
     }
   }
 
+  // Planned Value (PV) = Planned % * Original Contract Amount (BAC)
   const PV = BAC * (plannedPct / 100);
 
-  // 5. CPI & SPI Ratios
+  // 5. Cost Performance Index (CPI) = EV / AC
   const CPI = AC > 0 ? (EV / AC) : 1.0;
+
+  // 6. Schedule Performance Index (SPI) = EV / PV = Actual % / Planned %
   const SPI = PV > 0 ? (EV / PV) : 1.0;
 
-  // 6. Variances
+  // 7. Variances
   const CV = EV - AC;
   const SV = EV - PV;
   const CV_pct = AC > 0 ? ((EV - AC) / AC) * 100 : 0;
   const SV_pct = PV > 0 ? ((EV - PV) / PV) * 100 : 0;
   const scheduleGapPct = actualPct - plannedPct;
 
-  // 7. Forecasts
+  // 8. Forecasts
   const EAC = CPI > 0 ? (BAC / CPI) : BAC;
   const VAC = BAC - EAC;
   const TCPI = (BAC - AC) > 0 ? (BAC - EV) / (BAC - AC) : 1.0;
