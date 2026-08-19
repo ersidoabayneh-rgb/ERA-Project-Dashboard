@@ -4,6 +4,7 @@ import { History, Save, Sparkles, Trash2, Printer, CheckCircle, AlertTriangle, S
 import { jsPDF } from 'jspdf';
 import { Project, HistoryItem, formatAccounting } from '../types';
 import { buildKpiHierarchy, getIntegratedKpiAllocated } from '../data/defaultProject';
+import { calculateProjectEvm } from '../lib/evmCalculations';
 import eraLogo from '../assets/logo.png';
 
 export interface InconsistencyAlert {
@@ -38,36 +39,14 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory }:
   const ocDate = new Date(p.startDate || new Date());
   const rcDate = new Date(ocDate.getTime() + elDays * 86400000);
   
-  const BAC = p.origAmount * 1_000_000;
+  // Use unified EVM calculation engine
+  const evm = calculateProjectEvm(p);
+  const { BAC, AC, EV, PV, plannedPct, CPI, SPI } = evm;
+  
   const tc = p.series.reduce((sum, item) => sum + (item.contractAmt || 0), 0);
   const te = p.series.reduce((sum, item) => sum + (item.execAmt || 0), 0);
   const totalOrigExec = te * 1.15;
-  const pa = ((p.payment || []).find(x => x.item === 'Price Adjustment') || { amount: 0 }).amount;
-  
-  const AC = ((p.payment || []).find(x => x.item.trim().toLowerCase() === 'total todate certified ipc') || { amount: 0 }).amount;
-  const EV = AC * (p.physicalProgress / 100);
-  const monthlyList = p.monthly || [];
-  let plannedPct = 100;
-  if (monthlyList.length > 0) {
-    const reportingMonths = monthlyList.filter(m => typeof m.actual === 'number' && m.actual > 0);
-    const targetIdx = reportingMonths.length > 0 
-      ? monthlyList.indexOf(reportingMonths[reportingMonths.length - 1]) 
-      : (monthlyList.findIndex(m => typeof m.originalPlan === 'number' && m.originalPlan > 0) !== -1 ? monthlyList.findIndex(m => typeof m.originalPlan === 'number' && m.originalPlan > 0) : 0);
-    
-    if (targetIdx !== -1) {
-      const targetMonth = monthlyList[targetIdx];
-      const hasReached100 = monthlyList.slice(0, targetIdx + 1).some(m => typeof m.originalPlan === 'number' && m.originalPlan >= 100);
-      if (hasReached100) {
-        plannedPct = 100;
-      } else {
-        plannedPct = (targetMonth && typeof targetMonth.originalPlan === 'number') ? targetMonth.originalPlan : 100;
-      }
-    }
-  }
-  const PV = (plannedPct / 100) * BAC;
-  
-  const CPI = AC > 0 ? EV / AC : 0.942; // Fallback to a healthy FIDIC baseline ratio if zeroes
-  const SPI = PV > 0 ? EV / PV : 0.887; 
+  const pa = ((p.payment || []).find(x => x.item === 'Price Adjustment') || { amount: 0 }).amount; 
 
   // Right-of-Way metrics
   const rowClearMetric = (p.rowMetrics || []).find(m => m.name === 'ROW Obstruction free Section')?.value || 0;

@@ -24,6 +24,7 @@ import { Project, User, formatAccounting } from '../types';
 import { buildKpiHierarchy, getIntegratedKpiAllocated } from '../data/defaultProject';
 import { QtyItem } from '../types';
 import { calculateIpcMaturation } from '../lib/ipcCalculations';
+import { calculateProjectEvm } from '../lib/evmCalculations';
 
 interface CriticalQtyAnalysis {
   name: string;
@@ -216,32 +217,9 @@ export default function GroupReportGenerator({
     const activeRisks = risksList.filter(r => r.status === 'Active');
     const criticalRisksCount = activeRisks.filter(r => (r.impact * r.probability) >= 12).length;
 
-    // 4. EVM Parameters: actual cost is equal to the Total Todate certified IPC, Earned Value is equal to actual cost times % physical progress
-    const BAC = (p.origAmount || 0) * 1_000_000;
-    const AC = ((p.payment || []).find(x => x.item.trim().toLowerCase() === 'total todate certified ipc') || { amount: 0 }).amount;
-    const EV = AC * ((p.physicalProgress || 0) / 100);
-    const monthlyList = p.monthly || [];
-    let plannedPct = 100;
-    if (monthlyList.length > 0) {
-      const reportingMonths = monthlyList.filter(m => typeof m.actual === 'number' && m.actual > 0);
-      const targetIdx = reportingMonths.length > 0 
-        ? monthlyList.indexOf(reportingMonths[reportingMonths.length - 1]) 
-        : (monthlyList.findIndex(m => typeof m.originalPlan === 'number' && m.originalPlan > 0) !== -1 ? monthlyList.findIndex(m => typeof m.originalPlan === 'number' && m.originalPlan > 0) : 0);
-      
-      if (targetIdx !== -1) {
-        const targetMonth = monthlyList[targetIdx];
-        const hasReached100 = monthlyList.slice(0, targetIdx + 1).some(m => typeof m.originalPlan === 'number' && m.originalPlan >= 100);
-        if (hasReached100) {
-          plannedPct = 100;
-        } else {
-          const val = targetMonth ? targetMonth.originalPlan : 100;
-          plannedPct = typeof val === 'number' ? val : (Number(val) || 100);
-        }
-      }
-    }
-    const PV = (plannedPct / 100) * BAC;
-    const CPI = AC > 0 ? (EV / AC) : 0.942;
-    const SPI = PV > 0 ? (EV / PV) : 0.887;
+    // 4. EVM Parameters via unified EVM engine
+    const evm = calculateProjectEvm(p);
+    const { BAC, AC, EV, PV, plannedPct, CPI, SPI } = evm;
     const timeOverrunPct = p.origDays > 0 ? ((p.eotDays || 0) / p.origDays) * 100 : 0;
 
     // 5. Linear layers based on Engineering Quantities & Construction Conformance Plan
@@ -2899,43 +2877,17 @@ export default function GroupReportGenerator({
       const priceAdj = formatFinancialForCSV(getPaymentVal('Price Adjustment'));
       const certifiedIpc = formatFinancialForCSV(getPaymentVal('Total Todate Certified IPC'));
 
-      // Calculate EVM metrics dynamically for the CSV
-      const BAC = (p.origAmount || 0) * 1_000_000;
-      const AC = ((p.payment || []).find(x => x.item.trim().toLowerCase() === 'total todate certified ipc') || { amount: 0 }).amount;
-      const EV = AC * ((p.physicalProgress || 0) / 100);
-      const monthlyList = p.monthly || [];
-      let plannedPct = 100;
-      if (monthlyList.length > 0) {
-        const reportingMonths = monthlyList.filter(m => m.actual > 0);
-        const targetIdx = reportingMonths.length > 0 
-          ? monthlyList.indexOf(reportingMonths[reportingMonths.length - 1]) 
-          : (monthlyList.findIndex(m => m.originalPlan > 0) !== -1 ? monthlyList.findIndex(m => m.originalPlan > 0) : 0);
-        
-        if (targetIdx !== -1) {
-          const targetMonth = monthlyList[targetIdx];
-          const hasReached100 = monthlyList.slice(0, targetIdx + 1).some(m => m.originalPlan >= 100);
-          if (hasReached100) {
-            plannedPct = 100;
-          } else {
-            plannedPct = targetMonth ? targetMonth.originalPlan : 100;
-          }
-        }
-      }
-      const PV = (plannedPct / 100) * BAC;
+      // Calculate EVM metrics dynamically for the CSV via unified engine
+      const evm = calculateProjectEvm(p);
+      const { BAC, AC, EV, PV, CPI, SPI, CV, SV, EAC } = evm;
 
-      const CPI = AC > 0 ? (EV / AC) : null;
-      const SPI = PV > 0 ? (EV / PV) : null;
-      const CV = AC > 0 ? EV - AC : null;
-      const SV = PV > 0 ? EV - PV : null;
-      const EAC = (CPI && CPI > 0) ? (BAC / CPI) : null;
-
-      const cpiStr = CPI !== null ? CPI.toFixed(3) : '';
-      const spiStr = SPI !== null ? SPI.toFixed(3) : '';
+      const cpiStr = CPI !== null && !isNaN(CPI) ? CPI.toFixed(3) : '';
+      const spiStr = SPI !== null && !isNaN(SPI) ? SPI.toFixed(3) : '';
       const evStr = EV > 0 ? formatFinancialForCSV(EV) : '';
       const acStr = AC > 0 ? formatFinancialForCSV(AC) : '';
-      const cvStr = CV !== null ? formatFinancialForCSV(CV) : '';
-      const svStr = SV !== null ? formatFinancialForCSV(SV) : '';
-      const eacStr = EAC !== null ? formatFinancialForCSV(EAC) : '';
+      const cvStr = formatFinancialForCSV(CV);
+      const svStr = formatFinancialForCSV(SV);
+      const eacStr = EAC > 0 ? formatFinancialForCSV(EAC) : '';
 
       return [
         p.name || 'Untitled Project',

@@ -8,6 +8,7 @@ import {
   LinearData,
   RiskItem
 } from '../types';
+import { calculateProjectEvm } from '../lib/evmCalculations';
 
 export const MILLION = 1_000_000;
 
@@ -734,34 +735,12 @@ export function getIntegratedKpiAllocated(project: Project): KpiAllocatedItem[] 
   const hasProfBound = (project.bonds || []).some(b => (b.type.toLowerCase().includes('indemnity') || b.type.toLowerCase().includes('professional')) && isBondValidStatus(b.status)) ? 1 : 0;
   const hasPlantBound = (project.bonds || []).some(b => (b.type.toLowerCase().includes('plant') || b.type.toLowerCase().includes('equipment')) && isBondValidStatus(b.status)) ? 1 : 0;
 
-  // 4. EVM Calculations for SC4.2 (Schedule Variance)
-  const MILLION = 1_000_000;
-  const BAC = project.origAmount * MILLION;
+  // 4. EVM Calculations for SC4.2 (Schedule Variance) via unified engine
+  const evm = calculateProjectEvm(project);
+  const { BAC, AC, EV, PV, plannedPct, SV_pct } = evm;
   const te = (project.series || []).reduce((sum, item) => sum + (item.execAmt || 0), 0);
   const totalOrigExec = te * 1.15;
   const pa = ((project.payment || []).find(x => x.item === 'Price Adjustment') || { amount: 0 }).amount;
-  const AC = ((project.payment || []).find(x => x.item.trim().toLowerCase() === 'total todate certified ipc') || { amount: 0 }).amount;
-  const EV = AC * (project.physicalProgress / 100);
-  const monthlyList = project.monthly || [];
-  let plannedPct = 100;
-  if (monthlyList.length > 0) {
-    const reportingMonths = monthlyList.filter(m => typeof m.actual === 'number' && m.actual > 0);
-    const targetIdx = reportingMonths.length > 0 
-      ? monthlyList.indexOf(reportingMonths[reportingMonths.length - 1]) 
-      : (monthlyList.findIndex(m => typeof m.originalPlan === 'number' && m.originalPlan > 0) !== -1 ? monthlyList.findIndex(m => typeof m.originalPlan === 'number' && m.originalPlan > 0) : 0);
-    
-    if (targetIdx !== -1) {
-      const targetMonth = monthlyList[targetIdx];
-      const hasReached100 = monthlyList.slice(0, targetIdx + 1).some(m => typeof m.originalPlan === 'number' && m.originalPlan >= 100);
-      if (hasReached100) {
-        plannedPct = 100;
-      } else {
-        plannedPct = (targetMonth && typeof targetMonth.originalPlan === 'number') ? targetMonth.originalPlan : 100;
-      }
-    }
-  }
-  const PV = (plannedPct / 100) * BAC;
-  const SV_pct = PV > 0 ? ((EV - PV) / PV) * 100 : 0;
 
   // 5. Build map with both DB and DBB default items to allow dual-evaluation
   const dbDefaults = generateKpiAllocated('DB');

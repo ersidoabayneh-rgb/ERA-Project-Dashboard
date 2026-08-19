@@ -2,6 +2,7 @@ import React from 'react';
 import { motion } from 'motion/react';
 import { Activity, ShieldAlert, Award, TrendingUp, HelpCircle, FileText, CheckCircle, Clock, Scale } from 'lucide-react';
 import { Project, formatAccounting } from '../types';
+import { calculateProjectEvm } from '../lib/evmCalculations';
 import CpmLinearComparison from './CpmLinearComparison';
 
 interface ComprehensiveAnalysisViewProps {
@@ -9,79 +10,21 @@ interface ComprehensiveAnalysisViewProps {
 }
 
 export default function ComprehensiveAnalysisView({ project }: ComprehensiveAnalysisViewProps) {
-  // Financial computation
-  const MILLION = 1_000_000;
-  const BAC = project.origAmount * MILLION;
-  
-  // Sum series
-  const tc = (project.series || []).reduce((sum, item) => sum + (item.contractAmt || 0), 0);
-  const te = (project.series || []).reduce((sum, item) => sum + (item.execAmt || 0), 0);
-
-  // Formulas
-  let grandTotalPct = 1.15; // default contingencies factor in original
-  if (project.contractType === 'DB') {
-    grandTotalPct = 1.15;
-  }
-  
-  const totalOrigExec = te * grandTotalPct;
-
-  const pa = ((project.payment || []).find(x => x.item === 'Price Adjustment') || { amount: 0 }).amount;
-  const advPay = ((project.payment || []).find(x => x.item === 'Advance Payment') || { amount: 0 }).amount;
-  const advRepay = ((project.payment || []).find(x => x.item === 'Advance Repayment') || { amount: 0 }).amount;
-  const ipc = ((project.payment || []).find(x => x.item.trim().toLowerCase() === 'total todate certified ipc') || { amount: 0 }).amount;
-
-  // EVM elements: actual cost is equal to the Total Todate certified IPC
-  const AC = ipc;
-  // Earned Value is equal to actual cost times % physical progress
-  const EV = AC * (project.physicalProgress / 100);
-
-  // Plan matching: Planned Value (PV) is equal to BAC times S-curve monthly original plan for the last column, until it reaches 100%. If any column reaches 100%, always take 100%
-  const monthlyList = project.monthly || [];
-  let plannedPct = 100;
-  if (monthlyList.length > 0) {
-    const reportingMonths = monthlyList.filter(m => typeof m.actual === 'number' && m.actual > 0);
-    const targetIdx = reportingMonths.length > 0 
-      ? monthlyList.indexOf(reportingMonths[reportingMonths.length - 1]) 
-      : (monthlyList.findIndex(m => typeof m.originalPlan === 'number' && m.originalPlan > 0) !== -1 ? monthlyList.findIndex(m => typeof m.originalPlan === 'number' && m.originalPlan > 0) : 0);
-    
-    if (targetIdx !== -1) {
-      const targetMonth = monthlyList[targetIdx];
-      const hasReached100 = monthlyList.slice(0, targetIdx + 1).some(m => typeof m.originalPlan === 'number' && m.originalPlan >= 100);
-      if (hasReached100) {
-        plannedPct = 100;
-      } else {
-        plannedPct = (targetMonth && typeof targetMonth.originalPlan === 'number') ? targetMonth.originalPlan : 100;
-      }
-    }
-  }
-  const PV = (plannedPct / 100) * BAC;
-
-  // Variances
-  const CV = EV - AC;
-  const SV = EV - PV;
-
-  // Indexes
-  const CPI = AC > 0 ? (EV / AC) : 1.0;
-  const SPI = PV > 0 ? (EV / PV) : 1.0;
-
-  // EAC, VAC, TCPI
-  const EAC = CPI > 0 ? (BAC / CPI) : BAC;
-  const VAC = BAC - EAC;
-  const TCPI = (BAC - AC) > 0 ? (BAC - EV) / (BAC - AC) : 1.0;
-
-  const costOverrunPct = ((project.variation * MILLION) / (project.origAmount * MILLION)) * 100;
+  // Use centralized, unified EVM metrics calculation
+  const evm = calculateProjectEvm(project);
+  const { BAC, AC, EV, PV, CPI, SPI, CV, SV, EAC, VAC, TCPI } = evm;
 
   // Tiers warnings
   const getIndexColor = (v: number) => {
     if (v >= 1.0) return 'text-emerald-500';
-    if (v >= 0.85) return 'text-amber-500';
+    if (v >= 0.90) return 'text-amber-500';
     return 'text-rose-500 font-extrabold';
   };
 
   const getStatusDesc = (c: number, s: number) => {
-    if (c >= 1.0 && s >= 1.0) return { label: 'Excellent Conformance', color: 'bg-emerald-50 text-emerald-800' };
-    if (c >= 0.85 && s >= 0.85) return { label: 'Moderate Caution', color: 'bg-amber-50 text-amber-800' };
-    return { label: 'Critical Variance Notice', color: 'bg-rose-50 text-rose-800 animate-pulse' };
+    if (c >= 1.0 && s >= 1.0) return { label: 'Excellent Conformance', color: 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300' };
+    if (c >= 0.90 && s >= 0.90) return { label: 'Moderate Caution', color: 'bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300' };
+    return { label: 'Critical Variance Notice', color: 'bg-rose-50 text-rose-800 dark:bg-rose-950/40 dark:text-rose-300 animate-pulse' };
   };
 
   const status_flag = getStatusDesc(CPI, SPI);
@@ -118,11 +61,11 @@ export default function ComprehensiveAnalysisView({ project }: ComprehensiveAnal
               {CPI.toFixed(3)}
             </span>
             <span className="text-slate-400 font-semibold text-[10px] uppercase">
-              {CPI >= 1.0 ? 'Under Budget' : 'Overspending'}
+              {CPI >= 1.0 ? 'Under Budget' : CPI >= 0.90 ? 'Borderline' : 'Overspending'}
             </span>
           </div>
           <p className="text-2xs text-slate-400">
-            A value of {CPI.toFixed(2)} signifies that for every Br 1.00 spent, the project earns Br {CPI.toFixed(2)} of progress value.
+            A value of {CPI.toFixed(3)} signifies that for every Br 1.00 spent, the project earns Br {CPI.toFixed(2)} of progress value ({evm.cpiStatus.description}).
           </p>
         </div>
 
@@ -136,11 +79,11 @@ export default function ComprehensiveAnalysisView({ project }: ComprehensiveAnal
               {SPI.toFixed(3)}
             </span>
             <span className="text-slate-400 font-semibold text-[10px] uppercase">
-              {SPI >= 1.0 ? 'Ahead' : 'Delayed'}
+              {SPI >= 1.0 ? 'Ahead / On Track' : SPI >= 0.90 ? 'Minor Lag' : 'Delayed'}
             </span>
           </div>
           <p className="text-2xs text-slate-400">
-            A value of {SPI.toFixed(2)} tells us construction achievements match {Math.round(SPI * 100)}% of target schedules.
+            A value of {SPI.toFixed(3)} tells us construction achievements match {Math.round(SPI * 100)}% of target schedules ({evm.spiStatus.description}).
           </p>
         </div>
       </div>

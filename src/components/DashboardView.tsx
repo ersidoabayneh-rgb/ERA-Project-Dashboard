@@ -45,6 +45,7 @@ import { Project, KpiAllocatedItem, LinearData, formatAccounting, User, ProjectL
 import CircularGauge from './CircularGauge';
 import BillSummaryPriceAdjChart from './BillSummaryPriceAdjChart';
 import { buildKpiHierarchy, getIntegratedKpiAllocated, parseStation } from '../data/defaultProject';
+import { calculateProjectEvm } from '../lib/evmCalculations';
 import { QtyItem } from '../types';
 
 interface CriticalQtyAnalysis {
@@ -660,8 +661,10 @@ export default function DashboardView({
     }
   };
 
-  // Integrated Performance calculations for Alerts and Reports
-  const BAC = (project.origAmount || 0) * 1_000_000;
+  // Integrated Performance calculations for Alerts and Reports via unified EVM engine
+  const evm = calculateProjectEvm(project);
+  const { BAC, AC, EV, PV, plannedPct, CPI, SPI, EAC, TCPI } = evm;
+
   const seriesList = project.series || [];
   const te = seriesList.reduce((sum, item) => sum + (item.execAmt || 0), 0);
   const totalOrigExec = te * 1.15;
@@ -674,48 +677,10 @@ export default function DashboardView({
   const rateIpc = project.usdExchangeRate || 57.50;
   const trackerIpcs = project.ipcTracker || [];
 
-  // Certified total from IPC Tracker
-  const trackerCertifiedCombined = trackerIpcs.reduce((sum, item) => {
-    return sum + (item.certifiedEtb || 0) + ((item.certifiedUsd || 0) * rateIpc);
-  }, 0);
-
-  // Actual Cost (AC) is the certified expenditure
-  const AC = trackerCertifiedCombined > 0 ? trackerCertifiedCombined : (ipc > 0 ? ipc : (BAC * (project.physicalProgress / 100) * 0.95));
-
-  // Earned Value (EV) = BAC * Physical Progress %
-  const EV = BAC * ((project.physicalProgress || 0) / 100);
-
-  // Get planned cumulative value (PV)
-  const monthlyList = project.monthly || [];
-  let plannedPct = 100;
-  if (monthlyList.length > 0) {
-    const reportingMonths = monthlyList.filter(m => typeof m.actual === 'number' && m.actual > 0);
-    const targetIdx = reportingMonths.length > 0 
-      ? monthlyList.indexOf(reportingMonths[reportingMonths.length - 1]) 
-      : (monthlyList.findIndex(m => typeof m.originalPlan === 'number' && m.originalPlan > 0) !== -1 ? monthlyList.findIndex(m => typeof m.originalPlan === 'number' && m.originalPlan > 0) : 0);
-    
-    if (targetIdx !== -1) {
-      const targetMonth = monthlyList[targetIdx];
-      const hasReached100 = monthlyList.slice(0, targetIdx + 1).some(m => typeof m.originalPlan === 'number' && m.originalPlan >= 100);
-      if (hasReached100) {
-        plannedPct = 100;
-      } else {
-        const val = targetMonth ? (targetMonth.revisedPlan ?? targetMonth.originalPlan) : 100;
-        plannedPct = typeof val === 'number' ? val : (Number(val) || 100);
-      }
-    }
-  }
-  const PV = BAC * (plannedPct / 100);
-  
-  const CPI = AC > 0 ? EV / AC : 1.0;
-  const SPI = PV > 0 ? EV / PV : 1.0;
   const CV_Mil = (EV - AC) / 1_000_000;
   const SV_Mil = (EV - PV) / 1_000_000;
   const CV_pct = AC > 0 ? ((EV - AC) / AC) * 100 : 0;
   const SV_pct = PV > 0 ? ((EV - PV) / PV) * 100 : 0;
-
-  const EAC = CPI > 0 ? BAC / CPI : BAC;
-  const TCPI = (BAC - AC) > 0 ? (BAC - EV) / (BAC - AC) : 1.0;
 
   // Generate last 5 CPI/SPI records based on current EVM metrics and historical trends
   const kpiHistoryRecords = React.useMemo(() => {
@@ -1611,7 +1576,7 @@ export default function DashboardView({
             </div>
 
             <div className="my-3 flex items-baseline gap-2">
-              <span className="text-3xl font-black font-mono tracking-tight text-white">{CPI.toFixed(2)}</span>
+              <span className="text-3xl font-black font-mono tracking-tight text-white">{CPI.toFixed(3)}</span>
               <div className="flex items-center text-xs font-bold">
                 {CPI >= 1.0 ? (
                   <span className="text-emerald-400 flex items-center"><TrendingUp className="w-4 h-4 mr-0.5" /> Efficient</span>
@@ -1646,7 +1611,7 @@ export default function DashboardView({
             </div>
 
             <div className="my-3 flex items-baseline gap-2">
-              <span className="text-3xl font-black font-mono tracking-tight text-white">{SPI.toFixed(2)}</span>
+              <span className="text-3xl font-black font-mono tracking-tight text-white">{SPI.toFixed(3)}</span>
               <div className="flex items-center text-xs font-bold">
                 {SPI >= 1.0 ? (
                   <span className="text-emerald-400 flex items-center"><TrendingUp className="w-4 h-4 mr-0.5" /> Ahead</span>
