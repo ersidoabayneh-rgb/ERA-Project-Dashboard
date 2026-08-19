@@ -14,9 +14,15 @@ import {
   Calculator,
   Coins,
   ArrowRightLeft,
-  Info
+  AlertTriangle,
+  Clock,
+  Percent,
+  ShieldAlert,
+  Info,
+  Scale
 } from 'lucide-react';
 import { Project, IpcItem, formatAccounting } from '../types';
+import { calculateIpcMaturation, calculateProjectIpcSummary } from '../lib/ipcCalculations';
 
 interface AmountInputProps {
   value: number;
@@ -84,7 +90,7 @@ function AmountInput({ value, onChange, readOnly = false, className = '', placeh
 
 interface MonthlyPaymentIpcSummaryTableProps {
   project: Project;
-  onUpdateIpcTracker: (ipcTracker: IpcItem[], exchangeRate?: number) => void;
+  onUpdateIpcTracker: (ipcTracker: IpcItem[], exchangeRate?: number, annualInterestRate?: number) => void;
   onProjectUpdate?: (updates: Partial<Project>, desc: string) => void;
 }
 
@@ -95,9 +101,15 @@ export default function MonthlyPaymentIpcSummaryTable({
 }: MonthlyPaymentIpcSummaryTableProps) {
   const ipcTracker = project.ipcTracker || [];
   const exchangeRate = project.usdExchangeRate !== undefined ? project.usdExchangeRate : 57.50;
+  const annualInterestRate = project.annualInterestRate !== undefined ? project.annualInterestRate : 16.50;
 
   const [expandedIpcId, setExpandedIpcId] = useState<string | null>(null);
-  const [filterStatus, setFilterStatus] = useState<'All' | 'Paid' | 'Unpaid' | 'Partially Paid'>('All');
+  const [filterStatus, setFilterStatus] = useState<'All' | 'Paid' | 'Unpaid' | 'Partially Paid' | 'Matured Overdue'>('All');
+  const [interestRateInput, setInterestRateInput] = useState<number>(annualInterestRate);
+
+  React.useEffect(() => {
+    setInterestRateInput(annualInterestRate);
+  }, [annualInterestRate]);
 
   const handleFieldChange = (idx: number, field: keyof IpcItem, value: any) => {
     const updated = ipcTracker.map((item, i) => {
@@ -128,11 +140,16 @@ export default function MonthlyPaymentIpcSummaryTable({
       return item;
     });
 
-    onUpdateIpcTracker(updated, exchangeRate);
+    onUpdateIpcTracker(updated, exchangeRate, annualInterestRate);
   };
 
   const handleExchangeRateChange = (newRate: number) => {
-    onUpdateIpcTracker(ipcTracker, newRate);
+    onUpdateIpcTracker(ipcTracker, newRate, annualInterestRate);
+  };
+
+  const handleInterestRateChange = (newRate: number) => {
+    setInterestRateInput(newRate);
+    onUpdateIpcTracker(ipcTracker, exchangeRate, newRate);
   };
 
   const handleAddIpcRow = () => {
@@ -156,13 +173,13 @@ export default function MonthlyPaymentIpcSummaryTable({
       remarks: 'Monthly Payment Bill Summary entry.'
     };
     const updated = [...ipcTracker, newItem];
-    onUpdateIpcTracker(updated, exchangeRate);
+    onUpdateIpcTracker(updated, exchangeRate, annualInterestRate);
     setExpandedIpcId(newItem.id);
   };
 
   const handleRemoveIpcRow = (idx: number) => {
     const updated = ipcTracker.filter((_, i) => i !== idx);
-    onUpdateIpcTracker(updated, exchangeRate);
+    onUpdateIpcTracker(updated, exchangeRate, annualInterestRate);
   };
 
   const formatMoney = (v: number, currency: string = '') => formatAccounting(v, currency);
@@ -174,27 +191,16 @@ export default function MonthlyPaymentIpcSummaryTable({
   const totalRetentionEtb = ipcTracker.reduce((sum, item) => sum + (item.retentionEtb || 0), 0);
   const totalCertifiedEtb = ipcTracker.reduce((sum, item) => sum + (item.certifiedEtb || 0), 0);
   const totalCertifiedUsd = ipcTracker.reduce((sum, item) => sum + (item.certifiedUsd || 0), 0);
-  const totalNetEqvEtb = ipcTracker.reduce(
-    (sum, item) => sum + ((item.certifiedEtb || 0) + (exchangeRate * (item.certifiedUsd || 0))),
-    0
-  );
 
-  const totalPaidEqvEtb = ipcTracker.reduce((sum, item) => {
-    const etbSt = item.statusEtb || item.status || 'Unpaid';
-    const usdSt = item.statusUsd || item.status || 'Unpaid';
-
-    const etbRatio = etbSt === 'Paid' ? 1 : etbSt === 'Partially Paid' ? 0.5 : 0;
-    const usdRatio = usdSt === 'Paid' ? 1 : usdSt === 'Partially Paid' ? 0.5 : 0;
-
-    const etbPart = (item.certifiedEtb || 0) * etbRatio;
-    const usdPart = (item.certifiedUsd || 0) * exchangeRate * usdRatio;
-    return sum + etbPart + usdPart;
-  }, 0);
-
-  const totalUnpaidEqvEtb = totalNetEqvEtb - totalPaidEqvEtb;
+  // Computed maturation summary
+  const summary = calculateProjectIpcSummary(project);
 
   const filteredIpcs = ipcTracker.filter((item) => {
+    const maturation = calculateIpcMaturation(item, annualInterestRate, exchangeRate);
     if (filterStatus === 'All') return true;
+    if (filterStatus === 'Matured Overdue') {
+      return maturation.isOverdue;
+    }
     const etbSt = item.statusEtb || item.status || 'Unpaid';
     const usdSt = item.statusUsd || item.status || 'Unpaid';
 
@@ -213,29 +219,29 @@ export default function MonthlyPaymentIpcSummaryTable({
   return (
     <div className="bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/60 rounded-2xl shadow-sm overflow-hidden space-y-4 p-5">
       {/* Header Bar */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-700/60 pb-4">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-700/60 pb-4">
         <div>
           <div className="flex items-center gap-2">
             <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-900/50">
               <Receipt className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-800 dark:text-zinc-100 flex items-center gap-2">
-                Monthly Payment Bill Summary & Price Adjustment Ledger
+              <h2 className="text-base font-bold text-slate-800 dark:text-zinc-100 flex items-center gap-2 flex-wrap">
+                Monthly Payment Bill Summary, IPC Maturation & Interest Ledger
                 <span className="text-[10px] font-extrabold uppercase bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 px-2 py-0.5 rounded-full">
-                  FIDIC Interim Payment Certificates
+                  FIDIC Cl. 14.7 & 14.8
                 </span>
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Record each IPC statement, bill summary measured work, price escalation / adjustments, retention & certified disbursements
+                Tracks 56-day statutory payment maturation from submission date & applies financing charges / delay interest for overdue certificates
               </p>
             </div>
           </div>
         </div>
 
-        {/* Action Controls */}
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Exchange Rate Input */}
+        {/* Action Controls & Parameters */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* USD Rate Input */}
           <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 px-2.5 py-1 rounded-xl text-xs">
             <Coins className="w-3.5 h-3.5 text-amber-500" />
             <span className="font-semibold text-slate-600 dark:text-slate-300">USD Rate:</span>
@@ -244,9 +250,23 @@ export default function MonthlyPaymentIpcSummaryTable({
               step="0.01"
               value={exchangeRate}
               onChange={(e) => handleExchangeRateChange(parseFloat(e.target.value) || 0)}
-              className="w-16 font-mono font-bold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-0.5 text-right outline-none text-slate-800 dark:text-zinc-100"
+              className="w-14 font-mono font-bold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-1 py-0.5 text-right outline-none text-slate-800 dark:text-zinc-100"
             />
             <span className="text-[10px] font-mono font-bold text-slate-400">ETB</span>
+          </div>
+
+          {/* Annual Financing Charge Rate Input */}
+          <div className="flex items-center gap-1.5 bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200/80 dark:border-amber-900/40 px-2.5 py-1 rounded-xl text-xs" title="FIDIC Sub-Clause 14.8 / Commercial Bank Annual Interest Rate for delayed payments">
+            <Percent className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+            <span className="font-semibold text-amber-800 dark:text-amber-300">FIDIC 14.8 Rate:</span>
+            <input
+              type="number"
+              step="0.1"
+              value={interestRateInput}
+              onChange={(e) => handleInterestRateChange(parseFloat(e.target.value) || 0)}
+              className="w-14 font-mono font-bold bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 rounded px-1 py-0.5 text-right outline-none text-slate-800 dark:text-zinc-100"
+            />
+            <span className="text-[10px] font-mono font-bold text-amber-700 dark:text-amber-400">% p.a.</span>
           </div>
 
           <button
@@ -260,83 +280,115 @@ export default function MonthlyPaymentIpcSummaryTable({
       </div>
 
       {/* KPI Cards Banner */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
         {/* Total Gross Work */}
         <div className="bg-slate-50/70 dark:bg-slate-900/50 border border-slate-200/60 dark:border-slate-700/50 rounded-xl p-3">
           <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase">
-            <span>Bill Summary Measured Work</span>
+            <span>Bill Summary Work</span>
             <Calculator className="w-3.5 h-3.5 text-slate-400" />
           </div>
           <div className="text-base font-extrabold font-mono text-slate-800 dark:text-zinc-100 mt-1">
             {formatMoney(totalGrossEtb, 'Br.')}
           </div>
           <div className="text-[10px] text-slate-400 mt-0.5">
-            Total unadjusted work value across {ipcTracker.length} certificates
+            {ipcTracker.length} certificates total
           </div>
         </div>
 
         {/* Total Price Adjustment */}
         <div className="bg-emerald-50/40 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/40 rounded-xl p-3">
           <div className="flex items-center justify-between text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase">
-            <span>Price Escalation / Adjustment</span>
+            <span>Price Escalation</span>
             <TrendingUp className="w-3.5 h-3.5 text-emerald-500" />
           </div>
           <div className="text-base font-extrabold font-mono text-emerald-600 dark:text-emerald-400 mt-1">
             +{formatMoney(totalPriceAdjustmentEtb, 'Br.')}
           </div>
           <div className="text-[10px] text-emerald-600/70 dark:text-emerald-400/70 mt-0.5">
-            Cumulative price adjustment entries under FIDIC Sub-clause 13.8
+            FIDIC Sub-clause 13.8
           </div>
         </div>
 
         {/* Total Net Certified */}
         <div className="bg-indigo-50/40 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/40 rounded-xl p-3">
           <div className="flex items-center justify-between text-[10px] font-bold text-indigo-700 dark:text-indigo-400 uppercase">
-            <span>Total Net Certified (ETB Eqv)</span>
+            <span>Net Certified (Eqv)</span>
             <DollarSign className="w-3.5 h-3.5 text-indigo-500" />
           </div>
           <div className="text-base font-extrabold font-mono text-indigo-600 dark:text-indigo-300 mt-1">
-            {formatMoney(totalNetEqvEtb, 'Br.')}
+            {formatMoney(summary.totalCertifiedEqvEtb, 'Br.')}
           </div>
           <div className="text-[10px] text-indigo-600/70 dark:text-indigo-400/70 mt-0.5">
-            Includes {formatMoney(totalCertifiedUsd, '$')} foreign portion at {exchangeRate} ETB/USD
+            Paid: {formatMoney(summary.totalPaidEqvEtb, 'Br.')}
           </div>
         </div>
 
-        {/* Paid vs Unpaid */}
-        <div className="bg-slate-50/70 dark:bg-slate-900/50 border border-slate-200/60 dark:border-slate-700/50 rounded-xl p-3">
-          <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase">
-            <span>Disbursement Status</span>
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-          </div>
-          <div className="flex items-baseline justify-between mt-1">
-            <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 font-mono">
-              Paid: {formatMoney(totalPaidEqvEtb, 'Br.')}
+        {/* Matured Overdue IPCs (>56 Days) */}
+        <div className={`rounded-xl p-3 border transition ${
+          summary.maturedOverdueIpcCount > 0 
+            ? 'bg-rose-50/80 dark:bg-rose-950/30 border-rose-200 dark:border-rose-900/60' 
+            : 'bg-slate-50/70 dark:bg-slate-900/50 border-slate-200/60 dark:border-slate-700/50'
+        }`}>
+          <div className="flex items-center justify-between text-[10px] font-bold uppercase">
+            <span className={summary.maturedOverdueIpcCount > 0 ? 'text-rose-700 dark:text-rose-400' : 'text-slate-500 dark:text-slate-400'}>
+              Matured Overdue (&gt;56d)
             </span>
+            <Clock className={`w-3.5 h-3.5 ${summary.maturedOverdueIpcCount > 0 ? 'text-rose-600 animate-pulse' : 'text-slate-400'}`} />
           </div>
-          <div className="flex items-baseline justify-between mt-0.5">
-            <span className="text-xs font-bold text-rose-600 dark:text-rose-400 font-mono">
-              Unpaid: {formatMoney(totalUnpaidEqvEtb, 'Br.')}
+          <div className={`text-base font-extrabold font-mono mt-1 ${summary.maturedOverdueIpcCount > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-800 dark:text-zinc-100'}`}>
+            {formatMoney(summary.totalMaturedPrincipalEqvEtb, 'Br.')}
+          </div>
+          <div className={`text-[10px] mt-0.5 font-semibold ${summary.maturedOverdueIpcCount > 0 ? 'text-rose-600/90 dark:text-rose-400/90' : 'text-slate-400'}`}>
+            {summary.maturedOverdueIpcCount > 0 ? `⚠️ ${summary.maturedOverdueIpcCount} IPCs breach 56-day window` : 'All certificates within window'}
+          </div>
+        </div>
+
+        {/* Accrued Delayed Payment Interest */}
+        <div className={`rounded-xl p-3 border transition ${
+          summary.totalAccruedInterestEqvEtb > 0 
+            ? 'bg-amber-50/80 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900/60' 
+            : 'bg-slate-50/70 dark:bg-slate-900/50 border-slate-200/60 dark:border-slate-700/50'
+        }`}>
+          <div className="flex items-center justify-between text-[10px] font-bold uppercase">
+            <span className={summary.totalAccruedInterestEqvEtb > 0 ? 'text-amber-800 dark:text-amber-300' : 'text-slate-500 dark:text-slate-400'}>
+              Accrued Delay Interest
             </span>
+            <Scale className={`w-3.5 h-3.5 ${summary.totalAccruedInterestEqvEtb > 0 ? 'text-amber-600' : 'text-slate-400'}`} />
+          </div>
+          <div className={`text-base font-extrabold font-mono mt-1 ${summary.totalAccruedInterestEqvEtb > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-800 dark:text-zinc-100'}`}>
+            {formatMoney(summary.totalAccruedInterestEqvEtb, 'Br.')}
+          </div>
+          <div className={`text-[10px] mt-0.5 ${summary.totalAccruedInterestEqvEtb > 0 ? 'text-amber-700 dark:text-amber-400 font-semibold' : 'text-slate-400'}`}>
+            FIDIC 14.8 Financing Charges ({annualInterestRate}% p.a.)
           </div>
         </div>
       </div>
 
-      {/* Filter Tabs */}
-      <div className="flex items-center justify-between text-xs border-b border-slate-100 dark:border-slate-700/60 pb-2">
-        <div className="flex items-center gap-1 font-semibold">
-          <span className="text-slate-500 dark:text-slate-400 mr-2">Filter Records:</span>
-          {(['All', 'Paid', 'Unpaid', 'Partially Paid'] as const).map((st) => (
+      {/* Filter Tabs & Maturation Notice */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs border-b border-slate-100 dark:border-slate-700/60 pb-2">
+        <div className="flex items-center gap-1 font-semibold flex-wrap">
+          <span className="text-slate-500 dark:text-slate-400 mr-1 text-[11px]">Filter:</span>
+          {(['All', 'Paid', 'Unpaid', 'Partially Paid', 'Matured Overdue'] as const).map((st) => (
             <button
               key={st}
               onClick={() => setFilterStatus(st)}
-              className={`px-2.5 py-1 rounded-lg transition text-[11px] font-bold ${
+              className={`px-2.5 py-1 rounded-lg transition text-[11px] font-bold flex items-center gap-1 ${
                 filterStatus === st
-                  ? 'bg-slate-800 text-white dark:bg-slate-200 dark:text-slate-900 shadow-2xs'
+                  ? st === 'Matured Overdue'
+                    ? 'bg-rose-600 text-white shadow-2xs'
+                    : 'bg-slate-800 text-white dark:bg-slate-200 dark:text-slate-900 shadow-2xs'
+                  : st === 'Matured Overdue'
+                  ? 'text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40'
                   : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700'
               }`}
             >
+              {st === 'Matured Overdue' && <AlertTriangle className="w-3 h-3" />}
               {st}
+              {st === 'Matured Overdue' && summary.maturedOverdueIpcCount > 0 && (
+                <span className="ml-0.5 px-1 py-0.2 bg-rose-500 text-white text-[9px] rounded-full font-mono">
+                  {summary.maturedOverdueIpcCount}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -350,16 +402,18 @@ export default function MonthlyPaymentIpcSummaryTable({
         <table className="w-full text-left border-collapse text-xs">
           <thead>
             <tr className="bg-slate-100/70 dark:bg-slate-900/60 text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200 dark:border-slate-700">
-              <th className="py-3 px-3 w-36">IPC / Certificate</th>
-              <th className="py-3 px-2 w-24">Period</th>
+              <th className="py-3 px-3 w-32">IPC / Certificate</th>
+              <th className="py-3 px-2 w-28">Submission & Age</th>
+              <th className="py-3 px-2 w-36 text-center">56-Day Maturation</th>
               <th className="py-3 px-2 text-right">Bill Summary (ETB)</th>
               <th className="py-3 px-2 text-right text-emerald-700 dark:text-emerald-400">Price Adj. (ETB)</th>
-              <th className="py-3 px-2 text-right text-indigo-500 dark:text-indigo-400">Advance Repayment (ETB)</th>
-              <th className="py-3 px-2 text-right text-rose-600 dark:text-rose-400">Retention (ETB)</th>
-              <th className="py-3 px-2 text-center w-36">Net Certified (ETB)</th>
-              <th className="py-3 px-2 text-center w-36">Certified (USD)</th>
-              <th className="py-3 px-2 text-right font-extrabold text-slate-800 dark:text-zinc-100">Total Certified</th>
-              <th className="py-3 px-2 text-center w-16">Details</th>
+              <th className="py-3 px-2 text-right text-indigo-500 dark:text-indigo-400">Advance Repay.</th>
+              <th className="py-3 px-2 text-right text-rose-600 dark:text-rose-400">Retention</th>
+              <th className="py-3 px-2 text-center w-32">Net Certified (ETB)</th>
+              <th className="py-3 px-2 text-center w-32">Certified (USD)</th>
+              <th className="py-3 px-2 text-right font-extrabold text-amber-700 dark:text-amber-400">Delay Interest</th>
+              <th className="py-3 px-2 text-right font-extrabold text-slate-800 dark:text-zinc-100">Total Claimable</th>
+              <th className="py-3 px-2 text-center w-14">Details</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 font-sans">
@@ -367,13 +421,17 @@ export default function MonthlyPaymentIpcSummaryTable({
               const originalIndex = ipcTracker.findIndex((x) => x.id === item.id);
               const realIdx = originalIndex >= 0 ? originalIndex : idx;
 
-              const totalAmountEtb = (item.certifiedEtb || 0) + (exchangeRate * (item.certifiedUsd || 0));
+              const maturation = calculateIpcMaturation(item, annualInterestRate, exchangeRate);
               const isExpanded = expandedIpcId === item.id;
 
               return (
                 <React.Fragment key={item.id || idx}>
-                  <tr className="hover:bg-slate-50/80 dark:hover:bg-slate-750/50 transition duration-100">
-                    {/* IPC No & Date */}
+                  <tr className={`transition duration-100 ${
+                    maturation.isOverdue 
+                      ? 'bg-rose-50/30 dark:bg-rose-950/10 hover:bg-rose-50/60 dark:hover:bg-rose-950/20' 
+                      : 'hover:bg-slate-50/80 dark:hover:bg-slate-750/50'
+                  }`}>
+                    {/* IPC No */}
                     <td className="py-2.5 px-3 font-bold">
                       <input
                         type="text"
@@ -381,16 +439,35 @@ export default function MonthlyPaymentIpcSummaryTable({
                         onChange={(e) => handleFieldChange(realIdx, 'paymentNo', e.target.value)}
                         className="w-full bg-transparent border-none focus:ring-1 focus:ring-blue-500 rounded px-1 font-bold text-slate-800 dark:text-zinc-100 outline-none"
                       />
+                      <div className="text-[10px] text-slate-400 px-1 font-normal">
+                        Period: {item.period || 'N/A'}
+                      </div>
                     </td>
 
-                    {/* Period */}
-                    <td className="py-2.5 px-2 font-medium">
+                    {/* Submission Date & Elapsed Calendar Days */}
+                    <td className="py-2.5 px-2">
                       <input
                         type="date"
-                        value={item.period || ''}
-                        onChange={(e) => handleFieldChange(realIdx, 'period', e.target.value)}
+                        value={item.submissionDate || ''}
+                        onChange={(e) => handleFieldChange(realIdx, 'submissionDate', e.target.value)}
                         className="w-full bg-transparent border-none focus:ring-1 focus:ring-blue-500 rounded px-1 font-mono text-xs text-slate-700 dark:text-slate-300 outline-none cursor-pointer"
+                        title="Contractor IPC Submission Date"
                       />
+                      <div className="text-[10px] font-mono px-1 font-medium text-slate-500 dark:text-slate-400">
+                        {item.submissionDate ? `${maturation.daysElapsed} days elapsed` : 'No date'}
+                      </div>
+                    </td>
+
+                    {/* 56-Day Maturation Status Badge */}
+                    <td className="py-2.5 px-2 text-center">
+                      <div className="flex flex-col items-center gap-0.5">
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${maturation.statusBadge.bgClass} ${maturation.statusBadge.textClass} ${maturation.statusBadge.borderClass}`}>
+                          {maturation.statusBadge.label}
+                        </span>
+                        <span className="text-[9px] text-slate-400 dark:text-slate-500 font-mono">
+                          {maturation.dueDate ? `Due: ${maturation.dueDate}` : ''}
+                        </span>
+                      </div>
                     </td>
 
                     {/* Gross Bill ETB */}
@@ -481,9 +558,37 @@ export default function MonthlyPaymentIpcSummaryTable({
                       </div>
                     </td>
 
-                    {/* Total Certified */}
-                    <td className="py-2.5 px-2 text-right font-mono font-extrabold text-indigo-600 dark:text-indigo-400">
-                      {formatMoney(totalAmountEtb, 'Br.')}
+                    {/* FIDIC 14.8 Accrued Delayed Interest Reflection */}
+                    <td className="py-2.5 px-2 text-right font-mono font-bold">
+                      {maturation.accruedInterestEqvEtb > 0 ? (
+                        <div className="text-amber-600 dark:text-amber-400 font-extrabold">
+                          +{formatMoney(maturation.accruedInterestEqvEtb, 'Br.')}
+                          <div className="text-[9px] text-amber-700/80 dark:text-amber-400/80 font-normal">
+                            +{maturation.overdueDays}d @ {maturation.annualInterestRate}%
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-slate-400 dark:text-slate-500 font-normal">
+                          {maturation.isFullyPaid ? 'Settled' : '0.00'}
+                        </span>
+                      )}
+                    </td>
+
+                    {/* Total Claimable Exposure (Principal + Delayed Interest) */}
+                    <td className="py-2.5 px-2 text-right font-mono font-extrabold">
+                      <div className="text-indigo-600 dark:text-indigo-400">
+                        {formatMoney(
+                          maturation.isFullyPaid 
+                            ? (item.certifiedEtb || 0) + (exchangeRate * (item.certifiedUsd || 0))
+                            : maturation.totalClaimableEqvEtb, 
+                          'Br.'
+                        )}
+                      </div>
+                      {!maturation.isFullyPaid && maturation.accruedInterestEqvEtb > 0 && (
+                        <div className="text-[9px] text-rose-500 dark:text-rose-400 font-semibold">
+                          Incl. Interest
+                        </div>
+                      )}
                     </td>
 
                     {/* Toggle expand & action buttons */}
@@ -492,7 +597,7 @@ export default function MonthlyPaymentIpcSummaryTable({
                         <button
                           onClick={() => setExpandedIpcId(isExpanded ? null : item.id)}
                           className="p-1 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
-                          title="Toggle Detailed Breakdown"
+                          title="Toggle Maturation & Calculation Details"
                         >
                           {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                         </button>
@@ -510,69 +615,128 @@ export default function MonthlyPaymentIpcSummaryTable({
                   {/* Expanded IPC Detail Row */}
                   {isExpanded && (
                     <tr className="bg-slate-50/90 dark:bg-slate-900/80 border-b border-slate-200 dark:border-slate-700">
-                      <td colSpan={10} className="p-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                      <td colSpan={12} className="p-4">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
 
-                          {/* Submission & Certification Dates */}
-                          <div className="space-y-2 bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200/80 dark:border-slate-700">
+                          {/* 56-Day Maturation & Delay Analysis Box */}
+                          <div className={`space-y-2 p-3 rounded-xl border ${
+                            maturation.isOverdue
+                              ? 'bg-rose-50/50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/50'
+                              : 'bg-white dark:bg-slate-800 border-slate-200/80 dark:border-slate-700'
+                          }`}>
                             <span className="font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5 text-[11px] uppercase">
-                              <Calendar className="w-3.5 h-3.5 text-blue-500" /> Key Dates & Milestones
+                              <ShieldAlert className={`w-3.5 h-3.5 ${maturation.isOverdue ? 'text-rose-600' : 'text-blue-500'}`} />
+                              FIDIC Cl. 14.7 Maturation & Delay Breakdown
                             </span>
-                            <div className="space-y-1.5 pt-1">
-                              <div>
-                                <label className="text-[10px] text-slate-400 block font-semibold">Submission Date:</label>
-                                <input
-                                  type="date"
-                                  value={item.submissionDate || ''}
-                                  onChange={(e) => handleFieldChange(realIdx, 'submissionDate', e.target.value)}
-                                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 text-slate-800 dark:text-zinc-100 font-mono text-xs outline-none"
-                                />
+                            
+                            <div className="space-y-1.5 pt-1 text-slate-600 dark:text-slate-300 font-mono text-[11px]">
+                              <div className="flex justify-between">
+                                <span className="text-slate-400 font-sans">Submission Date:</span>
+                                <span className="font-bold">{item.submissionDate || 'N/A'}</span>
                               </div>
-                              <div>
-                                <label className="text-[10px] text-slate-400 block font-semibold">Certification Date:</label>
-                                <input
-                                  type="date"
-                                  value={item.certificationDate || ''}
-                                  onChange={(e) => handleFieldChange(realIdx, 'certificationDate', e.target.value)}
-                                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 text-slate-800 dark:text-zinc-100 font-mono text-xs outline-none"
-                                />
+                              <div className="flex justify-between">
+                                <span className="text-slate-400 font-sans">56-Day Maturation Due Date:</span>
+                                <span className="font-bold text-indigo-600 dark:text-indigo-400">{maturation.dueDate || 'N/A'}</span>
                               </div>
-                            </div>
-                          </div>
-
-                          {/* USD Status */}
-                          <div className="space-y-2 bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200/80 dark:border-slate-700">
-                            <span className="font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5 text-[11px] uppercase">
-                              <ArrowRightLeft className="w-3.5 h-3.5 text-indigo-500" /> USD Status
-                            </span>
-                            <div className="space-y-1.5 pt-1">
-                              <div>
-                                <label className="text-[10px] text-slate-400 block font-semibold">Foreign USD Portion Status:</label>
-                                <select
-                                  value={item.statusUsd || item.status || 'Unpaid'}
-                                  onChange={(e) => handleFieldChange(realIdx, 'statusUsd', e.target.value)}
-                                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 font-semibold text-slate-800 dark:text-zinc-100 outline-none"
-                                >
-                                  <option value="Paid">USD Portion: Paid</option>
-                                  <option value="Unpaid">USD Portion: Unpaid</option>
-                                  <option value="Partially Paid">USD Portion: Partially Paid</option>
-                                </select>
+                              <div className="flex justify-between">
+                                <span className="text-slate-400 font-sans">Elapsed Calendar Days:</span>
+                                <span className="font-bold">{maturation.daysElapsed} days</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-slate-400 font-sans">Overdue Days (&gt;56d):</span>
+                                <span className={`font-bold ${maturation.overdueDays > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                                  {maturation.overdueDays > 0 ? `+${maturation.overdueDays} days overdue` : '0 days (Compliant)'}
+                                </span>
                               </div>
                             </div>
                           </div>
 
-                          {/* Remarks & Notes */}
+                          {/* Interest Reflection & Financing Charges Box */}
                           <div className="space-y-2 bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200/80 dark:border-slate-700">
                             <span className="font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5 text-[11px] uppercase">
-                              <FileText className="w-3.5 h-3.5 text-amber-500" /> Certificate Remarks & Notes
+                              <Percent className="w-3.5 h-3.5 text-amber-500" />
+                              FIDIC Cl. 14.8 Delayed Interest Reflection
                             </span>
-                            <textarea
-                              rows={3}
-                              value={item.remarks || ''}
-                              onChange={(e) => handleFieldChange(realIdx, 'remarks', e.target.value)}
-                              placeholder="Notes on price escalation indices, materials on site, or payment approval notes..."
-                              className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded p-2 text-slate-800 dark:text-zinc-100 text-xs outline-none focus:ring-1 focus:ring-blue-500"
-                            />
+
+                            <div className="space-y-1.5 pt-1 text-slate-600 dark:text-slate-300 font-mono text-[11px]">
+                              <div className="flex justify-between items-center">
+                                <span className="text-slate-400 font-sans">Applicable Annual Rate:</span>
+                                <div className="flex items-center gap-1">
+                                  <input
+                                    type="number"
+                                    step="0.1"
+                                    value={item.customAnnualInterestRate !== undefined ? item.customAnnualInterestRate : annualInterestRate}
+                                    onChange={(e) => handleFieldChange(realIdx, 'customAnnualInterestRate', parseFloat(e.target.value) || 0)}
+                                    className="w-14 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-0.5 text-right font-bold text-slate-800 dark:text-zinc-100 outline-none text-xs"
+                                  />
+                                  <span className="text-[10px]">%</span>
+                                </div>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-slate-400 font-sans">Unpaid ETB Principal:</span>
+                                <span>{formatMoney(maturation.unpaidCertifiedEtb, 'Br.')}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-slate-400 font-sans">Accrued Delay Interest (ETB):</span>
+                                <span className="font-bold text-amber-600 dark:text-amber-400">
+                                  {formatMoney(maturation.accruedInterestEtb, 'Br.')}
+                                </span>
+                              </div>
+                              {maturation.unpaidCertifiedUsd > 0 && (
+                                <div className="flex justify-between">
+                                  <span className="text-slate-400 font-sans">Accrued Delay Interest (USD):</span>
+                                  <span className="font-bold text-amber-600 dark:text-amber-400">
+                                    {formatMoney(maturation.accruedInterestUsd, '$')}
+                                  </span>
+                                </div>
+                              )}
+                              <div className="flex justify-between border-t border-slate-100 dark:border-slate-700/60 pt-1">
+                                <span className="text-slate-500 dark:text-slate-400 font-bold font-sans">Total Claimable Exposure:</span>
+                                <span className="font-extrabold text-indigo-600 dark:text-indigo-400">
+                                  {formatMoney(maturation.totalClaimableEqvEtb, 'Br.')}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Key Dates & Certificate Notes */}
+                          <div className="space-y-2 bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200/80 dark:border-slate-700">
+                            <span className="font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5 text-[11px] uppercase">
+                              <Calendar className="w-3.5 h-3.5 text-blue-500" /> Milestone Dates & Remarks
+                            </span>
+                            <div className="space-y-1.5 pt-1">
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <label className="text-[10px] text-slate-400 block font-semibold">Certification Date:</label>
+                                  <input
+                                    type="date"
+                                    value={item.certificationDate || ''}
+                                    onChange={(e) => handleFieldChange(realIdx, 'certificationDate', e.target.value)}
+                                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 text-slate-800 dark:text-zinc-100 font-mono text-xs outline-none"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="text-[10px] text-slate-400 block font-semibold">Disbursement Date:</label>
+                                  <input
+                                    type="date"
+                                    value={item.paymentDate || ''}
+                                    onChange={(e) => handleFieldChange(realIdx, 'paymentDate', e.target.value)}
+                                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 text-slate-800 dark:text-zinc-100 font-mono text-xs outline-none"
+                                    title="Actual payment disbursement date"
+                                  />
+                                </div>
+                              </div>
+                              <div>
+                                <label className="text-[10px] text-slate-400 block font-semibold">Certificate Remarks / Escalation Reason:</label>
+                                <textarea
+                                  rows={2}
+                                  value={item.remarks || ''}
+                                  onChange={(e) => handleFieldChange(realIdx, 'remarks', e.target.value)}
+                                  placeholder="Notes on statutory payment delay notification, NBE forex approval, or interest compounding..."
+                                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded p-1.5 text-slate-800 dark:text-zinc-100 text-xs outline-none focus:ring-1 focus:ring-blue-500"
+                                />
+                              </div>
+                            </div>
                           </div>
                         </div>
                       </td>
@@ -584,8 +748,8 @@ export default function MonthlyPaymentIpcSummaryTable({
 
             {filteredIpcs.length === 0 && (
               <tr>
-                <td colSpan={10} className="p-8 text-center text-slate-400 dark:text-slate-500 font-medium">
-                  No monthly payment bill entries found. Click "+ Add IPC Entry" to record interim payment statements.
+                <td colSpan={12} className="p-8 text-center text-slate-400 dark:text-slate-500 font-medium">
+                  No monthly payment certificates found matching current filter. Click "+ Add IPC Entry" to record interim payment statements.
                 </td>
               </tr>
             )}
@@ -595,7 +759,7 @@ export default function MonthlyPaymentIpcSummaryTable({
           {filteredIpcs.length > 0 && (
             <tfoot>
               <tr className="bg-slate-100 dark:bg-slate-900/90 font-bold border-t-2 border-slate-300 dark:border-slate-700 text-xs">
-                <td className="py-3 px-3 text-slate-800 dark:text-zinc-100 font-extrabold" colSpan={2}>
+                <td className="py-3 px-3 text-slate-800 dark:text-zinc-100 font-extrabold" colSpan={3}>
                   Total Cumulative Ledger:
                 </td>
                 <td className="py-3 px-2 text-right font-mono text-slate-900 dark:text-zinc-100 font-extrabold">
@@ -616,8 +780,11 @@ export default function MonthlyPaymentIpcSummaryTable({
                 <td className="py-3 px-2 text-center font-mono text-slate-900 dark:text-zinc-100 font-extrabold">
                   {formatMoney(totalCertifiedUsd, '$')}
                 </td>
+                <td className="py-3 px-2 text-right font-mono text-amber-600 dark:text-amber-400 font-black">
+                  +{formatMoney(summary.totalAccruedInterestEqvEtb, 'Br.')}
+                </td>
                 <td className="py-3 px-2 text-right font-mono text-indigo-600 dark:text-indigo-400 font-black text-sm">
-                  {formatMoney(totalNetEqvEtb, 'Br.')}
+                  {formatMoney(summary.totalClaimableExposureEqvEtb, 'Br.')}
                 </td>
                 <td className="py-3 px-2"></td>
               </tr>
@@ -628,4 +795,3 @@ export default function MonthlyPaymentIpcSummaryTable({
     </div>
   );
 }
-

@@ -457,7 +457,7 @@ export function buildKpiHierarchy(ct: 'DB' | 'DBB', project?: Project) {
           { id: 'RK-2', desc: 'Average severity index of all recorded project vulnerabilities value divided by 25 (0 - 100%)', unit: '%', wt: 100, max: 100, type: 'pct' }
         ] },
       { id: 'SC8.3', name: 'Mitigation', wt: 25, items: [
-          { id: 'RK-3', desc: 'Sum of status values divided by Number of Active Hazards (0 - 100%)', unit: '%', wt: 100, max: 100, type: 'pct' }
+          { id: 'RK-3', desc: 'Sum of status values divided by Total Number of Hazards (0 - 100%)', unit: '%', wt: 100, max: 100, type: 'pct' }
         ] },
       { id: 'SC8.4', name: 'Project Risk Index', wt: 25, items: [
           { id: 'RK-4', desc: 'Project Risk Index score', unit: '%', wt: 100, max: 100, type: 'pct' }
@@ -887,16 +887,19 @@ export function getIntegratedKpiAllocated(project: Project): KpiAllocatedItem[] 
         const meanSeverity = totalRisksCount > 0 ? (sumExposure / totalRisksCount) : 0;
         computedAlloc = (meanSeverity / 25) * 100;
       } else if (k.itemId === 'RK-3') {
-        // SC8.3: Mitigation = (Sum of status values / Number of Active Hazards) * 100%
+        // SC8.3: Mitigation = (Sum of status values / Total Number of Hazards) * 100%
+        // Status Values: Retired = 0, Mitigated = 0.5, Active = 1.0
         const getStatusVal = (status: string) => {
           if (status === 'Retired') return 0;
           if (status === 'Mitigated') return 0.5;
           return 1; // Active
         };
-        const numberOfActiveHazards = roadRisks.filter(r => r.status === 'Active').length;
+        const totalRisksCount = roadRisks.length;
         const sumStatusValues = roadRisks.reduce((sum, r) => sum + getStatusVal(r.status), 0);
-        const activeCount = numberOfActiveHazards > 0 ? numberOfActiveHazards : (roadRisks.length > 0 ? roadRisks.length : 1);
-        computedAlloc = (sumStatusValues / activeCount) * 100;
+        const totalHazardsDenom = totalRisksCount > 0 ? totalRisksCount : 1;
+        computedAlloc = totalRisksCount > 0 
+          ? Math.min(100, Math.max(0, (sumStatusValues / totalHazardsDenom) * 100))
+          : 0;
       } else if (k.itemId === 'RK-4') {
         // SC8.4: Project Risk Index - based on Mean Risk Exposure value: if 0 -> 0%, if 25 -> 100%
         const totalRisksCount = roadRisks.length;

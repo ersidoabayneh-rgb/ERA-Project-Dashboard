@@ -160,10 +160,12 @@ export default function SeriesEditorView({ project, onUpdateSeries, onProjectUpd
     payList: PaymentItem[], 
     annList: AnnualItem[], 
     tracker: IpcItem[] = ipcTracker, 
-    rate: number = exchangeRate
+    rate: number = exchangeRate,
+    annualRate?: number
   ) => {
+    const rateToUse = annualRate !== undefined ? annualRate : project.annualInterestRate;
     if (onProjectUpdate) {
-      onProjectUpdate({ payment: payList, annual: annList, ipcTracker: tracker, usdExchangeRate: rate }, 'Financial schedules Updated');
+      onProjectUpdate({ payment: payList, annual: annList, ipcTracker: tracker, usdExchangeRate: rate, annualInterestRate: rateToUse }, 'Financial schedules Updated');
     } else if (onUpdateFinance) {
       onUpdateFinance(payList, annList, tracker, rate);
     }
@@ -383,10 +385,11 @@ export default function SeriesEditorView({ project, onUpdateSeries, onProjectUpd
     triggerFinanceUpdate(payment, updated, ipcTracker);
   };
 
-  const handleIpcTrackerUpdate = (updatedTracker: IpcItem[], newRate?: number) => {
+  const handleIpcTrackerUpdate = (updatedTracker: IpcItem[], newRate?: number, newAnnualRate?: number) => {
     const rateToUse = newRate !== undefined ? newRate : exchangeRate;
+    const annualRateToUse = newAnnualRate !== undefined ? newAnnualRate : project.annualInterestRate;
     const updatedPay = syncPaymentsWithTe(payment, updatedTracker, rateToUse);
-    triggerFinanceUpdate(updatedPay, annual, updatedTracker, rateToUse);
+    triggerFinanceUpdate(updatedPay, annual, updatedTracker, rateToUse, annualRateToUse);
   };
 
   return (

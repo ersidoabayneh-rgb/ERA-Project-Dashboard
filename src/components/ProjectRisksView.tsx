@@ -230,7 +230,7 @@ export default function ProjectRisksView({
   const sc82RiskEscalation = (meanSeverityNum / 25) * 100;
 
   // SC8.3 Mitigation Calculation (Converted to 100% Scale)
-  // Formula: SC8.3 = (Sum of Status Values / Number of Active Hazards) * 100%
+  // Formula: SC8.3 = (Sum of Status Values / Total Number of Hazards) * 100%
   // Status Values: Retired = 0, Mitigated = 0.5, Active = 1.0
   const getStatusVal = (status: string) => {
     if (status === 'Retired') return 0;
@@ -239,10 +239,10 @@ export default function ProjectRisksView({
   };
   const sc83Weightage = g8Subgroups.find(ssc => ssc.id === 'SC8.3')?.wt || 25;
   const sumStatusValues = risks.reduce((sum, r) => sum + getStatusVal(r.status), 0);
-  const activeHazardsDenom = activeRisksCount > 0 
-    ? activeRisksCount 
-    : (totalRisks > 0 ? totalRisks : 1);
-  const sc83Mitigation = (sumStatusValues / activeHazardsDenom) * 100;
+  const totalHazardsDenom = totalRisks > 0 ? totalRisks : 1;
+  const sc83Mitigation = totalRisks > 0 
+    ? Math.min(100, Math.max(0, (sumStatusValues / totalHazardsDenom) * 100))
+    : 0;
 
   // Bidirectional Synchronization Handlers
   const handleClearKpiOverride = () => {

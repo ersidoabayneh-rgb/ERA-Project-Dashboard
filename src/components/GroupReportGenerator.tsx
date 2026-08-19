@@ -23,6 +23,7 @@ import { jsPDF } from 'jspdf';
 import { Project, User, formatAccounting } from '../types';
 import { buildKpiHierarchy, getIntegratedKpiAllocated } from '../data/defaultProject';
 import { QtyItem } from '../types';
+import { calculateIpcMaturation } from '../lib/ipcCalculations';
 
 interface CriticalQtyAnalysis {
   name: string;
@@ -1143,10 +1144,14 @@ export default function GroupReportGenerator({
     let totalUnpaidUsd = 0;
     let totalMaturedEtb = 0;
     let totalMaturedUsd = 0;
+    let totalAccruedInterestEtb = 0;
+    let totalAccruedInterestUsd = 0;
     let combinedCertifiedEtb = 0;
     let combinedPaidEtb = 0;
     let combinedUnpaidEtb = 0;
     let combinedMaturedEtb = 0;
+    let combinedAccruedInterestEtb = 0;
+    let combinedClaimableEtb = 0;
     let maturedIpcCount = 0;
     let totalIpcCount = 0;
     let unpaidIpcCount = 0;
@@ -1156,11 +1161,11 @@ export default function GroupReportGenerator({
     rawGroupProjects.forEach(p => {
       const tracker = p.ipcTracker || [];
       const rate = p.usdExchangeRate || 28.0;
+      const annualRate = p.annualInterestRate !== undefined ? p.annualInterestRate : 16.50;
 
       tracker.forEach(item => {
         totalIpcCount++;
-        const isEtbUnpaid = (item.statusEtb || item.status) === 'Unpaid';
-        const isUsdUnpaid = (item.statusUsd || item.status) === 'Unpaid';
+        const maturation = calculateIpcMaturation(item, annualRate, rate, today);
 
         const certEtb = item.certifiedEtb || 0;
         const certUsd = item.certifiedUsd || 0;
@@ -1169,46 +1174,32 @@ export default function GroupReportGenerator({
         totalCertifiedUsd += certUsd;
         combinedCertifiedEtb += certEtb + (certUsd * rate);
 
-        if (isEtbUnpaid) {
-          totalUnpaidEtb += certEtb;
-          combinedUnpaidEtb += certEtb;
-          unpaidIpcCount++;
-        } else {
-          totalPaidEtb += certEtb;
-          combinedPaidEtb += certEtb;
-        }
+        totalPaidEtb += maturation.paidCertifiedEtb;
+        totalPaidUsd += maturation.paidCertifiedUsd;
+        combinedPaidEtb += maturation.paidCertifiedEtb + (maturation.paidCertifiedUsd * rate);
 
-        if (isUsdUnpaid) {
-          totalUnpaidUsd += certUsd;
-          combinedUnpaidEtb += certUsd * rate;
-          if (!isEtbUnpaid) unpaidIpcCount++;
-        } else {
-          totalPaidUsd += certUsd;
-          combinedPaidEtb += certUsd * rate;
+        totalUnpaidEtb += maturation.unpaidCertifiedEtb;
+        totalUnpaidUsd += maturation.unpaidCertifiedUsd;
+        combinedUnpaidEtb += maturation.unpaidCertifiedEtb + (maturation.unpaidCertifiedUsd * rate);
+
+        if (!maturation.isFullyPaid) {
+          unpaidIpcCount++;
         }
 
         // Check matured overdue (> 56 days)
-        if (isEtbUnpaid || isUsdUnpaid) {
-          if (item.submissionDate) {
-            const subDate = new Date(item.submissionDate);
-            if (!isNaN(subDate.getTime())) {
-              const daysElapsed = Math.floor((today.getTime() - subDate.getTime()) / (1000 * 60 * 60 * 24));
-              if (daysElapsed > 56) {
-                maturedIpcCount++;
-                if (isEtbUnpaid) {
-                  totalMaturedEtb += certEtb;
-                  combinedMaturedEtb += certEtb;
-                }
-                if (isUsdUnpaid) {
-                  totalMaturedUsd += certUsd;
-                  combinedMaturedEtb += certUsd * rate;
-                }
-              }
-            }
-          }
+        if (maturation.isOverdue) {
+          maturedIpcCount++;
+          totalMaturedEtb += maturation.unpaidCertifiedEtb;
+          totalMaturedUsd += maturation.unpaidCertifiedUsd;
+          combinedMaturedEtb += maturation.unpaidCertifiedEtb + (maturation.unpaidCertifiedUsd * rate);
+          totalAccruedInterestEtb += maturation.accruedInterestEtb;
+          totalAccruedInterestUsd += maturation.accruedInterestUsd;
+          combinedAccruedInterestEtb += maturation.accruedInterestEqvEtb;
         }
       });
     });
+
+    combinedClaimableEtb = combinedUnpaidEtb + combinedAccruedInterestEtb;
 
     return {
       totalCertifiedEtb,
@@ -1219,10 +1210,14 @@ export default function GroupReportGenerator({
       totalUnpaidUsd,
       totalMaturedEtb,
       totalMaturedUsd,
+      totalAccruedInterestEtb,
+      totalAccruedInterestUsd,
       combinedCertifiedEtb,
       combinedPaidEtb,
       combinedUnpaidEtb,
       combinedMaturedEtb,
+      combinedAccruedInterestEtb,
+      combinedClaimableEtb,
       maturedIpcCount,
       totalIpcCount,
       unpaidIpcCount,
@@ -1284,41 +1279,35 @@ export default function GroupReportGenerator({
     let unpaidUsd = 0;
     let maturedEtb = 0;
     let maturedUsd = 0;
+    let accruedInterestEtb = 0;
+    let accruedInterestUsd = 0;
+    let accruedInterestEqv = 0;
+
+    const annualRate = p.annualInterestRate !== undefined ? p.annualInterestRate : 16.50;
 
     tracker.forEach(item => {
-      const isEtbUnpaid = (item.statusEtb || item.status) === 'Unpaid';
-      const isUsdUnpaid = (item.statusUsd || item.status) === 'Unpaid';
+      const maturation = calculateIpcMaturation(item, annualRate, rate, today);
 
       certEtb += item.certifiedEtb || 0;
       certUsd += item.certifiedUsd || 0;
 
-      if (isEtbUnpaid) {
-        unpaidEtb += item.certifiedEtb || 0;
-      } else {
-        paidEtb += item.certifiedEtb || 0;
-      }
+      paidEtb += maturation.paidCertifiedEtb;
+      paidUsd += maturation.paidCertifiedUsd;
 
-      if (isUsdUnpaid) {
-        unpaidUsd += item.certifiedUsd || 0;
-      } else {
-        paidUsd += item.certifiedUsd || 0;
-      }
+      unpaidEtb += maturation.unpaidCertifiedEtb;
+      unpaidUsd += maturation.unpaidCertifiedUsd;
 
-      if (!isEtbUnpaid && !isUsdUnpaid) {
+      if (maturation.isFullyPaid) {
         paidIpcs++;
       } else {
         unpaidIpcs++;
-        // Check maturity (>56 days)
-        if (item.submissionDate) {
-          const subDate = new Date(item.submissionDate);
-          if (!isNaN(subDate.getTime())) {
-            const age = Math.floor((today.getTime() - subDate.getTime()) / (1000 * 60 * 60 * 24));
-            if (age > 56) {
-              maturedIpcsCount++;
-              if (isEtbUnpaid) maturedEtb += item.certifiedEtb || 0;
-              if (isUsdUnpaid) maturedUsd += item.certifiedUsd || 0;
-            }
-          }
+        if (maturation.isOverdue) {
+          maturedIpcsCount++;
+          maturedEtb += maturation.unpaidCertifiedEtb;
+          maturedUsd += maturation.unpaidCertifiedUsd;
+          accruedInterestEtb += maturation.accruedInterestEtb;
+          accruedInterestUsd += maturation.accruedInterestUsd;
+          accruedInterestEqv += maturation.accruedInterestEqvEtb;
         }
       }
     });
@@ -1327,6 +1316,7 @@ export default function GroupReportGenerator({
     const combinedPaid = paidEtb + (paidUsd * rate);
     const combinedUnpaid = unpaidEtb + (unpaidUsd * rate);
     const combinedMatured = maturedEtb + (maturedUsd * rate);
+    const combinedClaimable = combinedUnpaid + accruedInterestEqv;
 
     let statusLabel: 'Paid' | 'Pending' | 'Overdue' = 'Paid';
     let statusColor = 'bg-emerald-50 text-emerald-600 border-emerald-100 dark:bg-emerald-950/20 dark:text-emerald-400';
@@ -1351,10 +1341,14 @@ export default function GroupReportGenerator({
       unpaidUsd,
       maturedEtb,
       maturedUsd,
+      accruedInterestEtb,
+      accruedInterestUsd,
+      accruedInterestEqv,
       combinedCertified,
       combinedPaid,
       combinedUnpaid,
       combinedMatured,
+      combinedClaimable,
       statusLabel,
       statusColor
     };

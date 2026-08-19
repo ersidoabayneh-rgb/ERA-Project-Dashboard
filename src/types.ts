@@ -189,6 +189,7 @@ export interface IpcItem {
   period?: string;
   submissionDate?: string;
   certificationDate?: string;
+  paymentDate?: string;
   grossBillEtb?: number;
   grossBillUsd?: number;
   priceAdjustmentEtb?: number;
@@ -202,6 +203,7 @@ export interface IpcItem {
   status: 'Paid' | 'Unpaid' | 'Partially Paid';
   statusEtb?: 'Paid' | 'Unpaid' | 'Partially Paid';
   statusUsd?: 'Paid' | 'Unpaid' | 'Partially Paid';
+  customAnnualInterestRate?: number;
   remarks?: string;
 }
 
@@ -342,6 +344,7 @@ export interface Project {
   materialProduction?: MaterialProductionItem[];
   ipcTracker?: IpcItem[];
   usdExchangeRate?: number;
+  annualInterestRate?: number;
   risks?: RiskItem[];
   issues?: IssueLogItem[];
   aiChatHistory?: any[];
