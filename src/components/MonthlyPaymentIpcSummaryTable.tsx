@@ -19,7 +19,9 @@ import {
   Percent,
   ShieldAlert,
   Info,
-  Scale
+  Scale,
+  RotateCcw,
+  Edit3
 } from 'lucide-react';
 import { Project, IpcItem, formatAccounting } from '../types';
 import { calculateIpcMaturation, calculateProjectIpcSummary } from '../lib/ipcCalculations';
@@ -558,20 +560,41 @@ export default function MonthlyPaymentIpcSummaryTable({
                       </div>
                     </td>
 
-                    {/* FIDIC 14.8 Accrued Delayed Interest Reflection */}
+                    {/* Delay Interest (ETB) - Directly Editable and Updatable */}
                     <td className="py-2.5 px-2 text-right font-mono font-bold">
-                      {maturation.accruedInterestEqvEtb > 0 ? (
-                        <div className="text-amber-600 dark:text-amber-400 font-extrabold">
-                          +{formatMoney(maturation.accruedInterestEqvEtb, 'Br.')}
-                          <div className="text-[9px] text-amber-700/80 dark:text-amber-400/80 font-normal">
-                            +{maturation.overdueDays}d @ {maturation.annualInterestRate}%
-                          </div>
+                      <div className="flex flex-col items-end">
+                        <div className="flex items-center justify-end gap-1 w-full">
+                          {item.delayInterestEtb !== undefined && item.delayInterestEtb !== null && (
+                            <button
+                              type="button"
+                              onClick={() => handleFieldChange(realIdx, 'delayInterestEtb', undefined)}
+                              title={`Manual entry. Click to reset to auto-calculated FIDIC 14.8 (${formatMoney(maturation.autoAccruedInterestEtb, 'Br.')})`}
+                              className="text-[9px] text-amber-600 hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-200 p-0.5 rounded hover:bg-amber-100/50 dark:hover:bg-amber-900/30 transition shrink-0"
+                            >
+                              <RotateCcw className="w-2.5 h-2.5" />
+                            </button>
+                          )}
+                          <AmountInput
+                            value={item.delayInterestEtb !== undefined && item.delayInterestEtb !== null ? item.delayInterestEtb : maturation.accruedInterestEtb}
+                            onChange={(val) => handleFieldChange(realIdx, 'delayInterestEtb', val)}
+                            className="bg-transparent text-right font-mono font-bold text-amber-600 dark:text-amber-400 border-none w-full outline-none"
+                            placeholder="0.00"
+                          />
                         </div>
-                      ) : (
-                        <span className="text-slate-400 dark:text-slate-500 font-normal">
-                          {maturation.isFullyPaid ? 'Settled' : '0.00'}
-                        </span>
-                      )}
+                        <div className="text-[9px] text-amber-700/80 dark:text-amber-400/80 font-normal flex items-center gap-1 justify-end mt-0.5">
+                          {item.delayInterestEtb !== undefined && item.delayInterestEtb !== null ? (
+                            <span className="text-[8px] px-1 py-0.2 rounded bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 font-extrabold border border-amber-200 dark:border-amber-800">
+                              Manual
+                            </span>
+                          ) : maturation.overdueDays > 0 ? (
+                            <span>+{maturation.overdueDays}d @ {maturation.annualInterestRate}%</span>
+                          ) : (
+                            <span className="text-slate-400 dark:text-slate-500 font-normal">
+                              {maturation.isFullyPaid ? 'Settled' : '0.00'}
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     </td>
 
                     {/* Total Claimable Exposure (Principal + Delayed Interest) */}
@@ -653,10 +676,21 @@ export default function MonthlyPaymentIpcSummaryTable({
 
                           {/* Interest Reflection & Financing Charges Box */}
                           <div className="space-y-2 bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200/80 dark:border-slate-700">
-                            <span className="font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5 text-[11px] uppercase">
-                              <Percent className="w-3.5 h-3.5 text-amber-500" />
-                              FIDIC Cl. 14.8 Delayed Interest Reflection
-                            </span>
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5 text-[11px] uppercase">
+                                <Percent className="w-3.5 h-3.5 text-amber-500" />
+                                FIDIC Cl. 14.8 Delayed Interest Reflection
+                              </span>
+                              {item.delayInterestEtb !== undefined && item.delayInterestEtb !== null && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleFieldChange(realIdx, 'delayInterestEtb', undefined)}
+                                  className="text-[10px] text-amber-700 hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-100 flex items-center gap-1 font-semibold hover:underline"
+                                >
+                                  <RotateCcw className="w-3 h-3" /> Reset to Auto
+                                </button>
+                              )}
+                            </div>
 
                             <div className="space-y-1.5 pt-1 text-slate-600 dark:text-slate-300 font-mono text-[11px]">
                               <div className="flex justify-between items-center">
@@ -677,17 +711,35 @@ export default function MonthlyPaymentIpcSummaryTable({
                                 <span>{formatMoney(maturation.unpaidCertifiedEtb, 'Br.')}</span>
                               </div>
                               <div className="flex justify-between">
-                                <span className="text-slate-400 font-sans">Accrued Delay Interest (ETB):</span>
-                                <span className="font-bold text-amber-600 dark:text-amber-400">
-                                  {formatMoney(maturation.accruedInterestEtb, 'Br.')}
+                                <span className="text-slate-400 font-sans">Auto-calculated Interest (ETB):</span>
+                                <span className="text-slate-500 dark:text-slate-400">
+                                  {formatMoney(maturation.autoAccruedInterestEtb, 'Br.')}
                                 </span>
                               </div>
+                              <div className="flex justify-between items-center border-t border-slate-100 dark:border-slate-700/60 pt-1">
+                                <span className="text-slate-700 dark:text-slate-200 font-sans font-bold flex items-center gap-1">
+                                  <Edit3 className="w-3 h-3 text-amber-500" /> Delay Interest (ETB):
+                                </span>
+                                <div className="w-32">
+                                  <AmountInput
+                                    value={item.delayInterestEtb !== undefined && item.delayInterestEtb !== null ? item.delayInterestEtb : maturation.accruedInterestEtb}
+                                    onChange={(val) => handleFieldChange(realIdx, 'delayInterestEtb', val)}
+                                    className="bg-slate-50 dark:bg-slate-900 border border-amber-300 dark:border-amber-700 rounded px-1.5 py-0.5 text-right font-mono font-bold text-amber-600 dark:text-amber-400 w-full outline-none"
+                                  />
+                                </div>
+                              </div>
                               {maturation.unpaidCertifiedUsd > 0 && (
-                                <div className="flex justify-between">
-                                  <span className="text-slate-400 font-sans">Accrued Delay Interest (USD):</span>
-                                  <span className="font-bold text-amber-600 dark:text-amber-400">
-                                    {formatMoney(maturation.accruedInterestUsd, '$')}
+                                <div className="flex justify-between items-center">
+                                  <span className="text-slate-700 dark:text-slate-200 font-sans font-bold flex items-center gap-1">
+                                    <Edit3 className="w-3 h-3 text-amber-500" /> Delay Interest (USD):
                                   </span>
+                                  <div className="w-32">
+                                    <AmountInput
+                                      value={item.delayInterestUsd !== undefined && item.delayInterestUsd !== null ? item.delayInterestUsd : maturation.accruedInterestUsd}
+                                      onChange={(val) => handleFieldChange(realIdx, 'delayInterestUsd', val)}
+                                      className="bg-slate-50 dark:bg-slate-900 border border-amber-300 dark:border-amber-700 rounded px-1.5 py-0.5 text-right font-mono font-bold text-amber-600 dark:text-amber-400 w-full outline-none"
+                                    />
+                                  </div>
                                 </div>
                               )}
                               <div className="flex justify-between border-t border-slate-100 dark:border-slate-700/60 pt-1">

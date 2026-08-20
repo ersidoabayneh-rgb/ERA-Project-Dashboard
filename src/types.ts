@@ -204,6 +204,8 @@ export interface IpcItem {
   statusEtb?: 'Paid' | 'Unpaid' | 'Partially Paid';
   statusUsd?: 'Paid' | 'Unpaid' | 'Partially Paid';
   customAnnualInterestRate?: number;
+  delayInterestEtb?: number;
+  delayInterestUsd?: number;
   remarks?: string;
 }
 

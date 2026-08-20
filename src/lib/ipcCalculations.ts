@@ -13,9 +13,12 @@ export interface IpcMaturationDetails {
   unpaidCertifiedUsd: number;
   paidCertifiedEtb: number;
   paidCertifiedUsd: number;
+  autoAccruedInterestEtb: number;
+  autoAccruedInterestUsd: number;
   accruedInterestEtb: number;
   accruedInterestUsd: number;
   accruedInterestEqvEtb: number;
+  isCustomDelayInterest: boolean;
   totalClaimableEtb: number; // unpaidCertifiedEtb + accruedInterestEtb
   totalClaimableUsd: number; // unpaidCertifiedUsd + accruedInterestUsd
   totalClaimableEqvEtb: number; // totalClaimableEtb + (totalClaimableUsd * exchangeRate)
@@ -89,8 +92,19 @@ export function calculateIpcMaturation(
 
   const dailyRate = (annualInterestRate / 100) / 365;
 
-  const accruedInterestEtb = overdueDays > 0 ? unpaidCertifiedEtb * dailyRate * overdueDays : 0;
-  const accruedInterestUsd = overdueDays > 0 ? unpaidCertifiedUsd * dailyRate * overdueDays : 0;
+  const autoAccruedInterestEtb = overdueDays > 0 ? unpaidCertifiedEtb * dailyRate * overdueDays : 0;
+  const autoAccruedInterestUsd = overdueDays > 0 ? unpaidCertifiedUsd * dailyRate * overdueDays : 0;
+
+  const isCustomDelayInterest = ipc.delayInterestEtb !== undefined && ipc.delayInterestEtb !== null;
+  const accruedInterestEtb = isCustomDelayInterest 
+    ? (Number(ipc.delayInterestEtb) || 0) 
+    : autoAccruedInterestEtb;
+
+  const isCustomDelayInterestUsd = ipc.delayInterestUsd !== undefined && ipc.delayInterestUsd !== null;
+  const accruedInterestUsd = isCustomDelayInterestUsd 
+    ? (Number(ipc.delayInterestUsd) || 0) 
+    : autoAccruedInterestUsd;
+
   const accruedInterestEqvEtb = accruedInterestEtb + (accruedInterestUsd * exchangeRate);
 
   const totalClaimableEtb = unpaidCertifiedEtb + accruedInterestEtb;
@@ -150,6 +164,9 @@ export function calculateIpcMaturation(
     unpaidCertifiedUsd,
     paidCertifiedEtb,
     paidCertifiedUsd,
+    autoAccruedInterestEtb,
+    autoAccruedInterestUsd,
+    isCustomDelayInterest,
     accruedInterestEtb,
     accruedInterestUsd,
     accruedInterestEqvEtb,
@@ -214,6 +231,8 @@ export function calculateProjectIpcSummary(
       if (maturation.isOverdue) {
         maturedOverdueIpcCount++;
         totalMaturedPrincipalEqvEtb += unpaidEqv;
+      }
+      if (maturation.accruedInterestEqvEtb > 0) {
         totalAccruedInterestEqvEtb += maturation.accruedInterestEqvEtb;
       }
     }

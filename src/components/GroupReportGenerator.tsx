@@ -1164,12 +1164,14 @@ export default function GroupReportGenerator({
           unpaidIpcCount++;
         }
 
-        // Check matured overdue (> 56 days)
+        // Check matured overdue (> 56 days) or interest accrued
         if (maturation.isOverdue) {
           maturedIpcCount++;
           totalMaturedEtb += maturation.unpaidCertifiedEtb;
           totalMaturedUsd += maturation.unpaidCertifiedUsd;
           combinedMaturedEtb += maturation.unpaidCertifiedEtb + (maturation.unpaidCertifiedUsd * rate);
+        }
+        if (maturation.accruedInterestEqvEtb > 0) {
           totalAccruedInterestEtb += maturation.accruedInterestEtb;
           totalAccruedInterestUsd += maturation.accruedInterestUsd;
           combinedAccruedInterestEtb += maturation.accruedInterestEqvEtb;
@@ -1283,6 +1285,8 @@ export default function GroupReportGenerator({
           maturedIpcsCount++;
           maturedEtb += maturation.unpaidCertifiedEtb;
           maturedUsd += maturation.unpaidCertifiedUsd;
+        }
+        if (maturation.accruedInterestEqvEtb > 0) {
           accruedInterestEtb += maturation.accruedInterestEtb;
           accruedInterestUsd += maturation.accruedInterestUsd;
           accruedInterestEqv += maturation.accruedInterestEqvEtb;
