@@ -40,7 +40,7 @@ export default function BillSummaryPriceAdjChart({
 }: BillSummaryPriceAdjChartProps) {
   const [viewMode, setViewMode] = useState<'combined' | 'monthly' | 'cumulative' | 'percent_scurve'>('combined');
   const [unitMode, setUnitMode] = useState<'millions' | 'full'>('millions');
-  const [showTable, setShowTable] = useState<boolean>(true);
+  const [showTable, setShowTable] = useState<boolean>(false);
 
   // Compute monthly and running cumulative data
   let runningCumGross = 0;

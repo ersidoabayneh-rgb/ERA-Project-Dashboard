@@ -10,9 +10,9 @@ import {
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
-// Suppress non-critical Firestore connection debug noise in sandboxed/iframe preview environments
+// Suppress internal Firestore connection debug/warning noise in sandboxed/iframe preview environments
 try {
-  setLogLevel('error');
+  setLogLevel('silent');
 } catch {}
 
 const isValidConfig = Boolean(firebaseConfig && firebaseConfig.apiKey && firebaseConfig.projectId);
@@ -34,7 +34,7 @@ const dbId = (firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreData
 function createFirestoreInstance() {
   try {
     const settings = {
-      experimentalForceLongPolling: true,
+      experimentalAutoDetectLongPolling: true,
       localCache: persistentLocalCache({
         tabManager: persistentMultipleTabManager()
       })
