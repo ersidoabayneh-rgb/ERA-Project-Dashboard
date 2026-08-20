@@ -414,7 +414,7 @@ export default function MonthlyPaymentIpcSummaryTable({
               <th className="py-3 px-2 text-center w-32">Net Certified (ETB)</th>
               <th className="py-3 px-2 text-center w-32">Certified (USD)</th>
               <th className="py-3 px-2 text-right font-extrabold text-amber-700 dark:text-amber-400">Delay Interest</th>
-              <th className="py-3 px-2 text-right font-extrabold text-slate-800 dark:text-zinc-100">Total Claimable</th>
+              <th className="py-3 px-2 text-right font-extrabold text-slate-800 dark:text-zinc-100">Total Todate Certified IPC</th>
               <th className="py-3 px-2 text-center w-14">Details</th>
             </tr>
           </thead>
@@ -597,21 +597,14 @@ export default function MonthlyPaymentIpcSummaryTable({
                       </div>
                     </td>
 
-                    {/* Total Claimable Exposure (Principal + Delayed Interest) */}
+                    {/* Total Todate Certified IPC (Net Certified ETB + Certified USD * USD Rate) */}
                     <td className="py-2.5 px-2 text-right font-mono font-extrabold">
                       <div className="text-indigo-600 dark:text-indigo-400">
                         {formatMoney(
-                          maturation.isFullyPaid 
-                            ? (item.certifiedEtb || 0) + (exchangeRate * (item.certifiedUsd || 0))
-                            : maturation.totalClaimableEqvEtb, 
+                          (item.certifiedEtb || 0) + ((item.certifiedUsd || 0) * exchangeRate),
                           'Br.'
                         )}
                       </div>
-                      {!maturation.isFullyPaid && maturation.accruedInterestEqvEtb > 0 && (
-                        <div className="text-[9px] text-rose-500 dark:text-rose-400 font-semibold">
-                          Incl. Interest
-                        </div>
-                      )}
                     </td>
 
                     {/* Toggle expand & action buttons */}
@@ -836,7 +829,7 @@ export default function MonthlyPaymentIpcSummaryTable({
                   +{formatMoney(summary.totalAccruedInterestEqvEtb, 'Br.')}
                 </td>
                 <td className="py-3 px-2 text-right font-mono text-indigo-600 dark:text-indigo-400 font-black text-sm">
-                  {formatMoney(summary.totalClaimableExposureEqvEtb, 'Br.')}
+                  {formatMoney(totalCertifiedEtb + (totalCertifiedUsd * exchangeRate), 'Br.')}
                 </td>
                 <td className="py-3 px-2"></td>
               </tr>
