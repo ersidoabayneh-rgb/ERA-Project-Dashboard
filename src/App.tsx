@@ -154,7 +154,28 @@ import UserGuideManualModal from './components/UserGuideManualModal';
 import eraLogo from './assets/logo.png';
 
 import { defaultProjectTemplate, blankProjectTemplate, generateKpiAllocated } from './data/defaultProject';
-import { safeSyncProject, safeDeleteProject, safeFetchProjects, safeSyncUsers, safeFetchUsers, safeSyncApprovals, safeFetchApprovals, safeSyncConfig, safeFetchConfig, reactivateSync, isSyncSuspended, handleFsError, normalizeProject } from './lib/apiSync';
+import { 
+  safeSyncProject, 
+  safeDeleteProject, 
+  safeFetchProjects, 
+  safeSyncUsers, 
+  safeSaveSingleUser, 
+  safeDeleteUser, 
+  safeFetchUsers, 
+  safeSyncApprovals, 
+  safeFetchApprovals, 
+  safeSyncConfig, 
+  safeFetchConfig, 
+  reactivateSync, 
+  isSyncSuspended, 
+  handleFsError, 
+  normalizeProject,
+  safeFetchSyncLogs,
+  getLocalSyncLogs,
+  clearSyncLogs,
+  recordSyncLog,
+  SyncLogEntry
+} from './lib/apiSync';
 import { getAccessToken } from './lib/auth';
 import { safeSetItem } from './lib/storage';
 import { collection, onSnapshot, doc } from 'firebase/firestore';
@@ -467,13 +488,19 @@ export default function App() {
     return deduplicateUsers(usersListState);
   };
 
-  const isMasterAdmin = currentUserObj?.role === 'admin' || 
-                        currentUserObj?.role === 'master_admin' || 
-                        currentUserObj?.username === 'proj_1781786415663' ||
-                        (currentUserObj?.username && currentUserObj.username.toLowerCase().includes('ersido'));
+  const isMasterAdmin = Boolean(
+    currentUserObj?.role === 'admin' || 
+    currentUserObj?.role === 'master_admin' || 
+    currentUserObj?.role === 'cpm_admin' ||
+    currentUserObj?.role === 'directorate_admin' ||
+    currentUserObj?.role === 'pmo_admin' ||
+    currentUserObj?.username === 'proj_1781786415663' ||
+    (currentUserObj?.username && currentUserObj.username.toLowerCase().includes('ersido')) ||
+    (currentUserObj?.username && currentUserObj.username.toLowerCase().includes('admin'))
+  );
 
   const [pendingUserPopups, setPendingUserPopups] = useState<User[]>([]);
-  const seenPendingUsersRef = useRef<Set<string>>(new Set());
+  const dismissedUsernamesRef = useRef<Set<string>>(new Set());
   const globalWsRef = useRef<WebSocket | null>(null);
 
   const saveUsers = (u: User[]) => {
@@ -514,7 +541,7 @@ export default function App() {
   const hasUserChanges = (username: string): boolean => {
     const draft = editedUsers[username];
     if (!draft) return false;
-    const original = usersListState.find(x => x.username === username);
+    const original = usersListState.find(x => x.username.toLowerCase() === username.toLowerCase());
     if (!original) return false;
 
     if (draft.username !== original.username) return true;
@@ -535,7 +562,7 @@ export default function App() {
   };
 
   const handleApproveUserImmediately = (username: string) => {
-    const original = usersListState.find(x => x.username === username);
+    const original = usersListState.find(x => x.username.toLowerCase() === username.toLowerCase());
     if (!original) return;
     
     // Merge any existing edits for this user or create with defaults
@@ -544,31 +571,33 @@ export default function App() {
     const approvedUserObj: User = {
       ...currentDraft,
       status: 'Active',
-      isPendingApproval: false
+      isPendingApproval: false,
+      approvedBy: currentUserObj?.username,
+      approvedAt: new Date().toISOString()
     };
     
-    const list = [...usersListState];
-    const targetIdx = list.findIndex(x => x.username === username);
-    if (targetIdx !== -1) {
-      list[targetIdx] = approvedUserObj;
-      saveUsers(list);
-      
-      // Clean up editedUsers draft
-      setEditedUsers(prev => {
-        const next = { ...prev };
-        delete next[username];
-        return next;
-      });
-      
-      alert(`User "${username}" has been successfully approved, assigned, and activated!`);
-    }
+    const list = usersListState.map(x => x.username.toLowerCase() === username.toLowerCase() ? approvedUserObj : x);
+    saveUsers(list);
+    safeSaveSingleUser(approvedUserObj).catch(() => {});
+    dismissedUsernamesRef.current.delete(username.toLowerCase());
+    setPendingUserPopups(prev => prev.filter(p => p.username.toLowerCase() !== username.toLowerCase()));
+    
+    // Clean up editedUsers draft
+    setEditedUsers(prev => {
+      const next = { ...prev };
+      delete next[username];
+      return next;
+    });
+    
+    alert(`User "${username}" has been successfully approved, assigned, and activated!`);
   };
 
   const handleApproveUserPopup = (userToApprove: User, assignedRole: string, assignedProjects: string[]) => {
     const allUsers = getUsers();
+    let approvedUser: User | null = null;
     const updatedUsers = allUsers.map(u => {
       if (u.username.toLowerCase() === userToApprove.username.toLowerCase()) {
-        return {
+        approvedUser = {
           ...u,
           status: 'Active' as const,
           isPendingApproval: false,
@@ -577,11 +606,16 @@ export default function App() {
           approvedBy: currentUserObj?.username,
           approvedAt: new Date().toISOString()
         };
+        return approvedUser;
       }
       return u;
     });
 
+    if (approvedUser) {
+      safeSaveSingleUser(approvedUser).catch(() => {});
+    }
     saveUsers(updatedUsers);
+    dismissedUsernamesRef.current.delete(userToApprove.username.toLowerCase());
     setPendingUserPopups(prev => prev.filter(p => p.username.toLowerCase() !== userToApprove.username.toLowerCase()));
     alert(`User "${userToApprove.username}" has been successfully APPROVED and activated!`);
   };
@@ -592,17 +626,21 @@ export default function App() {
     const allUsers = getUsers();
     const updatedUsers = allUsers.filter(u => u.username.toLowerCase() !== userToReject.username.toLowerCase());
 
+    safeDeleteUser(userToReject.username).catch(() => {});
     saveUsers(updatedUsers);
+    dismissedUsernamesRef.current.delete(userToReject.username.toLowerCase());
     setPendingUserPopups(prev => prev.filter(p => p.username.toLowerCase() !== userToReject.username.toLowerCase()));
   };
 
   const handleConfigureUserPopup = (userToConfig: User) => {
     setSelectedAdminUser(userToConfig.username);
     setShowAdmin(true);
+    dismissedUsernamesRef.current.add(userToConfig.username.toLowerCase());
     setPendingUserPopups(prev => prev.filter(p => p.username.toLowerCase() !== userToConfig.username.toLowerCase()));
   };
 
   const handleDismissUserPopup = (userToDismiss: User) => {
+    dismissedUsernamesRef.current.add(userToDismiss.username.toLowerCase());
     setPendingUserPopups(prev => prev.filter(p => p.username.toLowerCase() !== userToDismiss.username.toLowerCase()));
   };
 
@@ -810,15 +848,10 @@ export default function App() {
   // Sync log fetching helper
   const fetchSyncLogs = async () => {
     try {
-      const res = await fetch('/api/sync-logs');
-      if (res.ok) {
-        const json = await res.json();
-        if (json.success && json.logs) {
-          setSyncLogs(json.logs);
-        }
-      }
-    } catch (err) {
-      console.warn('Failed to fetch backend sync logs:', err);
+      const logs = await safeFetchSyncLogs();
+      setSyncLogs(logs);
+    } catch {
+      setSyncLogs(getLocalSyncLogs());
     }
   };
 
@@ -922,6 +955,11 @@ let isBatchSyncRunning = false;
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
+    const handleSyncLogRecorded = () => {
+      setSyncLogs(getLocalSyncLogs());
+    };
+    window.addEventListener('sync_log_recorded', handleSyncLogRecorded);
+
     // Initial check of offline queue length
     const checkQueue = () => {
       try {
@@ -954,23 +992,9 @@ let isBatchSyncRunning = false;
           safeSetItem('era_users_v28', JSON.stringify(merged));
 
           // Check for new pending user approvals for admin popup
-          const isMasterAdmin = currentUserObj?.role === 'admin' || 
-                                currentUserObj?.role === 'master_admin' || 
-                                currentUserObj?.username === 'proj_1781786415663' ||
-                                (currentUserObj?.username && currentUserObj.username.toLowerCase().includes('ersido'));
-
           if (isMasterAdmin) {
-            const pendingList = merged.filter(u => u.isPendingApproval);
-            const newUnseen = pendingList.filter(u => !seenPendingUsersRef.current.has(u.username.toLowerCase()));
-            if (newUnseen.length > 0) {
-              newUnseen.forEach(u => seenPendingUsersRef.current.add(u.username.toLowerCase()));
-              setPendingUserPopups(prev => {
-                const mapPop = new Map<string, User>();
-                prev.forEach(p => mapPop.set(p.username.toLowerCase(), p));
-                newUnseen.forEach(p => mapPop.set(p.username.toLowerCase(), p));
-                return Array.from(mapPop.values());
-              });
-            }
+            const pendingList = merged.filter(u => u && u.isPendingApproval && !dismissedUsernamesRef.current.has(u.username.toLowerCase()));
+            setPendingUserPopups(pendingList);
           }
 
           // Auto-update logged-in user state if admin approved or updated their account
@@ -1324,6 +1348,7 @@ let isBatchSyncRunning = false;
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('sync_log_recorded', handleSyncLogRecorded);
       window.removeEventListener('storage', handleStorageChange);
       if (broadcastChannel) {
         try { broadcastChannel.close(); } catch (e) {}
@@ -1355,17 +1380,14 @@ let isBatchSyncRunning = false;
   // Effect to automatically synchronize and prompt master admin with any previous or new pending users
   useEffect(() => {
     if (isMasterAdmin && usersListState.length > 0) {
-      const pendingList = usersListState.filter(u => u.isPendingApproval || u.status === 'Inactive' || u.status === 'Pending');
-      const newUnseen = pendingList.filter(u => !seenPendingUsersRef.current.has(u.username.toLowerCase()));
-      if (newUnseen.length > 0) {
-        newUnseen.forEach(u => seenPendingUsersRef.current.add(u.username.toLowerCase()));
-        setPendingUserPopups(prev => {
-          const mapPop = new Map<string, User>();
-          prev.forEach(p => mapPop.set(p.username.toLowerCase(), p));
-          newUnseen.forEach(p => mapPop.set(p.username.toLowerCase(), p));
-          return Array.from(mapPop.values());
-        });
-      }
+      const pendingList = usersListState.filter(u => 
+        u && 
+        u.isPendingApproval && 
+        !dismissedUsernamesRef.current.has(u.username.toLowerCase())
+      );
+      setPendingUserPopups(pendingList);
+    } else {
+      setPendingUserPopups([]);
     }
   }, [isMasterAdmin, usersListState, currentUserObj?.username]);
 
@@ -1599,76 +1621,6 @@ let isBatchSyncRunning = false;
 
     initCloudDatabase();
 
-    // Set up SSE Fallback Real-Time subscription with Cloud SQL (PostgreSQL API)
-    const eventSource = new EventSource('/api/events');
-    eventSource.onmessage = (event) => {
-      try {
-        const payload = JSON.parse(event.data);
-        if (payload.type === 'project_update' && payload.data) {
-          const incomingRaw = payload.data.data ? (typeof payload.data.data === 'string' ? JSON.parse(payload.data.data) : payload.data.data) : payload.data;
-          const incoming = syncProjectPayment(incomingRaw);
-
-          let deletedIds: string[] = [];
-          try {
-            const delStr = localStorage.getItem('era_deleted_project_ids') || '[]';
-            deletedIds = JSON.parse(delStr);
-          } catch {}
-
-          if (deletedIds.includes(incoming.id)) return;
-
-          setProjects(prevProjects => {
-            const merged = [...prevProjects];
-            const idx = merged.findIndex(p => p.id === incoming.id);
-            if (idx === -1) {
-              merged.push(incoming);
-            } else {
-              const existing = merged[idx];
-              const existingTime = existing.lastModifiedAt ? new Date(existing.lastModifiedAt).getTime() : 0;
-              const incomingTime = incoming.lastModifiedAt ? new Date(incoming.lastModifiedAt).getTime() : 0;
-              if (incomingTime >= existingTime) {
-                merged[idx] = incoming;
-              }
-            }
-            safeSetItem('era_proj_v28', JSON.stringify(merged));
-            return merged;
-          });
-          
-          setCurrentProjectId((prevId) => {
-            if (prevId === incoming.id) {
-              setCurrentProject(prev => {
-                if (!prev) return incoming;
-                const prevTime = prev.lastModifiedAt ? new Date(prev.lastModifiedAt).getTime() : 0;
-                const incomingTime = incoming.lastModifiedAt ? new Date(incoming.lastModifiedAt).getTime() : 0;
-                return incomingTime >= prevTime ? incoming : prev;
-              });
-            }
-            return prevId;
-          });
-        } else if (payload.type === 'project_delete' && payload.data?.id) {
-          const deleteId = payload.data.id;
-          try {
-            const delStr = localStorage.getItem('era_deleted_project_ids') || '[]';
-            const deletedIds: string[] = JSON.parse(delStr);
-            if (!deletedIds.includes(deleteId)) {
-              deletedIds.push(deleteId);
-              localStorage.setItem('era_deleted_project_ids', JSON.stringify(deletedIds));
-            }
-          } catch {}
-
-          setProjects(prevProjects => {
-            const merged = prevProjects.filter(p => p.id !== deleteId);
-            safeSetItem('era_proj_v28', JSON.stringify(merged));
-            return merged;
-          });
-        }
-      } catch (err) {
-        console.warn('Failed to parse SSE real-time event:', err);
-      }
-    };
-    eventSource.onerror = (err) => {
-      console.warn('SSE fallback subscription error:', err);
-    };
-
     try {
       const appr = localStorage.getItem('era_appr_v28');
       if (appr) setPendingApprovals(JSON.parse(appr));
@@ -1677,10 +1629,6 @@ let isBatchSyncRunning = false;
     // Simulated network peers
     const defaultPeers = ['Abebe_Mesele', 'Sileshi_Kassa', 'Hiwot_Abay'];
     setOnlinePeers(defaultPeers);
-
-    return () => {
-      eventSource.close();
-    };
   }, []);
 
 
@@ -1927,6 +1875,8 @@ let isBatchSyncRunning = false;
   const handleLogout = () => {
     setCurrentUser(null);
     setCurrentUserObj(null);
+    dismissedUsernamesRef.current.clear();
+    setPendingUserPopups([]);
     localStorage.removeItem('era_current_user');
     localStorage.removeItem('era_current_user_obj');
     localStorage.removeItem('era_current_page');
@@ -4759,18 +4709,32 @@ let isBatchSyncRunning = false;
                     <button
                       type="button"
                       onClick={fetchSyncLogs}
-                      className="bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-xl px-2.5 py-1.5 text-2xs font-bold uppercase shrink-0 text-slate-700 dark:text-zinc-200 cursor-pointer transition shadow-sm"
+                      className="bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-xl px-2.5 py-1.5 text-2xs font-bold uppercase shrink-0 text-slate-700 dark:text-zinc-200 cursor-pointer transition shadow-sm inline-flex items-center gap-1"
                       title="Refresh Logs"
                     >
-                      🔄
+                      <RefreshCw className="w-3 h-3" /> Refresh
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        clearSyncLogs();
+                        fetchSyncLogs();
+                      }}
+                      className="bg-rose-100 hover:bg-rose-200 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 rounded-xl px-2.5 py-1.5 text-2xs font-bold uppercase shrink-0 text-rose-700 dark:text-rose-300 cursor-pointer transition shadow-sm inline-flex items-center gap-1"
+                      title="Clear Event Logs"
+                    >
+                      <Trash2 className="w-3 h-3" /> Clear
                     </button>
                   </div>
                 </div>
 
                 {/* Database Sync Diagnostics Logs */}
                 <div className="space-y-1.5">
-                  <span className="text-2xs font-extrabold text-slate-400 uppercase tracking-wider block">Firebase Firestore Event & Validation Logs</span>
-                  <div className="max-h-48 overflow-y-auto border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-850 rounded-xl divide-y divide-slate-100 dark:divide-slate-800">
+                  <div className="flex items-center justify-between">
+                    <span className="text-2xs font-extrabold text-slate-400 uppercase tracking-wider block">Real-Time Sync Event & Diagnostics Logs</span>
+                    <span className="text-[10px] font-medium text-slate-400 font-mono">{syncLogs.length} events</span>
+                  </div>
+                  <div className="max-h-52 overflow-y-auto border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-850 rounded-xl divide-y divide-slate-100 dark:divide-slate-800">
                     {syncLogs.length === 0 ? (
                       <p className="text-center py-6 text-2xs text-slate-400 font-medium font-mono">No synchronization events recorded yet.</p>
                     ) : (
@@ -4778,21 +4742,28 @@ let isBatchSyncRunning = false;
                         let statusColor = 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-900';
                         if (log.status === 'validation_failed') statusColor = 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/20 dark:text-amber-400 dark:border-amber-900';
                         if (log.status === 'server_error') statusColor = 'bg-rose-50 text-rose-800 border-rose-200 dark:bg-rose-950/20 dark:text-rose-400 dark:border-rose-900';
+                        if (log.status === 'offline_queued') statusColor = 'bg-blue-50 text-blue-800 border-blue-200 dark:bg-blue-950/20 dark:text-blue-400 dark:border-blue-900';
+                        if (log.status === 'deleted') statusColor = 'bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700';
 
                         return (
                           <div key={log.id} className="p-2.5 space-y-1 text-2xs">
                             <div className="flex justify-between items-center">
-                              <span className="font-mono text-slate-400">{new Date(log.createdAt).toLocaleString()}</span>
+                              <span className="font-mono text-slate-400 text-[10px]">{new Date(log.createdAt).toLocaleString()}</span>
                               <span className={`px-1.5 py-0.5 rounded border text-[9px] font-extrabold uppercase ${statusColor}`}>
-                                {log.status}
+                                {log.status?.replace('_', ' ')}
                               </span>
                             </div>
                             <div className="flex justify-between items-center gap-2">
                               <span className="font-bold text-slate-700 dark:text-zinc-200">
-                                {log.recordType.toUpperCase()} {log.recordId ? `(${log.recordId})` : ''}
+                                {log.recordType?.toUpperCase()} {log.recordId ? `(${log.recordId})` : ''}
                               </span>
-                              <span className="font-mono text-slate-400 text-[10px]">IP: {log.ipAddress}</span>
+                              {log.ipAddress && <span className="font-mono text-slate-400 text-[10px]">IP: {log.ipAddress}</span>}
                             </div>
+                            {log.details && (
+                              <p className="text-[11px] text-slate-600 dark:text-slate-300">
+                                {log.details}
+                              </p>
+                            )}
                             {log.errorMessage && (
                               <p className="font-mono text-[10px] text-rose-500 bg-rose-50/50 dark:bg-rose-950/10 p-1.5 rounded border border-rose-100 dark:border-rose-950/30">
                                 {log.errorMessage}

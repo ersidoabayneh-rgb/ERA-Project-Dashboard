@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { HardHat, Lock, User, UserPlus, LogIn, Eye, EyeOff } from 'lucide-react';
 import { User as UserType } from '../types';
 import eraLogo from '../assets/logo.png';
+import { safeSaveSingleUser } from '../lib/apiSync';
 
 interface LoginPageProps {
   onLoginSuccess: (username: string, userObj: UserType) => void;
@@ -104,6 +105,7 @@ export default function LoginPage({ onLoginSuccess, getUsers, saveUsers }: Login
 
     const updatedUsers = [...users, newUser];
     saveUsers(updatedUsers);
+    safeSaveSingleUser(newUser).catch(() => {});
     
     // Show registration success view
     setRegSuccess(true);

@@ -22,6 +22,105 @@ export interface FirestoreErrorInfo {
   };
 }
 
+export interface SyncLogEntry {
+  id: string;
+  createdAt: string;
+  recordType: 'project' | 'user' | 'approval' | 'config' | 'batch_sync';
+  recordId?: string;
+  status: 'synced' | 'validation_failed' | 'server_error' | 'offline_queued' | 'firestore_synced' | 'deleted';
+  ipAddress?: string;
+  errorMessage?: string;
+  details?: string;
+}
+
+const SYNC_LOGS_STORAGE_KEY = 'era_sync_logs_v28';
+
+/**
+ * Appends a sync event to the local audit trail and dispatches a notification event.
+ */
+export function recordSyncLog(entry: {
+  recordType: SyncLogEntry['recordType'];
+  recordId?: string;
+  status: SyncLogEntry['status'];
+  errorMessage?: string;
+  details?: string;
+  ipAddress?: string;
+}): void {
+  try {
+    const newLog: SyncLogEntry = {
+      id: `log_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      createdAt: new Date().toISOString(),
+      recordType: entry.recordType,
+      recordId: entry.recordId,
+      status: entry.status,
+      ipAddress: entry.ipAddress || '127.0.0.1 (Local Client)',
+      errorMessage: entry.errorMessage,
+      details: entry.details,
+    };
+
+    let currentLogs: SyncLogEntry[] = [];
+    try {
+      const stored = localStorage.getItem(SYNC_LOGS_STORAGE_KEY);
+      if (stored) currentLogs = JSON.parse(stored);
+    } catch {}
+
+    // Prepend newest logs, capped at 100 entries
+    currentLogs = [newLog, ...currentLogs].slice(0, 100);
+    localStorage.setItem(SYNC_LOGS_STORAGE_KEY, JSON.stringify(currentLogs));
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('sync_log_recorded', { detail: newLog }));
+    }
+  } catch (e) {
+    // Silently ignore storage failures
+  }
+}
+
+/**
+ * Returns locally stored sync event logs.
+ */
+export function getLocalSyncLogs(): SyncLogEntry[] {
+  try {
+    const stored = localStorage.getItem(SYNC_LOGS_STORAGE_KEY);
+    if (stored) return JSON.parse(stored);
+  } catch {}
+  return [];
+}
+
+/**
+ * Fetches sync logs from local repository and attempts remote sync without noisy warnings.
+ */
+export async function safeFetchSyncLogs(): Promise<SyncLogEntry[]> {
+  let logs = getLocalSyncLogs();
+  try {
+    const res = await fetch('/api/sync-logs').catch(() => null);
+    if (res && res.ok && res.headers.get('content-type')?.includes('application/json')) {
+      const json = await res.json().catch(() => null);
+      if (json && json.success && Array.isArray(json.logs)) {
+        const map = new Map<string, SyncLogEntry>();
+        logs.forEach(l => map.set(l.id, l));
+        json.logs.forEach((l: SyncLogEntry) => map.set(l.id, l));
+        logs = Array.from(map.values()).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 100);
+        localStorage.setItem(SYNC_LOGS_STORAGE_KEY, JSON.stringify(logs));
+      }
+    }
+  } catch {}
+
+  return logs;
+}
+
+/**
+ * Clears local sync logs.
+ */
+export function clearSyncLogs(): void {
+  try {
+    localStorage.removeItem(SYNC_LOGS_STORAGE_KEY);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('sync_log_recorded'));
+    }
+  } catch {}
+}
+
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
@@ -120,21 +219,39 @@ export async function safeSyncProject(proj: Project, isBackgroundQueueSync = fal
       const cleanNormalized = JSON.parse(JSON.stringify(normalized));
       cleanNormalized.updatedAt = new Date().toISOString();
       await setDoc(doc(db, 'projects', normalized.id), cleanNormalized, { merge: true });
+      recordSyncLog({
+        recordType: 'project',
+        recordId: normalized.id,
+        status: 'firestore_synced',
+        details: `Successfully synchronized "${normalized.name || normalized.id}" to Cloud Firestore`
+      });
     } catch (fsErr) {
       handleFsError(fsErr);
+      recordSyncLog({
+        recordType: 'project',
+        recordId: normalized.id,
+        status: 'server_error',
+        errorMessage: fsErr instanceof Error ? fsErr.message : String(fsErr)
+      });
     }
   }
 
   // Relational Database Sync: optional Express REST API (/api/projects/sync)
   const sqlSyncPromise = (async () => {
     if (!proj.id || typeof proj.id !== 'string') {
-      throw new Error("Client Validation Failed: Project ID must be a non-empty string.");
+      const msg = "Client Validation Failed: Project ID must be a non-empty string.";
+      recordSyncLog({ recordType: 'project', recordId: proj.id || 'unknown', status: 'validation_failed', errorMessage: msg });
+      throw new Error(msg);
     }
     if (!proj.name || typeof proj.name !== 'string' || proj.name.trim() === '') {
-      throw new Error("Client Validation Failed: Project Name is required.");
+      const msg = "Client Validation Failed: Project Name is required.";
+      recordSyncLog({ recordType: 'project', recordId: proj.id, status: 'validation_failed', errorMessage: msg });
+      throw new Error(msg);
     }
     if (!proj.client || typeof proj.client !== 'string' || proj.client.trim() === '') {
-      throw new Error("Client Validation Failed: Client Name is required.");
+      const msg = "Client Validation Failed: Client Name is required.";
+      recordSyncLog({ recordType: 'project', recordId: proj.id, status: 'validation_failed', errorMessage: msg });
+      throw new Error(msg);
     }
 
     try {
@@ -158,6 +275,12 @@ export async function safeSyncProject(proj: Project, isBackgroundQueueSync = fal
             localStorage.setItem('era_offline_sync_queue', JSON.stringify(filtered));
           } catch {}
           console.log('Project successfully synchronized with backend REST API.');
+          recordSyncLog({
+            recordType: 'project',
+            recordId: proj.id,
+            status: 'synced',
+            details: `Synchronized "${proj.name}" with backend database`
+          });
         }
       }
     } catch (e) {
@@ -174,6 +297,12 @@ export async function safeSyncProject(proj: Project, isBackgroundQueueSync = fal
       if (!queue.some(p => p.id === proj.id)) {
         queue.push(proj);
         localStorage.setItem('era_offline_sync_queue', JSON.stringify(queue));
+        recordSyncLog({
+          recordType: 'project',
+          recordId: proj.id,
+          status: 'offline_queued',
+          details: `Queued project "${proj.name || proj.id}" for offline sync`
+        });
       }
     } catch (e) {}
   }
@@ -204,6 +333,13 @@ export async function safeDeleteProject(id: string): Promise<void> {
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('local_project_mutated'));
   }
+
+  recordSyncLog({
+    recordType: 'project',
+    recordId: id,
+    status: 'deleted',
+    details: `Deleted project ID ${id}`
+  });
 
   const syncPromises: Promise<any>[] = [];
 
@@ -289,6 +425,50 @@ export async function safeFetchProjects(): Promise<Project[] | null> {
   return fetched;
 }
 
+export async function safeSaveSingleUser(user: AppUser): Promise<void> {
+  if (!user || !user.username) return;
+  if (!isSyncSuspended()) {
+    try {
+      const userDocRef = doc(db, 'users', user.username.toLowerCase());
+      await setDoc(userDocRef, { ...user, updatedAt: new Date().toISOString() }, { merge: true }).catch(err => handleFsError(err));
+      recordSyncLog({
+        recordType: 'user',
+        recordId: user.username,
+        status: 'firestore_synced',
+        details: `Synchronized user account "${user.username}"`
+      });
+    } catch (e) {
+      handleFsError(e);
+      console.warn('Firestore single user sync notice:', e);
+      recordSyncLog({
+        recordType: 'user',
+        recordId: user.username,
+        status: 'server_error',
+        errorMessage: e instanceof Error ? e.message : String(e)
+      });
+    }
+  }
+}
+
+export async function safeDeleteUser(username: string): Promise<void> {
+  if (!username) return;
+  if (!isSyncSuspended()) {
+    try {
+      const userDocRef = doc(db, 'users', username.toLowerCase());
+      await deleteDoc(userDocRef).catch(err => handleFsError(err));
+      recordSyncLog({
+        recordType: 'user',
+        recordId: username,
+        status: 'deleted',
+        details: `Deleted user "${username}"`
+      });
+    } catch (e) {
+      handleFsError(e);
+      console.warn('Firestore delete user notice:', e);
+    }
+  }
+}
+
 /**
  * Synchronizes all registered users with backend REST API and Firebase Firestore.
  */
@@ -302,9 +482,21 @@ export async function safeSyncUsers(users: AppUser[]): Promise<void> {
           await setDoc(userDocRef, { ...u, updatedAt: new Date().toISOString() }, { merge: true }).catch(err => handleFsError(err));
         }
       }
+      recordSyncLog({
+        recordType: 'user',
+        recordId: `${users.length} users`,
+        status: 'firestore_synced',
+        details: `Synchronized ${users.length} user accounts to Cloud Firestore`
+      });
     } catch (e) {
       handleFsError(e);
       console.warn('Firestore user sync notice:', e);
+      recordSyncLog({
+        recordType: 'user',
+        recordId: `${users.length} users`,
+        status: 'server_error',
+        errorMessage: e instanceof Error ? e.message : String(e)
+      });
     }
   }
 
@@ -316,6 +508,12 @@ export async function safeSyncUsers(users: AppUser[]): Promise<void> {
     });
     if (response.ok && response.headers.get('content-type')?.includes('application/json')) {
       console.log('Users successfully synchronized with backend REST API');
+      recordSyncLog({
+        recordType: 'user',
+        recordId: `${users.length} users`,
+        status: 'synced',
+        details: `Synchronized ${users.length} users with backend database`
+      });
     }
   } catch (err: any) {}
 }
@@ -379,9 +577,20 @@ export async function safeSyncApprovals(approvals: ApprovalRequest[]): Promise<v
           await setDoc(doc(db, 'approvals', a.id), { ...a, updatedAt: new Date().toISOString() }, { merge: true }).catch(err => handleFsError(err));
         }
       }
+      recordSyncLog({
+        recordType: 'approval',
+        recordId: `${approvals.length} requests`,
+        status: 'firestore_synced',
+        details: `Synchronized ${approvals.length} approval records to Cloud Firestore`
+      });
     } catch (e) {
       handleFsError(e);
       console.warn('Firestore approvals sync notice:', e);
+      recordSyncLog({
+        recordType: 'approval',
+        status: 'server_error',
+        errorMessage: e instanceof Error ? e.message : String(e)
+      });
     }
   }
 
@@ -393,6 +602,12 @@ export async function safeSyncApprovals(approvals: ApprovalRequest[]): Promise<v
     });
     if (response.ok && response.headers.get('content-type')?.includes('application/json')) {
       console.log('Approvals successfully synchronized with backend REST API');
+      recordSyncLog({
+        recordType: 'approval',
+        recordId: `${approvals.length} requests`,
+        status: 'synced',
+        details: `Synchronized ${approvals.length} approvals with backend database`
+      });
     }
   } catch (err: any) {}
 }
@@ -448,9 +663,19 @@ export async function safeSyncConfig(pmos: string[], directorates: string[]): Pr
   if (!isSyncSuspended()) {
     try {
       await setDoc(doc(db, 'config', 'taxonomy'), { pmos, directorates, updatedAt: new Date().toISOString() }, { merge: true }).catch(err => handleFsError(err));
+      recordSyncLog({
+        recordType: 'config',
+        status: 'firestore_synced',
+        details: `Updated PMO taxonomy (${pmos.length}) & Directorate taxonomy (${directorates.length})`
+      });
     } catch (e) {
       handleFsError(e);
       console.warn('Firestore config sync notice:', e);
+      recordSyncLog({
+        recordType: 'config',
+        status: 'server_error',
+        errorMessage: e instanceof Error ? e.message : String(e)
+      });
     }
   }
 
@@ -462,6 +687,11 @@ export async function safeSyncConfig(pmos: string[], directorates: string[]): Pr
     });
     if (response.ok && response.headers.get('content-type')?.includes('application/json')) {
       console.log('Config successfully synchronized with backend REST API');
+      recordSyncLog({
+        recordType: 'config',
+        status: 'synced',
+        details: `Config taxonomy synchronized with backend database`
+      });
     }
   } catch (err: any) {}
 }

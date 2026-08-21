@@ -390,6 +390,9 @@ export interface User {
   ipAddress?: string; // Registered IP address
   linkedIpAddress?: string; // Linked IP address confirmed by admin
   isPendingApproval?: boolean; // Flag if self-registered and pending admin approval
+  approvedBy?: string; // Username who approved this account
+  approvedAt?: string; // ISO date timestamp of approval
+  registeredAt?: string; // ISO date timestamp of initial registration
 }
 
 export interface EditablePageOption {

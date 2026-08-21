@@ -101,11 +101,16 @@ export default function ProjectsPage({
   const [newProjectPmo, setNewProjectPmo] = useState('PMO 1');
   const [createError, setCreateError] = useState('');
 
-  const isMasterAdmin = currentUserObj?.role === 'admin' || 
-                        currentUserObj?.role === 'master_admin' || 
-                        currentUserObj?.role === 'cpm_admin' ||
-                        currentUserObj?.username === 'proj_1781786415663' ||
-                        (currentUserObj?.username && currentUserObj.username.toLowerCase().includes('ersido'));
+  const isMasterAdmin = Boolean(
+    currentUserObj?.role === 'admin' || 
+    currentUserObj?.role === 'master_admin' || 
+    currentUserObj?.role === 'cpm_admin' ||
+    currentUserObj?.role === 'directorate_admin' ||
+    currentUserObj?.role === 'pmo_admin' ||
+    currentUserObj?.username === 'proj_1781786415663' ||
+    (currentUserObj?.username && currentUserObj.username.toLowerCase().includes('ersido')) ||
+    (currentUserObj?.username && currentUserObj.username.toLowerCase().includes('admin'))
+  );
   const isDirAdmin = currentUserObj?.role === 'directorate_admin';
   const isPmoAdmin = currentUserObj?.role === 'pmo_admin';
 
@@ -125,12 +130,13 @@ export default function ProjectsPage({
 
   const canCreateProject = isMasterAdmin || isDirAdmin || isPmoAdmin || currentUserObj?.role === 'editor';
 
-  const canAccessUserAdmin = (
+  const canAccessUserAdmin = Boolean(
     isMasterAdmin || 
     isDirAdmin || 
     isPmoAdmin || 
-    currentUserObj?.username === 'proj_1781786415663'
-  ) && currentUserObj?.role !== 'cpm_admin';
+    currentUserObj?.username === 'proj_1781786415663' ||
+    (currentUserObj?.username && currentUserObj.username.toLowerCase().includes('ersido'))
+  );
 
   const pendingUserSignupsCount = allUsers ? allUsers.filter(u => {
     if (!u.isPendingApproval) return false;
