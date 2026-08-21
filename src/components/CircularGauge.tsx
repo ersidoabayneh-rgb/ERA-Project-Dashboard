@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React from 'react';
 
 interface CircularGaugeProps {
   value: number;
@@ -23,36 +23,6 @@ export default function CircularGauge({
   onKpiClick,
   variant = 'default',
 }: CircularGaugeProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [containerDimensions, setContainerDimensions] = useState<{ width: number; height: number }>({
-    width: 160,
-    height: 160,
-  });
-
-  useEffect(() => {
-    const element = containerRef.current;
-    if (!element) return;
-
-    const observer = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        if (entry.contentRect) {
-          const { width, height } = entry.contentRect;
-          if (width > 0 && height > 0) {
-            setContainerDimensions(prev => {
-              if (Math.abs(prev.width - width) < 2 && Math.abs(prev.height - height) < 2) {
-                return prev;
-              }
-              return { width: Math.round(width), height: Math.round(height) };
-            });
-          }
-        }
-      }
-    });
-
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
-
   const clamped = Math.min(max, Math.max(0, value));
   const percent = max > 0 ? (clamped / max) : 0;
   
@@ -109,19 +79,12 @@ export default function CircularGauge({
   
   const valueStr = clamped.toFixed(2);
 
-  // Dynamic percentage text scaling based on parent gauge container dimensions & value string length
-  const baseLenFactor = valueStr.length > 6 ? 14 : (valueStr.length > 5 ? 16 : (valueStr.length > 4 ? 18 : 22));
-  
-  // Gauge container scale factor based on minimum dimension (width / height) relative to standard 160px
-  const gaugeDim = Math.min(containerDimensions.width, containerDimensions.height);
-  const dimScale = gaugeDim > 0 ? Math.max(0.7, Math.min(1.4, gaugeDim / 160)) : 1;
-  
-  const baseFontSize = baseLenFactor * dimScale;
+  // SVG viewBox proportional typography (SVG units out of 120)
+  const baseFontSize = valueStr.length > 6 ? 15 : (valueStr.length > 5 ? 17 : (valueStr.length > 4 ? 19 : 22));
   const symbolFontSize = baseFontSize * 0.58;
 
   return (
     <div 
-      ref={containerRef}
       onClick={onKpiClick}
       className={isCompact 
         ? `flex flex-col items-center justify-center w-full group relative ${onKpiClick ? 'cursor-pointer' : ''}`
@@ -194,7 +157,7 @@ export default function CircularGauge({
               dominantBaseline="middle"
               className="font-bold font-mono fill-slate-400 dark:fill-slate-500 tracking-wide"
               style={{
-                fontSize: `${Math.max(6, 8 * dimScale)}px`,
+                fontSize: `8px`,
                 ...(isYellow ? { fill: '#eab308' } : {})
               }}
             >

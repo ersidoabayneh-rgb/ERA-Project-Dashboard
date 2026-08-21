@@ -275,6 +275,7 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
                   strokeWidth={2.5}
                   dot={false}
                   connectNulls={false}
+                  isAnimationActive={false}
                   activeDot={{ r: 5, fill: '#f59e0b' }}
                 />
                 <Line 
@@ -286,7 +287,8 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
                   strokeWidth={2.5}
                   dot={false}
                   connectNulls={false}
-                  activeDot={{ r: 5, fill: '#2563eb' }}
+                  isAnimationActive={false}
+                  activeDot={{ r: 2, fill: '#2563eb' }}
                 />
                 <Line 
                   name="To-Date Actual (%)"
@@ -296,6 +298,7 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
                   strokeWidth={3.5} 
                   dot={false}
                   connectNulls={false}
+                  isAnimationActive={false}
                   activeDot={{ r: 5, fill: '#10b981' }}
                 />
               </LineChart>

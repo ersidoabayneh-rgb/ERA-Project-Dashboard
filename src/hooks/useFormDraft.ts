@@ -296,12 +296,19 @@ export function useFormDraft<T>({
     }
   }, [conflict, saveToLocal, saveToServer]);
 
-  // Monitor auth state changes
+  const loadAndRestoreDraftRef = useRef(loadAndRestoreDraft);
   useEffect(() => {
+    loadAndRestoreDraftRef.current = loadAndRestoreDraft;
+  }, [loadAndRestoreDraft]);
+
+  // Monitor auth state changes & initial load
+  useEffect(() => {
+    loadAndRestoreDraftRef.current(authUserRef.current);
+
     const unsubscribe = initAuth((user) => {
       setAuthUser(user);
       authUserRef.current = user;
-      loadAndRestoreDraft(user);
+      loadAndRestoreDraftRef.current(user);
     });
 
     return () => {
@@ -309,7 +316,7 @@ export function useFormDraft<T>({
       if (localTimeoutRef.current) clearTimeout(localTimeoutRef.current);
       if (serverTimeoutRef.current) clearTimeout(serverTimeoutRef.current);
     };
-  }, [formId, loadAndRestoreDraft]);
+  }, [formId]);
 
   return {
     formData,

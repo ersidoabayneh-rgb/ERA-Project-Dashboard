@@ -58,7 +58,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
       setErrorMsg(null);
       setSuccessMsg(null);
     }
-  }, [isOpen, currentUser]);
+  }, [isOpen, currentUser.username]);
 
   if (!isOpen) return null;
 

@@ -401,7 +401,7 @@ export default function App() {
       setEditProgramDirectorate(currentProject.programDirectorate || 'Southern');
       setEditPmo(currentProject.pmo || 'PMO 1');
     }
-  }, [currentProject]);
+  }, [currentProject?.id, currentProject?.lastModifiedAt]);
 
   const [pendingApprovals, setPendingApprovals] = useState<ApprovalRequest[]>([]);
   const [expandedApprovalId, setExpandedApprovalId] = useState<string | null>(null);
@@ -1059,51 +1059,30 @@ let isBatchSyncRunning = false;
           }
         });
         const merged = deduplicateUsers(Array.from(map.values()));
+        if (JSON.stringify(prev) === JSON.stringify(merged)) {
+          return prev;
+        }
 
-        setTimeout(() => {
-          safeSetItem('era_users_v28', JSON.stringify(merged));
+        safeSetItem('era_users_v28', JSON.stringify(merged));
 
-          // Check for new pending user approvals for admin popup
-          const isMaster = Boolean(
-            currentUserObj?.role === 'admin' || 
-            currentUserObj?.role === 'master_admin' || 
-            currentUserObj?.role === 'cpm_admin' || 
-            currentUserObj?.username === 'proj_1781786415663' ||
-            (currentUserObj?.username && currentUserObj.username.toLowerCase().includes('ersido'))
-          );
-          const isDir = currentUserObj?.role === 'directorate_admin';
-          const isPmo = currentUserObj?.role === 'pmo_admin';
-
-          if (isMaster) {
-            const pendingList = merged.filter(u => u && u.isPendingApproval && !dismissedUsernamesRef.current.has(u.username.toLowerCase()));
-            setPendingUserPopups(pendingList);
-          } else if (isDir) {
-            const pendingList = merged.filter(u => u && u.isPendingApproval && (!u.assignedDirectorate || u.assignedDirectorate === currentUserObj?.assignedDirectorate) && !dismissedUsernamesRef.current.has(u.username.toLowerCase()));
-            setPendingUserPopups(pendingList);
-          } else if (isPmo) {
-            const pendingList = merged.filter(u => u && u.isPendingApproval && (!u.assignedPmo || u.assignedPmo === currentUserObj?.assignedPmo) && !dismissedUsernamesRef.current.has(u.username.toLowerCase()));
-            setPendingUserPopups(pendingList);
-          } else {
-            setPendingUserPopups([]);
-          }
-
-          // Auto-update logged-in user state if admin approved or updated their account
-          if (currentUserObj && currentUserObj.username) {
-            const updatedSelf = merged.find(u => u.username.toLowerCase() === currentUserObj.username.toLowerCase());
-            if (updatedSelf) {
-              if (
-                updatedSelf.isPendingApproval !== currentUserObj.isPendingApproval ||
-                updatedSelf.status !== currentUserObj.status ||
-                updatedSelf.role !== currentUserObj.role ||
-                JSON.stringify(updatedSelf.accessibleProjects) !== JSON.stringify(currentUserObj.accessibleProjects) ||
-                JSON.stringify(updatedSelf.assignedPages) !== JSON.stringify(currentUserObj.assignedPages)
-              ) {
-                setCurrentUserObj(updatedSelf);
-                safeSetItem('era_current_user_obj', JSON.stringify(updatedSelf));
-              }
+        // Auto-update logged-in user state if admin approved or updated their account
+        setCurrentUserObj(prevUser => {
+          if (!prevUser || !prevUser.username) return prevUser;
+          const updatedSelf = merged.find(u => u.username.toLowerCase() === prevUser.username.toLowerCase());
+          if (updatedSelf) {
+            if (
+              updatedSelf.isPendingApproval !== prevUser.isPendingApproval ||
+              updatedSelf.status !== prevUser.status ||
+              updatedSelf.role !== prevUser.role ||
+              JSON.stringify(updatedSelf.accessibleProjects) !== JSON.stringify(prevUser.accessibleProjects) ||
+              JSON.stringify(updatedSelf.assignedPages) !== JSON.stringify(prevUser.assignedPages)
+            ) {
+              safeSetItem('era_current_user_obj', JSON.stringify(updatedSelf));
+              return updatedSelf;
             }
           }
-        }, 0);
+          return prevUser;
+        });
 
         return merged;
       });
@@ -1479,36 +1458,37 @@ let isBatchSyncRunning = false;
     const isDir = currentUserObj?.role === 'directorate_admin';
     const isPmo = currentUserObj?.role === 'pmo_admin';
 
+    let pendingList: User[] = [];
     if (usersListState.length > 0) {
       if (isMaster) {
-        const pendingList = usersListState.filter(u => 
+        pendingList = usersListState.filter(u => 
           u && 
           u.isPendingApproval && 
           !dismissedUsernamesRef.current.has(u.username.toLowerCase())
         );
-        setPendingUserPopups(pendingList);
       } else if (isDir) {
-        const pendingList = usersListState.filter(u => 
+        pendingList = usersListState.filter(u => 
           u && 
           u.isPendingApproval && 
           (!u.assignedDirectorate || u.assignedDirectorate === currentUserObj?.assignedDirectorate) &&
           !dismissedUsernamesRef.current.has(u.username.toLowerCase())
         );
-        setPendingUserPopups(pendingList);
       } else if (isPmo) {
-        const pendingList = usersListState.filter(u => 
+        pendingList = usersListState.filter(u => 
           u && 
           u.isPendingApproval && 
           (!u.assignedPmo || u.assignedPmo === currentUserObj?.assignedPmo) &&
           !dismissedUsernamesRef.current.has(u.username.toLowerCase())
         );
-        setPendingUserPopups(pendingList);
-      } else {
-        setPendingUserPopups([]);
       }
-    } else {
-      setPendingUserPopups([]);
     }
+
+    setPendingUserPopups(prev => {
+      if (prev.length === pendingList.length && prev.every((u, i) => u.username === pendingList[i]?.username && u.role === pendingList[i]?.role)) {
+        return prev;
+      }
+      return pendingList;
+    });
   }, [currentUserObj?.role, currentUserObj?.assignedDirectorate, currentUserObj?.assignedPmo, usersListState, currentUserObj?.username]);
 
   // Helper to synchronize 'Total Todate Bill Summary' and 'Remaining' with series sums, and calculate G = F + E

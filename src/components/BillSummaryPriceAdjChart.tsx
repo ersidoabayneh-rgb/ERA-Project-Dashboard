@@ -333,6 +333,7 @@ export default function BillSummaryPriceAdjChart({
                   stroke="#6366f1" 
                   strokeWidth={3} 
                   dot={false}
+                  isAnimationActive={false}
                   activeDot={{ r: 5, fill: '#6366f1' }}
                 />
                 {/* 2. Cum. Price Adjustment (Vivid Rose Crimson) */}
@@ -344,6 +345,7 @@ export default function BillSummaryPriceAdjChart({
                   strokeWidth={2.5} 
                   strokeDasharray="4 4"
                   dot={false}
+                  isAnimationActive={false}
                   activeDot={{ r: 5, fill: '#e11d48' }}
                 />
 
@@ -355,6 +357,7 @@ export default function BillSummaryPriceAdjChart({
                   stroke="#0284c7" 
                   strokeWidth={2}
                   dot={false}
+                  isAnimationActive={false}
                   activeDot={{ r: 4, fill: '#0284c7' }}
                 />
                 {/* 4. Monthly Price Adjustment (Amber Orange) */}
@@ -365,6 +368,7 @@ export default function BillSummaryPriceAdjChart({
                   stroke="#f59e0b" 
                   strokeWidth={2}
                   dot={false}
+                  isAnimationActive={false}
                   activeDot={{ r: 4, fill: '#f59e0b' }}
                 />
               </LineChart>
@@ -388,6 +392,7 @@ export default function BillSummaryPriceAdjChart({
                   fill="#fcd34d" 
                   opacity={0.65}
                   radius={[3, 3, 0, 0]} 
+                  isAnimationActive={false}
                 />
                 <Line 
                   name="Cum. Price Adjustment % S-Curve (Cum. PA ÷ Cum. Bill)" 
@@ -396,6 +401,7 @@ export default function BillSummaryPriceAdjChart({
                   stroke="#d97706" 
                   strokeWidth={3.5} 
                   dot={false}
+                  isAnimationActive={false}
                   activeDot={{ r: 6, fill: '#d97706' }}
                 />
               </ComposedChart>
@@ -416,12 +422,14 @@ export default function BillSummaryPriceAdjChart({
                   dataKey={unitMode === 'millions' ? 'monthlyGrossM' : 'monthlyGross'} 
                   fill="#0284c7" 
                   radius={[4, 4, 0, 0]} 
+                  isAnimationActive={false}
                 />
                 <Bar 
                   name="Monthly Price Adj." 
                   dataKey={unitMode === 'millions' ? 'monthlyPriceAdjM' : 'monthlyPriceAdj'} 
                   fill="#f59e0b" 
                   radius={[4, 4, 0, 0]} 
+                  isAnimationActive={false}
                 />
               </BarChart>
             ) : (
@@ -454,6 +462,7 @@ export default function BillSummaryPriceAdjChart({
                   fillOpacity={1} 
                   fill="url(#colorCumGross)" 
                   strokeWidth={3} 
+                  isAnimationActive={false}
                 />
                 <Area 
                   name="Cum. Price Adjustment" 
@@ -463,6 +472,7 @@ export default function BillSummaryPriceAdjChart({
                   fillOpacity={1} 
                   fill="url(#colorCumPriceAdj)" 
                   strokeWidth={2.5} 
+                  isAnimationActive={false}
                 />
               </AreaChart>
             )}

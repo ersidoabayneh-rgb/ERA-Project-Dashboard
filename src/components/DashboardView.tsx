@@ -298,43 +298,124 @@ export default function DashboardView({
     ? (projectRisks.reduce((sum, r) => sum + r.probability * r.impact, 0) / projectRisks.length).toFixed(2) 
     : '0.00';
 
-  // Charts mapping
-  const rowMetricObj = (project.rowMetrics || []).find(m => m.name === selectedRowMetric);
-  const isMaterialMetric = selectedRowMetric.includes('Material Source');
-  const isElectricPoleMetric = selectedRowMetric.includes('Electric Pole');
-  const isNumericCompare = isMaterialMetric || isElectricPoleMetric;
+  // Immediate safe resolution of selected dropdowns (ensures zero delay/glitch on project switches or table edits)
+  const availableRowMetrics = project.rowMetrics || [];
+  const activeRowMetric = availableRowMetrics.some(m => m.name === selectedRowMetric)
+    ? selectedRowMetric
+    : ((availableRowMetrics[4]?.name) || availableRowMetrics[0]?.name || 'ROW Obstruction free Section');
 
-  let rowChartData;
+  const availableQuantities = project.quantities || [];
+  const activeQtyItem = availableQuantities.some(q => q.name === selectedQtyItem)
+    ? selectedQtyItem
+    : ((availableQuantities[8]?.name) || availableQuantities[0]?.name || 'Asphalt Concrete (Km)');
+
+  // Charts mapping for Right-of-Way (ROW) Status
+  const rowMetricObj = availableRowMetrics.find(m => m.name === activeRowMetric);
+  const isMaterialMetric = activeRowMetric.toLowerCase().includes('material source');
+  const isElectricPoleMetric = activeRowMetric.toLowerCase().includes('electric pole') || activeRowMetric.toLowerCase().includes('pole');
+  const isNumericCompare = isMaterialMetric || isElectricPoleMetric || (rowMetricObj && (rowMetricObj.unit === 'No.' || rowMetricObj.unit === 'No' || rowMetricObj.unit === 'Poles' || rowMetricObj.unit === 'Units'));
+
+  let rowChartData: any[];
+  let rowBadgeSummary = '';
+  let rowLegendSeries: { key: string; name: string; fill: string }[] = [];
+
   if (isMaterialMetric) {
-    const matReq = (project.rowMetrics || []).find(m => m.name === 'Material Source Requested (No)')?.value || 0;
-    const matHand = (project.rowMetrics || []).find(m => m.name === 'Material Source Handedover (No)')?.value || 0;
+    const matReq = availableRowMetrics.find(m => m.name === 'Material Source Requested (No)')?.value || 
+                   availableRowMetrics.find(m => m.name.toLowerCase().includes('material') && m.name.toLowerCase().includes('request'))?.value || 0;
+    const matHand = availableRowMetrics.find(m => m.name === 'Material Source Handedover (No)')?.value || 
+                    availableRowMetrics.find(m => m.name.toLowerCase().includes('material') && (m.name.toLowerCase().includes('handed') || m.name.toLowerCase().includes('cleared')))?.value || 0;
+    const matPending = Math.max(0, matReq - matHand);
+    
+    const reqKey = 'Material Source Requested (No)';
+    const handKey = 'Material Source Handedover (No)';
+    const pendKey = 'Material Source Pending (No)';
+
     rowChartData = [{
-      name: 'Material Sources',
-      'Requested (No)': matReq,
-      'Handed Over (No)': matHand,
+      name: '',
+      [reqKey]: Number(matReq),
+      [handKey]: Number(matHand),
+      [pendKey]: Number(matPending)
     }];
+
+    rowLegendSeries = [
+      { key: reqKey, name: reqKey, fill: '#ef4444' },
+      { key: handKey, name: handKey, fill: '#10b981' },
+      { key: pendKey, name: pendKey, fill: '#f59e0b' }
+    ];
+
+    rowBadgeSummary = `Handed Over: ${matHand} / Requested: ${matReq} (${matReq > 0 ? ((matHand / matReq) * 100).toFixed(1) : 0}%)`;
   } else if (isElectricPoleMetric) {
-    const poleReq = (project.rowMetrics || []).find(m => m.name === 'Electric Pole Removal Requested (No)')?.value || 0;
-    const poleHand = (project.rowMetrics || []).find(m => m.name === 'Electric Pole Removal Handedover (No)')?.value || 0;
+    const poleReq = availableRowMetrics.find(m => m.name === 'Electric Pole Removal Requested (No)')?.value || 
+                    availableRowMetrics.find(m => (m.name.toLowerCase().includes('pole') || m.name.toLowerCase().includes('electric')) && m.name.toLowerCase().includes('request'))?.value || 0;
+    const poleHand = availableRowMetrics.find(m => m.name === 'Electric Pole Removal Handedover (No)')?.value || 
+                     availableRowMetrics.find(m => (m.name.toLowerCase().includes('pole') || m.name.toLowerCase().includes('electric')) && (m.name.toLowerCase().includes('handed') || m.name.toLowerCase().includes('cleared')))?.value || 0;
+    const polePending = Math.max(0, poleReq - poleHand);
+    
+    const reqKey = 'Electric Pole Removal Requested (No)';
+    const handKey = 'Electric Pole Removal Handedover (No)';
+    const pendKey = 'Electric Pole Removal Pending (No)';
+
     rowChartData = [{
-      name: 'Electric Poles',
-      'Requested (No)': poleReq,
-      'Handed Over (No)': poleHand,
+      name: '',
+      [reqKey]: Number(poleReq),
+      [handKey]: Number(poleHand),
+      [pendKey]: Number(polePending)
     }];
+
+    rowLegendSeries = [
+      { key: reqKey, name: reqKey, fill: '#ef4444' },
+      { key: handKey, name: handKey, fill: '#10b981' },
+      { key: pendKey, name: pendKey, fill: '#f59e0b' }
+    ];
+
+    rowBadgeSummary = `Removed: ${poleHand} / Requested: ${poleReq} (${poleReq > 0 ? ((poleHand / poleReq) * 100).toFixed(1) : 0}%)`;
   } else {
+    const val = Number(rowMetricObj ? rowMetricObj.value : 0);
+    const totalKm = Number(project.lengthKm || 65);
+    const isTotalLengthMetric = activeRowMetric.toLowerCase().includes('project length');
+    const remainingKm = isTotalLengthMetric ? 0 : Math.max(0, totalKm - val);
+    const pct = totalKm > 0 ? ((val / totalKm) * 100).toFixed(1) : '0';
+
+    const unitStr = rowMetricObj?.unit || 'Km';
+    const mainKey = `${activeRowMetric} (${unitStr})`;
+    const remKey = `Remaining Section (${unitStr})`;
+
     rowChartData = [{
-      name: selectedRowMetric,
-      'Cleared KM': rowMetricObj ? rowMetricObj.value : 0,
-      'Remaining KM': Math.max(0, project.lengthKm - (rowMetricObj ? rowMetricObj.value : 0))
+      name: '',
+      [mainKey]: Number(val.toFixed(2)),
+      [remKey]: Number(remainingKm.toFixed(2))
     }];
+
+    rowLegendSeries = [
+      { key: mainKey, name: mainKey, fill: '#3b82f6' },
+      ...(remainingKm > 0 ? [{ key: remKey, name: remKey, fill: '#94a3b8' }] : [])
+    ];
+
+    rowBadgeSummary = isTotalLengthMetric 
+      ? `Total Project Length: ${val.toFixed(2)} Km`
+      : `Achieved: ${val.toFixed(2)} Km / ${totalKm.toFixed(2)} Km (${pct}%)`;
   }
 
-  const qtyObj = (project.quantities || []).find(q => q.name === selectedQtyItem);
+  // Charts mapping for Quantities: Plan vs Completed
+  const qtyObj = availableQuantities.find(q => q.name === activeQtyItem) || availableQuantities[0];
+  const designVal = Number(qtyObj?.design || 0);
+  const planVal = Number(qtyObj?.plan || 0);
+  const execVal = Number(qtyObj?.exec || 0);
+  const varianceVal = Math.max(0, planVal - execVal);
+
+  const uomMatch = (qtyObj?.name || '').match(/\(([^)]+)\)/);
+  const qtyUnit = uomMatch ? uomMatch[1] : '';
+
   const qtyChartData = [
-    { name: 'Design Drawings', 'Value': qtyObj ? qtyObj.design : 0, fill: '#3b82f6' },
-    { name: 'Program Target Plan', 'Value': qtyObj ? qtyObj.plan : 0, fill: '#f59e0b' },
-    { name: 'To-Date Completed', 'Value': qtyObj ? qtyObj.exec : 0, fill: '#10b981' }
+    { name: 'Design / Contract', 'Value': Number(designVal.toFixed(2)), fill: '#3b82f6', unit: qtyUnit },
+    { name: 'Target Plan', 'Value': Number(planVal.toFixed(2)), fill: '#f59e0b', unit: qtyUnit },
+    { name: 'To-Date Completed', 'Value': Number(execVal.toFixed(2)), fill: '#10b981', unit: qtyUnit },
+    { name: 'Remaining to Plan', 'Value': Number(varianceVal.toFixed(2)), fill: '#ef4444', unit: qtyUnit }
   ];
+
+  const qtyPlanPct = planVal > 0 ? ((execVal / planVal) * 100).toFixed(1) : '0';
+  const qtyDesignPct = designVal > 0 ? ((execVal / designVal) * 100).toFixed(1) : '0';
+  const qtyBadgeSummary = `Executed: ${execVal.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${qtyUnit} (${qtyPlanPct}% of Plan, ${qtyDesignPct}% of Design)`;
 
   const seriesBarData = (project.series || []).map(s => ({
     name: s.desc,
@@ -1908,14 +1989,21 @@ export default function DashboardView({
         {/* ROW Clearance chart */}
         <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-4 rounded-2xl shadow-sm space-y-3 min-w-0">
           <div className="flex justify-between items-center flex-wrap gap-2">
-            <span className="text-xs font-bold text-slate-800 dark:text-zinc-150">Right-of-Way (ROW) status</span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-slate-800 dark:text-zinc-150">Right-of-Way (ROW) status</span>
+              {rowBadgeSummary && (
+                <span className="text-[10px] font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded border border-blue-200/50 dark:border-blue-700/30 truncate max-w-[200px]" title={rowBadgeSummary}>
+                  {rowBadgeSummary}
+                </span>
+              )}
+            </div>
             <div className="relative">
               <select
-                value={selectedRowMetric}
+                value={activeRowMetric}
                 onChange={(e) => setSelectedRowMetric(e.target.value)}
-                className="bg-slate-50 dark:bg-slate-900 text-[10px] font-bold py-1 px-3 border border-slate-250 dark:border-slate-705 pr-8 rounded-lg appearance-none cursor-pointer"
+                className="bg-slate-50 dark:bg-slate-900 text-[10px] font-bold py-1 px-3 border border-slate-250 dark:border-slate-705 pr-8 rounded-lg appearance-none cursor-pointer text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
               >
-                {project.rowMetrics.map((m, idx) => (
+                {availableRowMetrics.map((m, idx) => (
                   <option key={idx} value={m.name}>
                     {m.name} ({Number(m.value || 0).toFixed(2)} {m.unit})
                   </option>
@@ -1927,10 +2015,10 @@ export default function DashboardView({
 
           <div className="h-52 w-full min-w-0">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={rowChartData} layout="vertical" margin={{ top: 10, right: 30, left: 10, bottom: 5 }}>
+              <BarChart data={rowChartData} layout="vertical" margin={{ top: 10, right: 35, left: 10, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-slate-100 dark:stroke-slate-700/30" />
                 <XAxis type="number" stroke="#94a3b8" tick={{ fontSize: 9 }} />
-                <YAxis type="category" dataKey="name" stroke="#94a3b8" width={isNumericCompare ? 90 : 120} tick={{ fontSize: 8 }} />
+                <YAxis type="category" dataKey="name" stroke="#94a3b8" hide={true} />
                 <Tooltip 
                   formatter={(v: any, name: any) => [
                     v !== null && v !== undefined && !isNaN(Number(v)) ? Number(v).toFixed(2) : '0.00', 
@@ -1941,21 +2029,34 @@ export default function DashboardView({
                 <Legend iconSize={10} wrapperStyle={{ fontSize: '10px' }} />
                 {isNumericCompare ? (
                   <>
-                    <Bar dataKey="Requested (No)" fill="#ef4444" radius={[0, 6, 6, 0]}>
-                      <LabelList dataKey="Requested (No)" position="right" formatter={(v: any) => v !== null && v !== undefined ? Number(v).toFixed(2) : ''} style={{ fontSize: '8px', fill: '#ef4444', fontWeight: 'bold' }} />
-                    </Bar>
-                    <Bar dataKey="Handed Over (No)" fill="#10b981" radius={[0, 6, 6, 0]}>
-                      <LabelList dataKey="Handed Over (No)" position="right" formatter={(v: any) => v !== null && v !== undefined ? Number(v).toFixed(2) : ''} style={{ fontSize: '8px', fill: '#10b981', fontWeight: 'bold' }} />
-                    </Bar>
+                    {rowLegendSeries[0] && (
+                      <Bar dataKey={rowLegendSeries[0].key} name={rowLegendSeries[0].name} fill={rowLegendSeries[0].fill} radius={[0, 6, 6, 0]} isAnimationActive={false}>
+                        <LabelList dataKey={rowLegendSeries[0].key} position="right" formatter={(v: any) => v !== null && v !== undefined && Number(v) > 0 ? Number(v).toFixed(0) : ''} style={{ fontSize: '8.5px', fill: '#ef4444', fontWeight: 'bold' }} />
+                      </Bar>
+                    )}
+                    {rowLegendSeries[1] && (
+                      <Bar dataKey={rowLegendSeries[1].key} name={rowLegendSeries[1].name} fill={rowLegendSeries[1].fill} radius={[0, 6, 6, 0]} isAnimationActive={false}>
+                        <LabelList dataKey={rowLegendSeries[1].key} position="right" formatter={(v: any) => v !== null && v !== undefined && Number(v) > 0 ? Number(v).toFixed(0) : ''} style={{ fontSize: '8.5px', fill: '#10b981', fontWeight: 'bold' }} />
+                      </Bar>
+                    )}
+                    {rowLegendSeries[2] && (
+                      <Bar dataKey={rowLegendSeries[2].key} name={rowLegendSeries[2].name} fill={rowLegendSeries[2].fill} radius={[0, 6, 6, 0]} isAnimationActive={false}>
+                        <LabelList dataKey={rowLegendSeries[2].key} position="right" formatter={(v: any) => v !== null && v !== undefined && Number(v) > 0 ? Number(v).toFixed(0) : ''} style={{ fontSize: '8.5px', fill: '#f59e0b', fontWeight: 'bold' }} />
+                      </Bar>
+                    )}
                   </>
                 ) : (
                   <>
-                    <Bar dataKey="Cleared KM" stackId="a" fill="#3b82f6" radius={[6, 0, 0, 6]}>
-                      <LabelList dataKey="Cleared KM" position="center" formatter={(v: any) => v !== null && v !== undefined ? Number(v).toFixed(2) : ''} style={{ fontSize: '8px', fill: '#ffffff', fontWeight: 'bold' }} />
-                    </Bar>
-                    <Bar dataKey="Remaining KM" stackId="a" fill="#64748b" radius={[0, 6, 6, 0]}>
-                      <LabelList dataKey="Remaining KM" position="center" formatter={(v: any) => v !== null && v !== undefined ? Number(v).toFixed(2) : ''} style={{ fontSize: '8px', fill: '#ffffff', fontWeight: 'bold' }} />
-                    </Bar>
+                    {rowLegendSeries[0] && (
+                      <Bar dataKey={rowLegendSeries[0].key} name={rowLegendSeries[0].name} stackId="a" fill={rowLegendSeries[0].fill} radius={rowLegendSeries.length > 1 ? [6, 0, 0, 6] : [6, 6, 6, 6]} isAnimationActive={false}>
+                        <LabelList dataKey={rowLegendSeries[0].key} position="center" formatter={(v: any) => v !== null && v !== undefined && Number(v) > 0 ? `${Number(v).toFixed(2)} ${rowMetricObj?.unit || 'Km'}` : ''} style={{ fontSize: '8.5px', fill: '#ffffff', fontWeight: 'bold' }} />
+                      </Bar>
+                    )}
+                    {rowLegendSeries[1] && (
+                      <Bar dataKey={rowLegendSeries[1].key} name={rowLegendSeries[1].name} stackId="a" fill={rowLegendSeries[1].fill} radius={[0, 6, 6, 0]} isAnimationActive={false}>
+                        <LabelList dataKey={rowLegendSeries[1].key} position="center" formatter={(v: any) => v !== null && v !== undefined && Number(v) > 0 ? `${Number(v).toFixed(2)} ${rowMetricObj?.unit || 'Km'}` : ''} style={{ fontSize: '8.5px', fill: '#ffffff', fontWeight: 'bold' }} />
+                      </Bar>
+                    )}
                   </>
                 )}
               </BarChart>
@@ -1966,14 +2067,21 @@ export default function DashboardView({
         {/* Quantities design vs actual */}
         <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-4 rounded-2xl shadow-sm space-y-3 min-w-0">
           <div className="flex justify-between items-center flex-wrap gap-2">
-            <span className="text-xs font-bold text-slate-800 dark:text-zinc-150">Quantities: Plan vs Completed</span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-slate-800 dark:text-zinc-150">Quantities: Plan vs Completed</span>
+              {qtyBadgeSummary && (
+                <span className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 px-2 py-0.5 rounded border border-emerald-200/50 dark:border-emerald-700/30 truncate max-w-[220px]" title={qtyBadgeSummary}>
+                  {qtyBadgeSummary}
+                </span>
+              )}
+            </div>
             <div className="relative">
               <select
-                value={selectedQtyItem}
+                value={activeQtyItem}
                 onChange={(e) => setSelectedQtyItem(e.target.value)}
-                className="bg-slate-50 dark:bg-slate-900 text-[10px] font-bold py-1 px-3 border border-slate-250 dark:border-slate-705 pr-8 rounded-lg appearance-none cursor-pointer"
+                className="bg-slate-50 dark:bg-slate-900 text-[10px] font-bold py-1 px-3 border border-slate-250 dark:border-slate-705 pr-8 rounded-lg appearance-none cursor-pointer text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
               >
-                {project.quantities.map((q, idx) => (
+                {availableQuantities.map((q, idx) => (
                   <option key={idx} value={q.name}>{q.name}</option>
                 ))}
               </select>
@@ -1987,12 +2095,23 @@ export default function DashboardView({
                 <CartesianGrid strokeDasharray="3 3" className="stroke-slate-100/50 dark:stroke-slate-700/30" />
                 <XAxis dataKey="name" stroke="#94a3b8" tick={{ fontSize: 9 }} />
                 <YAxis stroke="#94a3b8" width={55} tick={{ fontSize: 9 }} />
-                <Tooltip formatter={(v) => [v, 'Value']} contentStyle={{ backgroundColor: '#0f172a', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '10px' }} />
-                <Bar dataKey="Value" radius={[6, 6, 0, 0]}>
+                <Tooltip 
+                  formatter={(v, name, item) => [
+                    `${Number(v).toLocaleString(undefined, { maximumFractionDigits: 2 })} ${item?.payload?.unit || ''}`, 
+                    name
+                  ]} 
+                  contentStyle={{ backgroundColor: '#0f172a', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '10px' }} 
+                />
+                <Bar dataKey="Value" radius={[6, 6, 0, 0]} isAnimationActive={false}>
                   {qtyChartData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.fill} />
                   ))}
-                  <LabelList dataKey="Value" position="top" formatter={(v: any) => v !== null && v !== undefined ? Number(v).toFixed(2) : ''} style={{ fontSize: '8.5px', fill: '#64748b', fontWeight: 'bold' }} />
+                  <LabelList 
+                    dataKey="Value" 
+                    position="top" 
+                    formatter={(v: any) => v !== null && v !== undefined && Number(v) > 0 ? Number(v).toLocaleString(undefined, { maximumFractionDigits: 1 }) : '0'} 
+                    style={{ fontSize: '8.5px', fill: '#64748b', fontWeight: 'bold' }} 
+                  />
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
@@ -2326,6 +2445,7 @@ export default function DashboardView({
                     strokeWidth={2.5}
                     dot={false}
                     connectNulls={false}
+                    isAnimationActive={false}
                     activeDot={{ r: 5, fill: '#f59e0b' }}
                   />
                   <Line 
@@ -2337,6 +2457,7 @@ export default function DashboardView({
                     strokeWidth={2.5}
                     dot={false}
                     connectNulls={false}
+                    isAnimationActive={false}
                     activeDot={{ r: 5, fill: '#2563eb' }}
                   />
                   <Line 
@@ -2347,6 +2468,7 @@ export default function DashboardView({
                     strokeWidth={3.5} 
                     dot={false}
                     connectNulls={false}
+                    isAnimationActive={false}
                     activeDot={{ r: 5, fill: '#10b981' }}
                   />
                 </LineChart>
