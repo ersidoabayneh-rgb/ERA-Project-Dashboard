@@ -105,14 +105,12 @@ export default function ProjectsPage({
     currentUserObj?.role === 'admin' || 
     currentUserObj?.role === 'master_admin' || 
     currentUserObj?.role === 'cpm_admin' ||
-    currentUserObj?.role === 'directorate_admin' ||
-    currentUserObj?.role === 'pmo_admin' ||
     currentUserObj?.username === 'proj_1781786415663' ||
     (currentUserObj?.username && currentUserObj.username.toLowerCase().includes('ersido')) ||
-    (currentUserObj?.username && currentUserObj.username.toLowerCase().includes('admin'))
+    (currentUserObj?.username && currentUserObj.username.toLowerCase().includes('admin') && currentUserObj?.role !== 'directorate_admin' && currentUserObj?.role !== 'pmo_admin')
   );
-  const isDirAdmin = currentUserObj?.role === 'directorate_admin';
-  const isPmoAdmin = currentUserObj?.role === 'pmo_admin';
+  const isDirAdmin = currentUserObj?.role === 'directorate_admin' && !isMasterAdmin;
+  const isPmoAdmin = currentUserObj?.role === 'pmo_admin' && !isMasterAdmin;
 
   const canManageStatus = (p: Project) => {
     if (isMasterAdmin) return true;
@@ -505,7 +503,7 @@ export default function ProjectsPage({
               </button>
             )}
             
-            {!hasNoProjects && (currentUserObj.role === 'approver' || isMasterAdmin) && (
+            {!hasNoProjects && (currentUserObj.role === 'approver' || isMasterAdmin || isDirAdmin || isPmoAdmin) && (
               <button 
                 onClick={onOpenApprovals}
                 className="flex items-center gap-1 bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-xl text-xs font-bold transition relative"
@@ -682,21 +680,41 @@ export default function ProjectsPage({
 
               <div className="flex flex-wrap items-center gap-2">
                 {/* Program Directorate selector */}
-                <div className="flex items-center gap-2 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 p-1.5 rounded-2xl shadow-sm shrink-0">
-                  <span className="text-[10px] font-extrabold text-indigo-500 uppercase tracking-wider pl-2.5 pr-1">
-                    Directorate:
-                  </span>
-                  <select
-                    value={selectedDirectorate}
-                    onChange={(e) => setSelectedDirectorate(e.target.value)}
-                    className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-xs font-bold outline-none text-slate-700 dark:text-zinc-200 focus:border-indigo-500 transition cursor-pointer"
-                  >
-                    <option value="All">🌐 All Directorates</option>
-                    {programDirectorates.map(pd => (
-                      <option key={pd} value={pd}>🏢 {pd}</option>
-                    ))}
-                  </select>
-                </div>
+                {isDirAdmin ? (
+                  <div className="flex items-center gap-2 bg-indigo-50/90 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 px-3 py-1.5 rounded-2xl shadow-sm shrink-0">
+                    <span className="text-[10px] font-extrabold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
+                      Directorate Scope:
+                    </span>
+                    <span className="text-xs font-black text-indigo-900 dark:text-indigo-200">
+                      🏢 {currentUserObj.assignedDirectorate || 'Southern'}
+                    </span>
+                  </div>
+                ) : isPmoAdmin ? (
+                  <div className="flex items-center gap-2 bg-blue-50/90 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/60 px-3 py-1.5 rounded-2xl shadow-sm shrink-0">
+                    <span className="text-[10px] font-extrabold text-blue-600 dark:text-blue-400 uppercase tracking-wider">
+                      PMO Scope:
+                    </span>
+                    <span className="text-xs font-black text-blue-900 dark:text-blue-200">
+                      📁 {currentUserObj.assignedPmo || 'PMO 1'} ({currentUserObj.assignedDirectorate || 'Directorate'})
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 p-1.5 rounded-2xl shadow-sm shrink-0">
+                    <span className="text-[10px] font-extrabold text-indigo-500 uppercase tracking-wider pl-2.5 pr-1">
+                      Directorate:
+                    </span>
+                    <select
+                      value={selectedDirectorate}
+                      onChange={(e) => setSelectedDirectorate(e.target.value)}
+                      className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-xs font-bold outline-none text-slate-700 dark:text-zinc-200 focus:border-indigo-500 transition cursor-pointer"
+                    >
+                      <option value="All">🌐 All Directorates</option>
+                      {programDirectorates.map(pd => (
+                        <option key={pd} value={pd}>🏢 {pd}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
                 {/* Status Filter selector */}
                 <div className="flex items-center gap-2 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 p-1.5 rounded-2xl shadow-sm shrink-0">

@@ -151,6 +151,7 @@ import DraftPlayground from './components/DraftPlayground';
 import ThreeDAnimatedBackground from './components/ThreeDAnimatedBackground';
 import AiAssistantChat from './components/AiAssistantChat';
 import UserGuideManualModal from './components/UserGuideManualModal';
+import { UserProfileModal } from './components/UserProfileModal';
 import eraLogo from './assets/logo.png';
 
 import { defaultProjectTemplate, blankProjectTemplate, generateKpiAllocated } from './data/defaultProject';
@@ -568,8 +569,22 @@ export default function App() {
     // Merge any existing edits for this user or create with defaults
     const currentDraft = editedUsers[username] || original;
     
+    const isDir = currentUserObj?.role === 'directorate_admin';
+    const isPmo = currentUserObj?.role === 'pmo_admin';
+
+    let assignedDir = currentDraft.assignedDirectorate;
+    let assignedPmo = currentDraft.assignedPmo;
+    if (isPmo) {
+      assignedDir = currentUserObj?.assignedDirectorate || 'Southern';
+      assignedPmo = currentUserObj?.assignedPmo || 'PMO 1';
+    } else if (isDir) {
+      assignedDir = currentUserObj?.assignedDirectorate || 'Southern';
+    }
+
     const approvedUserObj: User = {
       ...currentDraft,
+      assignedDirectorate: assignedDir,
+      assignedPmo: assignedPmo,
       status: 'Active',
       isPendingApproval: false,
       approvedBy: currentUserObj?.username,
@@ -595,6 +610,19 @@ export default function App() {
   const handleApproveUserPopup = (userToApprove: User, assignedRole: string, assignedProjects: string[]) => {
     const allUsers = getUsers();
     let approvedUser: User | null = null;
+
+    const isDir = currentUserObj?.role === 'directorate_admin';
+    const isPmo = currentUserObj?.role === 'pmo_admin';
+
+    let assignedDir = userToApprove.assignedDirectorate;
+    let assignedPmo = userToApprove.assignedPmo;
+    if (isPmo) {
+      assignedDir = currentUserObj?.assignedDirectorate || 'Southern';
+      assignedPmo = currentUserObj?.assignedPmo || 'PMO 1';
+    } else if (isDir) {
+      assignedDir = currentUserObj?.assignedDirectorate || 'Southern';
+    }
+
     const updatedUsers = allUsers.map(u => {
       if (u.username.toLowerCase() === userToApprove.username.toLowerCase()) {
         approvedUser = {
@@ -602,6 +630,8 @@ export default function App() {
           status: 'Active' as const,
           isPendingApproval: false,
           role: (assignedRole || u.role || 'editor') as any,
+          assignedDirectorate: assignedDir,
+          assignedPmo: assignedPmo,
           accessibleProjects: assignedProjects,
           approvedBy: currentUserObj?.username,
           approvedAt: new Date().toISOString()
@@ -808,6 +838,48 @@ export default function App() {
     setEditedUsers({});
   };
 
+  // Self User Profile & Credentials Update Handler
+  const handleSelfUpdateCredentials = async (
+    updatedUser: User, 
+    oldUsername: string
+  ): Promise<{ success: boolean; message?: string }> => {
+    try {
+      const list = [...usersListState];
+      const targetIdx = list.findIndex(x => x.username.toLowerCase() === oldUsername.toLowerCase());
+      if (targetIdx === -1) {
+        return { success: false, message: 'Current user profile could not be found in active state.' };
+      }
+
+      list[targetIdx] = { ...updatedUser };
+
+      // Persist to local storage
+      saveUsers(list);
+
+      // Cloud Firestore synchronization
+      if (oldUsername.toLowerCase() !== updatedUser.username.toLowerCase()) {
+        await safeDeleteUser(oldUsername).catch(err => console.warn('Delete old username cloud notice:', err));
+      }
+      await safeSaveSingleUser(updatedUser).catch(err => console.warn('Save updated user cloud notice:', err));
+
+      // Update current active logged-in session state
+      setCurrentUserObj(updatedUser);
+      setCurrentUser(updatedUser.username);
+      localStorage.setItem('era_current_user', updatedUser.username);
+      localStorage.setItem('era_current_user_obj', JSON.stringify(updatedUser));
+
+      return { 
+        success: true, 
+        message: 'Your credentials have been successfully updated and synchronized.' 
+      };
+    } catch (err: any) {
+      console.error('Failed to update credentials:', err);
+      return { 
+        success: false, 
+        message: err?.message || 'Failed to update credentials. Please try again.' 
+      };
+    }
+  };
+
   // Standalone Backend Live Sync State and Managers
   const [isSyncAutoSuspendDisabled, setIsSyncAutoSuspendDisabled] = useState(() => {
     return localStorage.getItem('era_sync_disable_autosuspend') !== 'false';
@@ -992,9 +1064,27 @@ let isBatchSyncRunning = false;
           safeSetItem('era_users_v28', JSON.stringify(merged));
 
           // Check for new pending user approvals for admin popup
-          if (isMasterAdmin) {
+          const isMaster = Boolean(
+            currentUserObj?.role === 'admin' || 
+            currentUserObj?.role === 'master_admin' || 
+            currentUserObj?.role === 'cpm_admin' || 
+            currentUserObj?.username === 'proj_1781786415663' ||
+            (currentUserObj?.username && currentUserObj.username.toLowerCase().includes('ersido'))
+          );
+          const isDir = currentUserObj?.role === 'directorate_admin';
+          const isPmo = currentUserObj?.role === 'pmo_admin';
+
+          if (isMaster) {
             const pendingList = merged.filter(u => u && u.isPendingApproval && !dismissedUsernamesRef.current.has(u.username.toLowerCase()));
             setPendingUserPopups(pendingList);
+          } else if (isDir) {
+            const pendingList = merged.filter(u => u && u.isPendingApproval && (!u.assignedDirectorate || u.assignedDirectorate === currentUserObj?.assignedDirectorate) && !dismissedUsernamesRef.current.has(u.username.toLowerCase()));
+            setPendingUserPopups(pendingList);
+          } else if (isPmo) {
+            const pendingList = merged.filter(u => u && u.isPendingApproval && (!u.assignedPmo || u.assignedPmo === currentUserObj?.assignedPmo) && !dismissedUsernamesRef.current.has(u.username.toLowerCase()));
+            setPendingUserPopups(pendingList);
+          } else {
+            setPendingUserPopups([]);
           }
 
           // Auto-update logged-in user state if admin approved or updated their account
@@ -1377,19 +1467,49 @@ let isBatchSyncRunning = false;
     };
   }, []);
 
-  // Effect to automatically synchronize and prompt master admin with any previous or new pending users
+  // Effect to automatically synchronize and prompt admins with any previous or new pending users
   useEffect(() => {
-    if (isMasterAdmin && usersListState.length > 0) {
-      const pendingList = usersListState.filter(u => 
-        u && 
-        u.isPendingApproval && 
-        !dismissedUsernamesRef.current.has(u.username.toLowerCase())
-      );
-      setPendingUserPopups(pendingList);
+    const isMaster = Boolean(
+      currentUserObj?.role === 'admin' || 
+      currentUserObj?.role === 'master_admin' || 
+      currentUserObj?.role === 'cpm_admin' || 
+      currentUserObj?.username === 'proj_1781786415663' ||
+      (currentUserObj?.username && currentUserObj.username.toLowerCase().includes('ersido'))
+    );
+    const isDir = currentUserObj?.role === 'directorate_admin';
+    const isPmo = currentUserObj?.role === 'pmo_admin';
+
+    if (usersListState.length > 0) {
+      if (isMaster) {
+        const pendingList = usersListState.filter(u => 
+          u && 
+          u.isPendingApproval && 
+          !dismissedUsernamesRef.current.has(u.username.toLowerCase())
+        );
+        setPendingUserPopups(pendingList);
+      } else if (isDir) {
+        const pendingList = usersListState.filter(u => 
+          u && 
+          u.isPendingApproval && 
+          (!u.assignedDirectorate || u.assignedDirectorate === currentUserObj?.assignedDirectorate) &&
+          !dismissedUsernamesRef.current.has(u.username.toLowerCase())
+        );
+        setPendingUserPopups(pendingList);
+      } else if (isPmo) {
+        const pendingList = usersListState.filter(u => 
+          u && 
+          u.isPendingApproval && 
+          (!u.assignedPmo || u.assignedPmo === currentUserObj?.assignedPmo) &&
+          !dismissedUsernamesRef.current.has(u.username.toLowerCase())
+        );
+        setPendingUserPopups(pendingList);
+      } else {
+        setPendingUserPopups([]);
+      }
     } else {
       setPendingUserPopups([]);
     }
-  }, [isMasterAdmin, usersListState, currentUserObj?.username]);
+  }, [currentUserObj?.role, currentUserObj?.assignedDirectorate, currentUserObj?.assignedPmo, usersListState, currentUserObj?.username]);
 
   // Helper to synchronize 'Total Todate Bill Summary' and 'Remaining' with series sums, and calculate G = F + E
   const syncProjectPayment = (rawProject: Project): Project => {
@@ -2692,6 +2812,14 @@ let isBatchSyncRunning = false;
                   {darkMode ? <Sun className="w-4 h-4 text-amber-500" /> : <Moon className="w-4 h-4 text-blue-500" />}
                 </button>
                 <button
+                  onClick={() => setShowProfile(true)}
+                  className="bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 p-2 rounded-full border border-slate-200 dark:border-slate-700 flex items-center gap-1 text-[11px] font-extrabold text-slate-700 dark:text-slate-200 px-3 py-1.5 transition"
+                  title="My Profile & Security Settings"
+                >
+                  <UserIcon className="w-3.5 h-3.5 text-blue-500" />
+                  Profile
+                </button>
+                <button
                   onClick={handleLogout}
                   className="bg-slate-50 hover:bg-slate-100 dark:bg-slate-805 p-2 rounded-full border border-slate-200 dark:border-slate-700 flex items-center gap-1 text-[11px] font-extrabold text-rose-600 dark:text-rose-400 px-3 py-1.5 transition"
                   title="Log Out"
@@ -3457,45 +3585,15 @@ let isBatchSyncRunning = false;
         )}
       </AnimatePresence>
 
+      {/* User Profile & Security Settings Modal */}
       {showProfile && currentUserObj && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 animate-fade-in">
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-sm bg-white dark:bg-slate-800 rounded-3xl p-5 border border-slate-100 dark:border-slate-700/60 shadow-xl space-y-4"
-          >
-            <div className="flex justify-between items-center border-b pb-2">
-              <h3 className="font-bold text-sm text-slate-850 dark:text-zinc-100 uppercase tracking-wide">
-                User Identity & Security
-              </h3>
-              <button 
-                onClick={() => setShowProfile(false)}
-                className="text-xs font-bold text-slate-400 hover:text-slate-650"
-              >
-                Close
-              </button>
-            </div>
-
-            <div className="space-y-4 text-xs font-semibold text-slate-700 dark:text-slate-350">
-              <div className="space-y-1">
-                <label className="text-[10px] text-slate-400 tracking-wide font-mono uppercase block">Username Profile</label>
-                <input 
-                  type="text" 
-                  value={currentUserObj.username} 
-                  disabled 
-                  className="w-full bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2.5 py-1 font-extrabold text-slate-500 cursor-not-allowed"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] text-slate-400 tracking-wide font-mono uppercase block">Assigned Role Privilege</label>
-                <div className="p-2 bg-slate-50 dark:bg-slate-900 rounded-lg font-bold border capitalize">
-                  {currentUserObj.role}
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        </div>
+        <UserProfileModal
+          currentUser={currentUserObj}
+          allUsers={usersListState}
+          isOpen={showProfile}
+          onClose={() => setShowProfile(false)}
+          onUpdateCredentials={handleSelfUpdateCredentials}
+        />
       )}
 
       {/* Admin User Management Modal Overlay */}
@@ -5358,7 +5456,7 @@ let isBatchSyncRunning = false;
 
       {/* Real-Time Immediate New User Registration Approval Pop-Up Modal */}
       <AnimatePresence>
-        {isMasterAdmin && pendingUserPopups.length > 0 && (
+        {(isMasterAdmin || currentUserObj?.role === 'directorate_admin' || currentUserObj?.role === 'pmo_admin') && pendingUserPopups.length > 0 && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -5396,6 +5494,19 @@ let isBatchSyncRunning = false;
                 const activePending = pendingUserPopups[0];
                 if (!activePending) return null;
 
+                const isDir = currentUserObj?.role === 'directorate_admin';
+                const isPmo = currentUserObj?.role === 'pmo_admin';
+
+                const visiblePopupProjects = projects.filter(proj => {
+                  if (isDir) {
+                    return (proj.programDirectorate || 'Southern') === currentUserObj?.assignedDirectorate;
+                  }
+                  if (isPmo) {
+                    return (proj.pmo || '') === currentUserObj?.assignedPmo;
+                  }
+                  return true;
+                });
+
                 return (
                   <div className="p-6 space-y-5">
                     <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 rounded-2xl p-4 flex items-center justify-between gap-3">
@@ -5431,9 +5542,16 @@ let isBatchSyncRunning = false;
                         <option value="editor">✏️ Editor (View & Submit Contract Updates)</option>
                         <option value="viewer">👁️ Viewer (Read Only Access)</option>
                         <option value="approver">Approver (Review & Approve Drafts)</option>
-                        <option value="directorate_admin">Directorate Admin</option>
-                        <option value="pmo_admin">PMO Admin</option>
-                        <option value="admin">⭐ Master Admin (Full System Control)</option>
+                        {isDir && (
+                          <option value="pmo_admin">PMO Admin (Under {currentUserObj?.assignedDirectorate})</option>
+                        )}
+                        {!isDir && !isPmo && (
+                          <>
+                            <option value="directorate_admin">Directorate Admin</option>
+                            <option value="pmo_admin">PMO Admin</option>
+                            <option value="admin">⭐ Master Admin (Full System Control)</option>
+                          </>
+                        )}
                       </select>
                     </div>
 
@@ -5442,14 +5560,14 @@ let isBatchSyncRunning = false;
                       <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex justify-between items-center uppercase tracking-wider">
                         <span>Assign Accessible Contracts:</span>
                         <span className="text-[10px] text-slate-400 font-normal normal-case">
-                          ({projects.length} Total Contracts Available)
+                          ({visiblePopupProjects.length} Available in Your Scope)
                         </span>
                       </label>
                       <div className="max-h-36 overflow-y-auto border border-slate-200 dark:border-slate-700/80 rounded-2xl p-2.5 bg-slate-50/50 dark:bg-slate-900/50 space-y-1">
                         <div className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 pb-1 border-b border-slate-200 dark:border-slate-800">
                           ✓ All contracts accessible automatically for Admin role
                         </div>
-                        {projects.map(proj => (
+                        {visiblePopupProjects.map(proj => (
                           <label key={proj.id} className="flex items-center gap-2 text-xs font-semibold p-1.5 hover:bg-white dark:hover:bg-slate-800 rounded-lg cursor-pointer transition">
                             <input
                               type="checkbox"
