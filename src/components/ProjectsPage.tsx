@@ -119,11 +119,9 @@ export default function ProjectsPage({
     return false;
   };
 
-  const canDeleteProject = (p: Project) => {
-    if (isMasterAdmin) return true;
-    if (isDirAdmin) return (p.programDirectorate || 'Southern') === currentUserObj.assignedDirectorate;
-    if (isPmoAdmin) return (p.pmo || '') === currentUserObj.assignedPmo;
-    return false;
+  const canDeleteProject = (_p?: Project) => {
+    // Only CPM Admins and Master Admins can delete projects
+    return isMasterAdmin;
   };
 
   const canCreateProject = isMasterAdmin || isDirAdmin || isPmoAdmin || currentUserObj?.role === 'editor';
@@ -503,7 +501,7 @@ export default function ProjectsPage({
               </button>
             )}
             
-            {!hasNoProjects && (currentUserObj.role === 'approver' || isMasterAdmin || isDirAdmin || isPmoAdmin) && (
+            {!hasNoProjects && (currentUserObj.role === 'approver' || currentUserObj.hasApprovalCredential) && (
               <button 
                 onClick={onOpenApprovals}
                 className="flex items-center gap-1 bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-xl text-xs font-bold transition relative"
@@ -881,7 +879,8 @@ export default function ProjectsPage({
                 }) : [];
                 const hasCritical = criticalBonds.length > 0;
                 const statusInfo = getProjectStatus(p);
-                const hasPendingChanges = pendingApprovals.some(a => a.projectId === p.id && a.status === 'pending' && canUserApproveRequest(currentUserObj, a, projects));
+                const hasPendingChangesForApprover = pendingApprovals.some(a => a.projectId === p.id && a.status === 'pending' && canUserApproveRequest(currentUserObj, a, projects));
+                const mySubmittedPendingDraft = pendingApprovals.find(a => a.projectId === p.id && a.status === 'pending' && a.requestedBy === currentUserObj.username);
 
                 return (
                   <motion.div
@@ -948,16 +947,21 @@ export default function ProjectsPage({
                       {/* Title */}
                       <div>
                         <h3 className="text-base font-bold text-slate-800 dark:text-slate-100 line-clamp-1 group-hover:text-amber-500 dark:group-hover:text-amber-400 transition-colors flex items-center gap-2">
-                          {hasPendingChanges && (
-                            <span className="relative flex h-2 w-2 shrink-0" title="This contract has pending, unapproved changes requiring attention">
+                          {hasPendingChangesForApprover && (
+                            <span className="relative flex h-2 w-2 shrink-0" title="This contract has pending, unapproved changes requiring your review as designated approver">
                               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-450 opacity-75"></span>
                               <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
                             </span>
                           )}
                           <span>{p.name}</span>
-                          {hasPendingChanges && (
-                            <span className="text-[9px] font-black uppercase text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded tracking-wider animate-pulse border border-amber-500/20 leading-none">
-                              Pending Approval
+                          {hasPendingChangesForApprover && (
+                            <span className="text-[9px] font-black uppercase text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded tracking-wider animate-pulse border border-amber-500/20 leading-none">
+                              Pending Approver Review
+                            </span>
+                          )}
+                          {mySubmittedPendingDraft && !hasPendingChangesForApprover && (
+                            <span className="text-[9px] font-bold uppercase text-blue-600 dark:text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded tracking-wider border border-blue-500/20 leading-none">
+                              Draft Submitted
                             </span>
                           )}
                         </h3>

@@ -40,19 +40,34 @@ import { Project, User, ApprovalRequest, KpiAllocatedItem, SeriesItem, MonthlyPr
 
 export function hasApprovalCredentials(user: User | null): boolean {
   if (!user) return false;
-  if (
-    user.role === 'master_admin' ||
-    user.role === 'cpm_admin' ||
-    user.role === 'admin' ||
-    user.role === 'approver' ||
-    user.role === 'directorate_admin' ||
-    user.role === 'pmo_admin' ||
-    user.hasApprovalCredential === true ||
-    user.username === 'proj_1781786415663'
-  ) {
-    return true;
+  return user.role === 'approver' || user.hasApprovalCredential === true;
+}
+
+export function isProjectApprover(user: User | null, projectId: string, project?: Project | null): boolean {
+  if (!user || !projectId) return false;
+
+  // Strict Rule: User must have the 'approver' role or explicitly have hasApprovalCredential === true designated for this project.
+  // Blanket Global Admins (master_admin, cpm_admin, admin) do NOT have approval rights unless specifically designated as the project approver.
+  const hasApproverRole = user.role === 'approver' || user.hasApprovalCredential === true;
+  if (!hasApproverRole) return false;
+
+  // Project-scope check: if accessibleProjects is populated, user MUST be specifically assigned to this project ID
+  if (user.accessibleProjects && Array.isArray(user.accessibleProjects) && user.accessibleProjects.length > 0) {
+    return user.accessibleProjects.includes(projectId);
   }
-  return false;
+
+  // If directorate/pmo admin with approval credentials, check assigned scope
+  if (project) {
+    if (user.role === 'directorate_admin' && user.assignedDirectorate) {
+      return (project.programDirectorate || 'Southern') === user.assignedDirectorate;
+    }
+    if (user.role === 'pmo_admin' && user.assignedPmo) {
+      return (project.pmo || '') === user.assignedPmo;
+    }
+  }
+
+  // If role is strictly 'approver' and accessibleProjects is empty, user is assigned to all projects in their scope
+  return user.role === 'approver';
 }
 
 export function canUserViewPage(user: User | null, pageId: string): boolean {
@@ -84,48 +99,15 @@ export function canUserEditPage(user: User | null, pageId: string): boolean {
 }
 
 export function canUserApproveRequest(user: User | null, req: ApprovalRequest, projectsList?: Project[]): boolean {
-  if (!user) return false;
+  if (!user || !req) return false;
   
-  if (user.role === 'master_admin' || user.role === 'cpm_admin' || user.role === 'admin' || user.username === 'proj_1781786415663') {
-    return true;
-  }
-
-  if (!hasApprovalCredentials(user)) {
+  // An author cannot approve their own submission
+  if (req.requestedBy && req.requestedBy.toLowerCase() === user.username.toLowerCase()) {
     return false;
   }
 
-  // 1. Check Project Access
-  let projectAllowed = false;
   const project = projectsList ? projectsList.find(p => p.id === req.projectId) : null;
-  if (user.role === 'directorate_admin' && project) {
-    projectAllowed = (project.programDirectorate || 'Southern') === user.assignedDirectorate;
-  } else if (user.role === 'pmo_admin' && project) {
-    projectAllowed = (project.pmo || '') === user.assignedPmo;
-  } else if (user.accessibleProjects && Array.isArray(user.accessibleProjects) && user.accessibleProjects.length > 0) {
-    projectAllowed = user.accessibleProjects.includes(req.projectId);
-  } else {
-    projectAllowed = true;
-  }
-  if (!projectAllowed) return false;
-
-  // 2. Check Page Access
-  if (user.assignedPages && Array.isArray(user.assignedPages) && user.assignedPages.length > 0) {
-    if (req.requestedBy === user.username) {
-      return true;
-    }
-    if (req.pageId && user.assignedPages.includes(req.pageId)) {
-      return true;
-    }
-    const matchesAssigned = user.assignedPages.some(pageId => {
-      if (req.section && req.section.toLowerCase().includes(pageId.toLowerCase())) return true;
-      const matchedOption = ALL_EDITABLE_PAGES.find(p => p.id === pageId);
-      if (matchedOption && req.section && req.section.toLowerCase().includes(matchedOption.name.toLowerCase())) return true;
-      return false;
-    });
-    return matchesAssigned;
-  }
-
-  return true;
+  return isProjectApprover(user, req.projectId, project);
 }
 import LoginPage from './components/LoginPage';
 import ProjectsPage from './components/ProjectsPage';
@@ -1879,29 +1861,17 @@ let isBatchSyncRunning = false;
   };
 
   const handleDeleteProject = (id: string) => {
-    const isMasterAdmin = currentUserObj?.role === 'admin' || 
-                          currentUserObj?.role === 'master_admin' || 
-                          currentUserObj?.role === 'cpm_admin' ||
-                          currentUserObj?.username === 'proj_1781786415663' ||
-                          (currentUserObj?.username && currentUserObj.username.toLowerCase().includes('ersido'));
-    const isDirAdmin = currentUserObj?.role === 'directorate_admin';
-    const isPmoAdmin = currentUserObj?.role === 'pmo_admin';
+    const isAuthorizedAdmin = currentUserObj?.role === 'admin' || 
+                              currentUserObj?.role === 'master_admin' || 
+                              currentUserObj?.role === 'cpm_admin' ||
+                              currentUserObj?.username === 'proj_1781786415663' ||
+                              (currentUserObj?.username && currentUserObj.username.toLowerCase().includes('ersido'));
 
     const projToDelete = projects.find(p => p.id === id);
     if (!projToDelete) return;
 
-    if (isDirAdmin) {
-      if ((projToDelete.programDirectorate || 'Southern') !== currentUserObj.assignedDirectorate) {
-        alert("Access Denied: You can only delete projects within your assigned Directorate.");
-        return;
-      }
-    } else if (isPmoAdmin) {
-      if ((projToDelete.pmo || '') !== currentUserObj.assignedPmo) {
-        alert("Access Denied: You can only delete projects within your assigned PMO.");
-        return;
-      }
-    } else if (!isMasterAdmin) {
-      alert("Access Denied: Only System Administrators with Admin credentials are authorized to delete projects.");
+    if (!isAuthorizedAdmin) {
+      alert("Access Denied: Only CPM Admins and Master Admins are authorized to permanently delete projects.");
       return;
     }
 
@@ -2197,12 +2167,12 @@ let isBatchSyncRunning = false;
 
     updatedProject.history = newHistory;
 
-    // Intercept modifications made by users without Approval Credentials and route to approvals
-    if (!hasApprovalCredentials(currentUserObj)) {
+    // Intercept modifications made by users who are not designated project approvers and route to approvals
+    if (!isProjectApprover(currentUserObj, currentProject.id, currentProject)) {
       const reason = prompt(
         '🔑 EDIT SUBMISSION FOR APPROVAL REQUIRED\n\n' +
         `You have page editing access for "${sectionName || activeTab}".\n` +
-        'Under governance rules, any modifications must be reviewed and approved by a user with Approval Credentials before data is incorporated into the live database.\n\n' +
+        'Under governance rules, any modifications must be reviewed and approved by the designated Project Approver before data is incorporated into the live database.\n\n' +
         'Please enter a description for this update:',
         sectionName || 'Project data modifications'
       );
@@ -2230,8 +2200,8 @@ let isBatchSyncRunning = false;
 
         alert(
           '🚀 DATA SUBMITTED FOR APPROVAL!\n\n' +
-          'Your modified project data has been successfully sent to the Approval Queue.\n' +
-          'A user with Approval Credentials will review and authorize your changes before data is incorporated into the live database.'
+          'Your modified project data has been successfully sent to the designated Project Approver.\n' +
+          'The live database baseline will update once authorized by the project approver.'
         );
       } catch (err) {
         console.error('Failed to submit approval request:', err);
@@ -2709,7 +2679,7 @@ let isBatchSyncRunning = false;
                 <button
                   onClick={async () => {
                     if (!currentProject) return;
-                    const isAuthorized = currentUserObj?.role === 'admin' || currentUserObj?.role === 'master_admin' || currentUserObj?.role === 'directorate_admin' || currentUserObj?.role === 'pmo_admin' || currentUserObj?.role === 'approver' || currentUserObj?.username === 'proj_1781786415663';
+                    const isAuthorized = currentUserObj && isProjectApprover(currentUserObj, currentProject.id, currentProject);
                     
                     if (isAuthorized) {
                       try {
@@ -2717,7 +2687,7 @@ let isBatchSyncRunning = false;
                           ...currentProject,
                           lastModifiedBy: currentUserObj.username,
                           lastModifiedAt: new Date().toISOString(),
-                          lastModifiedSection: 'Certified directly by authorized authority',
+                          lastModifiedSection: 'Certified directly by authorized project approver',
                           approvedBy: currentUserObj.username,
                           approvedAt: new Date().toISOString(),
                           approverRole: currentUserObj.role
@@ -2753,9 +2723,9 @@ let isBatchSyncRunning = false;
                         await safeSyncApprovals(updatedList);
 
                         alert(
-                          '🚀 DATA SUBMITTED SUCCESSFULLY!\n\n' +
-                          'Your modified dataset has been immediately submitted to the Approver Queue.\n' +
-                          'An Admin or Approver will review the changes before they go live.'
+                          '🚀 DATA SUBMITTED FOR APPROVAL!\n\n' +
+                          'Your modified dataset has been submitted to the designated Project Approver.\n' +
+                          'Once certified by the project approver, the master dataset will be updated.'
                         );
                       } catch (err) {
                         console.error('Failed to submit approval request:', err);
@@ -3321,7 +3291,7 @@ let isBatchSyncRunning = false;
               ) : (
                 <>
                   {/* Governance & Page Editing Permission Status Banner (Only shown when page is read-only or requires approval) */}
-                  {currentUserObj && (!canUserEditPage(currentUserObj, activeTab) || !hasApprovalCredentials(currentUserObj)) && (
+                  {currentUserObj && (!canUserEditPage(currentUserObj, activeTab) || !isProjectApprover(currentUserObj, currentProject.id, currentProject)) && (
                     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 px-4 py-2 bg-white dark:bg-slate-850 border border-slate-150 dark:border-slate-800 rounded-2xl text-[11px] font-semibold">
                       <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
                         <span className="text-xs">
@@ -3335,7 +3305,7 @@ let isBatchSyncRunning = false;
                             </span>
                           ) : (
                             <span className="text-blue-600 dark:text-blue-400 font-extrabold">
-                              Page Editing Authorized — Edits require review & approval before database incorporation
+                              Page Editing Authorized — Edits routed to designated Project Approver for review
                             </span>
                           )}
                         </span>
@@ -3353,6 +3323,30 @@ let isBatchSyncRunning = false;
                       </div>
                     </div>
                   )}
+
+                  {/* Submitted Pending Approval Alert Banner (Visible exclusively to the author/editor who submitted the changes) */}
+                  {(() => {
+                    const myPendingReq = pendingApprovals.find(
+                      a => a.projectId === currentProject.id && a.status === 'pending' && a.requestedBy === currentUserObj.username
+                    );
+                    if (!myPendingReq) return null;
+                    return (
+                      <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-900/60 rounded-2xl text-xs font-semibold text-amber-900 dark:text-amber-200 shadow-xs">
+                        <div className="flex items-center gap-2.5">
+                          <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping"></span>
+                          <div>
+                            <span className="font-extrabold">Submitted Changes Pending Approver Review:</span>{' '}
+                            <span className="font-medium text-amber-800 dark:text-amber-300 text-2xs">
+                              Variance submitted for "{myPendingReq.section}" on {new Date(myPendingReq.requestedAt).toLocaleTimeString()}. The live master database will incorporate these updates once certified by the assigned project approver.
+                            </span>
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-lg bg-amber-200/70 dark:bg-amber-900/80 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-800 shrink-0">
+                          Draft Submitted
+                        </span>
+                      </div>
+                    );
+                  })()}
               {activeTab === 'dash' && (
                 <DashboardView
                   project={currentProject}
@@ -4909,7 +4903,7 @@ let isBatchSyncRunning = false;
       )}
 
       {/* Approvals Modal Overlay */}
-      {showApprovals && (currentUserObj?.role === 'approver' || currentUserObj?.role === 'admin' || currentUserObj?.username === 'proj_1781786415663') && (
+      {showApprovals && (currentUserObj?.role === 'approver' || currentUserObj?.hasApprovalCredential) && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 animate-fade-in">
           <motion.div 
             initial={{ opacity: 0, scale: 0.95 }}

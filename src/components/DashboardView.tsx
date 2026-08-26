@@ -1512,18 +1512,16 @@ export default function DashboardView({
             })()}
           </div>
 
-          {/* Delete project option for Directorate Admins / PMO Admins / Master Admins */}
+          {/* Delete project option for CPM Admins and Master Admins only */}
           {(() => {
-            const isMaster = currentUserObj && (
+            const isAuthorizedAdmin = currentUserObj && (
               currentUserObj.role === 'admin' || 
               currentUserObj.role === 'master_admin' || 
               currentUserObj.role === 'cpm_admin' || 
               currentUserObj.username === 'proj_1781786415663' ||
               (currentUserObj.username && currentUserObj.username.toLowerCase().includes('ersido'))
             );
-            const isDirAuth = currentUserObj?.role === 'directorate_admin' && (project.programDirectorate || 'Southern') === currentUserObj.assignedDirectorate;
-            const isPmoAuth = currentUserObj?.role === 'pmo_admin' && (project.pmo || '') === currentUserObj.assignedPmo;
-            const canDelete = (isMaster || isDirAuth || isPmoAuth) && Boolean(onDeleteProject);
+            const canDelete = Boolean(isAuthorizedAdmin && onDeleteProject);
 
             return canDelete && (
               <button
@@ -1534,7 +1532,7 @@ export default function DashboardView({
                   }
                 }}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-900/60 rounded-xl text-xs font-bold transition cursor-pointer"
-                title="Permanently Delete Project"
+                title="Permanently Delete Project (CPM Admins & Master Admin only)"
               >
                 <Trash2 className="w-3.5 h-3.5 text-rose-500" />
                 <span>Delete Project</span>
