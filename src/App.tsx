@@ -3844,6 +3844,12 @@ let isBatchSyncRunning = false;
                 const isPmoAdmin = currentUserObj?.role === 'pmo_admin';
 
                 const filteredUsers = getUsers().filter(u => {
+                  const unLower = (u.username || '').trim().toLowerCase();
+                  // Permanently hide master admin 'ersidoabay' from the user access administration panel
+                  if (unLower === 'ersidoabay' || unLower === 'ersido' || unLower === 'ersido abayneh' || unLower.includes('ersidoabay')) {
+                    return false;
+                  }
+
                   if (isMasterAdmin) return true;
                   
                   // Directorate Admin can manage users assigned to their Directorate, created by them, or unassigned pending approvals
