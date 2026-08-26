@@ -30,7 +30,7 @@ import {
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { Project, User, ApprovalRequest, ProjectLifecycleStatus } from '../types';
-import { canUserApproveRequest } from '../App';
+import { canUserApproveRequest, hasApprovalCredentials } from '../App';
 import eraLogo from '../assets/logo.png';
 import GroupReportGenerator from './GroupReportGenerator';
 import { downloadUserManual } from '../data/userManual';
@@ -501,7 +501,7 @@ export default function ProjectsPage({
               </button>
             )}
             
-            {!hasNoProjects && (currentUserObj.role === 'approver' || currentUserObj.hasApprovalCredential) && (
+            {!hasNoProjects && hasApprovalCredentials(currentUserObj) && (
               <button 
                 onClick={onOpenApprovals}
                 className="flex items-center gap-1 bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-xl text-xs font-bold transition relative"
