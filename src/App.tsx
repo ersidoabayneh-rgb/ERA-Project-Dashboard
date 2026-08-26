@@ -3506,6 +3506,7 @@ let isBatchSyncRunning = false;
               {activeTab === 'consultant' && (
                 <SupervisionConsultantView
                   project={currentProject}
+                  projects={projects}
                   onUpdateProject={handleProjectUpdate}
                   isReadonly={currentUserObj?.role === 'viewer' && currentUserObj?.username !== 'proj_1781786415663'}
                   currentUser={currentUserObj}

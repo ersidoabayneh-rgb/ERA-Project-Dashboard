@@ -17,7 +17,11 @@ import {
   Eye,
   CheckCircle2,
   FileSpreadsheet,
-  UserCheck
+  UserCheck,
+  Users,
+  Award,
+  Clock,
+  Printer
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { Project, User, formatAccounting } from '../types';
@@ -25,6 +29,8 @@ import { buildKpiHierarchy, getIntegratedKpiAllocated } from '../data/defaultPro
 import { QtyItem } from '../types';
 import { calculateIpcMaturation } from '../lib/ipcCalculations';
 import { calculateProjectEvm } from '../lib/evmCalculations';
+import { printWorkloadReportDocument } from '../lib/workloadReportPrinter';
+import WorkloadReportModal from './WorkloadReportModal';
 
 interface CriticalQtyAnalysis {
   name: string;
@@ -152,9 +158,10 @@ export default function GroupReportGenerator({
   const [reportSearchQuery, setReportSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'name' | 'progress' | 'value'>('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
-  const [reportMode, setReportMode] = useState<'performance' | 'audit' | 'payments' | 'bonds'>('performance');
+  const [reportMode, setReportMode] = useState<'performance' | 'audit' | 'payments' | 'bonds' | 'supervisionStaff'>('performance');
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
   const [maturedFilterOnly, setMaturedFilterOnly] = useState(false);
+  const [isPrintWorkloadModalOpen, setIsPrintWorkloadModalOpen] = useState(false);
 
   // Helper check for project access (matching standard view limits) - all users share the single database
   const isAccessible = (p: Project) => {
@@ -1333,6 +1340,155 @@ export default function GroupReportGenerator({
       combinedClaimable,
       statusLabel,
       statusColor
+    };
+  };
+
+  // Derived supervision consultant personnel workload & status statistics across the group
+  const supervisionStaffStats = useMemo(() => {
+    let totalProjectsWithConsultant = 0;
+    let totalPersonnelCount = 0;
+    let activePersonnelCount = 0;
+    let demobilizedPersonnelCount = 0;
+    let onLeavePersonnelCount = 0;
+    let keyPersonnelCount = 0;
+    let activeKeyPersonnelCount = 0;
+    let nonKeyPersonnelCount = 0;
+    let subProfPersonnelCount = 0;
+    let totalAllocatedMM = 0;
+    let totalExpendedMM = 0;
+    let totalInvoicedFeeEtb = 0;
+    let totalPaidFeeEtb = 0;
+    let residentEngineersCount = 0;
+
+    rawGroupProjects.forEach(p => {
+      const sc = p.supervisionConsultant;
+      if (sc) {
+        totalProjectsWithConsultant++;
+        if (sc.residentEngineerName && sc.residentEngineerName.trim().length > 0) {
+          residentEngineersCount++;
+        }
+        const personnel = sc.personnel || [];
+        personnel.forEach(person => {
+          totalPersonnelCount++;
+          const status = person.status || 'Active';
+          if (status === 'Active') {
+            activePersonnelCount++;
+          } else if (status === 'Demobilized') {
+            demobilizedPersonnelCount++;
+          } else {
+            onLeavePersonnelCount++;
+          }
+
+          if (person.category === 'Key Personnel') {
+            keyPersonnelCount++;
+            if (status === 'Active') activeKeyPersonnelCount++;
+          } else if (person.category === 'Non-Key Professional') {
+            nonKeyPersonnelCount++;
+          } else {
+            subProfPersonnelCount++;
+          }
+
+          totalAllocatedMM += (person.manMonthsAllocated || 0);
+          totalExpendedMM += (person.manMonthsExpended || 0);
+        });
+
+        const invoices = sc.invoices || [];
+        invoices.forEach(inv => {
+          totalInvoicedFeeEtb += (inv.grossAmountEtb || 0);
+          if (inv.status === 'Paid') {
+            totalPaidFeeEtb += (inv.grossAmountEtb || 0);
+          }
+        });
+      }
+    });
+
+    const overallWorkloadPct = totalAllocatedMM > 0 ? (totalExpendedMM / totalAllocatedMM) * 100 : 0;
+    const activeStaffPct = totalPersonnelCount > 0 ? (activePersonnelCount / totalPersonnelCount) * 100 : 0;
+
+    return {
+      totalProjectsWithConsultant,
+      totalPersonnelCount,
+      activePersonnelCount,
+      demobilizedPersonnelCount,
+      onLeavePersonnelCount,
+      keyPersonnelCount,
+      activeKeyPersonnelCount,
+      nonKeyPersonnelCount,
+      subProfPersonnelCount,
+      totalAllocatedMM,
+      totalExpendedMM,
+      overallWorkloadPct,
+      activeStaffPct,
+      totalInvoicedFeeEtb,
+      totalPaidFeeEtb,
+      residentEngineersCount
+    };
+  }, [rawGroupProjects]);
+
+  // Helper to calculate supervision staff metrics for an individual project
+  const getProjectSupervisionStaffMetrics = (p: Project) => {
+    const sc = p.supervisionConsultant;
+    const firmName = sc?.firmName || p.consultant || 'Supervision Consultant JV';
+    const reName = sc?.residentEngineerName || '';
+    const personnel = sc?.personnel || [];
+    const invoices = sc?.invoices || [];
+
+    const totalStaff = personnel.length;
+    const activeStaff = personnel.filter(x => (x.status || 'Active') === 'Active').length;
+    const demobilizedStaff = personnel.filter(x => x.status === 'Demobilized').length;
+    const onLeaveStaff = personnel.filter(x => x.status === 'On Leave' || x.status === 'Replaced').length;
+
+    const keyStaff = personnel.filter(x => x.category === 'Key Personnel');
+    const activeKeyStaff = keyStaff.filter(x => (x.status || 'Active') === 'Active').length;
+
+    const allocatedMM = personnel.reduce((sum, x) => sum + (x.manMonthsAllocated || 0), 0);
+    const expendedMM = personnel.reduce((sum, x) => sum + (x.manMonthsInput || (x as any).manMonthsExpended || 0), 0);
+    const remainingMM = Math.max(0, allocatedMM - expendedMM);
+    const workloadPct = allocatedMM > 0 ? Math.min(100, (expendedMM / allocatedMM) * 100) : 0;
+
+    const totalInvoicedEtb = invoices.reduce((sum, inv) => sum + (inv.grossAmountEtb || 0), 0);
+    const totalPaidEtb = invoices.filter(inv => inv.status === 'Paid').reduce((sum, inv) => sum + (inv.grossAmountEtb || 0), 0);
+
+    let statusLabel: 'Fully Mobilized' | 'Key Roles Active' | 'Staffing Gaps' | 'Demobilized' | 'No Staff Assigned' = 'Fully Mobilized';
+    let statusBadgeColor = 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-800';
+
+    if (totalStaff === 0) {
+      statusLabel = 'No Staff Assigned';
+      statusBadgeColor = 'bg-slate-100 text-slate-500 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700';
+    } else if (activeStaff === 0) {
+      statusLabel = 'Demobilized';
+      statusBadgeColor = 'bg-slate-100 text-slate-600 border-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700';
+    } else if (activeKeyStaff < keyStaff.length && keyStaff.length > 0) {
+      statusLabel = 'Staffing Gaps';
+      statusBadgeColor = 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-800';
+    } else if (activeStaff < totalStaff) {
+      statusLabel = 'Key Roles Active';
+      statusBadgeColor = 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:text-blue-300 dark:border-blue-800';
+    }
+
+    return {
+      firmName,
+      reName,
+      rePhone: sc?.residentEngineerPhone || '',
+      reEmail: sc?.residentEngineerEmail || '',
+      contractRef: sc?.contractRefNo || `ERA/SC/${p.id.substring(0, 8)}`,
+      associationType: sc?.associationType || 'Joint Venture (JV)',
+      personnel,
+      invoices,
+      totalStaff,
+      activeStaff,
+      demobilizedStaff,
+      onLeaveStaff,
+      keyStaffCount: keyStaff.length,
+      activeKeyStaffCount: activeKeyStaff,
+      allocatedMM,
+      expendedMM,
+      remainingMM,
+      workloadPct,
+      totalInvoicedEtb,
+      totalPaidEtb,
+      statusLabel,
+      statusBadgeColor
     };
   };
 
@@ -3726,6 +3882,407 @@ export default function GroupReportGenerator({
     doc.save(`ERA_Matured_Payments_Report_${groupType}_${gName}.pdf`);
   };
 
+  // Export Supervision Personnel Workload & Staff Status Report (CSV)
+  const handleExportSupervisionStaffCSV = () => {
+    const csvHeaders = [
+      'Project ID',
+      'Project Name',
+      'Program Directorate',
+      'PMO Grouping',
+      'Contractor',
+      'Supervision Consultant Firm',
+      'Resident Engineer',
+      'Staff Member ID',
+      'Staff Member Name',
+      'Position / Role',
+      'Staff Category',
+      'Date of Assignment',
+      'Demobilization Date',
+      'Employment / Site Status',
+      'Man-Months Allocated',
+      'Man-Months Expended',
+      'Remaining Man-Months',
+      'Workload Utilization %',
+      'Qualifications',
+      'Site Station / Office',
+      'Consultant Fee Invoiced (ETB)',
+      'Consultant Fee Paid (ETB)'
+    ];
+
+    const rows: (string | number)[][] = [];
+
+    processedProjects.forEach(p => {
+      const m = getProjectSupervisionStaffMetrics(p);
+      const personnel = m.personnel;
+
+      if (personnel.length === 0) {
+        // Output row with project level summary even if no itemized staff
+        rows.push([
+          p.id || 'N/A',
+          p.name || 'Untitled Project',
+          p.programDirectorate || 'Southern',
+          p.pmo || 'PMO 1',
+          p.contractor || 'N/A',
+          m.firmName,
+          m.reName || 'N/A',
+          'N/A',
+          'No Staff Registered',
+          'N/A',
+          'N/A',
+          'N/A',
+          'N/A',
+          m.statusLabel,
+          0,
+          0,
+          0,
+          '0.0%',
+          'N/A',
+          'N/A',
+          m.totalInvoicedEtb,
+          m.totalPaidEtb
+        ]);
+      } else {
+        personnel.forEach(person => {
+          const expendedInput = person.manMonthsInput ?? (person as any).manMonthsExpended ?? 0;
+          const rem = Math.max(0, (person.manMonthsAllocated || 0) - expendedInput);
+          const utilPct = (person.manMonthsAllocated || 0) > 0 
+            ? ((expendedInput / (person.manMonthsAllocated || 1)) * 100).toFixed(1) + '%'
+            : '0.0%';
+
+          rows.push([
+            p.id || 'N/A',
+            p.name || 'Untitled Project',
+            p.programDirectorate || 'Southern',
+            p.pmo || 'PMO 1',
+            p.contractor || 'N/A',
+            m.firmName,
+            m.reName || 'N/A',
+            person.id || 'N/A',
+            person.name || 'Unnamed',
+            person.position || 'Specialist',
+            person.category || 'Key Personnel',
+            person.assignmentDate || 'N/A',
+            person.demobilizationDate || 'Ongoing',
+            person.status || 'Active',
+            person.manMonthsAllocated || 0,
+            expendedInput,
+            rem,
+            utilPct,
+            person.qualification || 'N/A',
+            person.siteStation || 'Main Site Camp',
+            m.totalInvoicedEtb,
+            m.totalPaidEtb
+          ]);
+        });
+      }
+    });
+
+    const csvContent = [
+      csvHeaders.join(','),
+      ...rows.map(row => row.map(v => {
+        const cellString = String(v === null || v === undefined ? '' : v).replace(/"/g, '""');
+        return cellString.includes(',') || cellString.includes('\n') || cellString.includes('"') 
+          ? `"${cellString}"` 
+          : cellString;
+      }).join(','))
+    ].join('\n');
+
+    const BOM = '\uFEFF';
+    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `ERA_Supervision_Staff_Workload_${groupType}_${selectedGroup.replace(/\s+/g, '_')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Export beautiful Supervision Personnel Workload & Staff Status Report (PDF)
+  const handleExportSupervisionStaffPDF = () => {
+    const doc = new jsPDF('l', 'pt', 'a4'); // Landscape A4 (841.89 pt x 595.28 pt)
+    
+    // Redirect helvetica to times for Times New Roman font support
+    const originalSetFont = doc.setFont;
+    (doc as any).setFont = function (this: any, fontName: string, fontStyle?: string, ...args: any[]) {
+      const targetFont = fontName === 'helvetica' ? 'times' : fontName;
+      return originalSetFont.call(this, targetFont, fontStyle, ...args);
+    };
+
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    
+    let curY = 115;
+    let pageCount = 1;
+
+    const drawHeaderFooter = () => {
+      // Purple / Indigo supervision accent line
+      doc.setDrawColor(99, 102, 241); // indigo-500
+      doc.setLineWidth(3);
+      doc.line(40, 25, pageWidth - 40, 25);
+
+      // Title & Metadata Block
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.setTextColor(15, 23, 42); // slate-900
+      doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA) • ENGINEERING CONSULTANCY AUDIT", 40, 42);
+      
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(100, 116, 139); // slate-500
+      doc.text(`CMS - SUPERVISION PERSONNEL WORKLOAD & STAFFING STATUS • AUDITOR: ${currentUserObj.username.toUpperCase()}`, 40, 54);
+
+      const dStr = new Date().toLocaleString();
+      doc.text(`AUDIT GENERATION DATE: ${dStr}`, pageWidth - 260, 42);
+
+      // Page numbers
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.text(`PAGE ${pageCount}`, pageWidth - 50, pageHeight - 30);
+      
+      doc.setFont('helvetica', 'normal');
+      doc.text("CONFIDENTIAL - ERA SUPERVISION CONSULTANT MONITORING OFFICE", 40, pageHeight - 30);
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.5);
+      doc.line(40, pageHeight - 45, pageWidth - 40, pageHeight - 45);
+    };
+
+    drawHeaderFooter();
+
+    // Render Stats Cards Block at top of page 1
+    const cardWidth = 175;
+    const cardHeight = 50;
+    const cardY = 70;
+
+    // Card 1: Total Mobilized Staff
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(40, cardY, cardWidth, cardHeight, 6, 6, 'FD');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(100, 116, 139);
+    doc.text("TOTAL MOBILIZED PERSONNEL", 48, cardY + 16);
+    doc.setFontSize(12);
+    doc.setTextColor(30, 41, 59);
+    doc.text(`${supervisionStaffStats.activePersonnelCount} Active / ${supervisionStaffStats.totalPersonnelCount} Staff`, 48, cardY + 32);
+    doc.setFontSize(7);
+    doc.setTextColor(16, 185, 129); // emerald green
+    doc.text(`${supervisionStaffStats.activeStaffPct.toFixed(0)}% Mobilization Rate (${supervisionStaffStats.demobilizedPersonnelCount} Demobilized)`, 48, cardY + 44);
+
+    // Card 2: Key Personnel & REs
+    doc.setFillColor(248, 250, 252);
+    doc.roundedRect(40 + cardWidth + 10, cardY, cardWidth, cardHeight, 6, 6, 'FD');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(100, 116, 139);
+    doc.text("KEY EXPERTS & RESIDENT ENGINEERS", 40 + cardWidth + 18, cardY + 16);
+    doc.setFontSize(12);
+    doc.setTextColor(79, 70, 229); // indigo-600
+    doc.text(`${supervisionStaffStats.activeKeyPersonnelCount} Active Key Experts`, 40 + cardWidth + 18, cardY + 32);
+    doc.setFontSize(7);
+    doc.setTextColor(148, 163, 184);
+    doc.text(`${supervisionStaffStats.residentEngineersCount} Resident Engineers across ${supervisionStaffStats.totalProjectsWithConsultant} Projects`, 40 + cardWidth + 18, cardY + 44);
+
+    // Card 3: Workload Input MM
+    doc.setFillColor(248, 250, 252);
+    doc.roundedRect(40 + (cardWidth + 10) * 2, cardY, cardWidth, cardHeight, 6, 6, 'FD');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(100, 116, 139);
+    doc.text("WORKLOAD MAN-MONTHS (MM)", 40 + (cardWidth + 10) * 2 + 8, cardY + 16);
+    doc.setFontSize(12);
+    doc.setTextColor(14, 116, 144); // cyan-700
+    doc.text(`${supervisionStaffStats.totalExpendedMM.toFixed(1)} / ${supervisionStaffStats.totalAllocatedMM.toFixed(1)} MM`, 40 + (cardWidth + 10) * 2 + 8, cardY + 32);
+    doc.setFontSize(7);
+    doc.setTextColor(148, 163, 184);
+    doc.text(`${supervisionStaffStats.overallWorkloadPct.toFixed(0)}% Workload Input Utilized`, 40 + (cardWidth + 10) * 2 + 8, cardY + 44);
+
+    // Card 4: Group Focus
+    doc.setFillColor(248, 250, 252);
+    doc.roundedRect(40 + (cardWidth + 10) * 3, cardY, cardWidth, cardHeight, 6, 6, 'FD');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(100, 116, 139);
+    doc.text("AUDIT GROUP CLASSIFICATION", 40 + (cardWidth + 10) * 3 + 8, cardY + 16);
+    doc.setFontSize(10);
+    doc.setTextColor(79, 70, 229);
+    const wrappedGroupText = doc.splitTextToSize(selectedGroup.toUpperCase(), cardWidth - 16);
+    doc.text(wrappedGroupText[0] || '', 40 + (cardWidth + 10) * 3 + 8, cardY + 30);
+    doc.setFontSize(7);
+    doc.setTextColor(148, 163, 184);
+    doc.text(`Query dimension: ${groupType.toUpperCase()}`, 40 + (cardWidth + 10) * 3 + 8, cardY + 44);
+
+    curY = 145;
+
+    // Headers geometry
+    const colX = {
+      name: 40,
+      consultant: 260,
+      staffing: 480,
+      workload: 620,
+      status: 730
+    };
+
+    const drawTableHeader = (y: number) => {
+      doc.setFillColor(30, 41, 59); // dark slate bg
+      doc.rect(40, y, pageWidth - 80, 24, 'F');
+      
+      doc.setFont('times', 'bold');
+      doc.setFontSize(8.5);
+      doc.setTextColor(255, 255, 255);
+      
+      doc.text("PROJECT ID & TITLE", colX.name + 6, y + 16);
+      doc.text("SUPERVISION CONSULTANT FIRM & RE", colX.consultant + 6, y + 16);
+      doc.text("STAFF MOBILIZATION", colX.staffing + 6, y + 16);
+      doc.text("WORKLOAD (MM)", colX.workload + 6, y + 16);
+      doc.text("STATUS", colX.status + 6, y + 16);
+    };
+
+    drawTableHeader(curY);
+    curY += 24;
+
+    processedProjects.forEach((p, idx) => {
+      const m = getProjectSupervisionStaffMetrics(p);
+
+      // Pre-calculate wrapped texts
+      doc.setFont('times', 'bold');
+      doc.setFontSize(10.5);
+      const cleanName = p.name.replace(/[^\x00-\x7F]/g, "");
+      const wrappedName = doc.splitTextToSize(cleanName, 210);
+
+      doc.setFont('times', 'normal');
+      doc.setFontSize(8.5);
+      const subText = `ID: ${p.id.toUpperCase().substring(0, 12)} | Dir: ${p.programDirectorate || 'Southern'} | PMO: ${p.pmo || 'PMO 1'}`;
+      const wrappedSub = doc.splitTextToSize(subText, 210);
+
+      doc.setFont('times', 'bold');
+      doc.setFontSize(9.5);
+      const firmText = m.firmName;
+      const wrappedFirm = doc.splitTextToSize(firmText, 210);
+
+      doc.setFont('times', 'normal');
+      doc.setFontSize(8.5);
+      const reText = `RE: ${m.reName || 'Assigned in Field'} ${m.rePhone ? `(${m.rePhone})` : ''}`;
+      const wrappedRE = doc.splitTextToSize(reText, 210);
+
+      // Highlight Key staff members
+      const keyStaffHighlights = m.personnel.filter(x => x.category === 'Key Personnel').slice(0, 3).map(
+        x => `• ${x.position}: ${x.name} (${x.status || 'Active'})`
+      );
+
+      // Calculate row height
+      const col1Height = (wrappedName.length * 12) + (wrappedSub.length * 10) + 12;
+      const col2Height = (wrappedFirm.length * 12) + (wrappedRE.length * 10) + (keyStaffHighlights.length * 9) + 12;
+      const rowHeight = Math.max(54, col1Height, col2Height);
+
+      // Page break check
+      if (curY + rowHeight > pageHeight - 50) {
+        doc.addPage();
+        pageCount++;
+        drawHeaderFooter();
+        curY = 60;
+        drawTableHeader(curY);
+        curY += 24;
+      }
+
+      // Zebra background
+      if (idx % 2 === 1) {
+        doc.setFillColor(248, 250, 252);
+        doc.rect(40, curY, pageWidth - 80, rowHeight, 'F');
+      }
+
+      // Bottom border
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.5);
+      doc.line(40, curY + rowHeight, pageWidth - 40, curY + rowHeight);
+
+      // Col 1: Project Name & Directorate
+      doc.setFont('times', 'bold');
+      doc.setFontSize(10.5);
+      doc.setTextColor(30, 41, 59);
+      doc.text(wrappedName, colX.name + 6, curY + 15);
+
+      doc.setFont('times', 'normal');
+      doc.setFontSize(8.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text(wrappedSub, colX.name + 6, curY + 15 + (wrappedName.length * 12));
+
+      // Col 2: Supervision Consultant & RE
+      doc.setFont('times', 'bold');
+      doc.setFontSize(9.5);
+      doc.setTextColor(79, 70, 229); // indigo
+      doc.text(wrappedFirm, colX.consultant + 6, curY + 15);
+
+      doc.setFont('times', 'normal');
+      doc.setFontSize(8.5);
+      doc.setTextColor(51, 65, 85);
+      doc.text(wrappedRE, colX.consultant + 6, curY + 15 + (wrappedFirm.length * 12));
+
+      if (keyStaffHighlights.length > 0) {
+        doc.setFontSize(7.5);
+        doc.setTextColor(100, 116, 139);
+        keyStaffHighlights.forEach((line, kIdx) => {
+          doc.text(line, colX.consultant + 6, curY + 15 + (wrappedFirm.length * 12) + (wrappedRE.length * 10) + (kIdx * 9));
+        });
+      }
+
+      // Col 3: Staff Mobilization
+      doc.setFont('times', 'bold');
+      doc.setFontSize(10);
+      doc.setTextColor(30, 41, 59);
+      doc.text(`${m.activeStaff} Active / ${m.totalStaff} Total`, colX.staffing + 6, curY + 16);
+
+      doc.setFont('times', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(16, 185, 129); // emerald
+      doc.text(`${m.activeKeyStaffCount} Key Experts on site`, colX.staffing + 6, curY + 28);
+      if (m.demobilizedStaff > 0) {
+        doc.setTextColor(148, 163, 184);
+        doc.text(`${m.demobilizedStaff} Demobilized`, colX.staffing + 6, curY + 39);
+      }
+
+      // Col 4: Workload MM
+      doc.setFont('times', 'bold');
+      doc.setFontSize(9.5);
+      doc.setTextColor(14, 116, 144); // cyan-700
+      doc.text(`${m.expendedMM.toFixed(1)} / ${m.allocatedMM.toFixed(1)} MM`, colX.workload + 6, curY + 16);
+
+      doc.setFont('times', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`${m.workloadPct.toFixed(0)}% Utilized (${m.remainingMM.toFixed(1)} MM rem)`, colX.workload + 6, curY + 28);
+
+      // Col 5: Status
+      doc.setFont('times', 'bold');
+      doc.setFontSize(8.5);
+      if (m.statusLabel === 'Fully Mobilized') {
+        doc.setTextColor(16, 185, 129); // emerald
+      } else if (m.statusLabel === 'Staffing Gaps') {
+        doc.setTextColor(217, 119, 6); // amber
+      } else if (m.statusLabel === 'Demobilized') {
+        doc.setTextColor(100, 116, 139); // slate
+      } else {
+        doc.setTextColor(79, 70, 229); // indigo
+      }
+      doc.text(m.statusLabel, colX.status + 6, curY + 16);
+
+      curY += rowHeight;
+    });
+
+    // Save PDF
+    const gName = selectedGroup.replace(/\s+/g, '_');
+    doc.save(`ERA_Supervision_Staff_Workload_Report_${groupType}_${gName}.pdf`);
+  };
+
+  const handlePrintWorkloadReport = () => {
+    printWorkloadReportDocument({
+      projects: processedProjects,
+      reportTitle: 'SUPERVISION CONSULTANT PERSONNEL WORKLOAD & PROJECT COMMITMENTS REPORT',
+      subtitle: `${groupType.toUpperCase()}: ${selectedGroup.toUpperCase()} (${processedProjects.length} PROJECTS SUMMARY)`,
+      auditorName: currentUserObj?.username || 'ERA AUDITOR'
+    });
+  };
+
   return (
     <motion.div 
       initial={{ opacity: 0, y: -15 }}
@@ -3798,6 +4355,17 @@ export default function GroupReportGenerator({
           }`}
         >
           <CheckCircle2 className="w-3.5 h-3.5 text-blue-500" /> Bond Guarantee Status
+        </button>
+        <button
+          onClick={() => setReportMode('supervisionStaff')}
+          id="btn-report-supervision-staff"
+          className={`px-4 py-2 text-xs font-bold border-b-2 transition-all flex items-center gap-2 -mb-px ${
+            reportMode === 'supervisionStaff'
+              ? 'border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400'
+              : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'
+          }`}
+        >
+          <Users className="w-3.5 h-3.5 text-purple-500" /> Supervision Personnel Workload & Staff Status
         </button>
       </div>
 
@@ -4008,7 +4576,7 @@ export default function GroupReportGenerator({
                   <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> Export Payments CSV
                 </button>
               </>
-            ) : (
+            ) : reportMode === 'bonds' ? (
               <>
                 <button
                   onClick={handleExportBondsPDF}
@@ -4025,6 +4593,41 @@ export default function GroupReportGenerator({
                   className="w-full flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-650 disabled:opacity-50 text-slate-700 dark:text-slate-200 py-2.5 rounded-xl text-xs font-extrabold transition cursor-pointer border border-slate-200 dark:border-slate-600"
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" /> Export Bonds CSV
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={handlePrintWorkloadReport}
+                  id="btn-print-workload-report"
+                  disabled={processedProjects.length === 0}
+                  className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white py-2.5 rounded-xl text-xs font-extrabold shadow-sm transition cursor-pointer"
+                >
+                  <Printer className="w-3.5 h-3.5" /> Print Workload Report
+                </button>
+                <button
+                  onClick={() => setIsPrintWorkloadModalOpen(true)}
+                  id="btn-preview-workload-table"
+                  disabled={processedProjects.length === 0}
+                  className="w-full flex items-center justify-center gap-2 bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 dark:hover:bg-purple-900/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 disabled:opacity-50 py-2 rounded-xl text-xs font-extrabold transition cursor-pointer"
+                >
+                  <Eye className="w-3.5 h-3.5" /> Preview Workload Ledger
+                </button>
+                <button
+                  onClick={handleExportSupervisionStaffPDF}
+                  id="btn-export-supervision-staff-pdf"
+                  disabled={processedProjects.length === 0}
+                  className="w-full flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white py-2.5 rounded-xl text-xs font-extrabold shadow-sm transition cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" /> Export Supervision Staff PDF
+                </button>
+                <button
+                  onClick={handleExportSupervisionStaffCSV}
+                  id="btn-export-supervision-staff-csv"
+                  disabled={processedProjects.length === 0}
+                  className="w-full flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-650 disabled:opacity-50 text-slate-700 dark:text-slate-200 py-2.5 rounded-xl text-xs font-extrabold transition cursor-pointer border border-slate-200 dark:border-slate-600"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" /> Export Staff Roster CSV
                 </button>
               </>
             )}
@@ -4196,7 +4799,7 @@ export default function GroupReportGenerator({
                   </div>
                 </div>
               </>
-            ) : (
+            ) : reportMode === 'bonds' ? (
               <>
                 {/* Bonds KPI Block 1 */}
                 <div className="bg-slate-50/60 dark:bg-slate-900/20 p-3.5 rounded-xl border border-slate-150 dark:border-slate-700/40 space-y-1">
@@ -4250,6 +4853,56 @@ export default function GroupReportGenerator({
                     bondStats.expiredBondsCount > 0 ? 'text-red-500' : 'text-slate-400'
                   }`}>
                     Unprotected risk of ETB {bondStats.expiredBondsValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Supervision Staff KPI Block 1 */}
+                <div className="bg-slate-50/60 dark:bg-slate-900/20 p-3.5 rounded-xl border border-slate-150 dark:border-slate-700/40 space-y-1">
+                  <span className="text-[9px] font-extrabold text-slate-400 dark:text-slate-500 block uppercase tracking-wider">
+                    MOBILIZED SUPERVISION STAFF
+                  </span>
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-lg font-black text-slate-800 dark:text-zinc-100">
+                      {supervisionStaffStats.activePersonnelCount}
+                    </span>
+                    <span className="text-2xs text-slate-400 font-bold">/ {supervisionStaffStats.totalPersonnelCount} total assigned</span>
+                  </div>
+                  <div className="text-[9px] text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1">
+                    <CheckCircle2 className="w-2.5 h-2.5" /> {supervisionStaffStats.activeStaffPct.toFixed(0)}% mobilization ({supervisionStaffStats.demobilizedPersonnelCount} demobilized)
+                  </div>
+                </div>
+
+                {/* Supervision Staff KPI Block 2 */}
+                <div className="bg-slate-50/60 dark:bg-slate-900/20 p-3.5 rounded-xl border border-slate-150 dark:border-slate-700/40 space-y-1">
+                  <span className="text-[9px] font-extrabold text-slate-400 dark:text-slate-500 block uppercase tracking-wider">
+                    KEY EXPERTS & RESIDENT ENGINEERS
+                  </span>
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-lg font-black text-purple-600 dark:text-purple-400">
+                      {supervisionStaffStats.activeKeyPersonnelCount}
+                    </span>
+                    <span className="text-2xs text-slate-400 font-bold">active key roles</span>
+                  </div>
+                  <div className="text-[9px] text-slate-400 truncate">
+                    {supervisionStaffStats.residentEngineersCount} REs deployed across {supervisionStaffStats.totalProjectsWithConsultant} projects
+                  </div>
+                </div>
+
+                {/* Supervision Staff KPI Block 3 */}
+                <div className="bg-slate-50/60 dark:bg-slate-900/20 p-3.5 rounded-xl border border-slate-150 dark:border-slate-700/40 space-y-1">
+                  <span className="text-[9px] font-extrabold text-slate-400 dark:text-slate-500 block uppercase tracking-wider">
+                    MAN-MONTH (MM) WORKLOAD INPUT
+                  </span>
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-lg font-black text-cyan-600 dark:text-cyan-400">
+                      {supervisionStaffStats.totalExpendedMM.toFixed(1)}
+                    </span>
+                    <span className="text-2xs text-slate-400 font-bold">/ {supervisionStaffStats.totalAllocatedMM.toFixed(1)} MM</span>
+                  </div>
+                  <div className="text-[9px] text-slate-400 flex items-center gap-1">
+                    <Clock className="w-2.5 h-2.5 text-cyan-500" /> {supervisionStaffStats.overallWorkloadPct.toFixed(1)}% workload input utilized
                   </div>
                 </div>
               </>
@@ -4340,12 +4993,19 @@ export default function GroupReportGenerator({
                         <th className="px-3 py-2 text-right">Outstanding (Unpaid)</th>
                         <th className="px-3 py-2 text-right">Matured Overdue (&gt;56d)</th>
                       </tr>
-                    ) : (
+                    ) : reportMode === 'bonds' ? (
                       <tr className="bg-slate-50 dark:bg-slate-800/60 text-[9px] font-extrabold text-slate-400 dark:text-slate-500 uppercase border-b border-slate-150 dark:border-slate-700/50">
                         <th className="px-3 py-2">Project ID & Title</th>
                         <th className="px-3 py-2">Total Logged Securities</th>
                         <th className="px-3 py-2 text-right">Valid & Active</th>
                         <th className="px-3 py-2 text-right">Expired & Critical</th>
+                      </tr>
+                    ) : (
+                      <tr className="bg-slate-50 dark:bg-slate-800/60 text-[9px] font-extrabold text-slate-400 dark:text-slate-500 uppercase border-b border-slate-150 dark:border-slate-700/50">
+                        <th className="px-3 py-2">Project ID & Title</th>
+                        <th className="px-3 py-2">Supervision Consultant & RE</th>
+                        <th className="px-3 py-2 text-right">Staff Mobilization</th>
+                        <th className="px-3 py-2 text-right">Workload Input (MM)</th>
                       </tr>
                     )}
                   </thead>
@@ -4836,7 +5496,7 @@ export default function GroupReportGenerator({
                           </React.Fragment>
                         );
                       })
-                    ) : (
+                    ) : reportMode === 'bonds' ? (
                       processedProjects.map((p) => {
                         const bonds = p.bonds || [];
                         const totalCount = bonds.length;
@@ -4981,6 +5641,197 @@ export default function GroupReportGenerator({
                           </React.Fragment>
                         );
                       })
+                    ) : (
+                      processedProjects.map((p) => {
+                        const m = getProjectSupervisionStaffMetrics(p);
+                        const isExpanded = expandedProjectId === p.id;
+                        const sc = p.supervisionConsultant;
+                        const personnel = sc?.personnel || [];
+                        const invoices = sc?.invoices || [];
+
+                        return (
+                          <React.Fragment key={p.id}>
+                            <tr 
+                              onClick={() => setExpandedProjectId(isExpanded ? null : p.id)}
+                              className="hover:bg-slate-50/40 dark:hover:bg-slate-800/25 transition cursor-pointer border-b border-slate-100 dark:border-slate-850"
+                            >
+                              <td className="px-3 py-2.5">
+                                <div className="font-extrabold text-slate-700 dark:text-zinc-200 truncate max-w-[200px]">{p.name}</div>
+                                <div className="text-[10px] text-slate-400 dark:text-slate-500 font-mono flex items-center gap-1">
+                                  <span>ID: {p.id.substring(0, 10).toUpperCase()}</span>
+                                  <span className="text-purple-600 dark:text-purple-400 text-[9px] font-bold">(Click for Staff Roster)</span>
+                                </div>
+                              </td>
+                              <td className="px-3 py-2.5">
+                                <div className="flex flex-col gap-0.5">
+                                  <div className="text-[10px] font-black text-slate-700 dark:text-zinc-200 truncate max-w-[200px]">
+                                    🎓 {sc?.firmName || p.consultant || 'N/A'}
+                                  </div>
+                                  <div className="text-[9px] font-semibold text-slate-500 dark:text-slate-400">
+                                    RE: <span className="font-bold text-slate-700 dark:text-slate-300">{sc?.residentEngineerName || 'Assigned in Field'}</span>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-3 py-2.5 text-right font-mono">
+                                <div className="flex flex-col items-end gap-0.5">
+                                  <span className="text-[10px] font-extrabold text-emerald-600 dark:text-emerald-400">
+                                    {m.activeStaff} Active Staff
+                                  </span>
+                                  <span className="text-[9px] text-slate-400 font-medium font-sans">
+                                    {m.totalStaff} assigned ({m.demobilizedStaff} demob)
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="px-3 py-2.5 text-right font-mono">
+                                <div className="flex flex-col items-end gap-1">
+                                  <span className="text-[10px] font-black text-cyan-600 dark:text-cyan-400">
+                                    {m.expendedMM.toFixed(1)} / {m.allocatedMM.toFixed(1)} MM
+                                  </span>
+                                  <div className="w-16 bg-slate-100 dark:bg-slate-800 h-1 rounded overflow-hidden">
+                                    <div 
+                                      className={`h-full ${
+                                        m.workloadPct > 100 ? 'bg-red-500' :
+                                        m.workloadPct > 80 ? 'bg-amber-500' : 'bg-cyan-500'
+                                      }`}
+                                      style={{ width: `${Math.min(100, m.workloadPct)}%` }}
+                                    />
+                                  </div>
+                                  <span className="text-[8.5px] text-slate-400 font-sans font-bold">
+                                    {m.workloadPct.toFixed(0)}% utilized
+                                  </span>
+                                </div>
+                              </td>
+                            </tr>
+                            {isExpanded && (
+                              <tr className="bg-slate-50/70 dark:bg-slate-900/60">
+                                <td colSpan={4} className="p-4 border-t border-b border-slate-200 dark:border-slate-800">
+                                  <div className="space-y-4">
+                                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-2 border-b border-slate-250 dark:border-slate-800 pb-2">
+                                      <div>
+                                        <h4 className="text-xs font-black uppercase text-purple-600 dark:text-purple-400 flex items-center gap-1.5">
+                                          <Users className="w-3.5 h-3.5" /> Supervision Consultant Staff Roster & Workload Ledger
+                                        </h4>
+                                        <p className="text-[10px] text-slate-450 dark:text-slate-500 font-bold uppercase mt-0.5">
+                                          Firm: {sc?.firmName || p.consultant || 'N/A'} • Contract Ref: {sc?.contractRef || 'Standard FIDIC White Book'}
+                                        </p>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-[9px] bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800/50 text-purple-700 dark:text-purple-300 font-bold px-2 py-1 rounded">
+                                          Staff: {m.activeStaff} Active / {m.totalStaff} Total
+                                        </span>
+                                        <span className="text-[9px] bg-cyan-50 dark:bg-cyan-950/40 border border-cyan-200 dark:border-cyan-800/50 text-cyan-700 dark:text-cyan-300 font-bold px-2 py-1 rounded">
+                                          Total Workload: {m.expendedMM.toFixed(1)} / {m.allocatedMM.toFixed(1)} MM ({m.workloadPct.toFixed(0)}%)
+                                        </span>
+                                      </div>
+                                    </div>
+
+                                    {personnel.length === 0 ? (
+                                      <div className="text-center py-4 text-slate-400 dark:text-slate-500 text-2xs font-medium">
+                                        No supervision consultant personnel have been registered for this project yet.
+                                      </div>
+                                    ) : (
+                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        {personnel.map((person) => {
+                                          const isActive = person.status === 'Active';
+                                          const allocatedMM = person.manMonthsAllocated || 0;
+                                          const expendedMM = person.manMonthsInput ?? (person as any).manMonthsExpended ?? 0;
+                                          const personWorkloadPct = allocatedMM > 0
+                                            ? Math.min(100, Math.round((expendedMM / allocatedMM) * 100))
+                                            : 0;
+
+                                          return (
+                                            <div 
+                                              key={person.id} 
+                                              className={`p-3 rounded-xl border flex flex-col justify-between gap-2.5 transition-all bg-white dark:bg-slate-900 ${
+                                                isActive 
+                                                  ? 'border-slate-200 dark:border-slate-800' 
+                                                  : 'border-slate-150 dark:border-slate-850 opacity-75'
+                                              }`}
+                                            >
+                                              <div className="flex items-start justify-between gap-2">
+                                                <div>
+                                                  <div className="flex items-center gap-1.5">
+                                                    <span className="text-[11px] font-black text-slate-800 dark:text-zinc-100">
+                                                      {person.name}
+                                                    </span>
+                                                    {(person.category === 'Key Personnel' || (person.category as any) === 'Key') && (
+                                                      <span className="text-[8px] font-extrabold bg-purple-100 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300 px-1.5 py-0.5 rounded">
+                                                        KEY EXPERT
+                                                      </span>
+                                                    )}
+                                                  </div>
+                                                  <span className="text-[9.5px] font-bold text-indigo-600 dark:text-indigo-400 block">
+                                                    {person.position}
+                                                  </span>
+                                                  {person.qualification && (
+                                                    <span className="text-[8.5px] text-slate-400 block">
+                                                      🎓 {person.qualification}
+                                                    </span>
+                                                  )}
+                                                </div>
+                                                <div>
+                                                  <span className={`text-[8px] font-extrabold px-2 py-0.5 rounded-full ${
+                                                    isActive 
+                                                      ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800' 
+                                                      : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 border border-slate-200 dark:border-slate-700'
+                                                  }`}>
+                                                    ● {person.status || 'Active'}
+                                                  </span>
+                                                </div>
+                                              </div>
+
+                                              <div className="border-t border-slate-100 dark:border-slate-800/80 pt-2 space-y-1.5">
+                                                <div className="flex justify-between items-center text-[9px]">
+                                                  <span className="text-slate-400 font-bold uppercase">Man-Month Workload Input</span>
+                                                  <span className="font-mono font-bold text-slate-700 dark:text-slate-300">
+                                                    {expendedMM} / {allocatedMM} MM ({personWorkloadPct}%)
+                                                  </span>
+                                                </div>
+                                                <div className="w-full bg-slate-100 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                                                  <div 
+                                                    className={`h-full ${
+                                                      personWorkloadPct > 100 ? 'bg-red-500' :
+                                                      personWorkloadPct > 80 ? 'bg-amber-500' : 'bg-purple-500'
+                                                    }`}
+                                                    style={{ width: `${personWorkloadPct}%` }}
+                                                  />
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-2 text-[8.5px] text-slate-500 dark:text-slate-400 pt-0.5">
+                                                  <div>
+                                                    <span className="text-slate-400">Assigned:</span>{' '}
+                                                    <span className="font-bold text-slate-600 dark:text-slate-300 font-mono">{person.assignmentDate || 'N/A'}</span>
+                                                  </div>
+                                                  <div>
+                                                    <span className="text-slate-400">Station:</span>{' '}
+                                                    <span className="font-bold text-slate-600 dark:text-slate-300">{person.siteStation || 'Site'}</span>
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+
+                                    {/* Supervision Invoices / Financial Summary if available */}
+                                    {invoices.length > 0 && (
+                                      <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 text-[9.5px]">
+                                        <div className="text-slate-500 dark:text-slate-400 font-bold flex items-center gap-1.5">
+                                          <DollarSign className="w-3.5 h-3.5 text-emerald-500" />
+                                          <span>Consultant Invoices Tracked: <strong className="text-slate-700 dark:text-slate-200">{invoices.length} IPC/Invoices</strong></span>
+                                        </div>
+                                        <div className="font-mono text-emerald-600 dark:text-emerald-400 font-bold">
+                                          Total Billed: ETB {invoices.reduce((s, inv) => s + (inv.grossAmountEtb || 0), 0).toLocaleString()}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>
@@ -4991,6 +5842,15 @@ export default function GroupReportGenerator({
         </div>
 
       </div>
+
+      {/* Cross-Project Supervision Personnel Workload & Commitments Modal */}
+      <WorkloadReportModal
+        isOpen={isPrintWorkloadModalOpen}
+        onClose={() => setIsPrintWorkloadModalOpen(false)}
+        projects={processedProjects}
+        currentUser={currentUserObj}
+        title="Supervision Personnel Workload & Project Commitments Summary"
+      />
     </motion.div>
   );
 }
