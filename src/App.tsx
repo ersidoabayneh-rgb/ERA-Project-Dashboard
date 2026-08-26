@@ -152,6 +152,7 @@ import QuantityEditorView from './components/QuantityEditorView';
 import BondsGuaranteeView from './components/BondsGuaranteeView';
 import ComprehensiveAnalysisView from './components/ComprehensiveAnalysisView';
 import DocumentationView from './components/DocumentationView';
+import SupervisionConsultantView from './components/SupervisionConsultantView';
 import HistoryView from './components/HistoryView';
 import SettingsView from './components/SettingsView';
 import WorkspaceView from './components/WorkspaceView';
@@ -2184,12 +2185,15 @@ let isBatchSyncRunning = false;
     }
 
     // Auto-update project history too
+    const rawHistProgress = updatedProject.physicalProgress !== undefined ? updatedProject.physicalProgress : currentProject.physicalProgress;
+    const cleanHistProgress = typeof rawHistProgress === 'number' ? rawHistProgress : (parseFloat(String(rawHistProgress || 0)) || 0);
+
     const newHistory: typeof currentProject.history = [
       {
         timestamp: new Date().toLocaleString(),
         user: currentUserObj.username,
         section: sectionName,
-        physicalProgress: updatedProject.physicalProgress !== undefined ? updatedProject.physicalProgress : currentProject.physicalProgress
+        physicalProgress: cleanHistProgress
       },
       ...(currentProject.history || [])
     ].slice(0, 10); // Maintain max 10 entries
@@ -3271,6 +3275,7 @@ let isBatchSyncRunning = false;
                 { id: 'workProgram', label: '📅 Work Program CPM' },
                 { id: 'resourceMobilization', label: '🚚 Logistics & Resources' },
                 { id: 'risks', label: '⚠️ Project Risks' },
+                { id: 'consultant', label: '👔 Supervision Consultant' },
                 /* { id: 'workspace', label: '☁️ Workspace' }, */
                 { id: 'analysis', label: '📊 Comprehensive analysis' },
                 { id: 'documentation', label: '📁 Documentation' },
@@ -3495,6 +3500,15 @@ let isBatchSyncRunning = false;
                   onUpdateRisks={(risks) => handleProjectUpdate({ risks }, 'Project risks register updated')}
                   isReadonly={currentUserObj?.role === 'viewer' && currentUserObj?.username !== 'proj_1781786415663'}
                   onProjectUpdate={handleProjectUpdate}
+                />
+              )}
+
+              {activeTab === 'consultant' && (
+                <SupervisionConsultantView
+                  project={currentProject}
+                  onUpdateProject={handleProjectUpdate}
+                  isReadonly={currentUserObj?.role === 'viewer' && currentUserObj?.username !== 'proj_1781786415663'}
+                  currentUser={currentUserObj}
                 />
               )}
 

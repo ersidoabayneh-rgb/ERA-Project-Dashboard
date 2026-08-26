@@ -6,7 +6,8 @@ import {
   RowMetric, 
   KpiAllocatedItem,
   LinearData,
-  RiskItem
+  RiskItem,
+  SupervisionConsultantInfo
 } from '../types';
 import { calculateProjectEvm } from '../lib/evmCalculations';
 
@@ -907,6 +908,279 @@ export function getIntegratedKpiAllocated(project: Project): KpiAllocatedItem[] 
   });
 }
 
+export const defaultSupervisionConsultant = (): SupervisionConsultantInfo => ({
+  firmName: "LEA Associates South Asia JV in Association with SABA Engineering PLC",
+  associationType: "Joint Venture (JV)",
+  jvPartners: "LEA Associates South Asia Pvt. Ltd. (Lead) & SABA Engineering PLC (Local Partner)",
+  contractRefNo: "ERA/SC/DGM-MM/01/2020",
+  contractSignDate: "2020-04-15",
+  commencementDate: "2020-12-29",
+  originalCompletionDate: "2023-12-28",
+  revisedCompletionDate: "2025-12-28",
+  originalFeeEtb: 48500000.00,
+  revisedFeeEtb: 62450000.00,
+  originalFeeUsd: 850000.00,
+  revisedFeeUsd: 1100000.00,
+  contractType: "Time-Based",
+  residentEngineerName: "Eng. Girma Bekele (PE, MSc)",
+  residentEngineerPhone: "+251 91 145 7890",
+  residentEngineerEmail: "girma.bekele@leaconsult.com",
+  headOfficeAddress: "Bole Sub-City, Kebele 03, House #1420, Addis Ababa, Ethiopia",
+  siteOfficeLocation: "Daye Town, Main Supervision Camp KM 0+000, Sidama Region",
+  scopeOfServices: "Full construction supervision, design review, quality assurance & materials testing, measurement & certification of contractor claims, environmental & social monitoring.",
+  performanceRating: "Satisfactory",
+  personnel: [
+    {
+      id: 'pers_1',
+      name: 'Eng. Girma Bekele',
+      position: 'Resident Engineer / Team Leader',
+      category: 'Key Personnel',
+      assignmentDate: '2020-12-29',
+      qualification: 'MSc Highway & Transportation Engineering, PE (Civil)',
+      yearsExperience: 24,
+      status: 'Active',
+      manMonthsAllocated: 36,
+      manMonthsInput: 34.5,
+      contactPhone: '+251 91 145 7890',
+      contactEmail: 'girma.bekele@leaconsult.com',
+      siteStation: 'Daye Main Camp',
+      remarks: 'Overall project administration, contractual decisions, and IPC certification.'
+    },
+    {
+      id: 'pers_2',
+      name: 'Eng. Yohannes Tadesse',
+      position: 'Senior Highway / Pavement Engineer',
+      category: 'Key Personnel',
+      assignmentDate: '2021-01-15',
+      qualification: 'BSc Civil Engineering, MSc Pavement Eng',
+      yearsExperience: 18,
+      status: 'Active',
+      manMonthsAllocated: 36,
+      manMonthsInput: 33.0,
+      contactPhone: '+251 91 234 5678',
+      contactEmail: 'yohannes.t@leaconsult.com',
+      siteStation: 'Section 1 (KM 0-35)',
+      remarks: 'Alignment review, subgrade inspection, asphalt mix design verification.'
+    },
+    {
+      id: 'pers_3',
+      name: 'Eng. Birhanu Kebede',
+      position: 'Senior Structural / Bridge Engineer',
+      category: 'Key Personnel',
+      assignmentDate: '2021-02-01',
+      qualification: 'MSc Structural Engineering',
+      yearsExperience: 16,
+      status: 'Active',
+      manMonthsAllocated: 24,
+      manMonthsInput: 21.5,
+      contactPhone: '+251 91 345 6789',
+      contactEmail: 'birhanu.k@leaconsult.com',
+      siteStation: 'Major Bridge Sites (Melka Desta)',
+      remarks: 'Supervising RC bridge foundations, box culverts, and retaining structures.'
+    },
+    {
+      id: 'pers_4',
+      name: 'Ato Solomon Mengistu',
+      position: 'Materials & Geotechnical Engineer',
+      category: 'Key Personnel',
+      assignmentDate: '2021-01-10',
+      qualification: 'BSc Geology / Civil Eng, Material Specialist',
+      yearsExperience: 15,
+      status: 'Active',
+      manMonthsAllocated: 36,
+      manMonthsInput: 34.0,
+      contactPhone: '+251 91 456 7890',
+      contactEmail: 'solomon.m@leaconsult.com',
+      siteStation: 'Central Field Laboratory',
+      remarks: 'Quarry suitability, crushing tests, compaction & bitumen penetration tests.'
+    },
+    {
+      id: 'pers_5',
+      name: 'Ato Daniel Haile',
+      position: 'Chief Senior Surveyor',
+      category: 'Non-Key Professional',
+      assignmentDate: '2021-01-05',
+      qualification: 'BSc Surveying & Geomatics',
+      yearsExperience: 12,
+      status: 'Active',
+      manMonthsAllocated: 36,
+      manMonthsInput: 35.0,
+      contactPhone: '+251 91 567 8901',
+      contactEmail: 'daniel.h@leaconsult.com',
+      siteStation: 'Full Corridor (KM 0-65)',
+      remarks: 'Ground control network verification, cross-section leveling, volumetric surveys.'
+    },
+    {
+      id: 'pers_6',
+      name: 'W/ro Selamawit Alemu',
+      position: 'Quantity Surveyor / Contract Specialist',
+      category: 'Key Personnel',
+      assignmentDate: '2021-03-01',
+      qualification: 'BSc Civil Eng, Certificate in FIDIC Contracts',
+      yearsExperience: 14,
+      status: 'Active',
+      manMonthsAllocated: 36,
+      manMonthsInput: 32.5,
+      contactPhone: '+251 91 678 9012',
+      contactEmail: 'selamawit.a@leaconsult.com',
+      siteStation: 'Daye Main Camp',
+      remarks: 'Measurement validation, BOQ checking, price escalation & variation calculations.'
+    },
+    {
+      id: 'pers_7',
+      name: 'Ato Mesfin Desta',
+      position: 'Environmental & Social Safeguard Specialist',
+      category: 'Non-Key Professional',
+      assignmentDate: '2021-04-15',
+      qualification: 'MSc Environmental Science',
+      yearsExperience: 11,
+      status: 'Active',
+      manMonthsAllocated: 18,
+      manMonthsInput: 16.0,
+      contactPhone: '+251 91 789 0123',
+      contactEmail: 'mesfin.d@leaconsult.com',
+      siteStation: 'Corridor & Borrow Pits',
+      remarks: 'Borrow pit rehabilitation, dust control, community grievance redress mechanism.'
+    },
+    {
+      id: 'pers_8',
+      name: 'Ato Dawit Tilahun',
+      position: 'Occupational Health & Safety (OHS) Officer',
+      category: 'Technical Support',
+      assignmentDate: '2021-05-01',
+      qualification: 'BSc OHS / Civil Eng, IOSH Certified',
+      yearsExperience: 8,
+      status: 'Active',
+      manMonthsAllocated: 30,
+      manMonthsInput: 28.0,
+      contactPhone: '+251 91 890 1234',
+      contactEmail: 'dawit.t@leaconsult.com',
+      siteStation: 'Active Work Zones',
+      remarks: 'PPE enforcement, site hazard inspection, safety toolbox talks, accident log.'
+    },
+    {
+      id: 'pers_9',
+      name: 'Ato Fikadu Worku',
+      position: 'Senior Inspector of Works (Road & Earthwork)',
+      category: 'Sub-Professional',
+      assignmentDate: '2021-02-10',
+      qualification: 'Advanced Diploma in Road Construction',
+      yearsExperience: 14,
+      status: 'Active',
+      manMonthsAllocated: 36,
+      manMonthsInput: 34.0,
+      contactPhone: '+251 91 901 2345',
+      contactEmail: 'fikadu.w@leaconsult.com',
+      siteStation: 'Section 2 (KM 35-65)',
+      remarks: 'Continuous day-to-day site inspection, layer spreading and compaction witnessing.'
+    },
+    {
+      id: 'pers_10',
+      name: 'Ato Tesfaye Assefa',
+      position: 'Senior Materials Lab Technician',
+      category: 'Technical Support',
+      assignmentDate: '2021-02-15',
+      qualification: 'Diploma in Civil / Material Technology',
+      yearsExperience: 10,
+      status: 'Active',
+      manMonthsAllocated: 36,
+      manMonthsInput: 34.0,
+      contactPhone: '+251 91 012 3456',
+      contactEmail: 'tesfaye.a@leaconsult.com',
+      siteStation: 'Central Field Laboratory',
+      remarks: 'FDT sand replacement tests, concrete cube crushing, gradation sieve analysis.'
+    }
+  ],
+  invoices: [
+    {
+      id: 'cinv_1',
+      invoiceNo: 'CON-INV-01',
+      billingPeriod: 'Nov 2025',
+      submissionDate: '2025-12-05',
+      certificationDate: '2025-12-20',
+      paymentDate: '2026-01-15',
+      grossAmountEtb: 1850000.00,
+      advanceDeductionEtb: 185000.00,
+      taxDeductionEtb: 92500.00,
+      netAmountEtb: 1572500.00,
+      foreignCurrencyAmount: 25000.00,
+      foreignCurrencyCode: 'USD',
+      status: 'Paid',
+      paymentReference: 'CBE-FT-20260115-0982',
+      remarks: 'Fee remuneration for key personnel & site operational reimbursable expenses.',
+      attachmentName: 'Consultant_Invoice_01_Signed.pdf'
+    },
+    {
+      id: 'cinv_2',
+      invoiceNo: 'CON-INV-02',
+      billingPeriod: 'Dec 2025',
+      submissionDate: '2026-01-08',
+      certificationDate: '2026-01-22',
+      paymentDate: '2026-02-10',
+      grossAmountEtb: 1920000.00,
+      advanceDeductionEtb: 192000.00,
+      taxDeductionEtb: 96000.00,
+      netAmountEtb: 1632000.00,
+      foreignCurrencyAmount: 26000.00,
+      foreignCurrencyCode: 'USD',
+      status: 'Paid',
+      paymentReference: 'CBE-FT-20260210-4412',
+      remarks: 'Monthly staff man-months billing, field transport, and laboratory operational costs.',
+      attachmentName: 'Consultant_Invoice_02_Signed.pdf'
+    },
+    {
+      id: 'cinv_3',
+      invoiceNo: 'CON-INV-03',
+      billingPeriod: 'Jan 2026',
+      submissionDate: '2026-02-05',
+      certificationDate: '2026-02-18',
+      paymentDate: '2026-03-02',
+      grossAmountEtb: 1880000.00,
+      advanceDeductionEtb: 188000.00,
+      taxDeductionEtb: 94000.00,
+      netAmountEtb: 1598000.00,
+      foreignCurrencyAmount: 25500.00,
+      foreignCurrencyCode: 'USD',
+      status: 'Paid',
+      paymentReference: 'CBE-FT-20260302-8819',
+      remarks: 'Certified by Client PMO. Full payment executed via Commercial Bank of Ethiopia.',
+      attachmentName: 'Consultant_Invoice_03_Signed.pdf'
+    },
+    {
+      id: 'cinv_4',
+      invoiceNo: 'CON-INV-04',
+      billingPeriod: 'Feb 2026',
+      submissionDate: '2026-03-05',
+      certificationDate: '2026-03-20',
+      grossAmountEtb: 1950000.00,
+      advanceDeductionEtb: 195000.00,
+      taxDeductionEtb: 97500.00,
+      netAmountEtb: 1657500.00,
+      foreignCurrencyAmount: 27000.00,
+      foreignCurrencyCode: 'USD',
+      status: 'Certified',
+      paymentReference: 'ERA-PV-20260320-77',
+      remarks: 'Certified by ERA Project Management Directorate; awaiting Ministry treasury disbursement.',
+      attachmentName: 'Consultant_Invoice_04_Certified.pdf'
+    },
+    {
+      id: 'cinv_5',
+      invoiceNo: 'CON-INV-05 (Draft)',
+      billingPeriod: 'May 2026',
+      submissionDate: '2026-05-28',
+      grossAmountEtb: 1890000.00,
+      advanceDeductionEtb: 189000.00,
+      taxDeductionEtb: 94500.00,
+      netAmountEtb: 1606500.00,
+      foreignCurrencyAmount: 25000.00,
+      foreignCurrencyCode: 'USD',
+      status: 'Submitted',
+      remarks: 'Submitted for Resident Engineer and PMO review.',
+      attachmentName: 'Consultant_Invoice_05_Submission.pdf'
+    }
+  ]
+});
+
 export function defaultProjectTemplate(): Project {
   return {
     id: 'proj_default',
@@ -993,7 +1267,11 @@ export function defaultProjectTemplate(): Project {
         eraMonth: 1.20,
         eraEfy: 2.80,
         actualMonth: 1.85,
-        actualEfy: 3.90
+        actualEfy: 3.90,
+        actualTodate: 23.66,
+        contractorTodate: 60.15,
+        eraTodate: 31.80,
+        physicalProgress: 36.40
       },
       {
         id: 'hist_jan_2026',
@@ -1004,7 +1282,11 @@ export function defaultProjectTemplate(): Project {
         eraMonth: 1.40,
         eraEfy: 3.50,
         actualMonth: 2.05,
-        actualEfy: 4.35
+        actualEfy: 4.35,
+        actualTodate: 24.99,
+        contractorTodate: 62.65,
+        eraTodate: 33.20,
+        physicalProgress: 38.45
       }
     ],
     payment: [
@@ -1119,7 +1401,8 @@ export function defaultProjectTemplate(): Project {
       }
     ],
     usdExchangeRate: 57.50,
-    risks: defaultRoadRisks()
+    risks: defaultRoadRisks(),
+    supervisionConsultant: defaultSupervisionConsultant()
   };
 }
 
@@ -1190,6 +1473,30 @@ export function blankProjectTemplate(): Project {
   d.images = [];
   d.history = [];
   d.risks = [];
+  d.supervisionConsultant = {
+    firmName: '',
+    associationType: 'Sole Consultant',
+    jvPartners: '',
+    contractRefNo: '',
+    contractSignDate: '',
+    commencementDate: '',
+    originalCompletionDate: '',
+    revisedCompletionDate: '',
+    originalFeeEtb: 0,
+    revisedFeeEtb: 0,
+    originalFeeUsd: 0,
+    revisedFeeUsd: 0,
+    contractType: 'Time-Based',
+    residentEngineerName: '',
+    residentEngineerPhone: '',
+    residentEngineerEmail: '',
+    headOfficeAddress: '',
+    siteOfficeLocation: '',
+    scopeOfServices: '',
+    performanceRating: 'Satisfactory',
+    personnel: [],
+    invoices: []
+  };
   d.lastModifiedBy = null;
   d.lastModifiedAt = null;
   d.lastModifiedSection = null;

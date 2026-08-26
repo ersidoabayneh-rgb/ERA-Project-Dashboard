@@ -74,6 +74,11 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
   const handleSaveToHistory = () => {
     if (!newMonthLabel.trim()) return;
 
+    const actualKm = plan.actual.todate || customFields.actualMonth;
+    const computedPhysProgress = project.lengthKm > 0 
+      ? Number(((actualKm / project.lengthKm) * 100).toFixed(2))
+      : (typeof project.physicalProgress === 'number' ? project.physicalProgress : 0);
+
     const newItem: ProgressPlanHistoryItem = {
       id: 'hist_' + Date.now(),
       monthLabel: newMonthLabel,
@@ -84,6 +89,10 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
       eraEfy: customFields.eraEfy,
       actualMonth: customFields.actualMonth,
       actualEfy: customFields.actualEfy,
+      actualTodate: plan.actual.todate,
+      contractorTodate: plan.contractor.todate,
+      eraTodate: plan.era.todate,
+      physicalProgress: computedPhysProgress,
     };
 
     // Prevent duplicated months in archive list

@@ -35,6 +35,21 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory }:
 
   // Calculate high-fidelity compliance metrics
   const p = project;
+  const planActualKm = p.progressPlan?.actual?.todate || 0;
+  const progressFromPlan = (p.lengthKm > 0 && planActualKm > 0)
+    ? Number(((planActualKm / p.lengthKm) * 100).toFixed(2))
+    : 0;
+
+  const physicalProgress = typeof p.physicalProgress === 'number' && p.physicalProgress > 0
+    ? p.physicalProgress
+    : (progressFromPlan || (parseFloat(String(p.physicalProgress || 0)) || 0));
+
+  const actualMonthKm = p.progressPlan?.actual?.month || 0;
+  const monthlyRatePct = (p.lengthKm > 0 && actualMonthKm > 0)
+    ? ((actualMonthKm / p.lengthKm) * 100)
+    : (p.monthly && p.monthly.length > 1 && typeof p.monthly[p.monthly.length - 1].actual === 'number' && typeof p.monthly[p.monthly.length - 2].actual === 'number'
+      ? Math.max(0, (p.monthly[p.monthly.length - 1].actual as number) - (p.monthly[p.monthly.length - 2].actual as number))
+      : 0);
   const elDays = p.origDays + (p.eotDays || 0) + (p.interimEotDays || 0);
   const ocDate = new Date(p.startDate || new Date());
   const rcDate = new Date(ocDate.getTime() + elDays * 86400000);
@@ -180,7 +195,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory }:
   // Elapsed progress calculation
   const elapsed = (() => {
     if (p.status === 'Completed' || p.status === 'Completed and Closed') return 100;
-    if (p.status === 'Suspended' || p.status === 'Terminated') return p.physicalProgress || 100;
+    if (p.status === 'Suspended' || p.status === 'Terminated') return physicalProgress || 100;
     const s = new Date(p.startDate);
     const totalDays = p.origDays + (p.eotDays || 0) + (p.interimEotDays || 0);
     const rc = new Date(s.getTime() + totalDays * 86400000);
@@ -188,14 +203,20 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory }:
     if (rc.getTime() - s.getTime() <= 0) return 0;
     return Math.min(100, Math.max(0, ((now.getTime() - s.getTime()) / (rc.getTime() - s.getTime())) * 100));
   })();
-  const ratio = elapsed > 0 ? ((p.physicalProgress || 0) / elapsed) * 100 : 0;
+  const ratio = elapsed > 0 ? (physicalProgress / elapsed) * 100 : 0;
 
-  // Generate last 5 CPI/SPI records based on current EVM metrics and historical trends
+  // Generate last 5 CPI/SPI records based on actual progress comparison milestones and EVM metrics
   const kpiHistoryRecords = React.useMemo(() => {
+    // Current period actual physical progress from Progress Comparison / Project Actuals
+    const currentActualKm = p.progressPlan?.actual?.todate || 0;
+    const currentPhysical = (typeof physicalProgress === 'number' && physicalProgress > 0)
+      ? physicalProgress
+      : (p.lengthKm > 0 && currentActualKm > 0 ? (currentActualKm / p.lengthKm) * 100 : (physicalProgress || 0));
+
     const currentRecord = {
-      period: p.progressPlanLabels?.monthLabel || 'Feb 2026',
+      period: p.progressPlanLabels?.monthLabel || 'Current Month',
       isCurrent: true,
-      physical: p.physicalProgress || 40.73,
+      physical: currentPhysical,
       elapsed: elapsed,
       ratio: ratio,
       cpi: CPI,
@@ -206,43 +227,103 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory }:
     };
 
     const historyList = p.progressPlanHistory || [];
-    const pastRecords = historyList.length === 0 ? (() => {
-      const recs = [];
-      const defaultPastLabels = ["Jan 2026", "Dec 2025", "Nov 2025", "Oct 2025"];
-      for (let i = 0; i < 4; i++) {
-        const monthLabel = defaultPastLabels[i];
-        const step = (i + 1) * 2.1;
-        const pastPhysical = Math.max(0, currentRecord.physical - step);
-        const pastElapsed = Math.max(0, elapsed - (i + 1) * 1.8);
-        const pastRatio = pastElapsed > 0 ? (pastPhysical / pastElapsed) * 100 : 0;
-        const cpiFactor = 1.0 + (i + 1) * 0.012;
-        const spiFactor = 1.0 + (i + 1) * 0.015;
-        const pastCpi = Math.min(1.5, Math.max(0.2, CPI * cpiFactor));
-        const pastSpi = Math.min(1.5, Math.max(0.2, SPI * spiFactor));
-        const pastEv = (BAC * (pastPhysical / 100)) / 1_000_000;
-        const pastAc = pastCpi > 0 ? pastEv / pastCpi : pastEv;
-        const pastPv = pastSpi > 0 ? pastEv / pastSpi : pastEv;
-        recs.push({ period: monthLabel, isCurrent: false, physical: pastPhysical, elapsed: pastElapsed, ratio: pastRatio, cpi: pastCpi, spi: pastSpi, ev: pastEv, pv: pastPv, ac: pastAc });
-      }
-      return recs;
-    })() : historyList.map((histItem, i) => {
-      const monthLabel = histItem.monthLabel;
-      const step = (i + 1) * 2.1;
-      const pastPhysical = Math.max(0, currentRecord.physical - step);
-      const pastElapsed = Math.max(0, elapsed - (i + 1) * 1.8);
-      const pastRatio = pastElapsed > 0 ? (pastPhysical / pastElapsed) * 100 : 0;
-      const cpiFactor = 1.0 + (i + 1) * 0.012;
-      const spiFactor = 1.0 + (i + 1) * 0.015;
-      const pastCpi = Math.min(1.5, Math.max(0.2, CPI * cpiFactor));
-      const pastSpi = Math.min(1.5, Math.max(0.2, SPI * spiFactor));
-      const pastEv = (BAC * (pastPhysical / 100)) / 1_000_000;
-      const pastAc = pastCpi > 0 ? pastEv / pastCpi : pastEv;
-      const pastPv = pastSpi > 0 ? pastEv / pastSpi : pastEv;
-      return { period: monthLabel, isCurrent: false, physical: pastPhysical, elapsed: pastElapsed, ratio: pastRatio, cpi: pastCpi, spi: pastSpi, ev: pastEv, pv: pastPv, ac: pastAc };
-    });
+    let pastRecords: any[] = [];
+
+    if (historyList.length > 0) {
+      // Use historical records archived from the Progress Comparison page
+      pastRecords = historyList.map((histItem) => {
+        const monthLabel = histItem.monthLabel;
+        
+        // Extract real physical progress from the progress comparison record
+        let histPhysical: number;
+        if (typeof histItem.physicalProgress === 'number' && histItem.physicalProgress > 0) {
+          histPhysical = histItem.physicalProgress;
+        } else if (typeof histItem.actualTodate === 'number' && histItem.actualTodate > 0 && p.lengthKm > 0) {
+          histPhysical = Number(((histItem.actualTodate / p.lengthKm) * 100).toFixed(2));
+        } else {
+          // Check matching month in monthly S-Curve
+          const matchMonth = (p.monthly || []).find(m => {
+            const cleanM = (m.month || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+            const cleanLabel = monthLabel.toLowerCase().replace(/[^a-z0-9]/g, '');
+            return cleanLabel.includes(cleanM) || cleanM.includes(cleanLabel);
+          });
+          if (matchMonth && typeof matchMonth.actual === 'number') {
+            histPhysical = matchMonth.actual;
+          } else if (typeof histItem.actualEfy === 'number' && histItem.actualEfy > 0 && p.lengthKm > 0) {
+            histPhysical = Number(((histItem.actualEfy / p.lengthKm) * 100).toFixed(2));
+          } else {
+            histPhysical = currentPhysical;
+          }
+        }
+
+        // EVM calculations based on actual physical progress
+        const pastEv = (BAC * (histPhysical / 100)) / 1_000_000;
+        
+        const matchMonth = (p.monthly || []).find(m => {
+          const cleanM = (m.month || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+          const cleanLabel = monthLabel.toLowerCase().replace(/[^a-z0-9]/g, '');
+          return cleanLabel.includes(cleanM) || cleanM.includes(cleanLabel);
+        });
+        const matchPlanned = matchMonth && typeof matchMonth.originalPlan === 'number' ? matchMonth.originalPlan : null;
+        
+        const pastPv = matchPlanned !== null 
+          ? (BAC * (matchPlanned / 100)) / 1_000_000
+          : (PV / 1_000_000) * (currentPhysical > 0 ? histPhysical / currentPhysical : 1);
+          
+        const pastSpi = pastPv > 0 ? Number((pastEv / pastPv).toFixed(3)) : SPI;
+        const pastCpi = CPI;
+        const pastAc = pastCpi > 0 ? Number((pastEv / pastCpi).toFixed(2)) : pastEv;
+        const pastElapsed = Math.max(0, currentPhysical > 0 ? elapsed * (histPhysical / currentPhysical) : elapsed);
+        const pastRatio = pastElapsed > 0 ? (histPhysical / pastElapsed) * 100 : 0;
+
+        return {
+          period: monthLabel,
+          isCurrent: false,
+          physical: histPhysical,
+          elapsed: pastElapsed,
+          ratio: pastRatio,
+          cpi: pastCpi,
+          spi: pastSpi,
+          ev: pastEv,
+          pv: pastPv,
+          ac: pastAc,
+        };
+      });
+    } else if (p.monthly && p.monthly.length > 1) {
+      // Derive from real S-Curve historical monthly actuals
+      const pastMonths = p.monthly
+        .filter(m => typeof m.actual === 'number' && m.actual > 0)
+        .slice(-5, -1)
+        .reverse();
+
+      pastRecords = pastMonths.map(m => {
+        const histPhysical = typeof m.actual === 'number' ? m.actual : 0;
+        const histPlanned = typeof m.originalPlan === 'number' ? m.originalPlan : (typeof m.revisedPlan === 'number' ? m.revisedPlan : histPhysical);
+        const pastEv = (BAC * (histPhysical / 100)) / 1_000_000;
+        const pastPv = (BAC * (histPlanned / 100)) / 1_000_000;
+        const pastSpi = pastPv > 0 ? Number((pastEv / pastPv).toFixed(3)) : 1.0;
+        const pastCpi = CPI;
+        const pastAc = pastCpi > 0 ? Number((pastEv / pastCpi).toFixed(2)) : pastEv;
+        const pastElapsed = Math.max(0, currentPhysical > 0 ? elapsed * (histPhysical / currentPhysical) : elapsed);
+        const pastRatio = pastElapsed > 0 ? (histPhysical / pastElapsed) * 100 : 0;
+
+        return {
+          period: m.month,
+          isCurrent: false,
+          physical: histPhysical,
+          elapsed: pastElapsed,
+          ratio: pastRatio,
+          cpi: pastCpi,
+          spi: pastSpi,
+          ev: pastEv,
+          pv: pastPv,
+          ac: pastAc,
+        };
+      });
+    }
 
     return [currentRecord, ...pastRecords];
-  }, [p.progressPlanLabels, p.physicalProgress, p.progressPlanHistory, elapsed, ratio, CPI, SPI, EV, PV, AC, BAC]);
+  }, [p.progressPlanLabels, physicalProgress, p.progressPlanHistory, p.progressPlan, p.monthly, p.lengthKm, elapsed, ratio, CPI, SPI, EV, PV, AC, BAC]);
   
   // Schedule Variance
   const SV = EV - PV;
@@ -299,12 +380,12 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory }:
       desc: `Timeline Velocity Index of ${SPI.toFixed(3)} is under 0.90, which demands immediate contractor equipment mobilization acceleration.`
     });
   }
-  if (plannedPct - p.physicalProgress > 10) {
+  if (plannedPct - physicalProgress > 10) {
     healthAlerts.push({
       type: 'warning',
       field: 'Progress Deviation Map',
       title: 'Major Physical S-Curve Lag',
-      desc: `Project physical progress of ${p.physicalProgress.toFixed(2)}% is lagging the original planned milestone of ${plannedPct.toFixed(2)}% by a gap of ${(plannedPct - p.physicalProgress).toFixed(2)}%.`
+      desc: `Project physical progress of ${physicalProgress.toFixed(2)}% is lagging the original planned milestone of ${plannedPct.toFixed(2)}% by a gap of ${(plannedPct - physicalProgress).toFixed(2)}%.`
     });
   }
   if (p.bonds && p.bonds.filter(b => {
@@ -366,14 +447,14 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory }:
       : null;
     const latestMonthlyActual = latestMonthlyItem && typeof latestMonthlyItem.actual === 'number' ? latestMonthlyItem.actual : null;
 
-    if (latestMonthlyActual !== null && Math.abs(latestMonthlyActual - p.physicalProgress) > 0.5) {
-      const diffProg = latestMonthlyActual - p.physicalProgress;
+    if (latestMonthlyActual !== null && Math.abs(latestMonthlyActual - physicalProgress) > 0.5) {
+      const diffProg = latestMonthlyActual - physicalProgress;
       alerts.push({
         id: 'scurve-physical-mismatch',
         category: 'S-Curve & Progress',
         severity: 'warning',
         title: 'S-Curve Actual Progress vs Header Physical Progress Discrepancy',
-        expectedValue: `${p.physicalProgress.toFixed(2)}% (Header)`,
+        expectedValue: `${physicalProgress.toFixed(2)}% (Header)`,
         actualValue: `${latestMonthlyActual.toFixed(2)}% (${latestMonthlyItem?.month || 'S-Curve'})`,
         discrepancy: `${diffProg > 0 ? '+' : ''}${diffProg.toFixed(2)}%`,
         description: 'The latest cumulative physical progress recorded in monthly S-Curve tracking does not match the project main physical progress indicator.',
@@ -781,14 +862,14 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory }:
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9.5);
     doc.setTextColor(59, 130, 246); // blue-500
-    doc.text(`${p.physicalProgress.toFixed(2)}% Completed`, pageWidth - 145, curY + 22);
+    doc.text(`${physicalProgress.toFixed(2)}% Completed`, pageWidth - 145, curY + 22);
 
     // Progress bar components
     doc.setFillColor(241, 245, 249);
     doc.roundedRect(55, curY + 30, pageWidth - 110, 10, 4, 4, 'F');
     
     doc.setFillColor(37, 99, 235); // blue-600
-    const barFillWidth = Math.max(0, Math.min(100, p.physicalProgress) / 100 * (pageWidth - 110));
+    const barFillWidth = Math.max(0, Math.min(100, physicalProgress) / 100 * (pageWidth - 110));
     doc.roundedRect(55, curY + 30, barFillWidth, 10, 4, 4, 'F');
 
     // Planning metrics beneath progress track
@@ -796,7 +877,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory }:
     doc.setFontSize(7.5);
     doc.setTextColor(100, 116, 139);
     doc.text(`Cumulative Target Planned: ${plannedPct.toFixed(2)}%`, 55, curY + 50);
-    doc.text(`S-Curve Slippage: -${(plannedPct - p.physicalProgress).toFixed(2)}%`, pageWidth - 55, curY + 50, { align: 'right' });
+    doc.text(`S-Curve Slippage: -${(plannedPct - physicalProgress).toFixed(2)}%`, pageWidth - 55, curY + 50, { align: 'right' });
 
     // Dash divider separating date bounds
     doc.setDrawColor(226, 232, 240);
@@ -1596,20 +1677,20 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory }:
               <div className="flex items-center justify-between gap-1 mb-1">
                 <span className="text-[10px] text-slate-550 font-mono uppercase">Physical Progress</span>
                 <span className="text-emerald-400 text-[9px] font-black flex items-center gap-0.5 font-mono">
-                  ▲ +{(p.physicalProgress / 10).toFixed(2)}% /Mo
+                  ▲ +{monthlyRatePct.toFixed(2)}% /Mo
                 </span>
               </div>
-              <span className="text-base font-black tracking-tight text-white">{p.physicalProgress.toFixed(2)}%</span>
+              <span className="text-base font-black tracking-tight text-white">{physicalProgress.toFixed(2)}%</span>
             </div>
             {/* progress bar */}
             <div className="space-y-1">
               <div className="w-full bg-slate-800 h-1 rounded-full overflow-hidden">
-                <div className="bg-blue-500 h-full rounded-full" style={{ width: `${p.physicalProgress}%` }} />
+                <div className="bg-blue-500 h-full rounded-full" style={{ width: `${physicalProgress}%` }} />
               </div>
               <div className="flex justify-between text-[9px] text-slate-500 font-mono">
                 <span>Plan: {plannedPct.toFixed(2)}%</span>
-                <span className={p.physicalProgress >= plannedPct ? "text-emerald-400" : "text-rose-450 font-bold"}>
-                  Gap: {(p.physicalProgress - plannedPct).toFixed(2)}%
+                <span className={physicalProgress >= plannedPct ? "text-emerald-400" : "text-rose-450 font-bold"}>
+                  Gap: {(physicalProgress - plannedPct).toFixed(2)}%
                 </span>
               </div>
             </div>
@@ -1697,7 +1778,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory }:
         <div className="bg-slate-950/40 p-4 rounded-2xl border border-slate-800/60 text-slate-300 leading-relaxed text-[11px] space-y-1">
           <strong className="text-xs text-slate-100 block">Board commentary & status report:</strong>
           <p>
-            The project status audit indicates a cumulative schedule delay of <span className="text-rose-400 font-bold">-{(plannedPct - p.physicalProgress).toFixed(2)}%</span>. This variance represents a high risk for the targeted handover. The financial index remains stable with a cost-to-render evaluation of <span className="text-emerald-400 font-bold">{CPI.toFixed(3)} (CPI)</span>. Immediate administrative board interventions and enforcement of corrective actions are recommended for divisions performing under the standard dev thresholds.
+            The project status audit indicates a cumulative schedule delay of <span className="text-rose-400 font-bold">-{(plannedPct - physicalProgress).toFixed(2)}%</span>. This variance represents a high risk for the targeted handover. The financial index remains stable with a cost-to-render evaluation of <span className="text-emerald-400 font-bold">{CPI.toFixed(3)} (CPI)</span>. Immediate administrative board interventions and enforcement of corrective actions are recommended for divisions performing under the standard dev thresholds.
           </p>
         </div>
       </div>
@@ -1710,20 +1791,25 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory }:
           </h3>
           
           <div className="space-y-1.5 max-h-96 overflow-y-auto pr-1">
-            {history.map((h, i) => (
-              <div 
-                key={i} 
-                className="p-3 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-xl space-y-1 text-2xs"
-              >
-                <div className="flex justify-between font-bold text-slate-500">
-                  <span>{h.timestamp}</span>
-                  <span className="text-blue-500">{h.physicalProgress.toFixed(2)}%</span>
+            {history.map((h, i) => {
+              const hProg = typeof h?.physicalProgress === 'number'
+                ? h.physicalProgress
+                : (parseFloat(String(h?.physicalProgress || 0)) || 0);
+              return (
+                <div 
+                  key={i} 
+                  className="p-3 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-xl space-y-1 text-2xs"
+                >
+                  <div className="flex justify-between font-bold text-slate-500">
+                    <span>{h.timestamp}</span>
+                    <span className="text-blue-500">{hProg.toFixed(2)}%</span>
+                  </div>
+                  <p className="text-slate-705 dark:text-slate-350">
+                    Modified by <strong>{h.user}</strong> during updates on <strong>{h.section || 'General'}</strong>
+                  </p>
                 </div>
-                <p className="text-slate-705 dark:text-slate-350">
-                  Modified by <strong>{h.user}</strong> during updates on <strong>{h.section || 'General'}</strong>
-                </p>
-              </div>
-            ))}
+              );
+            })}
 
             {history.length === 0 && (
               <div className="text-center py-10 text-slate-400 font-medium text-xs">
@@ -1918,16 +2004,16 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory }:
                 <div className="border border-slate-200/60 dark:border-slate-700/60 p-4 rounded-xl bg-white dark:bg-slate-900/50 text-[11px] space-y-3">
                   <div className="flex justify-between items-center font-bold">
                     <span>Physical Progress Status</span>
-                    <span className="font-mono text-blue-500 font-black text-xs">{p.physicalProgress.toFixed(2)}% Completed</span>
+                    <span className="font-mono text-blue-500 font-black text-xs">{physicalProgress.toFixed(2)}% Completed</span>
                   </div>
 
                   <div className="space-y-1">
                     <div className="w-full h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden border">
-                      <div className="h-full bg-blue-600 rounded-full" style={{ width: `${p.physicalProgress}%` }} />
+                      <div className="h-full bg-blue-600 rounded-full" style={{ width: `${physicalProgress}%` }} />
                     </div>
                     <div className="flex justify-between text-[9px] text-slate-400 font-semibold font-mono">
                       <span>Cumulative Target Planned: {plannedPct.toFixed(2)}%</span>
-                      <span>S-Curve Slippage: -{(plannedPct - p.physicalProgress).toFixed(2)}%</span>
+                      <span>S-Curve Slippage: -{(plannedPct - physicalProgress).toFixed(2)}%</span>
                     </div>
                   </div>
 

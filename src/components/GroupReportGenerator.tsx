@@ -4603,6 +4603,51 @@ export default function GroupReportGenerator({
                                         );
                                       })()}
                                     </div>
+
+                                    {/* Supervision Consultant Staffing & Personnel Overview */}
+                                    {p.supervisionConsultant && (
+                                      <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200/60 dark:border-slate-800/60 shadow-sm space-y-2">
+                                        <div className="flex justify-between items-center pb-1 border-b border-slate-100 dark:border-slate-800">
+                                          <span className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-wider flex items-center gap-1.5">
+                                            👥 Supervision Consultant Staffing & Deployment
+                                          </span>
+                                          <span className="text-[9px] font-bold text-slate-500">
+                                            {(p.supervisionConsultant.personnel || []).filter(x => x.status === 'Active').length} Active / {(p.supervisionConsultant.personnel || []).length} Assigned Staff
+                                          </span>
+                                        </div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[9.5px]">
+                                          <div>
+                                            <span className="text-slate-400">Consultant:</span>{' '}
+                                            <span className="font-bold text-slate-700 dark:text-slate-200">{p.supervisionConsultant.firmName || p.consultant}</span>
+                                          </div>
+                                          <div>
+                                            <span className="text-slate-400">Resident Engineer:</span>{' '}
+                                            <span className="font-bold text-slate-700 dark:text-slate-200">{p.supervisionConsultant.residentEngineerName || 'Assigned in Field'}</span>
+                                          </div>
+                                          <div>
+                                            <span className="text-slate-400">Fee Invoiced:</span>{' '}
+                                            <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                                              ETB {(p.supervisionConsultant.invoices || []).reduce((sum, inv) => sum + (inv.grossAmountEtb || 0), 0).toLocaleString()}
+                                            </span>
+                                          </div>
+                                        </div>
+                                        {(p.supervisionConsultant.personnel || []).length > 0 && (
+                                          <div className="flex flex-wrap gap-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-800">
+                                            {(p.supervisionConsultant.personnel || []).slice(0, 6).map(person => (
+                                              <span key={person.id} className="inline-flex items-center gap-1 text-[8.5px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium">
+                                                <span className={`w-1.5 h-1.5 rounded-full ${person.status === 'Active' ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+                                                <strong className="font-bold">{person.position}:</strong> {person.name} ({person.assignmentDate || 'Assigned'})
+                                              </span>
+                                            ))}
+                                            {(p.supervisionConsultant.personnel || []).length > 6 && (
+                                              <span className="text-[8.5px] text-slate-400 font-bold self-center">
+                                                +{(p.supervisionConsultant.personnel || []).length - 6} more staff
+                                              </span>
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
                                   </div>
                                 </td>
                               </tr>

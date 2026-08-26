@@ -351,6 +351,69 @@ export interface Project {
   issues?: IssueLogItem[];
   aiChatHistory?: any[];
   documents?: ProjectDocument[];
+  supervisionConsultant?: SupervisionConsultantInfo;
+}
+
+export interface ConsultantPersonnel {
+  id: string;
+  name: string;
+  position: string;
+  category: 'Key Personnel' | 'Non-Key Professional' | 'Sub-Professional' | 'Technical Support' | 'Administrative Support' | string;
+  assignmentDate: string; // Date of assignment (YYYY-MM-DD)
+  demobilizationDate?: string;
+  qualification?: string;
+  yearsExperience?: number;
+  status: 'Active' | 'Demobilized' | 'Replaced' | 'On Leave';
+  manMonthsAllocated?: number;
+  manMonthsInput?: number;
+  contactPhone?: string;
+  contactEmail?: string;
+  siteStation?: string;
+  remarks?: string;
+}
+
+export interface ConsultantInvoice {
+  id: string;
+  invoiceNo: string;
+  billingPeriod: string;
+  submissionDate: string;
+  certificationDate?: string;
+  paymentDate?: string;
+  grossAmountEtb: number;
+  advanceDeductionEtb?: number;
+  taxDeductionEtb?: number;
+  netAmountEtb: number;
+  foreignCurrencyAmount?: number;
+  foreignCurrencyCode?: string;
+  status: 'Submitted' | 'Certified' | 'Paid' | 'Pending' | 'Rejected';
+  paymentReference?: string;
+  remarks?: string;
+  attachmentName?: string;
+}
+
+export interface SupervisionConsultantInfo {
+  firmName: string;
+  associationType?: 'Lead Consultant' | 'Joint Venture (JV)' | 'Sole Consultant' | 'Association / Consortium';
+  jvPartners?: string;
+  contractRefNo: string;
+  contractSignDate: string;
+  commencementDate: string;
+  originalCompletionDate: string;
+  revisedCompletionDate?: string;
+  originalFeeEtb: number;
+  revisedFeeEtb?: number;
+  originalFeeUsd?: number;
+  revisedFeeUsd?: number;
+  contractType?: 'Time-Based' | 'Lump-Sum' | 'Percentage of Works' | 'Hybrid';
+  residentEngineerName?: string;
+  residentEngineerPhone?: string;
+  residentEngineerEmail?: string;
+  headOfficeAddress?: string;
+  siteOfficeLocation?: string;
+  scopeOfServices?: string;
+  performanceRating?: 'Outstanding' | 'Satisfactory' | 'Needs Improvement' | 'Critical';
+  personnel: ConsultantPersonnel[];
+  invoices: ConsultantInvoice[];
 }
 
 export interface ProjectDocument {
@@ -417,6 +480,7 @@ export const ALL_EDITABLE_PAGES: EditablePageOption[] = [
   { id: 'risks', name: '⚠️ Project Risk Register', description: 'Identified risk matrix, probabilities, and mitigations' },
   { id: 'analysis', name: '📊 Performance Analysis', description: 'Financial & physical performance analytics' },
   { id: 'documentation', name: '📁 Project Documentation', description: 'Dossier files, monthly reports, contract upload library' },
+  { id: 'consultant', name: '👔 Supervision Consultant', description: 'Consultant contract, fee invoices, and assigned personnel directory' },
   { id: 'workspace', name: '☁️ Workspace Notes', description: 'Interactive collaborative scratchpad & design notes' }
 ];
 
@@ -445,4 +509,8 @@ export interface ProgressPlanHistoryItem {
   eraEfy: number;
   actualMonth: number;
   actualEfy: number;
+  actualTodate?: number;
+  contractorTodate?: number;
+  eraTodate?: number;
+  physicalProgress?: number;
 }

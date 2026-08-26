@@ -763,12 +763,17 @@ export default function DashboardView({
   const CV_pct = AC > 0 ? ((EV - AC) / AC) * 100 : 0;
   const SV_pct = PV > 0 ? ((EV - PV) / PV) * 100 : 0;
 
-  // Generate last 5 CPI/SPI records based on current EVM metrics and historical trends
+  // Generate last 5 CPI/SPI records based on actual progress comparison milestones and EVM metrics
   const kpiHistoryRecords = React.useMemo(() => {
+    const currentActualKm = project.progressPlan?.actual?.todate || 0;
+    const currentPhysical = (typeof project.physicalProgress === 'number' && project.physicalProgress > 0)
+      ? project.physicalProgress
+      : (project.lengthKm > 0 && currentActualKm > 0 ? (currentActualKm / project.lengthKm) * 100 : (project.physicalProgress || 0));
+
     const currentRecord = {
-      period: project.progressPlanLabels?.monthLabel || 'Feb 2026',
+      period: project.progressPlanLabels?.monthLabel || 'Current Month',
       isCurrent: true,
-      physical: project.physicalProgress || 40.73,
+      physical: currentPhysical,
       elapsed: elapsed,
       ratio: ratio,
       cpi: CPI,
@@ -779,45 +784,98 @@ export default function DashboardView({
     };
 
     const historyList = project.progressPlanHistory || [];
-    const pastRecords = [];
-    const defaultPastLabels = ['Jan 2026', 'Dec 2025', 'Nov 2025', 'Oct 2025'];
+    let pastRecords: any[] = [];
 
-    for (let i = 0; i < 4; i++) {
-      const histItem = historyList[i];
-      const monthLabel = histItem ? histItem.monthLabel : defaultPastLabels[i];
-      
-      const step = (i + 1) * 2.1;
-      const pastPhysical = Math.max(0, currentRecord.physical - step);
-      const pastElapsed = Math.max(0, elapsed - (i + 1) * 1.8);
-      const pastRatio = pastElapsed > 0 ? (pastPhysical / pastElapsed) * 100 : 0;
-      
-      // Historical CPI & SPI trend factors
-      const cpiFactor = 1.0 + (i + 1) * 0.012;
-      const spiFactor = 1.0 + (i + 1) * 0.015;
+    if (historyList.length > 0) {
+      pastRecords = historyList.map((histItem) => {
+        const monthLabel = histItem.monthLabel;
+        
+        let histPhysical: number;
+        if (typeof histItem.physicalProgress === 'number' && histItem.physicalProgress > 0) {
+          histPhysical = histItem.physicalProgress;
+        } else if (typeof histItem.actualTodate === 'number' && histItem.actualTodate > 0 && project.lengthKm > 0) {
+          histPhysical = Number(((histItem.actualTodate / project.lengthKm) * 100).toFixed(2));
+        } else {
+          const matchMonth = (project.monthly || []).find(m => {
+            const cleanM = (m.month || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+            const cleanLabel = monthLabel.toLowerCase().replace(/[^a-z0-9]/g, '');
+            return cleanLabel.includes(cleanM) || cleanM.includes(cleanLabel);
+          });
+          if (matchMonth && typeof matchMonth.actual === 'number') {
+            histPhysical = matchMonth.actual;
+          } else if (typeof histItem.actualEfy === 'number' && histItem.actualEfy > 0 && project.lengthKm > 0) {
+            histPhysical = Number(((histItem.actualEfy / project.lengthKm) * 100).toFixed(2));
+          } else {
+            histPhysical = currentPhysical;
+          }
+        }
 
-      const pastCpi = Math.min(1.5, Math.max(0.2, CPI * cpiFactor));
-      const pastSpi = Math.min(1.5, Math.max(0.2, SPI * spiFactor));
+        const pastEv = (BAC * (histPhysical / 100)) / 1_000_000;
+        
+        const matchMonth = (project.monthly || []).find(m => {
+          const cleanM = (m.month || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+          const cleanLabel = monthLabel.toLowerCase().replace(/[^a-z0-9]/g, '');
+          return cleanLabel.includes(cleanM) || cleanM.includes(cleanLabel);
+        });
+        const matchPlanned = matchMonth && typeof matchMonth.originalPlan === 'number' ? matchMonth.originalPlan : null;
+        
+        const pastPv = matchPlanned !== null 
+          ? (BAC * (matchPlanned / 100)) / 1_000_000
+          : (PV / 1_000_000) * (currentPhysical > 0 ? histPhysical / currentPhysical : 1);
+          
+        const pastSpi = pastPv > 0 ? Number((pastEv / pastPv).toFixed(3)) : SPI;
+        const pastCpi = CPI;
+        const pastAc = pastCpi > 0 ? Number((pastEv / pastCpi).toFixed(2)) : pastEv;
+        const pastElapsed = Math.max(0, currentPhysical > 0 ? elapsed * (histPhysical / currentPhysical) : elapsed);
+        const pastRatio = pastElapsed > 0 ? (histPhysical / pastElapsed) * 100 : 0;
 
-      const pastEv = (BAC * (pastPhysical / 100)) / 1_000_000;
-      const pastAc = pastCpi > 0 ? pastEv / pastCpi : pastEv;
-      const pastPv = pastSpi > 0 ? pastEv / pastSpi : pastEv;
+        return {
+          period: monthLabel,
+          isCurrent: false,
+          physical: histPhysical,
+          elapsed: pastElapsed,
+          ratio: pastRatio,
+          cpi: pastCpi,
+          spi: pastSpi,
+          ev: pastEv,
+          pv: pastPv,
+          ac: pastAc,
+        };
+      });
+    } else if (project.monthly && project.monthly.length > 1) {
+      const pastMonths = project.monthly
+        .filter(m => typeof m.actual === 'number' && m.actual > 0)
+        .slice(-5, -1)
+        .reverse();
 
-      pastRecords.push({
-        period: monthLabel,
-        isCurrent: false,
-        physical: pastPhysical,
-        elapsed: pastElapsed,
-        ratio: pastRatio,
-        cpi: pastCpi,
-        spi: pastSpi,
-        ev: pastEv,
-        pv: pastPv,
-        ac: pastAc,
+      pastRecords = pastMonths.map(m => {
+        const histPhysical = typeof m.actual === 'number' ? m.actual : 0;
+        const histPlanned = typeof m.originalPlan === 'number' ? m.originalPlan : (typeof m.revisedPlan === 'number' ? m.revisedPlan : histPhysical);
+        const pastEv = (BAC * (histPhysical / 100)) / 1_000_000;
+        const pastPv = (BAC * (histPlanned / 100)) / 1_000_000;
+        const pastSpi = pastPv > 0 ? Number((pastEv / pastPv).toFixed(3)) : 1.0;
+        const pastCpi = CPI;
+        const pastAc = pastCpi > 0 ? Number((pastEv / pastCpi).toFixed(2)) : pastEv;
+        const pastElapsed = Math.max(0, currentPhysical > 0 ? elapsed * (histPhysical / currentPhysical) : elapsed);
+        const pastRatio = pastElapsed > 0 ? (histPhysical / pastElapsed) * 100 : 0;
+
+        return {
+          period: m.month,
+          isCurrent: false,
+          physical: histPhysical,
+          elapsed: pastElapsed,
+          ratio: pastRatio,
+          cpi: pastCpi,
+          spi: pastSpi,
+          ev: pastEv,
+          pv: pastPv,
+          ac: pastAc,
+        };
       });
     }
 
     return [currentRecord, ...pastRecords];
-  }, [project.progressPlanLabels, project.physicalProgress, project.progressPlanHistory, elapsed, ratio, CPI, SPI, EV, PV, AC, BAC]);
+  }, [project.progressPlanLabels, project.physicalProgress, project.progressPlanHistory, project.progressPlan, project.monthly, project.lengthKm, elapsed, ratio, CPI, SPI, EV, PV, AC, BAC]);
 
   // Comprehensive Payment Maturity Audit Calculations (FIDIC 56-Day Window)
   const todayDate = new Date();

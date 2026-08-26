@@ -182,9 +182,24 @@ export function normalizeProject(p: any): Project {
     bonds: Array.isArray(p.bonds) ? p.bonds : tmpl.bonds,
     ipcTracker: Array.isArray(p.ipcTracker) ? p.ipcTracker : tmpl.ipcTracker,
     workProgram: Array.isArray(p.workProgram) ? p.workProgram : tmpl.workProgram,
-    history: Array.isArray(p.history) ? p.history : tmpl.history,
+    history: Array.isArray(p.history) 
+      ? p.history.map((h: any) => ({
+          ...h,
+          physicalProgress: typeof h.physicalProgress === 'string' ? parseFloat(h.physicalProgress) || 0 : (typeof h.physicalProgress === 'number' ? h.physicalProgress : 0)
+        }))
+      : tmpl.history,
     annual: Array.isArray(p.annual) ? p.annual : tmpl.annual,
     images: Array.isArray(p.images) ? p.images : tmpl.images,
+    supervisionConsultant: p.supervisionConsultant ? {
+      ...tmpl.supervisionConsultant,
+      ...p.supervisionConsultant,
+      firmName: p.supervisionConsultant.firmName || p.consultant || tmpl.supervisionConsultant?.firmName || '',
+      personnel: Array.isArray(p.supervisionConsultant.personnel) ? p.supervisionConsultant.personnel : (tmpl.supervisionConsultant?.personnel || []),
+      invoices: Array.isArray(p.supervisionConsultant.invoices) ? p.supervisionConsultant.invoices : (tmpl.supervisionConsultant?.invoices || [])
+    } : (tmpl.supervisionConsultant ? {
+      ...tmpl.supervisionConsultant,
+      firmName: p.consultant || tmpl.supervisionConsultant.firmName
+    } : undefined)
   };
 }
 
