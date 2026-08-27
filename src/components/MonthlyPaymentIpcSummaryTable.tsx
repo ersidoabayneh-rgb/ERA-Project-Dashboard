@@ -187,33 +187,39 @@ export default function MonthlyPaymentIpcSummaryTable({
   const formatMoney = (v: number, currency: string = '') => formatAccounting(v, currency);
 
   // Aggregated summary statistics
+  const isUsdEnabled = project.enableUsdPayments !== undefined
+    ? Boolean(project.enableUsdPayments)
+    : Boolean(project.supervisionConsultant?.enableUsdPayments || (project.ipcTracker && project.ipcTracker.some(i => (i.certifiedUsd || 0) > 0 || (i.grossBillUsd || 0) > 0)));
+
   const totalGrossEtb = ipcTracker.reduce((sum, item) => sum + (item.grossBillEtb || 0), 0);
   const totalPriceAdjustmentEtb = ipcTracker.reduce((sum, item) => sum + (item.priceAdjustmentEtb || 0), 0);
   const totalAdvanceRepaymentEtb = ipcTracker.reduce((sum, item) => sum + (item.advanceRepaymentEtb || 0), 0);
   const totalRetentionEtb = ipcTracker.reduce((sum, item) => sum + (item.retentionEtb || 0), 0);
   const totalCertifiedEtb = ipcTracker.reduce((sum, item) => sum + (item.certifiedEtb || 0), 0);
-  const totalCertifiedUsd = ipcTracker.reduce((sum, item) => sum + (item.certifiedUsd || 0), 0);
+  const totalCertifiedUsd = isUsdEnabled ? ipcTracker.reduce((sum, item) => sum + (item.certifiedUsd || 0), 0) : 0;
 
   // Computed maturation summary
   const summary = calculateProjectIpcSummary(project);
 
   const filteredIpcs = ipcTracker.filter((item) => {
-    const maturation = calculateIpcMaturation(item, annualInterestRate, exchangeRate);
+    const maturation = calculateIpcMaturation(item, annualInterestRate, exchangeRate, new Date(), isUsdEnabled);
     if (filterStatus === 'All') return true;
     if (filterStatus === 'Matured Overdue') {
       return maturation.isOverdue;
     }
     const etbSt = item.statusEtb || item.status || 'Unpaid';
-    const usdSt = item.statusUsd || item.status || 'Unpaid';
+    const usdSt = isUsdEnabled ? (item.statusUsd || item.status || 'Unpaid') : 'Paid';
 
     if (filterStatus === 'Paid') {
-      return etbSt === 'Paid' && usdSt === 'Paid';
+      return isUsdEnabled ? (etbSt === 'Paid' && usdSt === 'Paid') : etbSt === 'Paid';
     }
     if (filterStatus === 'Unpaid') {
-      return etbSt === 'Unpaid' || usdSt === 'Unpaid';
+      return isUsdEnabled ? (etbSt === 'Unpaid' || usdSt === 'Unpaid') : etbSt === 'Unpaid';
     }
     if (filterStatus === 'Partially Paid') {
-      return etbSt === 'Partially Paid' || usdSt === 'Partially Paid' || (etbSt === 'Paid' && usdSt === 'Unpaid') || (etbSt === 'Unpaid' && usdSt === 'Paid');
+      return isUsdEnabled 
+        ? (etbSt === 'Partially Paid' || usdSt === 'Partially Paid' || (etbSt === 'Paid' && usdSt === 'Unpaid') || (etbSt === 'Unpaid' && usdSt === 'Paid'))
+        : etbSt === 'Partially Paid';
     }
     return true;
   });
@@ -233,6 +239,11 @@ export default function MonthlyPaymentIpcSummaryTable({
                 <span className="text-[10px] font-extrabold uppercase bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 px-2 py-0.5 rounded-full">
                   FIDIC Cl. 14.7 & 14.8
                 </span>
+                {!isUsdEnabled && (
+                  <span className="text-[10px] font-extrabold uppercase bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 px-2 py-0.5 rounded-full">
+                    ETB Only (USD Off)
+                  </span>
+                )}
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                 Tracks 56-day statutory payment maturation from submission date & applies financing charges / delay interest for overdue certificates
@@ -243,19 +254,44 @@ export default function MonthlyPaymentIpcSummaryTable({
 
         {/* Action Controls & Parameters */}
         <div className="flex flex-wrap items-center gap-2.5">
-          {/* USD Rate Input */}
-          <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 px-2.5 py-1 rounded-xl text-xs">
-            <Coins className="w-3.5 h-3.5 text-amber-500" />
-            <span className="font-semibold text-slate-600 dark:text-slate-300">USD Rate:</span>
-            <input
-              type="number"
-              step="0.01"
-              value={exchangeRate}
-              onChange={(e) => handleExchangeRateChange(parseFloat(e.target.value) || 0)}
-              className="w-14 font-mono font-bold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-1 py-0.5 text-right outline-none text-slate-800 dark:text-zinc-100"
-            />
-            <span className="text-[10px] font-mono font-bold text-slate-400">ETB</span>
-          </div>
+          {/* Currency Mode Quick Switch */}
+          <button
+            type="button"
+            onClick={() => {
+              const newEnabled = !isUsdEnabled;
+              if (onProjectUpdate) {
+                onProjectUpdate({ enableUsdPayments: newEnabled }, `Switched Currency Mode to ${newEnabled ? 'Dual (ETB + USD)' : 'ETB Only'}`);
+              }
+            }}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold transition border cursor-pointer ${
+              isUsdEnabled 
+                ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/40' 
+                : 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/40'
+            }`}
+            title="Configure Foreign Currency (USD) tracking for this project"
+          >
+            <Coins className="w-3.5 h-3.5" />
+            <span>{isUsdEnabled ? 'Currency: Dual (ETB + USD)' : 'Currency: ETB Only'}</span>
+            <span className="text-[9px] uppercase font-mono px-1 py-0.2 rounded bg-white/80 dark:bg-slate-900/80 border border-current font-extrabold">
+              {isUsdEnabled ? 'USD Active' : 'USD Off'}
+            </span>
+          </button>
+
+          {/* USD Rate Input (Conditional) */}
+          {isUsdEnabled && (
+            <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 px-2.5 py-1 rounded-xl text-xs">
+              <Coins className="w-3.5 h-3.5 text-amber-500" />
+              <span className="font-semibold text-slate-600 dark:text-slate-300">USD Rate:</span>
+              <input
+                type="number"
+                step="0.01"
+                value={exchangeRate}
+                onChange={(e) => handleExchangeRateChange(parseFloat(e.target.value) || 0)}
+                className="w-14 font-mono font-bold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-1 py-0.5 text-right outline-none text-slate-800 dark:text-zinc-100"
+              />
+              <span className="text-[10px] font-mono font-bold text-slate-400">ETB</span>
+            </div>
+          )}
 
           {/* Annual Financing Charge Rate Input */}
           <div className="flex items-center gap-1.5 bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200/80 dark:border-amber-900/40 px-2.5 py-1 rounded-xl text-xs" title="FIDIC Sub-Clause 14.8 / Commercial Bank Annual Interest Rate for delayed payments">
@@ -314,7 +350,7 @@ export default function MonthlyPaymentIpcSummaryTable({
         {/* Total Net Certified */}
         <div className="bg-indigo-50/40 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/40 rounded-xl p-3">
           <div className="flex items-center justify-between text-[10px] font-bold text-indigo-700 dark:text-indigo-400 uppercase">
-            <span>Net Certified (Eqv)</span>
+            <span>{isUsdEnabled ? 'Net Certified (Eqv)' : 'Net Certified (ETB)'}</span>
             <DollarSign className="w-3.5 h-3.5 text-indigo-500" />
           </div>
           <div className="text-base font-extrabold font-mono text-indigo-600 dark:text-indigo-300 mt-1">
@@ -412,7 +448,9 @@ export default function MonthlyPaymentIpcSummaryTable({
               <th className="py-3 px-2 text-right text-indigo-500 dark:text-indigo-400">Advance Repay.</th>
               <th className="py-3 px-2 text-right text-rose-600 dark:text-rose-400">Retention</th>
               <th className="py-3 px-2 text-center w-32">Net Certified (ETB)</th>
-              <th className="py-3 px-2 text-center w-32">Certified (USD)</th>
+              {isUsdEnabled && (
+                <th className="py-3 px-2 text-center w-32">Certified (USD)</th>
+              )}
               <th className="py-3 px-2 text-right font-extrabold text-amber-700 dark:text-amber-400">Delay Interest</th>
               <th className="py-3 px-2 text-right font-extrabold text-slate-800 dark:text-zinc-100">Total Todate Certified IPC</th>
               <th className="py-3 px-2 text-center w-14">Details</th>
@@ -423,7 +461,7 @@ export default function MonthlyPaymentIpcSummaryTable({
               const originalIndex = ipcTracker.findIndex((x) => x.id === item.id);
               const realIdx = originalIndex >= 0 ? originalIndex : idx;
 
-              const maturation = calculateIpcMaturation(item, annualInterestRate, exchangeRate);
+              const maturation = calculateIpcMaturation(item, annualInterestRate, exchangeRate, new Date(), isUsdEnabled);
               const isExpanded = expandedIpcId === item.id;
 
               return (
@@ -534,31 +572,33 @@ export default function MonthlyPaymentIpcSummaryTable({
                       </div>
                     </td>
 
-                    {/* Certified USD with Paid/Unpaid/Partially Paid selection */}
-                    <td className="py-2.5 px-2 text-center font-mono font-bold text-slate-800 dark:text-zinc-100">
-                      <AmountInput
-                        value={item.certifiedUsd}
-                        onChange={(val) => handleFieldChange(realIdx, 'certifiedUsd', val)}
-                        className="bg-transparent text-right font-mono font-bold border-none w-full outline-none"
-                      />
-                      <div className="mt-1">
-                        <select
-                          value={item.statusUsd || item.status || 'Unpaid'}
-                          onChange={(e) => handleFieldChange(realIdx, 'statusUsd', e.target.value)}
-                          className={`text-[10px] font-extrabold py-0.5 px-1.5 rounded border cursor-pointer outline-none transition w-full text-center ${
-                            (item.statusUsd || item.status) === 'Paid'
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800'
-                              : (item.statusUsd || item.status) === 'Partially Paid'
-                              ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800'
-                              : 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800'
-                          }`}
-                        >
-                          <option value="Paid">Paid</option>
-                          <option value="Unpaid">Unpaid</option>
-                          <option value="Partially Paid">Partially Paid</option>
-                        </select>
-                      </div>
-                    </td>
+                    {/* Certified USD with Paid/Unpaid/Partially Paid selection (Conditional) */}
+                    {isUsdEnabled && (
+                      <td className="py-2.5 px-2 text-center font-mono font-bold text-slate-800 dark:text-zinc-100">
+                        <AmountInput
+                          value={item.certifiedUsd}
+                          onChange={(val) => handleFieldChange(realIdx, 'certifiedUsd', val)}
+                          className="bg-transparent text-right font-mono font-bold border-none w-full outline-none"
+                        />
+                        <div className="mt-1">
+                          <select
+                            value={item.statusUsd || item.status || 'Unpaid'}
+                            onChange={(e) => handleFieldChange(realIdx, 'statusUsd', e.target.value)}
+                            className={`text-[10px] font-extrabold py-0.5 px-1.5 rounded border cursor-pointer outline-none transition w-full text-center ${
+                              (item.statusUsd || item.status) === 'Paid'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800'
+                                : (item.statusUsd || item.status) === 'Partially Paid'
+                                ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800'
+                                : 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800'
+                            }`}
+                          >
+                            <option value="Paid">Paid</option>
+                            <option value="Unpaid">Unpaid</option>
+                            <option value="Partially Paid">Partially Paid</option>
+                          </select>
+                        </div>
+                      </td>
+                    )}
 
                     {/* Delay Interest (ETB) - Directly Editable and Updatable */}
                     <td className="py-2.5 px-2 text-right font-mono font-bold">
@@ -601,7 +641,7 @@ export default function MonthlyPaymentIpcSummaryTable({
                     <td className="py-2.5 px-2 text-right font-mono font-extrabold">
                       <div className="text-indigo-600 dark:text-indigo-400">
                         {formatMoney(
-                          (item.certifiedEtb || 0) + ((item.certifiedUsd || 0) * exchangeRate),
+                          (item.certifiedEtb || 0) + (isUsdEnabled ? ((item.certifiedUsd || 0) * exchangeRate) : 0),
                           'Br.'
                         )}
                       </div>
@@ -631,7 +671,7 @@ export default function MonthlyPaymentIpcSummaryTable({
                   {/* Expanded IPC Detail Row */}
                   {isExpanded && (
                     <tr className="bg-slate-50/90 dark:bg-slate-900/80 border-b border-slate-200 dark:border-slate-700">
-                      <td colSpan={12} className="p-4">
+                      <td colSpan={isUsdEnabled ? 12 : 11} className="p-4">
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
 
                           {/* 56-Day Maturation & Delay Analysis Box */}
@@ -721,7 +761,7 @@ export default function MonthlyPaymentIpcSummaryTable({
                                   />
                                 </div>
                               </div>
-                              {maturation.unpaidCertifiedUsd > 0 && (
+                              {isUsdEnabled && maturation.unpaidCertifiedUsd > 0 && (
                                 <div className="flex justify-between items-center">
                                   <span className="text-slate-700 dark:text-slate-200 font-sans font-bold flex items-center gap-1">
                                     <Edit3 className="w-3 h-3 text-amber-500" /> Delay Interest (USD):
@@ -793,7 +833,7 @@ export default function MonthlyPaymentIpcSummaryTable({
 
             {filteredIpcs.length === 0 && (
               <tr>
-                <td colSpan={12} className="p-8 text-center text-slate-400 dark:text-slate-500 font-medium">
+                <td colSpan={isUsdEnabled ? 12 : 11} className="p-8 text-center text-slate-400 dark:text-slate-500 font-medium">
                   No monthly payment certificates found matching current filter. Click "+ Add IPC Entry" to record interim payment statements.
                 </td>
               </tr>
@@ -822,14 +862,16 @@ export default function MonthlyPaymentIpcSummaryTable({
                 <td className="py-3 px-2 text-center font-mono text-slate-900 dark:text-zinc-100 font-extrabold">
                   {formatMoney(totalCertifiedEtb, 'Br.')}
                 </td>
-                <td className="py-3 px-2 text-center font-mono text-slate-900 dark:text-zinc-100 font-extrabold">
-                  {formatMoney(totalCertifiedUsd, '$')}
-                </td>
+                {isUsdEnabled && (
+                  <td className="py-3 px-2 text-center font-mono text-slate-900 dark:text-zinc-100 font-extrabold">
+                    {formatMoney(totalCertifiedUsd, '$')}
+                  </td>
+                )}
                 <td className="py-3 px-2 text-right font-mono text-amber-600 dark:text-amber-400 font-black">
                   +{formatMoney(summary.totalAccruedInterestEqvEtb, 'Br.')}
                 </td>
                 <td className="py-3 px-2 text-right font-mono text-indigo-600 dark:text-indigo-400 font-black text-sm">
-                  {formatMoney(totalCertifiedEtb + (totalCertifiedUsd * exchangeRate), 'Br.')}
+                  {formatMoney(totalCertifiedEtb + (isUsdEnabled ? (totalCertifiedUsd * exchangeRate) : 0), 'Br.')}
                 </td>
                 <td className="py-3 px-2"></td>
               </tr>

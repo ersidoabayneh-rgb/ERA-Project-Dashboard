@@ -32,13 +32,23 @@ import {
   Check,
   X,
   Printer,
-  BarChart3
+  BarChart3,
+  ArrowRightLeft,
+  History,
+  UserPlus,
+  RefreshCw,
+  AlertTriangle,
+  Sparkles,
+  ToggleLeft,
+  ToggleRight,
+  ShieldCheck
 } from 'lucide-react';
 import { 
   Project, 
   SupervisionConsultantInfo, 
   ConsultantPersonnel, 
   ConsultantInvoice, 
+  HistoricalSupervisionConsultant,
   formatAccounting,
   User 
 } from '../types';
@@ -66,8 +76,16 @@ export default function SupervisionConsultantView({
       return {
         ...project.supervisionConsultant,
         firmName: project.supervisionConsultant.firmName || project.consultant || 'Supervision Consultant JV',
+        enableUsdPayments: project.supervisionConsultant.enableUsdPayments !== undefined 
+          ? project.supervisionConsultant.enableUsdPayments 
+          : Boolean((project.supervisionConsultant.originalFeeUsd || 0) > 0 || (project.supervisionConsultant.revisedFeeUsd || 0) > 0),
+        headOfficeAddress: project.supervisionConsultant.headOfficeAddress || '',
+        headOfficePhone: project.supervisionConsultant.headOfficePhone || '',
+        headOfficeEmail: project.supervisionConsultant.headOfficeEmail || '',
+        headOfficeContactPerson: project.supervisionConsultant.headOfficeContactPerson || '',
         personnel: project.supervisionConsultant.personnel || [],
-        invoices: project.supervisionConsultant.invoices || []
+        invoices: project.supervisionConsultant.invoices || [],
+        previousConsultants: project.supervisionConsultant.previousConsultants || []
       };
     }
     return {
@@ -81,23 +99,28 @@ export default function SupervisionConsultantView({
       revisedCompletionDate: '',
       originalFeeEtb: 45000000,
       revisedFeeEtb: 55000000,
-      originalFeeUsd: 800000,
-      revisedFeeUsd: 950000,
+      enableUsdPayments: false,
+      originalFeeUsd: 0,
+      revisedFeeUsd: 0,
       contractType: 'Time-Based',
       residentEngineerName: '',
       residentEngineerPhone: '',
       residentEngineerEmail: '',
       headOfficeAddress: '',
+      headOfficePhone: '',
+      headOfficeEmail: '',
+      headOfficeContactPerson: '',
       siteOfficeLocation: '',
       scopeOfServices: 'Full construction supervision, quality control, materials testing, and measurement of works.',
       performanceRating: 'Satisfactory',
       personnel: [],
-      invoices: []
+      invoices: [],
+      previousConsultants: []
     };
   }, [project.supervisionConsultant, project.consultant, project.signDate, project.startDate, project.id]);
 
   // Active view subtab
-  const [activeTab, setActiveTab] = useState<'personnel' | 'invoices' | 'profile'>('personnel');
+  const [activeTab, setActiveTab] = useState<'personnel' | 'invoices' | 'profile' | 'history'>('personnel');
 
   // Search & Filter States for Personnel
   const [personnelSearch, setPersonnelSearch] = useState('');
@@ -113,12 +136,82 @@ export default function SupervisionConsultantView({
   const [isPersonnelModalOpen, setIsPersonnelModalOpen] = useState(false);
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
   const [isWorkloadReportOpen, setIsWorkloadReportOpen] = useState(false);
+  const [isAssignNewConsultantOpen, setIsAssignNewConsultantOpen] = useState(false);
+  const [isEditHeadOfficeQuickOpen, setIsEditHeadOfficeQuickOpen] = useState(false);
   const [selectedPersonnel, setSelectedPersonnel] = useState<ConsultantPersonnel | null>(null);
   const [selectedInvoice, setSelectedInvoice] = useState<ConsultantInvoice | null>(null);
   const [viewDetailPersonnel, setViewDetailPersonnel] = useState<ConsultantPersonnel | null>(null);
+  const [selectedHistoricalConsultant, setSelectedHistoricalConsultant] = useState<HistoricalSupervisionConsultant | null>(null);
 
   // Form states for Consultant Profile
   const [consultantForm, setConsultantForm] = useState<SupervisionConsultantInfo>(consultant);
+
+  // Form state for Quick Head Office Edit
+  const [headOfficeForm, setHeadOfficeForm] = useState({
+    headOfficeAddress: consultant.headOfficeAddress || '',
+    headOfficePhone: consultant.headOfficePhone || '',
+    headOfficeEmail: consultant.headOfficeEmail || '',
+    headOfficeContactPerson: consultant.headOfficeContactPerson || ''
+  });
+
+  // Form state for Assigning New Consultant (Continuation of Service)
+  const [newConsultantForm, setNewConsultantForm] = useState<{
+    firmName: string;
+    associationType: string;
+    jvPartners: string;
+    contractRefNo: string;
+    contractSignDate: string;
+    commencementDate: string;
+    originalCompletionDate: string;
+    revisedCompletionDate: string;
+    originalFeeEtb: number;
+    revisedFeeEtb: number;
+    enableUsdPayments: boolean;
+    originalFeeUsd: number;
+    revisedFeeUsd: number;
+    contractType: string;
+    residentEngineerName: string;
+    residentEngineerPhone: string;
+    residentEngineerEmail: string;
+    headOfficeAddress: string;
+    headOfficePhone: string;
+    headOfficeEmail: string;
+    headOfficeContactPerson: string;
+    siteOfficeLocation: string;
+    scopeOfServices: string;
+    handoverDate: string;
+    transitionReason: string;
+    transitionNotes: string;
+    retainPersonnelMode: 'all' | 'key_only' | 'none';
+  }>({
+    firmName: '',
+    associationType: 'Joint Venture (JV)',
+    jvPartners: '',
+    contractRefNo: `ERA/SC/${project.id || '01'}/PHASE-2`,
+    contractSignDate: new Date().toISOString().split('T')[0],
+    commencementDate: new Date().toISOString().split('T')[0],
+    originalCompletionDate: '',
+    revisedCompletionDate: '',
+    originalFeeEtb: consultant.revisedFeeEtb || consultant.originalFeeEtb || 45000000,
+    revisedFeeEtb: consultant.revisedFeeEtb || consultant.originalFeeEtb || 45000000,
+    enableUsdPayments: Boolean(consultant.enableUsdPayments),
+    originalFeeUsd: consultant.revisedFeeUsd || consultant.originalFeeUsd || 0,
+    revisedFeeUsd: consultant.revisedFeeUsd || consultant.originalFeeUsd || 0,
+    contractType: consultant.contractType || 'Time-Based',
+    residentEngineerName: consultant.residentEngineerName || '',
+    residentEngineerPhone: consultant.residentEngineerPhone || '',
+    residentEngineerEmail: consultant.residentEngineerEmail || '',
+    headOfficeAddress: '',
+    headOfficePhone: '',
+    headOfficeEmail: '',
+    headOfficeContactPerson: '',
+    siteOfficeLocation: consultant.siteOfficeLocation || 'Main Project Camp',
+    scopeOfServices: consultant.scopeOfServices || 'Continuous engineering construction supervision and contract administration.',
+    handoverDate: new Date().toISOString().split('T')[0],
+    transitionReason: 'Completion of Assigned Service Duration (including approved extensions)',
+    transitionNotes: 'Continuation of supervision services under new consultant agreement upon expiration of previous contract duration.',
+    retainPersonnelMode: 'key_only'
+  });
 
   // Form states for Personnel
   const [personnelForm, setPersonnelForm] = useState<Partial<ConsultantPersonnel>>({
@@ -155,6 +248,47 @@ export default function SupervisionConsultantView({
     remarks: '',
     attachmentName: ''
   });
+
+  // Schedule & Time Completion Tracking (Including Approved Extensions)
+  const scheduleStatus = useMemo(() => {
+    const effectiveCompletionDate = consultant.revisedCompletionDate || consultant.originalCompletionDate || '';
+    let isTimeExpired = false;
+    let daysRemaining = 0;
+    let daysOverdue = 0;
+    let timeElapsedPct = 0;
+    let totalContractDays = 0;
+    let elapsedDays = 0;
+
+    if (consultant.commencementDate && effectiveCompletionDate) {
+      const start = new Date(consultant.commencementDate).getTime();
+      const end = new Date(effectiveCompletionDate).getTime();
+      const now = new Date().getTime();
+
+      if (!isNaN(start) && !isNaN(end) && end > start) {
+        totalContractDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
+        elapsedDays = Math.ceil((now - start) / (1000 * 60 * 60 * 24));
+        timeElapsedPct = Math.min(150, Math.max(0, (elapsedDays / totalContractDays) * 100));
+        
+        if (now > end) {
+          isTimeExpired = true;
+          daysOverdue = Math.ceil((now - end) / (1000 * 60 * 60 * 24));
+          daysRemaining = 0;
+        } else {
+          daysRemaining = Math.ceil((end - now) / (1000 * 60 * 60 * 24));
+        }
+      }
+    }
+
+    return {
+      effectiveCompletionDate,
+      isTimeExpired,
+      daysRemaining,
+      daysOverdue,
+      timeElapsedPct,
+      totalContractDays,
+      elapsedDays
+    };
+  }, [consultant.commencementDate, consultant.originalCompletionDate, consultant.revisedCompletionDate]);
 
   // Calculations for Financials
   const financialSummary = useMemo(() => {
@@ -270,7 +404,177 @@ export default function SupervisionConsultantView({
   // Handler for saving Consultant General Profile
   const handleSaveConsultantProfile = () => {
     saveConsultantData(consultantForm, 'Updated consultant contract & profile');
+    setHeadOfficeForm({
+      headOfficeAddress: consultantForm.headOfficeAddress || '',
+      headOfficePhone: consultantForm.headOfficePhone || '',
+      headOfficeEmail: consultantForm.headOfficeEmail || '',
+      headOfficeContactPerson: consultantForm.headOfficeContactPerson || ''
+    });
     setIsEditConsultantOpen(false);
+  };
+
+  // Quick Head Office Save Handler
+  const handleSaveHeadOfficeQuick = () => {
+    const updatedConsultant: SupervisionConsultantInfo = {
+      ...consultant,
+      headOfficeAddress: headOfficeForm.headOfficeAddress,
+      headOfficePhone: headOfficeForm.headOfficePhone,
+      headOfficeEmail: headOfficeForm.headOfficeEmail,
+      headOfficeContactPerson: headOfficeForm.headOfficeContactPerson
+    };
+    saveConsultantData(updatedConsultant, 'Updated head office contact & address information');
+    setIsEditHeadOfficeQuickOpen(false);
+  };
+
+  // Handler for Opening Assign New Consultant Modal
+  const handleOpenAssignNewConsultant = () => {
+    const defaultCommence = scheduleStatus.effectiveCompletionDate 
+      ? new Date(new Date(scheduleStatus.effectiveCompletionDate).getTime() + (24 * 60 * 60 * 1000)).toISOString().split('T')[0]
+      : new Date().toISOString().split('T')[0];
+
+    const prevCount = (consultant.previousConsultants?.length || 0) + 2;
+
+    setNewConsultantForm({
+      firmName: '',
+      associationType: 'Joint Venture (JV)',
+      jvPartners: '',
+      contractRefNo: `ERA/SC/${project.id || '01'}/PHASE-${prevCount}`,
+      contractSignDate: new Date().toISOString().split('T')[0],
+      commencementDate: defaultCommence,
+      originalCompletionDate: '',
+      revisedCompletionDate: '',
+      originalFeeEtb: consultant.revisedFeeEtb || consultant.originalFeeEtb || 45000000,
+      revisedFeeEtb: consultant.revisedFeeEtb || consultant.originalFeeEtb || 45000000,
+      enableUsdPayments: Boolean(consultant.enableUsdPayments),
+      originalFeeUsd: consultant.revisedFeeUsd || consultant.originalFeeUsd || 0,
+      revisedFeeUsd: consultant.revisedFeeUsd || consultant.originalFeeUsd || 0,
+      contractType: consultant.contractType || 'Time-Based',
+      residentEngineerName: consultant.residentEngineerName || '',
+      residentEngineerPhone: consultant.residentEngineerPhone || '',
+      residentEngineerEmail: consultant.residentEngineerEmail || '',
+      headOfficeAddress: '',
+      headOfficePhone: '',
+      headOfficeEmail: '',
+      headOfficeContactPerson: '',
+      siteOfficeLocation: consultant.siteOfficeLocation || 'Main Project Camp',
+      scopeOfServices: consultant.scopeOfServices || 'Continuous engineering construction supervision and contract administration.',
+      handoverDate: new Date().toISOString().split('T')[0],
+      transitionReason: scheduleStatus.isTimeExpired 
+        ? 'Completion of Assigned Service Duration (including approved extensions)' 
+        : 'Contract Continuation & Re-assignment of Supervision Services',
+      transitionNotes: 'Continuation of supervision services under new consultant agreement upon completion of predecessor contract tenure.',
+      retainPersonnelMode: 'key_only'
+    });
+    setIsAssignNewConsultantOpen(true);
+  };
+
+  // Handler for Confirming New Consultant Service Continuation
+  const handleConfirmAssignNewConsultant = () => {
+    if (!newConsultantForm.firmName?.trim()) {
+      alert('Please enter the new consulting firm / JV name.');
+      return;
+    }
+    if (!newConsultantForm.contractRefNo?.trim()) {
+      alert('Please enter the new supervision contract reference number.');
+      return;
+    }
+    if (!newConsultantForm.commencementDate) {
+      alert('Please enter the commencement date for the new consultant service.');
+      return;
+    }
+
+    // Snapshot outgoing consultant into previousConsultants archive
+    const archivedPredecessor: HistoricalSupervisionConsultant = {
+      id: 'hist_sc_' + Date.now(),
+      firmName: consultant.firmName,
+      associationType: consultant.associationType,
+      jvPartners: consultant.jvPartners,
+      contractRefNo: consultant.contractRefNo,
+      commencementDate: consultant.commencementDate,
+      originalCompletionDate: consultant.originalCompletionDate,
+      revisedCompletionDate: consultant.revisedCompletionDate,
+      handoverDate: newConsultantForm.handoverDate || new Date().toISOString().split('T')[0],
+      transitionReason: newConsultantForm.transitionReason,
+      transitionNotes: newConsultantForm.transitionNotes,
+      originalFeeEtb: consultant.originalFeeEtb,
+      revisedFeeEtb: consultant.revisedFeeEtb,
+      enableUsdPayments: consultant.enableUsdPayments,
+      originalFeeUsd: consultant.originalFeeUsd,
+      revisedFeeUsd: consultant.revisedFeeUsd,
+      totalInvoicedEtb: financialSummary.totalGrossInvoiced,
+      totalPaidEtb: financialSummary.totalPaidEtb,
+      residentEngineerName: consultant.residentEngineerName,
+      residentEngineerPhone: consultant.residentEngineerPhone,
+      residentEngineerEmail: consultant.residentEngineerEmail,
+      headOfficeAddress: consultant.headOfficeAddress,
+      headOfficePhone: consultant.headOfficePhone,
+      headOfficeEmail: consultant.headOfficeEmail,
+      headOfficeContactPerson: consultant.headOfficeContactPerson,
+      siteOfficeLocation: consultant.siteOfficeLocation,
+      scopeOfServices: consultant.scopeOfServices,
+      personnelSnapshotCount: (consultant.personnel || []).length,
+      invoicesSnapshotCount: (consultant.invoices || []).length,
+      archivedAt: new Date().toISOString(),
+      archivedBy: currentUser?.username || 'ERA Project Admin',
+      personnel: [...(consultant.personnel || [])],
+      invoices: [...(consultant.invoices || [])]
+    };
+
+    // Personnel handling based on retain mode
+    let newPersonnelList: ConsultantPersonnel[] = [];
+    if (newConsultantForm.retainPersonnelMode === 'all') {
+      newPersonnelList = (consultant.personnel || []).map(p => ({
+        ...p,
+        id: 'pers_' + Math.random().toString(36).substring(2, 9),
+        assignmentDate: newConsultantForm.commencementDate,
+        status: 'Active' as const,
+        manMonthsInput: 0
+      }));
+    } else if (newConsultantForm.retainPersonnelMode === 'key_only') {
+      newPersonnelList = (consultant.personnel || [])
+        .filter(p => p.category === 'Key Personnel')
+        .map(p => ({
+          ...p,
+          id: 'pers_' + Math.random().toString(36).substring(2, 9),
+          assignmentDate: newConsultantForm.commencementDate,
+          status: 'Active' as const,
+          manMonthsInput: 0
+        }));
+    }
+
+    const updatedConsultantInfo: SupervisionConsultantInfo = {
+      firmName: newConsultantForm.firmName.trim(),
+      associationType: newConsultantForm.associationType as any || 'Joint Venture (JV)',
+      jvPartners: newConsultantForm.jvPartners || '',
+      contractRefNo: newConsultantForm.contractRefNo.trim(),
+      contractSignDate: newConsultantForm.contractSignDate || new Date().toISOString().split('T')[0],
+      commencementDate: newConsultantForm.commencementDate,
+      originalCompletionDate: newConsultantForm.originalCompletionDate || '',
+      revisedCompletionDate: newConsultantForm.revisedCompletionDate || '',
+      originalFeeEtb: Number(newConsultantForm.originalFeeEtb) || 0,
+      revisedFeeEtb: Number(newConsultantForm.revisedFeeEtb) || Number(newConsultantForm.originalFeeEtb) || 0,
+      enableUsdPayments: Boolean(newConsultantForm.enableUsdPayments),
+      originalFeeUsd: newConsultantForm.enableUsdPayments ? Number(newConsultantForm.originalFeeUsd) || 0 : 0,
+      revisedFeeUsd: newConsultantForm.enableUsdPayments ? Number(newConsultantForm.revisedFeeUsd) || Number(newConsultantForm.originalFeeUsd) || 0 : 0,
+      contractType: newConsultantForm.contractType as any || 'Time-Based',
+      residentEngineerName: newConsultantForm.residentEngineerName || '',
+      residentEngineerPhone: newConsultantForm.residentEngineerPhone || '',
+      residentEngineerEmail: newConsultantForm.residentEngineerEmail || '',
+      headOfficeAddress: newConsultantForm.headOfficeAddress || '',
+      headOfficePhone: newConsultantForm.headOfficePhone || '',
+      headOfficeEmail: newConsultantForm.headOfficeEmail || '',
+      headOfficeContactPerson: newConsultantForm.headOfficeContactPerson || '',
+      siteOfficeLocation: newConsultantForm.siteOfficeLocation || 'Main Project Camp',
+      scopeOfServices: newConsultantForm.scopeOfServices || 'Continuous engineering construction supervision and contract administration.',
+      performanceRating: 'Satisfactory',
+      personnel: newPersonnelList,
+      invoices: [], // Start clean invoice register for new consultant
+      previousConsultants: [archivedPredecessor, ...(consultant.previousConsultants || [])]
+    };
+
+    saveConsultantData(updatedConsultantInfo, `Assigned new supervision consultant: ${updatedConsultantInfo.firmName} (Continuation of Service)`);
+    setIsAssignNewConsultantOpen(false);
+    setActiveTab('profile');
   };
 
   // Handler for Add/Edit Personnel
@@ -749,6 +1053,15 @@ export default function SupervisionConsultantView({
                 </button>
 
                 <button
+                  onClick={handleOpenAssignNewConsultant}
+                  title="Assign a new supervision consultant firm as continuation of service (e.g. upon time/extension completion)"
+                  className="px-3.5 py-2 text-xs font-bold rounded-xl bg-amber-500 hover:bg-amber-600 text-white flex items-center gap-1.5 transition shadow-xs"
+                >
+                  <ArrowRightLeft className="w-3.5 h-3.5" />
+                  Assign Successor Consultant
+                </button>
+
+                <button
                   onClick={handleOpenAddPersonnel}
                   className="px-3.5 py-2 text-xs font-bold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1.5 transition shadow-xs"
                 >
@@ -794,6 +1107,57 @@ export default function SupervisionConsultantView({
           </div>
         </div>
 
+        {/* Supervision Time Assigned Completed / Expiration Alert Banner */}
+        {scheduleStatus.effectiveCompletionDate && (scheduleStatus.isTimeExpired || scheduleStatus.daysRemaining <= 45) && (
+          <div className={`mt-5 p-4 rounded-2xl border flex flex-col md:flex-row md:items-center justify-between gap-4 ${
+            scheduleStatus.isTimeExpired 
+              ? 'bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-900 text-rose-900 dark:text-rose-200'
+              : 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900 text-amber-900 dark:text-amber-200'
+          }`}>
+            <div className="flex items-start gap-3">
+              <div className={`p-2 rounded-xl shrink-0 mt-0.5 ${
+                scheduleStatus.isTimeExpired ? 'bg-rose-100 dark:bg-rose-900/60 text-rose-600 dark:text-rose-300' : 'bg-amber-100 dark:bg-amber-900/60 text-amber-600 dark:text-amber-300'
+              }`}>
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <h4 className="font-bold text-sm">
+                    {scheduleStatus.isTimeExpired 
+                      ? 'Supervision Service Period Completed (Including All Extensions)' 
+                      : `Supervision Contract Concluding Soon (${scheduleStatus.daysRemaining} Days Remaining)`}
+                  </h4>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold font-mono ${
+                    scheduleStatus.isTimeExpired ? 'bg-rose-200 dark:bg-rose-800 text-rose-800 dark:text-rose-100' : 'bg-amber-200 dark:bg-amber-800 text-amber-800 dark:text-amber-100'
+                  }`}>
+                    End Date: {scheduleStatus.effectiveCompletionDate}
+                  </span>
+                </div>
+                <p className="text-xs opacity-90 leading-relaxed max-w-3xl">
+                  {scheduleStatus.isTimeExpired
+                    ? `The allocated contract duration for ${consultant.firmName} has reached its completion date (${scheduleStatus.daysOverdue} days past effective completion). You can archive this consultant's record and seamlessly assign a new consultant firm as continuation of supervision services.`
+                    : `The contract service duration for ${consultant.firmName} is concluding on ${scheduleStatus.effectiveCompletionDate}. Review contract extension approvals or prepare transition for service continuation.`
+                  }
+                </p>
+              </div>
+            </div>
+
+            {!isReadonly && (
+              <button
+                onClick={handleOpenAssignNewConsultant}
+                className={`px-4 py-2 text-xs font-bold rounded-xl whitespace-nowrap shadow-sm transition flex items-center justify-center gap-1.5 ${
+                  scheduleStatus.isTimeExpired
+                    ? 'bg-rose-600 hover:bg-rose-700 text-white'
+                    : 'bg-amber-600 hover:bg-amber-700 text-white'
+                }`}
+              >
+                <ArrowRightLeft className="w-4 h-4" />
+                Assign New Consultant (Continuation of Service)
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Executive KPI Metric Highlights */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mt-6 pt-5 border-t border-slate-100 dark:border-slate-800/80">
           <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-2xl border border-slate-100 dark:border-slate-800">
@@ -824,15 +1188,35 @@ export default function SupervisionConsultantView({
             </span>
           </div>
 
-          <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-2xl border border-slate-100 dark:border-slate-800">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Foreign Fee (USD)</span>
-            <div className="text-base md:text-lg font-black text-purple-600 dark:text-purple-400 font-mono mt-0.5">
-              ${formatAccounting((consultant.revisedFeeUsd || consultant.originalFeeUsd || 0) / 1_000, '')} k
+          {/* Conditional USD vs Contract Duration Metric Card */}
+          {consultant.enableUsdPayments ? (
+            <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-2xl border border-slate-100 dark:border-slate-800">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Foreign Fee (USD)</span>
+                <span className="text-[9px] font-bold px-1.5 py-0.2 bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 rounded">USD Active</span>
+              </div>
+              <div className="text-base md:text-lg font-black text-purple-600 dark:text-purple-400 font-mono mt-0.5">
+                ${formatAccounting((consultant.revisedFeeUsd || consultant.originalFeeUsd || 0) / 1_000, '')} k
+              </div>
+              <span className="text-[10px] text-purple-500 font-semibold font-mono">
+                ${formatAccounting(financialSummary.totalPaidUsd / 1_000, '')} k Paid
+              </span>
             </div>
-            <span className="text-[10px] text-purple-500 font-semibold font-mono">
-              ${formatAccounting(financialSummary.totalPaidUsd / 1_000, '')} k Paid
-            </span>
-          </div>
+          ) : (
+            <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-2xl border border-slate-100 dark:border-slate-800">
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Contract Duration</span>
+              <div className="text-base md:text-lg font-black text-slate-800 dark:text-slate-100 font-mono mt-0.5">
+                {scheduleStatus.totalContractDays > 0 ? `${scheduleStatus.totalContractDays} d` : 'Standard'}
+              </div>
+              <span className={`text-[10px] font-semibold ${
+                scheduleStatus.isTimeExpired ? 'text-rose-500 font-bold' : 'text-slate-400'
+              }`}>
+                {scheduleStatus.isTimeExpired 
+                  ? `${scheduleStatus.daysOverdue}d Overdue / Completed` 
+                  : scheduleStatus.daysRemaining > 0 ? `${scheduleStatus.daysRemaining}d Remaining` : '100% Local ETB'}
+              </span>
+            </div>
+          )}
 
           <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-2xl border border-slate-100 dark:border-slate-800">
             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Active Personnel</span>
@@ -902,6 +1286,25 @@ export default function SupervisionConsultantView({
         >
           <Briefcase className="w-4 h-4" />
           Contract & Scope Profile
+        </button>
+
+        <button
+          onClick={() => setActiveTab('history')}
+          className={`px-4 py-2 rounded-2xl text-xs md:text-sm font-bold flex items-center gap-2 transition ${
+            activeTab === 'history'
+              ? 'bg-amber-600 text-white shadow-sm'
+              : 'bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
+          }`}
+        >
+          <History className="w-4 h-4" />
+          Service History & Predecessors
+          {(consultant.previousConsultants?.length || 0) > 0 && (
+            <span className={`px-2 py-0.5 rounded-full text-xs font-mono ${
+              activeTab === 'history' ? 'bg-amber-700 text-white' : 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 font-bold'
+            }`}>
+              {consultant.previousConsultants?.length}
+            </span>
+          )}
         </button>
       </div>
 
@@ -1394,10 +1797,13 @@ export default function SupervisionConsultantView({
           <div className="lg:col-span-2 space-y-6">
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-5">
               <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
-                <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                  <Briefcase className="w-4 h-4 text-blue-600" />
-                  Supervision Agreement & Contractual Terms
-                </h3>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <Briefcase className="w-4 h-4 text-blue-600" />
+                    Supervision Agreement & Contractual Terms
+                  </h3>
+                  <span className="text-xs text-slate-400">Official consultancy parameters and remuneration structure</span>
+                </div>
                 {!isReadonly && (
                   <button
                     onClick={() => {
@@ -1407,7 +1813,7 @@ export default function SupervisionConsultantView({
                     className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
                   >
                     <Edit3 className="w-3 h-3" />
-                    Modify
+                    Modify Contract
                   </button>
                 )}
               </div>
@@ -1475,6 +1881,33 @@ export default function SupervisionConsultantView({
                 </div>
               </div>
 
+              {/* Payment Currency Structure Summary */}
+              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                <div>
+                  <span className="text-slate-400 font-semibold uppercase text-[10px] block">Payment Currency Mode</span>
+                  <div className="font-bold text-slate-900 dark:text-white mt-0.5 flex items-center gap-1.5">
+                    {consultant.enableUsdPayments ? (
+                      <>
+                        <span className="w-2 h-2 rounded-full bg-purple-500 inline-block"></span>
+                        Dual Currency Enabled: ETB (Local) + USD (Foreign Fee)
+                      </>
+                    ) : (
+                      <>
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
+                        Local Currency Only: ETB Remuneration (USD Disabled)
+                      </>
+                    )}
+                  </div>
+                </div>
+                <div className="font-mono text-[11px] text-slate-500">
+                  {consultant.enableUsdPayments ? (
+                    <span>USD Fee Budget: ${formatAccounting(consultant.revisedFeeUsd || consultant.originalFeeUsd || 0, '')}</span>
+                  ) : (
+                    <span>100% Local Currency Contract</span>
+                  )}
+                </div>
+              </div>
+
               {/* Scope of Services */}
               <div className="pt-4 border-t border-slate-100 dark:border-slate-800 space-y-1.5">
                 <span className="text-slate-400 font-semibold uppercase tracking-wider text-[10px] block">Consultancy Scope of Services</span>
@@ -1483,10 +1916,119 @@ export default function SupervisionConsultantView({
                 </p>
               </div>
             </div>
+
+            {/* Service Continuation & Handover Management Card */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                <div className="flex items-center gap-2">
+                  <ArrowRightLeft className="w-4 h-4 text-amber-500" />
+                  <h4 className="font-bold text-slate-900 dark:text-white text-sm">
+                    Service Continuation & Successor Assignment
+                  </h4>
+                </div>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                  scheduleStatus.isTimeExpired ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300' : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                }`}>
+                  {scheduleStatus.isTimeExpired ? 'Time Expired' : 'Active Contract'}
+                </span>
+              </div>
+
+              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                When the time assigned for the supervision consultant is completed (including all approved contract time extensions), or if a contract transition is necessary, you can assign a new consulting firm as continuation of service. The current consultant's historical invoices and personnel records are safely archived in the project service history.
+              </p>
+
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                <div className="text-xs text-slate-500">
+                  <span>Archived Predecessors: </span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">{consultant.previousConsultants?.length || 0} firms on record</span>
+                </div>
+
+                {!isReadonly && (
+                  <button
+                    onClick={handleOpenAssignNewConsultant}
+                    className="px-4 py-2 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white rounded-xl shadow-xs flex items-center gap-1.5 transition"
+                  >
+                    <ArrowRightLeft className="w-3.5 h-3.5" />
+                    Assign New Consultant (Continuation of Service)
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
 
-          {/* Resident Engineer Profile Card */}
+          {/* Right Column: Head Office & Resident Engineer Profile Cards */}
           <div className="space-y-6">
+            {/* Head Office Details Card (Editable & Updatable) */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 flex items-center justify-center text-blue-600 dark:text-blue-400">
+                    <Building2 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="font-black text-slate-900 dark:text-white text-sm">
+                      Head Office & Corporate Contacts
+                    </h4>
+                    <span className="text-[10px] text-slate-400 block">Consultant Headquarters</span>
+                  </div>
+                </div>
+
+                {!isReadonly && (
+                  <button
+                    onClick={() => {
+                      setHeadOfficeForm({
+                        headOfficeAddress: consultant.headOfficeAddress || '',
+                        headOfficePhone: consultant.headOfficePhone || '',
+                        headOfficeEmail: consultant.headOfficeEmail || '',
+                        headOfficeContactPerson: consultant.headOfficeContactPerson || ''
+                      });
+                      setIsEditHeadOfficeQuickOpen(true);
+                    }}
+                    className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
+                  >
+                    <Edit3 className="w-3 h-3" />
+                    Edit
+                  </button>
+                )}
+              </div>
+
+              <div className="space-y-3 text-xs">
+                <div>
+                  <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Physical Address</span>
+                  <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5 flex items-start gap-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+                    <span>{consultant.headOfficeAddress || 'Head Office Address not specified'}</span>
+                  </div>
+                </div>
+
+                <div>
+                  <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Contact Person / Authorized Representative</span>
+                  <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">
+                    {consultant.headOfficeContactPerson || 'Managing Director / Corporate Liaison'}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                  <div>
+                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Phone Number</span>
+                    <div className="font-mono text-slate-700 dark:text-slate-300 mt-0.5 flex items-center gap-1.5">
+                      <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <span>{consultant.headOfficePhone || 'N/A'}</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Corporate Email</span>
+                    <div className="text-slate-700 dark:text-slate-300 mt-0.5 flex items-center gap-1.5 truncate">
+                      <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <span className="truncate">{consultant.headOfficeEmail || 'N/A'}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Resident Engineer Profile Card */}
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-4">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 flex items-center justify-center text-indigo-600 dark:text-indigo-400 font-black text-lg">
@@ -1522,13 +2064,6 @@ export default function SupervisionConsultantView({
                     <span>{consultant.siteOfficeLocation}</span>
                   </div>
                 )}
-
-                {consultant.headOfficeAddress && (
-                  <div className="flex items-start gap-2 text-slate-500 text-[11px]">
-                    <Building2 className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
-                    <span>Head Office: {consultant.headOfficeAddress}</span>
-                  </div>
-                )}
               </div>
             </div>
 
@@ -1545,6 +2080,96 @@ export default function SupervisionConsultantView({
                 The supervision team operates under delegated authority from the Ethiopian Roads Administration to administer the civil works contract impartially and enforce high standards of quality assurance.
               </p>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 4: SERVICE HISTORY & PREDECESSORS */}
+      {activeTab === 'history' && (
+        <div className="space-y-6">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
+              <div>
+                <h3 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
+                  <History className="w-5 h-5 text-amber-600" />
+                  Supervision Service History & Predecessors Archive
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Complete audit trail of all previous supervision consultant engagements and continuity transitions for this project.
+                </p>
+              </div>
+
+              {!isReadonly && (
+                <button
+                  onClick={handleOpenAssignNewConsultant}
+                  className="px-4 py-2 text-xs font-bold rounded-xl bg-amber-500 hover:bg-amber-600 text-white flex items-center gap-1.5 transition shadow-xs whitespace-nowrap"
+                >
+                  <ArrowRightLeft className="w-3.5 h-3.5" />
+                  Assign Continuation Consultant
+                </button>
+              )}
+            </div>
+
+            {(!consultant.previousConsultants || consultant.previousConsultants.length === 0) ? (
+              <div className="py-12 text-center text-slate-400">
+                <Briefcase className="w-12 h-12 mx-auto mb-3 opacity-30 text-amber-500" />
+                <h4 className="font-bold text-slate-700 dark:text-slate-300 text-sm">
+                  Original Consultant Currently Serving
+                </h4>
+                <p className="text-xs text-slate-400 max-w-md mx-auto mt-1">
+                  <strong>{consultant.firmName}</strong> is the initial supervision consultant for this contract. When their term is completed or extended service is transitioned, previous contract archives will appear here.
+                </p>
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-100 dark:divide-slate-800 mt-4">
+                {consultant.previousConsultants.map((hist, idx) => (
+                  <div key={hist.archivedAt || idx} className="py-5 first:pt-2 last:pb-0">
+                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                      <div className="space-y-1.5">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="px-2 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 text-[10px] font-bold font-mono">
+                            Term #{consultant.previousConsultants.length - idx}
+                          </span>
+                          <h4 className="text-base font-black text-slate-900 dark:text-white">
+                            {hist.firmName}
+                          </h4>
+                          <span className="text-xs text-slate-400 font-medium">({hist.associationType || 'Joint Venture'})</span>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
+                          <span>Contract Ref: <strong className="font-mono text-slate-700 dark:text-slate-300">{hist.contractRefNo || 'N/A'}</strong></span>
+                          <span>•</span>
+                          <span>Commenced: <strong className="font-mono text-slate-700 dark:text-slate-300">{hist.commencementDate || 'N/A'}</strong></span>
+                          <span>•</span>
+                          <span>Handover / Archived: <strong className="font-mono text-amber-600 dark:text-amber-400">{hist.handoverDate || hist.archivedAt?.slice(0, 10)}</strong></span>
+                        </div>
+
+                        <div className="text-xs text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800 max-w-2xl mt-1">
+                          <span className="font-bold text-slate-500 text-[10px] uppercase block">Transition Reason</span>
+                          {hist.transitionReason || hist.reasonForTransition || 'Service duration completed and continuation consultant assigned.'}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <div className="text-right text-xs">
+                          <span className="text-slate-400 block text-[10px] font-bold uppercase">Archived Records</span>
+                          <div className="font-bold text-slate-800 dark:text-slate-200 mt-0.5">
+                            {hist.personnel?.length || 0} Staff • {hist.invoices?.length || 0} Invoices
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => setSelectedHistoricalConsultant(hist)}
+                          className="px-3.5 py-2 text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl transition"
+                        >
+                          View Dossier
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1618,6 +2243,24 @@ export default function SupervisionConsultantView({
                   />
                 </div>
 
+                {/* Contract Fee Structure (ETB & Optional USD) */}
+                <div className="sm:col-span-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                      Contract Fee Structure
+                    </span>
+                    <label className="inline-flex items-center gap-2 cursor-pointer text-xs font-bold text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/40 px-2.5 py-1 rounded-xl border border-purple-200 dark:border-purple-800">
+                      <input
+                        type="checkbox"
+                        checked={!!consultantForm.enableUsdPayments}
+                        onChange={(e) => setConsultantForm({ ...consultantForm, enableUsdPayments: e.target.checked })}
+                        className="w-3.5 h-3.5 text-purple-600 rounded focus:ring-purple-500"
+                      />
+                      <span>Enable Foreign Currency (USD) Remuneration</span>
+                    </label>
+                  </div>
+                </div>
+
                 <div>
                   <label className="block text-slate-500 font-semibold mb-1">Original Contract Fee (ETB)</label>
                   <input
@@ -1638,15 +2281,33 @@ export default function SupervisionConsultantView({
                   />
                 </div>
 
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">Foreign Fee Portion (USD)</label>
-                  <input
-                    type="number"
-                    value={consultantForm.revisedFeeUsd || consultantForm.originalFeeUsd || 0}
-                    onChange={(e) => setConsultantForm({ ...consultantForm, revisedFeeUsd: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white"
-                  />
-                </div>
+                {consultantForm.enableUsdPayments ? (
+                  <>
+                    <div>
+                      <label className="block text-purple-600 dark:text-purple-400 font-bold mb-1">Original Foreign Fee (USD)</label>
+                      <input
+                        type="number"
+                        value={consultantForm.originalFeeUsd || 0}
+                        onChange={(e) => setConsultantForm({ ...consultantForm, originalFeeUsd: parseFloat(e.target.value) || 0 })}
+                        className="w-full px-3 py-2 bg-purple-50/50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800 rounded-xl font-mono text-purple-700 dark:text-purple-300 font-bold"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-purple-600 dark:text-purple-400 font-bold mb-1">Revised Foreign Fee (USD)</label>
+                      <input
+                        type="number"
+                        value={consultantForm.revisedFeeUsd || 0}
+                        onChange={(e) => setConsultantForm({ ...consultantForm, revisedFeeUsd: parseFloat(e.target.value) || 0 })}
+                        className="w-full px-3 py-2 bg-purple-50/50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800 rounded-xl font-mono text-purple-700 dark:text-purple-300 font-bold"
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <div className="sm:col-span-2 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 text-[11px] text-slate-500">
+                    ℹ️ USD Foreign payments are currently <strong>disabled</strong> for this project contract. All supervision invoices and commitments will default strictly to local currency (ETB).
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-slate-500 font-semibold mb-1">Performance Rating</label>
@@ -1702,7 +2363,74 @@ export default function SupervisionConsultantView({
                   />
                 </div>
 
+                {/* Head Office & Corporate Section */}
+                <div className="sm:col-span-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                  <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider block mb-2">
+                    Head Office & Corporate Liaison
+                  </span>
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-slate-500 font-semibold mb-1">Head Office Physical Address</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Bole Sub-City, Wordea 03, House #412, Addis Ababa, Ethiopia"
+                    value={consultantForm.headOfficeAddress || ''}
+                    onChange={(e) => setConsultantForm({ ...consultantForm, headOfficeAddress: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-500 font-semibold mb-1">Head Office Contact Person / Liaison</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Dr. Eng. Tamrat Haile (Managing Director)"
+                    value={consultantForm.headOfficeContactPerson || ''}
+                    onChange={(e) => setConsultantForm({ ...consultantForm, headOfficeContactPerson: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-500 font-semibold mb-1">Head Office Phone</label>
+                  <input
+                    type="text"
+                    placeholder="+251 11 661 2345"
+                    value={consultantForm.headOfficePhone || ''}
+                    onChange={(e) => setConsultantForm({ ...consultantForm, headOfficePhone: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-500 font-semibold mb-1">Head Office Corporate Email</label>
+                  <input
+                    type="email"
+                    placeholder="info@consultancy.com"
+                    value={consultantForm.headOfficeEmail || ''}
+                    onChange={(e) => setConsultantForm({ ...consultantForm, headOfficeEmail: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-500 font-semibold mb-1">Site Camp / Office Location</label>
+                  <input
+                    type="text"
+                    value={consultantForm.siteOfficeLocation || ''}
+                    onChange={(e) => setConsultantForm({ ...consultantForm, siteOfficeLocation: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
+                  />
+                </div>
+
                 {/* Resident Engineer Profile Fields */}
+                <div className="sm:col-span-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                  <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider block mb-2">
+                    Resident Engineer (FIDIC Site Representative)
+                  </span>
+                </div>
+
                 <div>
                   <label className="block text-slate-500 font-semibold mb-1">Resident Engineer Name</label>
                   <input
@@ -1729,16 +2457,6 @@ export default function SupervisionConsultantView({
                     type="email"
                     value={consultantForm.residentEngineerEmail || ''}
                     onChange={(e) => setConsultantForm({ ...consultantForm, residentEngineerEmail: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">Site Camp / Office Location</label>
-                  <input
-                    type="text"
-                    value={consultantForm.siteOfficeLocation || ''}
-                    onChange={(e) => setConsultantForm({ ...consultantForm, siteOfficeLocation: e.target.value })}
                     className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
                   />
                 </div>
@@ -2102,15 +2820,21 @@ export default function SupervisionConsultantView({
                   />
                 </div>
 
-                <div>
-                  <label className="block text-purple-600 dark:text-purple-400 font-semibold mb-1">Foreign Currency Fee (USD)</label>
-                  <input
-                    type="number"
-                    value={invoiceForm.foreignCurrencyAmount || 0}
-                    onChange={(e) => setInvoiceForm({ ...invoiceForm, foreignCurrencyAmount: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 bg-purple-50/50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800 rounded-xl font-mono text-purple-700 dark:text-purple-300 font-bold"
-                  />
-                </div>
+                {consultant.enableUsdPayments ? (
+                  <div>
+                    <label className="block text-purple-600 dark:text-purple-400 font-semibold mb-1">Foreign Currency Fee (USD)</label>
+                    <input
+                      type="number"
+                      value={invoiceForm.foreignCurrencyAmount || 0}
+                      onChange={(e) => setInvoiceForm({ ...invoiceForm, foreignCurrencyAmount: parseFloat(e.target.value) || 0 })}
+                      className="w-full px-3 py-2 bg-purple-50/50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800 rounded-xl font-mono text-purple-700 dark:text-purple-300 font-bold"
+                    />
+                  </div>
+                ) : (
+                  <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 text-[11px] text-slate-500 flex items-center gap-1.5">
+                    <span>💵 USD Payments disabled in Contract Profile (ETB Only)</span>
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-slate-500 font-semibold mb-1">Payment Status</label>
@@ -2267,6 +2991,431 @@ export default function SupervisionConsultantView({
                   className="px-4 py-2 text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl"
                 >
                   Close
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL 5: QUICK EDIT HEAD OFFICE */}
+      <AnimatePresence>
+        {isEditHeadOfficeQuickOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 w-full max-w-lg shadow-xl space-y-4"
+            >
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Building2 className="w-5 h-5 text-blue-600" />
+                  Edit Consultant Head Office Details
+                </h3>
+                <button
+                  onClick={() => setIsEditHeadOfficeQuickOpen(false)}
+                  className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="space-y-3 text-xs">
+                <div>
+                  <label className="block text-slate-500 font-semibold mb-1">Head Office Physical Address</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Bole Sub-City, Woreda 03, House #412, Addis Ababa, Ethiopia"
+                    value={headOfficeForm.headOfficeAddress}
+                    onChange={(e) => setHeadOfficeForm({ ...headOfficeForm, headOfficeAddress: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-500 font-semibold mb-1">Contact Person / Authorized Representative</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Dr. Eng. Tamrat Haile (Managing Director)"
+                    value={headOfficeForm.headOfficeContactPerson}
+                    onChange={(e) => setHeadOfficeForm({ ...headOfficeForm, headOfficeContactPerson: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-500 font-semibold mb-1">Corporate Phone Number</label>
+                  <input
+                    type="text"
+                    placeholder="+251 11 661 2345"
+                    value={headOfficeForm.headOfficePhone}
+                    onChange={(e) => setHeadOfficeForm({ ...headOfficeForm, headOfficePhone: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-500 font-semibold mb-1">Corporate Email Address</label>
+                  <input
+                    type="email"
+                    placeholder="info@consultingfirm.com"
+                    value={headOfficeForm.headOfficeEmail}
+                    onChange={(e) => setHeadOfficeForm({ ...headOfficeForm, headOfficeEmail: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  onClick={() => setIsEditHeadOfficeQuickOpen(false)}
+                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveHeadOfficeQuick}
+                  className="px-5 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-xs"
+                >
+                  Update Head Office
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL 6: ASSIGN SUCCESSOR CONSULTANT (CONTINUATION OF SERVICE) */}
+      <AnimatePresence>
+        {isAssignNewConsultantOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 w-full max-w-2xl shadow-xl my-8 space-y-4"
+            >
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <ArrowRightLeft className="w-5 h-5 text-amber-500" />
+                    Assign Successor Consultant (Continuation of Service)
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Transition supervision to a new consulting firm while archiving the outgoing consultant's service record.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setIsAssignNewConsultantOpen(false)}
+                  className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Current Consultant Summary Notice */}
+              <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-xs space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-amber-900 dark:text-amber-200 uppercase tracking-wider text-[10px]">
+                    Outgoing Consultant Being Archived
+                  </span>
+                  <span className="font-mono text-amber-700 dark:text-amber-300 font-bold">
+                    {consultant.contractRefNo || 'No Ref'}
+                  </span>
+                </div>
+                <div className="font-bold text-slate-900 dark:text-white text-sm">
+                  {consultant.firmName}
+                </div>
+                <div className="text-slate-600 dark:text-slate-300 text-[11px] flex flex-wrap gap-x-4">
+                  <span>Commenced: <strong>{consultant.commencementDate || 'N/A'}</strong></span>
+                  <span>Approved Completion: <strong>{consultant.revisedCompletionDate || consultant.originalCompletionDate || 'N/A'}</strong></span>
+                  <span>Invoices on Record: <strong>{consultant.invoices?.length || 0}</strong></span>
+                </div>
+              </div>
+
+              {/* Transition Parameters */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <div>
+                  <label className="block text-slate-500 font-semibold mb-1">Reason for Contract Transition *</label>
+                  <select
+                    value={newConsultantForm.transitionReason}
+                    onChange={(e) => setNewConsultantForm({ ...newConsultantForm, transitionReason: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-medium"
+                  >
+                    <option value="Time assigned completed (contract & extension expired)">Time assigned completed (contract & extension expired)</option>
+                    <option value="Contract termination & re-tendering">Contract termination & re-tendering</option>
+                    <option value="Mutual agreement & administrative transition">Mutual agreement & administrative transition</option>
+                    <option value="Joint venture restructuring / substitution">Joint venture restructuring / substitution</option>
+                    <option value="Continuation of service under fresh engagement">Continuation of service under fresh engagement</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-500 font-semibold mb-1">Handover / Effective Transition Date *</label>
+                  <input
+                    type="date"
+                    required
+                    value={newConsultantForm.handoverDate}
+                    onChange={(e) => setNewConsultantForm({ ...newConsultantForm, handoverDate: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="inline-flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    <input
+                      type="checkbox"
+                      checked={newConsultantForm.retainPersonnelMode === 'all'}
+                      onChange={(e) => setNewConsultantForm({ ...newConsultantForm, retainPersonnelMode: e.target.checked ? 'all' : 'none' })}
+                      className="w-4 h-4 text-amber-600 rounded focus:ring-amber-500"
+                    />
+                    <span>Retain existing active site personnel roster for the new consultant</span>
+                  </label>
+                </div>
+
+                {/* New Consultant Details Section */}
+                <div className="sm:col-span-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                  <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider block mb-2">
+                    New Successor Consultant Profile
+                  </span>
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-slate-500 font-semibold mb-1">New Consulting Firm / Lead Partner *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Associated Engineering Consultants in JV with Ethio-Roads Consulting"
+                    value={newConsultantForm.firmName}
+                    onChange={(e) => setNewConsultantForm({ ...newConsultantForm, firmName: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-bold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-500 font-semibold mb-1">Association Type</label>
+                  <select
+                    value={newConsultantForm.associationType}
+                    onChange={(e) => setNewConsultantForm({ ...newConsultantForm, associationType: e.target.value as any })}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
+                  >
+                    <option value="Joint Venture (JV)">Joint Venture (JV)</option>
+                    <option value="Lead Consultant">Lead Consultant</option>
+                    <option value="Sole Consultant">Sole Consultant</option>
+                    <option value="Association / Consortium">Association / Consortium</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-500 font-semibold mb-1">New Contract Reference No</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. ERA/CS/CONT/2026/02"
+                    value={newConsultantForm.contractRefNo}
+                    onChange={(e) => setNewConsultantForm({ ...newConsultantForm, contractRefNo: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-500 font-semibold mb-1">New Contract Fee (ETB)</label>
+                  <input
+                    type="number"
+                    value={newConsultantForm.originalFeeEtb}
+                    onChange={(e) => setNewConsultantForm({ ...newConsultantForm, originalFeeEtb: parseFloat(e.target.value) || 0, revisedFeeEtb: parseFloat(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white font-bold"
+                  />
+                </div>
+
+                {/* Optional USD Payments Toggle */}
+                <div className="sm:col-span-2">
+                  <label className="inline-flex items-center gap-2 cursor-pointer text-xs font-bold text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/40 px-3 py-1.5 rounded-xl border border-purple-200 dark:border-purple-800">
+                    <input
+                      type="checkbox"
+                      checked={newConsultantForm.enableUsdPayments}
+                      onChange={(e) => setNewConsultantForm({ ...newConsultantForm, enableUsdPayments: e.target.checked })}
+                      className="w-3.5 h-3.5 text-purple-600 rounded focus:ring-purple-500"
+                    />
+                    <span>Enable Foreign Currency (USD) Remuneration for this New Consultant</span>
+                  </label>
+                </div>
+
+                {newConsultantForm.enableUsdPayments && (
+                  <div>
+                    <label className="block text-purple-600 dark:text-purple-400 font-bold mb-1">New Foreign Fee (USD)</label>
+                    <input
+                      type="number"
+                      value={newConsultantForm.originalFeeUsd}
+                      onChange={(e) => setNewConsultantForm({ ...newConsultantForm, originalFeeUsd: parseFloat(e.target.value) || 0, revisedFeeUsd: parseFloat(e.target.value) || 0 })}
+                      className="w-full px-3 py-2 bg-purple-50/50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800 rounded-xl font-mono text-purple-700 dark:text-purple-300 font-bold"
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-slate-500 font-semibold mb-1">New Commencement Date</label>
+                  <input
+                    type="date"
+                    value={newConsultantForm.commencementDate}
+                    onChange={(e) => setNewConsultantForm({ ...newConsultantForm, commencementDate: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-500 font-semibold mb-1">New Completion Date</label>
+                  <input
+                    type="date"
+                    value={newConsultantForm.originalCompletionDate}
+                    onChange={(e) => setNewConsultantForm({ ...newConsultantForm, originalCompletionDate: e.target.value, revisedCompletionDate: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-500 font-semibold mb-1">Resident Engineer Name</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Eng. Dawit Kassa"
+                    value={newConsultantForm.residentEngineerName}
+                    onChange={(e) => setNewConsultantForm({ ...newConsultantForm, residentEngineerName: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-slate-500 font-semibold mb-1">Head Office Address</label>
+                  <input
+                    type="text"
+                    placeholder="Head Office location of new consultant"
+                    value={newConsultantForm.headOfficeAddress}
+                    onChange={(e) => setNewConsultantForm({ ...newConsultantForm, headOfficeAddress: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  onClick={() => setIsAssignNewConsultantOpen(false)}
+                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirmAssignNewConsultant}
+                  className="px-5 py-2 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white rounded-xl shadow-xs flex items-center gap-1.5"
+                >
+                  <ArrowRightLeft className="w-4 h-4" />
+                  Confirm & Archive Predecessor
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL 7: VIEW HISTORICAL CONSULTANT DOSSIER */}
+      <AnimatePresence>
+        {selectedHistoricalConsultant && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 w-full max-w-2xl shadow-xl my-8 space-y-4"
+            >
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 flex items-center justify-center text-amber-600 font-bold">
+                    <History className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-slate-900 dark:text-white">
+                      {selectedHistoricalConsultant.firmName}
+                    </h3>
+                    <span className="text-xs text-amber-600 dark:text-amber-400 font-bold">
+                      Archived Supervision Consultant Dossier
+                    </span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setSelectedHistoricalConsultant(null)}
+                  className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="space-y-3 text-xs">
+                <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400 font-semibold uppercase text-[10px]">Contract Reference</span>
+                    <span className="font-bold font-mono text-slate-900 dark:text-white">
+                      {selectedHistoricalConsultant.contractRefNo || 'N/A'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400 font-semibold uppercase text-[10px]">Service Period</span>
+                    <span className="font-bold text-slate-800 dark:text-slate-200">
+                      {selectedHistoricalConsultant.commencementDate || 'N/A'} — {selectedHistoricalConsultant.handoverDate || 'Archived'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400 font-semibold uppercase text-[10px]">Contract Fee (ETB)</span>
+                    <span className="font-mono font-bold text-blue-600 dark:text-blue-400">
+                      {formatAccounting(selectedHistoricalConsultant.revisedFeeEtb || selectedHistoricalConsultant.originalFeeEtb || 0, 'ETB')}
+                    </span>
+                  </div>
+                  {selectedHistoricalConsultant.enableUsdPayments && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-400 font-semibold uppercase text-[10px]">Foreign Fee (USD)</span>
+                      <span className="font-mono font-bold text-purple-600 dark:text-purple-400">
+                        ${formatAccounting(selectedHistoricalConsultant.revisedFeeUsd || selectedHistoricalConsultant.originalFeeUsd || 0, '')}
+                      </span>
+                    </div>
+                  )}
+                  {selectedHistoricalConsultant.headOfficeAddress && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-400 font-semibold uppercase text-[10px]">Head Office</span>
+                      <span className="font-semibold text-slate-800 dark:text-slate-200 text-right max-w-xs truncate">
+                        {selectedHistoricalConsultant.headOfficeAddress}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <span className="text-slate-400 font-semibold uppercase text-[10px] block mb-0.5">Transition Note</span>
+                  <p className="text-slate-700 dark:text-slate-300 bg-amber-50/50 dark:bg-amber-950/20 p-2.5 rounded-xl border border-amber-200 dark:border-amber-800/50">
+                    {selectedHistoricalConsultant.reasonForTransition || 'Service tenure concluded.'}
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 pt-1">
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
+                    <span className="text-slate-400 text-[10px] uppercase font-bold block">Archived Staff</span>
+                    <div className="text-base font-black text-slate-900 dark:text-white mt-0.5">
+                      {selectedHistoricalConsultant.personnel?.length || 0} Personnel
+                    </div>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
+                    <span className="text-slate-400 text-[10px] uppercase font-bold block">Archived Invoices</span>
+                    <div className="text-base font-black text-slate-900 dark:text-white mt-0.5">
+                      {selectedHistoricalConsultant.invoices?.length || 0} Invoices
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end pt-3 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  onClick={() => setSelectedHistoricalConsultant(null)}
+                  className="px-4 py-2 text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl"
+                >
+                  Close Dossier
                 </button>
               </div>
             </motion.div>

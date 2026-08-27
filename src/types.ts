@@ -347,6 +347,8 @@ export interface Project {
   ipcTracker?: IpcItem[];
   usdExchangeRate?: number;
   annualInterestRate?: number;
+  enableUsdPayments?: boolean; // When true, enables foreign currency (USD) tracking in Financial Data / IPCs
+  hasForeignCurrency?: boolean;
   risks?: RiskItem[];
   issues?: IssueLogItem[];
   aiChatHistory?: any[];
@@ -391,6 +393,43 @@ export interface ConsultantInvoice {
   attachmentName?: string;
 }
 
+export interface HistoricalSupervisionConsultant {
+  id: string;
+  firmName: string;
+  associationType?: string;
+  jvPartners?: string;
+  contractRefNo: string;
+  commencementDate: string;
+  originalCompletionDate?: string;
+  revisedCompletionDate?: string;
+  handoverDate: string; // Date transition occurred
+  transitionReason?: string;
+  reasonForTransition?: string;
+  transitionNotes?: string;
+  originalFeeEtb?: number;
+  revisedFeeEtb?: number;
+  enableUsdPayments?: boolean;
+  originalFeeUsd?: number;
+  revisedFeeUsd?: number;
+  totalInvoicedEtb?: number;
+  totalPaidEtb?: number;
+  residentEngineerName?: string;
+  residentEngineerPhone?: string;
+  residentEngineerEmail?: string;
+  headOfficeAddress?: string;
+  headOfficePhone?: string;
+  headOfficeEmail?: string;
+  headOfficeContactPerson?: string;
+  siteOfficeLocation?: string;
+  scopeOfServices?: string;
+  personnelSnapshotCount?: number;
+  invoicesSnapshotCount?: number;
+  archivedAt: string;
+  archivedBy?: string;
+  personnel?: ConsultantPersonnel[];
+  invoices?: ConsultantInvoice[];
+}
+
 export interface SupervisionConsultantInfo {
   firmName: string;
   associationType?: 'Lead Consultant' | 'Joint Venture (JV)' | 'Sole Consultant' | 'Association / Consortium';
@@ -402,6 +441,7 @@ export interface SupervisionConsultantInfo {
   revisedCompletionDate?: string;
   originalFeeEtb: number;
   revisedFeeEtb?: number;
+  enableUsdPayments?: boolean; // When true, enables foreign USD currency tracking and invoices
   originalFeeUsd?: number;
   revisedFeeUsd?: number;
   contractType?: 'Time-Based' | 'Lump-Sum' | 'Percentage of Works' | 'Hybrid';
@@ -409,11 +449,15 @@ export interface SupervisionConsultantInfo {
   residentEngineerPhone?: string;
   residentEngineerEmail?: string;
   headOfficeAddress?: string;
+  headOfficePhone?: string;
+  headOfficeEmail?: string;
+  headOfficeContactPerson?: string;
   siteOfficeLocation?: string;
   scopeOfServices?: string;
   performanceRating?: 'Outstanding' | 'Satisfactory' | 'Needs Improvement' | 'Critical';
   personnel: ConsultantPersonnel[];
   invoices: ConsultantInvoice[];
+  previousConsultants?: HistoricalSupervisionConsultant[]; // Archive of predecessor supervision consultants
 }
 
 export interface ProjectDocument {

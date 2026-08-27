@@ -41,7 +41,8 @@ export function calculateIpcMaturation(
   ipc: IpcItem,
   defaultAnnualRate: number = 16.5,
   exchangeRate: number = 57.5,
-  referenceDate: Date = new Date()
+  referenceDate: Date = new Date(),
+  enableUsd: boolean = true
 ): IpcMaturationDetails {
   const etbStatus = ipc.statusEtb || ipc.status || 'Unpaid';
   const usdStatus = ipc.statusUsd || ipc.status || 'Unpaid';
@@ -52,10 +53,10 @@ export function calculateIpcMaturation(
   const isUsdPartiallyPaid = usdStatus === 'Partially Paid';
 
   const etbRatio = isEtbUnpaid ? 1.0 : isEtbPartiallyPaid ? 0.5 : 0.0;
-  const usdRatio = isUsdUnpaid ? 1.0 : isUsdPartiallyPaid ? 0.5 : 0.0;
+  const usdRatio = !enableUsd ? 0.0 : (isUsdUnpaid ? 1.0 : isUsdPartiallyPaid ? 0.5 : 0.0);
 
   const totalCertEtb = ipc.certifiedEtb || 0;
-  const totalCertUsd = ipc.certifiedUsd || 0;
+  const totalCertUsd = enableUsd ? (ipc.certifiedUsd || 0) : 0;
 
   const unpaidCertifiedEtb = totalCertEtb * etbRatio;
   const paidCertifiedEtb = totalCertEtb * (1 - etbRatio);
@@ -63,7 +64,7 @@ export function calculateIpcMaturation(
   const unpaidCertifiedUsd = totalCertUsd * usdRatio;
   const paidCertifiedUsd = totalCertUsd * (1 - usdRatio);
 
-  const isFullyPaid = etbRatio === 0 && usdRatio === 0;
+  const isFullyPaid = etbRatio === 0 && (!enableUsd || usdRatio === 0);
 
   let daysElapsed = 0;
   let dueDate: string | null = null;
@@ -93,23 +94,23 @@ export function calculateIpcMaturation(
   const dailyRate = (annualInterestRate / 100) / 365;
 
   const autoAccruedInterestEtb = overdueDays > 0 ? unpaidCertifiedEtb * dailyRate * overdueDays : 0;
-  const autoAccruedInterestUsd = overdueDays > 0 ? unpaidCertifiedUsd * dailyRate * overdueDays : 0;
+  const autoAccruedInterestUsd = enableUsd && overdueDays > 0 ? unpaidCertifiedUsd * dailyRate * overdueDays : 0;
 
   const isCustomDelayInterest = ipc.delayInterestEtb !== undefined && ipc.delayInterestEtb !== null;
   const accruedInterestEtb = isCustomDelayInterest 
     ? (Number(ipc.delayInterestEtb) || 0) 
     : autoAccruedInterestEtb;
 
-  const isCustomDelayInterestUsd = ipc.delayInterestUsd !== undefined && ipc.delayInterestUsd !== null;
-  const accruedInterestUsd = isCustomDelayInterestUsd 
+  const isCustomDelayInterestUsd = enableUsd && ipc.delayInterestUsd !== undefined && ipc.delayInterestUsd !== null;
+  const accruedInterestUsd = !enableUsd ? 0 : (isCustomDelayInterestUsd 
     ? (Number(ipc.delayInterestUsd) || 0) 
-    : autoAccruedInterestUsd;
+    : autoAccruedInterestUsd);
 
-  const accruedInterestEqvEtb = accruedInterestEtb + (accruedInterestUsd * exchangeRate);
+  const accruedInterestEqvEtb = accruedInterestEtb + (enableUsd ? (accruedInterestUsd * exchangeRate) : 0);
 
   const totalClaimableEtb = unpaidCertifiedEtb + accruedInterestEtb;
-  const totalClaimableUsd = unpaidCertifiedUsd + accruedInterestUsd;
-  const totalClaimableEqvEtb = totalClaimableEtb + (totalClaimableUsd * exchangeRate);
+  const totalClaimableUsd = enableUsd ? (unpaidCertifiedUsd + accruedInterestUsd) : 0;
+  const totalClaimableEqvEtb = totalClaimableEtb + (enableUsd ? (totalClaimableUsd * exchangeRate) : 0);
 
   let statusBadge: IpcMaturationDetails['statusBadge'];
   if (isFullyPaid) {
@@ -201,6 +202,9 @@ export function calculateProjectIpcSummary(
   const ipcTracker = project.ipcTracker || [];
   const exchangeRate = project.usdExchangeRate !== undefined ? project.usdExchangeRate : 57.50;
   const defaultAnnualRate = project.annualInterestRate !== undefined ? project.annualInterestRate : 16.50;
+  const isUsdEnabled = project.enableUsdPayments !== undefined
+    ? Boolean(project.enableUsdPayments)
+    : Boolean(project.supervisionConsultant?.enableUsdPayments || (project.ipcTracker && project.ipcTracker.some(i => (i.certifiedUsd || 0) > 0 || (i.grossBillUsd || 0) > 0)));
 
   let totalIpcCount = ipcTracker.length;
   let paidIpcCount = 0;
@@ -214,12 +218,12 @@ export function calculateProjectIpcSummary(
   let totalAccruedInterestEqvEtb = 0;
 
   ipcTracker.forEach(ipc => {
-    const maturation = calculateIpcMaturation(ipc, defaultAnnualRate, exchangeRate, referenceDate);
-    const certEqv = (ipc.certifiedEtb || 0) + ((ipc.certifiedUsd || 0) * exchangeRate);
+    const maturation = calculateIpcMaturation(ipc, defaultAnnualRate, exchangeRate, referenceDate, isUsdEnabled);
+    const certEqv = (ipc.certifiedEtb || 0) + (isUsdEnabled ? ((ipc.certifiedUsd || 0) * exchangeRate) : 0);
     totalCertifiedEqvEtb += certEqv;
 
-    const paidEqv = maturation.paidCertifiedEtb + (maturation.paidCertifiedUsd * exchangeRate);
-    const unpaidEqv = maturation.unpaidCertifiedEtb + (maturation.unpaidCertifiedUsd * exchangeRate);
+    const paidEqv = maturation.paidCertifiedEtb + (isUsdEnabled ? (maturation.paidCertifiedUsd * exchangeRate) : 0);
+    const unpaidEqv = maturation.unpaidCertifiedEtb + (isUsdEnabled ? (maturation.unpaidCertifiedUsd * exchangeRate) : 0);
 
     totalPaidEqvEtb += paidEqv;
     totalUnpaidEqvEtb += unpaidEqv;

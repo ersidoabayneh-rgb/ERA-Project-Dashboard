@@ -366,6 +366,7 @@ export default function App() {
   const [editOrigAmount, setEditOrigAmount] = useState(0);
   const [editProvisionalSum, setEditProvisionalSum] = useState(0);
   const [editVariation, setEditVariation] = useState(0);
+  const [editEnableUsdPayments, setEditEnableUsdPayments] = useState(false);
   const [editLengthKm, setEditLengthKm] = useState(0);
   const [editClassification, setEditClassification] = useState('');
   const [editContractType, setEditContractType] = useState<'DB' | 'DBB'>('DBB');
@@ -407,6 +408,7 @@ export default function App() {
       setEditOrigAmount(currentProject.origAmount || 0);
       setEditProvisionalSum(currentProject.provisionalSum || 0);
       setEditVariation(currentProject.variation || 0);
+      setEditEnableUsdPayments(currentProject.enableUsdPayments !== undefined ? Boolean(currentProject.enableUsdPayments) : Boolean(currentProject.supervisionConsultant?.enableUsdPayments));
       setEditLengthKm(currentProject.lengthKm || 0);
       setEditClassification(currentProject.classification || '');
       setEditContractType(currentProject.contractType || 'DBB');
@@ -2361,6 +2363,7 @@ let isBatchSyncRunning = false;
       origAmount: editOrigAmount,
       provisionalSum: editProvisionalSum,
       variation: editVariation,
+      enableUsdPayments: editEnableUsdPayments,
       lengthKm: editLengthKm,
       classification: editClassification,
       contractType: editContractType,
@@ -2903,6 +2906,7 @@ let isBatchSyncRunning = false;
                                 setEditOrigAmount(currentProject.origAmount);
                                 setEditProvisionalSum(currentProject.provisionalSum);
                                 setEditVariation(currentProject.variation);
+                                setEditEnableUsdPayments(currentProject.enableUsdPayments !== undefined ? Boolean(currentProject.enableUsdPayments) : Boolean(currentProject.supervisionConsultant?.enableUsdPayments));
                                 setEditLengthKm(currentProject.lengthKm);
                                 setEditClassification(currentProject.classification);
                                 setEditContractType(currentProject.contractType);
@@ -3030,6 +3034,19 @@ let isBatchSyncRunning = false;
                             <AnimatedCounter value={(currentProject.origAmount + currentProject.variation) * 1_000_000} prefix="Br. " />
                           </span>
                           <span className="text-[8px] text-slate-400 block font-sans font-normal mt-0.5">Calculating Original Contract Amount plus Approved Variations</span>
+                        </div>
+
+                        <div className="space-y-1 border-t border-dashed border-slate-200 dark:border-slate-800 pt-2 mt-2">
+                          <span className="text-[9px] text-slate-400 block font-mono">CURRENCY REMUNERATION</span>
+                          <span className={`inline-flex items-center gap-1 font-bold text-[10px] px-2 py-0.5 rounded-md ${
+                            (currentProject.enableUsdPayments !== undefined ? currentProject.enableUsdPayments : currentProject.supervisionConsultant?.enableUsdPayments)
+                              ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
+                              : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
+                          }`}>
+                            {(currentProject.enableUsdPayments !== undefined ? currentProject.enableUsdPayments : currentProject.supervisionConsultant?.enableUsdPayments)
+                              ? '💵 Dual (ETB + USD)'
+                              : '🇪🇹 ETB Only'}
+                          </span>
                         </div>
                       </div>
 
@@ -3212,6 +3229,22 @@ let isBatchSyncRunning = false;
                             onChange={(e) => setEditVariation(parseFloat(e.target.value) || 0)}
                             className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1 text-slate-850 dark:text-zinc-150 outline-none font-mono"
                           />
+                        </div>
+
+                        <div className="flex items-center justify-between p-2 rounded-lg bg-blue-50/50 dark:bg-blue-950/30 border border-blue-200/60 dark:border-blue-900/40">
+                          <div className="flex flex-col">
+                            <span className="text-[10px] font-bold text-slate-750 dark:text-zinc-150">Foreign Currency (USD) Remuneration</span>
+                            <span className="text-[9px] text-slate-400">Enable USD certified columns and foreign invoices</span>
+                          </div>
+                          <label className="relative inline-flex items-center cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={editEnableUsdPayments}
+                              onChange={(e) => setEditEnableUsdPayments(e.target.checked)}
+                              className="sr-only peer"
+                            />
+                            <div className="w-8 h-4 bg-slate-200 dark:bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-blue-600"></div>
+                          </label>
                         </div>
                       </div>
 
