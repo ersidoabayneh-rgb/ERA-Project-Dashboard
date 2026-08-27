@@ -145,6 +145,7 @@ export default function SupervisionConsultantView({
 
   // Form states for Consultant Profile
   const [consultantForm, setConsultantForm] = useState<SupervisionConsultantInfo>(consultant);
+  const [editModalSection, setEditModalSection] = useState<'all' | 'firm' | 'financial' | 'dates' | 'headOffice' | 'residentEngineer' | 'scope'>('all');
 
   // Form state for Quick Head Office Edit
   const [headOfficeForm, setHeadOfficeForm] = useState({
@@ -403,12 +404,21 @@ export default function SupervisionConsultantView({
 
   // Handler for saving Consultant General Profile
   const handleSaveConsultantProfile = () => {
-    saveConsultantData(consultantForm, 'Updated consultant contract & profile');
+    const updatedConsultant: SupervisionConsultantInfo = {
+      ...consultant,
+      ...consultantForm,
+      originalFeeEtb: Number(consultantForm.originalFeeEtb) || 0,
+      revisedFeeEtb: Number(consultantForm.revisedFeeEtb) || Number(consultantForm.originalFeeEtb) || 0,
+      enableUsdPayments: Boolean(consultantForm.enableUsdPayments),
+      originalFeeUsd: consultantForm.enableUsdPayments ? Number(consultantForm.originalFeeUsd) || 0 : 0,
+      revisedFeeUsd: consultantForm.enableUsdPayments ? Number(consultantForm.revisedFeeUsd) || Number(consultantForm.originalFeeUsd) || 0 : 0,
+    };
+    saveConsultantData(updatedConsultant, 'Updated supervision consultant contract details & specifications');
     setHeadOfficeForm({
-      headOfficeAddress: consultantForm.headOfficeAddress || '',
-      headOfficePhone: consultantForm.headOfficePhone || '',
-      headOfficeEmail: consultantForm.headOfficeEmail || '',
-      headOfficeContactPerson: consultantForm.headOfficeContactPerson || ''
+      headOfficeAddress: updatedConsultant.headOfficeAddress || '',
+      headOfficePhone: updatedConsultant.headOfficePhone || '',
+      headOfficeEmail: updatedConsultant.headOfficeEmail || '',
+      headOfficeContactPerson: updatedConsultant.headOfficeContactPerson || ''
     });
     setIsEditConsultantOpen(false);
   };
@@ -1044,6 +1054,7 @@ export default function SupervisionConsultantView({
                 <button
                   onClick={() => {
                     setConsultantForm(consultant);
+                    setEditModalSection('all');
                     setIsEditConsultantOpen(true);
                   }}
                   className="px-3.5 py-2 text-xs font-bold rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center gap-1.5 transition shadow-xs"
@@ -1808,6 +1819,7 @@ export default function SupervisionConsultantView({
                   <button
                     onClick={() => {
                       setConsultantForm(consultant);
+                      setEditModalSection('all');
                       setIsEditConsultantOpen(true);
                     }}
                     className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
@@ -2174,317 +2186,578 @@ export default function SupervisionConsultantView({
         </div>
       )}
 
-      {/* MODAL 1: EDIT CONSULTANT GENERAL INFO */}
+      {/* MODAL 1: EDIT CONSULTANT GENERAL CONTRACT DETAILS */}
       <AnimatePresence>
         {isEditConsultantOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-sm overflow-hidden">
             <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 w-full max-w-2xl shadow-xl my-8 space-y-4"
+              initial={{ opacity: 0, scale: 0.96, y: 12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 12 }}
+              transition={{ duration: 0.2 }}
+              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-4xl shadow-2xl max-h-[92vh] flex flex-col overflow-hidden"
             >
-              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-                <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                  <Building2 className="w-5 h-5 text-blue-600" />
-                  Edit Supervision Consultant Contract Details
-                </h3>
-                <button
-                  onClick={() => setIsEditConsultantOpen(false)}
-                  className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400"
-                >
-                  <X className="w-4 h-4" />
-                </button>
+              {/* Sticky Header */}
+              <div className="p-5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/80 backdrop-blur-md shrink-0 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold shadow-xs">
+                      <Building2 className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                        Edit Supervision Consultant Contract Details
+                        <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                          {consultantForm.contractRefNo || 'Contract Profile'}
+                        </span>
+                      </h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        Update consulting entity particulars, remuneration structures, milestone dates, headquarters liaison, and site representatives.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsEditConsultantOpen(false)}
+                    className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Section Quick Filter / Navigation Pills */}
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 custom-scrollbar text-xs">
+                  <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mr-1 shrink-0">
+                    Jump to:
+                  </span>
+                  {[
+                    { id: 'all', label: 'All Sections (6)' },
+                    { id: 'firm', label: '1. Firm & JV' },
+                    { id: 'financial', label: '2. Remuneration' },
+                    { id: 'dates', label: '3. Timeline & Dates' },
+                    { id: 'headOffice', label: '4. Head Office' },
+                    { id: 'residentEngineer', label: '5. Resident Engineer' },
+                    { id: 'scope', label: '6. Scope of Services' }
+                  ].map((sec) => (
+                    <button
+                      key={sec.id}
+                      type="button"
+                      onClick={() => setEditModalSection(sec.id as any)}
+                      className={`px-3 py-1.5 rounded-xl font-medium whitespace-nowrap transition-all text-xs flex items-center gap-1.5 ${
+                        editModalSection === sec.id
+                          ? 'bg-blue-600 text-white shadow-xs font-bold'
+                          : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/60 border border-slate-200 dark:border-slate-700'
+                      }`}
+                    >
+                      {sec.label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                <div className="sm:col-span-2">
-                  <label className="block text-slate-500 font-semibold mb-1">Consulting Firm / Lead JV Name</label>
-                  <input
-                    type="text"
-                    value={consultantForm.firmName}
-                    onChange={(e) => setConsultantForm({ ...consultantForm, firmName: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">Association Type</label>
-                  <select
-                    value={consultantForm.associationType || 'Joint Venture (JV)'}
-                    onChange={(e) => setConsultantForm({ ...consultantForm, associationType: e.target.value as any })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
-                  >
-                    <option value="Joint Venture (JV)">Joint Venture (JV)</option>
-                    <option value="Lead Consultant">Lead Consultant</option>
-                    <option value="Sole Consultant">Sole Consultant</option>
-                    <option value="Association / Consortium">Association / Consortium</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">Contract Reference Number</label>
-                  <input
-                    type="text"
-                    value={consultantForm.contractRefNo}
-                    onChange={(e) => setConsultantForm({ ...consultantForm, contractRefNo: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-mono"
-                  />
-                </div>
-
-                <div className="sm:col-span-2">
-                  <label className="block text-slate-500 font-semibold mb-1">JV Partners & Local Associate Details</label>
-                  <input
-                    type="text"
-                    value={consultantForm.jvPartners || ''}
-                    onChange={(e) => setConsultantForm({ ...consultantForm, jvPartners: e.target.value })}
-                    placeholder="e.g. Lead Firm (India) & Local Engineering Partner (Ethiopia)"
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
-                  />
-                </div>
-
-                {/* Contract Fee Structure (ETB & Optional USD) */}
-                <div className="sm:col-span-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-                      Contract Fee Structure
-                    </span>
-                    <label className="inline-flex items-center gap-2 cursor-pointer text-xs font-bold text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/40 px-2.5 py-1 rounded-xl border border-purple-200 dark:border-purple-800">
-                      <input
-                        type="checkbox"
-                        checked={!!consultantForm.enableUsdPayments}
-                        onChange={(e) => setConsultantForm({ ...consultantForm, enableUsdPayments: e.target.checked })}
-                        className="w-3.5 h-3.5 text-purple-600 rounded focus:ring-purple-500"
-                      />
-                      <span>Enable Foreign Currency (USD) Remuneration</span>
-                    </label>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">Original Contract Fee (ETB)</label>
-                  <input
-                    type="number"
-                    value={consultantForm.originalFeeEtb || 0}
-                    onChange={(e) => setConsultantForm({ ...consultantForm, originalFeeEtb: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">Revised Contract Fee (ETB)</label>
-                  <input
-                    type="number"
-                    value={consultantForm.revisedFeeEtb || 0}
-                    onChange={(e) => setConsultantForm({ ...consultantForm, revisedFeeEtb: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white"
-                  />
-                </div>
-
-                {consultantForm.enableUsdPayments ? (
-                  <>
-                    <div>
-                      <label className="block text-purple-600 dark:text-purple-400 font-bold mb-1">Original Foreign Fee (USD)</label>
-                      <input
-                        type="number"
-                        value={consultantForm.originalFeeUsd || 0}
-                        onChange={(e) => setConsultantForm({ ...consultantForm, originalFeeUsd: parseFloat(e.target.value) || 0 })}
-                        className="w-full px-3 py-2 bg-purple-50/50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800 rounded-xl font-mono text-purple-700 dark:text-purple-300 font-bold"
-                      />
+              {/* Scrollable Form Body */}
+              <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-6 text-xs custom-scrollbar">
+                
+                {/* SECTION 1: FIRM IDENTIFICATION & ASSOCIATION */}
+                {(editModalSection === 'all' || editModalSection === 'firm') && (
+                  <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/80 space-y-4">
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-700">
+                      <div className="flex items-center gap-2">
+                        <Building2 className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
+                          Section 1: Consulting Entity & Association Structure
+                        </h4>
+                      </div>
+                      <span className="text-[11px] font-mono text-slate-500 bg-white dark:bg-slate-800 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-700">
+                        {consultantForm.associationType || 'Joint Venture (JV)'}
+                      </span>
                     </div>
 
-                    <div>
-                      <label className="block text-purple-600 dark:text-purple-400 font-bold mb-1">Revised Foreign Fee (USD)</label>
-                      <input
-                        type="number"
-                        value={consultantForm.revisedFeeUsd || 0}
-                        onChange={(e) => setConsultantForm({ ...consultantForm, revisedFeeUsd: parseFloat(e.target.value) || 0 })}
-                        className="w-full px-3 py-2 bg-purple-50/50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800 rounded-xl font-mono text-purple-700 dark:text-purple-300 font-bold"
-                      />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                      <div className="sm:col-span-2">
+                        <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                          Consulting Firm / Lead Partner Name <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={consultantForm.firmName}
+                          onChange={(e) => setConsultantForm({ ...consultantForm, firmName: e.target.value })}
+                          placeholder="e.g. Associated Engineering Consultants in JV with Ethio-Roads Consulting"
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white font-medium shadow-xs"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                          Association Type
+                        </label>
+                        <select
+                          value={consultantForm.associationType || 'Joint Venture (JV)'}
+                          onChange={(e) => setConsultantForm({ ...consultantForm, associationType: e.target.value as any })}
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white shadow-xs font-medium"
+                        >
+                          <option value="Joint Venture (JV)">Joint Venture (JV)</option>
+                          <option value="Lead Consultant">Lead Consultant</option>
+                          <option value="Sole Consultant">Sole Consultant</option>
+                          <option value="Association / Consortium">Association / Consortium</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                          Contract Agreement Reference Number
+                        </label>
+                        <input
+                          type="text"
+                          value={consultantForm.contractRefNo || ''}
+                          onChange={(e) => setConsultantForm({ ...consultantForm, contractRefNo: e.target.value })}
+                          placeholder="e.g. ERA/CS/CONT/2026/01"
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white font-mono shadow-xs"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                          Contract Remuneration Model
+                        </label>
+                        <select
+                          value={consultantForm.contractType || 'Time-Based'}
+                          onChange={(e) => setConsultantForm({ ...consultantForm, contractType: e.target.value as any })}
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white shadow-xs font-medium"
+                        >
+                          <option value="Time-Based">Time-Based (Man-Months & Reimbursables)</option>
+                          <option value="Lump-Sum">Lump-Sum Fixed Fee</option>
+                          <option value="Percentage of Works">Percentage of Civil Works</option>
+                          <option value="Hybrid">Hybrid (Time-Based + Milestone Fees)</option>
+                        </select>
+                      </div>
+
+                      <div className="sm:col-span-2">
+                        <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                          JV Partners & Associate Details
+                        </label>
+                        <input
+                          type="text"
+                          value={consultantForm.jvPartners || ''}
+                          onChange={(e) => setConsultantForm({ ...consultantForm, jvPartners: e.target.value })}
+                          placeholder="e.g. Lead Partner (India - 65%) & Local Engineering Consultant (Ethiopia - 35%)"
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white shadow-xs"
+                        />
+                      </div>
                     </div>
-                  </>
-                ) : (
-                  <div className="sm:col-span-2 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 text-[11px] text-slate-500">
-                    ℹ️ USD Foreign payments are currently <strong>disabled</strong> for this project contract. All supervision invoices and commitments will default strictly to local currency (ETB).
                   </div>
                 )}
 
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">Performance Rating</label>
-                  <select
-                    value={consultantForm.performanceRating || 'Satisfactory'}
-                    onChange={(e) => setConsultantForm({ ...consultantForm, performanceRating: e.target.value as any })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
-                  >
-                    <option value="Outstanding">Outstanding</option>
-                    <option value="Satisfactory">Satisfactory</option>
-                    <option value="Needs Improvement">Needs Improvement</option>
-                    <option value="Critical">Critical</option>
-                  </select>
-                </div>
+                {/* SECTION 2: FINANCIAL REMUNERATION & CURRENCY OUTLAY */}
+                {(editModalSection === 'all' || editModalSection === 'financial') && (
+                  <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/80 space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-200 dark:border-slate-700">
+                      <div className="flex items-center gap-2">
+                        <DollarSign className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
+                          Section 2: Contract Financial Remuneration & Fees
+                        </h4>
+                      </div>
 
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">Signing Date</label>
-                  <input
-                    type="date"
-                    value={consultantForm.contractSignDate || ''}
-                    onChange={(e) => setConsultantForm({ ...consultantForm, contractSignDate: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white"
-                  />
-                </div>
+                      {/* Foreign Currency USD Toggle */}
+                      <label className="inline-flex items-center gap-2 cursor-pointer text-xs font-bold text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/50 px-3 py-1.5 rounded-xl border border-purple-200 dark:border-purple-800 hover:bg-purple-100 dark:hover:bg-purple-900/40 transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={!!consultantForm.enableUsdPayments}
+                          onChange={(e) => setConsultantForm({ ...consultantForm, enableUsdPayments: e.target.checked })}
+                          className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
+                        />
+                        <span>Enable Foreign Currency (USD) Remuneration</span>
+                      </label>
+                    </div>
 
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">Commencement Date</label>
-                  <input
-                    type="date"
-                    value={consultantForm.commencementDate || ''}
-                    onChange={(e) => setConsultantForm({ ...consultantForm, commencementDate: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white"
-                  />
-                </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                      <div>
+                        <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                          Original Contract Fee (ETB) <span className="text-red-500">*</span>
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            min="0"
+                            step="any"
+                            value={consultantForm.originalFeeEtb || 0}
+                            onChange={(e) => setConsultantForm({ ...consultantForm, originalFeeEtb: parseFloat(e.target.value) || 0 })}
+                            className="w-full pl-12 pr-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 font-mono text-slate-900 dark:text-white font-bold shadow-xs"
+                          />
+                          <span className="absolute left-3 top-2.5 font-bold text-slate-400 font-mono text-[11px]">
+                            ETB
+                          </span>
+                        </div>
+                      </div>
 
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">Original Completion Date</label>
-                  <input
-                    type="date"
-                    value={consultantForm.originalCompletionDate || ''}
-                    onChange={(e) => setConsultantForm({ ...consultantForm, originalCompletionDate: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white"
-                  />
-                </div>
+                      <div>
+                        <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                          Revised / Approved Contract Fee (ETB) <span className="text-red-500">*</span>
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            min="0"
+                            step="any"
+                            value={consultantForm.revisedFeeEtb || 0}
+                            onChange={(e) => setConsultantForm({ ...consultantForm, revisedFeeEtb: parseFloat(e.target.value) || 0 })}
+                            className="w-full pl-12 pr-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 font-mono text-slate-900 dark:text-white font-bold shadow-xs"
+                          />
+                          <span className="absolute left-3 top-2.5 font-bold text-slate-400 font-mono text-[11px]">
+                            ETB
+                          </span>
+                        </div>
+                      </div>
 
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">Revised Completion Date</label>
-                  <input
-                    type="date"
-                    value={consultantForm.revisedCompletionDate || ''}
-                    onChange={(e) => setConsultantForm({ ...consultantForm, revisedCompletionDate: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white"
-                  />
-                </div>
+                      {consultantForm.enableUsdPayments ? (
+                        <>
+                          <div className="p-3.5 rounded-2xl bg-purple-50/70 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800/60 space-y-1 sm:col-span-1">
+                            <label className="block font-bold text-purple-700 dark:text-purple-300 mb-1">
+                              Original Foreign Fee (USD)
+                            </label>
+                            <div className="relative">
+                              <input
+                                type="number"
+                                min="0"
+                                step="any"
+                                value={consultantForm.originalFeeUsd || 0}
+                                onChange={(e) => setConsultantForm({ ...consultantForm, originalFeeUsd: parseFloat(e.target.value) || 0 })}
+                                className="w-full pl-12 pr-3.5 py-2 bg-white dark:bg-slate-900 border border-purple-200 dark:border-purple-700 rounded-xl focus:ring-2 focus:ring-purple-500 font-mono text-purple-700 dark:text-purple-300 font-bold shadow-xs"
+                              />
+                              <span className="absolute left-3 top-2 font-bold text-purple-400 font-mono text-[11px]">
+                                USD $
+                              </span>
+                            </div>
+                          </div>
 
-                {/* Head Office & Corporate Section */}
-                <div className="sm:col-span-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-                  <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider block mb-2">
-                    Head Office & Corporate Liaison
-                  </span>
-                </div>
+                          <div className="p-3.5 rounded-2xl bg-purple-50/70 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800/60 space-y-1 sm:col-span-1">
+                            <label className="block font-bold text-purple-700 dark:text-purple-300 mb-1">
+                              Revised Foreign Fee (USD)
+                            </label>
+                            <div className="relative">
+                              <input
+                                type="number"
+                                min="0"
+                                step="any"
+                                value={consultantForm.revisedFeeUsd || 0}
+                                onChange={(e) => setConsultantForm({ ...consultantForm, revisedFeeUsd: parseFloat(e.target.value) || 0 })}
+                                className="w-full pl-12 pr-3.5 py-2 bg-white dark:bg-slate-900 border border-purple-200 dark:border-purple-700 rounded-xl focus:ring-2 focus:ring-purple-500 font-mono text-purple-700 dark:text-purple-300 font-bold shadow-xs"
+                              />
+                              <span className="absolute left-3 top-2 font-bold text-purple-400 font-mono text-[11px]">
+                                USD $
+                              </span>
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="sm:col-span-2 p-3 rounded-xl bg-slate-100/80 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex items-center gap-2.5 text-slate-500 dark:text-slate-400">
+                          <Info className="w-4 h-4 text-slate-400 shrink-0" />
+                          <span>
+                            Foreign currency (USD) payments are currently <strong>disabled</strong>. Check the toggle above to enable dual-currency billing (ETB + USD).
+                          </span>
+                        </div>
+                      )}
 
-                <div className="sm:col-span-2">
-                  <label className="block text-slate-500 font-semibold mb-1">Head Office Physical Address</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Bole Sub-City, Wordea 03, House #412, Addis Ababa, Ethiopia"
-                    value={consultantForm.headOfficeAddress || ''}
-                    onChange={(e) => setConsultantForm({ ...consultantForm, headOfficeAddress: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
-                  />
-                </div>
+                      <div className="sm:col-span-2">
+                        <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                          Consultant Performance & Quality Evaluation Rating
+                        </label>
+                        <select
+                          value={consultantForm.performanceRating || 'Satisfactory'}
+                          onChange={(e) => setConsultantForm({ ...consultantForm, performanceRating: e.target.value as any })}
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white font-medium shadow-xs"
+                        >
+                          <option value="Outstanding">Outstanding (Exceeding FIDIC & Client Milestones)</option>
+                          <option value="Satisfactory">Satisfactory (Meeting All Quality & Schedule Deliverables)</option>
+                          <option value="Needs Improvement">Needs Improvement (Delayed Reviews or Staffing Gaps)</option>
+                          <option value="Critical">Critical (Significant Non-Compliance / Formal Warning)</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">Head Office Contact Person / Liaison</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Dr. Eng. Tamrat Haile (Managing Director)"
-                    value={consultantForm.headOfficeContactPerson || ''}
-                    onChange={(e) => setConsultantForm({ ...consultantForm, headOfficeContactPerson: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
-                  />
-                </div>
+                {/* SECTION 3: KEY DATES, TIMELINE & SERVICE PERIOD */}
+                {(editModalSection === 'all' || editModalSection === 'dates') && (
+                  <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/80 space-y-4">
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-700">
+                      <div className="flex items-center gap-2">
+                        <Calendar className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
+                          Section 3: Key Contractual Dates & Timeline Milestones
+                        </h4>
+                      </div>
+                      <span className="text-[11px] font-mono text-indigo-600 dark:text-indigo-400 font-semibold bg-indigo-50 dark:bg-indigo-950/60 px-2.5 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-800">
+                        {consultantForm.commencementDate ? `Commenced: ${consultantForm.commencementDate}` : 'Commencement Pending'}
+                      </span>
+                    </div>
 
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">Head Office Phone</label>
-                  <input
-                    type="text"
-                    placeholder="+251 11 661 2345"
-                    value={consultantForm.headOfficePhone || ''}
-                    onChange={(e) => setConsultantForm({ ...consultantForm, headOfficePhone: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white"
-                  />
-                </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                      <div>
+                        <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                          Contract Signing Date
+                        </label>
+                        <input
+                          type="date"
+                          value={consultantForm.contractSignDate || ''}
+                          onChange={(e) => setConsultantForm({ ...consultantForm, contractSignDate: e.target.value })}
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 font-mono text-slate-900 dark:text-white shadow-xs font-medium"
+                        />
+                      </div>
 
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">Head Office Corporate Email</label>
-                  <input
-                    type="email"
-                    placeholder="info@consultancy.com"
-                    value={consultantForm.headOfficeEmail || ''}
-                    onChange={(e) => setConsultantForm({ ...consultantForm, headOfficeEmail: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
-                  />
-                </div>
+                      <div>
+                        <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                          Supervision Commencement Date <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="date"
+                          required
+                          value={consultantForm.commencementDate || ''}
+                          onChange={(e) => setConsultantForm({ ...consultantForm, commencementDate: e.target.value })}
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 font-mono text-slate-900 dark:text-white shadow-xs font-bold text-blue-600 dark:text-blue-400"
+                        />
+                      </div>
 
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">Site Camp / Office Location</label>
-                  <input
-                    type="text"
-                    value={consultantForm.siteOfficeLocation || ''}
-                    onChange={(e) => setConsultantForm({ ...consultantForm, siteOfficeLocation: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
-                  />
-                </div>
+                      <div>
+                        <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                          Original Contract Completion Date <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="date"
+                          required
+                          value={consultantForm.originalCompletionDate || ''}
+                          onChange={(e) => setConsultantForm({ ...consultantForm, originalCompletionDate: e.target.value })}
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 font-mono text-slate-900 dark:text-white shadow-xs font-medium"
+                        />
+                      </div>
 
-                {/* Resident Engineer Profile Fields */}
-                <div className="sm:col-span-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-                  <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider block mb-2">
-                    Resident Engineer (FIDIC Site Representative)
-                  </span>
-                </div>
+                      <div>
+                        <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                          Revised / Approved Completion Date (EOT)
+                        </label>
+                        <input
+                          type="date"
+                          value={consultantForm.revisedCompletionDate || ''}
+                          onChange={(e) => setConsultantForm({ ...consultantForm, revisedCompletionDate: e.target.value })}
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 font-mono text-slate-900 dark:text-white shadow-xs font-bold text-amber-600 dark:text-amber-400"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
 
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">Resident Engineer Name</label>
-                  <input
-                    type="text"
-                    value={consultantForm.residentEngineerName || ''}
-                    onChange={(e) => setConsultantForm({ ...consultantForm, residentEngineerName: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
-                  />
-                </div>
+                {/* SECTION 4: HEAD OFFICE & CORPORATE HEADQUARTERS DETAILS */}
+                {(editModalSection === 'all' || editModalSection === 'headOffice') && (
+                  <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/80 space-y-4">
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-700">
+                      <div className="flex items-center gap-2">
+                        <MapPin className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
+                          Section 4: Head Office & Corporate Liaison
+                        </h4>
+                      </div>
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                        HQ Communications & Official Notices
+                      </span>
+                    </div>
 
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">Resident Engineer Phone</label>
-                  <input
-                    type="text"
-                    value={consultantForm.residentEngineerPhone || ''}
-                    onChange={(e) => setConsultantForm({ ...consultantForm, residentEngineerPhone: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white"
-                  />
-                </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                      <div className="sm:col-span-2">
+                        <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                          Head Office Physical Address
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Bole Sub-City, Woreda 03, House #412, Addis Ababa, Ethiopia"
+                          value={consultantForm.headOfficeAddress || ''}
+                          onChange={(e) => setConsultantForm({ ...consultantForm, headOfficeAddress: e.target.value })}
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white shadow-xs"
+                        />
+                      </div>
 
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">Resident Engineer Email</label>
-                  <input
-                    type="email"
-                    value={consultantForm.residentEngineerEmail || ''}
-                    onChange={(e) => setConsultantForm({ ...consultantForm, residentEngineerEmail: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
-                  />
-                </div>
+                      <div>
+                        <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                          Authorized Representative / Contact Person
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Dr. Eng. Tamrat Haile (Managing Director)"
+                          value={consultantForm.headOfficeContactPerson || ''}
+                          onChange={(e) => setConsultantForm({ ...consultantForm, headOfficeContactPerson: e.target.value })}
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white shadow-xs"
+                        />
+                      </div>
 
-                <div className="sm:col-span-2">
-                  <label className="block text-slate-500 font-semibold mb-1">Scope of Services Summary</label>
-                  <textarea
-                    rows={2}
-                    value={consultantForm.scopeOfServices || ''}
-                    onChange={(e) => setConsultantForm({ ...consultantForm, scopeOfServices: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
-                  />
-                </div>
+                      <div>
+                        <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                          Corporate Phone Number
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="+251 11 661 2345"
+                          value={consultantForm.headOfficePhone || ''}
+                          onChange={(e) => setConsultantForm({ ...consultantForm, headOfficePhone: e.target.value })}
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 font-mono text-slate-900 dark:text-white shadow-xs"
+                        />
+                      </div>
+
+                      <div className="sm:col-span-2">
+                        <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                          Corporate Official Email Address
+                        </label>
+                        <input
+                          type="email"
+                          placeholder="contact@consultingfirm.com"
+                          value={consultantForm.headOfficeEmail || ''}
+                          onChange={(e) => setConsultantForm({ ...consultantForm, headOfficeEmail: e.target.value })}
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white shadow-xs"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* SECTION 5: RESIDENT ENGINEER & SITE SUPERVISION */}
+                {(editModalSection === 'all' || editModalSection === 'residentEngineer') && (
+                  <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/80 space-y-4">
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-700">
+                      <div className="flex items-center gap-2">
+                        <UserCheck className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
+                          Section 5: Resident Engineer & Site Supervision (FIDIC Representative)
+                        </h4>
+                      </div>
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                        Engineer's Representative on Site
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                      <div>
+                        <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                          Resident Engineer / Team Leader Full Name
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Eng. Yohannes Bekele"
+                          value={consultantForm.residentEngineerName || ''}
+                          onChange={(e) => setConsultantForm({ ...consultantForm, residentEngineerName: e.target.value })}
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white font-medium shadow-xs"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                          Site Camp / Base Office Location
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Station Km 42+000 Camp, Robe Base"
+                          value={consultantForm.siteOfficeLocation || ''}
+                          onChange={(e) => setConsultantForm({ ...consultantForm, siteOfficeLocation: e.target.value })}
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white shadow-xs"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                          Resident Engineer Direct Phone
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="+251 91 123 4567"
+                          value={consultantForm.residentEngineerPhone || ''}
+                          onChange={(e) => setConsultantForm({ ...consultantForm, residentEngineerPhone: e.target.value })}
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 font-mono text-slate-900 dark:text-white shadow-xs"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                          Resident Engineer Official Email
+                        </label>
+                        <input
+                          type="email"
+                          placeholder="re.site@consultingfirm.com"
+                          value={consultantForm.residentEngineerEmail || ''}
+                          onChange={(e) => setConsultantForm({ ...consultantForm, residentEngineerEmail: e.target.value })}
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white shadow-xs"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* SECTION 6: SCOPE OF SERVICES & CONTRACTUAL SUMMARY */}
+                {(editModalSection === 'all' || editModalSection === 'scope') && (
+                  <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/80 space-y-4">
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-700">
+                      <div className="flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-slate-600 dark:text-slate-400" />
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
+                          Section 6: Scope of Services & FIDIC Contractual Obligations
+                        </h4>
+                      </div>
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                        Terms of Reference Summary
+                      </span>
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                        Scope of Consultancy Services & Key Obligations
+                      </label>
+                      <textarea
+                        rows={4}
+                        value={consultantForm.scopeOfServices || ''}
+                        onChange={(e) => setConsultantForm({ ...consultantForm, scopeOfServices: e.target.value })}
+                        placeholder="Detailed terms of reference: Construction supervision, quality assurance, materials testing, IPC certification, environmental and social compliance monitoring, and final as-built review."
+                        className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white shadow-xs leading-relaxed"
+                      />
+                    </div>
+                  </div>
+                )}
+
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
-                <button
-                  onClick={() => setIsEditConsultantOpen(false)}
-                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSaveConsultantProfile}
-                  className="px-5 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-xs"
-                >
-                  Save Contract Changes
-                </button>
+              {/* Sticky Footer */}
+              <div className="p-4 sm:p-5 border-t border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/90 backdrop-blur-md flex flex-wrap items-center justify-between gap-3 shrink-0">
+                <div className="flex items-center gap-3 text-xs">
+                  <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300">
+                    <span className="text-slate-400 font-medium">Total Fee (ETB):</span>
+                    <strong className="font-mono text-slate-900 dark:text-white">
+                      {formatAccounting(consultantForm.revisedFeeEtb || consultantForm.originalFeeEtb || 0, 'ETB')}
+                    </strong>
+                  </div>
+                  {consultantForm.enableUsdPayments && (
+                    <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300 font-medium">
+                      <span>USD:</span>
+                      <strong className="font-mono">
+                        {formatAccounting(consultantForm.revisedFeeUsd || consultantForm.originalFeeUsd || 0, 'USD')}
+                      </strong>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2.5 ml-auto">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditConsultantOpen(false)}
+                    className="px-4 py-2.5 text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-200/60 dark:hover:bg-slate-800 rounded-xl transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveConsultantProfile}
+                    className="px-6 py-2.5 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-md hover:shadow-lg transition-all flex items-center gap-2"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    Save Contract Changes
+                  </button>
+                </div>
               </div>
             </motion.div>
           </div>
