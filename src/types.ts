@@ -455,9 +455,26 @@ export interface SupervisionConsultantInfo {
   siteOfficeLocation?: string;
   scopeOfServices?: string;
   performanceRating?: 'Outstanding' | 'Satisfactory' | 'Needs Improvement' | 'Critical';
+  submittalKpis?: ConsultantSubmittalKpi[];
+  targetOverrides?: Record<string, number>;
   personnel: ConsultantPersonnel[];
   invoices: ConsultantInvoice[];
   previousConsultants?: HistoricalSupervisionConsultant[]; // Archive of predecessor supervision consultants
+}
+
+export interface ConsultantSubmittalKpi {
+  id: string;
+  submittalNo: string;
+  type: 'RFI' | 'Material Approval' | 'IPC Review' | 'Work Inspection (WIR)' | 'Variation Order' | 'Design Review' | 'Claim / Notice';
+  title: string;
+  submittedDate: string;
+  respondedDate?: string;
+  targetDays: number;
+  actualDays?: number;
+  status: 'Approved / Closed' | 'Approved with Comments' | 'Under Review' | 'Rejected / Resubmit' | 'Overdue';
+  priority: 'High' | 'Medium' | 'Low' | 'Critical';
+  assignedEngineer?: string;
+  notes?: string;
 }
 
 export interface ProjectDocument {

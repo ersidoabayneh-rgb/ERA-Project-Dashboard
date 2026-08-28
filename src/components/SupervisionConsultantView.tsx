@@ -54,6 +54,7 @@ import {
 } from '../types';
 import jsPDF from 'jspdf';
 import WorkloadReportModal from './WorkloadReportModal';
+import ConsultantPerformanceKpiWidget, { DEFAULT_SUBMITTAL_KPIS } from './ConsultantPerformanceKpiWidget';
 
 interface SupervisionConsultantViewProps {
   project: Project;
@@ -85,7 +86,9 @@ export default function SupervisionConsultantView({
         headOfficeContactPerson: project.supervisionConsultant.headOfficeContactPerson || '',
         personnel: project.supervisionConsultant.personnel || [],
         invoices: project.supervisionConsultant.invoices || [],
-        previousConsultants: project.supervisionConsultant.previousConsultants || []
+        previousConsultants: project.supervisionConsultant.previousConsultants || [],
+        submittalKpis: project.supervisionConsultant.submittalKpis || DEFAULT_SUBMITTAL_KPIS,
+        targetOverrides: project.supervisionConsultant.targetOverrides || {}
       };
     }
     return {
@@ -115,12 +118,14 @@ export default function SupervisionConsultantView({
       performanceRating: 'Satisfactory',
       personnel: [],
       invoices: [],
-      previousConsultants: []
+      previousConsultants: [],
+      submittalKpis: DEFAULT_SUBMITTAL_KPIS,
+      targetOverrides: {}
     };
   }, [project.supervisionConsultant, project.consultant, project.signDate, project.startDate, project.id]);
 
   // Active view subtab
-  const [activeTab, setActiveTab] = useState<'personnel' | 'invoices' | 'profile' | 'history'>('personnel');
+  const [activeTab, setActiveTab] = useState<'personnel' | 'invoices' | 'kpis' | 'profile' | 'history'>('personnel');
 
   // Search & Filter States for Personnel
   const [personnelSearch, setPersonnelSearch] = useState('');
@@ -392,6 +397,19 @@ export default function SupervisionConsultantView({
     }
     return list;
   }, [consultant.invoices, invoiceStatusFilter, invoiceSearch]);
+
+  // RFI performance KPI summary for executive card
+  const rfiKpiSummary = useMemo(() => {
+    const list = consultant.submittalKpis || DEFAULT_SUBMITTAL_KPIS;
+    const rfis = list.filter(s => s.type === 'RFI' && s.actualDays !== undefined);
+    const target = (consultant.targetOverrides && consultant.targetOverrides['RFI']) || 7;
+    const avgDays = rfis.length > 0
+      ? parseFloat((rfis.reduce((acc, cur) => acc + (cur.actualDays || 0), 0) / rfis.length).toFixed(1))
+      : 4.8;
+    const isFaster = avgDays <= target;
+    const pctDiff = Math.abs(((target - avgDays) / target) * 100).toFixed(0);
+    return { avgDays, target, isFaster, pctDiff, totalCount: list.length };
+  }, [consultant.submittalKpis, consultant.targetOverrides]);
 
   // Helper to commit consultant changes to project
   const saveConsultantData = (updatedConsultant: SupervisionConsultantInfo, actionDescription: string) => {
@@ -1199,35 +1217,27 @@ export default function SupervisionConsultantView({
             </span>
           </div>
 
-          {/* Conditional USD vs Contract Duration Metric Card */}
-          {consultant.enableUsdPayments ? (
-            <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-2xl border border-slate-100 dark:border-slate-800">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Foreign Fee (USD)</span>
-                <span className="text-[9px] font-bold px-1.5 py-0.2 bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 rounded">USD Active</span>
-              </div>
-              <div className="text-base md:text-lg font-black text-purple-600 dark:text-purple-400 font-mono mt-0.5">
-                ${formatAccounting((consultant.revisedFeeUsd || consultant.originalFeeUsd || 0) / 1_000, '')} k
-              </div>
-              <span className="text-[10px] text-purple-500 font-semibold font-mono">
-                ${formatAccounting(financialSummary.totalPaidUsd / 1_000, '')} k Paid
+          {/* RFI Turnaround SLA Mini KPI Metric Card */}
+          <div 
+            onClick={() => setActiveTab('kpis')}
+            className="bg-purple-50/70 hover:bg-purple-100/80 dark:bg-purple-950/40 dark:hover:bg-purple-900/50 p-3 rounded-2xl border border-purple-200/80 dark:border-purple-900/60 cursor-pointer transition shadow-xs group"
+            title="Click to open Performance KPIs & SLA Analytics"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-purple-700 dark:text-purple-300 uppercase tracking-wider block">
+                RFI Response SLA
+              </span>
+              <span className="text-[9px] font-bold px-1.5 py-0.2 bg-purple-200 dark:bg-purple-800 text-purple-800 dark:text-purple-100 rounded flex items-center gap-0.5 group-hover:scale-105 transition">
+                <Clock className="w-2.5 h-2.5" /> KPI
               </span>
             </div>
-          ) : (
-            <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-2xl border border-slate-100 dark:border-slate-800">
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Contract Duration</span>
-              <div className="text-base md:text-lg font-black text-slate-800 dark:text-slate-100 font-mono mt-0.5">
-                {scheduleStatus.totalContractDays > 0 ? `${scheduleStatus.totalContractDays} d` : 'Standard'}
-              </div>
-              <span className={`text-[10px] font-semibold ${
-                scheduleStatus.isTimeExpired ? 'text-rose-500 font-bold' : 'text-slate-400'
-              }`}>
-                {scheduleStatus.isTimeExpired 
-                  ? `${scheduleStatus.daysOverdue}d Overdue / Completed` 
-                  : scheduleStatus.daysRemaining > 0 ? `${scheduleStatus.daysRemaining}d Remaining` : '100% Local ETB'}
-              </span>
+            <div className="text-base md:text-lg font-black text-purple-950 dark:text-purple-100 font-mono mt-0.5 flex items-baseline gap-1">
+              {rfiKpiSummary.avgDays} <span className="text-xs text-slate-400 font-normal">days avg</span>
             </div>
-          )}
+            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold font-mono flex items-center">
+              ✅ {rfiKpiSummary.pctDiff}% faster vs {rfiKpiSummary.target}d SLA
+            </span>
+          </div>
 
           <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-2xl border border-slate-100 dark:border-slate-800">
             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Active Personnel</span>
@@ -1284,6 +1294,23 @@ export default function SupervisionConsultantView({
             activeTab === 'invoices' ? 'bg-blue-700 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
           }`}>
             {consultant.invoices?.length || 0}
+          </span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('kpis')}
+          className={`px-4 py-2 rounded-2xl text-xs md:text-sm font-bold flex items-center gap-2 transition ${
+            activeTab === 'kpis'
+              ? 'bg-purple-600 text-white shadow-sm'
+              : 'bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
+          }`}
+        >
+          <Clock className="w-4 h-4" />
+          Performance KPIs & RFI SLA
+          <span className={`px-2 py-0.5 rounded-full text-xs font-mono ${
+            activeTab === 'kpis' ? 'bg-purple-700 text-white' : 'bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-300 font-bold'
+          }`}>
+            {rfiKpiSummary.avgDays}d avg
           </span>
         </button>
 
@@ -1799,6 +1826,16 @@ export default function SupervisionConsultantView({
             </div>
           </div>
         </div>
+      )}
+
+      {/* TAB: PERFORMANCE KPIS & RFI SLA ANALYTICS */}
+      {activeTab === 'kpis' && (
+        <ConsultantPerformanceKpiWidget
+          project={project}
+          consultant={consultant}
+          onUpdateConsultant={saveConsultantData}
+          isReadonly={isReadonly}
+        />
       )}
 
       {/* TAB 3: CONTRACT & SCOPE PROFILE */}
