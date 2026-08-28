@@ -62,6 +62,7 @@ interface ConsultantPerformanceKpiWidgetProps {
   onUpdateConsultant?: (updatedConsultant: SupervisionConsultantInfo, actionDescription?: string) => void;
   isReadonly?: boolean;
   compact?: boolean;
+  isAdmin?: boolean;
 }
 
 // Standard baseline Ethiopian Roads Administration (ERA) FIDIC SLA targets (in calendar days)
@@ -371,7 +372,8 @@ export default function ConsultantPerformanceKpiWidget({
   consultant,
   onUpdateConsultant,
   isReadonly = false,
-  compact = false
+  compact = false,
+  isAdmin = true
 }: ConsultantPerformanceKpiWidgetProps) {
   // State for submittals data
   const submittalsList: ConsultantSubmittalKpi[] = useMemo(() => {
@@ -382,7 +384,13 @@ export default function ConsultantPerformanceKpiWidget({
   }, [consultant.submittalKpis]);
 
   // Active sub-view inside the widget
-  const [activeKpiView, setActiveKpiView] = useState<'comparison' | 'trend' | 'log'>('comparison');
+  const [activeKpiView, setActiveKpiView] = useState<'comparison' | 'trend' | 'log'>(isAdmin ? 'comparison' : 'log');
+
+  React.useEffect(() => {
+    if (!isAdmin && activeKpiView !== 'log') {
+      setActiveKpiView('log');
+    }
+  }, [isAdmin, activeKpiView]);
 
   // Search & filter states
   const [submittalSearch, setSubmittalSearch] = useState('');
@@ -841,21 +849,25 @@ export default function ConsultantPerformanceKpiWidget({
           <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
               <Clock className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-              Supervision Consultant KPI & SLA Engine
+              {isAdmin ? 'Supervision Consultant KPI & SLA Engine' : 'Submittal Register & Audit Log'}
             </span>
-            <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 font-mono">
-              {overallMetrics.complianceRate.toFixed(1)}% On-Time SLA
-            </span>
+            {isAdmin && (
+              <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 font-mono">
+                {overallMetrics.complianceRate.toFixed(1)}% On-Time SLA
+              </span>
+            )}
             <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 dark:bg-purple-950/50 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
               ✍️ Fully Editable & Updatable Table
             </span>
           </div>
 
           <h3 className="text-lg md:text-xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
-            RFI & Submittal Response Performance vs Contract Targets
+            {isAdmin ? 'RFI & Submittal Response Performance vs Contract Targets' : 'Submittal Log & Audit Trail (Editable)'}
           </h3>
           <p className="text-xs text-slate-500 dark:text-slate-400 max-w-2xl">
-            Real-time benchmarking of technical RFIs, material approvals, and IPC review turnaround times against FIDIC & Ethiopian Roads Administration contract targets. Click any cell or row to edit, update, delete, or add records.
+            {isAdmin 
+              ? 'Real-time benchmarking of technical RFIs, material approvals, and IPC review turnaround times against FIDIC & Ethiopian Roads Administration contract targets. Click any cell or row to edit, update, delete, or add records.'
+              : 'Editable submittal register for technical RFIs, material approvals, IPC review records, and submittal turnaround entries. Click any cell or row to edit, update, delete, or add records.'}
           </p>
         </div>
 
@@ -895,17 +907,19 @@ export default function ConsultantPerformanceKpiWidget({
                 Log Submittal
               </button>
 
-              <button
-                onClick={() => {
-                  setEditCriteriaForm(evaluationCriteria);
-                  setIsTargetSettingsOpen(true);
-                }}
-                title="Configure Evaluation Criteria, Target Days & Weightages"
-                className="px-3.5 py-2 text-xs font-bold rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center gap-1.5 transition shadow-xs cursor-pointer"
-              >
-                <Settings2 className="w-4 h-4 text-indigo-600" />
-                Criteria & Weights
-              </button>
+              {isAdmin && (
+                <button
+                  onClick={() => {
+                    setEditCriteriaForm(evaluationCriteria);
+                    setIsTargetSettingsOpen(true);
+                  }}
+                  title="Configure Evaluation Criteria, Target Days & Weightages"
+                  className="px-3.5 py-2 text-xs font-bold rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center gap-1.5 transition shadow-xs cursor-pointer"
+                >
+                  <Settings2 className="w-4 h-4 text-indigo-600" />
+                  Criteria & Weights
+                </button>
+              )}
             </>
           )}
 
@@ -918,55 +932,59 @@ export default function ConsultantPerformanceKpiWidget({
         </div>
       </div>
 
-      {/* KPI Highlight Summary Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {/* RFI Turnaround Card */}
-        <div className="p-3.5 rounded-2xl bg-gradient-to-br from-indigo-50 to-blue-50/50 dark:from-indigo-950/40 dark:to-slate-900 border border-indigo-100 dark:border-indigo-900/60 space-y-1">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300">
-              Avg RFI Response Time
-            </span>
-            <span className="p-1 rounded-lg bg-indigo-100 dark:bg-indigo-900/80 text-indigo-700 dark:text-indigo-300">
-              <Clock className="w-3.5 h-3.5" />
-            </span>
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-xl md:text-2xl font-black font-mono text-indigo-950 dark:text-white">
-              {overallMetrics.avgRfiDays}
-            </span>
-            <span className="text-xs text-slate-500 font-semibold">days</span>
-            <span className="text-[11px] font-bold font-mono text-emerald-600 dark:text-emerald-400 ml-auto flex items-center">
-              <TrendingDown className="w-3 h-3 inline mr-0.5" />
-              {Math.abs(overallMetrics.rfiEfficiencyPct).toFixed(0)}% faster
-            </span>
-          </div>
-          <div className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium">
-            Contract Target: <strong className="font-mono">{overallMetrics.rfiTarget} calendar days</strong>
-          </div>
-        </div>
+      {/* Summary Highlight Cards */}
+      <div className={`grid gap-3 ${isAdmin ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-1 sm:grid-cols-3'}`}>
+        {isAdmin && (
+          <>
+            {/* RFI Turnaround Card */}
+            <div className="p-3.5 rounded-2xl bg-gradient-to-br from-indigo-50 to-blue-50/50 dark:from-indigo-950/40 dark:to-slate-900 border border-indigo-100 dark:border-indigo-900/60 space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300">
+                  Avg RFI Response Time
+                </span>
+                <span className="p-1 rounded-lg bg-indigo-100 dark:bg-indigo-900/80 text-indigo-700 dark:text-indigo-300">
+                  <Clock className="w-3.5 h-3.5" />
+                </span>
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-xl md:text-2xl font-black font-mono text-indigo-950 dark:text-white">
+                  {overallMetrics.avgRfiDays}
+                </span>
+                <span className="text-xs text-slate-500 font-semibold">days</span>
+                <span className="text-[11px] font-bold font-mono text-emerald-600 dark:text-emerald-400 ml-auto flex items-center">
+                  <TrendingDown className="w-3 h-3 inline mr-0.5" />
+                  {Math.abs(overallMetrics.rfiEfficiencyPct).toFixed(0)}% faster
+                </span>
+              </div>
+              <div className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium">
+                Contract Target: <strong className="font-mono">{overallMetrics.rfiTarget} calendar days</strong>
+              </div>
+            </div>
 
-        {/* Global SLA Compliance */}
-        <div className="p-3.5 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50/50 dark:from-emerald-950/40 dark:to-slate-900 border border-emerald-100 dark:border-emerald-900/60 space-y-1">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
-              Overall SLA Adherence
-            </span>
-            <span className="p-1 rounded-lg bg-emerald-100 dark:bg-emerald-900/80 text-emerald-700 dark:text-emerald-300">
-              <CheckCircle2 className="w-3.5 h-3.5" />
-            </span>
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-xl md:text-2xl font-black font-mono text-emerald-950 dark:text-white">
-              {overallMetrics.complianceRate.toFixed(1)}%
-            </span>
-            <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 ml-auto">
-              High Compliance
-            </span>
-          </div>
-          <div className="text-[10px] text-emerald-700 dark:text-emerald-400 font-medium">
-            Resolved within target threshold
-          </div>
-        </div>
+            {/* Global SLA Compliance */}
+            <div className="p-3.5 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50/50 dark:from-emerald-950/40 dark:to-slate-900 border border-emerald-100 dark:border-emerald-900/60 space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+                  Overall SLA Adherence
+                </span>
+                <span className="p-1 rounded-lg bg-emerald-100 dark:bg-emerald-900/80 text-emerald-700 dark:text-emerald-300">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                </span>
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-xl md:text-2xl font-black font-mono text-emerald-950 dark:text-white">
+                  {overallMetrics.complianceRate.toFixed(1)}%
+                </span>
+                <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 ml-auto">
+                  High Compliance
+                </span>
+              </div>
+              <div className="text-[10px] text-emerald-700 dark:text-emerald-400 font-medium">
+                Resolved within target threshold
+              </div>
+            </div>
+          </>
+        )}
 
         {/* Total Submittals Processed */}
         <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 space-y-1">
@@ -983,7 +1001,7 @@ export default function ConsultantPerformanceKpiWidget({
             <span className="text-xs text-slate-400 font-normal">/ {overallMetrics.totalCount} total</span>
           </div>
           <div className="text-[10px] text-slate-500 font-medium">
-            Across 6 supervision categories
+            Across supervision submittal categories
           </div>
         </div>
 
@@ -1002,7 +1020,7 @@ export default function ConsultantPerformanceKpiWidget({
             <span className="text-xs text-amber-600 dark:text-amber-400 font-semibold">Active</span>
           </div>
           <div className="text-[10px] text-amber-700 dark:text-amber-400 font-medium">
-            All within active aging limits
+            Pending consultant / client action
           </div>
         </div>
       </div>
@@ -1014,8 +1032,10 @@ export default function ConsultantPerformanceKpiWidget({
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-2">
             <div className="flex flex-wrap items-center gap-1.5">
               {[
-                { id: 'comparison', label: '📊 Turnaround vs Targets', icon: Sliders },
-                { id: 'trend', label: '📈 Monthly Performance Trend', icon: TrendingDown },
+                ...(isAdmin ? [
+                  { id: 'comparison', label: '📊 Turnaround vs Targets', icon: Sliders },
+                  { id: 'trend', label: '📈 Monthly Performance Trend', icon: TrendingDown }
+                ] : []),
                 { id: 'log', label: '📋 Submittal Log & Audit Trail (Editable)', icon: FileText }
               ].map((tab) => {
                 const IconComponent = tab.icon;
