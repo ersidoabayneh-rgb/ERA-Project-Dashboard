@@ -160,6 +160,20 @@ export default function GroupReportGenerator({
   pmos,
   onClose
 }: GroupReportGeneratorProps) {
+  const isAdmin = Boolean(
+    currentUserObj?.role === 'admin' ||
+    currentUserObj?.role === 'master_admin' ||
+    currentUserObj?.role === 'cpm_admin' ||
+    currentUserObj?.role === 'directorate_admin' ||
+    currentUserObj?.role === 'pmo_admin' ||
+    currentUserObj?.username === 'proj_1781786415663' ||
+    (currentUserObj?.username && currentUserObj.username.toLowerCase().includes('ersido'))
+  );
+
+  if (!isAdmin) {
+    return null;
+  }
+
   const [groupType, setGroupType] = useState<'directorate' | 'pmo' | 'contractor' | 'consultant'>('directorate');
   const [selectedGroup, setSelectedGroup] = useState<string>('All');
   const [reportSearchQuery, setReportSearchQuery] = useState('');
