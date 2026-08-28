@@ -430,6 +430,13 @@ export interface HistoricalSupervisionConsultant {
   invoices?: ConsultantInvoice[];
 }
 
+export interface EvaluationCriteriaItem {
+  id: string;
+  name: string;
+  targetDays: number;
+  weightPct: number;
+}
+
 export interface SupervisionConsultantInfo {
   firmName: string;
   associationType?: 'Lead Consultant' | 'Joint Venture (JV)' | 'Sole Consultant' | 'Association / Consortium';
@@ -457,6 +464,7 @@ export interface SupervisionConsultantInfo {
   performanceRating?: 'Outstanding' | 'Satisfactory' | 'Needs Improvement' | 'Critical';
   submittalKpis?: ConsultantSubmittalKpi[];
   targetOverrides?: Record<string, number>;
+  evaluationCriteria?: EvaluationCriteriaItem[];
   personnel: ConsultantPersonnel[];
   invoices: ConsultantInvoice[];
   previousConsultants?: HistoricalSupervisionConsultant[]; // Archive of predecessor supervision consultants

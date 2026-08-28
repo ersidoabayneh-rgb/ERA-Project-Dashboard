@@ -52,6 +52,7 @@ import {
 import {
   SupervisionConsultantInfo,
   ConsultantSubmittalKpi,
+  EvaluationCriteriaItem,
   Project
 } from '../types';
 
@@ -73,6 +74,16 @@ export const DEFAULT_SLA_TARGETS: Record<string, number> = {
   'Design Review': 14,
   'Claim / Notice': 28
 };
+
+export const DEFAULT_EVALUATION_CRITERIA: EvaluationCriteriaItem[] = [
+  { id: 'crit_1', name: 'RFI', targetDays: 7, weightPct: 20 },
+  { id: 'crit_2', name: 'Material Approval', targetDays: 14, weightPct: 20 },
+  { id: 'crit_3', name: 'IPC Review', targetDays: 7, weightPct: 20 },
+  { id: 'crit_4', name: 'Work Inspection (WIR)', targetDays: 2, weightPct: 15 },
+  { id: 'crit_5', name: 'Variation Order', targetDays: 21, weightPct: 10 },
+  { id: 'crit_6', name: 'Design Review', targetDays: 14, weightPct: 10 },
+  { id: 'crit_7', name: 'Claim / Notice', targetDays: 28, weightPct: 5 }
+];
 
 export const DEFAULT_SUBMITTAL_KPIS: ConsultantSubmittalKpi[] = [
   {
@@ -405,25 +416,38 @@ export default function ConsultantPerformanceKpiWidget({
     notes: ''
   });
 
-  // Target overrides state
+  // Evaluation Criteria & Weightage state
+  const evaluationCriteria = useMemo(() => {
+    return consultant.evaluationCriteria && consultant.evaluationCriteria.length > 0
+      ? consultant.evaluationCriteria
+      : DEFAULT_EVALUATION_CRITERIA;
+  }, [consultant.evaluationCriteria]);
+
   const targetOverrides = useMemo(() => {
+    const map: Record<string, number> = {};
+    evaluationCriteria.forEach(c => {
+      map[c.name] = c.targetDays;
+    });
     return {
       ...DEFAULT_SLA_TARGETS,
+      ...map,
       ...(consultant.targetOverrides || {})
     };
-  }, [consultant.targetOverrides]);
+  }, [evaluationCriteria, consultant.targetOverrides]);
 
-  const [editTargetsForm, setEditTargetsForm] = useState<Record<string, number>>(targetOverrides);
+  const [editCriteriaForm, setEditCriteriaForm] = useState<EvaluationCriteriaItem[]>(evaluationCriteria);
+  const [newCritName, setNewCritName] = useState('');
+  const [newCritTarget, setNewCritTarget] = useState(7);
+  const [newCritWeight, setNewCritWeight] = useState(10);
 
   // Core Category KPI Statistics Calculation
   const categoryKpiStats = useMemo(() => {
-    const categories = ['RFI', 'Material Approval', 'IPC Review', 'Work Inspection (WIR)', 'Variation Order', 'Design Review'];
-    
-    return categories.map((cat) => {
-      const items = submittalsList.filter(s => s.type === cat);
+    return evaluationCriteria.map((crit) => {
+      const cat = crit.name;
+      const items = submittalsList.filter(s => s.type === cat || s.type.toLowerCase() === cat.toLowerCase());
       const resolvedItems = items.filter(s => s.actualDays !== undefined && s.actualDays !== null);
       
-      const targetDays = targetOverrides[cat] || DEFAULT_SLA_TARGETS[cat] || 7;
+      const targetDays = targetOverrides[cat] !== undefined ? targetOverrides[cat] : crit.targetDays;
       
       const avgActualDays = resolvedItems.length > 0
         ? parseFloat((resolvedItems.reduce((acc, cur) => acc + (cur.actualDays || 0), 0) / resolvedItems.length).toFixed(1))
@@ -437,11 +461,12 @@ export default function ConsultantPerformanceKpiWidget({
 
       return {
         category: cat,
-        shortName: cat === 'Work Inspection (WIR)' ? 'WIR / Inspect' : cat === 'Material Approval' ? 'Materials' : cat,
+        shortName: cat.length > 18 ? cat.substring(0, 16) + '...' : cat,
         targetDays,
         actualDays: avgActualDays,
         varianceDays,
         isFaster,
+        weightPct: crit.weightPct,
         totalSubmittals: items.length,
         resolvedCount: resolvedItems.length,
         onTimeCount,
@@ -451,7 +476,7 @@ export default function ConsultantPerformanceKpiWidget({
         status: onTimePct >= 90 ? 'Excellent' : onTimePct >= 75 ? 'Good' : 'Needs Review'
       };
     });
-  }, [submittalsList, targetOverrides]);
+  }, [submittalsList, targetOverrides, evaluationCriteria]);
 
   // Overall Headline Metrics
   const overallMetrics = useMemo(() => {
@@ -779,19 +804,7 @@ export default function ConsultantPerformanceKpiWidget({
     }
   };
 
-  // Handler for saving SLA targets
-  const handleSaveTargets = () => {
-    const updatedConsultant: SupervisionConsultantInfo = {
-      ...consultant,
-      targetOverrides: editTargetsForm
-    };
 
-    if (onUpdateConsultant) {
-      onUpdateConsultant(updatedConsultant, 'Updated consultant SLA contract response time benchmarks');
-    }
-
-    setIsTargetSettingsOpen(false);
-  };
 
   // Export CSV
   const handleExportCsv = () => {
@@ -884,13 +897,14 @@ export default function ConsultantPerformanceKpiWidget({
 
               <button
                 onClick={() => {
-                  setEditTargetsForm(targetOverrides);
+                  setEditCriteriaForm(evaluationCriteria);
                   setIsTargetSettingsOpen(true);
                 }}
-                title="Configure Contractual Target Days"
-                className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition"
+                title="Configure Evaluation Criteria, Target Days & Weightages"
+                className="px-3.5 py-2 text-xs font-bold rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center gap-1.5 transition shadow-xs cursor-pointer"
               >
-                <Settings2 className="w-4 h-4" />
+                <Settings2 className="w-4 h-4 text-indigo-600" />
+                Criteria & Weights
               </button>
             </>
           )}
@@ -2270,7 +2284,7 @@ export default function ConsultantPerformanceKpiWidget({
         )}
       </AnimatePresence>
 
-      {/* MODAL 3: SLA TARGET SETTINGS */}
+      {/* MODAL 3: EVALUATION CRITERIA & TARGET SLA SETTINGS */}
       <AnimatePresence>
         {isTargetSettingsOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs overflow-y-auto">
@@ -2278,59 +2292,202 @@ export default function ConsultantPerformanceKpiWidget({
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4 my-8"
+              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 w-full max-w-lg shadow-2xl space-y-5 my-8 max-h-[90vh] flex flex-col"
             >
               <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
                 <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
                   <Settings2 className="w-5 h-5 text-indigo-600" />
-                  Contractual Response Target SLA Settings
+                  Evaluation Criteria & Contract Targets
                 </h3>
                 <button
                   type="button"
                   onClick={() => setIsTargetSettingsOpen(false)}
-                  className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400"
+                  className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
 
-              <p className="text-xs text-slate-500">
-                Define the maximum allowed calendar days under the consultancy contract for each submittal category.
-              </p>
+              <div className="space-y-1">
+                <p className="text-xs text-slate-500">
+                  Add, delete, or modify evaluation criteria, allowable response target days, and percentage weightages for consultant performance auditing.
+                </p>
+                <div className="flex items-center justify-between text-xs font-semibold pt-1">
+                  <span className="text-slate-600 dark:text-slate-300">Total Weightage Sum:</span>
+                  <span className={`px-2 py-0.5 rounded-md font-mono font-bold ${
+                    editCriteriaForm.reduce((sum, c) => sum + (c.weightPct || 0), 0) === 100
+                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                      : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                  }`}>
+                    {editCriteriaForm.reduce((sum, c) => sum + (c.weightPct || 0), 0)}%
+                  </span>
+                </div>
+              </div>
 
-              <div className="space-y-2.5 text-xs">
-                {Object.entries(DEFAULT_SLA_TARGETS).map(([cat, defaultDays]) => (
-                  <div key={cat} className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700">
-                    <span className="font-semibold text-slate-800 dark:text-slate-200">{cat}</span>
-                    <div className="flex items-center gap-2">
+              <div className="space-y-3 overflow-y-auto max-h-[42vh] pr-1">
+                {editCriteriaForm.map((crit, index) => (
+                  <div key={crit.id || index} className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-100 dark:border-slate-700 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
                       <input
-                        type="number"
-                        min="1"
-                        max="90"
-                        value={editTargetsForm[cat] !== undefined ? editTargetsForm[cat] : defaultDays}
-                        onChange={(e) => setEditTargetsForm({ ...editTargetsForm, [cat]: parseInt(e.target.value) || defaultDays })}
-                        className="w-16 px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-lg text-center font-mono font-bold text-slate-900 dark:text-white"
+                        type="text"
+                        value={crit.name}
+                        onChange={(e) => {
+                          const updated = [...editCriteriaForm];
+                          updated[index].name = e.target.value;
+                          setEditCriteriaForm(updated);
+                        }}
+                        className="flex-1 px-2.5 py-1 text-xs font-bold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white"
+                        placeholder="Criteria Name"
                       />
-                      <span className="text-slate-400 font-medium">days</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (editCriteriaForm.length <= 1) {
+                            alert('You must maintain at least one evaluation criterion.');
+                            return;
+                          }
+                          setEditCriteriaForm(editCriteriaForm.filter((_, i) => i !== index));
+                        }}
+                        title="Delete criterion"
+                        className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/50 dark:hover:bg-rose-900/80 text-rose-600 dark:text-rose-400 transition cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="flex items-center justify-between bg-white dark:bg-slate-900 px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700">
+                        <span className="text-slate-500 font-medium">Target Days:</span>
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            min="1"
+                            max="120"
+                            value={crit.targetDays}
+                            onChange={(e) => {
+                              const updated = [...editCriteriaForm];
+                              updated[index].targetDays = parseInt(e.target.value) || 1;
+                              setEditCriteriaForm(updated);
+                            }}
+                            className="w-14 px-1.5 py-0.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-md text-center font-mono font-bold text-slate-900 dark:text-white text-xs"
+                          />
+                          <span className="text-slate-400 text-[11px]">days</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between bg-white dark:bg-slate-900 px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700">
+                        <span className="text-slate-500 font-medium">Weightage:</span>
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            min="1"
+                            max="100"
+                            value={crit.weightPct}
+                            onChange={(e) => {
+                              const updated = [...editCriteriaForm];
+                              updated[index].weightPct = parseFloat(e.target.value) || 0;
+                              setEditCriteriaForm(updated);
+                            }}
+                            className="w-14 px-1.5 py-0.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-md text-center font-mono font-bold text-slate-900 dark:text-white text-xs"
+                          />
+                          <span className="text-slate-400 text-[11px]">%</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 ))}
+
+                {/* Add New Criterion Box */}
+                <div className="p-3 rounded-2xl bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/50 space-y-2.5">
+                  <span className="text-xs font-bold text-indigo-900 dark:text-indigo-300 flex items-center gap-1.5">
+                    <Plus className="w-3.5 h-3.5" /> Add New Evaluation Criterion
+                  </span>
+                  <input
+                    type="text"
+                    value={newCritName}
+                    onChange={(e) => setNewCritName(e.target.value)}
+                    placeholder="Criterion Name (e.g., Geotechnical Review)"
+                    className="w-full px-2.5 py-1.5 text-xs font-medium bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 rounded-xl text-slate-900 dark:text-white"
+                  />
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-500 text-[11px]">Target:</span>
+                      <input
+                        type="number"
+                        min="1"
+                        max="120"
+                        value={newCritTarget}
+                        onChange={(e) => setNewCritTarget(parseInt(e.target.value) || 7)}
+                        className="w-16 px-2 py-1 bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 rounded-lg text-center font-mono font-bold text-xs"
+                      />
+                      <span className="text-slate-400 text-[11px]">days</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-500 text-[11px]">Weight:</span>
+                      <input
+                        type="number"
+                        min="1"
+                        max="100"
+                        value={newCritWeight}
+                        onChange={(e) => setNewCritWeight(parseFloat(e.target.value) || 10)}
+                        className="w-16 px-2 py-1 bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 rounded-lg text-center font-mono font-bold text-xs"
+                      />
+                      <span className="text-slate-400 text-[11px]">%</span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!newCritName.trim()) {
+                        alert('Please enter a valid criterion name.');
+                        return;
+                      }
+                      const newItem: EvaluationCriteriaItem = {
+                        id: `crit_${Date.now()}`,
+                        name: newCritName.trim(),
+                        targetDays: newCritTarget,
+                        weightPct: newCritWeight
+                      };
+                      setEditCriteriaForm([...editCriteriaForm, newItem]);
+                      setNewCritName('');
+                      setNewCritTarget(7);
+                      setNewCritWeight(10);
+                    }}
+                    className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition shadow-xs cursor-pointer"
+                  >
+                    Add Criterion to Evaluation Matrix
+                  </button>
+                </div>
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setIsTargetSettingsOpen(false)}
-                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl"
+                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
-                  onClick={handleSaveTargets}
-                  className="px-5 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-xs"
+                  onClick={() => {
+                    const updatedOverrides: Record<string, number> = {};
+                    editCriteriaForm.forEach(c => {
+                      updatedOverrides[c.name] = c.targetDays;
+                    });
+                    const updatedConsultant: SupervisionConsultantInfo = {
+                      ...consultant,
+                      evaluationCriteria: editCriteriaForm,
+                      targetOverrides: updatedOverrides
+                    };
+                    if (onUpdateConsultant) {
+                      onUpdateConsultant(updatedConsultant, 'Updated evaluation criteria, target SLA days, and weightage percentages');
+                    }
+                    setIsTargetSettingsOpen(false);
+                  }}
+                  className="px-5 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-xs cursor-pointer"
                 >
-                  Update SLA Benchmarks
+                  Save Criteria & Weightages
                 </button>
               </div>
             </motion.div>
