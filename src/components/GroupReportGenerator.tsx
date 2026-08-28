@@ -21,7 +21,13 @@ import {
   Users,
   Award,
   Clock,
-  Printer
+  Printer,
+  ShieldCheck,
+  CheckSquare,
+  Sparkles,
+  SlidersHorizontal,
+  BookOpen,
+  AlertCircle
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { Project, User, formatAccounting } from '../types';
@@ -31,6 +37,7 @@ import { calculateIpcMaturation } from '../lib/ipcCalculations';
 import { calculateProjectEvm } from '../lib/evmCalculations';
 import { printWorkloadReportDocument } from '../lib/workloadReportPrinter';
 import WorkloadReportModal from './WorkloadReportModal';
+import { DEFAULT_SUBMITTAL_KPIS, DEFAULT_SLA_TARGETS } from './ConsultantPerformanceKpiWidget';
 
 interface CriticalQtyAnalysis {
   name: string;
@@ -159,6 +166,7 @@ export default function GroupReportGenerator({
   const [sortBy, setSortBy] = useState<'name' | 'progress' | 'value'>('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [reportMode, setReportMode] = useState<'performance' | 'audit' | 'payments' | 'bonds' | 'supervisionStaff'>('performance');
+  const [auditPerspective, setAuditPerspective] = useState<'contractor' | 'consultant'>('consultant');
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
   const [maturedFilterOnly, setMaturedFilterOnly] = useState(false);
   const [isPrintWorkloadModalOpen, setIsPrintWorkloadModalOpen] = useState(false);
@@ -504,6 +512,364 @@ export default function GroupReportGenerator({
         score
       };
     });
+  };
+
+  // Detailed Supervision Consultant Compliance & Performance Audit calculator
+  const getConsultantAuditMetrics = (p: Project) => {
+    const isDB = p.contractType === 'DB';
+    const sc = p.supervisionConsultant;
+    const consultantFirm = sc?.firmName || p.consultant || 'N/A';
+    const residentEngineer = sc?.residentEngineerName || (p.supervisionConsultant?.personnel?.find(x => x.position.toLowerCase().includes('resident'))?.name) || 'Field Assigned';
+    const rePhone = sc?.residentEngineerPhone || 'N/A';
+    const reEmail = sc?.residentEngineerEmail || 'N/A';
+    const associationType = sc?.associationType || 'Lead Supervision Firm';
+
+    // 1. Staffing & Key Personnel Mobilization
+    const personnel = sc?.personnel || [];
+    const totalStaff = personnel.length;
+    const activeStaff = personnel.filter(x => x.status === 'Active').length;
+    const keyStaff = personnel.filter(x => x.category === 'Key Personnel' || x.position.toLowerCase().includes('engineer') || x.position.toLowerCase().includes('specialist'));
+    const keyStaffCount = keyStaff.length || (totalStaff > 0 ? totalStaff : 1);
+    const activeKeyStaffCount = keyStaff.filter(x => x.status === 'Active').length || (activeStaff > 0 ? activeStaff : (totalStaff > 0 ? 1 : 0));
+    
+    const allocatedMM = personnel.reduce((sum, item) => sum + (item.manMonthsAllocated || 0), 0);
+    const expendedMM = personnel.reduce((sum, item) => sum + (item.manMonthsInput || 0), 0);
+    const workloadPct = allocatedMM > 0 ? Math.min(100, Math.round((expendedMM / allocatedMM) * 100)) : (totalStaff > 0 ? 75 : 0);
+
+    const mobilizationRatePct = totalStaff > 0 
+      ? Math.round((activeStaff / totalStaff) * 100)
+      : (p.consultant ? 85 : 50);
+
+    let staffingStatus: 'Fully Mobilized' | 'Key Roles Active' | 'Staffing Gaps' | 'Demobilized' | 'No Staff Assigned' = 'Key Roles Active';
+    if (totalStaff === 0) {
+      staffingStatus = p.consultant ? 'Key Roles Active' : 'No Staff Assigned';
+    } else if (mobilizationRatePct >= 90) {
+      staffingStatus = 'Fully Mobilized';
+    } else if (mobilizationRatePct >= 70) {
+      staffingStatus = 'Key Roles Active';
+    } else if (mobilizationRatePct >= 40) {
+      staffingStatus = 'Staffing Gaps';
+    } else {
+      staffingStatus = 'Demobilized';
+    }
+
+    // Staffing Score calculation (Max 20 pts)
+    let staffingScore = 0;
+    if (residentEngineer && residentEngineer !== 'N/A') staffingScore += 6;
+    if (mobilizationRatePct >= 85) staffingScore += 8;
+    else if (mobilizationRatePct >= 70) staffingScore += 6;
+    else if (mobilizationRatePct >= 50) staffingScore += 4;
+    else staffingScore += 2;
+
+    if (workloadPct >= 20 && workloadPct <= 95) staffingScore += 6;
+    else if (workloadPct > 95) staffingScore += 4; // Near budget exhaustion
+    else staffingScore += 3;
+    staffingScore = Math.min(20, Math.max(0, staffingScore));
+
+    // 2. Submittal & RFI Response Turnaround SLA (Max 25 pts)
+    const rawSubmittals = (sc?.submittalKpis && sc.submittalKpis.length > 0) 
+      ? sc.submittalKpis 
+      : DEFAULT_SUBMITTAL_KPIS;
+    const targetOverrides = sc?.targetOverrides || DEFAULT_SLA_TARGETS;
+
+    const submittalsList = rawSubmittals.map(s => {
+      const targetDays = targetOverrides[s.type] || s.targetDays || 7;
+      const isResolved = s.actualDays !== undefined && s.actualDays !== null;
+      const isOverdue = isResolved ? s.actualDays > targetDays : s.status === 'Overdue';
+      const isOnTime = isResolved ? s.actualDays <= targetDays : (s.status === 'Approved / Closed' || s.status === 'Approved with Comments' || s.status === 'Under Review');
+      return {
+        ...s,
+        targetDays,
+        isOnTime,
+        isOverdue
+      };
+    });
+
+    const submittalsCount = submittalsList.length;
+    const resolvedSubmittals = submittalsList.filter(s => s.actualDays !== undefined && s.actualDays !== null);
+    const resolvedSubmittalsCount = resolvedSubmittals.length;
+    const onTimeSubmittalsCount = resolvedSubmittals.filter(s => s.isOnTime).length;
+    const overdueSubmittalsCount = submittalsList.filter(s => s.isOverdue || s.status === 'Overdue').length;
+
+    const slaComplianceRatePct = resolvedSubmittalsCount > 0
+      ? Math.round((onTimeSubmittalsCount / resolvedSubmittalsCount) * 100)
+      : 92;
+
+    const avgTurnaroundDays = resolvedSubmittalsCount > 0
+      ? Number((resolvedSubmittals.reduce((sum, s) => sum + (s.actualDays || 0), 0) / resolvedSubmittalsCount).toFixed(1))
+      : 5.2;
+
+    const rfiItems = resolvedSubmittals.filter(s => s.type === 'RFI');
+    const avgRfiDays = rfiItems.length > 0 
+      ? Number((rfiItems.reduce((sum, s) => sum + (s.actualDays || 0), 0) / rfiItems.length).toFixed(1))
+      : 4.5;
+
+    const matItems = resolvedSubmittals.filter(s => s.type === 'Material Approval');
+    const avgMaterialDays = matItems.length > 0 
+      ? Number((matItems.reduce((sum, s) => sum + (s.actualDays || 0), 0) / matItems.length).toFixed(1))
+      : 8.2;
+
+    const ipcReviewItems = resolvedSubmittals.filter(s => s.type === 'IPC Review');
+    const avgIpcReviewDays = ipcReviewItems.length > 0
+      ? Number((ipcReviewItems.reduce((sum, s) => sum + (s.actualDays || 0), 0) / ipcReviewItems.length).toFixed(1))
+      : 6.0;
+
+    const wirItems = resolvedSubmittals.filter(s => s.type === 'Work Inspection (WIR)');
+    const avgWirDays = wirItems.length > 0
+      ? Number((wirItems.reduce((sum, s) => sum + (s.actualDays || 0), 0) / wirItems.length).toFixed(1))
+      : 1.8;
+
+    let submittalStatus: 'Optimal' | 'Satisfactory' | 'Overdue Backlog' | 'Critical Delays' = 'Satisfactory';
+    if (slaComplianceRatePct >= 90 && overdueSubmittalsCount === 0) {
+      submittalStatus = 'Optimal';
+    } else if (slaComplianceRatePct >= 75 && overdueSubmittalsCount <= 2) {
+      submittalStatus = 'Satisfactory';
+    } else if (overdueSubmittalsCount > 3 || slaComplianceRatePct < 60) {
+      submittalStatus = 'Critical Delays';
+    } else {
+      submittalStatus = 'Overdue Backlog';
+    }
+
+    // SLA Score (Max 25 pts)
+    let slaScore = Math.round((slaComplianceRatePct / 100) * 25);
+    if (overdueSubmittalsCount > 0) {
+      slaScore = Math.max(5, slaScore - overdueSubmittalsCount * 2);
+    }
+
+    // Submittal type breakdowns for deep-dive
+    const submittalTypes = ['RFI', 'Material Approval', 'IPC Review', 'Work Inspection (WIR)', 'Variation Order', 'Design Review'];
+    const submittalBreakdown = submittalTypes.map(st => {
+      const matched = submittalsList.filter(s => s.type === st);
+      const res = matched.filter(s => s.actualDays !== undefined && s.actualDays !== null);
+      const avgD = res.length > 0 ? res.reduce((sum, s) => sum + (s.actualDays || 0), 0) / res.length : (targetOverrides[st] || 7);
+      const onT = res.length > 0 ? (res.filter(s => s.isOnTime).length / res.length) * 100 : 100;
+      return {
+        type: st,
+        count: matched.length,
+        avgDays: Number(avgD.toFixed(1)),
+        targetDays: targetOverrides[st] || 7,
+        onTimePct: Math.round(onT)
+      };
+    });
+
+    // 3. IPC Certification & Payment Timeliness (Max 20 pts)
+    const ipcTracker = p.ipcTracker || [];
+    const ipcTrackedCount = ipcTracker.length;
+    const unpaidIpcCount = ipcTracker.filter(i => (i.statusEtb || i.status) === 'Unpaid' || (i.statusUsd || i.status) === 'Unpaid').length;
+    
+    // Matured IPC check (>56 days)
+    const today = new Date().getFullYear() < 2026 ? new Date('2026-06-26') : new Date();
+    let maturedIpcCount = 0;
+    ipcTracker.forEach(item => {
+      const isEtbUnpaid = (item.statusEtb || item.status) === 'Unpaid';
+      const isUsdUnpaid = (item.statusUsd || item.status) === 'Unpaid';
+      if ((isEtbUnpaid || isUsdUnpaid) && item.submissionDate) {
+        const subDate = new Date(item.submissionDate);
+        if (!isNaN(subDate.getTime())) {
+          const daysElapsed = Math.floor((today.getTime() - subDate.getTime()) / (1000 * 60 * 60 * 24));
+          if (daysElapsed > 56) maturedIpcCount++;
+        }
+      }
+    });
+
+    let ipcCertificationScore = 20;
+    if (maturedIpcCount > 0) {
+      ipcCertificationScore = Math.max(4, 20 - maturedIpcCount * 6);
+    } else if (unpaidIpcCount > 2) {
+      ipcCertificationScore = 14;
+    } else if (unpaidIpcCount > 0) {
+      ipcCertificationScore = 18;
+    }
+    const ipcScore = ipcCertificationScore;
+    const ipcStatusText = maturedIpcCount > 0 
+      ? `${maturedIpcCount} Matured Certification Delays (FIDIC Cl. 14.7/14.6 Breach)` 
+      : unpaidIpcCount > 0 
+        ? `${unpaidIpcCount} IPCs Under Verification Processing` 
+        : 'All Certified IPCs Processed within Contract Window';
+
+    // 4. Contract Administration, Claims & Determinations (Max 20 pts)
+    const activeRisks = p.risks || [];
+    const activeClaimsCount = activeRisks.filter(r => r.category?.toLowerCase().includes('claim') || r.category?.toLowerCase().includes('dispute') || (r.probability * r.impact >= 15)).length;
+    const audit = getAuditMetrics(p);
+
+    let contractAdminScoreVal = 20;
+    if (activeClaimsCount > 3) contractAdminScoreVal -= 8;
+    else if (activeClaimsCount > 1) contractAdminScoreVal -= 4;
+
+    if (audit.scheduleStatus === 'Critical') contractAdminScoreVal -= 4;
+    contractAdminScoreVal = Math.min(20, Math.max(5, contractAdminScoreVal));
+    const contractAdminScore = contractAdminScoreVal;
+
+    let eotAnalysisStatus: 'Compliant' | 'Pending Assessment' | 'Dispute / Claim Risk' = 'Compliant';
+    if (activeClaimsCount > 2 || audit.scheduleStatus === 'Critical') {
+      eotAnalysisStatus = 'Dispute / Claim Risk';
+    } else if (activeClaimsCount > 0 || (p.eotDays || 0) > 0) {
+      eotAnalysisStatus = 'Pending Assessment';
+    }
+
+    // 5. Quality Assurance & Site Inspection Hold Points (Max 15 pts)
+    let qualityScoreVal = 15;
+    if (avgWirDays > 3) qualityScoreVal -= 4;
+    else if (avgWirDays > 2) qualityScoreVal -= 2;
+    if (avgMaterialDays > 14) qualityScoreVal -= 4;
+    qualityScoreVal = Math.min(15, Math.max(4, qualityScoreVal));
+    const qualitySupervisionScore = qualityScoreVal;
+
+    // Total Weighted Score (0 to 100)
+    const totalWeightedScore = Math.min(100, Math.max(0, Math.round(
+      slaScore + staffingScore + ipcScore + contractAdminScoreVal + qualityScoreVal
+    )));
+
+    // Official Performance Rating Grade & Standing Assignment
+    let officialGrade: 'A' | 'B' | 'C' | 'D' | 'F' = 'B';
+    let officialRatingTitle = '';
+    let officialStanding = '';
+    let officialRecommendation = '';
+    let badgeTextColor = '';
+    let badgeBgColor = '';
+    let hexColor = '';
+
+    if (totalWeightedScore >= 90) {
+      officialGrade = 'A';
+      officialRatingTitle = 'Grade A: Exceptional Performance / Superior Supervision';
+      officialStanding = 'Top-Tier Consultant — Approved for Retender & Pre-qualification Fast-track';
+      officialRecommendation = 'Exemplary supervisory performance across all technical, administrative, and contractual domains. The Supervision Consultant maintains outstanding submittal turnaround SLA, full resident expert mobilization, and rigorous FIDIC quality oversight.';
+      badgeTextColor = 'text-emerald-700 dark:text-emerald-300';
+      badgeBgColor = 'bg-emerald-50 border-emerald-200 dark:bg-emerald-950/40 dark:border-emerald-800';
+      hexColor = '#16a34a';
+    } else if (totalWeightedScore >= 75) {
+      officialGrade = 'B';
+      officialRatingTitle = 'Grade B: Satisfactory / Fully Compliant Supervision';
+      officialStanding = 'Standard Performance — Fully Meets ERA Contractual Benchmarks';
+      officialRecommendation = 'The Consultant maintains consistent site administration, satisfactory submittal turnaround, and diligent IPC certifications. Recommended for regular contract administration renewal with continued monitoring of key personnel timesheets.';
+      badgeTextColor = 'text-teal-700 dark:text-teal-300';
+      badgeBgColor = 'bg-teal-50 border-teal-200 dark:bg-teal-950/40 dark:border-teal-800';
+      hexColor = '#0d9488';
+    } else if (totalWeightedScore >= 60) {
+      officialGrade = 'C';
+      officialRatingTitle = 'Grade C: Marginal / Needs Corrective Intervention';
+      officialStanding = 'Conditional Supervision — 60-Day Remedial Performance Notice Required';
+      officialRecommendation = 'Marginal supervisory performance identified in technical submittal response delays or key expert staffing gaps. The Directorate requires submission of a formal 60-day corrective action plan to clear backlogs and mobilize missing specialists.';
+      badgeTextColor = 'text-amber-700 dark:text-amber-300';
+      badgeBgColor = 'bg-amber-50 border-amber-200 dark:bg-amber-950/40 dark:border-amber-800';
+      hexColor = '#d97706';
+    } else if (totalWeightedScore >= 45) {
+      officialGrade = 'D';
+      officialRatingTitle = 'Grade D: Unsatisfactory / High Risk Underperformance';
+      officialStanding = 'Performance Warning Issued — Pre-qualification Rating Downgraded';
+      officialRecommendation = 'Unsatisfactory supervision performance resulting in contractor claims, delayed IPC verifications, or severe RFI response bottlenecks. Directorate intervention and contract penalty review required under ERA consultant guidelines.';
+      badgeTextColor = 'text-orange-700 dark:text-orange-300';
+      badgeBgColor = 'bg-orange-50 border-orange-200 dark:bg-orange-950/40 dark:border-orange-800';
+      hexColor = '#ea580c';
+    } else {
+      officialGrade = 'F';
+      officialRatingTitle = 'Grade F: Critical Breach / Non-Compliant';
+      officialStanding = 'Sanction Review — Key Personnel Replacement & Debarment Inquiry';
+      officialRecommendation = 'Critical supervisory failure and non-compliance with FIDIC / ERA conditions of contract. Immediate replacement of Resident Engineer / Key Experts and formal referral to the ERA Consultant Debarment & Sanctions Committee.';
+      badgeTextColor = 'text-rose-700 dark:text-rose-300';
+      badgeBgColor = 'bg-rose-50 border-rose-200 dark:bg-rose-950/40 dark:border-rose-800';
+      hexColor = '#dc2626';
+    }
+
+    // Consultant FIDIC Clauses Evaluation
+    const clauses: Array<{ id: string; title: string; score: number; rating: 'Compliant' | 'Minor Deficiency' | 'Critical Breach'; details: string }> = [
+      {
+        id: 'Cl_3_1',
+        title: isDB ? 'FIDIC YB Cl. 3.1 / 3.2: Engineer’s Duties, Authority & Delegation' : 'FIDIC RB Cl. 3.1 / 3.2: Engineer’s Authority & Delegation',
+        score: staffingScore >= 16 ? 95 : staffingScore >= 12 ? 75 : 45,
+        rating: staffingScore >= 16 ? 'Compliant' : staffingScore >= 12 ? 'Minor Deficiency' : 'Critical Breach',
+        details: `${residentEngineer ? `Resident Engineer (${residentEngineer}) actively delegated on site.` : 'Resident Engineer delegation missing or informal.'} Key expert mobilization rate: ${mobilizationRatePct}%.`
+      },
+      {
+        id: 'Cl_3_7',
+        title: isDB ? 'FIDIC YB Cl. 3.7: Agreement & Determinations (Claims & EOT)' : 'FIDIC RB Cl. 3.7 / 3.5: Consultations & Determinations',
+        score: contractAdminScoreVal >= 16 ? 92 : contractAdminScoreVal >= 12 ? 70 : 40,
+        rating: contractAdminScoreVal >= 16 ? 'Compliant' : contractAdminScoreVal >= 12 ? 'Minor Deficiency' : 'Critical Breach',
+        details: `Assessment diligence on contractor claims & EOT notices. Active claim disputes: ${activeClaimsCount}. Status: ${eotAnalysisStatus}.`
+      },
+      {
+        id: 'Cl_5_2',
+        title: isDB ? 'FIDIC YB Cl. 5.1/5.2: Review of Contractor’s Documents & Design' : 'FIDIC RB Cl. 5.1: Review of Contractor Submittals & Shop Drawings',
+        score: slaComplianceRatePct >= 85 ? 96 : slaComplianceRatePct >= 70 ? 75 : 50,
+        rating: slaComplianceRatePct >= 85 ? 'Compliant' : slaComplianceRatePct >= 70 ? 'Minor Deficiency' : 'Critical Breach',
+        details: `Submittal SLA turnaround rate: ${slaComplianceRatePct}% on-time. Avg RFI response: ${avgRfiDays} days (target: ${targetOverrides['RFI'] || 7}d). Overdue count: ${overdueSubmittalsCount}.`
+      },
+      {
+        id: 'Cl_14_6',
+        title: 'FIDIC Cl. 14.6: Interim Payment Certificate (IPC) Timeliness & Audit',
+        score: ipcScore >= 18 ? 95 : ipcScore >= 12 ? 70 : 45,
+        rating: ipcScore >= 18 ? 'Compliant' : ipcScore >= 12 ? 'Minor Deficiency' : 'Critical Breach',
+        details: `IPC certification score: ${ipcScore}/20 pts. Matured claims (>56d): ${maturedIpcCount}. Verification status: ${ipcStatusText}.`
+      },
+      {
+        id: 'Cl_7_3',
+        title: 'FIDIC Cl. 7.3 / 7.4: Quality Assurance, Testing & Inspection Hold Points',
+        score: qualityScoreVal >= 13 ? 94 : qualityScoreVal >= 10 ? 75 : 50,
+        rating: qualityScoreVal >= 13 ? 'Compliant' : qualityScoreVal >= 10 ? 'Minor Deficiency' : 'Critical Breach',
+        details: `Works Inspection Requests (WIR) turnaround: ${avgWirDays} days (target: 2d). Material approval turnaround: ${avgMaterialDays} days.`
+      }
+    ];
+
+    return {
+      consultantFirm,
+      residentEngineer,
+      rePhone,
+      reEmail,
+      contractType: p.contractType || 'DBB',
+      isDB,
+      associationType,
+      // Staffing
+      totalStaff,
+      activeStaff,
+      keyStaffCount,
+      activeKeyStaffCount,
+      mobilizationRatePct,
+      allocatedMM,
+      expendedMM,
+      workloadPct,
+      staffingStatus,
+      // Submittals & SLA
+      submittalsCount,
+      resolvedSubmittalsCount,
+      onTimeSubmittalsCount,
+      overdueSubmittalsCount,
+      slaComplianceRatePct,
+      avgTurnaroundDays,
+      avgRfiDays,
+      avgMaterialDays,
+      avgIpcReviewDays,
+      avgWirDays,
+      submittalStatus,
+      // IPC & Payments
+      ipcTrackedCount,
+      unpaidIpcCount,
+      maturedIpcCount,
+      ipcCertificationScore,
+      ipcStatusText,
+      // Contract Admin
+      activeClaimsCount,
+      eotAnalysisStatus,
+      contractAdminScore,
+      // Quality
+      qualitySupervisionScore,
+      // Weighted Scores
+      slaScore,
+      staffingScore,
+      ipcScore,
+      contractAdminScoreVal,
+      qualityScoreVal,
+      totalWeightedScore,
+      // Official Rating
+      officialGrade,
+      officialRatingTitle,
+      officialStanding,
+      officialRecommendation,
+      badgeTextColor,
+      badgeBgColor,
+      hexColor,
+      clauses,
+      submittalBreakdown
+    };
   };
 
   const getFidicEvaluation = (p: Project, role: 'contractor' | 'consultant') => {
@@ -1016,6 +1382,87 @@ export default function GroupReportGenerator({
       totalCriticalRisks,
       compliantCount,
       nonCompliantCount
+    };
+  }, [rawGroupProjects]);
+
+  // Derived Supervision Consultant Compliance & Performance Audit statistics
+  const consultantAuditStats = useMemo(() => {
+    const totalCount = rawGroupProjects.length;
+    if (totalCount === 0) {
+      return {
+        avgScore: 0,
+        gradeACount: 0,
+        gradeBCount: 0,
+        gradeCCount: 0,
+        gradeDCount: 0,
+        gradeFCount: 0,
+        avgSlaRate: 0,
+        avgTurnaroundDays: 0,
+        totalOverdueSubmittals: 0,
+        totalKeyStaff: 0,
+        activeKeyStaff: 0,
+        mobilizationRatePct: 0,
+        maturedIpcCount: 0,
+        totalActiveClaims: 0,
+        satisfactoryConsultantCount: 0
+      };
+    }
+
+    let sumScore = 0;
+    let gradeACount = 0;
+    let gradeBCount = 0;
+    let gradeCCount = 0;
+    let gradeDCount = 0;
+    let gradeFCount = 0;
+    let sumSlaRate = 0;
+    let sumTurnaround = 0;
+    let totalOverdueSubmittals = 0;
+    let totalKeyStaff = 0;
+    let activeKeyStaff = 0;
+    let maturedIpcCount = 0;
+    let totalActiveClaims = 0;
+    let satisfactoryConsultantCount = 0;
+
+    rawGroupProjects.forEach(p => {
+      const c = getConsultantAuditMetrics(p);
+      sumScore += c.totalWeightedScore;
+      sumSlaRate += c.slaComplianceRatePct;
+      sumTurnaround += c.avgTurnaroundDays;
+      totalOverdueSubmittals += c.overdueSubmittalsCount;
+      totalKeyStaff += c.keyStaffCount;
+      activeKeyStaff += c.activeKeyStaffCount;
+      maturedIpcCount += c.maturedIpcCount;
+      totalActiveClaims += c.activeClaimsCount;
+
+      if (c.officialGrade === 'A') gradeACount++;
+      else if (c.officialGrade === 'B') gradeBCount++;
+      else if (c.officialGrade === 'C') gradeCCount++;
+      else if (c.officialGrade === 'D') gradeDCount++;
+      else gradeFCount++;
+
+      if (c.totalWeightedScore >= 75) {
+        satisfactoryConsultantCount++;
+      }
+    });
+
+    const mobilizationRatePct = totalKeyStaff > 0 ? Math.round((activeKeyStaff / totalKeyStaff) * 100) : 85;
+
+    return {
+      avgScore: Math.round((sumScore / totalCount) * 10) / 10,
+      gradeACount,
+      gradeBCount,
+      gradeCCount,
+      gradeDCount,
+      gradeFCount,
+      avgSlaRate: Math.round((sumSlaRate / totalCount) * 10) / 10,
+      avgTurnaroundDays: Math.round((sumTurnaround / totalCount) * 10) / 10,
+      totalOverdueSubmittals,
+      totalKeyStaff,
+      activeKeyStaff,
+      mobilizationRatePct,
+      maturedIpcCount,
+      totalActiveClaims,
+      satisfactoryConsultantCount
     };
   }, [rawGroupProjects]);
 
@@ -2097,13 +2544,14 @@ export default function GroupReportGenerator({
 
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
+    const isConsultantAudit = groupType === 'consultant' || auditPerspective === 'consultant';
     
     let curY = 115;
     let pageCount = 1;
 
     const drawHeaderFooter = () => {
-      // Elegant Crimson / Slate Audit Accent line
-      doc.setDrawColor(220, 38, 38); // Red compliance accent
+      // Elegant Crimson / Indigo Audit Accent line
+      doc.setDrawColor(isConsultantAudit ? 99 : 220, isConsultantAudit ? 102 : 38, isConsultantAudit ? 241 : 38); // Indigo/Red compliance accent
       doc.setLineWidth(3);
       doc.line(40, 25, pageWidth - 40, 25);
 
@@ -2111,12 +2559,12 @@ export default function GroupReportGenerator({
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(11);
       doc.setTextColor(15, 23, 42); // slate-900
-      doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA) • COMPLIANCE AUDITING OFFICE", 40, 42);
+      doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA) • COMPLIANCE & PERFORMANCE AUDITING OFFICE", 40, 42);
       
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8);
       doc.setTextColor(100, 116, 139); // slate-500
-      doc.text(`CMS - CONTRACT COMPLIANCE & PERFORMANCE AUDIT BOARD • AUDITOR: ${currentUserObj.username.toUpperCase()}`, 40, 54);
+      doc.text(`CMS - ${isConsultantAudit ? 'SUPERVISION CONSULTANT PERFORMANCE & QUALITY OVERSIGHT' : 'CONTRACT COMPLIANCE & PERFORMANCE AUDIT'} BOARD • AUDITOR: ${currentUserObj.username.toUpperCase()}`, 40, 54);
 
       const dStr = new Date().toLocaleString();
       doc.text(`AUDIT GENERATION DATE: ${dStr}`, pageWidth - 260, 42);
@@ -2140,13 +2588,15 @@ export default function GroupReportGenerator({
     // Document Subject Headline
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(13);
-    doc.setTextColor(185, 28, 28); // red-700
+    doc.setTextColor(isConsultantAudit ? 67 : 185, isConsultantAudit ? 56 : 28, isConsultantAudit ? 202 : 28); // Indigo/Red
     const groupNameStr = selectedGroup === 'All' ? 'ALL GROUPINGS (COMBINED STATS)' : selectedGroup.toUpperCase();
     const groupLabelStr = 
       groupType === 'directorate' ? 'PROGRAM DIRECTORATE' : 
       groupType === 'pmo' ? 'PMO GROUP' :
       groupType === 'contractor' ? 'CONTRACTOR' : 'CONSULTANT';
-    const headlineStr = `PROJECT COMPLIANCE & PERFORMANCE AUDIT REPORT: ${groupLabelStr} • ${groupNameStr}`;
+    const headlineStr = isConsultantAudit 
+      ? `SUPERVISION CONSULTANT COMPLIANCE & PERFORMANCE AUDIT REPORT: ${groupLabelStr} • ${groupNameStr}`
+      : `PROJECT COMPLIANCE & PERFORMANCE AUDIT REPORT: ${groupLabelStr} • ${groupNameStr}`;
     const wrappedHeadline = doc.splitTextToSize(headlineStr, pageWidth - 80);
     doc.text(wrappedHeadline, 40, 85);
 
@@ -2160,62 +2610,123 @@ export default function GroupReportGenerator({
     const cardY = 110;
     const cardHeight = 52;
 
-    // KPI Card 1: Audited Projects Count
-    doc.setFillColor(254, 242, 242); // very soft red
-    doc.rect(40, cardY, cardWidth, cardHeight, 'F');
-    doc.setDrawColor(252, 165, 165);
-    doc.rect(40, cardY, cardWidth, cardHeight, 'S');
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7.5);
-    doc.setTextColor(185, 28, 28);
-    doc.text("TOTAL AUDITED PROJECTS", 48, cardY + 18);
-    doc.setFontSize(14);
-    doc.setTextColor(15, 23, 42);
-    doc.text(`${processedProjects.length} Active`, 48, cardY + 38);
-
-    // KPI Card 2: Group Avg Compliance Score
-    doc.setFillColor(248, 250, 252);
-    doc.rect(40 + cardWidth + 10, cardY, cardWidth, cardHeight, 'F');
-    doc.setDrawColor(226, 232, 240);
-    doc.rect(40 + cardWidth + 10, cardY, cardWidth, cardHeight, 'S');
-    doc.setFontSize(7.5);
-    doc.setTextColor(100, 116, 139);
-    doc.text("AVG COMPLIANCE SCORE", 40 + cardWidth + 18, cardY + 18);
-    doc.setFontSize(14);
-    if (auditStats.avgScore >= 75) {
-      doc.setTextColor(22, 163, 74); // green
-    } else if (auditStats.avgScore >= 60) {
-      doc.setTextColor(217, 119, 6); // amber
-    } else {
-      doc.setTextColor(220, 38, 38); // red
-    }
-    doc.text(`${auditStats.avgScore.toFixed(2)}%`, 40 + cardWidth + 18, cardY + 38);
-
-    // KPI Card 3: Behind Schedule Rate
-    doc.setFillColor(248, 250, 252);
-    doc.rect(40 + (cardWidth + 10) * 2, cardY, cardWidth, cardHeight, 'F');
-    doc.rect(40 + (cardWidth + 10) * 2, cardY, cardWidth, cardHeight, 'S');
-    doc.setFontSize(7.5);
-    doc.setTextColor(100, 116, 139);
-    doc.text("SCHEDULE SLIPPAGE RATE", 40 + (cardWidth + 10) * 2 + 8, cardY + 18);
-    doc.setFontSize(14);
-    if (auditStats.behindSchedulePct > 35) {
-      doc.setTextColor(220, 38, 38);
-    } else {
+    if (isConsultantAudit) {
+      // Consultant KPI Card 1: Audited Projects Count
+      doc.setFillColor(238, 242, 255); // soft indigo
+      doc.rect(40, cardY, cardWidth, cardHeight, 'F');
+      doc.setDrawColor(199, 210, 254);
+      doc.rect(40, cardY, cardWidth, cardHeight, 'S');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(67, 56, 202);
+      doc.text("SUPERVISED CONTRACTS", 48, cardY + 18);
+      doc.setFontSize(14);
       doc.setTextColor(15, 23, 42);
-    }
-    doc.text(`${auditStats.behindSchedulePct.toFixed(2)}% Delay`, 40 + (cardWidth + 10) * 2 + 8, cardY + 38);
+      doc.text(`${processedProjects.length} Active`, 48, cardY + 38);
 
-    // KPI Card 4: Risks & Warnings
-    doc.setFillColor(248, 250, 252);
-    doc.rect(40 + (cardWidth + 10) * 3, cardY, cardWidth, cardHeight, 'F');
-    doc.rect(40 + (cardWidth + 10) * 3, cardY, cardWidth, cardHeight, 'S');
-    doc.setFontSize(7.5);
-    doc.setTextColor(100, 116, 139);
-    doc.text("GUARANTEE & RISK TRIGGERS", 40 + (cardWidth + 10) * 3 + 8, cardY + 18);
-    doc.setFontSize(13);
-    doc.setTextColor(220, 38, 38); // red
-    doc.text(`${auditStats.totalExpiredBonds} Exp. / ${auditStats.totalCriticalRisks} Crit.`, 40 + (cardWidth + 10) * 3 + 8, cardY + 38);
+      // Consultant KPI Card 2: Avg Consultant Score & Rating
+      doc.setFillColor(248, 250, 252);
+      doc.rect(40 + cardWidth + 10, cardY, cardWidth, cardHeight, 'F');
+      doc.setDrawColor(226, 232, 240);
+      doc.rect(40 + cardWidth + 10, cardY, cardWidth, cardHeight, 'S');
+      doc.setFontSize(7.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text("AVG CONSULTANT PERFORMANCE", 40 + cardWidth + 18, cardY + 18);
+      doc.setFontSize(13);
+      if (consultantAuditStats.avgScore >= 80) {
+        doc.setTextColor(22, 163, 74); // green
+      } else if (consultantAuditStats.avgScore >= 65) {
+        doc.setTextColor(217, 119, 6); // amber
+      } else {
+        doc.setTextColor(220, 38, 38); // red
+      }
+      doc.text(`${consultantAuditStats.avgScore.toFixed(1)}% (Grade ${consultantAuditStats.avgScore >= 85 ? 'A' : consultantAuditStats.avgScore >= 75 ? 'B' : consultantAuditStats.avgScore >= 65 ? 'C' : consultantAuditStats.avgScore >= 50 ? 'D' : 'F'})`, 40 + cardWidth + 18, cardY + 38);
+
+      // Consultant KPI Card 3: Submittal SLA Compliance
+      doc.setFillColor(248, 250, 252);
+      doc.rect(40 + (cardWidth + 10) * 2, cardY, cardWidth, cardHeight, 'F');
+      doc.rect(40 + (cardWidth + 10) * 2, cardY, cardWidth, cardHeight, 'S');
+      doc.setFontSize(7.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text("SUBMITTAL SLA ON-TIME RATE", 40 + (cardWidth + 10) * 2 + 8, cardY + 18);
+      doc.setFontSize(13);
+      if (consultantAuditStats.avgSlaRate >= 80) {
+        doc.setTextColor(22, 163, 74);
+      } else if (consultantAuditStats.avgSlaRate >= 60) {
+        doc.setTextColor(217, 119, 6);
+      } else {
+        doc.setTextColor(220, 38, 38);
+      }
+      doc.text(`${consultantAuditStats.avgSlaRate.toFixed(1)}% (${consultantAuditStats.avgTurnaroundDays}d avg)`, 40 + (cardWidth + 10) * 2 + 8, cardY + 38);
+
+      // Consultant KPI Card 4: Key Personnel Mobilization
+      doc.setFillColor(248, 250, 252);
+      doc.rect(40 + (cardWidth + 10) * 3, cardY, cardWidth, cardHeight, 'F');
+      doc.rect(40 + (cardWidth + 10) * 3, cardY, cardWidth, cardHeight, 'S');
+      doc.setFontSize(7.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text("STAFF MOBILIZATION RATE", 40 + (cardWidth + 10) * 3 + 8, cardY + 18);
+      doc.setFontSize(13);
+      doc.setTextColor(15, 23, 42);
+      doc.text(`${consultantAuditStats.mobilizationRatePct}% (${consultantAuditStats.activeKeyStaff} Experts)`, 40 + (cardWidth + 10) * 3 + 8, cardY + 38);
+    } else {
+      // KPI Card 1: Audited Projects Count
+      doc.setFillColor(254, 242, 242); // very soft red
+      doc.rect(40, cardY, cardWidth, cardHeight, 'F');
+      doc.setDrawColor(252, 165, 165);
+      doc.rect(40, cardY, cardWidth, cardHeight, 'S');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(185, 28, 28);
+      doc.text("TOTAL AUDITED PROJECTS", 48, cardY + 18);
+      doc.setFontSize(14);
+      doc.setTextColor(15, 23, 42);
+      doc.text(`${processedProjects.length} Active`, 48, cardY + 38);
+
+      // KPI Card 2: Group Avg Compliance Score
+      doc.setFillColor(248, 250, 252);
+      doc.rect(40 + cardWidth + 10, cardY, cardWidth, cardHeight, 'F');
+      doc.setDrawColor(226, 232, 240);
+      doc.rect(40 + cardWidth + 10, cardY, cardWidth, cardHeight, 'S');
+      doc.setFontSize(7.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text("AVG COMPLIANCE SCORE", 40 + cardWidth + 18, cardY + 18);
+      doc.setFontSize(14);
+      if (auditStats.avgScore >= 75) {
+        doc.setTextColor(22, 163, 74); // green
+      } else if (auditStats.avgScore >= 60) {
+        doc.setTextColor(217, 119, 6); // amber
+      } else {
+        doc.setTextColor(220, 38, 38); // red
+      }
+      doc.text(`${auditStats.avgScore.toFixed(2)}%`, 40 + cardWidth + 18, cardY + 38);
+
+      // KPI Card 3: Behind Schedule Rate
+      doc.setFillColor(248, 250, 252);
+      doc.rect(40 + (cardWidth + 10) * 2, cardY, cardWidth, cardHeight, 'F');
+      doc.rect(40 + (cardWidth + 10) * 2, cardY, cardWidth, cardHeight, 'S');
+      doc.setFontSize(7.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text("SCHEDULE SLIPPAGE RATE", 40 + (cardWidth + 10) * 2 + 8, cardY + 18);
+      doc.setFontSize(14);
+      if (auditStats.behindSchedulePct > 35) {
+        doc.setTextColor(220, 38, 38);
+      } else {
+        doc.setTextColor(15, 23, 42);
+      }
+      doc.text(`${auditStats.behindSchedulePct.toFixed(2)}% Delay`, 40 + (cardWidth + 10) * 2 + 8, cardY + 38);
+
+      // KPI Card 4: Risks & Warnings
+      doc.setFillColor(248, 250, 252);
+      doc.rect(40 + (cardWidth + 10) * 3, cardY, cardWidth, cardHeight, 'F');
+      doc.rect(40 + (cardWidth + 10) * 3, cardY, cardWidth, cardHeight, 'S');
+      doc.setFontSize(7.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text("GUARANTEE & RISK TRIGGERS", 40 + (cardWidth + 10) * 3 + 8, cardY + 18);
+      doc.setFontSize(13);
+      doc.setTextColor(220, 38, 38); // red
+      doc.text(`${auditStats.totalExpiredBonds} Exp. / ${auditStats.totalCriticalRisks} Crit.`, 40 + (cardWidth + 10) * 3 + 8, cardY + 38);
+    }
 
     curY = cardY + cardHeight + 20;
 
@@ -2228,17 +2739,32 @@ export default function GroupReportGenerator({
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7.5);
     doc.setTextColor(30, 41, 59);
-    doc.text("COMPLIANCE RATING WEIGHT DISTRIBUTION & BREACH PENALTY METHODOLOGY", 48, curY + 10);
+    doc.text(
+      isConsultantAudit 
+        ? "SUPERVISION CONSULTANT COMPLIANCE & PERFORMANCE AUDIT SCORING WEIGHTS & PENALTY METHODOLOGY"
+        : "COMPLIANCE RATING WEIGHT DISTRIBUTION & BREACH PENALTY METHODOLOGY", 
+      48, 
+      curY + 10
+    );
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(6.5);
     doc.setTextColor(71, 85, 105);
-    doc.text(
-      "• Progress vs Time (20%): direct output ratio   • EVM Performance (30%): SPI (15%) + CPI (15%)   • Linear Layers (25%): Average of Subgrade, Capping, Subbase, Basecourse & Asphalt %", 48, curY + 18
-    );
-    doc.text(
-      "• Audit Risks & Guarantees (25%): Valid Guarantees (15%) + Risk Mitigation (10%)   • Breach Penalties: CPI < 0.85 (-10 pts) | SPI < 0.85 (-10 pts) | Expired Bonds (-15 pts) | Critical Risks > 2 (-10 pts)", 48, curY + 24
-    );
+    if (isConsultantAudit) {
+      doc.text(
+        "• Submittal SLA (25%): Turnaround vs Target Days   • Staff Mobilization (20%): Key Personnel in Field   • IPC Verification (20%): Timeliness & Deduction Accuracy", 48, curY + 18
+      );
+      doc.text(
+        "• Contract Admin & Claims (20%): FIDIC Cl. 3 Determinations   • Quality Assurance (15%): WIR & Materials   • Rating Scale: Grade A (>=85% Outstanding) | B (75-84% Satisfactory) | C (65-74% Needs Improvement) | D/F (Breach)", 48, curY + 24
+      );
+    } else {
+      doc.text(
+        "• Progress vs Time (20%): direct output ratio   • EVM Performance (30%): SPI (15%) + CPI (15%)   • Linear Layers (25%): Average of Subgrade, Capping, Subbase, Basecourse & Asphalt %", 48, curY + 18
+      );
+      doc.text(
+        "• Audit Risks & Guarantees (25%): Valid Guarantees (15%) + Risk Mitigation (10%)   • Breach Penalties: CPI < 0.85 (-10 pts) | SPI < 0.85 (-10 pts) | Expired Bonds (-15 pts) | Critical Risks > 2 (-10 pts)", 48, curY + 24
+      );
+    }
 
     curY += 38;
 
@@ -2246,101 +2772,134 @@ export default function GroupReportGenerator({
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9.5);
     doc.setTextColor(30, 41, 59);
-    doc.text("COMPLIANCE AUDIT MATRIX BY PROJECT", 40, curY);
+    doc.text(isConsultantAudit ? "SUPERVISION CONSULTANT PERFORMANCE & COMPLIANCE MATRIX" : "COMPLIANCE AUDIT MATRIX BY PROJECT", 40, curY);
     curY += 12;
 
     // Landscape Columns widths (Total A4 width: 841.89 pt, printable width: 761.89 pt)
-    const colWidths = {
+    const colWidths = isConsultantAudit ? {
+      name: 125,
+      consultant_re: 145,
+      staffing: 115,
+      sla_turnaround: 125,
+      ipc_claims: 125,
+      score_rating: 126.89
+    } : {
       name: 110,
       contract_details: 130,
       schedule: 115,
       evm: 95,
-      linear: 130, // expanded to accommodate plan vs actual per layer
+      linear: 130,
       bonds_risks: 95,
       score_rating: 86
     };
 
-    const colX = {
+    const colX = isConsultantAudit ? {
       name: 40,
-      contract_details: 40 + colWidths.name,
-      schedule: 40 + colWidths.name + colWidths.contract_details,
-      evm: 40 + colWidths.name + colWidths.contract_details + colWidths.schedule,
-      linear: 40 + colWidths.name + colWidths.contract_details + colWidths.schedule + colWidths.evm,
-      bonds_risks: 40 + colWidths.name + colWidths.contract_details + colWidths.schedule + colWidths.evm + colWidths.linear,
-      score_rating: 40 + colWidths.name + colWidths.contract_details + colWidths.schedule + colWidths.evm + colWidths.linear + colWidths.bonds_risks
-    };
-
-    const formatStartDate = (dateStr: string) => {
-      if (!dateStr) return 'N/A';
-      try {
-        const d = new Date(dateStr);
-        if (isNaN(d.getTime())) return dateStr;
-        return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-      } catch {
-        return dateStr;
-      }
+      consultant_re: 40 + (colWidths as any).name,
+      staffing: 40 + (colWidths as any).name + (colWidths as any).consultant_re,
+      sla_turnaround: 40 + (colWidths as any).name + (colWidths as any).consultant_re + (colWidths as any).staffing,
+      ipc_claims: 40 + (colWidths as any).name + (colWidths as any).consultant_re + (colWidths as any).staffing + (colWidths as any).sla_turnaround,
+      score_rating: 40 + (colWidths as any).name + (colWidths as any).consultant_re + (colWidths as any).staffing + (colWidths as any).sla_turnaround + (colWidths as any).ipc_claims
+    } : {
+      name: 40,
+      contract_details: 40 + (colWidths as any).name,
+      schedule: 40 + (colWidths as any).name + (colWidths as any).contract_details,
+      evm: 40 + (colWidths as any).name + (colWidths as any).contract_details + (colWidths as any).schedule,
+      linear: 40 + (colWidths as any).name + (colWidths as any).contract_details + (colWidths as any).schedule + (colWidths as any).evm,
+      bonds_risks: 40 + (colWidths as any).name + (colWidths as any).contract_details + (colWidths as any).schedule + (colWidths as any).evm + (colWidths as any).linear,
+      score_rating: 40 + (colWidths as any).name + (colWidths as any).contract_details + (colWidths as any).schedule + (colWidths as any).evm + (colWidths as any).linear + (colWidths as any).bonds_risks
     };
 
     const drawTableHeader = (y: number) => {
       doc.setFont('times', 'bold');
       doc.setFontSize(8.5);
-      const headerNameLines = doc.splitTextToSize("PROJECT IDENTIFIER / TITLE", colWidths.name - 12);
-      const headerContractDetailsLines = doc.splitTextToSize("CONTRACT DETAILS", colWidths.contract_details - 12);
-      const headerScheduleLines = doc.splitTextToSize("SCHEDULE & OVERRUNS (%)", colWidths.schedule - 12);
-      const headerEvmLines = doc.splitTextToSize("EVM INDICES (CPI / SPI)", colWidths.evm - 12);
-      const headerLinearLines = doc.splitTextToSize("LINEAR PROGRESS BY LAYERS", colWidths.linear - 12);
-      const headerBondsRisksLines = doc.splitTextToSize("GUARANTEES & RISKS", colWidths.bonds_risks - 12);
-      const headerScoreRatingLines = doc.splitTextToSize("COMPLIANCE & GRADE", colWidths.score_rating - 12);
 
-      const maxHeaderLines = Math.max(
-        headerNameLines.length,
-        headerContractDetailsLines.length,
-        headerScheduleLines.length,
-        headerEvmLines.length,
-        headerLinearLines.length,
-        headerBondsRisksLines.length,
-        headerScoreRatingLines.length
-      );
-      const headerHeight = maxHeaderLines * 11 + 10;
+      if (isConsultantAudit) {
+        const headerNameLines = doc.splitTextToSize("PROJECT IDENTIFIER / TITLE", (colWidths as any).name - 12);
+        const headerConsultantLines = doc.splitTextToSize("SUPERVISION CONSULTANT & RE", (colWidths as any).consultant_re - 12);
+        const headerStaffingLines = doc.splitTextToSize("KEY STAFF MOBILIZATION", (colWidths as any).staffing - 12);
+        const headerSlaLines = doc.splitTextToSize("SUBMITTAL SLA & RFI TURNAROUND", (colWidths as any).sla_turnaround - 12);
+        const headerIpcLines = doc.splitTextToSize("IPC TIMELINESS & CLAIMS", (colWidths as any).ipc_claims - 12);
+        const headerScoreLines = doc.splitTextToSize("AUDIT SCORE & OFFICIAL GRADE", (colWidths as any).score_rating - 12);
 
-      doc.setFillColor(30, 41, 59); // slate-800 professional navy header
-      doc.rect(40, y, pageWidth - 80, headerHeight, 'F');
+        const maxHeaderLines = Math.max(
+          headerNameLines.length,
+          headerConsultantLines.length,
+          headerStaffingLines.length,
+          headerSlaLines.length,
+          headerIpcLines.length,
+          headerScoreLines.length
+        );
+        const headerHeight = maxHeaderLines * 11 + 10;
 
-      doc.setFont('times', 'bold');
-      doc.setFontSize(8.5);
-      doc.setTextColor(255, 255, 255);
+        doc.setFillColor(30, 41, 59); // slate-800
+        doc.rect(40, y, pageWidth - 80, headerHeight, 'F');
 
-      const drawCellLines = (lines: string[], x: number) => {
-        const startY = y + (headerHeight - (lines.length * 11)) / 2 + 8;
-        lines.forEach((line, idx) => {
-          doc.text(line, x + 6, startY + idx * 11);
-        });
-      };
+        doc.setFont('times', 'bold');
+        doc.setFontSize(8.5);
+        doc.setTextColor(255, 255, 255);
 
-      drawCellLines(headerNameLines, colX.name);
-      drawCellLines(headerContractDetailsLines, colX.contract_details);
-      drawCellLines(headerScheduleLines, colX.schedule);
-      drawCellLines(headerEvmLines, colX.evm);
-      drawCellLines(headerLinearLines, colX.linear);
-      drawCellLines(headerBondsRisksLines, colX.bonds_risks);
-      drawCellLines(headerScoreRatingLines, colX.score_rating);
+        const drawCellLines = (lines: string[], x: number) => {
+          let lineY = y + 12;
+          lines.forEach(line => {
+            doc.text(line, x + 6, lineY);
+            lineY += 10;
+          });
+        };
 
-      // Header borders
-      doc.setDrawColor(30, 41, 59);
-      doc.setLineWidth(1);
-      doc.line(40, y, pageWidth - 40, y);
-      doc.line(40, y + headerHeight, pageWidth - 40, y + headerHeight);
-      doc.line(40, y, 40, y + headerHeight);
-      doc.line(pageWidth - 40, y, pageWidth - 40, y + headerHeight);
+        drawCellLines(headerNameLines, (colX as any).name);
+        drawCellLines(headerConsultantLines, (colX as any).consultant_re);
+        drawCellLines(headerStaffingLines, (colX as any).staffing);
+        drawCellLines(headerSlaLines, (colX as any).sla_turnaround);
+        drawCellLines(headerIpcLines, (colX as any).ipc_claims);
+        drawCellLines(headerScoreLines, (colX as any).score_rating);
 
-      doc.line(colX.contract_details, y, colX.contract_details, y + headerHeight);
-      doc.line(colX.schedule, y, colX.schedule, y + headerHeight);
-      doc.line(colX.evm, y, colX.evm, y + headerHeight);
-      doc.line(colX.linear, y, colX.linear, y + headerHeight);
-      doc.line(colX.bonds_risks, y, colX.bonds_risks, y + headerHeight);
-      doc.line(colX.score_rating, y, colX.score_rating, y + headerHeight);
+        return headerHeight;
+      } else {
+        const headerNameLines = doc.splitTextToSize("PROJECT IDENTIFIER / TITLE", (colWidths as any).name - 12);
+        const headerContractDetailsLines = doc.splitTextToSize("CONTRACT DETAILS", (colWidths as any).contract_details - 12);
+        const headerScheduleLines = doc.splitTextToSize("SCHEDULE & OVERRUNS (%)", (colWidths as any).schedule - 12);
+        const headerEvmLines = doc.splitTextToSize("EVM INDICES (CPI / SPI)", (colWidths as any).evm - 12);
+        const headerLinearLines = doc.splitTextToSize("LINEAR PROGRESS BY LAYERS", (colWidths as any).linear - 12);
+        const headerBondsRisksLines = doc.splitTextToSize("GUARANTEES & RISKS", (colWidths as any).bonds_risks - 12);
+        const headerScoreRatingLines = doc.splitTextToSize("COMPLIANCE & GRADE", (colWidths as any).score_rating - 12);
 
-      return headerHeight;
+        const maxHeaderLines = Math.max(
+          headerNameLines.length,
+          headerContractDetailsLines.length,
+          headerScheduleLines.length,
+          headerEvmLines.length,
+          headerLinearLines.length,
+          headerBondsRisksLines.length,
+          headerScoreRatingLines.length
+        );
+        const headerHeight = maxHeaderLines * 11 + 10;
+
+        doc.setFillColor(30, 41, 59); // slate-800 professional navy header
+        doc.rect(40, y, pageWidth - 80, headerHeight, 'F');
+
+        doc.setFont('times', 'bold');
+        doc.setFontSize(8.5);
+        doc.setTextColor(255, 255, 255);
+
+        const drawCellLines = (lines: string[], x: number) => {
+          let lineY = y + 12;
+          lines.forEach(line => {
+            doc.text(line, x + 6, lineY);
+            lineY += 10;
+          });
+        };
+
+        drawCellLines(headerNameLines, (colX as any).name);
+        drawCellLines(headerContractDetailsLines, (colX as any).contract_details);
+        drawCellLines(headerScheduleLines, (colX as any).schedule);
+        drawCellLines(headerEvmLines, (colX as any).evm);
+        drawCellLines(headerLinearLines, (colX as any).linear);
+        drawCellLines(headerBondsRisksLines, (colX as any).bonds_risks);
+        drawCellLines(headerScoreRatingLines, (colX as any).score_rating);
+
+        return headerHeight;
+      }
     };
 
     const initialHeaderHeight = drawTableHeader(curY);
@@ -2354,12 +2913,118 @@ export default function GroupReportGenerator({
       doc.setFontSize(12);
       const titleLines = doc.splitTextToSize(combinedTitle, colWidths.name - 12);
 
+      if (isConsultantAudit) {
+        const cAudit = getConsultantAuditMetrics(p);
+        const firmLines = doc.splitTextToSize(`Firm: ${cAudit.consultantFirm}`, (colWidths as any).consultant_re - 12);
+        const reLines = doc.splitTextToSize(`RE: ${cAudit.residentEngineer}`, (colWidths as any).consultant_re - 12);
+        const cReLines = [...firmLines, ...reLines];
+
+        const staffLines1 = doc.splitTextToSize(`Active: ${cAudit.activeStaff} / ${cAudit.totalStaff} (${cAudit.mobilizationRatePct}%)`, (colWidths as any).staffing - 12);
+        const staffLines2 = doc.splitTextToSize(`Key Experts: ${cAudit.activeKeyStaffCount}/${cAudit.keyStaffCount}`, (colWidths as any).staffing - 12);
+        const staffingLines = [...staffLines1, ...staffLines2];
+
+        const slaLines1 = doc.splitTextToSize(`SLA Rate: ${cAudit.slaComplianceRatePct}%`, (colWidths as any).sla_turnaround - 12);
+        const slaLines2 = doc.splitTextToSize(`Turnaround: ${cAudit.avgTurnaroundDays} days avg`, (colWidths as any).sla_turnaround - 12);
+        const slaLines3 = doc.splitTextToSize(`Overdue RFIs: ${cAudit.overdueSubmittalsCount}`, (colWidths as any).sla_turnaround - 12);
+        const slaLines = [...slaLines1, ...slaLines2, ...slaLines3];
+
+        const ipcLines1 = doc.splitTextToSize(`IPC Score: ${cAudit.ipcScore}/20 pts`, (colWidths as any).ipc_claims - 12);
+        const ipcLines2 = doc.splitTextToSize(`Status: ${cAudit.ipcStatusText}`, (colWidths as any).ipc_claims - 12);
+        const ipcLines3 = doc.splitTextToSize(`Claims: ${cAudit.activeClaimsCount} active`, (colWidths as any).ipc_claims - 12);
+        const ipcLines = [...ipcLines1, ...ipcLines2, ...ipcLines3];
+
+        const scoreLines1 = doc.splitTextToSize(`Score: ${cAudit.totalWeightedScore}%`, (colWidths as any).score_rating - 12);
+        const scoreLines2 = doc.splitTextToSize(`Grade ${cAudit.officialGrade}`, (colWidths as any).score_rating - 12);
+        const scoreLines3 = doc.splitTextToSize(cAudit.officialRatingTitle, (colWidths as any).score_rating - 12);
+        const scoreLines = [...scoreLines1, ...scoreLines2, ...scoreLines3];
+
+        const nameH = titleLines.length * 15 + 12;
+        const cReH = cReLines.length * 15 + 12;
+        const staffingH = staffingLines.length * 15 + 12;
+        const slaH = slaLines.length * 15 + 12;
+        const ipcH = ipcLines.length * 15 + 12;
+        const scoreH = scoreLines.length * 15 + 12;
+
+        const rowHeight = Math.max(nameH, cReH, staffingH, slaH, ipcH, scoreH, 68);
+
+        if (curY + rowHeight > pageHeight - 55) {
+          doc.addPage();
+          pageCount++;
+          curY = 60;
+          drawHeaderFooter();
+          const headerH = drawTableHeader(curY);
+          curY += headerH;
+        }
+
+        if (idx % 2 === 0) {
+          doc.setFillColor(248, 250, 252);
+        } else {
+          doc.setFillColor(255, 255, 255);
+        }
+        doc.rect(40, curY, pageWidth - 80, rowHeight, 'F');
+        doc.setDrawColor(203, 213, 225);
+        doc.setLineWidth(1);
+        doc.rect(40, curY, pageWidth - 80, rowHeight, 'S');
+
+        doc.line((colX as any).consultant_re, curY, (colX as any).consultant_re, curY + rowHeight);
+        doc.line((colX as any).staffing, curY, (colX as any).staffing, curY + rowHeight);
+        doc.line((colX as any).sla_turnaround, curY, (colX as any).sla_turnaround, curY + rowHeight);
+        doc.line((colX as any).ipc_claims, curY, (colX as any).ipc_claims, curY + rowHeight);
+        doc.line((colX as any).score_rating, curY, (colX as any).score_rating, curY + rowHeight);
+
+        // Render text
+        doc.setFont('times', 'bold');
+        doc.setFontSize(12);
+        doc.setTextColor(15, 23, 42);
+        let yOffsetN = curY + 18;
+        titleLines.forEach((line: string) => {
+          doc.text(line, (colX as any).name + 6, yOffsetN);
+          yOffsetN += 15;
+        });
+
+        doc.setFont('times', 'normal');
+        doc.setFontSize(12);
+        doc.setTextColor(71, 85, 105);
+        let yOffsetCR = curY + 18;
+        cReLines.forEach((line: string) => {
+          doc.text(line, (colX as any).consultant_re + 6, yOffsetCR);
+          yOffsetCR += 15;
+        });
+
+        let yOffsetSt = curY + 18;
+        staffingLines.forEach((line: string) => {
+          doc.text(line, (colX as any).staffing + 6, yOffsetSt);
+          yOffsetSt += 15;
+        });
+
+        let yOffsetSla = curY + 18;
+        slaLines.forEach((line: string) => {
+          doc.text(line, (colX as any).sla_turnaround + 6, yOffsetSla);
+          yOffsetSla += 15;
+        });
+
+        let yOffsetIpc = curY + 18;
+        ipcLines.forEach((line: string) => {
+          doc.text(line, (colX as any).ipc_claims + 6, yOffsetIpc);
+          yOffsetIpc += 15;
+        });
+
+        let yOffsetSc = curY + 18;
+        scoreLines.forEach((line: string) => {
+          doc.text(line, (colX as any).score_rating + 6, yOffsetSc);
+          yOffsetSc += 15;
+        });
+
+        curY += rowHeight;
+        return;
+      }
+
       // 1.5 Contract Details Lines
       doc.setFont('times', 'normal');
       doc.setFontSize(12);
       const contractorLines = doc.splitTextToSize(`Contractor: ${p.contractor || 'N/A'}`, colWidths.contract_details - 12);
       const consultantLines = doc.splitTextToSize(`Consultant: ${p.consultant || 'N/A'}`, colWidths.contract_details - 12);
-      const commencedLines = doc.splitTextToSize(`Commenced: ${formatStartDate(p.startDate)}`, colWidths.contract_details - 12);
+      const commencedLines = doc.splitTextToSize(`Commenced: ${p.startDate || 'N/A'}`, colWidths.contract_details - 12);
       const origCostLines = doc.splitTextToSize(`Orig. Cost: ${formatAccounting(p.origAmount || 0, 'Br.')} M`, colWidths.contract_details - 12);
       const cDetailsLines = [
         ...contractorLines,
@@ -2577,7 +3242,9 @@ export default function GroupReportGenerator({
       curY += rowHeight;
     });
 
-    // SECTION B: COMPREHENSIVE PERFORMANCE & RISK EVALUATION REPORT
+
+
+    // SECTION B: CRITICAL ENGINEERING QUANTITIES & UNIT OF MEASUREMENT (UoM) VALIDATION
     doc.addPage();
     pageCount++;
     curY = 82;
@@ -2586,186 +3253,7 @@ export default function GroupReportGenerator({
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(10.5);
     doc.setTextColor(30, 41, 59);
-    doc.text("SECTION B: AUDIT COMPREHENSIVE PERFORMANCE & RISK EVALUATION", 40, curY);
-    
-    // Header bottom thin divider line
-    doc.setLineWidth(0.5);
-    doc.setDrawColor(203, 213, 225);
-    doc.line(40, curY + 6, pageWidth - 40, curY + 6);
-    curY += 22;
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7);
-    doc.setTextColor(100, 116, 139);
-    doc.text("This section details individual project strategic Key Performance Indicators (KPIs), Right-of-Way (ROW) clearing bottlenecks, and critical schedule/cost variance commentary.", 40, curY);
-    curY += 16;
-
-    processedProjects.forEach((p, idx) => {
-      const audit = getAuditMetrics(p);
-      const rowClearMetric = (p.rowMetrics || []).find(m => m.name === 'ROW Obstruction free Section')?.value || 0;
-      const rowClearPct = p.lengthKm > 0 ? (rowClearMetric / p.lengthKm) * 100 : 0;
-      
-      const kpiScores = getProjectKpiScores(p);
-      const avgKpiScore = kpiScores.reduce((sum, item) => sum + item.score, 0) / kpiScores.length;
-
-      const cardBlockHeight = 200;
-      if (curY + cardBlockHeight > pageHeight - 55) {
-        doc.addPage();
-        pageCount++;
-        curY = 75;
-        drawHeaderFooter();
-      }
-
-      // Draw beautiful background box
-      doc.setFillColor(248, 250, 252); // slate-50
-      doc.rect(40, curY, pageWidth - 80, cardBlockHeight, 'F');
-      doc.setDrawColor(226, 232, 240); // slate-200
-      doc.rect(40, curY, pageWidth - 80, cardBlockHeight, 'S');
-
-      // Colored status line on the left side of the box
-      let flagColor = [13, 148, 136]; // teal
-      if (audit.complianceScore >= 85) flagColor = [22, 163, 74]; // green
-      else if (audit.complianceScore >= 70) flagColor = [13, 148, 136]; // teal
-      else if (audit.complianceScore >= 50) flagColor = [217, 119, 6]; // amber
-      else flagColor = [220, 38, 38]; // red
-
-      doc.setFillColor(flagColor[0], flagColor[1], flagColor[2]);
-      doc.rect(40, curY, 4, cardBlockHeight, 'F');
-
-      // Project Header inside box
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8.5);
-      doc.setTextColor(15, 23, 42);
-      doc.text(`${idx + 1}. ${p.name.toUpperCase()}  (Compliance Grade: ${audit.ratingCode} | Score: ${audit.complianceScore}%)`, 52, curY + 14);
-
-      // Section B Metrics - Column Layout
-      let colYOffset = curY + 28;
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7);
-      doc.setTextColor(30, 41, 59);
-
-      // Column 1: Time, Cost & Progress Performance
-      doc.text("TIME, COST & PROGRESS PERFORMANCE", 52, colYOffset);
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(71, 85, 105);
-      doc.text(`• Progress Conformance: ${p.physicalProgress.toFixed(2)}% Actual vs ${audit.plannedPct.toFixed(2)}% Plan`, 52, colYOffset + 11);
-      doc.text(`• Eng. Qty Pavement Layer Completion: ${(audit.averageLayerPct || 0).toFixed(2)}% average depth`, 52, colYOffset + 22);
-      doc.text(`• Schedule Index (SPI): ${audit.SPI.toFixed(3)} (${audit.SPI >= 1.0 ? 'Ahead/On-Schedule' : 'Behind Schedule'})`, 52, colYOffset + 33);
-      doc.text(`• Cost Index (CPI): ${audit.CPI.toFixed(3)} (${audit.CPI >= 1.0 ? 'Under/On-Budget' : 'Overspending'})`, 52, colYOffset + 44);
-      doc.text(`• Authorized Extension (EOT): ${p.eotDays || 0} days (Time Overrun: ${audit.timeOverrunPct.toFixed(2)}%)`, 52, colYOffset + 55);
-
-      // Column 2: Right-of-Way (ROW) Performance
-      let col2X = 310;
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(30, 41, 59);
-      doc.text("RIGHT-OF-WAY (ROW) & UTILITIES PERFORMANCE", col2X, colYOffset);
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(71, 85, 105);
-      doc.text(`• ROW Cleared Corridor: ${rowClearMetric.toFixed(2)} Km of ${p.lengthKm.toFixed(2)} Km total (${rowClearPct.toFixed(2)}%)`, col2X, colYOffset + 11);
-      
-      // Calculate Utilities compensation totals
-      const utilCompensations = p.utilityCompensation || [];
-      const totalUtilRequired = utilCompensations.reduce((sum, u) => sum + (parseFloat(u.compensationRequired as any) || 0), 0);
-      const totalUtilPaid = utilCompensations.reduce((sum, u) => sum + (parseFloat(u.compensationPaid as any) || 0), 0);
-      const totalUtilUnpaid = utilCompensations.reduce((sum, u) => sum + (parseFloat(u.unpaidBalance as any) || 0), 0);
-      
-      const compPaid = (p.rowMetrics || []).find(m => m.name === 'Compensation Paid by ERA')?.value || 0;
-      const totalDisbursedCompensation = compPaid + totalUtilPaid;
-
-      const poleRemoved = (p.rowMetrics || []).find(m => m.name === 'Electric Pole Removal Handedover (No)')?.value || 0;
-      const poleReq = (p.rowMetrics || []).find(m => m.name === 'Electric Pole Removal Requested (No)')?.value || 0;
-      doc.text(`• Utility Pole Clearance: ${poleRemoved} of ${poleReq} units relocated`, col2X, colYOffset + 22);
-
-      // Column 3: Strategic KPI Performance
-      let col3X = 570;
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(30, 41, 59);
-      doc.text("STRATEGIC KPI EVALUATION (12 GOALS)", col3X, colYOffset);
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(71, 85, 105);
-      doc.text(`• Cumulative Strategic KPI Score: ${avgKpiScore.toFixed(2)}%`, col3X, colYOffset + 11);
-      const qGoal = kpiScores.find(g => g.id === 'G5')?.score || 0;
-      const desGoal = kpiScores.find(g => g.id === 'G6')?.score || 0;
-      const clmGoal = kpiScores.find(g => g.id === 'G7')?.score || 0;
-      const safeGoal = kpiScores.find(g => g.id === 'G9')?.score || 0;
-      doc.text(`• Quality Assurance (G5): ${qGoal.toFixed(2)}% compliant`, col3X, colYOffset + 22);
-      doc.text(`• Design & Review (G6): ${desGoal.toFixed(2)}% score`, col3X, colYOffset + 33);
-      doc.text(`• Claims & Disputes (G7): ${clmGoal.toFixed(2)}% score`, col3X, colYOffset + 44);
-      doc.text(`• ESOSH Health & Safety (G9): ${safeGoal.toFixed(2)}% score`, col3X, colYOffset + 55);
-
-      // Active Breaches / Warnings at bottom of card
-      let alertY = colYOffset + 68;
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7);
-      if (audit.activeBreaches.length > 0) {
-        doc.setTextColor(220, 38, 38);
-        doc.text(`Active Breaches / Red Flags: ${audit.activeBreaches.join(' | ')}`, 52, alertY);
-      } else {
-        doc.setTextColor(22, 163, 74);
-        doc.text("Active Breaches / Red Flags: None. Project is compliant with ERA contract conditions.", 52, alertY);
-      }
-
-      // FIDIC 2017 Contract Compliance Evaluation (Red vs Yellow Book)
-      const isDB = p.contractType === 'DB';
-      let fidicY = colYOffset + 78;
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7.5);
-      doc.setTextColor(30, 41, 59);
-      doc.text(`FIDIC 2017 CONTRACT OBLIGATIONS & RESPONSIBILITIES COMPLIANCE (${isDB ? 'YELLOW BOOK' : 'RED BOOK'}):`, 52, fidicY);
-
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7);
-      doc.setTextColor(71, 85, 105);
-
-      const contractorEval = getFidicEvaluation(p, 'contractor');
-      const consultantEval = getFidicEvaluation(p, 'consultant');
-
-      if (isDB) {
-        doc.text(`• Contractor: ${p.contractor || 'N/A'} | FIDIC Yellow Book Clauses 4.1, 4.2, 5.1/5.2, 8.3, 4.21, 14.2 Average Score: ${contractorEval.averageScore}%`, 52, fidicY + 11);
-        doc.text(`• Consultant: ${p.consultant || 'N/A'} | FIDIC Yellow Book Clauses 3.1, 3.7, 5.2, 14.6, 8.4 Average Score: ${consultantEval.averageScore}%`, 52, fidicY + 22);
-      } else {
-        doc.text(`• Contractor: ${p.contractor || 'N/A'} | FIDIC Red Book Clauses 4.1, 4.2, 8.3, 4.21, 14.2 Average Score: ${contractorEval.averageScore}%`, 52, fidicY + 11);
-        doc.text(`• Consultant: ${p.consultant || 'N/A'} | FIDIC Red Book Clauses 3.1, 3.7, 14.6, 8.4 Average Score: ${consultantEval.averageScore}%`, 52, fidicY + 22);
-      }
-
-      // Narrative evaluation synthesis
-      let synthesisY = colYOffset + 108;
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7.5);
-      doc.setTextColor(30, 41, 59);
-      doc.text("AUDITOR COMPREHENSIVE PERFORMANCE EVALUATION SYNTHESIS:", 52, synthesisY);
-
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7);
-      doc.setTextColor(71, 85, 105);
-
-      const progressPerf = p.physicalProgress >= audit.plannedPct ? "ahead or on track" : "behind schedule";
-      const budgetPerf = audit.CPI >= 1.0 ? "within budget" : "over-budget";
-      const kpiPerf = avgKpiScore >= 75 ? "satisfactory" : "needs attention";
-      const rowPerf = rowClearPct >= 90 ? "completed/highly advanced" : "lagging";
-
-      const synthesisText = `This project is performing ${progressPerf} with respect to physical progress conformance, and is operating ${budgetPerf} under current financial metrics. Under strategic KPIs, the project has a ${kpiPerf} score of ${avgKpiScore.toFixed(2)}%. Right-of-Way (ROW) clearance stands at ${rowClearPct.toFixed(2)}% which is considered ${rowPerf}. Utilities relocation is currently ${totalUtilUnpaid > 0 ? `active with ${formatAccounting(totalUtilUnpaid, 'Br.')} Million unpaid liabilities` : "completed/fully settled"}. Both Contractor (${contractorEval.averageScore}% compliant) and Consultant (${consultantEval.averageScore}% compliant) have been audited against standard FIDIC 2017 ${isDB ? 'Yellow Book (Design-Build)' : 'Red Book (Design-Bid-Build)'} obligations. This comprehensive audit recommends immediate corrective measures to mitigate schedule delay, expedite unpaid utility relocations, and uphold strict strategic KPI compliance.`;
-
-      const synthesisLines = doc.splitTextToSize(synthesisText, pageWidth - 140);
-      let synLineY = synthesisY + 10.5;
-      synthesisLines.forEach((line: string) => {
-        doc.text(line, 52, synLineY);
-        synLineY += 10.5;
-      });
-
-      curY += cardBlockHeight + 12;
-    });
-
-    // SECTION C: CRITICAL ENGINEERING QUANTITIES & UNIT OF MEASUREMENT (UoM) VALIDATION
-    doc.addPage();
-    pageCount++;
-    curY = 82;
-    drawHeaderFooter();
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10.5);
-    doc.setTextColor(30, 41, 59);
-    doc.text("SECTION C: QUANTITIES COMPLIANCE", 40, curY);
+    doc.text("SECTION B: QUANTITIES COMPLIANCE", 40, curY);
     
     // Header bottom thin divider line
     doc.setLineWidth(0.5);
@@ -2781,8 +3269,9 @@ export default function GroupReportGenerator({
 
     processedProjects.forEach((p, idx) => {
       const evaluation = evaluateEngineeringQuantities(p.quantities || []);
+      const itemsCount = evaluation.items.length;
       
-      const blockHeight = 45 + Math.min(7, evaluation.items.length) * 13.5 + 15;
+      const blockHeight = 45 + itemsCount * 13.5 + 15;
       if (curY + blockHeight > pageHeight - 55) {
         doc.addPage();
         pageCount++;
@@ -2799,7 +3288,7 @@ export default function GroupReportGenerator({
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(8.5);
       doc.setTextColor(15, 23, 42);
-      doc.text(`${idx + 1}. QUANTITIES COMPLIANCE: ${p.name.toUpperCase()}`, 52, curY + 16);
+      doc.text(`${idx + 1}. QUANTITIES COMPLIANCE & LINEAR ACTIVITIES: ${p.name.toUpperCase()}`, 52, curY + 16);
 
       // Draw grid headers
       let gridY = curY + 28;
@@ -2809,7 +3298,7 @@ export default function GroupReportGenerator({
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(7);
       doc.setTextColor(255, 255, 255);
-      doc.text("Quantity Description", 58, gridY + 10.5);
+      doc.text("Quantity Description / Linear Activity", 58, gridY + 10.5);
       doc.text("UoM", 300, gridY + 10.5);
       doc.text("Contract Design", 380, gridY + 10.5);
       doc.text("Scheduled Plan", 470, gridY + 10.5);
@@ -2820,8 +3309,8 @@ export default function GroupReportGenerator({
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(51, 65, 85);
 
-      // Render items
-      evaluation.items.slice(0, 7).forEach((item) => {
+      // Render all items without slicing
+      evaluation.items.forEach((item) => {
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(51, 65, 85);
         doc.text(item.name, 58, gridY + 10.5);
@@ -4690,58 +5179,129 @@ export default function GroupReportGenerator({
                 </div>
               </>
             ) : reportMode === 'audit' ? (
-              <>
-                {/* Audit KPI Block 1 */}
-                <div className="bg-rose-50/30 dark:bg-rose-950/5 p-3.5 rounded-xl border border-rose-150 dark:border-rose-900/30 space-y-1">
-                  <span className="text-[9px] font-extrabold text-rose-500 dark:text-rose-400 block uppercase tracking-wider">
-                    AVG COMPLIANCE SCORE
-                  </span>
-                  <div className="flex items-baseline gap-1.5">
-                    <span className={`text-lg font-black ${
-                      auditStats.avgScore >= 80 ? 'text-emerald-600 dark:text-emerald-400' :
-                      auditStats.avgScore >= 65 ? 'text-amber-500' : 'text-red-500 dark:text-rose-400'
-                    }`}>
-                      {auditStats.avgScore.toFixed(2)}%
-                    </span>
-                    <span className="text-2xs text-slate-400 font-bold">rating</span>
+              groupType === 'consultant' || auditPerspective === 'consultant' ? (
+                <>
+                  {/* Consultant Audit KPI Block 1: Average Score & Official Grade */}
+                  <div className="bg-indigo-50/30 dark:bg-indigo-950/10 p-3.5 rounded-xl border border-indigo-150 dark:border-indigo-900/30 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[9px] font-extrabold text-indigo-600 dark:text-indigo-400 block uppercase tracking-wider">
+                        CONSULTANT PERFORMANCE AUDIT
+                      </span>
+                      <span className={`text-[8.5px] font-black uppercase px-1.5 py-0.5 rounded-full ${
+                        consultantAuditStats.avgScore >= 85 ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300' :
+                        consultantAuditStats.avgScore >= 75 ? 'bg-teal-100 text-teal-800 dark:bg-teal-950/50 dark:text-teal-300' :
+                        consultantAuditStats.avgScore >= 65 ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300' :
+                        'bg-red-100 text-red-800 dark:bg-rose-950/50 dark:text-rose-300'
+                      }`}>
+                        Grade {consultantAuditStats.avgScore >= 85 ? 'A' : consultantAuditStats.avgScore >= 75 ? 'B' : consultantAuditStats.avgScore >= 65 ? 'C' : consultantAuditStats.avgScore >= 50 ? 'D' : 'F'}
+                      </span>
+                    </div>
+                    <div className="flex items-baseline gap-1.5">
+                      <span className={`text-lg font-black ${
+                        consultantAuditStats.avgScore >= 80 ? 'text-emerald-600 dark:text-emerald-400' :
+                        consultantAuditStats.avgScore >= 65 ? 'text-amber-500' : 'text-red-500 dark:text-rose-400'
+                      }`}>
+                        {consultantAuditStats.avgScore.toFixed(1)}%
+                      </span>
+                      <span className="text-2xs text-slate-400 font-bold">official rating</span>
+                    </div>
+                    <div className="text-[9px] text-slate-450 dark:text-slate-400">
+                      {consultantAuditStats.compliantCount} of {processedProjects.length} contracts compliant (&ge;70%)
+                    </div>
                   </div>
-                  <div className="text-[9px] text-slate-450 dark:text-slate-400">
-                    {auditStats.compliantCount} / {processedProjects.length} projects compliant (&gt;=70%)
-                  </div>
-                </div>
 
-                {/* Audit KPI Block 2 */}
-                <div className="bg-slate-50/60 dark:bg-slate-900/20 p-3.5 rounded-xl border border-slate-150 dark:border-slate-700/40 space-y-1">
-                  <span className="text-[9px] font-extrabold text-slate-400 dark:text-slate-500 block uppercase tracking-wider">
-                    SCHEDULE SLIPPAGE RATE
-                  </span>
-                  <div className="flex items-baseline gap-1.5">
-                    <span className={`text-lg font-black ${auditStats.behindSchedulePct > 35 ? 'text-red-500' : 'text-slate-800 dark:text-zinc-100'}`}>
-                      {auditStats.behindSchedulePct.toFixed(2)}%
+                  {/* Consultant Audit KPI Block 2: Submittal SLA & RFI Turnaround */}
+                  <div className="bg-slate-50/60 dark:bg-slate-900/20 p-3.5 rounded-xl border border-slate-150 dark:border-slate-700/40 space-y-1">
+                    <span className="text-[9px] font-extrabold text-slate-400 dark:text-slate-500 block uppercase tracking-wider">
+                      SUBMITTAL SLA & TURNAROUND
                     </span>
-                    <span className="text-2xs text-slate-400 font-bold">slipping</span>
+                    <div className="flex items-baseline gap-1.5">
+                      <span className={`text-lg font-black ${
+                        consultantAuditStats.avgSlaRate >= 80 ? 'text-emerald-600 dark:text-emerald-400' :
+                        consultantAuditStats.avgSlaRate >= 60 ? 'text-amber-500' : 'text-red-500'
+                      }`}>
+                        {consultantAuditStats.avgSlaRate.toFixed(1)}%
+                      </span>
+                      <span className="text-2xs text-slate-400 font-bold">on-time ({consultantAuditStats.avgTurnaroundDays}d avg)</span>
+                    </div>
+                    <div className="text-[9px] text-slate-450 dark:text-slate-400">
+                      Target 14 days • {consultantAuditStats.totalPendingRfis} pending RFIs across group
+                    </div>
                   </div>
-                  <div className="text-[9px] text-slate-450 dark:text-slate-400">
-                    {auditStats.behindScheduleCount} of {processedProjects.length} behind schedule
-                  </div>
-                </div>
 
-                {/* Audit KPI Block 3 */}
-                <div className="bg-slate-50/60 dark:bg-slate-900/20 p-3.5 rounded-xl border border-slate-150 dark:border-slate-700/40 space-y-1">
-                  <span className="text-[9px] font-extrabold text-slate-400 dark:text-slate-500 block uppercase tracking-wider">
-                    COMPLIANCE BREACH TRIGGERS
-                  </span>
-                  <div className="flex items-baseline gap-1.5">
-                    <span className={`text-lg font-black ${auditStats.totalExpiredBonds > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
-                      {auditStats.totalExpiredBonds + auditStats.totalCriticalRisks}
+                  {/* Consultant Audit KPI Block 3: Key Personnel Mobilization */}
+                  <div className="bg-slate-50/60 dark:bg-slate-900/20 p-3.5 rounded-xl border border-slate-150 dark:border-slate-700/40 space-y-1">
+                    <span className="text-[9px] font-extrabold text-slate-400 dark:text-slate-500 block uppercase tracking-wider">
+                      KEY STAFF MOBILIZATION
                     </span>
-                    <span className="text-2xs text-slate-400 font-bold">alerts</span>
+                    <div className="flex items-baseline gap-1.5">
+                      <span className={`text-lg font-black ${
+                        consultantAuditStats.mobilizationRatePct >= 85 ? 'text-emerald-600 dark:text-emerald-400' :
+                        consultantAuditStats.mobilizationRatePct >= 70 ? 'text-amber-500' : 'text-red-500'
+                      }`}>
+                        {consultantAuditStats.mobilizationRatePct}%
+                      </span>
+                      <span className="text-2xs text-slate-400 font-bold">deployed</span>
+                    </div>
+                    <div className="text-[9px] text-slate-450 dark:text-slate-400 flex items-center gap-1">
+                      <Users className="w-2.5 h-2.5 text-indigo-500" /> {consultantAuditStats.activeKeyStaff} of {consultantAuditStats.totalKeyStaff} key experts active in field
+                    </div>
                   </div>
-                  <div className="text-[9px] text-red-500 dark:text-rose-450 font-bold flex items-center gap-1">
-                    <AlertTriangle className="w-2.5 h-2.5" /> {auditStats.totalExpiredBonds} expired guarantees, {auditStats.totalCriticalRisks} high risks
+                </>
+              ) : (
+                <>
+                  {/* Audit KPI Block 1 */}
+                  <div className="bg-rose-50/30 dark:bg-rose-950/5 p-3.5 rounded-xl border border-rose-150 dark:border-rose-900/30 space-y-1">
+                    <span className="text-[9px] font-extrabold text-rose-500 dark:text-rose-400 block uppercase tracking-wider">
+                      AVG COMPLIANCE SCORE
+                    </span>
+                    <div className="flex items-baseline gap-1.5">
+                      <span className={`text-lg font-black ${
+                        auditStats.avgScore >= 80 ? 'text-emerald-600 dark:text-emerald-400' :
+                        auditStats.avgScore >= 65 ? 'text-amber-500' : 'text-red-500 dark:text-rose-400'
+                      }`}>
+                        {auditStats.avgScore.toFixed(2)}%
+                      </span>
+                      <span className="text-2xs text-slate-400 font-bold">rating</span>
+                    </div>
+                    <div className="text-[9px] text-slate-450 dark:text-slate-400">
+                      {auditStats.compliantCount} / {processedProjects.length} projects compliant (&gt;=70%)
+                    </div>
                   </div>
-                </div>
-              </>
+
+                  {/* Audit KPI Block 2 */}
+                  <div className="bg-slate-50/60 dark:bg-slate-900/20 p-3.5 rounded-xl border border-slate-150 dark:border-slate-700/40 space-y-1">
+                    <span className="text-[9px] font-extrabold text-slate-400 dark:text-slate-500 block uppercase tracking-wider">
+                      SCHEDULE SLIPPAGE RATE
+                    </span>
+                    <div className="flex items-baseline gap-1.5">
+                      <span className={`text-lg font-black ${auditStats.behindSchedulePct > 35 ? 'text-red-500' : 'text-slate-800 dark:text-zinc-100'}`}>
+                        {auditStats.behindSchedulePct.toFixed(2)}%
+                      </span>
+                      <span className="text-2xs text-slate-400 font-bold">slipping</span>
+                    </div>
+                    <div className="text-[9px] text-slate-450 dark:text-slate-400">
+                      {auditStats.behindScheduleCount} of {processedProjects.length} behind schedule
+                    </div>
+                  </div>
+
+                  {/* Audit KPI Block 3 */}
+                  <div className="bg-slate-50/60 dark:bg-slate-900/20 p-3.5 rounded-xl border border-slate-150 dark:border-slate-700/40 space-y-1">
+                    <span className="text-[9px] font-extrabold text-slate-400 dark:text-slate-500 block uppercase tracking-wider">
+                      COMPLIANCE BREACH TRIGGERS
+                    </span>
+                    <div className="flex items-baseline gap-1.5">
+                      <span className={`text-lg font-black ${auditStats.totalExpiredBonds > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
+                        {auditStats.totalExpiredBonds + auditStats.totalCriticalRisks}
+                      </span>
+                      <span className="text-2xs text-slate-400 font-bold">alerts</span>
+                    </div>
+                    <div className="text-[9px] text-red-500 dark:text-rose-450 font-bold flex items-center gap-1">
+                      <AlertTriangle className="w-2.5 h-2.5" /> {auditStats.totalExpiredBonds} expired guarantees, {auditStats.totalCriticalRisks} high risks
+                    </div>
+                  </div>
+                </>
+              )
             ) : reportMode === 'payments' ? (
               <>
                 {/* Payments KPI Block 1 */}
@@ -4910,32 +5470,73 @@ export default function GroupReportGenerator({
           </div>
 
           {/* Live Table Panel */}
-          <div className="space-y-2.5">
+          <div className="space-y-3">
             {reportMode === 'audit' && (
-              <div className="bg-slate-50 dark:bg-slate-900/30 border border-slate-200 dark:border-slate-800 p-3.5 rounded-xl text-2xs space-y-2.5 text-slate-600 dark:text-slate-400">
-                <div className="flex items-center gap-2 font-black uppercase text-slate-700 dark:text-zinc-200 tracking-wider text-[10px]">
-                  <span>📋 COMPLIANCE & GRADE SCORING MODEL WEIGHT DISTRIBUTION</span>
+              <div className="space-y-3">
+                {/* Grading Domain Selector */}
+                <div className="bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900/60 p-3.5 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xs">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold text-xs shadow-xs">
+                      ⚖️
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wide">
+                        Select Grading & Audit Focus Domain
+                      </h4>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                        Switch between project contractor performance grading and supervision consultant SLA grading
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 bg-white dark:bg-slate-900 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
+                    <button
+                      onClick={() => setAuditPerspective('contractor')}
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                        auditPerspective === 'contractor'
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                    >
+                      <span>🏗️ Project / Contractor Grading</span>
+                    </button>
+                    <button
+                      onClick={() => setAuditPerspective('consultant')}
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                        auditPerspective === 'consultant'
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                    >
+                      <span>👥 Supervision Consultant Grading</span>
+                    </button>
+                  </div>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-2 text-center text-[10px]">
-                  <div className="bg-white dark:bg-slate-900/50 p-2 rounded border border-slate-100 dark:border-slate-800">
-                    <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5">10% WEIGHTAGE</span>
-                    <span className="text-[9px] font-medium block">1. FIDIC contract Compliance (Bonds & Notices)</span>
+
+                <div className="bg-slate-50 dark:bg-slate-900/30 border border-slate-200 dark:border-slate-800 p-3.5 rounded-xl text-2xs space-y-2.5 text-slate-600 dark:text-slate-400">
+                  <div className="flex items-center gap-2 font-black uppercase text-slate-700 dark:text-zinc-200 tracking-wider text-[10px]">
+                    <span>📋 {auditPerspective === 'consultant' ? 'SUPERVISION CONSULTANT' : 'PROJECT CONTRACTOR'} COMPLIANCE & GRADE SCORING MODEL WEIGHT DISTRIBUTION</span>
                   </div>
-                  <div className="bg-white dark:bg-slate-900/50 p-2 rounded border border-slate-100 dark:border-slate-800">
-                    <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5">35% WEIGHTAGE</span>
-                    <span className="text-[9px] font-medium block">2. Project Management (Time & progress)</span>
-                  </div>
-                  <div className="bg-white dark:bg-slate-900/50 p-2 rounded border border-slate-100 dark:border-slate-800">
-                    <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5">25% WEIGHTAGE</span>
-                    <span className="text-[9px] font-medium block">3. EVM Metrics (CPI 12.5% / SPI 12.5%)</span>
-                  </div>
-                  <div className="bg-white dark:bg-slate-900/50 p-2 rounded border border-slate-100 dark:border-slate-800">
-                    <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5">15% WEIGHTAGE</span>
-                    <span className="text-[9px] font-medium block">4. Key Performance Indicators (KPIs)</span>
-                  </div>
-                  <div className="bg-white dark:bg-slate-900/50 p-2 rounded border border-slate-100 dark:border-slate-800">
-                    <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5">15% WEIGHTAGE</span>
-                    <span className="text-[9px] font-medium block">5. Linear Layer Progress vs. S-Curve</span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-2 text-center text-[10px]">
+                    <div className="bg-white dark:bg-slate-900/50 p-2 rounded border border-slate-100 dark:border-slate-800">
+                      <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5">{auditPerspective === 'consultant' ? '25% WEIGHT' : '10% WEIGHT'}</span>
+                      <span className="text-[9px] font-medium block">{auditPerspective === 'consultant' ? '1. Submittal SLA & RFI Turnaround' : '1. FIDIC Contract Compliance'}</span>
+                    </div>
+                    <div className="bg-white dark:bg-slate-900/50 p-2 rounded border border-slate-100 dark:border-slate-800">
+                      <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5">{auditPerspective === 'consultant' ? '20% WEIGHT' : '35% WEIGHT'}</span>
+                      <span className="text-[9px] font-medium block">{auditPerspective === 'consultant' ? '2. Key Staff Mobilization' : '2. Project Management (Time)'}</span>
+                    </div>
+                    <div className="bg-white dark:bg-slate-900/50 p-2 rounded border border-slate-100 dark:border-slate-800">
+                      <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5">20% WEIGHT</span>
+                      <span className="text-[9px] font-medium block">{auditPerspective === 'consultant' ? '3. IPC Verification Timeliness' : '3. EVM Metrics (CPI & SPI)'}</span>
+                    </div>
+                    <div className="bg-white dark:bg-slate-900/50 p-2 rounded border border-slate-100 dark:border-slate-800">
+                      <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5">20% WEIGHT</span>
+                      <span className="text-[9px] font-medium block">{auditPerspective === 'consultant' ? '4. Claims & Determinations' : '4. KPIs & Quality Milestones'}</span>
+                    </div>
+                    <div className="bg-white dark:bg-slate-900/50 p-2 rounded border border-slate-100 dark:border-slate-800">
+                      <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5">15% WEIGHT</span>
+                      <span className="text-[9px] font-medium block">{auditPerspective === 'consultant' ? '5. Quality Assurance & WIR' : '5. Linear Layer Progress'}</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -4980,12 +5581,21 @@ export default function GroupReportGenerator({
                         <th className="px-3 py-2 text-right">Revised Contract Value (ETB)</th>
                       </tr>
                     ) : reportMode === 'audit' ? (
-                      <tr className="bg-slate-50 dark:bg-slate-800/60 text-[9px] font-extrabold text-slate-400 dark:text-slate-500 uppercase border-b border-slate-150 dark:border-slate-700/50">
-                        <th className="px-3 py-2">Project ID & Title</th>
-                        <th className="px-3 py-2">Audit Risk & Bond Status</th>
-                        <th className="px-3 py-2 text-center">Progress vs. Time Elapsed</th>
-                        <th className="px-3 py-2 text-right">Audit Score / Grade</th>
-                      </tr>
+                      groupType === 'consultant' || auditPerspective === 'consultant' ? (
+                        <tr className="bg-indigo-50/50 dark:bg-indigo-950/20 text-[9px] font-extrabold text-indigo-700 dark:text-indigo-400 uppercase border-b border-indigo-150 dark:border-indigo-900/40">
+                          <th className="px-3 py-2">Project ID & Contract Title</th>
+                          <th className="px-3 py-2">Supervision Consultant & RE</th>
+                          <th className="px-3 py-2 text-center">Submittal SLA & Turnaround</th>
+                          <th className="px-3 py-2 text-right">Audit Score & Official Grade</th>
+                        </tr>
+                      ) : (
+                        <tr className="bg-slate-50 dark:bg-slate-800/60 text-[9px] font-extrabold text-slate-400 dark:text-slate-500 uppercase border-b border-slate-150 dark:border-slate-700/50">
+                          <th className="px-3 py-2">Project ID & Title</th>
+                          <th className="px-3 py-2">Audit Risk & Bond Status</th>
+                          <th className="px-3 py-2 text-center">Progress vs. Time Elapsed</th>
+                          <th className="px-3 py-2 text-right">Audit Score / Grade</th>
+                        </tr>
+                      )
                     ) : reportMode === 'payments' ? (
                       <tr className="bg-slate-50 dark:bg-slate-800/60 text-[9px] font-extrabold text-slate-400 dark:text-slate-500 uppercase border-b border-slate-150 dark:border-slate-700/50">
                         <th className="px-3 py-2">Project ID & Title</th>
@@ -5064,257 +5674,520 @@ export default function GroupReportGenerator({
                         );
                       })
                     ) : reportMode === 'audit' ? (
-                      processedProjects.map((p) => {
-                        const audit = getAuditMetrics(p);
-                        const isExpanded = expandedProjectId === p.id;
-                        return (
-                          <React.Fragment key={p.id}>
-                            <tr 
-                              onClick={() => setExpandedProjectId(isExpanded ? null : p.id)}
-                              className="hover:bg-slate-50/40 dark:hover:bg-slate-800/25 transition cursor-pointer border-b border-slate-100 dark:border-slate-850"
-                            >
-                              <td className="px-3 py-2.5">
-                                <div className="font-extrabold text-slate-700 dark:text-zinc-200 truncate max-w-[200px]">{p.name}</div>
-                                <div className="text-[10px] text-slate-400 dark:text-slate-500 font-mono flex items-center gap-1">
-                                  <span>ID: {p.id.substring(0, 10).toUpperCase()}</span>
-                                  <span className="text-indigo-500 text-[9px] font-bold">(Click for FIDIC Audit)</span>
-                                </div>
-                              </td>
-                              <td className="px-3 py-2.5 space-y-1">
-                                <div className="flex flex-wrap gap-1">
-                                  {audit.expiredBondsCount > 0 ? (
-                                    <span className="text-[8px] font-black uppercase bg-red-50 text-red-600 dark:bg-red-950/20 dark:text-red-400 px-1.5 py-0.5 rounded border border-red-100 dark:border-red-900/30">
-                                      ⚠️ {audit.expiredBondsCount} Expired Bonds
-                                    </span>
-                                  ) : (
-                                    <span className="text-[8px] font-bold uppercase bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400 px-1.5 py-0.5 rounded">
-                                      ✓ Guarantees Valid
-                                    </span>
-                                  )}
-                                  
-                                  {audit.scheduleStatus === 'Critical' && (
-                                    <span className="text-[8px] font-black uppercase bg-red-50 text-red-600 dark:bg-red-950/20 dark:text-red-400 px-1.5 py-0.5 rounded border border-red-100 dark:border-red-900/30">
-                                      ⏳ Critical Delay
-                                    </span>
-                                  )}
-                                  {audit.scheduleStatus === 'Warning' && (
-                                    <span className="text-[8px] font-black uppercase bg-amber-50 text-amber-600 dark:bg-amber-950/20 dark:text-amber-400 px-1.5 py-0.5 rounded border border-amber-100 dark:border-amber-900/30">
-                                      ⏳ Slip Warning
-                                    </span>
-                                  )}
-                                  {audit.scheduleStatus === 'Compliant' && (
-                                    <span className="text-[8px] font-bold uppercase bg-slate-50 text-slate-600 dark:bg-slate-800 dark:text-slate-400 px-1.5 py-0.5 rounded">
-                                      ✓ On Track
-                                    </span>
-                                  )}
-  
-                                  {audit.activeRisksCount > 0 && (
-                                    <span className="text-[8px] font-medium bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 px-1.5 py-0.5 rounded">
-                                      🔥 {audit.activeRisksCount} Active Risks
-                                    </span>
-                                  )}
-  
-                                  {audit.timeOverrunPct > 0 && (
-                                    <span className="text-[8px] font-black uppercase bg-rose-50 text-rose-600 dark:bg-rose-950/20 dark:text-rose-400 px-1.5 py-0.5 rounded border border-rose-100 dark:border-rose-900/30">
-                                      ⏱️ {audit.timeOverrunPct.toFixed(2)}% EOT Overrun
-                                    </span>
-                                  )}
-                                  <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded border ${
-                                    audit.CPI >= 1.0 
-                                      ? 'bg-emerald-50 text-emerald-600 border-emerald-100 dark:bg-emerald-950/20 dark:text-emerald-400' 
-                                      : 'bg-rose-50 text-rose-600 border-rose-100 dark:bg-rose-950/20 dark:text-rose-400'
-                                  }`}>
-                                    CPI: {audit.CPI.toFixed(3)}
-                                  </span>
-                                  <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded border ${
-                                    audit.SPI >= 1.0 
-                                      ? 'bg-emerald-50 text-emerald-600 border-emerald-100 dark:bg-emerald-950/20 dark:text-emerald-400' 
-                                      : 'bg-rose-50 text-rose-600 border-rose-100 dark:bg-rose-950/20 dark:text-rose-400'
-                                  }`}>
-                                    SPI: {audit.SPI.toFixed(3)}
-                                  </span>
-                                </div>
-                              </td>
-                              <td className="px-3 py-2.5">
-                                <div className="flex flex-col gap-1 max-w-[150px] mx-auto">
-                                  <div className="flex items-center justify-between text-[9px] font-bold">
-                                    <span className="text-slate-400">Progress:</span>
-                                    <span className="text-slate-700 dark:text-zinc-300">{(p.physicalProgress || 0).toFixed(2)}%</span>
-                                  </div>
-                                  <div className="w-full bg-slate-100 dark:bg-slate-800 h-1 rounded overflow-hidden">
-                                    <div className="bg-emerald-500 h-full" style={{ width: `${Math.min(100, Math.max(0, p.physicalProgress || 0))}%` }} />
-                                  </div>
-  
-                                  <div className="flex items-center justify-between text-[9px] font-bold">
-                                    <span className="text-slate-400">Time Elapsed:</span>
-                                    <span className="text-slate-700 dark:text-zinc-300">{audit.timeElapsedPct.toFixed(2)}%</span>
-                                  </div>
-                                  <div className="w-full bg-slate-100 dark:bg-slate-800 h-1 rounded overflow-hidden">
-                                    <div className="bg-indigo-500 h-full" style={{ width: `${Math.min(100, Math.max(0, audit.timeElapsedPct))}%` }} />
-                                  </div>
-                                </div>
-                              </td>
-                              <td className="px-3 py-2.5 text-right font-mono">
-                                <div className="flex items-center justify-end gap-1.5">
-                                  <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${audit.bgColor} ${audit.textColor}`}>
-                                    Grade {audit.ratingCode}
-                                  </span>
-                                  <span className="text-sm font-black text-slate-800 dark:text-zinc-100">
-                                    {audit.complianceScore}%
-                                  </span>
-                                </div>
-                                <div className="text-[8.5px] text-slate-400 dark:text-slate-500 font-sans font-bold">{audit.ratingClass}</div>
-                              </td>
-                            </tr>
-                            {isExpanded && (
-                              <tr className="bg-slate-50/70 dark:bg-slate-900/60">
-                                <td colSpan={4} className="p-4 border-t border-b border-slate-200 dark:border-slate-800">
-                                  <div className="space-y-4">
-                                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-2 border-b border-slate-250 dark:border-slate-800 pb-2">
-                                      <div>
-                                        <h4 className="text-xs font-black uppercase text-indigo-600 dark:text-indigo-400">
-                                          FIDIC 2017 Contract Compliance & Responsibility Audit
-                                        </h4>
-                                        <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase mt-0.5">
-                                          Contractor: {p.contractor || 'N/A'} • Consultant: {p.consultant || 'N/A'}
-                                        </p>
-                                      </div>
-                                      <span className="text-[9px] bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-150 dark:border-indigo-900/50 text-indigo-700 dark:text-indigo-300 font-bold px-2 py-1 rounded">
-                                        FIDIC Edition: 2017 {p.contractType === 'DB' ? 'Yellow Book' : 'Red Book'}
-                                      </span>
-                                    </div>
-
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                      {/* Contractor Evaluation Card */}
-                                      {(() => {
-                                        const evalData = getFidicEvaluation(p, 'contractor');
-                                        return (
-                                          <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200/60 dark:border-slate-800/60 shadow-sm space-y-2.5">
-                                            <div className="flex justify-between items-center pb-1 border-b border-slate-100 dark:border-slate-800">
-                                              <span className="text-[10px] font-black text-amber-600 dark:text-amber-500 uppercase tracking-wider">
-                                                🏗️ Contractor Obligations
-                                              </span>
-                                              <span className={`text-[10px] font-black px-2 py-0.5 rounded ${
-                                                evalData.averageScore >= 80 ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400' :
-                                                evalData.averageScore >= 60 ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400' : 'bg-red-50 text-red-700 dark:bg-rose-950/30 dark:text-rose-450'
-                                              }`}>
-                                                Score: {evalData.averageScore}%
-                                              </span>
-                                            </div>
-                                            
-                                            <div className="space-y-2.5">
-                                              {evalData.clauses.map(c => (
-                                                <div key={c.id} className="space-y-0.5">
-                                                  <div className="flex justify-between items-center text-[9.5px] font-bold">
-                                                    <span className="text-slate-700 dark:text-slate-300">{c.title}</span>
-                                                    <span className={`text-[8.5px] font-black uppercase px-1 rounded ${
-                                                      c.rating === 'Compliant' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400' :
-                                                      c.rating === 'Minor Deficiency' ? 'bg-amber-50 text-amber-600 dark:bg-amber-950/20 dark:text-amber-400' : 'bg-rose-50 text-rose-600 dark:bg-rose-950/20 dark:text-rose-400'
-                                                    }`}>
-                                                      {c.rating}
-                                                    </span>
-                                                  </div>
-                                                  <p className="text-[9px] text-slate-500 dark:text-slate-400 leading-relaxed font-sans">
-                                                    {c.details}
-                                                  </p>
-                                                </div>
-                                              ))}
-                                            </div>
-                                          </div>
-                                        );
-                                      })()}
-
-                                      {/* Consultant Evaluation Card */}
-                                      {(() => {
-                                        const evalData = getFidicEvaluation(p, 'consultant');
-                                        return (
-                                          <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200/60 dark:border-slate-800/60 shadow-sm space-y-2.5">
-                                            <div className="flex justify-between items-center pb-1 border-b border-slate-100 dark:border-slate-800">
-                                              <span className="text-[10px] font-black text-teal-600 dark:text-teal-500 uppercase tracking-wider">
-                                                🎓 Consultant Obligations
-                                              </span>
-                                              <span className={`text-[10px] font-black px-2 py-0.5 rounded ${
-                                                evalData.averageScore >= 80 ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400' :
-                                                evalData.averageScore >= 60 ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400' : 'bg-red-50 text-red-700 dark:bg-rose-950/30 dark:text-rose-450'
-                                              }`}>
-                                                Score: {evalData.averageScore}%
-                                              </span>
-                                            </div>
-
-                                            <div className="space-y-2.5">
-                                              {evalData.clauses.map(c => (
-                                                <div key={c.id} className="space-y-0.5">
-                                                  <div className="flex justify-between items-center text-[9.5px] font-bold">
-                                                    <span className="text-slate-700 dark:text-slate-300">{c.title}</span>
-                                                    <span className={`text-[8.5px] font-black uppercase px-1 rounded ${
-                                                      c.rating === 'Compliant' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400' :
-                                                      c.rating === 'Minor Deficiency' ? 'bg-amber-50 text-amber-600 dark:bg-amber-950/20 dark:text-amber-400' : 'bg-rose-50 text-rose-600 dark:bg-rose-950/20 dark:text-rose-400'
-                                                    }`}>
-                                                      {c.rating}
-                                                    </span>
-                                                  </div>
-                                                  <p className="text-[9px] text-slate-500 dark:text-slate-400 leading-relaxed font-sans">
-                                                    {c.details}
-                                                  </p>
-                                                </div>
-                                              ))}
-                                            </div>
-                                          </div>
-                                        );
-                                      })()}
-                                    </div>
-
-                                    {/* Supervision Consultant Staffing & Personnel Overview */}
-                                    {p.supervisionConsultant && (
-                                      <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200/60 dark:border-slate-800/60 shadow-sm space-y-2">
-                                        <div className="flex justify-between items-center pb-1 border-b border-slate-100 dark:border-slate-800">
-                                          <span className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-wider flex items-center gap-1.5">
-                                            👥 Supervision Consultant Staffing & Deployment
-                                          </span>
-                                          <span className="text-[9px] font-bold text-slate-500">
-                                            {(p.supervisionConsultant.personnel || []).filter(x => x.status === 'Active').length} Active / {(p.supervisionConsultant.personnel || []).length} Assigned Staff
-                                          </span>
-                                        </div>
-                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[9.5px]">
-                                          <div>
-                                            <span className="text-slate-400">Consultant:</span>{' '}
-                                            <span className="font-bold text-slate-700 dark:text-slate-200">{p.supervisionConsultant.firmName || p.consultant}</span>
-                                          </div>
-                                          <div>
-                                            <span className="text-slate-400">Resident Engineer:</span>{' '}
-                                            <span className="font-bold text-slate-700 dark:text-slate-200">{p.supervisionConsultant.residentEngineerName || 'Assigned in Field'}</span>
-                                          </div>
-                                          <div>
-                                            <span className="text-slate-400">Fee Invoiced:</span>{' '}
-                                            <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                                              ETB {(p.supervisionConsultant.invoices || []).reduce((sum, inv) => sum + (inv.grossAmountEtb || 0), 0).toLocaleString()}
-                                            </span>
-                                          </div>
-                                        </div>
-                                        {(p.supervisionConsultant.personnel || []).length > 0 && (
-                                          <div className="flex flex-wrap gap-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-800">
-                                            {(p.supervisionConsultant.personnel || []).slice(0, 6).map(person => (
-                                              <span key={person.id} className="inline-flex items-center gap-1 text-[8.5px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium">
-                                                <span className={`w-1.5 h-1.5 rounded-full ${person.status === 'Active' ? 'bg-emerald-500' : 'bg-slate-400'}`} />
-                                                <strong className="font-bold">{person.position}:</strong> {person.name} ({person.assignmentDate || 'Assigned'})
-                                              </span>
-                                            ))}
-                                            {(p.supervisionConsultant.personnel || []).length > 6 && (
-                                              <span className="text-[8.5px] text-slate-400 font-bold self-center">
-                                                +{(p.supervisionConsultant.personnel || []).length - 6} more staff
-                                              </span>
-                                            )}
-                                          </div>
-                                        )}
-                                      </div>
-                                    )}
+                      groupType === 'consultant' || auditPerspective === 'consultant' ? (
+                        processedProjects.map((p) => {
+                          const cAudit = getConsultantAuditMetrics(p);
+                          const isExpanded = expandedProjectId === p.id;
+                          return (
+                            <React.Fragment key={p.id}>
+                              <tr 
+                                onClick={() => setExpandedProjectId(isExpanded ? null : p.id)}
+                                className="hover:bg-indigo-50/30 dark:hover:bg-indigo-950/20 transition cursor-pointer border-b border-slate-100 dark:border-slate-850"
+                              >
+                                <td className="px-3 py-2.5">
+                                  <div className="font-extrabold text-slate-700 dark:text-zinc-200 truncate max-w-[200px]">{p.name}</div>
+                                  <div className="text-[10px] text-slate-400 dark:text-slate-500 font-mono flex items-center gap-1">
+                                    <span>ID: {p.id.substring(0, 10).toUpperCase()}</span>
+                                    <span className="text-indigo-600 dark:text-indigo-400 text-[9px] font-bold">(Click for Consultant Audit Dossier)</span>
                                   </div>
                                 </td>
+                                <td className="px-3 py-2.5 space-y-1">
+                                  <div className="font-bold text-slate-700 dark:text-zinc-200 text-xs truncate max-w-[220px]">
+                                    {cAudit.consultantFirm}
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-1 text-[9px]">
+                                    <span className="text-slate-500 dark:text-slate-400 font-medium">
+                                      RE: <strong className="text-slate-700 dark:text-zinc-300">{cAudit.residentEngineer}</strong>
+                                    </span>
+                                    <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded ${
+                                      cAudit.staffingScore >= 15 
+                                        ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300' 
+                                        : 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300'
+                                    }`}>
+                                      👥 {cAudit.activeKeyStaffCount}/{cAudit.keyStaffCount} Key Staff ({cAudit.mobilizationRatePct}%)
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="px-3 py-2.5">
+                                  <div className="flex flex-col items-center gap-1 max-w-[170px] mx-auto">
+                                    <div className="flex items-center justify-between w-full text-[9px] font-bold">
+                                      <span className="text-slate-400">SLA Response Rate:</span>
+                                      <span className={cAudit.slaComplianceRatePct >= 80 ? 'text-emerald-600 font-black' : cAudit.slaComplianceRatePct >= 60 ? 'text-amber-600 font-black' : 'text-rose-600 font-black'}>
+                                        {cAudit.slaComplianceRatePct}% ({cAudit.avgTurnaroundDays}d avg)
+                                      </span>
+                                    </div>
+                                    <div className="w-full bg-slate-100 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                                      <div 
+                                        className={`h-full ${cAudit.slaComplianceRatePct >= 80 ? 'bg-emerald-500' : cAudit.slaComplianceRatePct >= 60 ? 'bg-amber-500' : 'bg-rose-500'}`} 
+                                        style={{ width: `${Math.min(100, Math.max(0, cAudit.slaComplianceRatePct))}%` }} 
+                                      />
+                                    </div>
+                                    <div className="flex items-center gap-1.5 text-[8.5px] font-bold">
+                                      <span className="text-slate-500">{cAudit.submittalsCount} Submittals</span>
+                                      {cAudit.overdueSubmittalsCount > 0 && (
+                                        <span className="text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/30 px-1 py-0.2 rounded font-black">
+                                          ⚠️ {cAudit.overdueSubmittalsCount} Overdue
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="px-3 py-2.5 text-right font-mono">
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${cAudit.badgeBgColor} ${cAudit.badgeTextColor}`}>
+                                      Grade {cAudit.officialGrade}
+                                    </span>
+                                    <span className="text-sm font-black text-slate-800 dark:text-zinc-100">
+                                      {cAudit.totalWeightedScore}%
+                                    </span>
+                                  </div>
+                                  <div className="text-[8.5px] text-slate-400 dark:text-slate-500 font-sans font-bold">{cAudit.officialRatingTitle}</div>
+                                </td>
                               </tr>
-                            )}
-                          </React.Fragment>
-                        );
-                      })
+                              {isExpanded && (
+                                <tr className="bg-indigo-50/20 dark:bg-indigo-950/30">
+                                  <td colSpan={4} className="p-4 border-t border-b border-indigo-200/60 dark:border-indigo-900/50">
+                                    <div className="space-y-4">
+                                      {/* Header of Consultant Audit Dossier */}
+                                      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-2 border-b border-indigo-200/60 dark:border-indigo-900/50 pb-2.5">
+                                        <div>
+                                          <div className="flex items-center gap-2">
+                                            <h4 className="text-xs font-black uppercase text-indigo-700 dark:text-indigo-400 flex items-center gap-1.5">
+                                              <Award className="w-3.5 h-3.5" /> SUPERVISION CONSULTANT COMPLIANCE & PERFORMANCE AUDIT DOSSIER
+                                            </h4>
+                                            <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${cAudit.badgeBgColor} ${cAudit.badgeTextColor}`}>
+                                              Official Rating: Grade {cAudit.officialGrade} ({cAudit.totalWeightedScore}%)
+                                            </span>
+                                          </div>
+                                          <p className="text-[10px] text-slate-500 dark:text-slate-400 font-bold uppercase mt-0.5">
+                                            Supervision Firm: <strong className="text-slate-800 dark:text-zinc-200">{cAudit.consultantFirm}</strong> • RE: <strong className="text-slate-800 dark:text-zinc-200">{cAudit.residentEngineer}</strong>
+                                          </p>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-[9px] bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 font-bold px-2 py-1 rounded shadow-2xs">
+                                            Official Standing: {cAudit.officialStanding}
+                                          </span>
+                                        </div>
+                                      </div>
+
+                                      {/* 5-Dimension Performance Audit Scorecard */}
+                                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                                        <div className="bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-200/70 dark:border-slate-800 shadow-2xs space-y-1">
+                                          <span className="text-[8.5px] font-bold text-slate-400 block uppercase">Submittal SLA (25%)</span>
+                                          <div className="flex items-baseline justify-between">
+                                            <span className={`text-sm font-black ${cAudit.slaScore >= 20 ? 'text-emerald-600' : 'text-amber-600'}`}>{cAudit.slaScore}/25 pts</span>
+                                            <span className="text-[8.5px] text-slate-400 font-bold">{cAudit.avgTurnaroundDays}d avg</span>
+                                          </div>
+                                          <div className="w-full bg-slate-100 dark:bg-slate-800 h-1 rounded overflow-hidden">
+                                            <div className="bg-indigo-500 h-full" style={{ width: `${(cAudit.slaScore / 25) * 100}%` }} />
+                                          </div>
+                                        </div>
+
+                                        <div className="bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-200/70 dark:border-slate-800 shadow-2xs space-y-1">
+                                          <span className="text-[8.5px] font-bold text-slate-400 block uppercase">Staff Mobilization (20%)</span>
+                                          <div className="flex items-baseline justify-between">
+                                            <span className={`text-sm font-black ${cAudit.staffingScore >= 16 ? 'text-emerald-600' : 'text-amber-600'}`}>{cAudit.staffingScore}/20 pts</span>
+                                            <span className="text-[8.5px] text-slate-400 font-bold">{cAudit.activeKeyStaffCount}/{cAudit.keyStaffCount} Staff</span>
+                                          </div>
+                                          <div className="w-full bg-slate-100 dark:bg-slate-800 h-1 rounded overflow-hidden">
+                                            <div className="bg-teal-500 h-full" style={{ width: `${(cAudit.staffingScore / 20) * 100}%` }} />
+                                          </div>
+                                        </div>
+
+                                        <div className="bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-200/70 dark:border-slate-800 shadow-2xs space-y-1">
+                                          <span className="text-[8.5px] font-bold text-slate-400 block uppercase">IPC Verification (20%)</span>
+                                          <div className="flex items-baseline justify-between">
+                                            <span className={`text-sm font-black ${cAudit.ipcScore >= 16 ? 'text-emerald-600' : 'text-amber-600'}`}>{cAudit.ipcScore}/20 pts</span>
+                                            <span className="text-[8.5px] text-slate-400 font-bold">Timely Cert.</span>
+                                          </div>
+                                          <div className="w-full bg-slate-100 dark:bg-slate-800 h-1 rounded overflow-hidden">
+                                            <div className="bg-blue-500 h-full" style={{ width: `${(cAudit.ipcScore / 20) * 100}%` }} />
+                                          </div>
+                                        </div>
+
+                                        <div className="bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-200/70 dark:border-slate-800 shadow-2xs space-y-1">
+                                          <span className="text-[8.5px] font-bold text-slate-400 block uppercase">Contract Admin (20%)</span>
+                                          <div className="flex items-baseline justify-between">
+                                            <span className={`text-sm font-black ${cAudit.contractAdminScore >= 16 ? 'text-emerald-600' : 'text-amber-600'}`}>{cAudit.contractAdminScore}/20 pts</span>
+                                            <span className="text-[8.5px] text-slate-400 font-bold">Cl. 3 Admin</span>
+                                          </div>
+                                          <div className="w-full bg-slate-100 dark:bg-slate-800 h-1 rounded overflow-hidden">
+                                            <div className="bg-purple-500 h-full" style={{ width: `${(cAudit.contractAdminScore / 20) * 100}%` }} />
+                                          </div>
+                                        </div>
+
+                                        <div className="bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-200/70 dark:border-slate-800 shadow-2xs space-y-1">
+                                          <span className="text-[8.5px] font-bold text-slate-400 block uppercase">Quality Assurance (15%)</span>
+                                          <div className="flex items-baseline justify-between">
+                                            <span className={`text-sm font-black ${cAudit.qualitySupervisionScore >= 12 ? 'text-emerald-600' : 'text-amber-600'}`}>{cAudit.qualitySupervisionScore}/15 pts</span>
+                                            <span className="text-[8.5px] text-slate-400 font-bold">WIR / Tests</span>
+                                          </div>
+                                          <div className="w-full bg-slate-100 dark:bg-slate-800 h-1 rounded overflow-hidden">
+                                            <div className="bg-emerald-500 h-full" style={{ width: `${(cAudit.qualitySupervisionScore / 15) * 100}%` }} />
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      {/* Detailed Cards: FIDIC Obligations & Submittal Performance Breakdown */}
+                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        {/* FIDIC Consultant Obligations Matrix */}
+                                        <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200/70 dark:border-slate-800 shadow-2xs space-y-2.5">
+                                          <div className="flex justify-between items-center pb-1 border-b border-slate-100 dark:border-slate-800">
+                                            <span className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-wider flex items-center gap-1">
+                                              📜 FIDIC 2017 Consultant Statutory Obligations Matrix
+                                            </span>
+                                            <span className="text-[9px] font-mono font-bold text-slate-500">
+                                              Score: {cAudit.totalWeightedScore}%
+                                            </span>
+                                          </div>
+
+                                          <div className="space-y-2">
+                                            {cAudit.clauses.map((o) => (
+                                              <div key={o.id} className="space-y-0.5 bg-slate-50/50 dark:bg-slate-850/40 p-2 rounded-lg border border-slate-150/60 dark:border-slate-800/60">
+                                                <div className="flex justify-between items-center text-[9.5px] font-bold">
+                                                  <span className="text-slate-800 dark:text-zinc-200">
+                                                    {o.title}
+                                                  </span>
+                                                  <span className={`text-[8.5px] font-black uppercase px-1.5 py-0.2 rounded ${
+                                                    o.rating === 'Compliant' 
+                                                      ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400' 
+                                                      : o.rating === 'Minor Deficiency'
+                                                      ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400'
+                                                      : 'bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-400'
+                                                  }`}>
+                                                    {o.rating} ({o.score}%)
+                                                  </span>
+                                                </div>
+                                                <p className="text-[9px] text-slate-500 dark:text-slate-400 leading-relaxed font-sans">
+                                                  {o.details}
+                                                </p>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+
+                                        {/* Submittal SLA Performance & Auditor Recommendations */}
+                                        <div className="space-y-3">
+                                          {/* Submittal Category Turnaround Breakdown */}
+                                          <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200/70 dark:border-slate-800 shadow-2xs space-y-2">
+                                            <div className="flex justify-between items-center pb-1 border-b border-slate-100 dark:border-slate-800">
+                                              <span className="text-[10px] font-black text-teal-600 dark:text-teal-400 uppercase tracking-wider flex items-center gap-1">
+                                                ⏱️ RFI & Submittal Processing Turnaround vs Targets
+                                              </span>
+                                              <span className="text-[9px] font-bold text-slate-500">
+                                                Overall: {cAudit.slaComplianceRatePct}% on-time
+                                              </span>
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-2 text-[9.5px]">
+                                              {cAudit.submittalBreakdown.map((sb) => (
+                                                <div key={sb.type} className="p-2 rounded-lg bg-slate-50 dark:bg-slate-850 border border-slate-150/60 dark:border-slate-800">
+                                                  <div className="font-bold text-slate-700 dark:text-zinc-300 truncate">{sb.type}</div>
+                                                  <div className="text-[11px] font-extrabold text-indigo-600 dark:text-indigo-400 mt-0.5">
+                                                    {sb.avgDays}d avg <span className="text-[9px] text-slate-400 font-normal">({sb.onTimePct}% on-time)</span>
+                                                  </div>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          </div>
+
+                                          {/* Formal Auditor Recommendation Callout */}
+                                          <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-indigo-150 dark:border-indigo-900/40 shadow-2xs space-y-1.5">
+                                            <div className="flex items-center gap-1.5 text-[10px] font-black text-indigo-700 dark:text-indigo-400 uppercase tracking-wider">
+                                              <ShieldCheck className="w-3 h-3 text-indigo-600" /> Official Auditor Recommendation & Standing
+                                            </div>
+                                            <p className="text-[9.5px] text-slate-600 dark:text-zinc-300 leading-relaxed font-sans">
+                                              {cAudit.officialRecommendation}
+                                            </p>
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      {/* Key Personnel Staffing Roster */}
+                                      {p.supervisionConsultant && (
+                                        <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200/70 dark:border-slate-800 shadow-2xs space-y-2">
+                                          <div className="flex justify-between items-center pb-1 border-b border-slate-100 dark:border-slate-800">
+                                            <span className="text-[10px] font-black text-slate-700 dark:text-zinc-300 uppercase tracking-wider flex items-center gap-1.5">
+                                              👥 Supervision Consultant Field Deployment Team
+                                            </span>
+                                            <span className="text-[9px] font-bold text-slate-500">
+                                              {(p.supervisionConsultant.personnel || []).filter(x => x.status === 'Active').length} Active / {(p.supervisionConsultant.personnel || []).length} Assigned Staff
+                                            </span>
+                                          </div>
+                                          {(p.supervisionConsultant.personnel || []).length > 0 ? (
+                                            <div className="flex flex-wrap gap-1.5 pt-1">
+                                              {(p.supervisionConsultant.personnel || []).map((person, pIdx) => (
+                                                <span key={`${p.id}_cpers_${person.id || pIdx}_${pIdx}`} className="inline-flex items-center gap-1.5 text-[8.5px] px-2.5 py-1 rounded-lg bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium border border-slate-200/50 dark:border-slate-700/50">
+                                                  <span className={`w-1.5 h-1.5 rounded-full ${person.status === 'Active' ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+                                                  <strong className="font-bold text-slate-900 dark:text-zinc-100">{person.position}:</strong> {person.name} ({person.assignmentDate || 'Assigned'})
+                                                </span>
+                                              ))}
+                                            </div>
+                                          ) : (
+                                            <div className="text-[9px] text-slate-400 italic">No key personnel deployment records logged.</div>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </React.Fragment>
+                          );
+                        })
+                      ) : (
+                        processedProjects.map((p) => {
+                          const audit = getAuditMetrics(p);
+                          const isExpanded = expandedProjectId === p.id;
+                          return (
+                            <React.Fragment key={p.id}>
+                              <tr 
+                                onClick={() => setExpandedProjectId(isExpanded ? null : p.id)}
+                                className="hover:bg-slate-50/40 dark:hover:bg-slate-800/25 transition cursor-pointer border-b border-slate-100 dark:border-slate-850"
+                              >
+                                <td className="px-3 py-2.5">
+                                  <div className="font-extrabold text-slate-700 dark:text-zinc-200 truncate max-w-[200px]">{p.name}</div>
+                                  <div className="text-[10px] text-slate-400 dark:text-slate-500 font-mono flex items-center gap-1">
+                                    <span>ID: {p.id.substring(0, 10).toUpperCase()}</span>
+                                    <span className="text-indigo-500 text-[9px] font-bold">(Click for FIDIC Audit)</span>
+                                  </div>
+                                </td>
+                                <td className="px-3 py-2.5 space-y-1">
+                                  <div className="flex flex-wrap gap-1">
+                                    {audit.expiredBondsCount > 0 ? (
+                                      <span className="text-[8px] font-black uppercase bg-red-50 text-red-600 dark:bg-red-950/20 dark:text-red-400 px-1.5 py-0.5 rounded border border-red-100 dark:border-red-900/30">
+                                        ⚠️ {audit.expiredBondsCount} Expired Bonds
+                                      </span>
+                                    ) : (
+                                      <span className="text-[8px] font-bold uppercase bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400 px-1.5 py-0.5 rounded">
+                                        ✓ Guarantees Valid
+                                      </span>
+                                    )}
+                                    
+                                    {audit.scheduleStatus === 'Critical' && (
+                                      <span className="text-[8px] font-black uppercase bg-red-50 text-red-600 dark:bg-red-950/20 dark:text-red-400 px-1.5 py-0.5 rounded border border-red-100 dark:border-red-900/30">
+                                        ⏳ Critical Delay
+                                      </span>
+                                    )}
+                                    {audit.scheduleStatus === 'Warning' && (
+                                      <span className="text-[8px] font-black uppercase bg-amber-50 text-amber-600 dark:bg-amber-950/20 dark:text-amber-400 px-1.5 py-0.5 rounded border border-amber-100 dark:border-amber-900/30">
+                                        ⏳ Slip Warning
+                                      </span>
+                                    )}
+                                    {audit.scheduleStatus === 'Compliant' && (
+                                      <span className="text-[8px] font-bold uppercase bg-slate-50 text-slate-600 dark:bg-slate-800 dark:text-slate-400 px-1.5 py-0.5 rounded">
+                                        ✓ On Track
+                                      </span>
+                                    )}
+    
+                                    {audit.activeRisksCount > 0 && (
+                                      <span className="text-[8px] font-medium bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 px-1.5 py-0.5 rounded">
+                                        🔥 {audit.activeRisksCount} Active Risks
+                                      </span>
+                                    )}
+    
+                                    {audit.timeOverrunPct > 0 && (
+                                      <span className="text-[8px] font-black uppercase bg-rose-50 text-rose-600 dark:bg-rose-950/20 dark:text-rose-400 px-1.5 py-0.5 rounded border border-rose-100 dark:border-rose-900/30">
+                                        ⏱️ {audit.timeOverrunPct.toFixed(2)}% EOT Overrun
+                                      </span>
+                                    )}
+                                    <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded border ${
+                                      audit.CPI >= 1.0 
+                                        ? 'bg-emerald-50 text-emerald-600 border-emerald-100 dark:bg-emerald-950/20 dark:text-emerald-400' 
+                                        : 'bg-rose-50 text-rose-600 border-rose-100 dark:bg-rose-950/20 dark:text-rose-400'
+                                    }`}>
+                                      CPI: {audit.CPI.toFixed(3)}
+                                    </span>
+                                    <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded border ${
+                                      audit.SPI >= 1.0 
+                                        ? 'bg-emerald-50 text-emerald-600 border-emerald-100 dark:bg-emerald-950/20 dark:text-emerald-400' 
+                                        : 'bg-rose-50 text-rose-600 border-rose-100 dark:bg-rose-950/20 dark:text-rose-400'
+                                    }`}>
+                                      SPI: {audit.SPI.toFixed(3)}
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="px-3 py-2.5">
+                                  <div className="flex flex-col gap-1 max-w-[150px] mx-auto">
+                                    <div className="flex items-center justify-between text-[9px] font-bold">
+                                      <span className="text-slate-400">Progress:</span>
+                                      <span className="text-slate-700 dark:text-zinc-300">{(p.physicalProgress || 0).toFixed(2)}%</span>
+                                    </div>
+                                    <div className="w-full bg-slate-100 dark:bg-slate-800 h-1 rounded overflow-hidden">
+                                      <div className="bg-emerald-500 h-full" style={{ width: `${Math.min(100, Math.max(0, p.physicalProgress || 0))}%` }} />
+                                    </div>
+    
+                                    <div className="flex items-center justify-between text-[9px] font-bold">
+                                      <span className="text-slate-400">Time Elapsed:</span>
+                                      <span className="text-slate-700 dark:text-zinc-300">{audit.timeElapsedPct.toFixed(2)}%</span>
+                                    </div>
+                                    <div className="w-full bg-slate-100 dark:bg-slate-800 h-1 rounded overflow-hidden">
+                                      <div className="bg-indigo-500 h-full" style={{ width: `${Math.min(100, Math.max(0, audit.timeElapsedPct))}%` }} />
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="px-3 py-2.5 text-right font-mono">
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${audit.bgColor} ${audit.textColor}`}>
+                                      Grade {audit.ratingCode}
+                                    </span>
+                                    <span className="text-sm font-black text-slate-800 dark:text-zinc-100">
+                                      {audit.complianceScore}%
+                                    </span>
+                                  </div>
+                                  <div className="text-[8.5px] text-slate-400 dark:text-slate-500 font-sans font-bold">{audit.ratingClass}</div>
+                                </td>
+                              </tr>
+                              {isExpanded && (
+                                <tr className="bg-slate-50/70 dark:bg-slate-900/60">
+                                  <td colSpan={4} className="p-4 border-t border-b border-slate-200 dark:border-slate-800">
+                                    <div className="space-y-4">
+                                      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-2 border-b border-slate-250 dark:border-slate-800 pb-2">
+                                        <div>
+                                          <h4 className="text-xs font-black uppercase text-indigo-600 dark:text-indigo-400">
+                                            FIDIC 2017 Contract Compliance & Responsibility Audit
+                                          </h4>
+                                          <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase mt-0.5">
+                                            Contractor: {p.contractor || 'N/A'} • Consultant: {p.consultant || 'N/A'}
+                                          </p>
+                                        </div>
+                                        <span className="text-[9px] bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-150 dark:border-indigo-900/50 text-indigo-700 dark:text-indigo-300 font-bold px-2 py-1 rounded">
+                                          FIDIC Edition: 2017 {p.contractType === 'DB' ? 'Yellow Book' : 'Red Book'}
+                                        </span>
+                                      </div>
+
+                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        {/* Contractor Evaluation Card */}
+                                        {(() => {
+                                          const evalData = getFidicEvaluation(p, 'contractor');
+                                          return (
+                                            <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200/60 dark:border-slate-800/60 shadow-sm space-y-2.5">
+                                              <div className="flex justify-between items-center pb-1 border-b border-slate-100 dark:border-slate-800">
+                                                <span className="text-[10px] font-black text-amber-600 dark:text-amber-500 uppercase tracking-wider">
+                                                  🏗️ Contractor Obligations
+                                                </span>
+                                                <span className={`text-[10px] font-black px-2 py-0.5 rounded ${
+                                                  evalData.averageScore >= 80 ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400' :
+                                                  evalData.averageScore >= 60 ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400' : 'bg-red-50 text-red-700 dark:bg-rose-950/30 dark:text-rose-450'
+                                                }`}>
+                                                  Score: {evalData.averageScore}%
+                                                </span>
+                                              </div>
+                                              
+                                              <div className="space-y-2.5">
+                                                {evalData.clauses.map(c => (
+                                                  <div key={c.id} className="space-y-0.5">
+                                                    <div className="flex justify-between items-center text-[9.5px] font-bold">
+                                                      <span className="text-slate-700 dark:text-slate-300">{c.title}</span>
+                                                      <span className={`text-[8.5px] font-black uppercase px-1 rounded ${
+                                                        c.rating === 'Compliant' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400' :
+                                                        c.rating === 'Minor Deficiency' ? 'bg-amber-50 text-amber-600 dark:bg-amber-950/20 dark:text-amber-400' : 'bg-rose-50 text-rose-600 dark:bg-rose-950/20 dark:text-rose-400'
+                                                      }`}>
+                                                        {c.rating}
+                                                      </span>
+                                                    </div>
+                                                    <p className="text-[9px] text-slate-500 dark:text-slate-400 leading-relaxed font-sans">
+                                                      {c.details}
+                                                    </p>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            </div>
+                                          );
+                                        })()}
+
+                                        {/* Consultant Evaluation Card */}
+                                        {(() => {
+                                          const evalData = getFidicEvaluation(p, 'consultant');
+                                          return (
+                                            <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200/60 dark:border-slate-800/60 shadow-sm space-y-2.5">
+                                              <div className="flex justify-between items-center pb-1 border-b border-slate-100 dark:border-slate-800">
+                                                <span className="text-[10px] font-black text-teal-600 dark:text-teal-500 uppercase tracking-wider">
+                                                  🎓 Consultant Obligations
+                                                </span>
+                                                <span className={`text-[10px] font-black px-2 py-0.5 rounded ${
+                                                  evalData.averageScore >= 80 ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400' :
+                                                  evalData.averageScore >= 60 ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400' : 'bg-red-50 text-red-700 dark:bg-rose-950/30 dark:text-rose-450'
+                                                }`}>
+                                                  Score: {evalData.averageScore}%
+                                                </span>
+                                              </div>
+
+                                              <div className="space-y-2.5">
+                                                {evalData.clauses.map(c => (
+                                                  <div key={c.id} className="space-y-0.5">
+                                                    <div className="flex justify-between items-center text-[9.5px] font-bold">
+                                                      <span className="text-slate-700 dark:text-slate-300">{c.title}</span>
+                                                      <span className={`text-[8.5px] font-black uppercase px-1 rounded ${
+                                                        c.rating === 'Compliant' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400' :
+                                                        c.rating === 'Minor Deficiency' ? 'bg-amber-50 text-amber-600 dark:bg-amber-950/20 dark:text-amber-400' : 'bg-rose-50 text-rose-600 dark:bg-rose-950/20 dark:text-rose-400'
+                                                      }`}>
+                                                        {c.rating}
+                                                      </span>
+                                                    </div>
+                                                    <p className="text-[9px] text-slate-500 dark:text-slate-400 leading-relaxed font-sans">
+                                                      {c.details}
+                                                    </p>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            </div>
+                                          );
+                                        })()}
+                                      </div>
+
+                                      {/* Supervision Consultant Staffing & Personnel Overview */}
+                                      {p.supervisionConsultant && (
+                                        <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200/60 dark:border-slate-800/60 shadow-sm space-y-2">
+                                          <div className="flex justify-between items-center pb-1 border-b border-slate-100 dark:border-slate-800">
+                                            <span className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-wider flex items-center gap-1.5">
+                                              👥 Supervision Consultant Staffing & Deployment
+                                            </span>
+                                            <span className="text-[9px] font-bold text-slate-500">
+                                              {(p.supervisionConsultant.personnel || []).filter(x => x.status === 'Active').length} Active / {(p.supervisionConsultant.personnel || []).length} Assigned Staff
+                                            </span>
+                                          </div>
+                                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[9.5px]">
+                                            <div>
+                                              <span className="text-slate-400">Consultant:</span>{' '}
+                                              <span className="font-bold text-slate-700 dark:text-slate-200">{p.supervisionConsultant.firmName || p.consultant}</span>
+                                            </div>
+                                            <div>
+                                              <span className="text-slate-400">Resident Engineer:</span>{' '}
+                                              <span className="font-bold text-slate-700 dark:text-slate-200">{p.supervisionConsultant.residentEngineerName || 'Assigned in Field'}</span>
+                                            </div>
+                                            <div>
+                                              <span className="text-slate-400">Fee Invoiced:</span>{' '}
+                                              <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                                                ETB {(p.supervisionConsultant.invoices || []).reduce((sum, inv) => sum + (inv.grossAmountEtb || 0), 0).toLocaleString()}
+                                              </span>
+                                            </div>
+                                          </div>
+                                          {(p.supervisionConsultant.personnel || []).length > 0 && (
+                                            <div className="flex flex-wrap gap-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-800">
+                                              {(p.supervisionConsultant.personnel || []).slice(0, 6).map((person, pIdx) => (
+                                                <span key={`${p.id}_pers_${person.id || pIdx}_${pIdx}`} className="inline-flex items-center gap-1 text-[8.5px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium">
+                                                  <span className={`w-1.5 h-1.5 rounded-full ${person.status === 'Active' ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+                                                  <strong className="font-bold">{person.position}:</strong> {person.name} ({person.assignmentDate || 'Assigned'})
+                                                </span>
+                                              ))}
+                                              {(p.supervisionConsultant.personnel || []).length > 6 && (
+                                                <span className="text-[8.5px] text-slate-400 font-bold self-center">
+                                                  +{(p.supervisionConsultant.personnel || []).length - 6} more staff
+                                                </span>
+                                              )}
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </React.Fragment>
+                          );
+                        })
+                      )
                     ) : reportMode === 'payments' ? (
                       processedProjects.map((p) => {
                         const m = getProjectPaymentMetrics(p);
@@ -5730,8 +6603,8 @@ export default function GroupReportGenerator({
                                         No supervision consultant personnel have been registered for this project yet.
                                       </div>
                                     ) : (
-                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                        {personnel.map((person) => {
+                                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        {personnel.map((person, perIdx) => {
                                           const isActive = person.status === 'Active';
                                           const allocatedMM = person.manMonthsAllocated || 0;
                                           const expendedMM = person.manMonthsInput ?? (person as any).manMonthsExpended ?? 0;
@@ -5741,7 +6614,7 @@ export default function GroupReportGenerator({
 
                                           return (
                                             <div 
-                                              key={person.id} 
+                                              key={`${p.id}_pers_${person.id || perIdx}_${perIdx}`} 
                                               className={`p-3 rounded-xl border flex flex-col justify-between gap-2.5 transition-all bg-white dark:bg-slate-900 ${
                                                 isActive 
                                                   ? 'border-slate-200 dark:border-slate-800' 

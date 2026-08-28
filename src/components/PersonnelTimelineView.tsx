@@ -585,7 +585,7 @@ export default function PersonnelTimelineView({
                     )}
 
                     {/* Rows for this group */}
-                    {group.items.map((person) => {
+                    {group.items.map((person, personIdx) => {
                       const geom = getPersonnelBarGeometry(person);
                       const tenure = getTenureString(person.assignmentDate, person.demobilizationDate);
                       const isActive = person.status === 'Active';
@@ -594,7 +594,7 @@ export default function PersonnelTimelineView({
 
                       return (
                         <div
-                          key={person.id}
+                          key={person.id ? `${person.id}_${groupIdx}_${personIdx}` : `pers_${groupIdx}_${personIdx}`}
                           className="flex items-center hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition group"
                         >
                           {/* Left Details Card (320px) */}

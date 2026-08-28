@@ -55,6 +55,7 @@ import {
 import jsPDF from 'jspdf';
 import WorkloadReportModal from './WorkloadReportModal';
 import ConsultantPerformanceKpiWidget, { DEFAULT_SUBMITTAL_KPIS } from './ConsultantPerformanceKpiWidget';
+import ConsultantPerformanceMiniChart from './ConsultantPerformanceMiniChart';
 
 interface SupervisionConsultantViewProps {
   project: Project;
@@ -1259,6 +1260,15 @@ export default function SupervisionConsultantView({
             </span>
           </div>
         </div>
+
+        {/* Mini Performance KPI & RFI Turnaround SLA Visualizer Component */}
+        <div className="mt-5">
+          <ConsultantPerformanceMiniChart
+            project={project}
+            consultant={consultant}
+            onOpenFullKpis={() => setActiveTab('kpis')}
+          />
+        </div>
       </div>
 
       {/* Internal Navigation Subtabs */}
@@ -1440,7 +1450,7 @@ export default function SupervisionConsultantView({
 
                       return (
                         <tr 
-                          key={p.id}
+                          key={p.id ? `${p.id}_${idx}` : `pers_${idx}`}
                           className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition duration-150"
                         >
                           <td className="py-3.5 px-4 text-center text-slate-400 font-mono font-bold">

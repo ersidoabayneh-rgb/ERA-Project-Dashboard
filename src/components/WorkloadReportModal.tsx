@@ -437,7 +437,7 @@ export default function WorkloadReportModal({
 
                         return (
                           <tr 
-                            key={p.id || `pers_${idx}`} 
+                            key={`${item.projectId}_${p.id || 'pers'}_${idx}`} 
                             className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors"
                           >
                             <td className="py-2.5 px-3 text-center font-mono text-slate-400 text-[10px]">
