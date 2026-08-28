@@ -209,11 +209,11 @@ export function downloadUserManual() {
 
   // Badge
   setFillHex('#0284c7');
-  doc.roundedRect(margin, 172, 180, 22, 11, 11, 'F');
+  doc.roundedRect(margin, 172, 195, 22, 11, 11, 'F');
   setTextHex(colors.white);
   doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
-  doc.text('VERSION 1.0 (2026 EDITION)', margin + 14, 186);
+  doc.text('VERSION 1.0 (23-PAGE EDITION)', margin + 14, 186);
 
   let yPos = 260;
 
@@ -327,34 +327,37 @@ export function downloadUserManual() {
     { num: '12.', title: 'Page 12 Picture & Guide: Work Program CPM Schedule (📅 Work Program CPM)', page: 'Page 14' },
     { num: '13.', title: 'Page 13 Picture & Guide: Logistics & Resource Mobilization (🚚 Logistics & Resources)', page: 'Page 15' },
     { num: '14.', title: 'Page 14 Picture & Guide: Project Risks & FIDIC Claims (⚠️ Project Risks)', page: 'Page 16' },
-    { num: '15.', title: 'Page 15 Picture & Guide: Comprehensive Analysis & Diagnostics (📊 Comprehensive analysis)', page: 'Page 17' },
-    { num: '16.', title: 'Page 16 Picture & Guide: Project Documentation & Vault (📁 Documentation)', page: 'Page 18' },
-    { num: '17.', title: 'Page 17 Picture & Guide: Executive Group Report Generator Modal', page: 'Page 19' },
-    { num: '18.', title: 'Troubleshooting Guide, Pre-Support Checklist & Technical Glossary', page: 'Page 20' }
+    { num: '15.', title: 'Page 15 Picture & Guide: Supervision Consultant & SLA Matrix (👔 Supervision Consultant)', page: 'Page 17' },
+    { num: '16.', title: 'Page 16 Picture & Guide: Comprehensive Analysis & Diagnostics (📊 Comprehensive analysis)', page: 'Page 18' },
+    { num: '17.', title: 'Page 17 Picture & Guide: Project Documentation & Vault (📁 Documentation)', page: 'Page 19' },
+    { num: '18.', title: 'Page 18 Picture & Guide: Audit History Snapshots & Version Control (📜 History)', page: 'Page 20' },
+    { num: '19.', title: 'Page 19 Picture & Guide: Workspace Settings & Role-Based Access Control (⚙️ Settings)', page: 'Page 21' },
+    { num: '20.', title: 'Page 20 Picture & Guide: Executive Group Report Generator Modal', page: 'Page 22' },
+    { num: '21.', title: 'Troubleshooting Guide, Pre-Support Checklist, Technical Glossary & Support', page: 'Page 23' }
   ];
 
   tocItems.forEach((item) => {
     setFillHex(colors.slateLight);
     setDrawHex(colors.borderLight);
-    doc.roundedRect(margin, yPos, contentWidth, 18, 3, 3, 'FD');
+    doc.roundedRect(margin, yPos, contentWidth, 14, 2.5, 2.5, 'FD');
 
     setTextHex(colors.accent);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    doc.text(item.num, margin + 8, yPos + 12);
+    doc.setFontSize(7.5);
+    doc.text(item.num, margin + 6, yPos + 9.5);
 
     setTextHex(colors.textMain);
     doc.setFont('helvetica', 'semibold');
-    doc.text(item.title, margin + 24, yPos + 12);
+    doc.text(item.title, margin + 20, yPos + 9.5);
 
     setTextHex(colors.textMuted);
     doc.setFont('helvetica', 'bold');
-    doc.text(item.page, pageWidth - margin - 10, yPos + 12, { align: 'right' });
+    doc.text(item.page, pageWidth - margin - 8, yPos + 9.5, { align: 'right' });
 
-    yPos += 21;
+    yPos += 15;
   });
 
-  yPos += 8;
+  yPos += 6;
   yPos = addSectionHeading('GETTING STARTED: AUTHENTICATION & ROLE-BASED ACCESS', 'How to log in, verify 2FA, switch projects, and navigate user permissions', yPos);
 
   setFillHex(colors.white);
@@ -1322,11 +1325,76 @@ export function downloadUserManual() {
   );
 
   // ==========================================
-  // PAGE 17: WEBSITE PAGE 15 - COMPREHENSIVE ANALYSIS
+  // PAGE 17: WEBSITE PAGE 15 - SUPERVISION CONSULTANT
   // ==========================================
   createDiagramPage(
     17,
-    'WEBSITE PAGE 15: COMPREHENSIVE ANALYSIS & DIAGNOSTICS (📊 Comprehensive analysis)',
+    'WEBSITE PAGE 15: SUPERVISION CONSULTANT & SLA MATRIX (👔 Supervision Consultant)',
+    'Visual Diagram & Feature Guide for Supervising Engineer SLA Evaluation & Criteria Weights',
+    250,
+    '👔 Supervision Consultant',
+    (ix, iy, iw, ih) => {
+      // Header
+      setFillHex('#0f172a'); doc.roundedRect(ix, iy, iw, 26, 4, 4, 'F');
+      setTextHex('#ffffff'); doc.setFontSize(8.5); doc.setFont('helvetica', 'bold');
+      doc.text('Supervising Consultant Particulars, Fee Invoices & RFI Response Performance vs SLA Targets', ix + 8, iy + 17);
+
+      // Consultant Summary Box
+      const conY = iy + 32;
+      setFillHex('#ffffff'); setDrawHex('#cbd5e1'); doc.roundedRect(ix, conY, iw, 160, 4, 4, 'FD');
+
+      setFillHex('#1e293b'); doc.rect(ix, conY, iw, 18, 'F');
+      setTextHex('#ffffff'); doc.setFontSize(6.5); doc.setFont('helvetica', 'bold');
+      doc.text('EVALUATION CRITERIA', ix + 6, conY + 12);
+      doc.text('TARGET SLA', ix + 180, conY + 12);
+      doc.text('WEIGHT %', ix + 270, conY + 12);
+      doc.text('ACHIEVED RATING', ix + 360, conY + 12);
+      doc.text('STATUS', ix + 450, conY + 12);
+
+      const slaData = [
+        { crit: '1. RFI & Site Query Turnaround', sla: '< 7 Calendar Days', weight: '25.0%', rating: '4.8 Days (94.2%)', status: 'EXCELLENT', color: '#166534', bg: '#dcfce7' },
+        { crit: '2. Interim Payment Certificate (IPC) Certification', sla: '< 14 Calendar Days', weight: '30.0%', rating: '11.2 Days (88.5%)', status: 'COMPLIANT', color: '#166534', bg: '#dcfce7' },
+        { crit: '3. Material Testing & Trial Mix Approvals', sla: '< 10 Calendar Days', weight: '20.0%', rating: '8.4 Days (91.0%)', status: 'COMPLIANT', color: '#166534', bg: '#dcfce7' },
+        { crit: '4. Method Statement & Submittal Reviews', sla: '< 21 Calendar Days', weight: '15.0%', rating: '18.0 Days (82.0%)', status: 'FAIR', color: '#b45309', bg: '#fef3c7' },
+        { crit: '5. Variation Order & Claim Determination Reports', sla: '< 28 Calendar Days', weight: '10.0%', rating: '24.5 Days (85.0%)', status: 'COMPLIANT', color: '#166534', bg: '#dcfce7' }
+      ];
+
+      let ry = conY + 30;
+      slaData.forEach(s => {
+        setTextHex('#334155'); doc.setFontSize(6.5); doc.setFont('helvetica', 'bold');
+        doc.text(s.crit, ix + 6, ry);
+        doc.setFont('helvetica', 'normal');
+        doc.text(s.sla, ix + 180, ry);
+        
+        setTextHex('#2563eb'); doc.setFont('helvetica', 'bold');
+        doc.text(s.weight, ix + 270, ry);
+        
+        setTextHex('#334155'); doc.setFont('helvetica', 'normal');
+        doc.text(s.rating, ix + 360, ry);
+
+        setFillHex(s.bg); doc.roundedRect(ix + 445, ry - 8, 65, 12, 4, 4, 'F');
+        setTextHex(s.color); doc.setFontSize(5.5); doc.setFont('helvetica', 'bold');
+        doc.text(s.status, ix + 450, ry);
+
+        setDrawHex('#f1f5f9'); doc.line(ix + 5, ry + 4, ix + iw - 5, ry + 4);
+        ry += 22;
+      });
+    },
+    'PAGE 15 PURPOSE & UI FEATURE EXPLANATIONS',
+    [
+      { label: '1. Consultant Contract Particulars:', detail: 'Maintains supervising engineer contract sums in dual currencies (ETB/USD) and fee billing.' },
+      { label: '2. RFI & Submittal SLA Matrix:', detail: 'Measures response turnaround times against contractual target turnaround thresholds.' },
+      { label: '3. Criteria & Weight Management:', detail: 'Provides controls to add, delete evaluation criteria, and adjust weight percentages to 100% total sum.' },
+      { label: '4. Key Supervisory Directory:', detail: 'Maintains Resident Engineer and key specialist staffing presence on site.' }
+    ]
+  );
+
+  // ==========================================
+  // PAGE 18: WEBSITE PAGE 16 - COMPREHENSIVE ANALYSIS
+  // ==========================================
+  createDiagramPage(
+    18,
+    'WEBSITE PAGE 16: COMPREHENSIVE ANALYSIS & DIAGNOSTICS (📊 Comprehensive analysis)',
     'Visual Diagram & Feature Guide for Multi-Dimensional Performance Diagnostics',
     250,
     '📊 Comprehensive analysis',
@@ -1366,7 +1434,7 @@ export function downloadUserManual() {
         dy += 22;
       });
     },
-    'PAGE 15 PURPOSE & UI FEATURE EXPLANATIONS',
+    'PAGE 16 PURPOSE & UI FEATURE EXPLANATIONS',
     [
       { label: '1. Radar Diagnostic Model:', detail: 'Synthesizes contract compliance, schedule efficiency, EVM metrics, KPIs, and civil layer completion.' },
       { label: '2. Earned Value Ratios:', detail: 'Calculates Schedule Performance Index (SPI 0.42) and Cost Performance Index (CPI 1.00).' },
@@ -1376,11 +1444,11 @@ export function downloadUserManual() {
   );
 
   // ==========================================
-  // PAGE 18: WEBSITE PAGE 16 - DOCUMENTATION
+  // PAGE 19: WEBSITE PAGE 17 - DOCUMENTATION
   // ==========================================
   createDiagramPage(
-    18,
-    'WEBSITE PAGE 16: PROJECT DOCUMENTATION & VAULT (📁 Documentation)',
+    19,
+    'WEBSITE PAGE 17: PROJECT DOCUMENTATION & VAULT (📁 Documentation)',
     'Visual Diagram & Feature Guide for Contract File Archiving & File Vault',
     250,
     '📁 Documentation',
@@ -1425,7 +1493,7 @@ export function downloadUserManual() {
         ry += 24;
       });
     },
-    'PAGE 16 PURPOSE & UI FEATURE EXPLANATIONS',
+    'PAGE 17 PURPOSE & UI FEATURE EXPLANATIONS',
     [
       { label: '1. Central Document Vault:', detail: 'Archives contract agreements, design reviews, IPC certificates, and EOT approval letters.' },
       { label: '2. Metadata Tagging:', detail: 'Categorizes files by type, upload date, file size, and authorization access levels.' },
@@ -1435,11 +1503,134 @@ export function downloadUserManual() {
   );
 
   // ==========================================
-  // PAGE 19: WEBSITE PAGE 17 - GROUP REPORT GENERATOR
+  // PAGE 20: WEBSITE PAGE 18 - AUDIT HISTORY SNAPSHOTS
   // ==========================================
   createDiagramPage(
-    19,
-    'WEBSITE PAGE 17: EXECUTIVE GROUP REPORT GENERATOR MODAL',
+    20,
+    'WEBSITE PAGE 18: AUDIT HISTORY SNAPSHOTS & VERSION CONTROL (📜 History)',
+    'Visual Diagram & Feature Guide for Point-in-Time Milestone Snapshots & Audit Trail',
+    250,
+    '📜 History',
+    (ix, iy, iw, ih) => {
+      // Header
+      setFillHex('#0f172a'); doc.roundedRect(ix, iy, iw, 26, 4, 4, 'F');
+      setTextHex('#ffffff'); doc.setFontSize(8.5); doc.setFont('helvetica', 'bold');
+      doc.text('Immutable Version History Ledger • Milestone Checkpoints & System Rollback Logs', ix + 8, iy + 17);
+
+      // Snapshots Table
+      const snapY = iy + 32;
+      setFillHex('#ffffff'); setDrawHex('#cbd5e1'); doc.roundedRect(ix, snapY, iw, 160, 4, 4, 'FD');
+
+      setFillHex('#1e293b'); doc.rect(ix, snapY, iw, 18, 'F');
+      setTextHex('#ffffff'); doc.setFontSize(6.5); doc.setFont('helvetica', 'bold');
+      doc.text('SNAPSHOT IDENTIFIER & TIMESTAMP', ix + 6, snapY + 12);
+      doc.text('MILESTONE EVENT / REASON', ix + 170, snapY + 12);
+      doc.text('COMMITTED BY', ix + 320, snapY + 12);
+      doc.text('COMPLETION %', ix + 410, snapY + 12);
+      doc.text('ACTION', ix + 470, snapY + 12);
+
+      const snapData = [
+        { id: 'SNAP-20260228-001 (Feb 28, 2026)', evt: 'Pre-VO No. 2 Milestone Checkpoint', user: 'Ersido Abayneh (Dir Admin)', pct: '40.73%', act: 'VIEW DIFF' },
+        { id: 'SNAP-20260115-004 (Jan 15, 2026)', evt: 'Q2 Baseline Progress Finalization', user: 'Mulugeta Bekele (PMO)', pct: '38.50%', act: 'VIEW DIFF' },
+        { id: 'SNAP-20251130-002 (Nov 30, 2025)', evt: 'Post-IPC No. 42 Approved Valuation', user: 'Audit Team Lead', pct: '36.10%', act: 'VIEW DIFF' },
+        { id: 'SNAP-20250630-001 (Jun 30, 2025)', evt: 'Annual EFY 2017 Year-End Baseline', user: 'Master Admin', pct: '31.80%', act: 'VIEW DIFF' }
+      ];
+
+      let ry = snapY + 30;
+      snapData.forEach(s => {
+        setTextHex('#334155'); doc.setFontSize(6.5); doc.setFont('helvetica', 'bold');
+        doc.text(s.id, ix + 6, ry);
+        doc.setFont('helvetica', 'normal');
+        doc.text(s.evt, ix + 170, ry);
+        doc.text(s.user, ix + 320, ry);
+        
+        setTextHex('#166534'); doc.setFont('helvetica', 'bold');
+        doc.text(s.pct, ix + 410, ry);
+
+        setFillHex('#eff6ff'); doc.roundedRect(ix + 465, ry - 8, 48, 12, 3, 3, 'F');
+        setTextHex('#2563eb'); doc.setFontSize(5.5); doc.setFont('helvetica', 'bold');
+        doc.text(s.act, ix + 470, ry);
+
+        setDrawHex('#f1f5f9'); doc.line(ix + 5, ry + 4, ix + iw - 5, ry + 4);
+        ry += 24;
+      });
+    },
+    'PAGE 18 PURPOSE & UI FEATURE EXPLANATIONS',
+    [
+      { label: '1. Immutable Version Snapshots:', detail: 'Records complete state checkpoints before contract amendments or schedule alterations.' },
+      { label: '2. Diff Comparison Engine:', detail: 'Allows side-by-side inspection of financial, physical, and contractual field revisions.' },
+      { label: '3. Master Rollback Recovery:', detail: 'Permits authorized administrators to restore verified prior baselines in case of accidental errors.' },
+      { label: '4. Continuous Audit Trail:', detail: 'Captures author identity, IP records, and timestamps for all database mutations.' }
+    ]
+  );
+
+  // ==========================================
+  // PAGE 21: WEBSITE PAGE 19 - WORKSPACE SETTINGS & RBAC
+  // ==========================================
+  createDiagramPage(
+    21,
+    'WEBSITE PAGE 19: WORKSPACE SETTINGS & ROLE-BASED ACCESS CONTROL (⚙️ Settings)',
+    'Visual Diagram & Feature Guide for User Management, Page Clearances & UI Configuration',
+    250,
+    '⚙️ Settings',
+    (ix, iy, iw, ih) => {
+      // Header
+      setFillHex('#0f172a'); doc.roundedRect(ix, iy, iw, 26, 4, 4, 'F');
+      setTextHex('#ffffff'); doc.setFontSize(8.5); doc.setFont('helvetica', 'bold');
+      doc.text('System Administration • Role-Based Access Control (RBAC), Page Clearances & Display Settings', ix + 8, iy + 17);
+
+      // Settings Grid Box
+      const setY = iy + 32;
+      setFillHex('#ffffff'); setDrawHex('#cbd5e1'); doc.roundedRect(ix, setY, iw, 160, 4, 4, 'FD');
+
+      setFillHex('#1e293b'); doc.rect(ix, setY, iw, 18, 'F');
+      setTextHex('#ffffff'); doc.setFontSize(6.5); doc.setFont('helvetica', 'bold');
+      doc.text('USER ACCOUNT / EMAIL', ix + 6, setY + 12);
+      doc.text('ROLE CLEARANCE', ix + 160, setY + 12);
+      doc.text('ASSIGNED DIRECTORATE', ix + 260, setY + 12);
+      doc.text('PAGE PERMISSIONS', ix + 360, setY + 12);
+      doc.text('APPROVAL ROLE', ix + 450, setY + 12);
+
+      const usersData = [
+        { email: 'ErsidoAbayneh@gmail.com', role: 'Directorate Admin', dir: 'Southern Directorate', perm: 'ALL 18 PAGES', appr: 'AUTHORITY' },
+        { email: 're.dayegirja@lea-jv.com', role: 'Resident Engineer', dir: 'Project Assigned', perm: '12 PAGES (NO ADMIN)', appr: 'SUBMITTER' },
+        { email: 'pmo.auditor@era.gov.et', role: 'PMO Auditor', dir: 'National Portfolio', perm: 'VIEWER + FINANCIALS', appr: 'REVIEWER' },
+        { email: 'contractor.rep@tisiju.cn', role: 'Contractor Rep', dir: 'Daye-Girja Only', perm: '6 PAGES (DATA ENTRY)', appr: 'SUBMITTER' }
+      ];
+
+      let ry = setY + 30;
+      usersData.forEach(u => {
+        setTextHex('#334155'); doc.setFontSize(6.5); doc.setFont('helvetica', 'bold');
+        doc.text(u.email, ix + 6, ry);
+        doc.setFont('helvetica', 'normal');
+        doc.text(u.role, ix + 160, ry);
+        doc.text(u.dir, ix + 260, ry);
+        
+        setTextHex('#2563eb'); doc.setFont('helvetica', 'bold');
+        doc.text(u.perm, ix + 360, ry);
+
+        setTextHex('#166534'); doc.setFont('helvetica', 'bold');
+        doc.text(u.appr, ix + 450, ry);
+
+        setDrawHex('#f1f5f9'); doc.line(ix + 5, ry + 4, ix + iw - 5, ry + 4);
+        ry += 24;
+      });
+    },
+    'PAGE 19 PURPOSE & UI FEATURE EXPLANATIONS',
+    [
+      { label: '1. Role-Based Access Control (RBAC):', detail: 'Defines 7 security tiers: Master Admin, CPM Admin, Directorate Admin, PMO, Editor, Viewer, Approver.' },
+      { label: '2. Granular Page Permission Checklists:', detail: 'Allows administrators to selectively grant or restrict editing access to specific pages and modules.' },
+      { label: '3. Approval Authority Workflow:', detail: 'Enforces two-tier approval governance before unapproved mutations take effect in production.' },
+      { label: '4. UI Display & Environment Personalization:', detail: 'Toggles between Dark and Light mode themes and configures ambient rendering speeds.' }
+    ]
+  );
+
+  // ==========================================
+  // PAGE 22: WEBSITE PAGE 20 - GROUP REPORT GENERATOR
+  // ==========================================
+  createDiagramPage(
+    22,
+    'WEBSITE PAGE 20: EXECUTIVE GROUP REPORT GENERATOR MODAL',
     'Visual Diagram & Feature Guide for Multi-Project Portfolio Group Report Generation',
     250,
     'Executive Group Report Generator',
@@ -1484,7 +1675,7 @@ export function downloadUserManual() {
       setTextHex('#ffffff'); doc.setFontSize(7.5); doc.setFont('helvetica', 'bold');
       doc.text('📊 Excel Data Matrix', ix + 352, expY + 50);
     },
-    'PAGE 17 PURPOSE & UI FEATURE EXPLANATIONS',
+    'PAGE 20 PURPOSE & UI FEATURE EXPLANATIONS',
     [
       { label: '1. Multi-Project Portfolio Selection:', detail: 'Allows users to evaluate single projects or entire regional Directorates simultaneously.' },
       { label: '2. 5-Dimension Custom Weighting:', detail: 'Customizes weight allocations for FIDIC compliance, time execution, EVM indices, KPIs, and civil layers.' },
@@ -1494,7 +1685,7 @@ export function downloadUserManual() {
   );
 
   // ==========================================
-  // PAGE 20: TROUBLESHOOTING & GLOSSARY
+  // PAGE 23: TROUBLESHOOTING, GLOSSARY & CONTACTS
   // ==========================================
   doc.addPage();
   currentPage++;
@@ -1512,36 +1703,51 @@ export function downloadUserManual() {
 
   troubleIssues.forEach(t => {
     setFillHex(colors.slateLight); setDrawHex(colors.border);
-    doc.roundedRect(margin, yPos, contentWidth, 34, 4, 4, 'FD');
+    doc.roundedRect(margin, yPos, contentWidth, 32, 3, 3, 'FD');
 
-    setTextHex(colors.rose); doc.setFontSize(8); doc.setFont('helvetica', 'bold');
-    doc.text(t.issue, margin + 8, yPos + 12);
+    setTextHex(colors.rose); doc.setFontSize(7.5); doc.setFont('helvetica', 'bold');
+    doc.text(t.issue, margin + 8, yPos + 11);
 
-    setTextHex(colors.textMain); doc.setFontSize(7.5); doc.setFont('helvetica', 'normal');
-    doc.text(`Solution: ${t.sol}`, margin + 8, yPos + 24, { maxWidth: contentWidth - 16 });
+    setTextHex(colors.textMain); doc.setFontSize(7); doc.setFont('helvetica', 'normal');
+    doc.text(`Solution: ${t.sol}`, margin + 8, yPos + 22, { maxWidth: contentWidth - 16 });
 
-    yPos += 39;
+    yPos += 36;
   });
 
-  yPos += 8;
+  yPos += 4;
   yPos = addSectionHeading('GLOSSARY OF INFRASTRUCTURE & FINANCIAL TERMS', 'Key technical definitions utilized throughout the ERA ERP Dashboard', yPos);
 
   const glossaryTerms = [
     { term: 'EVM (Earned Value Management):', def: 'Integrates scope, schedule, and cost metrics to measure project performance.' },
-    { term: 'CPI (Cost Performance Index):', def: 'Ratio of Earned Value to Actual Cost ($CPI = EV / AC$). Values > 1.0 indicate under-budget performance.' },
-    { term: 'SPI (Schedule Performance Index):', def: 'Ratio of Earned Value to Planned Value ($SPI = EV / PV$). Values > 1.0 indicate ahead-of-schedule performance.' },
+    { term: 'CPI (Cost Performance Index):', def: 'Ratio of Earned Value to Actual Cost (EV / AC). Values > 1.0 indicate under-budget performance.' },
+    { term: 'SPI (Schedule Performance Index):', def: 'Ratio of Earned Value to Planned Value (EV / PV). Values > 1.0 indicate ahead-of-schedule performance.' },
     { term: 'IPC (Interim Payment Certificate):', def: 'Official progress payment valuation issued periodically by the Resident Engineer.' },
     { term: 'Amortized Guarantee:', def: 'An advance payment bank bond whose liability reduces as advance funds are recovered via IPC deductions.' },
     { term: 'EOT (Extension of Time):', def: 'Approved contractual time extension granted due to excusable delays or variations.' }
   ];
 
   glossaryTerms.forEach(g => {
-    setTextHex(colors.navy); doc.setFontSize(8); doc.setFont('helvetica', 'bold');
+    setTextHex(colors.navy); doc.setFontSize(7.5); doc.setFont('helvetica', 'bold');
     doc.text(g.term, margin + 8, yPos);
-    setTextHex(colors.textMain); doc.setFont('helvetica', 'normal');
+    setTextHex(colors.textMain); doc.setFont('helvetica', 'normal'); doc.setFontSize(7);
     doc.text(g.def, margin + 170, yPos, { maxWidth: contentWidth - 180 });
-    yPos += 18;
+    yPos += 16;
   });
+
+  // Contact and Official Support Section
+  yPos += 6;
+  setFillHex('#0f172a');
+  doc.roundedRect(margin, yPos, contentWidth, 54, 4, 4, 'F');
+
+  setTextHex(colors.gold);
+  doc.setFontSize(8.5); doc.setFont('helvetica', 'bold');
+  doc.text('OFFICIAL ERA TECHNICAL SUPPORT & HELPDESK CONTACTS', margin + 10, yPos + 15);
+
+  setTextHex(colors.white);
+  doc.setFontSize(7); doc.setFont('helvetica', 'normal');
+  doc.text('• Directorate Helpdesk: pmo-support@era.gov.et  |  IT Service Desk: it-servicedesk@era.gov.et', margin + 10, yPos + 27);
+  doc.text('• Headquarters Telephone: +251 11 515 6071  |  Hotline: 8585 (Toll-Free within Ethiopia)', margin + 10, yPos + 37);
+  doc.text('• Physical Address: Ethiopian Roads Administration HQ, Ras Abebe Aregay Street, Addis Ababa, Ethiopia', margin + 10, yPos + 47);
 
   // Save the PDF
   doc.save('ERA_ERP_Dashboard_Official_User_Guide_v1.0.pdf');
