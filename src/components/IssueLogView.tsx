@@ -435,6 +435,9 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
   const [showEditIssueModal, setShowEditIssueModal] = useState(false);
   const [showArchiveModal, setShowArchiveModal] = useState(false);
   const [archiveSearchQuery, setArchiveSearchQuery] = useState('');
+  const [retroTrackingIssueId, setRetroTrackingIssueId] = useState<string | null>(null);
+  const [trackingModalTab, setTrackingModalTab] = useState<'journey' | 'history' | 'lessons'>('journey');
+  const [sortHistoryAsc, setSortHistoryAsc] = useState<boolean>(true);
 
   // Lessons Learned & History Note Modals State
   const [showLessonsModal, setShowLessonsModal] = useState(false);
@@ -2431,6 +2434,17 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                             <BookOpen className="w-3.5 h-3.5" />
                           </button>
                           <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedIssueId(item.id);
+                              setRetroTrackingIssueId(item.id);
+                            }}
+                            className="p-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 hover:bg-emerald-100 dark:hover:bg-emerald-900/80 text-emerald-700 dark:text-emerald-300 transition cursor-pointer border border-emerald-200 dark:border-emerald-800"
+                            title="View Detailed Lifecycle Journey & History (Inception ➔ Lessons Learned)"
+                          >
+                            <Zap className="w-3.5 h-3.5" />
+                          </button>
+                          <button
                             onClick={() => {
                               setSelectedIssueId(item.id);
                               setShowEditIssueModal(true);
@@ -3077,6 +3091,14 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                       </button>
                     )}
                     <button
+                      type="button"
+                      onClick={() => setRetroTrackingIssueId(selectedIssue.id)}
+                      className="no-print text-2xs font-bold text-teal-700 dark:text-teal-300 hover:underline flex items-center gap-1 bg-teal-50 dark:bg-teal-950/60 px-2.5 py-1 rounded-lg border border-teal-200 dark:border-teal-800 cursor-pointer transition hover:bg-teal-100 dark:hover:bg-teal-900/80"
+                      title="View detailed lifecycle history and track issue through until lesson learned"
+                    >
+                      <History className="w-3 h-3 text-teal-600 dark:text-teal-400" /> View Detailed History & Journey
+                    </button>
+                    <button
                       onClick={() => {
                         setLessonsInput(selectedIssue.lessonsLearned || '');
                         setReviewNotesInput(selectedIssue.reviewNotes || '');
@@ -3128,16 +3150,26 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
 
                 {selectedIssue.lessonsLearned ? (
                   <div className="bg-gradient-to-br from-teal-50/60 to-emerald-50/40 dark:from-teal-950/30 dark:to-emerald-950/20 p-4 rounded-xl border border-teal-200/80 dark:border-teal-800/50 space-y-2.5">
-                    <div className="flex justify-between items-center border-b border-teal-200/60 dark:border-teal-800/40 pb-2">
+                    <div className="flex flex-wrap justify-between items-center border-b border-teal-200/60 dark:border-teal-800/40 pb-2 gap-2">
                       <div className="flex items-center gap-1.5 text-teal-800 dark:text-teal-300 text-xs font-black uppercase tracking-wider">
                         <Sparkles className="w-4 h-4 text-teal-600 dark:text-teal-400 shrink-0" />
                         Key Lesson & Strategic Risk Prevention Takeaway
                       </div>
-                      {selectedIssue.lessonsLearnedUpdatedBy && (
-                        <div className="text-[10px] font-mono text-teal-700 dark:text-teal-400 font-bold">
-                          Logged By: {selectedIssue.lessonsLearnedUpdatedBy} {selectedIssue.lessonsLearnedUpdatedAt ? `(${selectedIssue.lessonsLearnedUpdatedAt})` : ''}
-                        </div>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {selectedIssue.lessonsLearnedUpdatedBy && (
+                          <div className="text-[10px] font-mono text-teal-700 dark:text-teal-400 font-bold">
+                            Logged By: {selectedIssue.lessonsLearnedUpdatedBy} {selectedIssue.lessonsLearnedUpdatedAt ? `(${selectedIssue.lessonsLearnedUpdatedAt})` : ''}
+                          </div>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setRetroTrackingIssueId(selectedIssue.id)}
+                          className="no-print text-2xs font-bold text-teal-700 dark:text-teal-300 hover:underline flex items-center gap-1 cursor-pointer bg-white/80 dark:bg-slate-900/70 px-2 py-0.5 rounded border border-teal-200 dark:border-teal-800 transition hover:bg-white dark:hover:bg-slate-900"
+                          title="Track this issue through until it became part of lesson learned"
+                        >
+                          <History className="w-3 h-3 text-teal-600" /> View Detailed Journey ➜
+                        </button>
+                      </div>
                     </div>
 
                     <p className="text-xs text-slate-800 dark:text-slate-100 leading-relaxed font-sans font-medium italic bg-white/80 dark:bg-slate-900/60 p-3 rounded-lg border border-teal-100 dark:border-teal-900/40">
@@ -4048,13 +4080,16 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                             Edit Lessons Learned
                           </button>
                           <button
+                            type="button"
                             onClick={() => {
                               setSelectedIssueId(item.id);
-                              setShowArchiveModal(false);
+                              setRetroTrackingIssueId(item.id);
                             }}
-                            className="px-2.5 py-1 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold hover:bg-slate-300 cursor-pointer"
+                            className="px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 dark:bg-teal-500 dark:hover:bg-teal-600 text-white font-bold cursor-pointer transition shadow-xs flex items-center gap-1.5 text-xs"
+                            title="View detailed history and trace how this issue became a lesson learned"
                           >
-                            View Details
+                            <History className="w-3.5 h-3.5" />
+                            <span>View Detailed History ➜</span>
                           </button>
                         </div>
                       </div>
@@ -4066,6 +4101,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
               <div className="flex justify-between items-center pt-3 border-t border-slate-100 dark:border-slate-700 text-xs">
                 <span className="text-slate-400 text-2xs">Total Archived Records: {resolvedIssuesList.length}</span>
                 <button
+                  type="button"
                   onClick={() => setShowArchiveModal(false)}
                   className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 font-bold text-slate-800 dark:text-slate-200 cursor-pointer"
                 >
@@ -4075,6 +4111,637 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
             </motion.div>
           </div>
         )}
+      </AnimatePresence>
+
+      {/* MODAL 7: DETAILED ISSUE LIFECYCLE & LESSONS LEARNED JOURNEY TRACKER */}
+      <AnimatePresence>
+        {retroTrackingIssueId && (() => {
+          const trackingIssue = issuesList.find(i => i.id === retroTrackingIssueId);
+          if (!trackingIssue) return null;
+          const turnaroundInfo = getIssueTurnaroundInfo(trackingIssue);
+          const sortedHistory = [...(trackingIssue.history || [])].sort((a, b) => {
+            const tA = new Date(a.timestamp || 0).getTime();
+            const tB = new Date(b.timestamp || 0).getTime();
+            return tA - tB;
+          });
+
+          return (
+            <div className="fixed inset-0 z-[60] bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl text-slate-800 dark:text-slate-100 overflow-hidden"
+              >
+                {/* Header */}
+                <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-900/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="px-2 py-0.5 bg-teal-100 dark:bg-teal-950/80 text-teal-800 dark:text-teal-300 rounded font-mono font-bold text-2xs border border-teal-300 dark:border-teal-800">
+                        {trackingIssue.issueCode}
+                      </span>
+                      <span className="px-2 py-0.5 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded text-2xs font-semibold">
+                        {trackingIssue.category}
+                      </span>
+                      <span className={`px-2 py-0.5 rounded text-2xs font-extrabold border ${
+                        trackingIssue.priority === 'Critical'
+                          ? 'bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300 border-rose-300'
+                          : trackingIssue.priority === 'High'
+                          ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border-amber-300'
+                          : 'bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 border-blue-300'
+                      }`}>
+                        {trackingIssue.priority} Priority
+                      </span>
+                      <span className={`px-2 py-0.5 rounded text-2xs font-extrabold border ${
+                        trackingIssue.currentStatus === 'Resolved / Approved'
+                          ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border-emerald-300'
+                          : trackingIssue.currentStatus === 'Rejected / Closed'
+                          ? 'bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300 border-rose-300'
+                          : 'bg-sky-100 dark:bg-sky-950 text-sky-800 dark:text-sky-300 border-sky-300'
+                      }`}>
+                        {trackingIssue.currentStatus}
+                      </span>
+                    </div>
+                    <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-tight">
+                      {trackingIssue.title}
+                    </h2>
+                    <p className="text-2xs text-slate-500 dark:text-slate-400">
+                      End-to-end journey tracking this issue from initial contract notice through department handovers and final resolution into institutional lessons learned.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleExportSingleIssuePdf(trackingIssue)}
+                      className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold text-xs flex items-center gap-1.5 cursor-pointer transition"
+                      title="Export complete dossier as official PDF"
+                    >
+                      <Download className="w-3.5 h-3.5" /> PDF
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedIssueId(trackingIssue.id);
+                        setRetroTrackingIssueId(null);
+                        setShowArchiveModal(false);
+                      }}
+                      className="px-3 py-1.5 rounded-xl bg-teal-50 hover:bg-teal-100 dark:bg-teal-950 dark:hover:bg-teal-900 text-teal-700 dark:text-teal-300 font-bold text-xs flex items-center gap-1.5 border border-teal-200 dark:border-teal-800 cursor-pointer transition"
+                      title="Open in 1-Page Official Issue Log Sheet"
+                    >
+                      <FileText className="w-3.5 h-3.5" /> Open in Sheet
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRetroTrackingIssueId(null)}
+                      className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer transition"
+                      title="Close"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Quick Metrics KPI Bar */}
+                <div className="px-5 py-2.5 bg-slate-100/70 dark:bg-slate-900/40 border-b border-slate-200 dark:border-slate-700 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs shrink-0 font-mono">
+                  <div>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold block">Turnaround Duration</span>
+                    <span className="font-extrabold text-teal-700 dark:text-teal-300 text-sm">
+                      {turnaroundInfo.turnaroundDays} Days
+                    </span>
+                    <span className="text-[10px] text-slate-400 block">
+                      {turnaroundInfo.isResolved ? 'Submission ➔ Resolution' : 'Days Pending Active'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold block">Financial Exposure</span>
+                    <span className="font-extrabold text-slate-800 dark:text-slate-200 text-sm">
+                      Br. {(trackingIssue.financialImpactEtb || 0).toLocaleString()}
+                    </span>
+                    <span className="text-[10px] text-slate-400 block">Claimed / Evaluated</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold block">Time Impact</span>
+                    <span className="font-extrabold text-amber-700 dark:text-amber-400 text-sm">
+                      {trackingIssue.timeImpactDays || 0} Days EOT
+                    </span>
+                    <span className="text-[10px] text-slate-400 block">Req: {trackingIssue.requiredDaysContract || 28}d SLA</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold block">Handovers & Audits</span>
+                    <span className="font-extrabold text-purple-700 dark:text-purple-300 text-sm">
+                      {(trackingIssue.transfers?.length || 0)} Transfers
+                    </span>
+                    <span className="text-[10px] text-slate-400 block">{(trackingIssue.history?.length || 0)} Audit Milestones</span>
+                  </div>
+                </div>
+
+                {/* Navigation Tabs */}
+                <div className="flex border-b border-slate-200 dark:border-slate-700 px-5 bg-white dark:bg-slate-800 shrink-0 gap-6 text-xs font-bold overflow-x-auto">
+                  <button
+                    type="button"
+                    onClick={() => setTrackingModalTab('journey')}
+                    className={`py-3 border-b-2 transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                      trackingModalTab === 'journey'
+                        ? 'border-teal-600 text-teal-600 dark:text-teal-400'
+                        : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'
+                    }`}
+                  >
+                    <Zap className="w-3.5 h-3.5" />
+                    <span>Full Issue Journey (Inception ➔ Lesson Learned)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTrackingModalTab('history')}
+                    className={`py-3 border-b-2 transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                      trackingModalTab === 'history'
+                        ? 'border-teal-600 text-teal-600 dark:text-teal-400'
+                        : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'
+                    }`}
+                  >
+                    <History className="w-3.5 h-3.5" />
+                    <span>Audit Trail & Handover Log ({sortedHistory.length})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTrackingModalTab('lessons')}
+                    className={`py-3 border-b-2 transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                      trackingModalTab === 'lessons'
+                        ? 'border-teal-600 text-teal-600 dark:text-teal-400'
+                        : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'
+                    }`}
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Codified Lesson Learned & Prevention</span>
+                  </button>
+                </div>
+
+                {/* Body Content - Scrollable */}
+                <div className="p-4 sm:p-5 overflow-y-auto space-y-6 flex-1 text-xs">
+                  {trackingModalTab === 'journey' && (
+                    <div className="space-y-6">
+                      {/* Visual Stepper Timeline */}
+                      <div className="relative pl-6 sm:pl-8 space-y-8 before:absolute before:left-3 sm:before:left-4 before:top-2 before:bottom-2 before:w-0.5 before:bg-gradient-to-b before:from-blue-500 before:via-purple-500 before:via-emerald-500 before:to-teal-500">
+                        
+                        {/* PHASE 1: INCEPTION & LODGING */}
+                        <div className="relative">
+                          <div className="absolute -left-6 sm:-left-8 top-0.5 w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-md ring-4 ring-white dark:ring-slate-800 font-bold text-2xs">
+                            1
+                          </div>
+                          <div className="bg-blue-50/60 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/60 rounded-xl p-4 space-y-2">
+                            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-blue-200/60 dark:border-blue-800/40 pb-2">
+                              <div className="flex items-center gap-1.5 font-bold text-blue-900 dark:text-blue-300">
+                                <AlertTriangle className="w-4 h-4 text-blue-600" />
+                                <span>Phase 1: Claim Lodging & Initial Notice</span>
+                              </div>
+                              <span className="text-2xs font-mono bg-blue-100 dark:bg-blue-900/60 text-blue-800 dark:text-blue-300 px-2 py-0.5 rounded font-bold">
+                                {trackingIssue.submittedDate || 'Initial Submission'}
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-2xs pt-1">
+                              <div>
+                                <span className="text-slate-500 dark:text-slate-400 block font-semibold">Originator / Lodged By:</span>
+                                <span className="font-bold text-slate-800 dark:text-slate-200">{trackingIssue.submittedBy}</span>
+                              </div>
+                              <div>
+                                <span className="text-slate-500 dark:text-slate-400 block font-semibold">Official Recipient:</span>
+                                <span className="font-bold text-slate-800 dark:text-slate-200">{trackingIssue.submittedTo}</span>
+                              </div>
+                              <div>
+                                <span className="text-slate-500 dark:text-slate-400 block font-semibold">Contract / FIDIC Clause:</span>
+                                <span className="font-mono text-slate-800 dark:text-slate-200">{trackingIssue.clauseReference || 'General Conditions'}</span>
+                              </div>
+                              <div>
+                                <span className="text-slate-500 dark:text-slate-400 block font-semibold">Initial Claimed Exposure:</span>
+                                <span className="font-bold text-slate-800 dark:text-slate-200">
+                                  Br. {(trackingIssue.financialImpactEtb || 0).toLocaleString()} • {trackingIssue.timeImpactDays || 0} Days EOT
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="pt-2 border-t border-blue-100 dark:border-blue-900/30">
+                              <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 block mb-0.5">Initial Ground & Cause:</span>
+                              <p className="text-slate-700 dark:text-slate-300 leading-relaxed font-sans bg-white/70 dark:bg-slate-900/60 p-2.5 rounded-lg border border-blue-100 dark:border-blue-900/40">
+                                {trackingIssue.initialDescription}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* PHASE 2: EVALUATION, TRANSFERS & ESCALATION */}
+                        <div className="relative">
+                          <div className="absolute -left-6 sm:-left-8 top-0.5 w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-purple-600 text-white flex items-center justify-center shadow-md ring-4 ring-white dark:ring-slate-800 font-bold text-2xs">
+                            2
+                          </div>
+                          <div className="bg-purple-50/50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800/60 rounded-xl p-4 space-y-3">
+                            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-purple-200/60 dark:border-purple-800/40 pb-2">
+                              <div className="flex items-center gap-1.5 font-bold text-purple-900 dark:text-purple-300">
+                                <Layers className="w-4 h-4 text-purple-600" />
+                                <span>Phase 2: Technical Evaluation, Escalations & Department Transfers</span>
+                              </div>
+                              <span className="text-2xs font-mono bg-purple-100 dark:bg-purple-900/60 text-purple-800 dark:text-purple-300 px-2 py-0.5 rounded font-bold">
+                                {trackingIssue.transfers?.length || 0} Inter-Department Handover{(trackingIssue.transfers?.length === 1 ? '' : 's')}
+                              </span>
+                            </div>
+
+                            {/* Department Transfers Cards */}
+                            {trackingIssue.transfers && trackingIssue.transfers.length > 0 ? (
+                              <div className="space-y-2.5">
+                                <span className="text-[10px] uppercase font-bold text-purple-800 dark:text-purple-300 block">Department Transfer Chain:</span>
+                                {trackingIssue.transfers.map((tr, tIdx) => (
+                                  <div key={tr.id || tIdx} className="bg-white/80 dark:bg-slate-900/60 border border-purple-200/80 dark:border-purple-800/50 p-3 rounded-lg space-y-2">
+                                    <div className="flex flex-wrap items-center justify-between text-2xs font-bold gap-2">
+                                      <span className="text-purple-800 dark:text-purple-300 flex items-center gap-1">
+                                        <span>Transfer #{tIdx + 1}:</span>
+                                        <span className="text-slate-800 dark:text-slate-200">{tr.transferredFrom}</span>
+                                        <ArrowRight className="w-3 h-3 text-purple-600" />
+                                        <span className="text-purple-700 dark:text-purple-300">{tr.transferredTo}</span>
+                                      </span>
+                                      <span className="font-mono text-slate-500 dark:text-slate-400">{tr.transferDate}</span>
+                                    </div>
+                                    <p className="text-2xs text-slate-700 dark:text-slate-300">
+                                      <strong>Reason for Handover:</strong> {tr.transferReason}
+                                    </p>
+                                    {tr.actionTakenByPreviousTeam && (
+                                      <p className="text-2xs text-slate-600 dark:text-slate-400">
+                                        <strong>Action Taken by Handing-over Team:</strong> {tr.actionTakenByPreviousTeam}
+                                      </p>
+                                    )}
+                                    {tr.recommendedCourseOfAction && (
+                                      <p className="text-2xs text-purple-900 dark:text-purple-200 bg-purple-50 dark:bg-purple-950/40 p-1.5 rounded border border-purple-100 dark:border-purple-900/30">
+                                        <strong>Recommended Next Steps:</strong> {tr.recommendedCourseOfAction}
+                                      </p>
+                                    )}
+                                    {tr.transferredBy && (
+                                      <div className="text-[10px] text-slate-400 text-right italic font-mono">
+                                        Authorized By: {tr.transferredBy}
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="bg-white/60 dark:bg-slate-900/40 p-2.5 rounded-lg border border-dashed border-purple-200 dark:border-purple-800/50 text-2xs text-slate-500">
+                                Handled directly within originating project Directorate without external inter-agency transfers.
+                              </div>
+                            )}
+
+                            {/* Current Stage & Bottlenecks */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-purple-100 dark:border-purple-900/30">
+                              <div>
+                                <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 block mb-0.5">Stage Reached:</span>
+                                <p className="font-semibold text-slate-800 dark:text-slate-200 text-2xs bg-white/70 dark:bg-slate-900/50 p-2 rounded border border-purple-100 dark:border-purple-900/30">
+                                  {trackingIssue.currentStage}
+                                </p>
+                              </div>
+                              <div>
+                                <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 block mb-0.5">Bottlenecks Flagged During Processing:</span>
+                                <p className="text-2xs text-amber-900 dark:text-amber-200 bg-amber-50/70 dark:bg-amber-950/30 p-2 rounded border border-amber-200/60 dark:border-amber-800/40">
+                                  {trackingIssue.currentBottleneck || 'No pending bottlenecks.'}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* PHASE 3: DETERMINATION & FORMAL RESOLUTION */}
+                        <div className="relative">
+                          <div className="absolute -left-6 sm:-left-8 top-0.5 w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-emerald-600 text-white flex items-center justify-center shadow-md ring-4 ring-white dark:ring-slate-800 font-bold text-2xs">
+                            3
+                          </div>
+                          <div className="bg-emerald-50/50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60 rounded-xl p-4 space-y-2.5">
+                            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-emerald-200/60 dark:border-emerald-800/40 pb-2">
+                              <div className="flex items-center gap-1.5 font-bold text-emerald-900 dark:text-emerald-300">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                                <span>Phase 3: Formal Resolution & Determination</span>
+                              </div>
+                              <span className="text-2xs font-mono bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 px-2 py-0.5 rounded font-bold">
+                                {turnaroundInfo.isResolved ? `Resolved on ${turnaroundInfo.resolvedDate}` : 'Processing Concluded'}
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-2xs">
+                              <div className="bg-white/70 dark:bg-slate-900/60 p-2.5 rounded-lg border border-emerald-100 dark:border-emerald-900/30">
+                                <span className="text-slate-500 dark:text-slate-400 block font-semibold">Determination Outcome:</span>
+                                <span className="font-extrabold text-emerald-700 dark:text-emerald-300 text-xs">
+                                  {trackingIssue.currentStatus}
+                                </span>
+                              </div>
+                              <div className="bg-white/70 dark:bg-slate-900/60 p-2.5 rounded-lg border border-emerald-100 dark:border-emerald-900/30 font-mono">
+                                <span className="text-slate-500 dark:text-slate-400 block font-semibold font-sans">Turnaround Time Taken:</span>
+                                <span className="font-extrabold text-slate-800 dark:text-slate-200 text-xs">
+                                  {turnaroundInfo.turnaroundDays} Calendar Days
+                                </span>
+                                <span className="text-slate-400 text-[10px] ml-1.5 font-sans">
+                                  ({trackingIssue.submittedDate} ➔ {turnaroundInfo.resolvedDate || 'Present'})
+                                </span>
+                              </div>
+                            </div>
+
+                            {trackingIssue.latestProgressSummary && (
+                              <div className="pt-1">
+                                <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 block mb-0.5">Final Resolution Action / Findings:</span>
+                                <p className="text-slate-700 dark:text-slate-300 bg-white/70 dark:bg-slate-900/60 p-2.5 rounded-lg border border-emerald-100 dark:border-emerald-900/30 leading-relaxed">
+                                  {trackingIssue.latestProgressSummary}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* PHASE 4: HOW & WHY THIS BECAME A LESSON LEARNED */}
+                        <div className="relative">
+                          <div className="absolute -left-6 sm:-left-8 top-0.5 w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-teal-600 text-white flex items-center justify-center shadow-md ring-4 ring-white dark:ring-slate-800 font-bold text-2xs">
+                            4
+                          </div>
+                          <div className="bg-gradient-to-br from-teal-50 to-emerald-50/70 dark:from-teal-950/40 dark:to-emerald-950/30 border-2 border-teal-300 dark:border-teal-700 rounded-xl p-4 sm:p-5 space-y-3 shadow-sm">
+                            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-teal-200/80 dark:border-teal-800 pb-2.5">
+                              <div className="flex items-center gap-2 font-black text-teal-900 dark:text-teal-200 text-xs uppercase tracking-wide">
+                                <Sparkles className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+                                <span>Phase 4: Transformation into Codified Institutional Lesson Learned</span>
+                              </div>
+                              {trackingIssue.lessonsLearnedUpdatedAt && (
+                                <span className="text-2xs font-mono bg-teal-100 dark:bg-teal-900/80 text-teal-800 dark:text-teal-300 px-2.5 py-0.5 rounded-full font-bold border border-teal-200 dark:border-teal-800">
+                                  Codified on {trackingIssue.lessonsLearnedUpdatedAt}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Institutional Retrospective Rationale */}
+                            <div className="bg-white/80 dark:bg-slate-900/70 p-3 rounded-lg border border-teal-200/60 dark:border-teal-800/40 space-y-1">
+                              <span className="text-[10px] uppercase font-black text-teal-800 dark:text-teal-300 tracking-wider flex items-center gap-1">
+                                <BookOpen className="w-3.5 h-3.5 text-teal-600" /> Institutional Retrospective & Prevention Rationale
+                              </span>
+                              <p className="text-2xs text-slate-600 dark:text-slate-300 leading-normal">
+                                This issue was elevated into the ERA institutional knowledge repository because the root causes (uncoordinated utility relocation, delayed currency allocation, or centralized testing bottlenecks) repeatedly cause critical path delays and multi-million ETB claims across federal road contracts. Documenting the resolution trajectory provides binding risk mitigation directives for future tenders and supervision teams.
+                              </p>
+                            </div>
+
+                            {/* The Actual Lesson Learned */}
+                            {trackingIssue.lessonsLearned ? (
+                              <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-teal-300/80 dark:border-teal-700/80 space-y-2 shadow-xs">
+                                <div className="flex justify-between items-center text-[10px] font-bold text-teal-700 dark:text-teal-400 uppercase tracking-wider">
+                                  <span>Key Lesson & Strategic Risk Prevention Takeaway</span>
+                                  {trackingIssue.lessonsLearnedUpdatedBy && (
+                                    <span className="font-mono text-slate-500 dark:text-slate-400">
+                                      Logged By: <strong>{trackingIssue.lessonsLearnedUpdatedBy}</strong>
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-xs text-slate-900 dark:text-slate-100 font-serif italic leading-relaxed pl-3 border-l-4 border-teal-500">
+                                  "{trackingIssue.lessonsLearned}"
+                                </p>
+
+                                {trackingIssue.reviewNotes && (
+                                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800 mt-2 space-y-1">
+                                    <span className="text-[10px] font-extrabold uppercase text-slate-400 block">
+                                      Practical Case Implementation Directives:
+                                    </span>
+                                    <p className="text-2xs text-slate-700 dark:text-slate-300">
+                                      {trackingIssue.reviewNotes}
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="bg-amber-50 dark:bg-amber-950/40 p-4 rounded-xl border border-dashed border-amber-300 dark:border-amber-700 text-center space-y-2">
+                                <p className="text-xs text-amber-800 dark:text-amber-200">
+                                  No explicit lesson learned text has been recorded for this issue yet.
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedIssueId(trackingIssue.id);
+                                    setLessonsInput('');
+                                    setReviewNotesInput('');
+                                    setShowLessonsModal(true);
+                                  }}
+                                  className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-bold text-xs cursor-pointer shadow-xs inline-flex items-center gap-1.5"
+                                >
+                                  <PenTool className="w-3.5 h-3.5" /> Record Lesson Learned Now
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                      </div>
+                    </div>
+                  )}
+
+                  {trackingModalTab === 'history' && (
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                            <History className="w-4 h-4 text-blue-600" /> Complete Chronological Audit Trail & Status History Log
+                          </h3>
+                          <p className="text-2xs text-slate-500 dark:text-slate-400">
+                            Every recorded status change, team transfer, and review milestone logged for {trackingIssue.issueCode}.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setSortHistoryAsc(!sortHistoryAsc)}
+                          className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-2xs font-bold flex items-center gap-1 cursor-pointer"
+                        >
+                          <ArrowUpDown className="w-3 h-3" />
+                          <span>{sortHistoryAsc ? 'Oldest First (Inception ➔ Current)' : 'Latest First'}</span>
+                        </button>
+                      </div>
+
+                      {/* History List */}
+                      {sortedHistory.length === 0 ? (
+                        <div className="p-8 text-center bg-slate-50 dark:bg-slate-900/40 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 text-slate-400">
+                          No status history records logged yet for this issue.
+                        </div>
+                      ) : (
+                        <div className="space-y-2.5">
+                          {(sortHistoryAsc ? sortedHistory : [...sortedHistory].reverse()).map((hist, hIdx) => {
+                            const stepNum = sortHistoryAsc ? hIdx + 1 : sortedHistory.length - hIdx;
+                            return (
+                              <div
+                                key={hist.id || hIdx}
+                                className="bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700/80 p-3.5 rounded-xl space-y-2 transition hover:border-teal-300 dark:hover:border-teal-700"
+                              >
+                                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/60 dark:border-slate-800 pb-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className="w-5 h-5 rounded-full bg-teal-600 text-white text-[10px] font-bold flex items-center justify-center">
+                                      {stepNum}
+                                    </span>
+                                    <span className="font-bold text-xs text-slate-900 dark:text-white">
+                                      {hist.changeType || 'Status Update'}
+                                    </span>
+                                    <span className="text-2xs px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 font-mono font-bold">
+                                      {hist.newStatus}
+                                    </span>
+                                  </div>
+                                  <span className="font-mono text-2xs text-slate-500 dark:text-slate-400">
+                                    {hist.timestamp}
+                                  </span>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-2xs text-slate-600 dark:text-slate-400">
+                                  <div>
+                                    <strong>Action Logged By:</strong> {hist.user}
+                                  </div>
+                                  {hist.stage && (
+                                    <div>
+                                      <strong>Stage:</strong> {hist.stage}
+                                    </div>
+                                  )}
+                                  {hist.previousStatus && hist.previousStatus !== 'None' && (
+                                    <div>
+                                      <strong>Previous Status:</strong> {hist.previousStatus}
+                                    </div>
+                                  )}
+                                  {hist.bottleneck && (
+                                    <div className="text-amber-700 dark:text-amber-400">
+                                      <strong>Bottleneck Noted:</strong> {hist.bottleneck}
+                                    </div>
+                                  )}
+                                </div>
+
+                                {hist.notes && (
+                                  <div className="bg-white dark:bg-slate-800 p-2.5 rounded-lg border border-slate-100 dark:border-slate-700 text-2xs text-slate-800 dark:text-slate-200">
+                                    <span className="text-slate-400 font-bold uppercase text-[9px] block mb-0.5">Audit Note:</span>
+                                    {hist.notes}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {trackingModalTab === 'lessons' && (
+                    <div className="space-y-4">
+                      <div className="bg-gradient-to-br from-teal-50 to-emerald-50 dark:from-teal-950/40 dark:to-emerald-950/30 p-5 rounded-2xl border border-teal-200 dark:border-teal-800 space-y-4">
+                        <div className="flex justify-between items-center border-b border-teal-200 dark:border-teal-800 pb-3">
+                          <div className="flex items-center gap-2 text-teal-900 dark:text-teal-200 font-black text-sm uppercase">
+                            <Sparkles className="w-5 h-5 text-teal-600" />
+                            <span>Codified Institutional Lesson Learned</span>
+                          </div>
+                          {effectiveIsAdmin && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedIssueId(trackingIssue.id);
+                                setLessonsInput(trackingIssue.lessonsLearned || '');
+                                setReviewNotesInput(trackingIssue.reviewNotes || '');
+                                setShowLessonsModal(true);
+                              }}
+                              className="px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1 cursor-pointer transition shadow-xs"
+                            >
+                              <PenTool className="w-3.5 h-3.5" /> Edit Lesson
+                            </button>
+                          )}
+                        </div>
+
+                        {trackingIssue.lessonsLearned ? (
+                          <div className="space-y-3">
+                            <p className="text-sm text-slate-900 dark:text-white font-serif italic leading-relaxed bg-white/90 dark:bg-slate-900/80 p-4 rounded-xl border border-teal-200 dark:border-teal-800 shadow-xs">
+                              "{trackingIssue.lessonsLearned}"
+                            </p>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-2xs">
+                              <div className="bg-white/70 dark:bg-slate-900/60 p-3 rounded-lg border border-teal-100 dark:border-teal-900/40">
+                                <span className="text-[10px] text-slate-500 dark:text-slate-400 font-bold uppercase block">Recorded / Reviewed By:</span>
+                                <span className="font-bold text-teal-800 dark:text-teal-300">
+                                  {trackingIssue.lessonsLearnedUpdatedBy || 'ERA Project Team'}
+                                </span>
+                              </div>
+                              <div className="bg-white/70 dark:bg-slate-900/60 p-3 rounded-lg border border-teal-100 dark:border-teal-900/40">
+                                <span className="text-[10px] text-slate-500 dark:text-slate-400 font-bold uppercase block">Codification Timestamp:</span>
+                                <span className="font-mono text-teal-800 dark:text-teal-300">
+                                  {trackingIssue.lessonsLearnedUpdatedAt || 'N/A'}
+                                </span>
+                              </div>
+                            </div>
+
+                            {trackingIssue.reviewNotes && (
+                              <div className="bg-white/70 dark:bg-slate-900/60 p-3.5 rounded-lg border border-teal-100 dark:border-teal-900/40 space-y-1">
+                                <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 block">
+                                  Additional Case Review Notes & Strategic Directives:
+                                </span>
+                                <p className="text-2xs text-slate-700 dark:text-slate-300 leading-relaxed font-sans">
+                                  {trackingIssue.reviewNotes}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="p-6 text-center bg-white/60 dark:bg-slate-900/40 rounded-xl border border-dashed border-teal-300 dark:border-teal-800 space-y-2">
+                            <p className="text-xs text-slate-600 dark:text-slate-400">
+                              No narrative recorded yet. Click below to add institutional lessons learned for {trackingIssue.issueCode}.
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedIssueId(trackingIssue.id);
+                                setLessonsInput('');
+                                setReviewNotesInput('');
+                                setShowLessonsModal(true);
+                              }}
+                              className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs cursor-pointer shadow-xs inline-flex items-center gap-1.5"
+                            >
+                              <PenTool className="w-4 h-4" /> Record Lesson Learned
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Future Contract Clause Recommendations */}
+                        <div className="bg-slate-50 dark:bg-slate-900/60 p-4 rounded-xl border border-slate-200 dark:border-slate-700/80 space-y-2">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-400 block">
+                            Contractual & Operational Prevention Guidance:
+                          </span>
+                          <ul className="list-disc pl-4 space-y-1 text-2xs text-slate-600 dark:text-slate-300">
+                            <li>Ensure strict SLA enforcement under {trackingIssue.clauseReference || 'General Conditions of Contract'}.</li>
+                            <li>Incorporate proactive risk assessments during the pre-construction handover phase.</li>
+                            <li>Cross-reference this case during periodic Directorate progress audits to prevent repeat occurrences.</li>
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Modal Footer */}
+                <div className="p-3 sm:p-4 border-t border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-900/60 flex flex-wrap items-center justify-between gap-2 shrink-0 text-xs">
+                  <div className="text-2xs text-slate-400 font-mono">
+                    Issue ID: {trackingIssue.id} • {turnaroundInfo.displayText}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {trackingIssue.lessonsLearned && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedIssueId(trackingIssue.id);
+                          setLessonsInput(trackingIssue.lessonsLearned || '');
+                          setReviewNotesInput(trackingIssue.reviewNotes || '');
+                          setShowLessonsModal(true);
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800 font-bold hover:bg-teal-100 cursor-pointer text-xs flex items-center gap-1"
+                      >
+                        <PenTool className="w-3.5 h-3.5" /> Edit Lesson Learned
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setRetroTrackingIssueId(null)}
+                      className="px-4 py-1.5 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 font-bold text-slate-800 dark:text-slate-200 cursor-pointer text-xs"
+                    >
+                      Close Journey
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
+          );
+        })()}
       </AnimatePresence>
     </div>
   );
