@@ -889,6 +889,45 @@ export default function UserGuideSections({ onScrollToSection, onDownloadPdf }: 
           Compares 1) Contractor Baseline Schedule, 2) ERA Internal Milestone Target, and 3) Actual Road Kilometers Completed across monthly and Ethiopian Fiscal Year (EFY) horizons.
         </p>
 
+        {/* Screen Mockup */}
+        <ScreenMockup 
+          title="Progress Plan Mileage Comparisons (Km) & Elapsed Horizon Records" 
+          url="https://era-erp.gov.et/project/daye-girja/progress-plan" 
+          badge="Plan vs Target vs Actual"
+          badgeColor="bg-blue-600"
+        >
+          <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2 text-2xs">
+            <div className="flex items-center justify-between pb-1 border-b border-slate-100 dark:border-slate-800 font-bold">
+              <span>Mileage Horizon: Feb 2026 Monthly / EFY 2018</span>
+              <span className="px-2 py-0.5 bg-indigo-600 text-white rounded text-[10px]">Archive Elapsed Month</span>
+            </div>
+            <div className="grid grid-cols-4 p-1.5 bg-slate-100 dark:bg-slate-950 font-bold text-slate-700 dark:text-slate-300 rounded">
+              <span>Schedule Tier</span>
+              <span>Monthly Plan</span>
+              <span>Quarterly Target</span>
+              <span>Cumulative Km</span>
+            </div>
+            <div className="grid grid-cols-4 p-1.5 border-b border-slate-100 dark:border-slate-800">
+              <span className="font-bold text-blue-600">Contractor Baseline Program</span>
+              <span>2.75 Km</span>
+              <span>5.12 Km</span>
+              <span className="font-bold text-blue-600">65.00 Km</span>
+            </div>
+            <div className="grid grid-cols-4 p-1.5 border-b border-slate-100 dark:border-slate-800">
+              <span className="font-bold text-purple-600">ERA Internal Target Plan</span>
+              <span>1.50 Km</span>
+              <span>3.00 Km</span>
+              <span className="font-bold text-purple-600">34.50 Km</span>
+            </div>
+            <div className="grid grid-cols-4 p-1.5 border-b border-slate-100 dark:border-slate-800">
+              <span className="font-bold text-emerald-600">Actual Road Completed TODATE</span>
+              <span className="text-emerald-600 font-bold">2.28 Km</span>
+              <span className="text-emerald-600 font-bold">3.73 Km</span>
+              <span className="text-emerald-600 font-bold">27.29 Km</span>
+            </div>
+          </div>
+        </ScreenMockup>
+
         {/* Step-by-Step Instructions */}
         <div className="space-y-3 text-xs text-slate-600 dark:text-slate-300 font-medium">
           <ul className="space-y-2">
@@ -924,6 +963,47 @@ export default function UserGuideSections({ onScrollToSection, onDownloadPdf }: 
         <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">
           Correlates contract design volumes with scheduled plans and actual contractor execution with automated conformance percentage scoring.
         </p>
+
+        {/* Screen Mockup */}
+        <ScreenMockup 
+          title="Engineering Quantities & Construction Conformance Log" 
+          url="https://era-erp.gov.et/project/daye-girja/qty" 
+          badge="Quantities Conformance"
+          badgeColor="bg-emerald-600"
+        >
+          <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2 text-2xs">
+            <div className="grid grid-cols-5 p-1.5 bg-slate-100 dark:bg-slate-950 font-bold text-slate-700 dark:text-slate-300 rounded">
+              <span className="col-span-2">Quantified Pay Item</span>
+              <span>Design Qty</span>
+              <span>Executed to Date</span>
+              <span>% Conformance</span>
+            </div>
+            <div className="grid grid-cols-5 p-1.5 border-b border-slate-100 dark:border-slate-800">
+              <span className="col-span-2 font-bold text-slate-800 dark:text-slate-200">Site Clearing (Ha)</span>
+              <span>2,222 Ha</span>
+              <span className="font-bold text-emerald-600">345,353 Ha</span>
+              <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded font-bold text-center">103.63% ✓</span>
+            </div>
+            <div className="grid grid-cols-5 p-1.5 border-b border-slate-100 dark:border-slate-800">
+              <span className="col-span-2 font-bold text-slate-800 dark:text-slate-200">Common Excavation (M3)</span>
+              <span>2,321,847 M3</span>
+              <span className="font-bold text-emerald-600">2,493,000 M3</span>
+              <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded font-bold text-center">95.59% ✓</span>
+            </div>
+            <div className="grid grid-cols-5 p-1.5 border-b border-slate-100 dark:border-slate-800">
+              <span className="col-span-2 font-bold text-slate-800 dark:text-slate-200">Crushed Base Course (Km)</span>
+              <span>65.00 Km</span>
+              <span className="font-bold text-amber-600">21.75 Km</span>
+              <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded font-bold text-center">56.39% ⚠</span>
+            </div>
+            <div className="grid grid-cols-5 p-1.5 border-b border-slate-100 dark:border-slate-800">
+              <span className="col-span-2 font-bold text-slate-800 dark:text-slate-200">Asphalt Concrete Surfacing (Km)</span>
+              <span>65.00 Km</span>
+              <span className="font-bold text-amber-600">20.75 Km</span>
+              <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded font-bold text-center">60.78% ⚠</span>
+            </div>
+          </div>
+        </ScreenMockup>
 
         {/* Step-by-Step Instructions */}
         <div className="space-y-3 text-xs text-slate-600 dark:text-slate-300 font-medium">
@@ -964,6 +1044,42 @@ export default function UserGuideSections({ onScrollToSection, onDownloadPdf }: 
         <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">
           Manages all bank guarantees required under FIDIC conditions: Performance Guarantees, Advance Payment Bonds, and Retention Securities, with automated 45-day expiration warnings.
         </p>
+
+        {/* Screen Mockup */}
+        <ScreenMockup 
+          title="Bonds & Performance Guarantees Audit Register" 
+          url="https://era-erp.gov.et/project/daye-girja/bonds" 
+          badge="Guarantees & Securities"
+          badgeColor="bg-blue-600"
+        >
+          <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2 text-2xs">
+            <div className="flex items-center justify-between pb-1 border-b border-slate-100 dark:border-slate-800 font-bold">
+              <span>Security Securities Register (3 Guarantees Logged)</span>
+              <span className="px-2.5 py-1 bg-blue-600 text-white rounded text-[10px]">+ Add Guarantee</span>
+            </div>
+            <div className="p-2 bg-slate-50 dark:bg-slate-950 rounded-lg space-y-1">
+              <div className="flex items-center justify-between font-bold">
+                <span>1. Performance Guarantee (Commercial Bank of Ethiopia)</span>
+                <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded text-[9px]">VALID (Exp: 12/31/2027)</span>
+              </div>
+              <div className="text-slate-500">Value: ETB 155,570,816.79 | USD $1,350,000.00</div>
+            </div>
+            <div className="p-2 bg-slate-50 dark:bg-slate-950 rounded-lg space-y-1">
+              <div className="flex items-center justify-between font-bold">
+                <span>2. Advance Payment Guarantee (Awash Bank S.C.)</span>
+                <span className="px-2 py-0.5 bg-slate-200 text-slate-800 rounded text-[9px]">FULLY AMORTIZED / RETURNED</span>
+              </div>
+              <div className="text-slate-500">Value: ETB 242,100,998.82 | USD $2,100,000.00</div>
+            </div>
+            <div className="p-2 bg-slate-50 dark:bg-slate-950 rounded-lg space-y-1">
+              <div className="flex items-center justify-between font-bold">
+                <span>3. Retention Money Guarantee (Nib International Bank)</span>
+                <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded text-[9px]">VALID (Exp: 01/15/2027)</span>
+              </div>
+              <div className="text-slate-500">Value: ETB 50,000,000.00 | USD $435,000.00</div>
+            </div>
+          </div>
+        </ScreenMockup>
 
         {/* Step-by-Step Instructions */}
         <div className="space-y-3 text-xs text-slate-600 dark:text-slate-300 font-medium">
@@ -1009,6 +1125,35 @@ export default function UserGuideSections({ onScrollToSection, onDownloadPdf }: 
           Implements the official ERA Contract Audit KPI Matrix across 12 categories with automated 100% total weight sum verification.
         </p>
 
+        {/* Screen Mockup */}
+        <ScreenMockup 
+          title="ERA Official Contractor Audit KPI Matrix & Weight Allocations" 
+          url="https://era-erp.gov.et/project/daye-girja/kpis" 
+          badge="12 Audit Categories"
+          badgeColor="bg-purple-600"
+        >
+          <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2 text-2xs">
+            <div className="flex items-center justify-between pb-1 border-b border-slate-100 dark:border-slate-800 font-bold">
+              <span>Grade Profile: G1 Major Contractor</span>
+              <span className="text-purple-600">Composite Score: 63.74% (Grade C - At Risk)</span>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="p-2 bg-slate-50 dark:bg-slate-950 rounded">
+                <span className="block text-slate-400 font-bold">Physical Progress</span>
+                <span className="text-sm font-extrabold text-blue-600">84.93% (Weight 20%)</span>
+              </div>
+              <div className="p-2 bg-slate-50 dark:bg-slate-950 rounded">
+                <span className="block text-slate-400 font-bold">Equipment Mobilization</span>
+                <span className="text-sm font-extrabold text-emerald-600">75.00% (Weight 15%)</span>
+              </div>
+              <div className="p-2 bg-slate-50 dark:bg-slate-950 rounded">
+                <span className="block text-slate-400 font-bold">Key Personnel Presence</span>
+                <span className="text-sm font-extrabold text-purple-600">90.00% (Weight 10%)</span>
+              </div>
+            </div>
+          </div>
+        </ScreenMockup>
+
         {/* Step-by-Step Instructions */}
         <div className="space-y-3 text-xs text-slate-600 dark:text-slate-300 font-medium">
           <ul className="space-y-2">
@@ -1048,6 +1193,24 @@ export default function UserGuideSections({ onScrollToSection, onDownloadPdf }: 
         <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">
           Renders cumulative Planned vs Actual S-Curve graphs, monthly bar charts, and spreadsheet-style progress entry tables with Excel export.
         </p>
+
+        {/* Screen Mockup */}
+        <ScreenMockup 
+          title="Monthly Cumulative Planned vs Actual S-Curve Graph & Data Matrix" 
+          url="https://era-erp.gov.et/project/daye-girja/monthly" 
+          badge="S-Curve Analytics"
+          badgeColor="bg-blue-600"
+        >
+          <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2 text-2xs">
+            <div className="flex items-center justify-between pb-1 border-b border-slate-100 dark:border-slate-800 font-bold">
+              <span className="text-blue-600">📈 S-Curve Visualizer (Original Plan vs Revised vs Actual)</span>
+              <span className="px-2 py-1 bg-emerald-600 text-white rounded font-bold">Export to Excel</span>
+            </div>
+            <div className="h-16 bg-slate-50 dark:bg-slate-950 rounded flex items-center justify-center font-bold text-slate-400 text-xs border border-dashed border-slate-200 dark:border-slate-800">
+              [ Dynamic Cumulative S-Curve & Monthly Accomplishment Chart ]
+            </div>
+          </div>
+        </ScreenMockup>
 
         {/* Step-by-Step Instructions */}
         <div className="space-y-3 text-xs text-slate-600 dark:text-slate-300 font-medium">
@@ -1089,6 +1252,39 @@ export default function UserGuideSections({ onScrollToSection, onDownloadPdf }: 
           Enables Critical Path Method (CPM) scheduling, interactive Gantt charts, activity dependencies (predecessors), total float computation, and CSV imports from Primavera P6.
         </p>
 
+        {/* Screen Mockup */}
+        <ScreenMockup 
+          title="Work Program Critical Path Method (CPM) Schedule & Gantt Diagram" 
+          url="https://era-erp.gov.et/project/daye-girja/work-program" 
+          badge="CPM Critical Path"
+          badgeColor="bg-red-600"
+        >
+          <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2 text-2xs">
+            <div className="flex items-center justify-between pb-1 border-b border-slate-100 dark:border-slate-800 font-bold">
+              <span>Schedule State: 8 Activities Loaded (7 Critical)</span>
+              <span className="px-2 py-0.5 bg-red-600 text-white rounded text-[10px]">Import Primavera CSV</span>
+            </div>
+            <div className="grid grid-cols-4 p-1.5 bg-slate-100 dark:bg-slate-950 font-bold text-slate-700 dark:text-slate-300 rounded">
+              <span>Activity Name</span>
+              <span>Duration</span>
+              <span>Float</span>
+              <span>Predecessors</span>
+            </div>
+            <div className="grid grid-cols-4 p-1.5 border-b border-slate-100 dark:border-slate-800 text-red-600 font-bold">
+              <span>Site Clearing & Grubbing</span>
+              <span>120 Days</span>
+              <span>0 Days (Critical)</span>
+              <span>None</span>
+            </div>
+            <div className="grid grid-cols-4 p-1.5 border-b border-slate-100 dark:border-slate-800 text-red-600 font-bold">
+              <span>Subbase Construction</span>
+              <span>180 Days</span>
+              <span>0 Days (Critical)</span>
+              <span>ACT-01</span>
+            </div>
+          </div>
+        </ScreenMockup>
+
         {/* Step-by-Step Instructions */}
         <div className="space-y-3 text-xs text-slate-600 dark:text-slate-300 font-medium">
           <ul className="space-y-2">
@@ -1129,6 +1325,35 @@ export default function UserGuideSections({ onScrollToSection, onDownloadPdf }: 
           Audits contractor heavy equipment availability, machinery deficits, key personnel presence on site, and material stockpile buffer days.
         </p>
 
+        {/* Screen Mockup */}
+        <ScreenMockup 
+          title="Heavy Equipment Fleet, Personnel & Material Buffer Audit" 
+          url="https://era-erp.gov.et/project/daye-girja/resources" 
+          badge="Resource Fleet Audit"
+          badgeColor="bg-amber-600"
+        >
+          <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2 text-2xs">
+            <div className="grid grid-cols-4 p-1.5 bg-slate-100 dark:bg-slate-950 font-bold text-slate-700 dark:text-slate-300 rounded">
+              <span>Machinery Type</span>
+              <span>Contract Required</span>
+              <span>Site Available</span>
+              <span>Mobilization Deficit</span>
+            </div>
+            <div className="grid grid-cols-4 p-1.5 border-b border-slate-100 dark:border-slate-800">
+              <span className="font-bold">Asphalt Paver (Vögele)</span>
+              <span>3 Units</span>
+              <span className="font-bold text-emerald-600">2 Units</span>
+              <span className="px-2 py-0.5 bg-red-100 text-red-800 rounded font-bold">-1 Deficit ⚠</span>
+            </div>
+            <div className="grid grid-cols-4 p-1.5 border-b border-slate-100 dark:border-slate-800">
+              <span className="font-bold">Heavy Motor Grader</span>
+              <span>10 Units</span>
+              <span className="font-bold text-emerald-600">9 Units</span>
+              <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded font-bold">-1 Deficit</span>
+            </div>
+          </div>
+        </ScreenMockup>
+
         {/* Step-by-Step Instructions */}
         <div className="space-y-3 text-xs text-slate-600 dark:text-slate-300 font-medium">
           <ul className="space-y-2">
@@ -1168,6 +1393,28 @@ export default function UserGuideSections({ onScrollToSection, onDownloadPdf }: 
         <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">
           Quantitative hazard identification with 5x5 Probability/Impact risk heatmap, exposure index computation, and proactive mitigation plans.
         </p>
+
+        {/* Screen Mockup */}
+        <ScreenMockup 
+          title="Quantitative Risk Register & 5x5 Matrix Heatmap" 
+          url="https://era-erp.gov.et/project/daye-girja/risks" 
+          badge="Risk Exposure Index: 13.50"
+          badgeColor="bg-red-600"
+        >
+          <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2 text-2xs">
+            <div className="flex items-center justify-between pb-1 border-b border-slate-100 dark:border-slate-800 font-bold">
+              <span>Active Threats Logged: 6 Critical & Moderate Risks</span>
+              <span className="px-2 py-0.5 bg-red-600 text-white rounded text-[10px]">+ Register New Risk</span>
+            </div>
+            <div className="p-2 bg-red-50 dark:bg-red-950/40 rounded-lg space-y-1 border border-red-200 dark:border-red-900">
+              <div className="flex items-center justify-between font-bold text-red-700 dark:text-red-300">
+                <span>R-01: Delay in Right-of-Way (ROW) Land Clearance</span>
+                <span className="px-2 py-0.5 bg-red-600 text-white rounded text-[9px]">EXPOSURE 20 (HIGH)</span>
+              </div>
+              <div className="text-slate-600 dark:text-slate-300">Mitigation: Activate regional ERA ROW taskforce & fast-track compensation payments.</div>
+            </div>
+          </div>
+        </ScreenMockup>
 
         {/* Step-by-Step Instructions */}
         <div className="space-y-3 text-xs text-slate-600 dark:text-slate-300 font-medium">
@@ -1287,6 +1534,35 @@ export default function UserGuideSections({ onScrollToSection, onDownloadPdf }: 
           Comprehensive Earned Value Management (EVM) computations: BAC, PV, EV, AC, Cost Variance (CV), Schedule Variance (SV), CPI, SPI, EAC, ETC, VAC, TCPI, and dual schedule vs linear progress audits.
         </p>
 
+        {/* Screen Mockup */}
+        <ScreenMockup 
+          title="Full Earned Value Management (EVM) Health & Performance Indices" 
+          url="https://era-erp.gov.et/project/daye-girja/analysis" 
+          badge="EVM Computations"
+          badgeColor="bg-emerald-600"
+        >
+          <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2 text-2xs">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div className="p-2 bg-slate-50 dark:bg-slate-950 rounded border border-slate-100 dark:border-slate-800">
+                <span className="text-slate-400 font-bold block">Cost Performance (CPI)</span>
+                <span className="text-sm font-black text-emerald-600">1.213 (UNDER BUDGET)</span>
+              </div>
+              <div className="p-2 bg-slate-50 dark:bg-slate-950 rounded border border-slate-100 dark:border-slate-800">
+                <span className="text-slate-400 font-bold block">Schedule Index (SPI)</span>
+                <span className="text-sm font-black text-red-600">0.637 (SCHEDULE DELAY)</span>
+              </div>
+              <div className="p-2 bg-slate-50 dark:bg-slate-950 rounded border border-slate-100 dark:border-slate-800">
+                <span className="text-slate-400 font-bold block">Cost Variance (CV)</span>
+                <span className="text-sm font-black text-emerald-600">+ETB 173,803,130.00</span>
+              </div>
+              <div className="p-2 bg-slate-50 dark:bg-slate-950 rounded border border-slate-100 dark:border-slate-800">
+                <span className="text-slate-400 font-bold block">Estimate at Completion</span>
+                <span className="text-sm font-black text-blue-600">ETB 1,282,529,403.80</span>
+              </div>
+            </div>
+          </div>
+        </ScreenMockup>
+
         {/* Step-by-Step Instructions */}
         <div className="space-y-3 text-xs text-slate-600 dark:text-slate-300 font-medium">
           <ul className="space-y-2">
@@ -1327,6 +1603,24 @@ export default function UserGuideSections({ onScrollToSection, onDownloadPdf }: 
           Secure central repository for contract agreements, engineering drawings, monthly progress reports, quality test certificates, and variation orders.
         </p>
 
+        {/* Screen Mockup */}
+        <ScreenMockup 
+          title="Project Central Document Control Repository & Vault" 
+          url="https://era-erp.gov.et/project/daye-girja/documentation" 
+          badge="Document Vault"
+          badgeColor="bg-blue-600"
+        >
+          <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2 text-2xs">
+            <div className="flex items-center justify-between pb-1 border-b border-slate-100 dark:border-slate-800 font-bold">
+              <span>Categories: Contract & Legal, Drawings, Monthly Reports, Variation Orders</span>
+              <span className="px-2.5 py-1 bg-blue-600 text-white rounded font-bold">+ Upload Document</span>
+            </div>
+            <div className="p-2 border border-dashed border-slate-300 dark:border-slate-700 rounded-lg text-center text-slate-400 font-bold">
+              Drag & Drop Project PDF, AutoCAD, Excel, or Zip Files Here
+            </div>
+          </div>
+        </ScreenMockup>
+
         {/* Step-by-Step Instructions */}
         <div className="space-y-3 text-xs text-slate-600 dark:text-slate-300 font-medium">
           <ul className="space-y-2">
@@ -1362,6 +1656,28 @@ export default function UserGuideSections({ onScrollToSection, onDownloadPdf }: 
         <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">
           Maintains an immutable ledger of project version snapshots, audit logs, rollback restore capabilities, and automated vigilance alerts.
         </p>
+
+        {/* Screen Mockup */}
+        <ScreenMockup 
+          title="Immutable Audit Version Snapshots & Point-In-Time Restoration" 
+          url="https://era-erp.gov.et/project/daye-girja/history" 
+          badge="Audit Trail Ledger"
+          badgeColor="bg-blue-600"
+        >
+          <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2 text-2xs">
+            <div className="flex items-center justify-between pb-1 border-b border-slate-100 dark:border-slate-800 font-bold">
+              <span>Saved Milestones: 4 Audit Snapshots Stored</span>
+              <span className="px-2.5 py-1 bg-indigo-600 text-white rounded font-bold">+ Save Milestone Snapshot</span>
+            </div>
+            <div className="p-2 bg-slate-50 dark:bg-slate-950 rounded flex items-center justify-between">
+              <div>
+                <span className="font-bold block text-slate-800 dark:text-slate-200">Snapshot v2.4 (Pre-Revision Baseline)</span>
+                <span className="text-slate-400">By Ersido Abayneh (Master Admin) • Feb 24, 2026</span>
+              </div>
+              <span className="px-2 py-1 bg-blue-600 text-white rounded font-bold">Restore Version</span>
+            </div>
+          </div>
+        </ScreenMockup>
 
         {/* Step-by-Step Instructions */}
         <div className="space-y-3 text-xs text-slate-600 dark:text-slate-300 font-medium">
@@ -1402,6 +1718,33 @@ export default function UserGuideSections({ onScrollToSection, onDownloadPdf }: 
         <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">
           User account administration, Role-Based Access Control (RBAC), page-level editing permissions, approval authority delegation, and UI display themes.
         </p>
+
+        {/* Screen Mockup */}
+        <ScreenMockup 
+          title="User Account Provisioning & Role-Based Access Control (RBAC)" 
+          url="https://era-erp.gov.et/project/daye-girja/settings" 
+          badge="System Administration"
+          badgeColor="bg-purple-600"
+        >
+          <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2 text-2xs">
+            <div className="flex items-center justify-between pb-1 border-b border-slate-100 dark:border-slate-800 font-bold">
+              <span>Active Accounts: 7 Registered Users</span>
+              <span className="px-2.5 py-1 bg-purple-600 text-white rounded font-bold">+ Add User Credential</span>
+            </div>
+            <div className="grid grid-cols-4 p-1.5 bg-slate-100 dark:bg-slate-950 font-bold text-slate-700 dark:text-slate-300 rounded">
+              <span>Username</span>
+              <span>Assigned Role</span>
+              <span>Authorized Tabs</span>
+              <span>Approval Power</span>
+            </div>
+            <div className="grid grid-cols-4 p-1.5 border-b border-slate-100 dark:border-slate-800">
+              <span className="font-bold">Ersido Abayneh</span>
+              <span className="text-purple-600 font-bold">Master Admin</span>
+              <span>ALL PGL PAGES</span>
+              <span className="text-emerald-600 font-bold">Full Authority ✓</span>
+            </div>
+          </div>
+        </ScreenMockup>
 
         {/* Step-by-Step Instructions */}
         <div className="space-y-3 text-xs text-slate-600 dark:text-slate-300 font-medium">
@@ -1444,6 +1787,24 @@ export default function UserGuideSections({ onScrollToSection, onDownloadPdf }: 
           Interactive engineering scratchpad for real-time field meeting notes, quantity calculation drafts, and collaborative memos.
         </p>
 
+        {/* Screen Mockup */}
+        <ScreenMockup 
+          title="Cloud Synchronized Engineering Scratchpad & Field Notes" 
+          url="https://era-erp.gov.et/project/daye-girja/workspace" 
+          badge="Real-Time Workspace"
+          badgeColor="bg-blue-600"
+        >
+          <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2 text-2xs">
+            <div className="flex items-center justify-between pb-1 border-b border-slate-100 dark:border-slate-800 font-bold">
+              <span>Cloud Sync State: Synced (Local + Firebase)</span>
+              <span className="text-emerald-600">Auto-Saving Field Memo</span>
+            </div>
+            <div className="p-2 bg-slate-50 dark:bg-slate-950 rounded text-slate-700 dark:text-slate-300 font-mono">
+              [Site Meeting Notes: Joint survey completed at Km 34+500 with RE team. Verified ROW clearance progress...]
+            </div>
+          </div>
+        </ScreenMockup>
+
         {/* Step-by-Step Instructions */}
         <div className="space-y-3 text-xs text-slate-600 dark:text-slate-300 font-medium">
           <ul className="space-y-2">
@@ -1457,7 +1818,7 @@ export default function UserGuideSections({ onScrollToSection, onDownloadPdf }: 
             </li>
             <li className="flex items-start gap-2">
               <span className="text-blue-600 font-bold">•</span>
-              <span><strong>Click</strong> <strong>Save Notes</strong> to persist content to the cloud database for cross-device access.</span>
+              <span><strong>Click</strong> <strong>Save Field Notes</strong> to persist content to the cloud database for cross-device access.</span>
             </li>
           </ul>
         </div>
@@ -1475,6 +1836,27 @@ export default function UserGuideSections({ onScrollToSection, onDownloadPdf }: 
         <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">
           An intelligent conversational engineering advisor that queries real-time project metrics, explains FIDIC contractual clauses, and drafts executive delay diagnostics.
         </p>
+
+        {/* Screen Mockup */}
+        <ScreenMockup 
+          title="AI Road Engineer Assistant Conversational Intelligence Window" 
+          url="https://era-erp.gov.et/project/daye-girja/ai-assistant" 
+          badge="Gemini AI Engineering Copilot"
+          badgeColor="bg-indigo-600"
+        >
+          <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2 text-2xs">
+            <div className="p-2 bg-indigo-50 dark:bg-indigo-950/40 rounded-lg space-y-1">
+              <span className="font-bold text-indigo-700 dark:text-indigo-300 block">🤖 ERA AI Assistant Response:</span>
+              <p className="text-slate-700 dark:text-slate-300">
+                The Daye-Girja road project is currently experiencing a 42.82% schedule delay variance (SPI: 0.637). The primary critical path delay stems from uncleared Right-of-Way (ROW) land between Km 24+000 and Km 38+200. FIDIC Clause 2.1 applies...
+              </p>
+            </div>
+            <div className="p-2 border border-slate-200 dark:border-slate-800 rounded flex justify-between items-center text-slate-400">
+              <span>Ask the AI Road Engineer a question about this contract...</span>
+              <span className="px-2 py-0.5 bg-indigo-600 text-white rounded font-bold">Send</span>
+            </div>
+          </div>
+        </ScreenMockup>
 
         {/* Step-by-Step Instructions */}
         <div className="space-y-3 text-xs text-slate-600 dark:text-slate-300 font-medium">
@@ -1507,6 +1889,27 @@ export default function UserGuideSections({ onScrollToSection, onDownloadPdf }: 
         <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">
           Generates multi-project comparative executive reports, 5-dimension compliance evaluations, and vector PDF/Excel exports for directorate briefings.
         </p>
+
+        {/* Screen Mockup */}
+        <ScreenMockup 
+          title="Multi-Project Executive Group Comparative Report Modal" 
+          url="https://era-erp.gov.et/portfolio/group-reports" 
+          badge="Executive Report Engine"
+          badgeColor="bg-blue-600"
+        >
+          <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2 text-2xs">
+            <div className="flex items-center justify-between pb-1 border-b border-slate-100 dark:border-slate-800 font-bold">
+              <span>Target Projects: 5 Road Projects Selected</span>
+              <div className="flex gap-1">
+                <span className="px-2 py-1 bg-red-600 text-white rounded font-bold">📄 Executive PDF (A4)</span>
+                <span className="px-2 py-1 bg-emerald-600 text-white rounded font-bold">📊 Excel Data Matrix</span>
+              </div>
+            </div>
+            <div className="p-2 bg-slate-50 dark:bg-slate-950 rounded font-bold text-slate-700 dark:text-slate-300">
+              5-Dimension Model Weights: FIDIC (20%), Time (25%), EVM (25%), KPIs (15%), Civil Layers (15%) = 100% Balanced
+            </div>
+          </div>
+        </ScreenMockup>
 
         {/* Step-by-Step Instructions */}
         <div className="space-y-3 text-xs text-slate-600 dark:text-slate-300 font-medium">
@@ -1547,6 +1950,35 @@ export default function UserGuideSections({ onScrollToSection, onDownloadPdf }: 
         <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">
           A sandboxed "what-if" modeling environment where engineers test variations, schedule revisions, and price escalations without altering live production data.
         </p>
+
+        {/* Screen Mockup */}
+        <ScreenMockup 
+          title="Sandboxed What-If Contract Simulation Environment" 
+          url="https://era-erp.gov.et/project/daye-girja/draft-sandbox" 
+          badge="Sandboxed Modeling"
+          badgeColor="bg-amber-600"
+        >
+          <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2 text-2xs">
+            <div className="flex items-center justify-between pb-1 border-b border-slate-100 dark:border-slate-800 font-bold">
+              <span className="text-amber-600">⚠ Sandbox Mode Active (Production Data Unchanged)</span>
+              <span className="px-2 py-1 bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-200 rounded font-bold">Discard Simulation</span>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="p-2 bg-slate-50 dark:bg-slate-950 rounded">
+                <span className="block text-slate-400">Time Extension (+Days)</span>
+                <span className="font-bold text-amber-600">+90 Days Proposed</span>
+              </div>
+              <div className="p-2 bg-slate-50 dark:bg-slate-950 rounded">
+                <span className="block text-slate-400">Variation Amount</span>
+                <span className="font-bold text-emerald-600">+ETB 45,000,000.00</span>
+              </div>
+              <div className="p-2 bg-slate-50 dark:bg-slate-950 rounded">
+                <span className="block text-slate-400">Projected EAC</span>
+                <span className="font-bold text-blue-600">ETB 1,600,708,167.90</span>
+              </div>
+            </div>
+          </div>
+        </ScreenMockup>
 
         {/* Step-by-Step Instructions */}
         <div className="space-y-3 text-xs text-slate-600 dark:text-slate-300 font-medium">

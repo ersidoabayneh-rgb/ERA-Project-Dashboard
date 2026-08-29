@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   FileText, Plus, ArrowRight, Clock, AlertTriangle, CheckCircle, Trash2,
   UserCheck, History, Printer, Search, Filter, RefreshCw, Layers, ShieldAlert, Edit2, ChevronRight, Download, FileSpreadsheet, FileCheck,
-  TrendingUp, AlertOctagon, SlidersHorizontal, X, Calendar, Zap, CheckCircle2, BarChart3, BookOpen, Sparkles, User as UserIcon, MessageSquare, PenTool
+  TrendingUp, AlertOctagon, SlidersHorizontal, X, Calendar, Zap, CheckCircle2, BarChart3, BookOpen, Sparkles, User as UserIcon, MessageSquare, PenTool,
+  ArrowUp, ArrowDown, ArrowUpDown, RotateCcw
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { 
@@ -402,6 +403,15 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
   const [statusFilter, setStatusFilter] = useState('Active');
   const [priorityFilter, setPriorityFilter] = useState('All');
   const [categoryFilter, setCategoryFilter] = useState('All');
+  const [submittedByFilter, setSubmittedByFilter] = useState('All');
+  const [impactFilter, setImpactFilter] = useState('All');
+  const [ageFilter, setAgeFilter] = useState('All');
+
+  // Sorting Controls State
+  const [sortColumn, setSortColumn] = useState<
+    'submittedDate' | 'requiredDaysContract' | 'title' | 'currentStatus' | 'daysPending' | 'priority' | 'category' | 'financialImpactEtb' | 'timeImpactDays' | 'submittedBy'
+  >('submittedDate');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [pendingDaysThreshold, setPendingDaysThreshold] = useState<number>(14);
   const [showTrendChart, setShowTrendChart] = useState<boolean>(true);
   const [chartType, setChartType] = useState<'bar' | 'area'>('bar');
@@ -1534,34 +1544,173 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
   };
 
   const categoriesList = Array.from(new Set(issuesList.map(i => i.category))).filter(Boolean);
+  const submittedByList = Array.from(new Set(issuesList.map(i => i.submittedBy))).filter(Boolean);
 
   const isResolvedStatus = (status: string) => {
     const s = (status || '').toLowerCase();
     return s.includes('resolved') || s.includes('approved') || s.includes('closed') || s.includes('rejected');
   };
 
-  const filteredIssues = issuesList.filter(item => {
-    const matchesSearch = (item.title || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          (item.issueCode || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          (item.category || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          (item.lessonsLearned || '').toLowerCase().includes(searchQuery.toLowerCase());
-    
-    let matchesStatus = true;
-    if (statusFilter === 'Active') {
-      matchesStatus = !isResolvedStatus(item.currentStatus);
-    } else if (statusFilter === 'Overdue Pending') {
-      matchesStatus = isOverduePending(item, pendingDaysThreshold);
-    } else if (statusFilter === 'Resolved / Approved' || statusFilter === 'Resolved Archive') {
-      matchesStatus = isResolvedStatus(item.currentStatus);
-    } else if (statusFilter !== 'All' && statusFilter !== 'All Records') {
-      matchesStatus = item.currentStatus === statusFilter;
+  const filteredIssues = React.useMemo(() => {
+    let list = issuesList.filter(item => {
+      const matchesSearch = (item.title || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
+                            (item.issueCode || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                            (item.category || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                            (item.submittedBy || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                            (item.submittedTo || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                            (item.lessonsLearned || '').toLowerCase().includes(searchQuery.toLowerCase());
+      
+      let matchesStatus = true;
+      if (statusFilter === 'Active') {
+        matchesStatus = !isResolvedStatus(item.currentStatus);
+      } else if (statusFilter === 'Overdue Pending') {
+        matchesStatus = isOverduePending(item, pendingDaysThreshold);
+      } else if (statusFilter === 'Resolved / Approved' || statusFilter === 'Resolved Archive') {
+        matchesStatus = isResolvedStatus(item.currentStatus);
+      } else if (statusFilter !== 'All' && statusFilter !== 'All Records') {
+        matchesStatus = item.currentStatus === statusFilter;
+      }
+
+      const matchesPriority = priorityFilter === 'All' || item.priority === priorityFilter;
+      const matchesCategory = categoryFilter === 'All' || item.category === categoryFilter;
+      const matchesSubmittedBy = submittedByFilter === 'All' || item.submittedBy === submittedByFilter;
+
+      let matchesImpact = true;
+      if (impactFilter === 'financial') {
+        matchesImpact = (item.financialImpactEtb || 0) > 0;
+      } else if (impactFilter === 'majorFinancial') {
+        matchesImpact = (item.financialImpactEtb || 0) >= 5000000;
+      } else if (impactFilter === 'eot') {
+        matchesImpact = (item.timeImpactDays || 0) > 0;
+      } else if (impactFilter === 'majorEot') {
+        matchesImpact = (item.timeImpactDays || 0) >= 30;
+      }
+
+      let matchesAge = true;
+      const daysPending = calculateDaysPending(item.submittedDate);
+      if (ageFilter === 'overdue') {
+        matchesAge = isOverduePending(item, pendingDaysThreshold);
+      } else if (ageFilter === 'under15') {
+        matchesAge = daysPending < 15;
+      } else if (ageFilter === '15to30') {
+        matchesAge = daysPending >= 15 && daysPending <= 30;
+      } else if (ageFilter === 'over30') {
+        matchesAge = daysPending > 30;
+      }
+
+      return matchesSearch && matchesStatus && matchesPriority && matchesCategory && matchesSubmittedBy && matchesImpact && matchesAge;
+    });
+
+    return list.sort((a, b) => {
+      let comparison = 0;
+
+      if (sortColumn === 'currentStatus') {
+        // Status-based risk severity sorting: Overdue -> Submitted -> In Progress -> Transferred -> Resolved -> Closed
+        const getStatusRank = (item: IssueLogItem) => {
+          if (isOverduePending(item, pendingDaysThreshold)) return 1;
+          const s = (item.currentStatus || '').toLowerCase();
+          if (s.includes('submitted')) return 2;
+          if (s.includes('progress') || s.includes('evaluation')) return 3;
+          if (s.includes('transferred') || s.includes('escalated')) return 4;
+          if (s.includes('resolved') || s.includes('approved')) return 5;
+          if (s.includes('rejected') || s.includes('closed')) return 6;
+          return 7;
+        };
+        const rankA = getStatusRank(a);
+        const rankB = getStatusRank(b);
+        comparison = rankA - rankB;
+        if (comparison === 0) {
+          comparison = (a.currentStatus || '').localeCompare(b.currentStatus || '');
+        }
+      } else if (sortColumn === 'priority') {
+        const priorityMap: Record<string, number> = { Critical: 1, High: 2, Medium: 3, Low: 4 };
+        const rankA = priorityMap[a.priority] || 5;
+        const rankB = priorityMap[b.priority] || 5;
+        comparison = rankA - rankB;
+      } else if (sortColumn === 'submittedDate') {
+        const dateA = new Date(a.submittedDate || 0).getTime();
+        const dateB = new Date(b.submittedDate || 0).getTime();
+        comparison = dateA - dateB;
+      } else if (sortColumn === 'requiredDaysContract') {
+        const daysA = a.requiredDaysContract || 0;
+        const daysB = b.requiredDaysContract || 0;
+        comparison = daysA - daysB;
+      } else if (sortColumn === 'financialImpactEtb') {
+        const valA = a.financialImpactEtb || 0;
+        const valB = b.financialImpactEtb || 0;
+        comparison = valA - valB;
+      } else if (sortColumn === 'timeImpactDays') {
+        const valA = a.timeImpactDays || 0;
+        const valB = b.timeImpactDays || 0;
+        comparison = valA - valB;
+      } else if (sortColumn === 'daysPending') {
+        const daysA = calculateDaysPending(a.submittedDate);
+        const daysB = calculateDaysPending(b.submittedDate);
+        comparison = daysA - daysB;
+      } else if (sortColumn === 'submittedBy') {
+        comparison = (a.submittedBy || '').localeCompare(b.submittedBy || '');
+      } else if (sortColumn === 'title') {
+        comparison = (a.title || '').localeCompare(b.title || '');
+      } else if (sortColumn === 'category') {
+        comparison = (a.category || '').localeCompare(b.category || '');
+      }
+
+      return sortDirection === 'asc' ? comparison : -comparison;
+    });
+  }, [issuesList, searchQuery, statusFilter, priorityFilter, categoryFilter, submittedByFilter, impactFilter, ageFilter, sortColumn, sortDirection, pendingDaysThreshold]);
+
+  const handleSortToggle = (col: typeof sortColumn) => {
+    if (sortColumn === col) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortColumn(col);
+      setSortDirection(col === 'title' || col === 'category' ? 'asc' : 'desc');
     }
+  };
 
-    const matchesPriority = priorityFilter === 'All' || item.priority === priorityFilter;
-    const matchesCategory = categoryFilter === 'All' || item.category === categoryFilter;
+  const hasActiveColumnFilters = statusFilter !== 'All' || priorityFilter !== 'All' || categoryFilter !== 'All' || submittedByFilter !== 'All' || impactFilter !== 'All' || ageFilter !== 'All' || searchQuery !== '';
 
-    return matchesSearch && matchesStatus && matchesPriority && matchesCategory;
-  });
+  const handleResetFiltersAndSort = () => {
+    setSearchQuery('');
+    setStatusFilter('All');
+    setPriorityFilter('All');
+    setCategoryFilter('All');
+    setSubmittedByFilter('All');
+    setImpactFilter('All');
+    setAgeFilter('All');
+    setSortColumn('submittedDate');
+    setSortDirection('desc');
+  };
+
+  const renderSortableHeader = (
+    label: string, 
+    columnKey: typeof sortColumn, 
+    className: string = ''
+  ) => {
+    const isSorted = sortColumn === columnKey;
+    return (
+      <th 
+        onClick={() => handleSortToggle(columnKey)}
+        className={`p-3 cursor-pointer select-none transition-colors hover:bg-slate-200/80 dark:hover:bg-slate-800/80 ${
+          isSorted ? 'bg-blue-100/70 dark:bg-blue-900/50 text-blue-800 dark:text-blue-300' : ''
+        } ${className}`}
+        title={`Click to sort by ${label} (${isSorted ? (sortDirection === 'asc' ? 'Ascending' : 'Descending') : 'Sort'})`}
+      >
+        <div className="flex items-center gap-1 font-extrabold uppercase tracking-wider text-[11px]">
+          <span>{label}</span>
+          {isSorted ? (
+            sortDirection === 'asc' ? (
+              <ArrowUp className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+            ) : (
+              <ArrowDown className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+            )
+          ) : (
+            <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60 hover:opacity-100 shrink-0" />
+          )}
+        </div>
+      </th>
+    );
+  };
 
   const activeIssuesCount = issuesList.filter(item => !isResolvedStatus(item.currentStatus)).length;
   const resolvedIssuesList = issuesList.filter(item => isResolvedStatus(item.currentStatus) || Boolean(item.lessonsLearned && item.lessonsLearned.trim().length > 0));
@@ -1764,21 +1913,30 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
           </div>
         </div>
 
-        {/* Search & Filter Toolbar */}
-        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 bg-slate-50 dark:bg-slate-900/60 p-3 rounded-xl border border-slate-200/80 dark:border-slate-700/80 text-xs">
-          <div className="flex-1 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+        {/* Search, Column Filters & Status-Based Sorting Toolbar */}
+        <div className="space-y-3 bg-slate-50 dark:bg-slate-900/60 p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-700/80 text-xs shadow-2xs">
+          {/* Search Box & Quick Status Tabs */}
+          <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
             <div className="relative flex-1">
               <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
               <input
                 type="text"
-                placeholder="Search issues by title, code, category, or lesson learned..."
+                placeholder="Search issues by title, code, category, party, or lesson learned..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl pl-9 pr-3 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-500 text-slate-800 dark:text-slate-100"
+                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl pl-9 pr-8 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-500 text-slate-800 dark:text-slate-100"
               />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
 
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 lg:pb-0 scrollbar-none">
               {[
                 { label: 'Active Issues', value: 'Active', count: activeIssuesCount },
                 { label: 'Submitted', value: 'Submitted / Under Review' },
@@ -1823,6 +1981,197 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
               })}
             </div>
           </div>
+
+          {/* Column-Based Filters & Risk Sorting Controls Grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 pt-2 border-t border-slate-200/60 dark:border-slate-800/80">
+            {/* Category Filter */}
+            <div>
+              <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-0.5 flex items-center gap-1">
+                <Filter className="w-3 h-3 text-blue-500" /> Category
+              </label>
+              <select
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-xs font-semibold text-slate-800 dark:text-slate-200 outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+              >
+                <option value="All">All Categories</option>
+                {categoriesList.map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Priority Filter */}
+            <div>
+              <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-0.5 flex items-center gap-1">
+                <AlertTriangle className="w-3 h-3 text-amber-500" /> Priority Level
+              </label>
+              <select
+                value={priorityFilter}
+                onChange={(e) => setPriorityFilter(e.target.value)}
+                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-xs font-semibold text-slate-800 dark:text-slate-200 outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+              >
+                <option value="All">All Priorities</option>
+                <option value="Critical">🔴 Critical</option>
+                <option value="High">🟠 High</option>
+                <option value="Medium">🔵 Medium</option>
+                <option value="Low">🟢 Low</option>
+              </select>
+            </div>
+
+            {/* Submitted By / Party Filter */}
+            <div>
+              <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-0.5 flex items-center gap-1">
+                <UserIcon className="w-3 h-3 text-purple-500" /> Originating Party
+              </label>
+              <select
+                value={submittedByFilter}
+                onChange={(e) => setSubmittedByFilter(e.target.value)}
+                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-xs font-semibold text-slate-800 dark:text-slate-200 outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer truncate"
+              >
+                <option value="All">All Originators</option>
+                {submittedByList.map(party => (
+                  <option key={party} value={party}>{party}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Financial & Time Impact Filter */}
+            <div>
+              <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-0.5 flex items-center gap-1">
+                <Zap className="w-3 h-3 text-rose-500" /> Impact Level
+              </label>
+              <select
+                value={impactFilter}
+                onChange={(e) => setImpactFilter(e.target.value)}
+                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-xs font-semibold text-slate-800 dark:text-slate-200 outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+              >
+                <option value="All">All Impact Levels</option>
+                <option value="financial">💰 Financial Exposure (&gt;0 ETB)</option>
+                <option value="majorFinancial">🚨 Major Cost (&gt;5M ETB)</option>
+                <option value="eot">⏱ Has EOT Delay (&gt;0 Days)</option>
+                <option value="majorEot">⏳ Major EOT (&gt;30 Days)</option>
+              </select>
+            </div>
+
+            {/* Pending Age / Overdue Filter */}
+            <div>
+              <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-0.5 flex items-center gap-1">
+                <Clock className="w-3 h-3 text-emerald-500" /> Days Pending / Age
+              </label>
+              <select
+                value={ageFilter}
+                onChange={(e) => setAgeFilter(e.target.value)}
+                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-xs font-semibold text-slate-800 dark:text-slate-200 outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+              >
+                <option value="All">All Pending Ages</option>
+                <option value="overdue">⚠ Overdue Pending (&gt;={pendingDaysThreshold}d)</option>
+                <option value="under15">⚡ &lt; 15 Days</option>
+                <option value="15to30">📅 15 – 30 Days</option>
+                <option value="over30">⏳ &gt; 30 Days</option>
+              </select>
+            </div>
+
+            {/* Sort Controls */}
+            <div>
+              <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-0.5 flex items-center gap-1">
+                <SlidersHorizontal className="w-3 h-3 text-blue-500" /> Sort Controls
+              </label>
+              <div className="flex items-center gap-1">
+                <select
+                  value={sortColumn}
+                  onChange={(e) => setSortColumn(e.target.value as any)}
+                  className="flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-xs font-bold text-blue-700 dark:text-blue-300 outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+                >
+                  <option value="currentStatus">Status Risk Severity</option>
+                  <option value="submittedDate">Date Submitted</option>
+                  <option value="priority">Priority Level</option>
+                  <option value="financialImpactEtb">Financial Impact (ETB)</option>
+                  <option value="timeImpactDays">EOT Delay Impact (Days)</option>
+                  <option value="daysPending">Days Pending / Age</option>
+                  <option value="requiredDaysContract">Required Contract Days</option>
+                  <option value="submittedBy">Originating Party</option>
+                  <option value="category">Category</option>
+                  <option value="title">Issue Title</option>
+                </select>
+                <button
+                  onClick={() => setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')}
+                  className="p-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition cursor-pointer shrink-0"
+                  title={`Toggle Sort Direction (${sortDirection.toUpperCase()})`}
+                >
+                  {sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Active Filters Pill Bar & Results Count */}
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200/60 dark:border-slate-800/80 text-2xs">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="font-extrabold text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                <Filter className="w-3 h-3" /> Active Filters:
+              </span>
+
+              {statusFilter !== 'All' && (
+                <span className="inline-flex items-center gap-1 bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-full font-bold border border-blue-200 dark:border-blue-800">
+                  Status: {statusFilter}
+                  <button onClick={() => setStatusFilter('All')} className="hover:text-rose-600 cursor-pointer"><X className="w-2.5 h-2.5" /></button>
+                </span>
+              )}
+
+              {categoryFilter !== 'All' && (
+                <span className="inline-flex items-center gap-1 bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 px-2 py-0.5 rounded-full font-bold border border-purple-200 dark:border-purple-800">
+                  Category: {categoryFilter}
+                  <button onClick={() => setCategoryFilter('All')} className="hover:text-rose-600 cursor-pointer"><X className="w-2.5 h-2.5" /></button>
+                </span>
+              )}
+
+              {priorityFilter !== 'All' && (
+                <span className="inline-flex items-center gap-1 bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 px-2 py-0.5 rounded-full font-bold border border-amber-200 dark:border-amber-800">
+                  Priority: {priorityFilter}
+                  <button onClick={() => setPriorityFilter('All')} className="hover:text-rose-600 cursor-pointer"><X className="w-2.5 h-2.5" /></button>
+                </span>
+              )}
+
+              {submittedByFilter !== 'All' && (
+                <span className="inline-flex items-center gap-1 bg-teal-100 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 px-2 py-0.5 rounded-full font-bold border border-teal-200 dark:border-teal-800">
+                  Originator: {submittedByFilter}
+                  <button onClick={() => setSubmittedByFilter('All')} className="hover:text-rose-600 cursor-pointer"><X className="w-2.5 h-2.5" /></button>
+                </span>
+              )}
+
+              {impactFilter !== 'All' && (
+                <span className="inline-flex items-center gap-1 bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 px-2 py-0.5 rounded-full font-bold border border-rose-200 dark:border-rose-800">
+                  Impact: {impactFilter}
+                  <button onClick={() => setImpactFilter('All')} className="hover:text-rose-600 cursor-pointer"><X className="w-2.5 h-2.5" /></button>
+                </span>
+              )}
+
+              {ageFilter !== 'All' && (
+                <span className="inline-flex items-center gap-1 bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 rounded-full font-bold border border-emerald-200 dark:border-emerald-800">
+                  Age: {ageFilter}
+                  <button onClick={() => setAgeFilter('All')} className="hover:text-rose-600 cursor-pointer"><X className="w-2.5 h-2.5" /></button>
+                </span>
+              )}
+
+              <span className="inline-flex items-center gap-1 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-2 py-0.5 rounded-full font-bold">
+                Sort: {sortColumn} ({sortDirection.toUpperCase()})
+              </span>
+
+              {hasActiveColumnFilters && (
+                <button
+                  onClick={handleResetFiltersAndSort}
+                  className="ml-1 text-rose-600 dark:text-rose-400 hover:underline font-extrabold flex items-center gap-1 cursor-pointer"
+                >
+                  <RotateCcw className="w-3 h-3" /> Reset Filters
+                </button>
+              )}
+            </div>
+
+            <div className="font-mono font-bold text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700">
+              Showing <span className="text-blue-600 dark:text-blue-400 font-extrabold">{filteredIssues.length}</span> of {issuesList.length} Risk Entries
+            </div>
+          </div>
         </div>
 
         {/* Structured Table Container */}
@@ -1830,13 +2179,13 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
           <table className="w-full text-left border-collapse text-xs">
             <thead>
               <tr className="bg-slate-100/80 dark:bg-slate-900/80 border-b border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 font-bold uppercase tracking-wider text-[11px]">
-                <th className="p-3 w-32">Date Submitted</th>
-                <th className="p-3 w-28 text-center">Required Days (Contract)</th>
-                <th className="p-3 min-w-[260px]">Issue Description</th>
-                <th className="p-3 w-36">Current Status</th>
-                <th className="p-3 min-w-[200px]">Action Required</th>
-                <th className="p-3 w-40">Transferred To</th>
-                <th className="p-3 min-w-[250px]">Dept Time Taken (Days)</th>
+                {renderSortableHeader('Date Submitted', 'submittedDate', 'w-32')}
+                {renderSortableHeader('Required Days (Contract)', 'requiredDaysContract', 'w-28 text-center')}
+                {renderSortableHeader('Issue Description & Category', 'title', 'min-w-[260px]')}
+                {renderSortableHeader('Current Status (Risk)', 'currentStatus', 'w-40')}
+                {renderSortableHeader('Action & Exposure', 'financialImpactEtb', 'min-w-[200px]')}
+                {renderSortableHeader('Transferred To / Originator', 'submittedBy', 'w-40')}
+                {renderSortableHeader('Dept Time Taken (Days)', 'daysPending', 'min-w-[240px]')}
                 <th className="p-3 w-28 text-center">Actions</th>
               </tr>
             </thead>
