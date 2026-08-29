@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { History, Save, Sparkles, Trash2, Printer, CheckCircle, AlertTriangle, ShieldCheck, FileText, FileBadge, ShieldAlert, CheckCircle2, AlertCircle, Download, Activity, ChevronDown, Scale, FileSpreadsheet, RefreshCw } from 'lucide-react';
 import { jsPDF } from 'jspdf';
-import { Project, HistoryItem, formatAccounting } from '../types';
+import { Project, HistoryItem, formatAccounting, isProjectClosed } from '../types';
 import { buildKpiHierarchy, getIntegratedKpiAllocated } from '../data/defaultProject';
 import { calculateProjectEvm } from '../lib/evmCalculations';
 import eraLogo from '../assets/logo.png';
@@ -194,7 +194,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory }:
 
   // Elapsed progress calculation
   const elapsed = (() => {
-    if (p.status === 'Completed' || p.status === 'Completed and Closed') return 100;
+    if (isProjectClosed(p.status)) return 100;
     if (p.status === 'Suspended' || p.status === 'Terminated') return physicalProgress || 100;
     const s = new Date(p.startDate);
     const totalDays = p.origDays + (p.eotDays || 0) + (p.interimEotDays || 0);
@@ -1909,6 +1909,32 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory }:
                   <span>DATE: {new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
                 </div>
               </div>
+
+              {/* Notice Banner for Closed Projects */}
+              {isProjectClosed(p.status) && (() => {
+                const isTerm = p.status === 'Terminated and Closed' || p.status === 'Terminated';
+                return (
+                  <div className={`p-4 border-2 rounded-xl space-y-1 ${
+                    isTerm 
+                      ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-300 dark:border-rose-800 text-rose-950 dark:text-rose-100'
+                      : 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-950 dark:text-emerald-100'
+                  }`}>
+                    <div className={`flex items-center gap-2 font-black text-xs uppercase tracking-wide ${
+                      isTerm ? 'text-rose-800 dark:text-rose-300' : 'text-emerald-800 dark:text-emerald-300'
+                    }`}>
+                      <CheckCircle2 className={`w-4 h-4 ${isTerm ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`} />
+                      <span>Project Life Cycle {isTerm ? 'Terminated' : 'Completed'} and Closed — Audit Concluded & Excluded</span>
+                    </div>
+                    <p className={`text-[11px] font-medium leading-relaxed ${
+                      isTerm ? 'text-rose-700 dark:text-rose-300' : 'text-emerald-700 dark:text-emerald-300'
+                    }`}>
+                      {isTerm 
+                        ? 'This project contract has been officially terminated and closed. All data entry is frozen in permanent read-only mode, all final evaluation values remain visible for historic record, and ongoing time-based evaluations, SLA penalties, and active liquidation monitoring are halted and concluded.'
+                        : 'This project has fulfilled all contractual execution phases and is officially closed. All data entry is frozen in permanent read-only mode, all final evaluation values remain visible for historic record, and ongoing time-based evaluations, SLA non-compliance penalties, and active liquidation monitoring are halted and concluded.'}
+                    </p>
+                  </div>
+                );
+              })()}
 
               {/* 1. Project Specifications Summary Table */}
               <div className="space-y-2">

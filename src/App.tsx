@@ -30,13 +30,15 @@ import {
   RefreshCw,
   AlertTriangle,
   CheckCircle,
+  CheckCircle2,
   Eye,
   EyeOff,
   Zap,
-  BookOpen
+  BookOpen,
+  Archive
 } from 'lucide-react';
 
-import { Project, User, ApprovalRequest, KpiAllocatedItem, SeriesItem, MonthlyProgress, LinearData, RowMetric, ProgressPlan, PaymentItem, AnnualItem, WorkProgramActivity, BondGuarantee, formatAccounting, ProjectDocument, ALL_EDITABLE_PAGES, EditablePageOption, ProjectLifecycleStatus } from './types';
+import { Project, User, ApprovalRequest, KpiAllocatedItem, SeriesItem, MonthlyProgress, LinearData, RowMetric, ProgressPlan, PaymentItem, AnnualItem, WorkProgramActivity, BondGuarantee, formatAccounting, ProjectDocument, ALL_EDITABLE_PAGES, EditablePageOption, ProjectLifecycleStatus, isProjectClosed, isCpmOrMasterAdmin } from './types';
 
 export function hasApprovalCredentials(user: User | null): boolean {
   if (!user) return false;
@@ -1943,9 +1945,29 @@ let isBatchSyncRunning = false;
   };
 
   const handleUpdateProjectStatus = (id: string, newStatus: ProjectLifecycleStatus) => {
-    const isAdmin = currentUserObj?.role === 'admin' || currentUserObj?.role === 'master_admin' || currentUserObj?.role === 'directorate_admin' || currentUserObj?.role === 'pmo_admin' || currentUserObj?.username === 'proj_1781786415663';
-    if (!isAdmin) {
-      alert("Access Denied: Only Directorate Admins and System Administrators can assign or update project lifecycle status.");
+    const targetProject = projects.find(p => p.id === id);
+    if (!targetProject) return;
+
+    const isCurrentClosed = isProjectClosed(targetProject.status);
+    const isCpmOrMaster = isCpmOrMasterAdmin(currentUserObj);
+
+    // If currently closed, ONLY CPM and Master Admin can change to another lifecycle
+    if (isCurrentClosed && !isCpmOrMaster) {
+      alert(
+        `🔒 ACCESS RESTRICTED: CLOSED PROJECT LIFECYCLE\n\n` +
+        `This project is currently "${targetProject.status}".\n\n` +
+        `Once a project life cycle is marked "Completed and Closed" or "Terminated and Closed", ONLY the Counterpart Project Manager (CPM) Admin and Master Admin have authorization to change it to another life cycle.\n\n` +
+        `Please contact a Master Administrator or CPM Admin to reopen or update this project's lifecycle.`
+      );
+      return;
+    }
+
+    const isDirAuth = currentUserObj?.role === 'directorate_admin' && (targetProject.programDirectorate || 'Southern') === currentUserObj.assignedDirectorate;
+    const isPmoAuth = currentUserObj?.role === 'pmo_admin' && (targetProject.pmo || '') === currentUserObj.assignedPmo;
+    const canManage = isCpmOrMaster || isDirAuth || isPmoAuth;
+
+    if (!canManage) {
+      alert("Access Denied: Only authorized Directorate Admins, PMO Admins, CPM Admins, and Master Admins can assign or update project lifecycle status.");
       return;
     }
 
@@ -1954,7 +1976,7 @@ let isBatchSyncRunning = false;
         return {
           ...p,
           status: newStatus,
-          lastModifiedBy: currentUserObj?.username || 'Directorate Admin',
+          lastModifiedBy: currentUserObj?.username || 'Administrator',
           lastModifiedAt: new Date().toISOString(),
           lastModifiedSection: `Project Status updated to ${newStatus}`
         };
@@ -1995,7 +2017,18 @@ let isBatchSyncRunning = false;
       return;
     }
 
-    // 1. Check if user is assigned editing permission for this page by the Admin
+    // 1. Check if project lifecycle is Closed (Completed & Closed or Terminated & Closed) (data entry freeze)
+    if (isProjectClosed(currentProject.status) && fields.status === undefined) {
+      const isTerminated = currentProject.status === 'Terminated and Closed' || currentProject.status === 'Terminated';
+      alert(
+        `🔒 PROJECT LIFE CYCLE ${isTerminated ? 'TERMINATED' : 'COMPLETED'} & CLOSED\n\n` +
+        `This project lifecycle is officially ${isTerminated ? 'Terminated and Closed' : 'Completed and Closed'}. All data entry, physical accomplishments, financial claims, and work program records are permanently frozen in Read-Only Mode.\n\n` +
+        'Modifications are disabled to maintain data integrity and audit closure.'
+      );
+      return;
+    }
+
+    // 2. Check if user is assigned editing permission for this page by the Admin
     if (!canUserEditPage(currentUserObj, activeTab)) {
       alert(
         `🔒 PAGE EDITING ACCESS RESTRICTED\n\n` +
@@ -3357,6 +3390,62 @@ let isBatchSyncRunning = false;
                 </div>
               ) : (
                 <>
+                  {/* Project Life Cycle Closed Notice Banner */}
+                  {isProjectClosed(currentProject.status) && (() => {
+                    const isTerm = currentProject.status === 'Terminated and Closed' || currentProject.status === 'Terminated';
+                    const isArchived = currentProject.status === 'Archived';
+                    return (
+                      <div className={`flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-4 py-3 border rounded-2xl text-[12px] font-semibold shadow-sm ${
+                        isArchived
+                          ? 'bg-gradient-to-r from-slate-800/10 via-slate-800/5 to-slate-700/10 dark:from-slate-900/40 dark:via-slate-800/20 dark:to-slate-900/40 border-slate-300 dark:border-slate-700 text-slate-850 dark:text-slate-200'
+                          : isTerm 
+                          ? 'bg-gradient-to-r from-rose-900/10 via-rose-850/5 to-amber-900/10 dark:from-rose-950/40 dark:via-rose-900/20 dark:to-amber-950/40 border-rose-300 dark:border-rose-800/60 text-rose-950 dark:text-rose-200'
+                          : 'bg-gradient-to-r from-emerald-900/10 via-emerald-850/5 to-teal-900/10 dark:from-emerald-950/40 dark:via-emerald-900/20 dark:to-teal-950/40 border-emerald-300 dark:border-emerald-800/60 text-emerald-950 dark:text-emerald-200'
+                      }`}>
+                        <div className="flex items-center gap-3">
+                          <div className={`w-8 h-8 rounded-xl text-white flex items-center justify-center shrink-0 shadow-xs ${
+                            isArchived ? 'bg-slate-700 dark:bg-slate-600' : isTerm ? 'bg-rose-600 dark:bg-rose-500' : 'bg-emerald-600 dark:bg-emerald-500'
+                          }`}>
+                            {isArchived ? <Archive className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
+                          </div>
+                          <div>
+                            <div className={`font-black flex items-center gap-2 ${
+                              isArchived ? 'text-slate-900 dark:text-slate-100' : isTerm ? 'text-rose-900 dark:text-rose-200' : 'text-emerald-900 dark:text-emerald-200'
+                            }`}>
+                              <span>PROJECT LIFE CYCLE {isArchived ? 'ARCHIVED' : isTerm ? 'TERMINATED' : 'COMPLETED'} & CLOSED</span>
+                              <span className={`text-[10px] uppercase font-extrabold px-2 py-0.5 rounded-md border ${
+                                isArchived
+                                  ? 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700'
+                                  : isTerm 
+                                  ? 'bg-rose-100 dark:bg-rose-900/60 text-rose-800 dark:text-rose-300 border-rose-200 dark:border-rose-700'
+                                  : 'bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-700'
+                              }`}>
+                                🔒 {isArchived ? 'Historical Archive' : 'Data Entry Frozen'}
+                              </span>
+                            </div>
+                            <div className={`text-[11px] font-normal ${
+                              isArchived ? 'text-slate-600 dark:text-slate-400' : isTerm ? 'text-rose-700 dark:text-rose-400' : 'text-emerald-700 dark:text-emerald-400'
+                            }`}>
+                              {isArchived
+                                ? "All historical project records and evaluation metrics are preserved in read-only archive mode. Only the Counterpart Project Manager (CPM) Admin and Master Admin can change this project's life cycle."
+                                : "All data entry is permanently locked in read-only mode. All last evaluation values remain visible on all pages. Only the Counterpart Project Manager (CPM) Admin and Master Admin can change this project's life cycle."
+                              }
+                            </div>
+                          </div>
+                        </div>
+                        <div className={`text-[10px] font-extrabold px-3 py-1 bg-white/90 dark:bg-slate-900/90 rounded-xl border shrink-0 ${
+                          isArchived
+                            ? 'border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300'
+                            : isTerm 
+                            ? 'border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-300'
+                            : 'border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300'
+                        }`}>
+                          Status: {currentProject.status || 'Completed and Closed'}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   {/* Governance & Page Editing Permission Status Banner (Only shown when page is read-only or requires approval) */}
                   {currentUserObj && (!canUserEditPage(currentUserObj, activeTab) || !isProjectApprover(currentUserObj, currentProject.id, currentProject)) && (
                     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 px-4 py-2 bg-white dark:bg-slate-850 border border-slate-150 dark:border-slate-800 rounded-2xl text-[11px] font-semibold">

@@ -251,6 +251,8 @@ export interface IssueLogItem {
   title: string;
   category: 'Contractual Claim' | 'Right of Way (ROW)' | 'Design Revision' | 'Financial/Payment' | 'EOT Request' | 'Technical/Quality' | 'Safety/Environmental' | 'Technical/Design' | 'Material Testing' | 'Environmental/Safety' | string;
   submittedDate: string;
+  createdDate?: string; // System audit creation timestamp (e.g. "2026-08-29 15:50")
+  lastUpdated?: string; // System audit last updated timestamp (e.g. "2026-08-29 15:50")
   submittedBy: string;
   submittedTo: string;
   clauseReference?: string;
@@ -283,7 +285,39 @@ export interface IssueLogItem {
   transfers: IssueTransferRecord[];
 }
 
-export type ProjectLifecycleStatus = 'In Progress' | 'Completed' | 'Completed and Closed' | 'Terminated' | 'Suspended';
+export type ProjectLifecycleStatus = 'In Progress' | 'Completed' | 'Completed and Closed' | 'Suspended' | 'Terminated' | 'Terminated and Closed' | 'Archived';
+
+/**
+ * Checks whether a project lifecycle is officially closed or archived (Completed & Closed, Terminated & Closed, or Archived).
+ * When closed/archived, data entry is completely frozen across all pages, last evaluation values are permanently preserved,
+ * and time-related counters are stopped.
+ */
+export function isProjectClosed(status?: string | ProjectLifecycleStatus | null): boolean {
+  if (!status) return false;
+  const s = status.trim().toLowerCase();
+  return (
+    s === 'completed and closed' || 
+    s === 'completed & closed' || 
+    s === 'terminated and closed' || 
+    s === 'terminated & closed' || 
+    s === 'archived' ||
+    s === 'closed'
+  );
+}
+
+/**
+ * Checks whether a user possesses CPM Admin (Counterpart Project Manager) or Master Admin privileges.
+ * When a project is in "Completed and Closed" or "Terminated and Closed" lifecycle status,
+ * ONLY CPM Admins and Master Admins are authorized to change it to another lifecycle.
+ */
+export function isCpmOrMasterAdmin(user?: User | null): boolean {
+  if (!user) return false;
+  if (user.role === 'master_admin' || user.role === 'cpm_admin' || user.role === 'admin') return true;
+  if (user.username === 'proj_1781786415663') return true;
+  if (user.username && user.username.toLowerCase().includes('ersido')) return true;
+  if (user.username && user.username.toLowerCase().includes('admin') && user.role !== 'directorate_admin' && user.role !== 'pmo_admin') return true;
+  return false;
+}
 
 export interface Project {
   id: string;

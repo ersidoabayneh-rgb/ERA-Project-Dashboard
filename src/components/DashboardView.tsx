@@ -41,7 +41,7 @@ import {
   Line,
   LabelList
 } from 'recharts';
-import { Project, KpiAllocatedItem, LinearData, formatAccounting, User, ProjectLifecycleStatus } from '../types';
+import { Project, KpiAllocatedItem, LinearData, formatAccounting, User, ProjectLifecycleStatus, isProjectClosed, isCpmOrMasterAdmin } from '../types';
 import CircularGauge from './CircularGauge';
 import BillSummaryPriceAdjChart from './BillSummaryPriceAdjChart';
 import { buildKpiHierarchy, getIntegratedKpiAllocated, parseStation } from '../data/defaultProject';
@@ -213,9 +213,11 @@ export default function DashboardView({
     setSelectedCumulativeSource('current');
   }, [project.id]);
 
+  const isClosed = isProjectClosed(project.status);
+
   // Calculates elapsed progress ratio
   const getElapsedPercent = () => {
-    if (project.status === 'Completed' || project.status === 'Completed and Closed') return 100;
+    if (isClosed) return 100;
     if (project.status === 'Suspended' || project.status === 'Terminated') return project.physicalProgress || 100; // Freeze SPI to 1.0 or similar
     const s = new Date(project.startDate);
     const totalDays = project.origDays + (project.eotDays || 0) + (project.interimEotDays || 0);
@@ -226,13 +228,13 @@ export default function DashboardView({
   };
 
   const elapsed = getElapsedPercent();
-  const ratio = elapsed > 0 ? (project.physicalProgress / elapsed) * 100 : 0;
+  const ratio = isClosed ? 100 : (elapsed > 0 ? (project.physicalProgress / elapsed) * 100 : 0);
 
   // Integrated KPIs
   const integratedKpis = getIntegratedKpiAllocated(project);
 
-  // Find bonds and guarantees that are expired or expiring in < 45 days
-  const criticalBonds = project.bonds ? project.bonds.filter(b => {
+  // Find bonds and guarantees that are expired or expiring in < 45 days (excluded for completed & closed projects)
+  const criticalBonds = (!isClosed && project.bonds) ? project.bonds.filter(b => {
     if (b.status === 'Recovered' || b.status === 'N/A') return false;
     const exp = new Date(b.expireDate);
     const now = new Date();
@@ -245,7 +247,7 @@ export default function DashboardView({
     }
     return false;
   }) : [];
-  const hasCriticalBonds = criticalBonds.length > 0;
+  const hasCriticalBonds = !isClosed && criticalBonds.length > 0;
 
   const getKpiSubScore = (sscId: string): number => {
     let earned = 0;
@@ -1534,16 +1536,13 @@ export default function DashboardView({
               Lifecycle Status:
             </span>
             {(() => {
-              const isMaster = currentUserObj && (
-                currentUserObj.role === 'admin' || 
-                currentUserObj.role === 'master_admin' || 
-                currentUserObj.role === 'cpm_admin' || 
-                currentUserObj.username === 'proj_1781786415663' ||
-                (currentUserObj.username && currentUserObj.username.toLowerCase().includes('ersido'))
-              );
+              const isClosed = isProjectClosed(project.status);
+              const isCpmOrMaster = isCpmOrMasterAdmin(currentUserObj);
               const isDirAuth = currentUserObj?.role === 'directorate_admin' && (project.programDirectorate || 'Southern') === currentUserObj.assignedDirectorate;
               const isPmoAuth = currentUserObj?.role === 'pmo_admin' && (project.pmo || '') === currentUserObj.assignedPmo;
-              const canManage = isMaster || isDirAuth || isPmoAuth;
+              
+              // If project lifecycle is Closed, ONLY CPM Admin and Master Admin can change to another lifecycle
+              const canManage = isClosed ? isCpmOrMaster : (isCpmOrMaster || isDirAuth || isPmoAuth);
 
               return canManage ? (
                 <select
@@ -1555,16 +1554,27 @@ export default function DashboardView({
                     }
                   }}
                   className="bg-transparent text-xs font-bold text-slate-800 dark:text-slate-100 outline-none cursor-pointer"
+                  title={isClosed ? "Project lifecycle is closed. As CPM/Master Admin, you have privilege to change its lifecycle." : "Change project lifecycle status"}
                 >
                   <option value="In Progress">🟢 In Progress</option>
                   <option value="Completed">✅ Completed</option>
                   <option value="Completed and Closed">🔒 Completed and Closed</option>
                   <option value="Suspended">⏸️ Suspended</option>
                   <option value="Terminated">🛑 Terminated</option>
+                  <option value="Terminated and Closed">🔒 Terminated and Closed</option>
+                  <option value="Archived">📦 Archived</option>
                 </select>
               ) : (
-                <span className="text-xs font-bold text-slate-800 dark:text-slate-100">
-                  {project.status || 'In Progress'}
+                <span 
+                  className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5"
+                  title={isClosed ? "Project lifecycle is closed. Only the CPM Admin and Master Admin are authorized to change it to another lifecycle." : "Lifecycle status"}
+                >
+                  <span>{project.status || 'In Progress'}</span>
+                  {isClosed && (
+                    <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800">
+                      🔒 Locked (CPM/Master Admin only)
+                    </span>
+                  )}
                 </span>
               );
             })()}
@@ -1669,26 +1679,28 @@ export default function DashboardView({
             kpiScore={getKpiGoalScore('G1')}
             onKpiClick={() => onSwitchTab && onSwitchTab('seriesEditor')}
           />
-          {/* Inline Editor */}
-          <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 flex items-center bg-white/90 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 px-3 py-1.5 rounded-full shadow-lg transition duration-200 z-10 gap-1 text-[10px]">
-            <input 
-              type="number"
-              step="0.1"
-              value={physicalInput}
-              onChange={(e) => setPhysicalInput(e.target.value)}
-              className="w-12 border rounded text-center px-1 py-0.5 bg-white dark:bg-slate-900 border-slate-300 font-bold"
-            />
-            <span className="font-bold text-slate-400">%</span>
-            <button 
-              onClick={() => {
-                const val = parseFloat(physicalInput);
-                if (!isNaN(val)) onSetPhysical(val);
-              }}
-              className="bg-blue-600 dark:bg-blue-500 hover:bg-blue-700 text-white font-bold px-2.5 py-0.5 rounded-full transition"
-            >
-              Set
-            </button>
-          </div>
+          {/* Inline Editor (Disabled when project is closed) */}
+          {!isClosed && (
+            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 flex items-center bg-white/90 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 px-3 py-1.5 rounded-full shadow-lg transition duration-200 z-10 gap-1 text-[10px]">
+              <input 
+                type="number"
+                step="0.1"
+                value={physicalInput}
+                onChange={(e) => setPhysicalInput(e.target.value)}
+                className="w-12 border rounded text-center px-1 py-0.5 bg-white dark:bg-slate-900 border-slate-300 font-bold"
+              />
+              <span className="font-bold text-slate-400">%</span>
+              <button 
+                onClick={() => {
+                  const val = parseFloat(physicalInput);
+                  if (!isNaN(val)) onSetPhysical(val);
+                }}
+                className="bg-blue-600 dark:bg-blue-500 hover:bg-blue-700 text-white font-bold px-2.5 py-0.5 rounded-full transition"
+              >
+                Set
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Elapsed Time gauge */}

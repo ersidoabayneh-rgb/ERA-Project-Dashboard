@@ -26,6 +26,8 @@ const defaultSampleIssues: IssueLogItem[] = [
     title: 'Uncleared Right of Way (ROW) Obstruction at Ch 24+500 - Ch 31+200',
     category: 'Right of Way (ROW)',
     submittedDate: '2025-11-14',
+    createdDate: '2025-11-14 09:30',
+    lastUpdated: '2026-02-18 11:45',
     submittedBy: 'Contractor (China Communications Construction Co.)',
     submittedTo: 'Consultant Resident Engineer (Net Consulting Engineers)',
     clauseReference: 'FIDIC Sub-Clause 2.1 (Right of Access) & 8.4 (Extension of Time)',
@@ -101,6 +103,8 @@ const defaultSampleIssues: IssueLogItem[] = [
     title: 'Foreign Exchange Allocation Delay for Bitumen & Spare Parts Import',
     category: 'Financial/Payment',
     submittedDate: '2026-01-10',
+    createdDate: '2026-01-10 10:15',
+    lastUpdated: '2026-01-28 16:20',
     submittedBy: 'Contractor (Sur Construction PLC)',
     submittedTo: 'Employer (Ethiopian Roads Administration - PMO)',
     clauseReference: 'FIDIC Sub-Clause 14.8 (Payment & FX Allocation)',
@@ -156,6 +160,8 @@ const defaultSampleIssues: IssueLogItem[] = [
     title: 'Design Variation & Geotechnical Subsurface Soft Soil at Bridge Abutment Ch 48+200',
     category: 'Technical/Design',
     submittedDate: '2025-10-18',
+    createdDate: '2025-10-18 11:00',
+    lastUpdated: '2025-10-18 11:00',
     submittedBy: 'Consultant Resident Engineer',
     submittedTo: 'ERA Bridge & Structure Design Directorate',
     clauseReference: 'FIDIC Sub-Clause 4.12 (Unforeseeable Physical Conditions)',
@@ -187,6 +193,8 @@ const defaultSampleIssues: IssueLogItem[] = [
     title: 'Subbase Aggregate Quarry Abrasion Test Clearance Delay',
     category: 'Material Testing',
     submittedDate: '2025-12-05',
+    createdDate: '2025-12-05 08:45',
+    lastUpdated: '2025-12-28 11:00',
     submittedBy: 'Contractor (Sunshine Construction PLC)',
     submittedTo: 'Consultant Materials Engineer',
     clauseReference: 'FIDIC Sub-Clause 7.3 (Inspection & Testing)',
@@ -233,6 +241,8 @@ const defaultSampleIssues: IssueLogItem[] = [
     title: 'IPC #14 Advance Payment Disbursement Delay beyond 56 Calendar Days',
     category: 'Financial/Payment',
     submittedDate: '2026-02-01',
+    createdDate: '2026-02-01 14:00',
+    lastUpdated: '2026-02-01 14:00',
     submittedBy: 'Contractor',
     submittedTo: 'ERA Finance Directorate',
     clauseReference: 'FIDIC Sub-Clause 14.7 (Payment Obligations)',
@@ -264,6 +274,8 @@ const defaultSampleIssues: IssueLogItem[] = [
     title: 'Environmental Dust Suppression Non-Compliance Notice at Town Section Ch 12+000',
     category: 'Environmental/Safety',
     submittedDate: '2026-03-12',
+    createdDate: '2026-03-12 16:30',
+    lastUpdated: '2026-03-12 16:30',
     submittedBy: 'Consultant Environmental Specialist',
     submittedTo: 'Contractor Project Manager',
     clauseReference: 'FIDIC Sub-Clause 4.18 (Protection of Environment)',
@@ -409,7 +421,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
 
   // Sorting Controls State
   const [sortColumn, setSortColumn] = useState<
-    'submittedDate' | 'requiredDaysContract' | 'title' | 'currentStatus' | 'daysPending' | 'priority' | 'category' | 'financialImpactEtb' | 'timeImpactDays' | 'submittedBy'
+    'submittedDate' | 'createdDate' | 'lastUpdated' | 'requiredDaysContract' | 'title' | 'currentStatus' | 'daysPending' | 'priority' | 'category' | 'financialImpactEtb' | 'timeImpactDays' | 'submittedBy'
   >('submittedDate');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [pendingDaysThreshold, setPendingDaysThreshold] = useState<number>(14);
@@ -616,6 +628,8 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
       title: newIssue.title,
       category: newIssue.category || 'Contractual Claim',
       submittedDate: newIssue.submittedDate || new Date().toISOString().split('T')[0],
+      createdDate: nowStr,
+      lastUpdated: nowStr,
       submittedBy: newIssue.submittedBy || 'Contractor',
       submittedTo: newIssue.submittedTo || 'Consultant RE',
       clauseReference: newIssue.clauseReference || '',
@@ -661,7 +675,8 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
             `• Issue Code: ${created.issueCode}\n` +
             `• Title: ${created.title}\n` +
             `• Priority: ${created.priority.toUpperCase()}\n` +
-            `• Date Submitted: ${created.submittedDate}\n\n` +
+            `• Date Submitted: ${created.submittedDate}\n` +
+            `• Created: ${created.createdDate}\n\n` +
             `An urgent notification flag has been dispatched in the system registry to alert project administrators immediately.`);
     }
   };
@@ -697,6 +712,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
 
     const updatedIssue: IssueLogItem = {
       ...selectedIssue,
+      lastUpdated: nowStr,
       currentStatus: 'Transferred / Escalated',
       currentStage: `Transferred to: ${newTransfer.transferredTo}`,
       latestProgressSummary: `Issue transferred from [${transferItem.transferredFrom}] to [${transferItem.transferredTo}]. Recommended Course: ${transferItem.recommendedCourseOfAction}`,
@@ -738,6 +754,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
 
     const updatedIssueWithHistory: IssueLogItem = {
       ...selectedIssue,
+      lastUpdated: nowStr,
       history: [historyRecord, ...(selectedIssue.history || [])]
     };
 
@@ -765,6 +782,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
 
     const updatedIssue: IssueLogItem = {
       ...selectedIssue,
+      lastUpdated: nowStr,
       lessonsLearned: lessonsInput,
       reviewNotes: reviewNotesInput,
       lessonsLearnedUpdatedBy: currentUsername,
@@ -803,6 +821,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
 
     const updatedIssue: IssueLogItem = {
       ...targetIssue,
+      lastUpdated: nowStr,
       lessonsLearned: undefined,
       reviewNotes: undefined,
       lessonsLearnedUpdatedBy: undefined,
@@ -841,6 +860,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
 
     const updatedIssue: IssueLogItem = {
       ...selectedIssue,
+      lastUpdated: nowStr,
       currentStatus: targetStatus,
       resolvedDate: isBecomingResolved ? (selectedIssue.resolvedDate || resolutionDate) : undefined,
       turnaroundDays: isBecomingResolved ? (selectedIssue.turnaroundDays ?? turnaround) : undefined,
@@ -1047,7 +1067,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7);
     doc.setTextColor(71, 85, 105);
-    doc.text(`Date Submitted: ${item.submittedDate}   |   By: ${item.submittedBy}   |   To: ${item.submittedTo}`, margin + 10, curY + 13);
+    doc.text(`Date Submitted: ${item.submittedDate}   |   Created: ${item.createdDate || item.submittedDate}   |   Last Updated: ${item.lastUpdated || item.submittedDate}   |   By: ${item.submittedBy}`, margin + 10, curY + 13);
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
@@ -1217,7 +1237,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
   // Export Issue Log Registry to CSV / Excel
   const handleExportCsv = () => {
     if (!issuesList.length) return;
-    const headers = ["Issue Code", "Category", "Title", "Date Submitted", "Date Resolved / Approved", "Turnaround Duration (Days)", "Submitted By", "Submitted To", "Priority", "Status", "Contract Ref", "Financial Exposure (ETB)", "Time Exposure (Days)", "Lessons Learned"];
+    const headers = ["Issue Code", "Category", "Title", "Date Submitted", "Created Date", "Last Updated", "Date Resolved / Approved", "Turnaround Duration (Days)", "Submitted By", "Submitted To", "Priority", "Status", "Contract Ref", "Financial Exposure (ETB)", "Time Exposure (Days)", "Lessons Learned"];
     const rows = issuesList.map(item => {
       const turnaroundInfo = getIssueTurnaroundInfo(item);
       return [
@@ -1225,6 +1245,8 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
         `"${(item.category || '').replace(/"/g, '""')}"`,
         `"${(item.title || '').replace(/"/g, '""')}"`,
         `"${item.submittedDate || ''}"`,
+        `"${item.createdDate || item.submittedDate || ''}"`,
+        `"${item.lastUpdated || item.submittedDate || ''}"`,
         `"${item.resolvedDate || turnaroundInfo.resolvedDate || ''}"`,
         `"${turnaroundInfo.turnaroundDays ?? ''}"`,
         `"${(item.submittedBy || '').replace(/"/g, '""')}"`,
@@ -1630,6 +1652,14 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
       } else if (sortColumn === 'submittedDate') {
         const dateA = new Date(a.submittedDate || 0).getTime();
         const dateB = new Date(b.submittedDate || 0).getTime();
+        comparison = dateA - dateB;
+      } else if (sortColumn === 'createdDate') {
+        const dateA = new Date(a.createdDate || a.submittedDate || 0).getTime();
+        const dateB = new Date(b.createdDate || b.submittedDate || 0).getTime();
+        comparison = dateA - dateB;
+      } else if (sortColumn === 'lastUpdated') {
+        const dateA = new Date(a.lastUpdated || a.submittedDate || 0).getTime();
+        const dateB = new Date(b.lastUpdated || b.submittedDate || 0).getTime();
         comparison = dateA - dateB;
       } else if (sortColumn === 'requiredDaysContract') {
         const daysA = a.requiredDaysContract || 0;
@@ -2085,6 +2115,8 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                 >
                   <option value="currentStatus">Status Risk Severity</option>
                   <option value="submittedDate">Date Submitted</option>
+                  <option value="createdDate">Created Date (Audit Timestamp)</option>
+                  <option value="lastUpdated">Last Updated (Audit Timestamp)</option>
                   <option value="priority">Priority Level</option>
                   <option value="financialImpactEtb">Financial Impact (ETB)</option>
                   <option value="timeImpactDays">EOT Delay Impact (Days)</option>
@@ -2215,13 +2247,29 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                           : 'hover:bg-slate-50 dark:hover:bg-slate-900/30'
                       }`}
                     >
-                      {/* Date Submitted */}
+                      {/* Date Submitted & Audit Timestamps */}
                       <td className="p-3 align-top">
                         <div className="flex flex-col gap-1">
-                          <span className="font-mono font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                          <span className="font-mono font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1" title={`Date Submitted: ${item.submittedDate}`}>
                             <Calendar className="w-3.5 h-3.5 text-blue-500 shrink-0" />
                             {item.submittedDate}
                           </span>
+                          {(item.createdDate || item.lastUpdated) && (
+                            <div className="flex flex-col gap-0.5 text-[9px] text-slate-400 dark:text-slate-500 font-mono">
+                              {item.createdDate && (
+                                <span className="flex items-center gap-1" title={`Audit Created Timestamp: ${item.createdDate}`}>
+                                  <Clock className="w-2.5 h-2.5 text-slate-400 shrink-0" />
+                                  <span>Created: {item.createdDate.split(' ')[0]}</span>
+                                </span>
+                              )}
+                              {item.lastUpdated && item.lastUpdated !== item.createdDate && (
+                                <span className="flex items-center gap-1 text-blue-600/80 dark:text-blue-400/80" title={`Audit Last Updated Timestamp: ${item.lastUpdated}`}>
+                                  <RefreshCw className="w-2.5 h-2.5 shrink-0" />
+                                  <span>Updated: {item.lastUpdated.split(' ')[0]}</span>
+                                </span>
+                              )}
+                            </div>
+                          )}
                           {overdue && (
                             <span className="inline-flex items-center gap-0.5 text-[9px] font-black text-rose-700 dark:text-rose-300 bg-rose-100 dark:bg-rose-950/60 px-1.5 py-0.5 rounded w-max border border-rose-300 dark:border-rose-800">
                               <AlertOctagon className="w-2.5 h-2.5" /> Overdue ({daysPending}d)
@@ -2766,10 +2814,24 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 bg-slate-50 dark:bg-slate-900/40 p-3.5 rounded-xl border border-slate-150 dark:border-slate-700/60 text-xs">
+                <div className="grid grid-cols-2 md:grid-cols-6 gap-3 bg-slate-50 dark:bg-slate-900/40 p-3.5 rounded-xl border border-slate-150 dark:border-slate-700/60 text-xs">
                   <div>
                     <span className="text-[10px] font-bold text-slate-400 uppercase block">Date Submitted</span>
                     <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{selectedIssue.submittedDate}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Created Timestamp</span>
+                    <span className="font-mono font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                      <Clock className="w-3 h-3 text-slate-400 shrink-0" />
+                      {selectedIssue.createdDate || selectedIssue.submittedDate}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Last Updated</span>
+                    <span className="font-mono font-bold text-blue-700 dark:text-blue-300 flex items-center gap-1">
+                      <RefreshCw className="w-3 h-3 text-blue-500 shrink-0" />
+                      {selectedIssue.lastUpdated || selectedIssue.submittedDate}
+                    </span>
                   </div>
                   <div>
                     <span className="text-[10px] font-bold text-slate-400 uppercase block">Submitted By</span>
@@ -3333,6 +3395,13 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                   </div>
                 </div>
 
+                <div className="flex items-center gap-2.5 p-2.5 bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/60 rounded-xl text-[11px] text-blue-900 dark:text-blue-200">
+                  <Clock className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                  <span>
+                    <strong>Automatic Audit Logging:</strong> <code>Created Date</code> and <code>Last Updated</code> timestamps will be automatically captured and maintained without requiring manual data entry.
+                  </span>
+                </div>
+
                 <div className="flex justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-700">
                   <button
                     type="button"
@@ -3548,7 +3617,8 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                           ...item, 
                           currentStatus: newSt,
                           resolvedDate: resDate,
-                          turnaroundDays: tDays
+                          turnaroundDays: tDays,
+                          lastUpdated: nowStr
                         } : item);
                         saveIssues(updated, 'Status updated');
                       }}
@@ -3568,7 +3638,8 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                       type="text"
                       value={selectedIssue.currentStage}
                       onChange={(e) => {
-                        const updated = issuesList.map(item => item.id === selectedIssue.id ? { ...item, currentStage: e.target.value } : item);
+                        const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
+                        const updated = issuesList.map(item => item.id === selectedIssue.id ? { ...item, currentStage: e.target.value, lastUpdated: nowStr } : item);
                         saveIssues(updated, 'Stage updated');
                       }}
                       className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
@@ -3582,7 +3653,8 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                     rows={3}
                     value={selectedIssue.latestProgressSummary}
                     onChange={(e) => {
-                      const updated = issuesList.map(item => item.id === selectedIssue.id ? { ...item, latestProgressSummary: e.target.value } : item);
+                      const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
+                      const updated = issuesList.map(item => item.id === selectedIssue.id ? { ...item, latestProgressSummary: e.target.value, lastUpdated: nowStr } : item);
                       saveIssues(updated, 'Summary updated');
                     }}
                     className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
@@ -3595,7 +3667,8 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                     type="text"
                     value={selectedIssue.currentBottleneck || ''}
                     onChange={(e) => {
-                      const updated = issuesList.map(item => item.id === selectedIssue.id ? { ...item, currentBottleneck: e.target.value } : item);
+                      const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
+                      const updated = issuesList.map(item => item.id === selectedIssue.id ? { ...item, currentBottleneck: e.target.value, lastUpdated: nowStr } : item);
                       saveIssues(updated, 'Bottleneck updated');
                     }}
                     className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2"

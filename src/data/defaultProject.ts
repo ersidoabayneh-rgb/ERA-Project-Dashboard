@@ -7,7 +7,8 @@ import {
   KpiAllocatedItem,
   LinearData,
   RiskItem,
-  SupervisionConsultantInfo
+  SupervisionConsultantInfo,
+  isProjectClosed
 } from '../types';
 import { calculateProjectEvm } from '../lib/evmCalculations';
 
@@ -682,13 +683,16 @@ export function generateKpiAllocated(ct: 'DB' | 'DBB'): KpiAllocatedItem[] {
 
 export function getIntegratedKpiAllocated(project: Project): KpiAllocatedItem[] {
   // 1. Core Elapsed progress calculations
+  const isClosed = isProjectClosed(project.status);
   const s = new Date(project.startDate);
   const totalDays = project.origDays + (project.eotDays || 0) + (project.interimEotDays || 0);
   const rc = new Date(s.getTime() + totalDays * 86400000);
   const now = new Date();
   
   let elapsed = 0;
-  if (rc.getTime() - s.getTime() > 0) {
+  if (isClosed) {
+    elapsed = 100;
+  } else if (rc.getTime() - s.getTime() > 0) {
     elapsed = Math.min(100, Math.max(0, ((now.getTime() - s.getTime()) / (rc.getTime() - s.getTime())) * 100));
   }
   const ratio = elapsed > 0 ? (project.physicalProgress / elapsed) * 100 : 0;

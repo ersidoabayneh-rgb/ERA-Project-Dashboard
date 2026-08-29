@@ -26,10 +26,12 @@ import {
   ChevronUp,
   Eye,
   Sparkles,
-  BookOpen
+  BookOpen,
+  Archive,
+  FolderArchive
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
-import { Project, User, ApprovalRequest, ProjectLifecycleStatus } from '../types';
+import { Project, User, ApprovalRequest, ProjectLifecycleStatus, isProjectClosed, isCpmOrMasterAdmin } from '../types';
 import { canUserApproveRequest, hasApprovalCredentials } from '../App';
 import eraLogo from '../assets/logo.png';
 import GroupReportGenerator from './GroupReportGenerator';
@@ -113,7 +115,15 @@ export default function ProjectsPage({
   const isPmoAdmin = currentUserObj?.role === 'pmo_admin' && !isMasterAdmin;
 
   const canManageStatus = (p: Project) => {
-    if (isMasterAdmin) return true;
+    const isClosed = isProjectClosed(p.status);
+    const isCpmOrMaster = isCpmOrMasterAdmin(currentUserObj);
+
+    // If project lifecycle is Closed, ONLY CPM Admin and Master Admin can change to another lifecycle
+    if (isClosed) {
+      return isCpmOrMaster;
+    }
+
+    if (isMasterAdmin || isCpmOrMaster) return true;
     if (isDirAdmin) return (p.programDirectorate || 'Southern') === currentUserObj.assignedDirectorate;
     if (isPmoAdmin) return (p.pmo || '') === currentUserObj.assignedPmo;
     return false;
@@ -221,6 +231,18 @@ export default function ProjectsPage({
   
   const hasNoProjects = !isMasterAdmin && !isDirAdmin && !isPmoAdmin && (currentUserObj.accessibleProjects || []).length === 0;
 
+  const accessibleProjects = useMemo(() => {
+    return projects.filter(isAccessible);
+  }, [projects, isMasterAdmin, currentUserObj]);
+
+  const activeContractsCount = useMemo(() => {
+    return accessibleProjects.filter(p => p.status !== 'Archived').length;
+  }, [accessibleProjects]);
+
+  const archivedContractsCount = useMemo(() => {
+    return accessibleProjects.filter(p => p.status === 'Archived').length;
+  }, [accessibleProjects]);
+
   const filteredProjects = useMemo(() => {
     return projects
       .filter(isAccessible)
@@ -229,7 +251,16 @@ export default function ProjectsPage({
         return (p.programDirectorate || 'Southern') === selectedDirectorate;
       })
       .filter(p => {
-        if (selectedStatusFilter === 'All') return true;
+        if (selectedStatusFilter === 'All') {
+          // Default dashboard view: hide archived contracts
+          return p.status !== 'Archived';
+        }
+        if (selectedStatusFilter === 'All_With_Archived') {
+          return true;
+        }
+        if (selectedStatusFilter === 'Archived') {
+          return p.status === 'Archived';
+        }
         return (p.status || 'In Progress') === selectedStatusFilter;
       })
       .filter(p => {
@@ -344,6 +375,12 @@ export default function ProjectsPage({
           icon: '🔒',
           style: 'bg-purple-50 text-purple-700 border-purple-300 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800'
         };
+      case 'Terminated and Closed':
+        return {
+          label: 'Terminated & Closed',
+          icon: '🔒',
+          style: 'bg-rose-50 text-rose-800 border-rose-300 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-800'
+        };
       case 'Suspended':
         return {
           label: 'Suspended',
@@ -356,6 +393,12 @@ export default function ProjectsPage({
           icon: '🛑',
           style: 'bg-rose-50 text-rose-700 border-rose-300 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800'
         };
+      case 'Archived':
+        return {
+          label: 'Archived',
+          icon: '📦',
+          style: 'bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
+        };
       case 'In Progress':
       default:
         return {
@@ -367,6 +410,26 @@ export default function ProjectsPage({
   };
 
   const getProjectStatus = (p: Project) => {
+    if (p.status === 'Archived') {
+      return {
+        level: 'Normal' as const,
+        badgeClass: 'bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700',
+        cardBorderClass: 'border-slate-200 dark:border-slate-700 shadow-slate-100/50 dark:shadow-none hover:border-slate-400 dark:hover:border-slate-600',
+        icon: <Archive className="w-3.5 h-3.5 text-slate-600 dark:text-slate-400" />,
+        reason: 'Project Archived (Historical Record Preserved)'
+      };
+    }
+
+    if (isProjectClosed(p.status)) {
+      return {
+        level: 'Normal' as const,
+        badgeClass: 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800/60',
+        cardBorderClass: 'border-purple-200 dark:border-purple-900/60 shadow-purple-50/30 dark:shadow-none hover:border-purple-400 dark:hover:border-purple-700',
+        icon: <CheckCircle className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />,
+        reason: 'Project Lifecycle Completed & Closed (Data Frozen / Audits Concluded)'
+      };
+    }
+
     const today = new Date();
     
     // 1. Critical Bonds check
@@ -727,6 +790,39 @@ export default function ProjectsPage({
                   </div>
                 )}
 
+                {/* Quick Portfolio / Archive Toggle Pills */}
+                <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-850 p-1 rounded-2xl border border-slate-200 dark:border-slate-700/60 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedStatusFilter('All')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 cursor-pointer ${
+                      selectedStatusFilter === 'All'
+                        ? 'bg-white dark:bg-slate-750 text-blue-600 dark:text-blue-400 shadow-xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    <span>💼 Active Portfolio</span>
+                    <span className="bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 text-[10px] px-1.5 py-0.2 rounded-md font-bold">
+                      {activeContractsCount}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedStatusFilter('Archived')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 cursor-pointer ${
+                      selectedStatusFilter === 'Archived'
+                        ? 'bg-white dark:bg-slate-750 text-slate-900 dark:text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    <span>📦 Archived</span>
+                    <span className="bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-[10px] px-1.5 py-0.2 rounded-md font-bold">
+                      {archivedContractsCount}
+                    </span>
+                  </button>
+                </div>
+
                 {/* Status Filter selector */}
                 <div className="flex items-center gap-2 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 p-1.5 rounded-2xl shadow-sm shrink-0">
                   <span className="text-[10px] font-extrabold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider pl-2.5 pr-1">
@@ -737,12 +833,15 @@ export default function ProjectsPage({
                     onChange={(e) => setSelectedStatusFilter(e.target.value)}
                     className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-xs font-bold outline-none text-slate-700 dark:text-zinc-200 focus:border-emerald-500 transition cursor-pointer"
                   >
-                    <option value="All">🌐 All Statuses</option>
+                    <option value="All">🌐 Active Portfolio (Excl. Archived)</option>
                     <option value="In Progress">🟢 In Progress</option>
                     <option value="Completed">✅ Completed</option>
                     <option value="Completed and Closed">🔒 Completed & Closed</option>
                     <option value="Suspended">⏸️ Suspended</option>
                     <option value="Terminated">🛑 Terminated</option>
+                    <option value="Terminated and Closed">🔒 Terminated & Closed</option>
+                    <option value="Archived">📦 Archived (Historical Archive)</option>
+                    <option value="All_With_Archived">📁 All Contracts (Including Archived)</option>
                   </select>
                 </div>
 
@@ -805,7 +904,7 @@ export default function ProjectsPage({
                 )}
                 {selectedStatusFilter !== 'All' && (
                   <span className="bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/50 px-2 py-0.5 rounded-md font-semibold text-[11px] flex items-center gap-1">
-                    Status: {selectedStatusFilter}
+                    Status: {selectedStatusFilter === 'All_With_Archived' ? 'All (Including Archived)' : selectedStatusFilter}
                     <button onClick={() => setSelectedStatusFilter('All')} className="hover:text-emerald-900 dark:hover:text-white cursor-pointer ml-0.5">✕</button>
                   </span>
                 )}
@@ -874,7 +973,38 @@ export default function ProjectsPage({
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-4">
+            {/* Archived Repository Notice Banner */}
+            {selectedStatusFilter === 'Archived' && (
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 bg-slate-100/90 dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 rounded-2xl shadow-xs">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-slate-700 dark:bg-slate-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                    <Archive className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-black text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                      <span>Archived Projects Repository</span>
+                      <span className="text-[10px] bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-2 py-0.5 rounded-md font-bold">
+                        {sortedProjects.length} {sortedProjects.length === 1 ? 'Contract' : 'Contracts'}
+                      </span>
+                    </h4>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                      Archived contracts are hidden from the primary active portfolio dashboard. All records and historical evaluations remain read-only and preserved for audit traceability.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedStatusFilter('All')}
+                  className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition shadow-xs cursor-pointer flex items-center gap-1.5 shrink-0"
+                >
+                  <span>View Active Portfolio</span>
+                  <span>➜</span>
+                </button>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <AnimatePresence>
               {sortedProjects.map((p) => {
                 const criticalBonds = p.bonds ? p.bonds.filter(b => {
@@ -1048,17 +1178,22 @@ export default function ProjectsPage({
                               onMouseDown={(e) => e.stopPropagation()}
                               onPointerDown={(e) => e.stopPropagation()}
                               className={`text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-lg border outline-none cursor-pointer transition shadow-xs ${getLifecycleStatusBadge(p.status).style}`}
-                              title="Assigned by Directorate Admin / Administrator"
+                              title={isProjectClosed(p.status) ? "Project is closed. As CPM/Master Admin, you have privilege to change its lifecycle." : "Assigned by Directorate Admin / Administrator"}
                             >
                               <option value="In Progress">🟢 In Progress</option>
                               <option value="Completed">✅ Completed</option>
                               <option value="Completed and Closed">🔒 Completed & Closed</option>
                               <option value="Suspended">⏸️ Suspended</option>
                               <option value="Terminated">🛑 Terminated</option>
+                              <option value="Terminated and Closed">🔒 Terminated & Closed</option>
+                              <option value="Archived">📦 Archived</option>
                             </select>
                           </div>
                         ) : (
-                          <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-lg border flex items-center gap-1 ${getLifecycleStatusBadge(p.status).style}`}>
+                          <span 
+                            className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-lg border flex items-center gap-1 ${getLifecycleStatusBadge(p.status).style}`}
+                            title={isProjectClosed(p.status) ? "Project lifecycle is closed. Only the CPM Admin and Master Admin are authorized to change it to another lifecycle." : "Assigned by Directorate / System Administrator"}
+                          >
                             <span>{getLifecycleStatusBadge(p.status).icon}</span>
                             <span>{getLifecycleStatusBadge(p.status).label}</span>
                           </span>
@@ -1193,6 +1328,7 @@ export default function ProjectsPage({
               </div>
             )}
           </div>
+        </div>
         )}
 
         {/* Add Project trigger button for admin / directorate admin / pmo admin */}

@@ -30,7 +30,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
-import { Project, User, formatAccounting } from '../types';
+import { Project, User, formatAccounting, isProjectClosed } from '../types';
 import { buildKpiHierarchy, getIntegratedKpiAllocated } from '../data/defaultProject';
 import { QtyItem } from '../types';
 import { calculateIpcMaturation } from '../lib/ipcCalculations';
@@ -191,31 +191,43 @@ export default function GroupReportGenerator({
   };
 
   // Detailed Project Compliance & Performance Audit calculator
-  // Detailed Project Compliance & Performance Audit calculator
   const getAuditMetrics = (p: Project) => {
+    const isClosed = isProjectClosed(p.status);
+    const isTerminated = p.status === 'Terminated and Closed' || p.status === 'Terminated';
+    const totalDays = (p.origDays || 0) + (p.eotDays || 0) + (p.interimEotDays || 0);
+
     // 1. Time & Schedule Audit
     let timeElapsedPct = 0;
     let elapsedDays = 0;
     const start = p.startDate ? new Date(p.startDate) : null;
-    const totalDays = (p.origDays || 0) + (p.eotDays || 0) + (p.interimEotDays || 0);
     const today = new Date().getFullYear() < 2026 ? new Date('2026-06-26') : new Date();
     
     if (start && !isNaN(start.getTime()) && totalDays > 0) {
-      const diff = today.getTime() - start.getTime();
-      elapsedDays = Math.max(0, diff / (1000 * 60 * 60 * 24));
-      timeElapsedPct = Math.min(100, (elapsedDays / totalDays) * 100);
+      if (isClosed) {
+        elapsedDays = totalDays;
+        timeElapsedPct = 100;
+      } else {
+        const diff = today.getTime() - start.getTime();
+        elapsedDays = Math.max(0, diff / (1000 * 60 * 60 * 24));
+        timeElapsedPct = Math.min(100, (elapsedDays / totalDays) * 100);
+      }
+    } else if (isClosed) {
+      timeElapsedPct = 100;
+      elapsedDays = totalDays;
     }
     
     const progressVal = p.physicalProgress || 0;
     let scheduleStatus: 'Compliant' | 'Warning' | 'Critical' = 'Compliant';
-    let scheduleStatusText = 'On Track';
+    let scheduleStatusText = isClosed ? (isTerminated ? 'Terminated / Closed' : 'Completed / Handover Closed') : 'On Track';
     
-    if (timeElapsedPct > 100 && progressVal < 95) {
-      scheduleStatus = 'Critical';
-      scheduleStatusText = 'Time Overrun';
-    } else if (timeElapsedPct > progressVal + 15) {
-      scheduleStatus = 'Warning';
-      scheduleStatusText = 'Slipping Delay';
+    if (!isClosed) {
+      if (timeElapsedPct > 100 && progressVal < 95) {
+        scheduleStatus = 'Critical';
+        scheduleStatusText = 'Time Overrun';
+      } else if (timeElapsedPct > progressVal + 15) {
+        scheduleStatus = 'Warning';
+        scheduleStatusText = 'Slipping Delay';
+      }
     }
 
     // 2. Guarantees & Bonds Audit
@@ -531,6 +543,7 @@ export default function GroupReportGenerator({
   // Detailed Supervision Consultant Compliance & Performance Audit calculator
   const getConsultantAuditMetrics = (p: Project) => {
     const isDB = p.contractType === 'DB';
+    const isClosed = isProjectClosed(p.status);
     const sc = p.supervisionConsultant;
     const consultantFirm = sc?.firmName || p.consultant || 'N/A';
     const residentEngineer = sc?.residentEngineerName || (p.supervisionConsultant?.personnel?.find(x => x.position.toLowerCase().includes('resident'))?.name) || 'Field Assigned';
@@ -538,7 +551,6 @@ export default function GroupReportGenerator({
     const reEmail = sc?.residentEngineerEmail || 'N/A';
     const associationType = sc?.associationType || 'Lead Supervision Firm';
 
-    // 1. Staffing & Key Personnel Mobilization
     const personnel = sc?.personnel || [];
     const totalStaff = personnel.length;
     const activeStaff = personnel.filter(x => x.status === 'Active').length;
@@ -548,6 +560,8 @@ export default function GroupReportGenerator({
     
     const allocatedMM = personnel.reduce((sum, item) => sum + (item.manMonthsAllocated || 0), 0);
     const expendedMM = personnel.reduce((sum, item) => sum + (item.manMonthsInput || 0), 0);
+
+    // 1. Staffing & Key Personnel Mobilization
     const workloadPct = allocatedMM > 0 ? Math.min(100, Math.round((expendedMM / allocatedMM) * 100)) : (totalStaff > 0 ? 75 : 0);
 
     const mobilizationRatePct = totalStaff > 0 

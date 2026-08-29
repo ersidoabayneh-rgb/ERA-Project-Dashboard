@@ -1,4 +1,4 @@
-import { Project } from '../types';
+import { Project, isProjectClosed } from '../types';
 
 export interface EvmMetrics {
   BAC: number; // Budget At Completion (ETB)
@@ -152,6 +152,8 @@ export function calculateProjectEvm(project: Project): EvmMetrics {
   // Planned Value (PV) = Planned % * Original Contract Amount (BAC)
   const PV = BAC * (plannedPct / 100);
 
+  const isClosed = isProjectClosed(project.status);
+
   // 5. Cost Performance Index (CPI) = EV / AC
   const CPI = AC > 0 ? (EV / AC) : 1.0;
 
@@ -199,24 +201,29 @@ export function calculateProjectEvm(project: Project): EvmMetrics {
   const isSpiWarn = SPI >= 0.90 && SPI < 1.0;
   const isSpiCritical = SPI < 0.90;
 
-  let spiStatusLabel = 'Ahead / On Track';
-  let spiDescription = 'Progress meets or exceeds cumulative planned milestone.';
-  let spiColor = 'text-emerald-600 dark:text-emerald-400';
-  let spiBg = 'bg-emerald-50 dark:bg-emerald-950/20';
-  let spiBorder = 'border-emerald-200 dark:border-emerald-800';
+  const isTerminatedClosed = project.status === 'Terminated and Closed' || project.status === 'Terminated';
+  let spiStatusLabel = isClosed ? (isTerminatedClosed ? 'Terminated & Closed' : 'Completed & Closed') : 'Ahead / On Track';
+  let spiDescription = isClosed 
+    ? (isTerminatedClosed ? 'Project lifecycle terminated & closed. Last evaluation values frozen.' : 'Project lifecycle completed & closed. Last evaluation values frozen.')
+    : 'Progress meets or exceeds cumulative planned milestone.';
+  let spiColor = isClosed ? (isTerminatedClosed ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400') : 'text-emerald-600 dark:text-emerald-400';
+  let spiBg = isClosed ? (isTerminatedClosed ? 'bg-rose-50 dark:bg-rose-950/20' : 'bg-emerald-50 dark:bg-emerald-950/20') : 'bg-emerald-50 dark:bg-emerald-950/20';
+  let spiBorder = isClosed ? (isTerminatedClosed ? 'border-rose-200 dark:border-rose-800' : 'border-emerald-200 dark:border-emerald-800') : 'border-emerald-200 dark:border-emerald-800';
 
-  if (isSpiCritical) {
-    spiStatusLabel = 'Critical Delay';
-    spiDescription = 'Severe physical progress slippage compared to S-curve baseline.';
-    spiColor = 'text-rose-600 dark:text-rose-400';
-    spiBg = 'bg-rose-50 dark:bg-rose-950/20';
-    spiBorder = 'border-rose-200 dark:border-rose-800';
-  } else if (isSpiWarn) {
-    spiStatusLabel = 'Minor Lag';
-    spiDescription = 'Physical execution slightly behind S-curve plan.';
-    spiColor = 'text-amber-600 dark:text-amber-400';
-    spiBg = 'bg-amber-50 dark:bg-amber-950/20';
-    spiBorder = 'border-amber-200 dark:border-amber-800';
+  if (!isClosed) {
+    if (isSpiCritical) {
+      spiStatusLabel = 'Critical Delay';
+      spiDescription = 'Severe physical progress slippage compared to S-curve baseline.';
+      spiColor = 'text-rose-600 dark:text-rose-400';
+      spiBg = 'bg-rose-50 dark:bg-rose-950/20';
+      spiBorder = 'border-rose-200 dark:border-rose-800';
+    } else if (isSpiWarn) {
+      spiStatusLabel = 'Minor Lag';
+      spiDescription = 'Physical execution slightly behind S-curve plan.';
+      spiColor = 'text-amber-600 dark:text-amber-400';
+      spiBg = 'bg-amber-50 dark:bg-amber-950/20';
+      spiBorder = 'border-amber-200 dark:border-amber-800';
+    }
   }
 
   return {
