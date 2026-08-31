@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { CalendarRange, Plus, Trash2, TrendingUp, Info, Activity, ArrowUpToLine, AlertCircle, X } from 'lucide-react';
+import { CalendarRange, Plus, Trash2, TrendingUp, Info, Activity, ArrowUpToLine, AlertCircle, AlertTriangle, X } from 'lucide-react';
 import { 
   ResponsiveContainer, 
   LineChart, 
@@ -20,7 +20,9 @@ import {
   parseMonthKey, 
   MONTH_NAMES,
   getPreviousColumnValue,
-  validateMonthlyCellUpdate
+  validateMonthlyCellUpdate,
+  findActualsExceedingLive,
+  clampActualsToLiveValue
 } from '../lib/monthlySync';
 
 interface MonthlyScurveViewProps {
@@ -39,6 +41,16 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
     const ensured = ensureLiveRowForActual(project.monthly || [], currentMonthKey, project.physicalProgress);
     setMonths(ensured);
   }, [project.id, project.monthly, currentMonthKey, project.physicalProgress]);
+
+  // Check for any actuals in previous rows that exceed the live month's value
+  const exceedingActuals = findActualsExceedingLive(months, currentMonthKey);
+
+  const handleAdjustExceedingActuals = () => {
+    const adjusted = clampActualsToLiveValue(months, currentMonthKey);
+    setMonths(adjusted);
+    onUpdateMonthly(adjusted);
+    setTableError(null);
+  };
 
   // Auto-dismiss table error after 6 seconds
   React.useEffect(() => {
@@ -442,6 +454,43 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
         </div>
       </div>
 
+      {/* Alert notification when any preceding actual value exceeds the live value */}
+      {exceedingActuals.length > 0 && (
+        <motion.div 
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-rose-50 dark:bg-rose-950/40 border-2 border-rose-300 dark:border-rose-700/60 p-4 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-3 text-rose-900 dark:text-rose-200 shadow-sm"
+        >
+          <div className="flex items-start gap-3">
+            <div className="p-2 bg-rose-100 dark:bg-rose-900/60 text-rose-600 dark:text-rose-300 rounded-xl shrink-0">
+              <AlertTriangle className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-xs font-black text-rose-800 dark:text-rose-200 uppercase tracking-wide mb-0.5">
+                Actual Progress Exceeds Live Month — Adjustment Required
+              </p>
+              <p className="text-xs text-rose-700 dark:text-rose-300 leading-relaxed">
+                {exceedingActuals.map(item => (
+                  <span key={item.rowIndex} className="inline-block mr-3">
+                    • <strong>{item.month}</strong> Actual is <strong>{item.actualValue}%</strong>, which is greater than the live month (<strong>{item.liveMonth}</strong>, <strong>{item.liveActualValue}%</strong>).
+                  </span>
+                ))}
+                In cumulative S-Curve tracking, historical progress cannot exceed the live tracking month. Please adjust the highlighted cell(s) or auto-clamp to the live value.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleAdjustExceedingActuals}
+            className="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs px-3.5 py-2 rounded-xl transition shadow-sm flex items-center justify-center gap-1.5 shrink-0 cursor-pointer self-start md:self-center"
+            title={`Clamp all preceding actuals exceeding ${exceedingActuals[0]?.liveActualValue}%`}
+          >
+            <Activity className="w-3.5 h-3.5" />
+            Auto-Adjust Cells to Live Value ({exceedingActuals[0]?.liveActualValue}%)
+          </button>
+        </motion.div>
+      )}
+
       {/* Validation Error Alert Banner */}
       {tableError && (
         <motion.div 
@@ -490,6 +539,9 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
                 const liveIdx = months.findIndex(item => isSameMonth(item.month, currentMonthKey));
                 const isCurrentMonthRow = isSameMonth(m.month, currentMonthKey);
                 const isFutureRow = liveIdx !== -1 && idx > liveIdx;
+
+                const isExceedingLive = exceedingActuals.some(item => item.rowIndex === idx);
+                const exceedingItem = exceedingActuals.find(item => item.rowIndex === idx);
 
                 const prevOrig = getPreviousColumnValue(months, idx, 'originalPlan');
                 const prevRev = getPreviousColumnValue(months, idx, 'revisedPlan');
@@ -660,34 +712,51 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
                           —
                         </div>
                       ) : (
-                        <input
-                          type="number"
-                          step="0.01"
-                          min={prevAct.prevValue !== null ? prevAct.prevValue : 0}
-                          max={100}
-                          value={m.actual === null || m.actual === undefined ? '' : m.actual}
-                          disabled={isActDisabled}
-                          onChange={(e) => handleFieldChange(idx, 'actual', e.target.value)}
-                          placeholder={isActDisabled ? '-' : prevAct.prevValue !== null && isCurrentMonthRow ? `≥${prevAct.prevValue}%` : ''}
-                          className={`w-full text-center font-mono font-black text-xs px-2 py-1 rounded-lg outline-none transition-all duration-150 h-7 ${
-                            isActDisabled 
-                              ? 'bg-slate-100 dark:bg-slate-800/80 text-slate-400 dark:text-slate-500 cursor-not-allowed border-none' 
-                              : isCurrentMonthRow
-                              ? 'bg-blue-50 dark:bg-blue-950/40 border-2 border-blue-500 focus:ring-2 focus:ring-blue-500/30 text-blue-700 dark:text-blue-300 font-extrabold'
-                              : 'bg-slate-50 dark:bg-slate-900/60 border border-slate-350 dark:border-slate-755 hover:border-slate-400 dark:hover:border-slate-500 focus:border-blue-500 dark:focus:border-blue-450 focus:ring-2 focus:ring-blue-500/20 focus:bg-white dark:focus:bg-slate-950 text-blue-600 dark:text-blue-400'
-                          }`}
-                          title={
-                            isActDisabled 
-                              ? "Column locked: a previous row reached 100%" 
-                              : isCurrentMonthRow 
-                              ? prevAct.prevValue !== null 
-                                ? `Live project actual progress: Must be ≥ ${prevAct.prevValue}% (${prevAct.prevMonth})` 
-                                : "Live project actual progress"
-                              : prevAct.prevValue !== null
-                              ? `Must be ≥ ${prevAct.prevValue}% (${prevAct.prevMonth})`
-                              : "Actual cumulative progress %"
-                          }
-                        />
+                        <div className="relative flex flex-col items-center">
+                          <input
+                            type="number"
+                            step="0.01"
+                            min={prevAct.prevValue !== null ? prevAct.prevValue : 0}
+                            max={100}
+                            value={m.actual === null || m.actual === undefined ? '' : m.actual}
+                            disabled={isActDisabled}
+                            onChange={(e) => handleFieldChange(idx, 'actual', e.target.value)}
+                            placeholder={isActDisabled ? '-' : prevAct.prevValue !== null && isCurrentMonthRow ? `≥${prevAct.prevValue}%` : ''}
+                            className={`w-full text-center font-mono font-black text-xs px-2 py-1 rounded-lg outline-none transition-all duration-150 h-7 ${
+                              isExceedingLive
+                                ? 'bg-rose-50 dark:bg-rose-950/60 border-2 border-rose-500 dark:border-rose-400 text-rose-700 dark:text-rose-200 ring-2 ring-rose-400/40 focus:ring-rose-500 shadow-sm animate-pulse'
+                                : isActDisabled 
+                                ? 'bg-slate-100 dark:bg-slate-800/80 text-slate-400 dark:text-slate-500 cursor-not-allowed border-none' 
+                                : isCurrentMonthRow
+                                ? 'bg-blue-50 dark:bg-blue-950/40 border-2 border-blue-500 focus:ring-2 focus:ring-blue-500/30 text-blue-700 dark:text-blue-300 font-extrabold'
+                                : 'bg-slate-50 dark:bg-slate-900/60 border border-slate-350 dark:border-slate-755 hover:border-slate-400 dark:hover:border-slate-500 focus:border-blue-500 dark:focus:border-blue-450 focus:ring-2 focus:ring-blue-500/20 focus:bg-white dark:focus:bg-slate-950 text-blue-600 dark:text-blue-400'
+                            }`}
+                            title={
+                              isExceedingLive && exceedingItem
+                                ? `⚠️ ADJUSTMENT REQUIRED: Actual progress (${m.actual}%) is greater than the live month progress (${exceedingItem.liveActualValue}% in ${exceedingItem.liveMonth}). Please adjust this cell to be ≤ ${exceedingItem.liveActualValue}%.`
+                                : isActDisabled 
+                                ? "Column locked: a previous row reached 100%" 
+                                : isCurrentMonthRow 
+                                ? prevAct.prevValue !== null 
+                                  ? `Live project actual progress: Must be ≥ ${prevAct.prevValue}% (${prevAct.prevMonth})` 
+                                  : "Live project actual progress"
+                                : prevAct.prevValue !== null
+                                ? `Must be ≥ ${prevAct.prevValue}% (${prevAct.prevMonth})`
+                                : "Actual cumulative progress %"
+                            }
+                          />
+                          {isExceedingLive && exceedingItem && (
+                            <button
+                              type="button"
+                              onClick={() => handleFieldChange(idx, 'actual', exceedingItem.liveActualValue)}
+                              className="flex items-center justify-center gap-1 text-[9px] font-black text-rose-600 dark:text-rose-400 mt-1 cursor-pointer hover:underline whitespace-nowrap bg-rose-100/80 dark:bg-rose-900/50 px-1.5 py-0.5 rounded"
+                              title={`Click to auto-clamp this cell to live value (${exceedingItem.liveActualValue}%)`}
+                            >
+                              <AlertTriangle className="w-2.5 h-2.5 text-rose-500 shrink-0" />
+                              <span>Exceeds Live ({exceedingItem.liveActualValue}%)</span>
+                            </button>
+                          )}
+                        </div>
                       )}
                     </td>
                     <td className="p-3 text-center">

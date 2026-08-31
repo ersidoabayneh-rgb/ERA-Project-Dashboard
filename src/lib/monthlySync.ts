@@ -182,6 +182,85 @@ export function getNextColumnValue(
   return { nextValue: null, nextMonth: null, nextIndex: -1 };
 }
 
+export interface ActualExceedingLiveInfo {
+  rowIndex: number;
+  month: string;
+  actualValue: number;
+  liveIndex: number;
+  liveMonth: string;
+  liveActualValue: number;
+}
+
+/**
+ * Identifies any rows preceding the live month whose Actual value is greater than the live month's Actual value.
+ */
+export function findActualsExceedingLive(
+  monthlyList: MonthlyProgress[] | undefined,
+  currentMonthKey: string
+): ActualExceedingLiveInfo[] {
+  if (!monthlyList || monthlyList.length === 0) return [];
+  const liveIdx = monthlyList.findIndex(m => isSameMonth(m.month, currentMonthKey));
+  if (liveIdx === -1) return [];
+
+  const liveRow = monthlyList[liveIdx];
+  const liveActual = liveRow?.actual;
+  if (liveActual === '' || liveActual === null || liveActual === undefined || isNaN(Number(liveActual))) {
+    return [];
+  }
+
+  const liveNum = Number(liveActual);
+  const results: ActualExceedingLiveInfo[] = [];
+
+  for (let i = 0; i < liveIdx; i++) {
+    const row = monthlyList[i];
+    const act = row.actual;
+    if (act !== '' && act !== null && act !== undefined && !isNaN(Number(act))) {
+      const num = Number(act);
+      if (num > liveNum) {
+        results.push({
+          rowIndex: i,
+          month: row.month || `Row ${i + 1}`,
+          actualValue: num,
+          liveIndex: liveIdx,
+          liveMonth: liveRow.month || 'Live Month',
+          liveActualValue: liveNum
+        });
+      }
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Automatically adjusts any preceding Actual values that exceed the live row's Actual value by clamping them down to the live value.
+ */
+export function clampActualsToLiveValue(
+  monthlyList: MonthlyProgress[],
+  currentMonthKey: string
+): MonthlyProgress[] {
+  const liveIdx = monthlyList.findIndex(m => isSameMonth(m.month, currentMonthKey));
+  if (liveIdx === -1) return monthlyList;
+
+  const liveVal = monthlyList[liveIdx]?.actual;
+  if (liveVal === '' || liveVal === null || liveVal === undefined || isNaN(Number(liveVal))) {
+    return monthlyList;
+  }
+
+  const liveNum = Number(liveVal);
+  return monthlyList.map((m, idx) => {
+    if (idx < liveIdx) {
+      const act = m.actual;
+      if (act !== '' && act !== null && act !== undefined && !isNaN(Number(act))) {
+        if (Number(act) > liveNum) {
+          return { ...m, actual: liveNum };
+        }
+      }
+    }
+    return m;
+  });
+}
+
 /**
  * Validates that for the live month (or any row), values in a cumulative column are non-decreasing:
  * The live month must be >= the previous row / month in its column.
@@ -309,6 +388,7 @@ export function sortMonthlyChronologically(monthlyList: MonthlyProgress[]): Mont
  * - Other columns (Month, Original Plan %, Revised Plan %) can extend beyond the live row into future months.
  * - For the Actual % column, values are only allowed up to the live row; all rows after the live row have actual = ''.
  * - If the live row does not exist in the list, it is inserted into its proper chronological position.
+ * - CRITICAL: The live row actual is ALWAYS guaranteed to be >= the previous row's actual value until updated by the user.
  */
 export function ensureLiveRowForActual(
   monthlyList: MonthlyProgress[] | undefined,
@@ -337,7 +417,7 @@ export function ensureLiveRowForActual(
       month: currentMonthKey,
       originalPlan: '',
       revisedPlan: '',
-      actual: liveActualValue !== undefined ? liveActualValue : ''
+      actual: ''
     };
 
     if (parsedTarget) {
@@ -361,14 +441,39 @@ export function ensureLiveRowForActual(
     }
   }
 
+  // Find the previous actual value before liveIdx
+  let prevActVal: number | null = null;
+  for (let i = liveIdx - 1; i >= 0; i--) {
+    const v = list[i]?.actual;
+    if (v !== '' && v !== null && v !== undefined && !isNaN(Number(v))) {
+      prevActVal = Number(v);
+      break;
+    }
+  }
+
   // Now ensure that:
-  // 1. The live row has liveActualValue if provided
+  // 1. The live row actual is guaranteed to be >= the previous value (or liveActualValue if provided)
   // 2. For the ACTUAL column ONLY: no row AFTER the live row can have an actual value (actual is set to '')
   return list.map((m, idx) => {
     if (idx === liveIdx) {
+      let resolvedLiveActual = m.actual;
+      if (liveActualValue !== undefined) {
+        // If an explicit live actual is provided, it must be at least the previous actual value
+        resolvedLiveActual = prevActVal !== null ? Math.max(liveActualValue, prevActVal) : liveActualValue;
+      } else {
+        // Guarantee: Live row actual is always >= previous row value until updated by user
+        if (prevActVal !== null) {
+          if (resolvedLiveActual === '' || resolvedLiveActual === null || resolvedLiveActual === undefined || isNaN(Number(resolvedLiveActual))) {
+            resolvedLiveActual = prevActVal;
+          } else if (Number(resolvedLiveActual) < prevActVal) {
+            resolvedLiveActual = prevActVal;
+          }
+        }
+      }
+
       return {
         ...m,
-        actual: liveActualValue !== undefined ? liveActualValue : m.actual
+        actual: resolvedLiveActual
       };
     } else if (idx > liveIdx) {
       // Rows after the live row are future months: keep Original and Revised plans, but clear Actual
