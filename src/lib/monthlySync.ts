@@ -131,6 +131,128 @@ export function resolveCurrentMonthKey(project: Partial<Project> | undefined): s
 }
 
 /**
+ * Retrieves the closest preceding numeric value for a specific column in the monthly cumulative table.
+ */
+export function getPreviousColumnValue(
+  monthly: MonthlyProgress[] | undefined,
+  rowIndex: number,
+  field: 'originalPlan' | 'revisedPlan' | 'actual'
+): { prevValue: number | null; prevMonth: string | null; prevIndex: number } {
+  if (!monthly || rowIndex <= 0) {
+    return { prevValue: null, prevMonth: null, prevIndex: -1 };
+  }
+
+  for (let i = rowIndex - 1; i >= 0; i--) {
+    const val = monthly[i]?.[field];
+    if (val !== '' && val !== null && val !== undefined && !isNaN(Number(val))) {
+      return {
+        prevValue: Number(val),
+        prevMonth: monthly[i].month,
+        prevIndex: i
+      };
+    }
+  }
+
+  return { prevValue: null, prevMonth: null, prevIndex: -1 };
+}
+
+/**
+ * Retrieves the closest following numeric value for a specific column in the monthly cumulative table.
+ */
+export function getNextColumnValue(
+  monthly: MonthlyProgress[] | undefined,
+  rowIndex: number,
+  field: 'originalPlan' | 'revisedPlan' | 'actual'
+): { nextValue: number | null; nextMonth: string | null; nextIndex: number } {
+  if (!monthly || rowIndex >= monthly.length - 1) {
+    return { nextValue: null, nextMonth: null, nextIndex: -1 };
+  }
+
+  for (let i = rowIndex + 1; i < monthly.length; i++) {
+    const val = monthly[i]?.[field];
+    if (val !== '' && val !== null && val !== undefined && !isNaN(Number(val))) {
+      return {
+        nextValue: Number(val),
+        nextMonth: monthly[i].month,
+        nextIndex: i
+      };
+    }
+  }
+
+  return { nextValue: null, nextMonth: null, nextIndex: -1 };
+}
+
+/**
+ * Validates that for the live month (or any row), values in a cumulative column are non-decreasing:
+ * The live month must be >= the previous row / month in its column.
+ * A previous row cannot exceed the live month in its column.
+ */
+export function validateMonthlyCellUpdate(
+  monthlyList: MonthlyProgress[],
+  rowIndex: number,
+  field: 'originalPlan' | 'revisedPlan' | 'actual',
+  newValue: number | '',
+  currentMonthKey: string
+): { isValid: boolean; error?: string; minAllowed?: number; maxAllowed?: number } {
+  if (newValue === '') {
+    return { isValid: true };
+  }
+
+  const liveIdx = monthlyList.findIndex(m => isSameMonth(m.month, currentMonthKey));
+  const isLiveRow = liveIdx !== -1 && rowIndex === liveIdx;
+  const isBeforeLive = liveIdx !== -1 && rowIndex < liveIdx;
+
+  const colLabel = field === 'originalPlan' 
+    ? 'Original Plan %' 
+    : field === 'revisedPlan' 
+    ? 'Revised Plan %' 
+    : 'Actual %';
+
+  const rowMonth = monthlyList[rowIndex]?.month || `Row ${rowIndex + 1}`;
+
+  // Check previous value in this column
+  const { prevValue, prevMonth } = getPreviousColumnValue(monthlyList, rowIndex, field);
+
+  // If this is the live row (or any row), newValue MUST be >= prevValue
+  if (prevValue !== null && newValue < prevValue) {
+    return {
+      isValid: false,
+      minAllowed: prevValue,
+      error: isLiveRow
+        ? `The live month (${rowMonth}) ${colLabel} (${newValue.toFixed(2)}%) must be greater than or equal to the previous row (${prevValue.toFixed(2)}% in ${prevMonth || 'previous month'}).`
+        : `The ${rowMonth} ${colLabel} (${newValue.toFixed(2)}%) must be greater than or equal to the previous row (${prevValue.toFixed(2)}% in ${prevMonth || 'previous month'}).`
+    };
+  }
+
+  // If this row is before the live row, check if newValue exceeds the live row's value in this column
+  if (isBeforeLive && liveIdx !== -1) {
+    const liveVal = monthlyList[liveIdx]?.[field];
+    if (liveVal !== '' && liveVal !== null && liveVal !== undefined && !isNaN(Number(liveVal))) {
+      const liveNum = Number(liveVal);
+      if (newValue > liveNum) {
+        return {
+          isValid: false,
+          maxAllowed: liveNum,
+          error: `The ${rowMonth} ${colLabel} (${newValue.toFixed(2)}%) cannot exceed the live month value (${liveNum.toFixed(2)}% in ${monthlyList[liveIdx]?.month || 'live month'}).`
+        };
+      }
+    }
+  }
+
+  // Check next value if present
+  const { nextValue, nextMonth } = getNextColumnValue(monthlyList, rowIndex, field);
+  if (nextValue !== null && newValue > nextValue) {
+    return {
+      isValid: false,
+      maxAllowed: nextValue,
+      error: `The ${rowMonth} ${colLabel} (${newValue.toFixed(2)}%) cannot exceed the subsequent row (${nextValue.toFixed(2)}% in ${nextMonth || 'next month'}).`
+    };
+  }
+
+  return { isValid: true, minAllowed: prevValue ?? undefined, maxAllowed: nextValue ?? undefined };
+}
+
+/**
  * Retrieves the last recorded value in the Actual column of the monthly cumulative table.
  * If targetMonthKey is already in the table, it checks the latest actual recorded prior to targetMonthKey.
  */

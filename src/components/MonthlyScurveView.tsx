@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { CalendarRange, Plus, Trash2, TrendingUp, Info, Activity, ArrowUpToLine } from 'lucide-react';
+import { CalendarRange, Plus, Trash2, TrendingUp, Info, Activity, ArrowUpToLine, AlertCircle, X } from 'lucide-react';
 import { 
   ResponsiveContainer, 
   LineChart, 
@@ -18,7 +18,9 @@ import {
   ensureLiveRowForActual, 
   insertMonthAboveLiveRow, 
   parseMonthKey, 
-  MONTH_NAMES 
+  MONTH_NAMES,
+  getPreviousColumnValue,
+  validateMonthlyCellUpdate
 } from '../lib/monthlySync';
 
 interface MonthlyScurveViewProps {
@@ -28,6 +30,7 @@ interface MonthlyScurveViewProps {
 
 export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyScurveViewProps) {
   const currentMonthKey = resolveCurrentMonthKey(project);
+  const [tableError, setTableError] = useState<string | null>(null);
   const [months, setMonths] = useState<MonthlyProgress[]>(() => {
     return ensureLiveRowForActual(project.monthly || [], currentMonthKey, project.physicalProgress);
   });
@@ -36,6 +39,14 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
     const ensured = ensureLiveRowForActual(project.monthly || [], currentMonthKey, project.physicalProgress);
     setMonths(ensured);
   }, [project.id, project.monthly, currentMonthKey, project.physicalProgress]);
+
+  // Auto-dismiss table error after 6 seconds
+  React.useEffect(() => {
+    if (tableError) {
+      const timer = setTimeout(() => setTableError(null), 6000);
+      return () => clearTimeout(timer);
+    }
+  }, [tableError]);
 
   const convertToInputMonthFormat = (monthStr: string): string => {
     try {
@@ -103,6 +114,24 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
         }
       }
     }
+
+    // Monotonic validation rule: Live month (and cumulative entries) must always be >= previous row in that column
+    if (field !== 'month' && parsedVal !== '') {
+      const validation = validateMonthlyCellUpdate(
+        months,
+        idx,
+        field as 'originalPlan' | 'revisedPlan' | 'actual',
+        parsedVal,
+        currentMonthKey
+      );
+
+      if (!validation.isValid) {
+        setTableError(validation.error || 'Value must be greater than or equal to the previous row.');
+        return;
+      }
+    }
+
+    setTableError(null);
 
     let updated = months.map((m, i) => {
       if (i === idx) {
@@ -413,6 +442,35 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
         </div>
       </div>
 
+      {/* Validation Error Alert Banner */}
+      {tableError && (
+        <motion.div 
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -8 }}
+          className="bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/60 p-4 rounded-2xl flex items-start justify-between gap-3 text-amber-900 dark:text-amber-200 shadow-sm"
+        >
+          <div className="flex items-start gap-2.5">
+            <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-xs font-bold text-amber-800 dark:text-amber-300 mb-0.5">
+                Cumulative Progression Rule
+              </p>
+              <p className="text-xs text-amber-700 dark:text-amber-400">
+                {tableError}
+              </p>
+            </div>
+          </div>
+          <button 
+            onClick={() => setTableError(null)}
+            className="p-1 text-amber-600 hover:text-amber-900 dark:text-amber-400 dark:hover:text-amber-100 rounded-lg hover:bg-amber-100 dark:hover:bg-amber-900/40 transition cursor-pointer"
+            title="Dismiss notification"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </motion.div>
+      )}
+
       {/* Raw spreadsheet fields table */}
       <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 rounded-2xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto max-h-96 md:max-h-[500px] overflow-y-auto">
@@ -432,6 +490,10 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
                 const liveIdx = months.findIndex(item => isSameMonth(item.month, currentMonthKey));
                 const isCurrentMonthRow = isSameMonth(m.month, currentMonthKey);
                 const isFutureRow = liveIdx !== -1 && idx > liveIdx;
+
+                const prevOrig = getPreviousColumnValue(months, idx, 'originalPlan');
+                const prevRev = getPreviousColumnValue(months, idx, 'revisedPlan');
+                const prevAct = getPreviousColumnValue(months, idx, 'actual');
 
                 const isOrigDisabled = idx > 0 && months.slice(0, idx).some(prev => {
                   const v = prev.originalPlan;
@@ -541,32 +603,52 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
                       <input
                         type="number"
                         step="0.01"
+                        min={prevOrig.prevValue !== null ? prevOrig.prevValue : 0}
+                        max={100}
                         value={m.originalPlan === null || m.originalPlan === undefined ? '' : m.originalPlan}
                         disabled={isOrigDisabled}
                         onChange={(e) => handleFieldChange(idx, 'originalPlan', e.target.value)}
-                        placeholder={isOrigDisabled ? '-' : ''}
+                        placeholder={isOrigDisabled ? '-' : prevOrig.prevValue !== null && isCurrentMonthRow ? `≥${prevOrig.prevValue}%` : ''}
                         className={`w-full text-center font-mono font-bold text-xs px-2 py-1 rounded-lg outline-none transition-all duration-150 h-7 ${
                           isOrigDisabled 
                             ? 'bg-slate-100 dark:bg-slate-800/80 text-slate-400 dark:text-slate-500 cursor-not-allowed border-none' 
                             : 'bg-slate-50 dark:bg-slate-900/60 border border-slate-350 dark:border-slate-755 hover:border-slate-400 dark:hover:border-slate-500 focus:border-blue-500 dark:focus:border-blue-450 focus:ring-2 focus:ring-blue-500/20 focus:bg-white dark:focus:bg-slate-950 text-slate-850 dark:text-zinc-50'
                         }`}
-                        title={isOrigDisabled ? "Column locked: a previous row reached 100%" : ""}
+                        title={
+                          isOrigDisabled 
+                            ? "Column locked: a previous row reached 100%" 
+                            : prevOrig.prevValue !== null 
+                            ? isCurrentMonthRow 
+                              ? `Live Month Original Plan: Must be ≥ ${prevOrig.prevValue}% (${prevOrig.prevMonth})` 
+                              : `Must be ≥ ${prevOrig.prevValue}% (${prevOrig.prevMonth})` 
+                            : "Original cumulative plan %"
+                        }
                       />
                     </td>
                     <td className="p-3">
                       <input
                         type="number"
                         step="0.01"
+                        min={prevRev.prevValue !== null ? prevRev.prevValue : 0}
+                        max={100}
                         value={m.revisedPlan === null || m.revisedPlan === undefined ? '' : m.revisedPlan}
                         disabled={isRevDisabled}
                         onChange={(e) => handleFieldChange(idx, 'revisedPlan', e.target.value)}
-                        placeholder={isRevDisabled ? '-' : ''}
+                        placeholder={isRevDisabled ? '-' : prevRev.prevValue !== null && isCurrentMonthRow ? `≥${prevRev.prevValue}%` : ''}
                         className={`w-full text-center font-mono font-bold text-xs px-2 py-1 rounded-lg outline-none transition-all duration-150 h-7 ${
                           isRevDisabled 
                             ? 'bg-slate-100 dark:bg-slate-800/80 text-slate-400 dark:text-slate-500 cursor-not-allowed border-none' 
                             : 'bg-slate-50 dark:bg-slate-900/60 border border-slate-350 dark:border-slate-755 hover:border-slate-400 dark:hover:border-slate-500 focus:border-blue-500 dark:focus:border-blue-450 focus:ring-2 focus:ring-blue-500/20 focus:bg-white dark:focus:bg-slate-950 text-slate-850 dark:text-zinc-50'
                         }`}
-                        title={isRevDisabled ? "Column locked: a previous row reached 100%" : ""}
+                        title={
+                          isRevDisabled 
+                            ? "Column locked: a previous row reached 100%" 
+                            : prevRev.prevValue !== null 
+                            ? isCurrentMonthRow 
+                              ? `Live Month Revised Plan: Must be ≥ ${prevRev.prevValue}% (${prevRev.prevMonth})` 
+                              : `Must be ≥ ${prevRev.prevValue}% (${prevRev.prevMonth})` 
+                            : "Revised cumulative plan %"
+                        }
                       />
                     </td>
                     <td className="p-3">
@@ -581,10 +663,12 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
                         <input
                           type="number"
                           step="0.01"
+                          min={prevAct.prevValue !== null ? prevAct.prevValue : 0}
+                          max={100}
                           value={m.actual === null || m.actual === undefined ? '' : m.actual}
                           disabled={isActDisabled}
                           onChange={(e) => handleFieldChange(idx, 'actual', e.target.value)}
-                          placeholder={isActDisabled ? '-' : ''}
+                          placeholder={isActDisabled ? '-' : prevAct.prevValue !== null && isCurrentMonthRow ? `≥${prevAct.prevValue}%` : ''}
                           className={`w-full text-center font-mono font-black text-xs px-2 py-1 rounded-lg outline-none transition-all duration-150 h-7 ${
                             isActDisabled 
                               ? 'bg-slate-100 dark:bg-slate-800/80 text-slate-400 dark:text-slate-500 cursor-not-allowed border-none' 
@@ -592,7 +676,17 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
                               ? 'bg-blue-50 dark:bg-blue-950/40 border-2 border-blue-500 focus:ring-2 focus:ring-blue-500/30 text-blue-700 dark:text-blue-300 font-extrabold'
                               : 'bg-slate-50 dark:bg-slate-900/60 border border-slate-350 dark:border-slate-755 hover:border-slate-400 dark:hover:border-slate-500 focus:border-blue-500 dark:focus:border-blue-450 focus:ring-2 focus:ring-blue-500/20 focus:bg-white dark:focus:bg-slate-950 text-blue-600 dark:text-blue-400'
                           }`}
-                          title={isActDisabled ? "Column locked: a previous row reached 100%" : isCurrentMonthRow ? "Live project actual progress" : ""}
+                          title={
+                            isActDisabled 
+                              ? "Column locked: a previous row reached 100%" 
+                              : isCurrentMonthRow 
+                              ? prevAct.prevValue !== null 
+                                ? `Live project actual progress: Must be ≥ ${prevAct.prevValue}% (${prevAct.prevMonth})` 
+                                : "Live project actual progress"
+                              : prevAct.prevValue !== null
+                              ? `Must be ≥ ${prevAct.prevValue}% (${prevAct.prevMonth})`
+                              : "Actual cumulative progress %"
+                          }
                         />
                       )}
                     </td>
