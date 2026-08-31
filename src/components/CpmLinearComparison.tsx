@@ -18,7 +18,8 @@ import {
   ShieldAlert,
   Award
 } from 'lucide-react';
-import { Project, WorkProgramActivity } from '../types';
+import { Project, WorkProgramActivity, formatAccounting } from '../types';
+import { calculateIpcMaturation } from '../lib/ipcCalculations';
 
 interface CpmLinearComparisonProps {
   project: Project;
@@ -485,69 +486,77 @@ export default function CpmLinearComparison({ project }: CpmLinearComparisonProp
 
             {/* Unpaid Certified IPC Balances & FIDIC Consequences Report */}
             {(() => {
-              const formatAccounting = (val: number, symbol: string) => {
-                const formatted = val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                return symbol ? `${symbol} ${formatted}` : formatted;
-              };
-
-              const rate = project.usdExchangeRate || 29.72;
+              const rate = project.usdExchangeRate !== undefined && project.usdExchangeRate > 0 ? project.usdExchangeRate : 57.50;
+              const defaultAnnualRate = project.annualInterestRate !== undefined && project.annualInterestRate > 0 ? project.annualInterestRate : 16.50;
+              const isUsdEnabled = project.enableUsdPayments !== undefined
+                ? Boolean(project.enableUsdPayments)
+                : Boolean(project.supervisionConsultant?.enableUsdPayments || (project.ipcTracker && project.ipcTracker.some(i => (i.certifiedUsd || 0) > 0 || (i.grossBillUsd || 0) > 0)));
+              
               const ipcs = project.ipcTracker || [];
+              const now = new Date();
               
               let unpaidEtb = 0;
               let unpaidUsd = 0;
-              let totalCertifiedUnpaidCombinedEtb = 0;
+              let totalAccruedInterestEtb = 0;
+              let totalUnpaidIpcCount = 0;
+              let overdueIpcCount = 0;
               let oldestUnpaidPaymentNo = '';
               let oldestUnpaidDate = '';
+              let oldestDaysElapsed = 0;
+              let oldestOverdueDays = 0;
 
               ipcs.forEach(item => {
-                const isEtbUnpaid = (item.statusEtb || item.status) === 'Unpaid';
-                const isUsdUnpaid = (item.statusUsd || item.status) === 'Unpaid';
-
-                if (isEtbUnpaid) {
-                  unpaidEtb += item.certifiedEtb || 0;
-                  totalCertifiedUnpaidCombinedEtb += item.certifiedEtb || 0;
-                }
-                if (isUsdUnpaid) {
-                  unpaidUsd += item.certifiedUsd || 0;
-                  totalCertifiedUnpaidCombinedEtb += (item.certifiedUsd || 0) * rate;
-                }
+                const mat = calculateIpcMaturation(item, defaultAnnualRate, rate, now, isUsdEnabled);
                 
-                if ((isEtbUnpaid || isUsdUnpaid) && item.submissionDate) {
-                  if (!oldestUnpaidDate || item.submissionDate < oldestUnpaidDate) {
-                    oldestUnpaidDate = item.submissionDate;
-                    oldestUnpaidPaymentNo = item.paymentNo;
+                if (!mat.isFullyPaid) {
+                  totalUnpaidIpcCount++;
+                  unpaidEtb += mat.unpaidCertifiedEtb;
+                  if (isUsdEnabled) {
+                    unpaidUsd += mat.unpaidCertifiedUsd;
+                  }
+                  
+                  if (mat.isOverdue) {
+                    overdueIpcCount++;
+                  }
+                  if (mat.accruedInterestEqvEtb > 0) {
+                    totalAccruedInterestEtb += mat.accruedInterestEqvEtb;
+                  }
+
+                  if (mat.submissionDate) {
+                    if (!oldestUnpaidDate || mat.submissionDate < oldestUnpaidDate) {
+                      oldestUnpaidDate = mat.submissionDate;
+                      oldestUnpaidPaymentNo = item.paymentNo;
+                      oldestDaysElapsed = mat.daysElapsed;
+                      oldestOverdueDays = mat.overdueDays;
+                    }
                   }
                 }
               });
 
-              const localInterestRate = 0.04; 
-              const foreignInterestRate = 0.07; // Assuming LIBOR 5% + 2%
-              let daysOverdue = 0;
-              let financingChargeEtb = 0;
-              if (oldestUnpaidDate) {
-                const subDate = new Date(oldestUnpaidDate);
-                const currentDate = new Date();
-                const elapsedDays = Math.floor((currentDate.getTime() - subDate.getTime()) / (1000 * 60 * 60 * 24));
-                daysOverdue = Math.max(0, elapsedDays - 56);
-                const interestEtb = unpaidEtb * (localInterestRate / 365) * daysOverdue;
-                const interestUsd = unpaidUsd * (foreignInterestRate / 365) * daysOverdue;
-                financingChargeEtb = interestEtb + (interestUsd * rate);
-              }
+              const totalCertifiedUnpaidCombinedEtb = unpaidEtb + (isUsdEnabled ? (unpaidUsd * rate) : 0);
+              const BAC = project.revisedContractAmountEtb || project.contractAmountEtb || ((project.origAmount || 0) * 1_000_000) || 0;
+              const finalBacPct = BAC > 0 && totalCertifiedUnpaidCombinedEtb > 0 ? ((totalCertifiedUnpaidCombinedEtb / BAC) * 100).toFixed(2) : '0.00';
 
-              const BAC = project.revisedContractAmountEtb || project.contractAmountEtb || 1555555555;
+              // Project-specific ROW calculation
+              const rowObstructionMetric = (project.rowMetrics || []).find(m => 
+                m.name.toLowerCase().includes('obstruction free') || 
+                m.name.toLowerCase().includes('free section') ||
+                m.name.toLowerCase().includes('site possession') || 
+                m.name.toLowerCase().includes('row cleared')
+              );
+              const rowSectionVal = rowObstructionMetric 
+                ? (Number(rowObstructionMetric.value) || 0) 
+                : (project.lengthKm || 0);
+              const calcRowClearPct = project.lengthKm && project.lengthKm > 0 
+                ? Math.min(100, Math.max(0, (rowSectionVal / project.lengthKm) * 100)) 
+                : 100;
+              const finalRowClearPct = calcRowClearPct.toFixed(2);
 
-              const finalUnpaidEtb = unpaidEtb > 0 ? unpaidEtb : 157471172.72;
-              const finalUnpaidUsd = unpaidUsd > 0 ? unpaidUsd : 797439.52;
-              const finalCombinedEtb = totalCertifiedUnpaidCombinedEtb > 0 ? totalCertifiedUnpaidCombinedEtb : 181174743.48;
-              const finalOldestPaymentNo = oldestUnpaidPaymentNo || 'IPC No. 26';
-              const finalOldestDate = oldestUnpaidDate || '2024-07-18';
-              const finalDaysOverdue = daysOverdue > 0 ? daysOverdue : 677;
-              const finalFinancingCharge = financingChargeEtb > 0 ? financingChargeEtb : 14760741.40;
-              const finalBacPct = BAC > 0 ? ((finalCombinedEtb / BAC) * 100).toFixed(2) : '11.65';
-
-              const rowSectionVal = (project.rowMetrics || []).find(m => m.name === 'ROW Obstruction free Section')?.value || 0;
-              const calcRowClearPct = project.lengthKm ? (rowSectionVal / project.lengthKm) * 100 : 81.89;
-              const finalRowClearPct = calcRowClearPct > 0 && calcRowClearPct !== 100 ? calcRowClearPct.toFixed(2) : '81.89';
+              // Project-specific Cost Variation calculation
+              const origBAC = project.contractAmountEtb || ((project.origAmount || 0) * 1_000_000) || 0;
+              const revBAC = project.revisedContractAmountEtb || 0;
+              const hasVariation = revBAC > 0 && origBAC > 0 && revBAC !== origBAC;
+              const variationPct = hasVariation ? ((revBAC - origBAC) / origBAC) * 100 : 0;
 
               return (
                 <div className="space-y-4 pt-2">
@@ -559,12 +568,22 @@ export default function CpmLinearComparison({ project }: CpmLinearComparisonProp
                           Unpaid Certified IPC Balances &amp; FIDIC Consequences Report
                         </h3>
                         <p className="text-[10px] text-slate-400 mt-0.5">
-                          Active cash-flow risk assessment based on certified Interim Payment Certificates (IPCs) awaiting payment by the Employer.
+                          Active cash-flow risk assessment dynamically derived from this project's Interim Payment Certificates (IPCs).
                         </p>
                       </div>
-                      <span className="self-start md:self-center px-2 py-0.5 rounded text-[9px] font-extrabold bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800 uppercase tracking-wider animate-pulse">
-                        ▲ High Cash Flow Vulnerability
-                      </span>
+                      {overdueIpcCount > 0 ? (
+                        <span className="self-start md:self-center px-2 py-0.5 rounded text-[9px] font-extrabold bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800 uppercase tracking-wider animate-pulse">
+                          ▲ High Cash Flow Vulnerability ({overdueIpcCount} Overdue IPC{overdueIpcCount > 1 ? 's' : ''})
+                        </span>
+                      ) : totalUnpaidIpcCount > 0 ? (
+                        <span className="self-start md:self-center px-2 py-0.5 rounded text-[9px] font-extrabold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800 uppercase tracking-wider">
+                          ● Active Unpaid IPCs ({totalUnpaidIpcCount} within 56d window)
+                        </span>
+                      ) : (
+                        <span className="self-start md:self-center px-2 py-0.5 rounded text-[9px] font-extrabold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 uppercase tracking-wider">
+                          ✓ Optimal Cash Flow (0 Overdue IPCs)
+                        </span>
+                      )}
                     </div>
 
                     {/* Metrics Grid */}
@@ -572,25 +591,33 @@ export default function CpmLinearComparison({ project }: CpmLinearComparisonProp
                       <div className="bg-white dark:bg-slate-800 p-3 rounded-lg border border-slate-100 dark:border-slate-700/50 shadow-2xs">
                         <span className="text-[10px] font-bold text-slate-400 block uppercase font-mono tracking-wider">Unpaid ETB (Local Part)</span>
                         <span className="text-sm font-black font-mono text-slate-800 dark:text-zinc-150 block mt-1">
-                          {formatAccounting(finalUnpaidEtb, 'Br.')}
+                          {formatAccounting(unpaidEtb, 'Br.')}
                         </span>
-                        <span className="text-[9px] text-rose-500 font-medium block mt-0.5">
-                          Subject to delayed payment financing charges
+                        <span className={`text-[9px] font-medium block mt-0.5 ${unpaidEtb > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
+                          {unpaidEtb > 0 ? 'Subject to delayed payment financing charges' : 'No outstanding local currency balance'}
                         </span>
                       </div>
                       <div className="bg-white dark:bg-slate-800 p-3 rounded-lg border border-slate-100 dark:border-slate-700/50 shadow-2xs">
                         <span className="text-[10px] font-bold text-slate-400 block uppercase font-mono tracking-wider">Unpaid USD (Foreign Part)</span>
                         <span className="text-sm font-black font-mono text-slate-800 dark:text-zinc-150 block mt-1">
-                          {formatAccounting(finalUnpaidUsd, '$')}
+                          {formatAccounting(unpaidUsd, '$')}
                         </span>
                         <span className="text-[9px] text-slate-400 block mt-0.5">
-                          29.72 exchange rate equivalent
+                          {isUsdEnabled ? `${rate.toFixed(2)} exchange rate equivalent` : 'USD tracking not enabled for this project'}
                         </span>
                       </div>
-                      <div className="bg-white dark:bg-slate-800 p-3 rounded-lg border border-rose-100 dark:border-rose-900/50 bg-rose-500/[0.01] shadow-2xs">
-                        <span className="text-[10px] font-bold text-rose-500 block uppercase font-mono tracking-wider">Total Combined Unpaid (ETB)</span>
-                        <span className="text-sm font-black font-mono text-rose-600 dark:text-rose-400 block mt-1">
-                          {formatAccounting(finalCombinedEtb, 'Br.')}
+                      <div className={`bg-white dark:bg-slate-800 p-3 rounded-lg border shadow-2xs ${
+                        totalCertifiedUnpaidCombinedEtb > 0 
+                          ? 'border-rose-100 dark:border-rose-900/50 bg-rose-500/[0.01]' 
+                          : 'border-slate-100 dark:border-slate-700/50'
+                      }`}>
+                        <span className={`text-[10px] font-bold block uppercase font-mono tracking-wider ${
+                          totalCertifiedUnpaidCombinedEtb > 0 ? 'text-rose-500' : 'text-slate-400'
+                        }`}>Total Combined Unpaid (ETB)</span>
+                        <span className={`text-sm font-black font-mono block mt-1 ${
+                          totalCertifiedUnpaidCombinedEtb > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-800 dark:text-zinc-150'
+                        }`}>
+                          {formatAccounting(totalCertifiedUnpaidCombinedEtb, 'Br.')}
                         </span>
                         <span className="text-[9px] text-slate-400 block mt-0.5">
                           {finalBacPct}% of total budget at completion (BAC)
@@ -606,17 +633,35 @@ export default function CpmLinearComparison({ project }: CpmLinearComparisonProp
                           Overdue Status &amp; Sub-clause 14.8 Financial Charges
                         </h4>
                         <div className="space-y-1 text-[11px] leading-relaxed text-slate-600 dark:text-zinc-400">
+                          {oldestUnpaidPaymentNo ? (
+                            <>
+                              <p>
+                                Oldest unpaid invoice: <strong>{oldestUnpaidPaymentNo}</strong>{oldestUnpaidDate ? <>, submitted on <strong>{oldestUnpaidDate}</strong>.</> : '.'}
+                              </p>
+                              <p>
+                                Under <strong>FIDIC Sub-clause 14.7</strong>, payment is due within <strong>56 days</strong> of submission.{' '}
+                                {oldestOverdueDays > 0 ? (
+                                  <>This invoice is currently <strong className="text-rose-600 dark:text-rose-400 font-extrabold">{oldestOverdueDays} days overdue</strong> (Day {oldestDaysElapsed}).</>
+                                ) : (
+                                  <>This invoice is currently active (<strong className="text-blue-600 dark:text-blue-400 font-bold">{oldestDaysElapsed}/56 days</strong> elapsed).</>
+                                )}
+                              </p>
+                            </>
+                          ) : (
+                            <p>
+                              All certified Interim Payment Certificates are currently paid in full. There are no outstanding overdue payment certificates against the Employer.
+                            </p>
+                          )}
                           <p>
-                            Oldest unpaid invoice: <strong>{finalOldestPaymentNo}</strong>, submitted on <strong>{finalOldestDate}</strong>.
+                            <strong>Sub-clause 14.8 Financing Charges:</strong> Contractor is legally entitled to interest computed monthly at <strong>{defaultAnnualRate}%</strong> per annum ({isUsdEnabled ? `with foreign currency converted at ${rate.toFixed(2)} ETB/USD` : 'local currency'}).
                           </p>
-                          <p>
-                            Under <strong>FIDIC Sub-clause 14.7</strong>, payment is due within <strong>56 days</strong> of submission. This invoice is currently <strong>{finalDaysOverdue} days overdue</strong>.
-                          </p>
-                          <p>
-                            <strong>Sub-clause 14.8 Financing Charges:</strong> Contractor is legally entitled to interest computed monthly, calculated at <strong>4%</strong> for local currency and <strong>LIBOR + 2%</strong> for foreign currencies.
-                          </p>
-                          <div className="mt-1.5 p-1.5 bg-amber-500/10 border border-amber-500/20 rounded-lg text-amber-800 dark:text-amber-400">
-                            <span className="font-bold">Projected Accrued Interest Penalty:</span> <span className="font-mono font-black">{formatAccounting(finalFinancingCharge, 'Br.')}</span>
+                          <div className={`mt-1.5 p-1.5 rounded-lg border ${
+                            totalAccruedInterestEtb > 0 
+                              ? 'bg-amber-500/10 border-amber-500/20 text-amber-800 dark:text-amber-400' 
+                              : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-800 dark:text-emerald-400'
+                          }`}>
+                            <span className="font-bold">Projected Accrued Interest Penalty:</span>{' '}
+                            <span className="font-mono font-black">{formatAccounting(totalAccruedInterestEtb, 'Br.')}</span>
                           </div>
                         </div>
                       </div>
@@ -671,16 +716,26 @@ export default function CpmLinearComparison({ project }: CpmLinearComparisonProp
 
                       <div className="space-y-2 text-2xs leading-relaxed">
                         <p>
-                          <strong>Cost Risk Overrun:</strong> Status: <span className="text-emerald-500 font-bold">
-                            4.64% variation sum
-                          </span><br />
-                          LOW VULNERABILITY. Cost adjustments align within baseline limits.
+                          <strong>Cost Risk Variation:</strong> Status:{' '}
+                          <span className={`font-bold ${variationPct > 15 ? 'text-rose-500' : variationPct > 0 ? 'text-amber-500' : 'text-emerald-500'}`}>
+                            {hasVariation ? `${variationPct >= 0 ? '+' : ''}${variationPct.toFixed(2)}% variation sum` : '0.00% (Within Baseline)'}
+                          </span>
+                          <br />
+                          {hasVariation && variationPct > 15 
+                            ? 'HIGH CONTRACT VARIATION. Revised contract amount exceeds original baseline by over 15%.'
+                            : hasVariation && variationPct > 0 
+                              ? 'MODERATE VARIATION. Revised contract amount accounts for approved scope modifications.'
+                              : 'LOW VULNERABILITY. Cost adjustments align within baseline limits.'}
                         </p>
                         <p>
-                          <strong>Right-Of-Way Impediments:</strong> Clearance status: <span className="text-blue-500 font-bold">
-                            {finalRowClearPct}% clear
-                          </span><br />
-                          Ensure community representatives finalize compensation logs for remaining sections to prevent contractor idle-time claims under Sub-Clause 2.1.
+                          <strong>Right-Of-Way Impediments:</strong> Clearance status:{' '}
+                          <span className="text-blue-500 font-bold font-mono">
+                            {finalRowClearPct}% clear ({rowSectionVal.toFixed(2)} Km of {projectLength.toFixed(2)} Km)
+                          </span>
+                          <br />
+                          {calcRowClearPct >= 100 
+                            ? 'Corridor possession is 100% unobstructed across the entire highway length.' 
+                            : 'Ensure community representatives finalize compensation logs for remaining sections to prevent contractor idle-time claims under Sub-Clause 2.1.'}
                         </p>
                       </div>
                     </div>
