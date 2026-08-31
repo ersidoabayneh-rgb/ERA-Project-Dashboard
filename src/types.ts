@@ -605,12 +605,16 @@ export interface ApprovalRequest {
 export interface ProgressPlanHistoryItem {
   id: string;
   monthLabel: string;
+  quarterLabel?: string;
   efyLabel: string;
   contractorMonth: number;
+  contractorQuarter?: number;
   contractorEfy: number;
   eraMonth: number;
+  eraQuarter?: number;
   eraEfy: number;
   actualMonth: number;
+  actualQuarter?: number;
   actualEfy: number;
   actualTodate?: number;
   contractorTodate?: number;

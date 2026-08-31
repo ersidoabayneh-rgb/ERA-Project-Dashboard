@@ -430,24 +430,40 @@ export default function DashboardView({
 
   // Building progress plan data dynamically
   const progressPlanChartData: any[] = [];
+  const historyList = project.progressPlanHistory || [];
 
   // 1. Month
   if (selectedMonthSource !== 'hide') {
     if (selectedMonthSource === 'current') {
+      const cVal = Number((project.progressPlan?.contractor?.month ?? 0).toFixed(2));
+      const eVal = Number((project.progressPlan?.era?.month ?? 0).toFixed(2));
+      const aVal = Number((project.progressPlan?.actual?.month ?? 0).toFixed(2));
+      const mLabel = project.progressPlanLabels?.monthLabel || 'Month';
       progressPlanChartData.push({
-        name: project.progressPlanLabels?.monthLabel || 'Month',
-        Contractor: project.progressPlan?.contractor?.month || 0,
-        ERA: project.progressPlan?.era?.month || 0,
-        Actual: project.progressPlan?.actual?.month || 0,
+        category: 'Month',
+        name: mLabel,
+        subLabel: 'Current Month Target',
+        periodLabel: mLabel,
+        Contractor: cVal,
+        ERA: eVal,
+        Actual: aVal,
+        unit: 'Km',
       });
     } else {
-      const histItem = (project.progressPlanHistory || []).find(h => h.id === selectedMonthSource);
+      const histItem = historyList.find(h => h.id === selectedMonthSource);
       if (histItem) {
+        const cVal = Number((histItem.contractorMonth ?? 0).toFixed(2));
+        const eVal = Number((histItem.eraMonth ?? 0).toFixed(2));
+        const aVal = Number((histItem.actualMonth ?? 0).toFixed(2));
         progressPlanChartData.push({
+          category: 'Month',
           name: histItem.monthLabel,
-          Contractor: histItem.contractorMonth,
-          ERA: histItem.eraMonth,
-          Actual: histItem.actualMonth,
+          subLabel: `Archived Month (EFY ${histItem.efyLabel})`,
+          periodLabel: histItem.monthLabel,
+          Contractor: cVal,
+          ERA: eVal,
+          Actual: aVal,
+          unit: 'Km',
         });
       }
     }
@@ -455,31 +471,74 @@ export default function DashboardView({
 
   // 2. Quarter
   if (selectedQuarterSource !== 'hide') {
-    progressPlanChartData.push({
-      name: project.progressPlanLabels?.quarterLabel || 'Quarter',
-      Contractor: project.progressPlan?.contractor?.quarter || 0,
-      ERA: project.progressPlan?.era?.quarter || 0,
-      Actual: project.progressPlan?.actual?.quarter || 0,
-    });
+    if (selectedQuarterSource === 'current') {
+      const cVal = Number((project.progressPlan?.contractor?.quarter ?? 0).toFixed(2));
+      const eVal = Number((project.progressPlan?.era?.quarter ?? 0).toFixed(2));
+      const aVal = Number((project.progressPlan?.actual?.quarter ?? 0).toFixed(2));
+      const qLabel = project.progressPlanLabels?.quarterLabel || 'Quarter';
+      progressPlanChartData.push({
+        category: 'Quarter',
+        name: qLabel,
+        subLabel: 'Current Quarterly Target',
+        periodLabel: qLabel,
+        Contractor: cVal,
+        ERA: eVal,
+        Actual: aVal,
+        unit: 'Km',
+      });
+    } else {
+      const histItem = historyList.find(h => h.id === selectedQuarterSource);
+      if (histItem) {
+        const cVal = Number((histItem.contractorQuarter ?? 0).toFixed(2));
+        const eVal = Number((histItem.eraQuarter ?? 0).toFixed(2));
+        const aVal = Number((histItem.actualQuarter ?? 0).toFixed(2));
+        const qLabel = histItem.quarterLabel || `Qtr (${histItem.monthLabel})`;
+        progressPlanChartData.push({
+          category: 'Quarter',
+          name: qLabel,
+          subLabel: `Archived Quarter (${histItem.monthLabel})`,
+          periodLabel: qLabel,
+          Contractor: cVal,
+          ERA: eVal,
+          Actual: aVal,
+          unit: 'Km',
+        });
+      }
+    }
   }
 
   // 3. EFY
   if (selectedEfySource !== 'hide') {
     if (selectedEfySource === 'current') {
+      const cVal = Number((project.progressPlan?.contractor?.efy ?? 0).toFixed(2));
+      const eVal = Number((project.progressPlan?.era?.efy ?? 0).toFixed(2));
+      const aVal = Number((project.progressPlan?.actual?.efy ?? 0).toFixed(2));
+      const efyName = project.progressPlanLabels?.efyLabel ? `EFY ${project.progressPlanLabels.efyLabel}` : 'EFY Plan';
       progressPlanChartData.push({
-        name: project.progressPlanLabels?.efyLabel ? `EFY ${project.progressPlanLabels.efyLabel}` : 'Year EFY',
-        Contractor: project.progressPlan?.contractor?.efy || 0,
-        ERA: project.progressPlan?.era?.efy || 0,
-        Actual: project.progressPlan?.actual?.efy || 0,
+        category: 'EFY',
+        name: efyName,
+        subLabel: 'Current Fiscal Year Target',
+        periodLabel: efyName,
+        Contractor: cVal,
+        ERA: eVal,
+        Actual: aVal,
+        unit: 'Km',
       });
     } else {
-      const histItem = (project.progressPlanHistory || []).find(h => h.id === selectedEfySource);
+      const histItem = historyList.find(h => h.id === selectedEfySource);
       if (histItem) {
+        const cVal = Number((histItem.contractorEfy ?? 0).toFixed(2));
+        const eVal = Number((histItem.eraEfy ?? 0).toFixed(2));
+        const aVal = Number((histItem.actualEfy ?? 0).toFixed(2));
         progressPlanChartData.push({
-          name: `EFY ${histItem.efyLabel} (${histItem.monthLabel})`,
-          Contractor: histItem.contractorEfy,
-          ERA: histItem.eraEfy,
-          Actual: histItem.actualEfy,
+          category: 'EFY',
+          name: `EFY ${histItem.efyLabel}`,
+          subLabel: `Archived EFY at ${histItem.monthLabel}`,
+          periodLabel: `EFY ${histItem.efyLabel} (${histItem.monthLabel})`,
+          Contractor: cVal,
+          ERA: eVal,
+          Actual: aVal,
+          unit: 'Km',
         });
       }
     }
@@ -487,12 +546,38 @@ export default function DashboardView({
 
   // 4. Cumulative
   if (selectedCumulativeSource !== 'hide') {
-    progressPlanChartData.push({
-      name: 'Cumulative',
-      Contractor: project.progressPlan?.contractor?.todate || 0,
-      ERA: project.progressPlan?.era?.todate || 0,
-      Actual: project.progressPlan?.actual?.todate || 0,
-    });
+    if (selectedCumulativeSource === 'current') {
+      const cVal = Number((project.progressPlan?.contractor?.todate ?? 0).toFixed(2));
+      const eVal = Number((project.progressPlan?.era?.todate ?? 0).toFixed(2));
+      const aVal = Number((project.progressPlan?.actual?.todate ?? 0).toFixed(2));
+      progressPlanChartData.push({
+        category: 'Cumulative',
+        name: 'Cumulative To-Date',
+        subLabel: 'Current Live Cumulative',
+        periodLabel: 'To-Date',
+        Contractor: cVal,
+        ERA: eVal,
+        Actual: aVal,
+        unit: 'Km',
+      });
+    } else {
+      const histItem = historyList.find(h => h.id === selectedCumulativeSource);
+      if (histItem) {
+        const cVal = Number((histItem.contractorTodate ?? 0).toFixed(2));
+        const eVal = Number((histItem.eraTodate ?? 0).toFixed(2));
+        const aVal = Number((histItem.actualTodate ?? 0).toFixed(2));
+        progressPlanChartData.push({
+          category: 'Cumulative',
+          name: `Cum (${histItem.monthLabel})`,
+          subLabel: `Archived To-Date at ${histItem.monthLabel}`,
+          periodLabel: `Cum To-Date at ${histItem.monthLabel}`,
+          Contractor: cVal,
+          ERA: eVal,
+          Actual: aVal,
+          unit: 'Km',
+        });
+      }
+    }
   }
 
   let origStop = false;
@@ -2246,13 +2331,60 @@ export default function DashboardView({
         <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-4 rounded-2xl shadow-sm space-y-3 min-w-0">
           <div className="flex flex-col gap-3 border-b border-slate-100 dark:border-slate-700/50 pb-3">
             <div className="flex justify-between items-center flex-wrap gap-2">
-              <span className="text-xs font-bold text-slate-800 dark:text-zinc-150">Progress Comparison</span>
+              <div className="flex items-center gap-2">
+                <BarChart3 className="w-4 h-4 text-blue-500" />
+                <span className="text-xs font-bold text-slate-800 dark:text-zinc-150">Progress Comparison</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-semibold">
+                  Unit: Km
+                </span>
+              </div>
+
+              {/* Quick Sync All to Milestone Selector */}
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400 hidden sm:inline">Sync Period:</span>
+                <div className="relative min-w-[140px]">
+                  <select
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (!val) return;
+                      setSelectedMonthSource(val);
+                      setSelectedQuarterSource(val);
+                      setSelectedEfySource(val);
+                      setSelectedCumulativeSource(val);
+                    }}
+                    value={
+                      (selectedMonthSource === selectedQuarterSource &&
+                       selectedMonthSource === selectedEfySource &&
+                       selectedMonthSource === selectedCumulativeSource)
+                        ? selectedMonthSource
+                        : ''
+                    }
+                    className="w-full bg-blue-50/80 dark:bg-slate-900 text-[10px] font-bold border border-blue-200 dark:border-slate-700 text-blue-700 dark:text-blue-400 rounded-lg px-2 py-1 pr-6 cursor-pointer appearance-none focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  >
+                    <option value="" disabled>⚡ Sync All Pillars...</option>
+                    <option value="current">Current / Live Active</option>
+                    {(project.progressPlanHistory || []).map(hist => (
+                      <option key={`sync-${hist.id}`} value={hist.id}>
+                        {hist.monthLabel} (EFY {hist.efyLabel})
+                      </option>
+                    ))}
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-1.5 text-blue-500">
+                    <ChevronDown className="h-3 w-3" />
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
               {/* 1. Month Source Dropdown */}
               <div className="flex flex-col gap-1">
-                <label className="text-[9px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-wider">Month</label>
+                <div className="flex items-center justify-between">
+                  <label className="text-[9px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-wider">Month</label>
+                  <span className="text-[8.5px] font-mono text-slate-400">
+                    {selectedMonthSource === 'current' ? 'Live' : (project.progressPlanHistory?.find(h => h.id === selectedMonthSource)?.monthLabel || 'Archived')}
+                  </span>
+                </div>
                 <div className="relative">
                   <select
                     value={selectedMonthSource}
@@ -2273,7 +2405,12 @@ export default function DashboardView({
 
               {/* 2. Quarter Source Dropdown */}
               <div className="flex flex-col gap-1">
-                <label className="text-[9px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-wider">Quarter</label>
+                <div className="flex items-center justify-between">
+                  <label className="text-[9px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-wider">Quarter</label>
+                  <span className="text-[8.5px] font-mono text-slate-400">
+                    {selectedQuarterSource === 'current' ? 'Live' : (project.progressPlanHistory?.find(h => h.id === selectedQuarterSource)?.quarterLabel || 'Archived')}
+                  </span>
+                </div>
                 <div className="relative">
                   <select
                     value={selectedQuarterSource}
@@ -2281,6 +2418,9 @@ export default function DashboardView({
                     className="w-full bg-slate-50 dark:bg-slate-900 text-[10px] font-bold border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 pr-6 cursor-pointer appearance-none text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   >
                     <option value="current">Current ({project.progressPlanLabels?.quarterLabel || 'Active'})</option>
+                    {(project.progressPlanHistory || []).map(hist => (
+                      <option key={hist.id} value={hist.id}>Archived: {hist.quarterLabel || `Qtr (${hist.monthLabel})`}</option>
+                    ))}
                     <option value="hide">🚫 Hide Quarter</option>
                   </select>
                   <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-1.5 text-slate-400">
@@ -2291,7 +2431,12 @@ export default function DashboardView({
 
               {/* 3. EFY Source Dropdown */}
               <div className="flex flex-col gap-1">
-                <label className="text-[9px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-wider">EFY</label>
+                <div className="flex items-center justify-between">
+                  <label className="text-[9px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-wider">EFY</label>
+                  <span className="text-[8.5px] font-mono text-slate-400">
+                    {selectedEfySource === 'current' ? `EFY ${project.progressPlanLabels?.efyLabel || 'Live'}` : `EFY ${project.progressPlanHistory?.find(h => h.id === selectedEfySource)?.efyLabel || ''}`}
+                  </span>
+                </div>
                 <div className="relative">
                   <select
                     value={selectedEfySource}
@@ -2312,14 +2457,22 @@ export default function DashboardView({
 
               {/* 4. Cumulative Source Dropdown */}
               <div className="flex flex-col gap-1">
-                <label className="text-[9px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-wider">Cumulative</label>
+                <div className="flex items-center justify-between">
+                  <label className="text-[9px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-wider">Cumulative</label>
+                  <span className="text-[8.5px] font-mono text-slate-400">
+                    {selectedCumulativeSource === 'current' ? 'To-Date' : (project.progressPlanHistory?.find(h => h.id === selectedCumulativeSource)?.monthLabel || 'Archived')}
+                  </span>
+                </div>
                 <div className="relative">
                   <select
                     value={selectedCumulativeSource}
                     onChange={(e) => setSelectedCumulativeSource(e.target.value)}
                     className="w-full bg-slate-50 dark:bg-slate-900 text-[10px] font-bold border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 pr-6 cursor-pointer appearance-none text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   >
-                    <option value="current">Show Cumulative</option>
+                    <option value="current">Current Cumulative</option>
+                    {(project.progressPlanHistory || []).map(hist => (
+                      <option key={hist.id} value={hist.id}>Archived Cum: {hist.monthLabel} ({hist.contractorTodate !== undefined ? hist.contractorTodate.toFixed(1) : ''} Km)</option>
+                    ))}
                     <option value="hide">🚫 Hide Cumulative</option>
                   </select>
                   <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-1.5 text-slate-400">
@@ -2330,22 +2483,77 @@ export default function DashboardView({
             </div>
           </div>
 
-          <div className="h-52 w-full min-w-0">
+          <div className="h-56 w-full min-w-0">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={progressPlanChartData} margin={{ top: 15, right: 15, left: 10, bottom: 10 }}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-slate-100/50 dark:stroke-slate-700/30" />
-                <XAxis dataKey="name" stroke="#94a3b8" tick={{ fontSize: 9 }} />
-                <YAxis stroke="#94a3b8" width={45} tick={{ fontSize: 9 }} unit="%" />
-                <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '10px' }} />
+              <BarChart data={progressPlanChartData} margin={{ top: 18, right: 15, left: 10, bottom: 10 }}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-slate-100/60 dark:stroke-slate-700/30" />
+                <XAxis dataKey="name" stroke="#94a3b8" tick={{ fontSize: 9, fill: '#64748b' }} />
+                <YAxis stroke="#94a3b8" width={45} tick={{ fontSize: 9, fill: '#64748b' }} unit=" Km" />
+                <Tooltip 
+                  content={({ active, payload, label }) => {
+                    if (!active || !payload || !payload.length) return null;
+                    const pData = payload[0]?.payload;
+                    const cVal = Number(pData?.Contractor ?? 0);
+                    const eVal = Number(pData?.ERA ?? 0);
+                    const aVal = Number(pData?.Actual ?? 0);
+                    const diffEra = aVal - eVal;
+                    const diffContractor = aVal - cVal;
+                    return (
+                      <div className="bg-slate-900/95 backdrop-blur-md text-white p-3 rounded-xl shadow-xl border border-slate-700/60 text-xs min-w-[220px] space-y-2">
+                        <div className="border-b border-slate-700 pb-1.5">
+                          <div className="font-extrabold text-blue-400 text-xs">{pData?.name || label}</div>
+                          {pData?.subLabel && <div className="text-[10px] text-slate-400">{pData.subLabel}</div>}
+                        </div>
+                        <div className="space-y-1.5 text-[11px]">
+                          <div className="flex justify-between items-center text-blue-300">
+                            <span className="flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />
+                              Contractor Plan:
+                            </span>
+                            <span className="font-mono font-bold">{cVal.toFixed(2)} Km</span>
+                          </div>
+                          <div className="flex justify-between items-center text-orange-300">
+                            <span className="flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-orange-500 inline-block" />
+                              ERA Milestone:
+                            </span>
+                            <span className="font-mono font-bold">{eVal.toFixed(2)} Km</span>
+                          </div>
+                          <div className="flex justify-between items-center text-emerald-300 font-extrabold">
+                            <span className="flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
+                              Actual Completed:
+                            </span>
+                            <span className="font-mono">{aVal.toFixed(2)} Km</span>
+                          </div>
+                        </div>
+                        {project.lengthKm > 0 && (
+                          <div className="pt-1.5 border-t border-slate-800 text-[10px] text-slate-400 flex justify-between">
+                            <span>Actual / Total ({project.lengthKm} Km):</span>
+                            <span className="font-bold text-emerald-400 font-mono">
+                              {((aVal / project.lengthKm) * 100).toFixed(2)}%
+                            </span>
+                          </div>
+                        )}
+                        <div className="pt-1 border-t border-slate-800 flex justify-between text-[10px]">
+                          <span className="text-slate-400">Actual vs ERA:</span>
+                          <span className={`font-mono font-bold ${diffEra >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            {diffEra >= 0 ? `+${diffEra.toFixed(2)}` : diffEra.toFixed(2)} Km
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  }}
+                />
                 <Legend iconSize={8} wrapperStyle={{ fontSize: '10px' }} />
                 <Bar dataKey="Contractor" fill="#3b82f6" radius={[4, 4, 0, 0]}>
-                  <LabelList dataKey="Contractor" position="top" formatter={(v: any) => v !== null && v !== undefined ? Number(v).toFixed(2) : ''} style={{ fontSize: '7.5px', fill: '#64748b', fontWeight: 'bold' }} />
+                  <LabelList dataKey="Contractor" position="top" formatter={(v: any) => v !== null && v !== undefined && Number(v) > 0 ? `${Number(v).toFixed(2)}` : ''} style={{ fontSize: '8px', fill: '#3b82f6', fontWeight: 'bold' }} />
                 </Bar>
                 <Bar dataKey="ERA" fill="#f97316" radius={[4, 4, 0, 0]}>
-                  <LabelList dataKey="ERA" position="top" formatter={(v: any) => v !== null && v !== undefined ? Number(v).toFixed(2) : ''} style={{ fontSize: '7.5px', fill: '#64748b', fontWeight: 'bold' }} />
+                  <LabelList dataKey="ERA" position="top" formatter={(v: any) => v !== null && v !== undefined && Number(v) > 0 ? `${Number(v).toFixed(2)}` : ''} style={{ fontSize: '8px', fill: '#ea580c', fontWeight: 'bold' }} />
                 </Bar>
                 <Bar dataKey="Actual" fill="#10b981" radius={[4, 4, 0, 0]}>
-                  <LabelList dataKey="Actual" position="top" formatter={(v: any) => v !== null && v !== undefined ? Number(v).toFixed(2) : ''} style={{ fontSize: '7.5px', fill: '#64748b', fontWeight: 'bold' }} />
+                  <LabelList dataKey="Actual" position="top" formatter={(v: any) => v !== null && v !== undefined && Number(v) > 0 ? `${Number(v).toFixed(2)}` : ''} style={{ fontSize: '8px', fill: '#059669', fontWeight: 'bold' }} />
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
