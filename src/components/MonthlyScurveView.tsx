@@ -12,6 +12,7 @@ import {
   Legend 
 } from 'recharts';
 import { Project, MonthlyProgress } from '../types';
+import { resolveCurrentMonthKey, isSameMonth } from '../lib/monthlySync';
 
 interface MonthlyScurveViewProps {
   project: Project;
@@ -20,10 +21,11 @@ interface MonthlyScurveViewProps {
 
 export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyScurveViewProps) {
   const [months, setMonths] = useState<MonthlyProgress[]>(project.monthly || []);
+  const currentMonthKey = resolveCurrentMonthKey(project);
 
   React.useEffect(() => {
     setMonths(project.monthly || []);
-  }, [project.id]);
+  }, [project.id, project.monthly]);
 
   const convertToInputMonthFormat = (monthStr: string): string => {
     try {
@@ -335,9 +337,27 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
                   return (v !== '' && v !== null && v !== undefined && !isNaN(Number(v)) && Number(v) >= 100);
                 });
 
+                const isCurrentMonthRow = isSameMonth(m.month, currentMonthKey);
+
                 return (
-                  <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/10 border-b border-slate-100 dark:border-slate-800">
-                    <td className="p-3 text-center font-bold text-slate-400 font-mono">{idx + 1}</td>
+                  <tr 
+                    key={idx} 
+                    className={`border-b transition-colors ${
+                      isCurrentMonthRow 
+                        ? 'bg-blue-50/50 dark:bg-blue-950/20 border-blue-200/60 dark:border-blue-900/40' 
+                        : 'hover:bg-slate-50/50 dark:hover:bg-slate-900/10 border-slate-100 dark:border-slate-800'
+                    }`}
+                  >
+                    <td className="p-3 text-center font-bold text-slate-400 font-mono">
+                      <div className="flex flex-col items-center gap-0.5">
+                        <span>{idx + 1}</span>
+                        {isCurrentMonthRow && (
+                          <span className="text-[8px] bg-blue-500 text-white font-bold px-1 py-0.2 rounded leading-tight">
+                            LIVE
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td className="p-3">
                       <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                         {/* Text editing field */}
@@ -346,7 +366,11 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
                             type="text"
                             value={m.month || ''}
                             onChange={(e) => handleFieldChange(idx, 'month', e.target.value)}
-                            className="w-full bg-slate-50 dark:bg-slate-900/60 border border-slate-350 dark:border-slate-755 text-xs text-slate-850 dark:text-zinc-50 pl-2.5 pr-8 py-1 rounded-lg outline-none focus:border-blue-500 dark:focus:border-blue-450 focus:ring-2 focus:ring-blue-500/20 focus:bg-white dark:focus:bg-slate-950 transition-all duration-150 h-8"
+                            className={`w-full bg-slate-50 dark:bg-slate-900/60 border text-xs text-slate-850 dark:text-zinc-50 pl-2.5 pr-8 py-1 rounded-lg outline-none focus:ring-2 transition-all duration-150 h-8 ${
+                              isCurrentMonthRow 
+                                ? 'border-blue-300 dark:border-blue-700 focus:border-blue-500 focus:ring-blue-500/20 font-bold' 
+                                : 'border-slate-350 dark:border-slate-755 focus:border-blue-500 focus:ring-blue-500/20'
+                            }`}
                             placeholder="Dec-20"
                             title="Format: Month-Year (e.g., Dec-20)"
                           />

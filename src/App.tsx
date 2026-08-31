@@ -194,6 +194,7 @@ import {
 } from './lib/apiSync';
 import { getAccessToken } from './lib/auth';
 import { safeSetItem } from './lib/storage';
+import { updateMonthlyWithProgress, getLastActualProgress, resolveCurrentMonthKey } from './lib/monthlySync';
 import { collection, onSnapshot, doc } from 'firebase/firestore';
 import { db } from './lib/firebase';
 
@@ -2173,39 +2174,20 @@ let isBatchSyncRunning = false;
     };
 
     // 1. S-Curve & Overall Physical Progress automatic bidirectional integration
-    const monthLabel = updatedProject.progressPlanLabels?.monthLabel || 'Feb 2026';
-    const parts = monthLabel.trim().split(/\s+/);
-    let targetMonthKey = '';
-    if (parts.length === 2) {
-      const mon = parts[0].substring(0, 3);
-      const yr = parts[1].substring(2);
-      targetMonthKey = `${mon}-${yr}`; // e.g., 'Feb-26'
-    }
-
-    if (fields.physicalProgress !== undefined && updatedProject.monthly) {
-      // If user updated physicalProgress, update the corresponding S-Curve month's actual value
-      updatedProject.monthly = updatedProject.monthly.map(m => {
-        if (m.month.toLowerCase() === targetMonthKey.toLowerCase()) {
-          return { ...m, actual: fields.physicalProgress! };
-        }
-        return m;
-      });
-
-      // ALSO: Apply that change on the S-Curve Analysis (Monthly Cumulative %) table last row and last column
-      if (updatedProject.monthly.length > 0) {
-        const lastIdx = updatedProject.monthly.length - 1;
-        updatedProject.monthly = updatedProject.monthly.map((m, idx) => {
-          if (idx === lastIdx) {
-            return { ...m, actual: fields.physicalProgress! };
-          }
-          return m;
-        });
+    if (fields.physicalProgress !== undefined) {
+      const syncResult = updateMonthlyWithProgress(currentProject, fields.physicalProgress);
+      if (syncResult.error) {
+        alert(`Progress Update Validation Notice:\n\n${syncResult.error}`);
+        return;
       }
+      updatedProject.monthly = syncResult.updatedMonthly;
+      updatedProject.physicalProgress = fields.physicalProgress;
     } else if (fields.monthly !== undefined) {
-      // ALWAYS auto link: if user updated S-Curve, update overall physicalProgress with the last S-Curve month's actual value
-      if (updatedProject.monthly && updatedProject.monthly.length > 0) {
-        const lastIdx = updatedProject.monthly.length - 1;
-        updatedProject.physicalProgress = updatedProject.monthly[lastIdx].actual;
+      // Keep overall physicalProgress synchronized with the latest valid Actual value in the monthly table
+      updatedProject.monthly = fields.monthly;
+      const lastActual = getLastActualProgress(fields.monthly);
+      if (lastActual.lastValue !== null) {
+        updatedProject.physicalProgress = lastActual.lastValue;
       }
     }
 

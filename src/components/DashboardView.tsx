@@ -46,6 +46,7 @@ import CircularGauge from './CircularGauge';
 import BillSummaryPriceAdjChart from './BillSummaryPriceAdjChart';
 import { buildKpiHierarchy, getIntegratedKpiAllocated, parseStation } from '../data/defaultProject';
 import { calculateProjectEvm } from '../lib/evmCalculations';
+import { resolveCurrentMonthKey, getLastActualProgress, isSameMonth } from '../lib/monthlySync';
 import { QtyItem } from '../types';
 
 interface CriticalQtyAnalysis {
@@ -190,13 +191,41 @@ export default function DashboardView({
   const [selectedEfySource, setSelectedEfySource] = useState<string>('current');
   const [selectedCumulativeSource, setSelectedCumulativeSource] = useState<string>('current');
   const [physicalInput, setPhysicalInput] = useState(project.physicalProgress.toString());
+  const [progressError, setProgressError] = useState<string | null>(null);
+  const [progressSuccess, setProgressSuccess] = useState<string | null>(null);
   const [isKpiHistoryOpen, setIsKpiHistoryOpen] = useState(false);
   const [dashboardRoadType, setDashboardRoadType] = useState<'combined' | 'main' | 'spur'>('combined');
+
+  const currentMonthKey = resolveCurrentMonthKey(project);
+  const lastActualInfo = getLastActualProgress(project.monthly, currentMonthKey);
 
   // Synchronize local input state with project prop updates
   React.useEffect(() => {
     setPhysicalInput(project.physicalProgress.toString());
+    setProgressError(null);
   }, [project.physicalProgress]);
+
+  const handleApplyPhysical = () => {
+    const val = parseFloat(physicalInput);
+    if (isNaN(val)) return;
+
+    if (lastActualInfo.lastValue !== null && val < lastActualInfo.lastValue) {
+      const errMsg = `Project Progress (${val.toFixed(2)}%) must be greater than or equal to the last value in the Actual column (${lastActualInfo.lastValue.toFixed(2)}% for ${lastActualInfo.lastMonth || 'prior month'}) of the monthly cumulative table.`;
+      setProgressError(errMsg);
+      setProgressSuccess(null);
+      return;
+    }
+
+    setProgressError(null);
+    const monthExists = (project.monthly || []).some(m => isSameMonth(m.month, currentMonthKey));
+    setProgressSuccess(
+      monthExists
+        ? `Updated ${currentMonthKey} Actual column to ${val.toFixed(2)}%`
+        : `Added ${currentMonthKey} row with Actual = ${val.toFixed(2)}%`
+    );
+    setTimeout(() => setProgressSuccess(null), 4000);
+    onSetPhysical(val);
+  };
 
   // If the active project changes, reset other default selected dropdown states as well
   React.useEffect(() => {
@@ -1766,24 +1795,48 @@ export default function DashboardView({
           />
           {/* Inline Editor (Disabled when project is closed) */}
           {!isClosed && (
-            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 flex items-center bg-white/90 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 px-3 py-1.5 rounded-full shadow-lg transition duration-200 z-10 gap-1 text-[10px]">
-              <input 
-                type="number"
-                step="0.1"
-                value={physicalInput}
-                onChange={(e) => setPhysicalInput(e.target.value)}
-                className="w-12 border rounded text-center px-1 py-0.5 bg-white dark:bg-slate-900 border-slate-300 font-bold"
-              />
-              <span className="font-bold text-slate-400">%</span>
-              <button 
-                onClick={() => {
-                  const val = parseFloat(physicalInput);
-                  if (!isNaN(val)) onSetPhysical(val);
-                }}
-                className="bg-blue-600 dark:bg-blue-500 hover:bg-blue-700 text-white font-bold px-2.5 py-0.5 rounded-full transition"
-              >
-                Set
-              </button>
+            <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 flex flex-col items-center bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border border-slate-200 dark:border-slate-700 px-3 py-1.5 rounded-2xl shadow-xl transition-all duration-200 z-20 gap-1 text-[10px] min-w-[190px]">
+              <div className="flex items-center justify-center gap-1.5 w-full">
+                <input 
+                  type="number"
+                  step="0.01"
+                  min={lastActualInfo.lastValue !== null ? lastActualInfo.lastValue : 0}
+                  max={100}
+                  value={physicalInput}
+                  onChange={(e) => {
+                    setPhysicalInput(e.target.value);
+                    if (progressError) setProgressError(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleApplyPhysical();
+                  }}
+                  className="w-16 border rounded-lg text-center px-1.5 py-0.5 bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 font-bold text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="0.00"
+                />
+                <span className="font-bold text-slate-400">%</span>
+                <button 
+                  onClick={handleApplyPhysical}
+                  className="bg-blue-600 dark:bg-blue-500 hover:bg-blue-700 text-white font-bold px-3 py-1 rounded-lg transition shadow-sm cursor-pointer active:scale-95"
+                >
+                  Set
+                </button>
+              </div>
+              <div className="flex items-center justify-between w-full px-1 text-[9px] text-slate-500 dark:text-slate-400 font-medium">
+                <span>Month: <strong className="text-slate-700 dark:text-slate-200">{currentMonthKey}</strong></span>
+                {lastActualInfo.lastValue !== null && (
+                  <span>Min: <strong className="text-slate-700 dark:text-slate-200">{lastActualInfo.lastValue.toFixed(2)}%</strong></span>
+                )}
+              </div>
+              {progressError && (
+                <div className="text-[9px] text-rose-600 dark:text-rose-400 font-semibold text-center leading-tight bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 p-1 rounded-md mt-0.5 max-w-[220px]">
+                  {progressError}
+                </div>
+              )}
+              {progressSuccess && (
+                <div className="text-[9px] text-emerald-600 dark:text-emerald-400 font-semibold text-center leading-tight bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/50 p-1 rounded-md mt-0.5 max-w-[220px]">
+                  {progressSuccess}
+                </div>
+              )}
             </div>
           )}
         </div>
