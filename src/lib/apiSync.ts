@@ -204,22 +204,62 @@ export function normalizeProject(p: any): Project {
 }
 
 /**
+ * Fetches all tombstoned / permanently deleted project IDs from Firestore and local cache.
+ */
+export async function safeFetchDeletedProjectIds(): Promise<string[]> {
+  const localSet = new Set<string>();
+  try {
+    const delStr = localStorage.getItem('era_deleted_project_ids') || '[]';
+    const parsed: string[] = JSON.parse(delStr);
+    if (Array.isArray(parsed)) {
+      parsed.forEach(id => { if (id && typeof id === 'string') localSet.add(id); });
+    }
+  } catch {}
+
+  try {
+    const querySnapshot = await getDocs(collection(db, 'deleted_projects')).catch(() => null);
+    if (querySnapshot && !querySnapshot.empty) {
+      querySnapshot.forEach(docSnap => {
+        const data = docSnap.data();
+        if (data && data.id) localSet.add(data.id);
+        if (docSnap.id) localSet.add(docSnap.id);
+      });
+    }
+  } catch (e) {
+    console.warn('Firestore fetch deleted projects notice:', e);
+  }
+
+  const result = Array.from(localSet);
+  try {
+    localStorage.setItem('era_deleted_project_ids', JSON.stringify(result));
+  } catch {}
+  return result;
+}
+
+/**
  * Robust, self-healing project sync function that handles Firebase Cloud Firestore & REST Backend Sync.
  */
 export async function safeSyncProject(proj: Project, isBackgroundQueueSync = false): Promise<void> {
-  if (!proj.lastModifiedAt) {
-    proj.lastModifiedAt = new Date().toISOString();
-  }
+  if (!proj || !proj.id) return;
 
-  // Clear from deleted IDs set if re-created or updated
+  // Block sync if this project has been permanently deleted
   try {
     const deletedStr = localStorage.getItem('era_deleted_project_ids') || '[]';
     const deletedIds: string[] = JSON.parse(deletedStr);
     if (deletedIds.includes(proj.id)) {
-      const filtered = deletedIds.filter(id => id !== proj.id);
-      localStorage.setItem('era_deleted_project_ids', JSON.stringify(filtered));
+      console.warn(`Sync blocked: Project "${proj.name || proj.id}" (ID: ${proj.id}) is permanently deleted.`);
+      // Clean from offline queue if accidentally present
+      const queueStr = localStorage.getItem('era_offline_sync_queue') || '[]';
+      const queue: Project[] = JSON.parse(queueStr);
+      const filtered = queue.filter(p => p.id !== proj.id);
+      localStorage.setItem('era_offline_sync_queue', JSON.stringify(filtered));
+      return;
     }
   } catch {}
+
+  if (!proj.lastModifiedAt) {
+    proj.lastModifiedAt = new Date().toISOString();
+  }
 
   // Emit event for Local Mutation Listener to pick up
   if (typeof window !== 'undefined') {
@@ -325,9 +365,12 @@ export async function safeSyncProject(proj: Project, isBackgroundQueueSync = fal
 
 /**
  * Deletes a project from standalone Express backend and Firestore.
+ * Universally tombstones the project so all connected users and devices remove it in real time.
  */
-export async function safeDeleteProject(id: string): Promise<void> {
-  // Store deleted ID locally so real-time listeners don't resurrect it
+export async function safeDeleteProject(id: string, projectName?: string, deletedBy?: string): Promise<void> {
+  if (!id) return;
+
+  // 1. Store deleted ID locally so real-time listeners and sync daemons don't resurrect it
   try {
     const deletedStr = localStorage.getItem('era_deleted_project_ids') || '[]';
     const deletedIds: string[] = JSON.parse(deletedStr);
@@ -341,34 +384,86 @@ export async function safeDeleteProject(id: string): Promise<void> {
     const queue: Project[] = JSON.parse(queueStr);
     const filteredQueue = queue.filter(p => p.id !== id);
     localStorage.setItem('era_offline_sync_queue', JSON.stringify(filteredQueue));
+
+    // Clean from local cached projects
+    const projStr = localStorage.getItem('era_proj_v28');
+    if (projStr) {
+      const projs: Project[] = JSON.parse(projStr);
+      if (Array.isArray(projs)) {
+        const filteredProjs = projs.filter(p => p.id !== id);
+        localStorage.setItem('era_proj_v28', JSON.stringify(filteredProjs));
+      }
+    }
+
+    // Clear active selection if viewing this deleted project
+    if (localStorage.getItem('era_current_project_id') === id) {
+      localStorage.removeItem('era_current_project_id');
+    }
   } catch (err) {
     console.warn('Failed to track deleted project ID locally:', err);
   }
 
+  // 2. Broadcast multi-tab and local window events
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('local_project_mutated'));
+    window.dispatchEvent(new CustomEvent('project_globally_deleted', { detail: { id, projectName } }));
+    try {
+      if ('BroadcastChannel' in window) {
+        const bc = new BroadcastChannel('era_broadcast_channel');
+        bc.postMessage({ type: 'PROJECT_DELETED', id, projectName, timestamp: Date.now() });
+        bc.close();
+      }
+    } catch {}
   }
 
   recordSyncLog({
     recordType: 'project',
     recordId: id,
     status: 'deleted',
-    details: `Deleted project ID ${id}`
+    details: `Permanently deleted project "${projectName || id}" from system`
   });
 
   const syncPromises: Promise<any>[] = [];
 
-  // Delete from Firestore
+  // 3. Firestore Tombstone & Permanent Document Deletion
   if (!isSyncSuspended()) {
+    // Record in deleted_projects tombstone collection for universal multi-user synchronization
+    syncPromises.push(
+      setDoc(doc(db, 'deleted_projects', id), {
+        id,
+        projectName: projectName || '',
+        deletedAt: new Date().toISOString(),
+        deletedBy: deletedBy || 'Administrator'
+      }, { merge: true }).catch(err => {
+        handleFsError(err);
+        console.warn('Firestore write deleted_project tombstone notice:', err);
+      })
+    );
+
+    // Delete project document from projects collection
     syncPromises.push(
       deleteDoc(doc(db, 'projects', id)).catch(fsErr => {
         handleFsError(fsErr);
         console.warn('Firestore delete project notice:', fsErr);
       })
     );
+
+    // Clean up any pending variance approval documents tied to this deleted project
+    syncPromises.push(
+      getDocs(collection(db, 'approvals')).then(snap => {
+        if (!snap.empty) {
+          snap.forEach(docSnap => {
+            const data = docSnap.data();
+            if (data && data.projectId === id) {
+              deleteDoc(doc(db, 'approvals', docSnap.id)).catch(() => {});
+            }
+          });
+        }
+      }).catch(() => {})
+    );
   }
 
-  // Delete from relational REST API backend if active
+  // 4. Delete from relational REST API backend if active
   syncPromises.push(
     fetch(`/api/projects/${id}`, { method: 'DELETE' })
       .then(res => {
@@ -386,6 +481,10 @@ export async function safeDeleteProject(id: string): Promise<void> {
  * Fetches all synchronized projects from standalone Express backend or Firestore.
  */
 export async function safeFetchProjects(): Promise<Project[] | null> {
+  // Always fetch latest deleted project IDs first to guarantee zero resurrection
+  const deletedIds = await safeFetchDeletedProjectIds();
+  const deletedSet = new Set(deletedIds);
+
   let fetched: Project[] | null = null;
   try {
     const response = await fetch('/api/projects/sync', {
@@ -395,7 +494,9 @@ export async function safeFetchProjects(): Promise<Project[] | null> {
       const json = await response.json();
       if (json && json.success && Array.isArray(json.data) && json.data.length > 0) {
         console.log('Successfully fetched projects from backend REST API');
-        fetched = json.data.map((p: any) => normalizeProject(p));
+        fetched = json.data
+          .filter((p: any) => p && p.id && !deletedSet.has(p.id))
+          .map((p: any) => normalizeProject(p));
       }
     }
   } catch (err: any) {
@@ -408,7 +509,9 @@ export async function safeFetchProjects(): Promise<Project[] | null> {
       const fsProjects: Project[] = [];
       querySnapshot.forEach(docSnap => {
         const data = docSnap.data() as Project;
-        if (data && data.id) fsProjects.push(normalizeProject(data));
+        if (data && data.id && !deletedSet.has(data.id)) {
+          fsProjects.push(normalizeProject(data));
+        }
       });
       if (fsProjects.length > 0) {
         if (!fetched) {
@@ -416,8 +519,11 @@ export async function safeFetchProjects(): Promise<Project[] | null> {
         } else {
           // Merge Firestore projects into fetched projects
           const map = new Map<string, Project>();
-          fetched.forEach(p => map.set(p.id, p));
+          fetched.forEach(p => {
+            if (!deletedSet.has(p.id)) map.set(p.id, p);
+          });
           fsProjects.forEach(p => {
+            if (deletedSet.has(p.id)) return;
             const existing = map.get(p.id);
             if (!existing) {
               map.set(p.id, p);
@@ -429,7 +535,7 @@ export async function safeFetchProjects(): Promise<Project[] | null> {
               }
             }
           });
-          fetched = Array.from(map.values());
+          fetched = Array.from(map.values()).filter(p => !deletedSet.has(p.id));
         }
       }
     }
@@ -437,7 +543,7 @@ export async function safeFetchProjects(): Promise<Project[] | null> {
     console.warn('Firestore fetch projects notice:', e);
   }
 
-  return fetched;
+  return fetched ? fetched.filter(p => !deletedSet.has(p.id)) : null;
 }
 
 export async function safeSaveSingleUser(user: AppUser): Promise<void> {

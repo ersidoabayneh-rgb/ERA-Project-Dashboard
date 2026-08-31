@@ -29,6 +29,11 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    // Deleted Projects collection for universal real-time deletion
+    match /deleted_projects/{deletedProjectId} {
+      allow read, write: if true;
+    }
+
     // Users collection
     match /users/{userId} {
       allow read, write: if true;

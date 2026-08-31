@@ -173,6 +173,7 @@ import {
   safeSyncProject, 
   safeDeleteProject, 
   safeFetchProjects, 
+  safeFetchDeletedProjectIds,
   safeSyncUsers, 
   safeSaveSingleUser, 
   safeDeleteUser, 
@@ -1213,15 +1214,77 @@ let isBatchSyncRunning = false;
     };
 
     // Real-time synchronization powered directly by Cloud Firestore client listeners
-    // (Local WS/SSE backend stream initialization omitted for client-side deployment)
-
-    // Subscribe to real-time Firestore snapshot listeners across all collections
     let unsubscribeUsersListener: (() => void) | null = null;
     let unsubscribeProjectsListener: (() => void) | null = null;
+    let unsubscribeDeletedProjectsListener: (() => void) | null = null;
     let unsubscribeApprovalsListener: (() => void) | null = null;
     let unsubscribeConfigListener: (() => void) | null = null;
 
+    // Helper to immediately purge any deleted projects from memory, local storage, queues, and active view across all clients
+    const applyGlobalProjectDeletions = (deletedIds: string[]) => {
+      if (!deletedIds || deletedIds.length === 0) return;
+      const delSet = new Set(deletedIds);
+
+      // 1. Update local storage deleted IDs tombstone ledger
+      try {
+        const existingStr = localStorage.getItem('era_deleted_project_ids') || '[]';
+        const existingIds: string[] = JSON.parse(existingStr);
+        const union = Array.from(new Set([...existingIds, ...deletedIds]));
+        localStorage.setItem('era_deleted_project_ids', JSON.stringify(union));
+      } catch {}
+
+      // 2. Filter from offline sync queue
+      try {
+        const queueStr = localStorage.getItem('era_offline_sync_queue') || '[]';
+        const queue: Project[] = JSON.parse(queueStr);
+        const filteredQueue = queue.filter(p => !delSet.has(p.id));
+        localStorage.setItem('era_offline_sync_queue', JSON.stringify(filteredQueue));
+        setOfflineQueueLength(filteredQueue.length);
+      } catch {}
+
+      // 3. Purge from active projects state and localStorage cache
+      setProjects(prev => {
+        const filtered = prev.filter(p => !delSet.has(p.id));
+        safeSetItem('era_proj_v28', JSON.stringify(filtered));
+        return filtered;
+      });
+
+      // 4. Purge from pending approvals
+      setPendingApprovals(prev => {
+        const filtered = prev.filter(a => !delSet.has(a.projectId));
+        safeSetItem('era_appr_v28', JSON.stringify(filtered));
+        return filtered;
+      });
+
+      // 5. If any connected user is actively looking at one of the deleted projects, redirect immediately
+      if (currentProjectId && delSet.has(currentProjectId)) {
+        setCurrentProjectId(null);
+        setCurrentProject(null);
+        localStorage.removeItem('era_current_project_id');
+        setCurrentPage('projects');
+      }
+    };
+
     try {
+      // 1. Listen for real-time deletions across all users and devices
+      unsubscribeDeletedProjectsListener = onSnapshot(collection(db, 'deleted_projects'), (snapshot) => {
+        if (snapshot && !snapshot.empty) {
+          const remoteDeletedIds: string[] = [];
+          snapshot.forEach(docSnap => {
+            const data = docSnap.data();
+            if (data && data.id) remoteDeletedIds.push(data.id);
+            else if (docSnap.id) remoteDeletedIds.push(docSnap.id);
+          });
+          if (remoteDeletedIds.length > 0) {
+            applyGlobalProjectDeletions(remoteDeletedIds);
+          }
+        }
+      }, err => {
+        handleFsError(err);
+        console.warn('[Firestore Deleted Projects Listener Notice]:', err?.message || err);
+      });
+
+      // 2. Listen for registered users
       unsubscribeUsersListener = onSnapshot(collection(db, 'users'), (snapshot) => {
         if (snapshot && !snapshot.empty) {
           const liveUsers: User[] = [];
@@ -1236,45 +1299,57 @@ let isBatchSyncRunning = false;
         console.warn('[Firestore Users Listener Notice]:', err?.message || err);
       });
 
+      // 3. Listen for live projects changes
       unsubscribeProjectsListener = onSnapshot(collection(db, 'projects'), (snapshot) => {
-        if (snapshot && !snapshot.empty) {
+        if (snapshot) {
+          let deletedIds: string[] = [];
+          try {
+            const delStr = localStorage.getItem('era_deleted_project_ids') || '[]';
+            deletedIds = JSON.parse(delStr);
+          } catch {}
+          const delSet = new Set(deletedIds);
+
           const liveProjects: Project[] = [];
           snapshot.forEach(docSnap => {
             const data = docSnap.data() as Project;
-            if (data && data.id) liveProjects.push(syncProjectPayment(data));
+            if (data && data.id && !delSet.has(data.id)) {
+              liveProjects.push(syncProjectPayment(data));
+            }
           });
-          if (liveProjects.length > 0) {
-            setProjects(prev => {
-              let deletedIds: string[] = [];
-              try {
-                const delStr = localStorage.getItem('era_deleted_project_ids') || '[]';
-                deletedIds = JSON.parse(delStr);
-              } catch {}
-              const merged = [...prev];
-              liveProjects.forEach(inc => {
-                if (deletedIds.includes(inc.id)) return;
-                const idx = merged.findIndex(p => p.id === inc.id);
-                if (idx === -1) {
-                  merged.push(inc);
-                } else {
-                  const existingTime = merged[idx].lastModifiedAt ? new Date(merged[idx].lastModifiedAt!).getTime() : 0;
-                  const incTime = inc.lastModifiedAt ? new Date(inc.lastModifiedAt!).getTime() : 0;
-                  if (incTime >= existingTime) merged[idx] = inc;
-                }
-              });
-              const filtered = merged.filter(p => !deletedIds.includes(p.id));
-              setTimeout(() => {
-                safeSetItem('era_proj_v28', JSON.stringify(filtered));
-              }, 0);
-              return filtered;
-            });
+
+          // Check if any deleted projects were removed in snapshot changes
+          const removedDocIds = snapshot.docChanges()
+            .filter(change => change.type === 'removed')
+            .map(change => change.doc.id);
+          if (removedDocIds.length > 0) {
+            applyGlobalProjectDeletions(removedDocIds);
           }
+
+          setProjects(prev => {
+            const merged = [...prev.filter(p => !delSet.has(p.id))];
+            liveProjects.forEach(inc => {
+              const idx = merged.findIndex(p => p.id === inc.id);
+              if (idx === -1) {
+                merged.push(inc);
+              } else {
+                const existingTime = merged[idx].lastModifiedAt ? new Date(merged[idx].lastModifiedAt!).getTime() : 0;
+                const incTime = inc.lastModifiedAt ? new Date(inc.lastModifiedAt!).getTime() : 0;
+                if (incTime >= existingTime) merged[idx] = inc;
+              }
+            });
+            const filtered = merged.filter(p => !delSet.has(p.id));
+            setTimeout(() => {
+              safeSetItem('era_proj_v28', JSON.stringify(filtered));
+            }, 0);
+            return filtered;
+          });
         }
       }, err => {
         handleFsError(err);
         console.warn('[Firestore Projects Listener Notice]:', err?.message || err);
       });
 
+      // 4. Listen for approvals
       unsubscribeApprovalsListener = onSnapshot(collection(db, 'approvals'), (snapshot) => {
         if (snapshot && !snapshot.empty) {
           const liveApprovals: ApprovalRequest[] = [];
@@ -1283,9 +1358,16 @@ let isBatchSyncRunning = false;
             if (data && data.id) liveApprovals.push(data);
           });
           if (liveApprovals.length > 0) {
-            setPendingApprovals(liveApprovals);
+            let deletedIds: string[] = [];
+            try {
+              const delStr = localStorage.getItem('era_deleted_project_ids') || '[]';
+              deletedIds = JSON.parse(delStr);
+            } catch {}
+            const delSet = new Set(deletedIds);
+            const filteredApprovals = liveApprovals.filter(a => !delSet.has(a.projectId));
+            setPendingApprovals(filteredApprovals);
             setTimeout(() => {
-              safeSetItem('era_appr_v28', JSON.stringify(liveApprovals));
+              safeSetItem('era_appr_v28', JSON.stringify(filteredApprovals));
             }, 0);
           }
         }
@@ -1294,6 +1376,7 @@ let isBatchSyncRunning = false;
         console.warn('[Firestore Approvals Listener Notice]:', err?.message || err);
       });
 
+      // 5. Listen for taxonomy configuration
       unsubscribeConfigListener = onSnapshot(doc(db, 'config', 'taxonomy'), (docSnap) => {
         if (docSnap && docSnap.exists()) {
           const data = docSnap.data();
@@ -1405,6 +1488,7 @@ let isBatchSyncRunning = false;
     window.addEventListener('storage', handleStorageChange);
 
     let broadcastChannel: BroadcastChannel | null = null;
+    let eraChannel: BroadcastChannel | null = null;
     if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
       try {
         broadcastChannel = new BroadcastChannel('era_frontend_sync');
@@ -1412,7 +1496,25 @@ let isBatchSyncRunning = false;
           reloadLocalState();
         };
       } catch (e) {}
+
+      try {
+        eraChannel = new BroadcastChannel('era_broadcast_channel');
+        eraChannel.onmessage = (event) => {
+          if (event.data?.type === 'PROJECT_DELETED' && event.data.id) {
+            applyGlobalProjectDeletions([event.data.id]);
+          } else {
+            reloadLocalState();
+          }
+        };
+      } catch (e) {}
     }
+
+    const handleProjectGloballyDeleted = (e: any) => {
+      if (e.detail?.id) {
+        applyGlobalProjectDeletions([e.detail.id]);
+      }
+    };
+    window.addEventListener('project_globally_deleted', handleProjectGloballyDeleted);
 
     // Run initial sync on mount
     pollAllBackendData();
@@ -1435,14 +1537,21 @@ let isBatchSyncRunning = false;
       window.removeEventListener('offline', handleOffline);
       window.removeEventListener('sync_log_recorded', handleSyncLogRecorded);
       window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('project_globally_deleted', handleProjectGloballyDeleted);
       if (broadcastChannel) {
         try { broadcastChannel.close(); } catch (e) {}
+      }
+      if (eraChannel) {
+        try { eraChannel.close(); } catch (e) {}
       }
       if (eventSource) {
         try { eventSource.close(); } catch (e) {}
       }
       if (wsSocket) {
         try { wsSocket.close(); } catch (e) {}
+      }
+      if (unsubscribeDeletedProjectsListener) {
+        try { unsubscribeDeletedProjectsListener(); } catch (e) {}
       }
       if (unsubscribeUsersListener) {
         try { unsubscribeUsersListener(); } catch (e) {}
@@ -1644,19 +1753,18 @@ let isBatchSyncRunning = false;
     // Dynamic asynchronous initialization from Cloud Databases
     const initCloudDatabase = async () => {
       try {
+        const deletedIds = await safeFetchDeletedProjectIds();
+        const delSet = new Set(deletedIds);
+
+        // Filter local projects immediately so deleted projects never flash or reappear
+        const cleanLocal = normalizedLocal.filter(p => !delSet.has(p.id));
+
         const cloudData = await safeFetchProjects();
         if (cloudData && cloudData.length > 0) {
-          const normalizedCloud = cloudData.map(syncProjectPayment);
+          const normalizedCloud = cloudData.filter(p => !delSet.has(p.id)).map(syncProjectPayment);
           
-          // Merge local and cloud projects to ensure "once a project is added no loss of project data except for modification".
-          // We resolve conflicts by keeping the project with the newer modification timestamp, and we filter deleted project IDs.
-          let deletedIds: string[] = [];
-          try {
-            const delStr = localStorage.getItem('era_deleted_project_ids') || '[]';
-            deletedIds = JSON.parse(delStr);
-          } catch {}
-
-          const merged = [...normalizedLocal];
+          // Merge local and cloud projects ensuring conflict resolution with newer modification timestamp
+          const merged = [...cleanLocal];
           normalizedCloud.forEach(cloudProj => {
             const idx = merged.findIndex(p => p.id === cloudProj.id);
             if (idx === -1) {
@@ -1671,7 +1779,7 @@ let isBatchSyncRunning = false;
             }
           });
 
-          const filteredMerged = merged.filter(p => !deletedIds.includes(p.id));
+          const filteredMerged = merged.filter(p => !delSet.has(p.id));
 
           // Sync back local-only projects to the Cloud Databases (only non-deleted ones)
           const projectsToSyncBack = filteredMerged.filter(p => !normalizedCloud.some(cp => cp.id === p.id));
@@ -1683,13 +1791,8 @@ let isBatchSyncRunning = false;
           safeSetItem('era_proj_v28', JSON.stringify(filteredMerged));
           console.log('Successfully merged and initialized active contracts with cloud authoritative database.');
         } else {
-          console.log('Cloud database is empty or inaccessible. Keeping local baseline data.');
-          if (normalizedLocal && normalizedLocal.length > 0) {
-            console.log('Seeding baseline projects into Cloud Firestore database...');
-            normalizedLocal.forEach(p => {
-              safeSyncProject(p).catch(err => console.warn('Failed to seed baseline project to cloud:', err));
-            });
-          }
+          setProjects(cleanLocal);
+          safeSetItem('era_proj_v28', JSON.stringify(cleanLocal));
         }
       } catch (err) {
         console.warn('Cloud database offline or table does not exist yet. Relying on localStorage:', err);
@@ -1930,7 +2033,30 @@ let isBatchSyncRunning = false;
     setProjects(updatedProjects);
     safeSetItem('era_proj_v28', JSON.stringify(updatedProjects));
 
-    safeDeleteProject(id).catch(err => {
+    // Clean up any pending approvals referencing this deleted project
+    setPendingApprovals(prev => {
+      const filtered = prev.filter(a => a.projectId !== id);
+      safeSetItem('era_appr_v28', JSON.stringify(filtered));
+      return filtered;
+    });
+
+    // Clean up any user assignments for this project
+    setUsersListState(prev => {
+      const updatedUsers = prev.map(u => {
+        if (u.assignedProjects && u.assignedProjects.includes(id)) {
+          return {
+            ...u,
+            assignedProjects: u.assignedProjects.filter(pid => pid !== id)
+          };
+        }
+        return u;
+      });
+      safeSetItem('era_users_v28', JSON.stringify(updatedUsers));
+      safeSyncUsers(updatedUsers).catch(() => {});
+      return updatedUsers;
+    });
+
+    safeDeleteProject(id, projToDelete.name, currentUserObj?.name || currentUserObj?.username).catch(err => {
       console.warn('Cloud delete project warning:', err);
     });
 

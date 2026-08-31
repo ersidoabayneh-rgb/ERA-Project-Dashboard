@@ -58,12 +58,28 @@
         "pmos": { "type": "string", "maxLength": 500 },
         "directorates": { "type": "string", "maxLength": 500 }
       }
+    },
+    "DeletedProject": {
+      "title": "DeletedProject",
+      "description": "Log of permanently deleted project IDs to ensure real-time global removal across all client devices and users",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "deletedAt": { "type": "string", "maxLength": 100 },
+        "deletedBy": { "type": "string", "maxLength": 255 },
+        "projectName": { "type": "string", "maxLength": 255 }
+      },
+      "required": ["id"]
     }
   },
   "firestore": {
     "/projects/{projectId}": {
       "schema": { "$ref": "#/entities/Project" },
       "description": "Collection of road construction projects"
+    },
+    "/deleted_projects/{deletedProjectId}": {
+      "schema": { "$ref": "#/entities/DeletedProject" },
+      "description": "Collection of tombstoned project IDs for universal multi-user deletion synchronization"
     },
     "/users/{userId}": {
       "schema": { "$ref": "#/entities/User" },
