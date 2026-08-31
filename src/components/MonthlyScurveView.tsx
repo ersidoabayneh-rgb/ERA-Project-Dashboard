@@ -30,6 +30,97 @@ interface MonthlyScurveViewProps {
   onUpdateMonthly: (monthly: MonthlyProgress[]) => void;
 }
 
+interface EditableCellProps {
+  id?: string;
+  value: number | string | null | undefined;
+  disabled?: boolean;
+  min?: number;
+  max?: number;
+  step?: string;
+  className?: string;
+  placeholder?: string;
+  title?: string;
+  onCommit: (val: number | '') => void;
+}
+
+const EditableCell: React.FC<EditableCellProps> = ({
+  id,
+  value,
+  disabled,
+  min,
+  max,
+  step = '0.01',
+  className = '',
+  placeholder = '',
+  title = '',
+  onCommit,
+}) => {
+  const formatInitial = (v: number | string | null | undefined) => {
+    if (v === null || v === undefined || v === '') return '';
+    return String(v);
+  };
+
+  const [textValue, setTextValue] = useState<string>(() => formatInitial(value));
+  const [isFocused, setIsFocused] = useState<boolean>(false);
+
+  // Synchronize with external value changes when not actively typing/focused
+  React.useEffect(() => {
+    if (!isFocused) {
+      setTextValue(formatInitial(value));
+    }
+  }, [value, isFocused]);
+
+  const commitValue = () => {
+    const trimmed = textValue.trim();
+    if (trimmed === '') {
+      onCommit('');
+      return;
+    }
+    const num = parseFloat(trimmed);
+    if (isNaN(num)) {
+      setTextValue(formatInitial(value));
+      return;
+    }
+    const clamped = Math.min(100, Math.max(0, num));
+    onCommit(clamped);
+  };
+
+  return (
+    <input
+      id={id}
+      type="number"
+      step={step}
+      min={min}
+      max={max}
+      value={textValue}
+      disabled={disabled}
+      placeholder={placeholder}
+      title={title}
+      className={className}
+      onFocus={(e) => {
+        setIsFocused(true);
+        e.target.select();
+      }}
+      onChange={(e) => {
+        setTextValue(e.target.value);
+      }}
+      onBlur={() => {
+        setIsFocused(false);
+        commitValue();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.currentTarget.blur();
+        } else if (e.key === 'Escape') {
+          setTextValue(formatInitial(value));
+          setIsFocused(false);
+          e.currentTarget.blur();
+        }
+      }}
+    />
+  );
+};
+
 export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyScurveViewProps) {
   const currentMonthKey = resolveCurrentMonthKey(project);
   const [tableError, setTableError] = useState<string | null>(null);
@@ -657,14 +748,14 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
                       </div>
                     </td>
                     <td className="p-3">
-                      <input
-                        type="number"
+                      <EditableCell
+                        id={`orig-plan-input-${idx}`}
                         step="0.01"
                         min={prevOrig.prevValue !== null ? prevOrig.prevValue : 0}
                         max={100}
-                        value={m.originalPlan === null || m.originalPlan === undefined ? '' : m.originalPlan}
+                        value={m.originalPlan}
                         disabled={isOrigDisabled}
-                        onChange={(e) => handleFieldChange(idx, 'originalPlan', e.target.value)}
+                        onCommit={(val) => handleFieldChange(idx, 'originalPlan', val)}
                         placeholder={isOrigDisabled ? '-' : prevOrig.prevValue !== null && isCurrentMonthRow ? `≥${prevOrig.prevValue}%` : ''}
                         className={`w-full text-center font-mono font-bold text-xs px-2 py-1 rounded-lg outline-none transition-all duration-150 h-7 ${
                           isOrigDisabled 
@@ -683,14 +774,14 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
                       />
                     </td>
                     <td className="p-3">
-                      <input
-                        type="number"
+                      <EditableCell
+                        id={`rev-plan-input-${idx}`}
                         step="0.01"
                         min={prevRev.prevValue !== null ? prevRev.prevValue : 0}
                         max={100}
-                        value={m.revisedPlan === null || m.revisedPlan === undefined ? '' : m.revisedPlan}
+                        value={m.revisedPlan}
                         disabled={isRevDisabled}
-                        onChange={(e) => handleFieldChange(idx, 'revisedPlan', e.target.value)}
+                        onCommit={(val) => handleFieldChange(idx, 'revisedPlan', val)}
                         placeholder={isRevDisabled ? '-' : prevRev.prevValue !== null && isCurrentMonthRow ? `≥${prevRev.prevValue}%` : ''}
                         className={`w-full text-center font-mono font-bold text-xs px-2 py-1 rounded-lg outline-none transition-all duration-150 h-7 ${
                           isRevDisabled 
@@ -718,14 +809,14 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
                         </div>
                       ) : (
                         <div className="relative flex flex-col items-center">
-                          <input
-                            type="number"
+                          <EditableCell
+                            id={`actual-input-${idx}`}
                             step="0.01"
                             min={prevAct.prevValue !== null ? prevAct.prevValue : 0}
                             max={100}
-                            value={m.actual === null || m.actual === undefined ? '' : m.actual}
+                            value={m.actual}
                             disabled={isActDisabled}
-                            onChange={(e) => handleFieldChange(idx, 'actual', e.target.value)}
+                            onCommit={(val) => handleFieldChange(idx, 'actual', val)}
                             placeholder={isActDisabled ? '-' : prevAct.prevValue !== null && isCurrentMonthRow ? `≥${prevAct.prevValue}%` : ''}
                             className={`w-full text-center font-mono font-black text-xs px-2 py-1 rounded-lg outline-none transition-all duration-150 h-7 ${
                               isExceedingLive
