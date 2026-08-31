@@ -194,7 +194,7 @@ import {
 } from './lib/apiSync';
 import { getAccessToken } from './lib/auth';
 import { safeSetItem } from './lib/storage';
-import { updateMonthlyWithProgress, getLastActualProgress, resolveCurrentMonthKey, ensureLiveRowForActual } from './lib/monthlySync';
+import { updateMonthlyWithProgress, getLastActualProgress, getLiveActualValue, resolveCurrentMonthKey, ensureLiveRowForActual } from './lib/monthlySync';
 import { collection, onSnapshot, doc } from 'firebase/firestore';
 import { db } from './lib/firebase';
 
@@ -1725,6 +1725,16 @@ let isBatchSyncRunning = false;
       });
       finalProject.payment = syncedPayment;
     }
+
+    // Keep project.physicalProgress and monthly cumulative live actual 100% in sync
+    if (finalProject.monthly && finalProject.monthly.length > 0) {
+      const currentMonthKey = resolveCurrentMonthKey(finalProject);
+      const liveActual = getLiveActualValue(finalProject.monthly, currentMonthKey);
+      if (liveActual !== null) {
+        finalProject.physicalProgress = liveActual;
+      }
+    }
+
     return finalProject;
   };
 
@@ -2183,13 +2193,13 @@ let isBatchSyncRunning = false;
       updatedProject.monthly = syncResult.updatedMonthly;
       updatedProject.physicalProgress = fields.physicalProgress;
     } else if (fields.monthly !== undefined) {
-      // Keep overall physicalProgress synchronized with the latest valid Actual value in the monthly table
+      // Keep overall physicalProgress synchronized with the exact live Actual value in the monthly table
       const currentMonthKey = resolveCurrentMonthKey(currentProject);
-      const ensuredMonthly = ensureLiveRowForActual(fields.monthly, currentMonthKey, currentProject.physicalProgress);
+      const ensuredMonthly = ensureLiveRowForActual(fields.monthly, currentMonthKey);
       updatedProject.monthly = ensuredMonthly;
-      const lastActual = getLastActualProgress(ensuredMonthly);
-      if (lastActual.lastValue !== null) {
-        updatedProject.physicalProgress = lastActual.lastValue;
+      const liveActual = getLiveActualValue(ensuredMonthly, currentMonthKey);
+      if (liveActual !== null) {
+        updatedProject.physicalProgress = liveActual;
       }
     }
 

@@ -368,6 +368,29 @@ export function getLastActualProgress(
 }
 
 /**
+ * Resolves the numeric live actual progress from the monthly cumulative table.
+ * If the live row exists and has a valid numeric actual, returns that value.
+ * Otherwise returns the latest preceding valid numeric actual, or null.
+ */
+export function getLiveActualValue(
+  monthlyList: MonthlyProgress[] | undefined,
+  currentMonthKey: string
+): number | null {
+  if (!monthlyList || monthlyList.length === 0) return null;
+  const liveIdx = monthlyList.findIndex(m => isSameMonth(m.month, currentMonthKey));
+  if (liveIdx !== -1) {
+    const act = monthlyList[liveIdx]?.actual;
+    if (act !== '' && act !== null && act !== undefined && !isNaN(Number(act))) {
+      return Number(act);
+    }
+  }
+
+  // Fallback to the latest valid actual in the table
+  const last = getLastActualProgress(monthlyList);
+  return last.lastValue;
+}
+
+/**
  * Sorts monthly progress array in chronological order based on parsed month and year.
  */
 export function sortMonthlyChronologically(monthlyList: MonthlyProgress[]): MonthlyProgress[] {
