@@ -15,7 +15,7 @@ import { Project, MonthlyProgress } from '../types';
 import { 
   resolveCurrentMonthKey, 
   isSameMonth, 
-  ensureLiveRowIsLast, 
+  ensureLiveRowForActual, 
   insertMonthAboveLiveRow, 
   parseMonthKey, 
   MONTH_NAMES 
@@ -29,11 +29,11 @@ interface MonthlyScurveViewProps {
 export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyScurveViewProps) {
   const currentMonthKey = resolveCurrentMonthKey(project);
   const [months, setMonths] = useState<MonthlyProgress[]>(() => {
-    return ensureLiveRowIsLast(project.monthly || [], currentMonthKey, project.physicalProgress);
+    return ensureLiveRowForActual(project.monthly || [], currentMonthKey, project.physicalProgress);
   });
 
   React.useEffect(() => {
-    const ensured = ensureLiveRowIsLast(project.monthly || [], currentMonthKey, project.physicalProgress);
+    const ensured = ensureLiveRowForActual(project.monthly || [], currentMonthKey, project.physicalProgress);
     setMonths(ensured);
   }, [project.id, project.monthly, currentMonthKey, project.physicalProgress]);
 
@@ -73,6 +73,14 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
   };
 
   const handleFieldChange = (idx: number, field: keyof MonthlyProgress, value: any) => {
+    const liveIdx = months.findIndex(m => isSameMonth(m.month, currentMonthKey));
+    const isFutureRow = liveIdx !== -1 && idx > liveIdx;
+
+    // Prevent entering actuals on future months
+    if (field === 'actual' && isFutureRow) {
+      return;
+    }
+
     if (field !== 'month') {
       // If a previous row reached 100%, do not allow changes
       const isColDisabled = idx > 0 && months.slice(0, idx).some(m => {
@@ -106,8 +114,8 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
       return m;
     });
 
-    // Ensure the live row always remains the last row
-    updated = ensureLiveRowIsLast(updated, currentMonthKey, project.physicalProgress);
+    // Ensure the live row always remains the last row for the Actual column only
+    updated = ensureLiveRowForActual(updated, currentMonthKey, idx === liveIdx && field === 'actual' && parsedVal !== '' ? parsedVal : project.physicalProgress);
 
     setMonths(updated);
     onUpdateMonthly(updated);
@@ -140,8 +148,26 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
     }
 
     const newRow: MonthlyProgress = { month: nextName, originalPlan: '', revisedPlan: '', actual: '' };
-    // Insert new row directly above the live row so the live row always stays at the bottom
+    // Insert new row directly above the live row
     const updated = insertMonthAboveLiveRow(months, currentMonthKey, newRow, project.physicalProgress);
+    setMonths(updated);
+    onUpdateMonthly(updated);
+  };
+
+  const handleAddFuturePlanRow = () => {
+    // Add a future month row at the very end of the schedule (for Original/Revised Plan %)
+    let nextName = 'New Month';
+    if (months.length > 0 && months[months.length - 1]?.month) {
+      const parsed = parseMonthKey(months[months.length - 1].month);
+      if (parsed) {
+        const nextMIdx = (parsed.monthIndex + 1) % 12;
+        const nextYear = nextMIdx === 0 ? parsed.year + 1 : parsed.year;
+        nextName = `${MONTH_NAMES[nextMIdx]}-${(nextYear % 100).toString().padStart(2, '0')}`;
+      }
+    }
+
+    const newRow: MonthlyProgress = { month: nextName, originalPlan: '', revisedPlan: '', actual: '' };
+    const updated = ensureLiveRowForActual([...months, newRow], currentMonthKey, project.physicalProgress);
     setMonths(updated);
     onUpdateMonthly(updated);
   };
@@ -167,29 +193,35 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
     const newRow: MonthlyProgress = { month: nextName, originalPlan: '', revisedPlan: '', actual: '' };
     const copy = [...months];
     copy.splice(idx, 0, newRow);
-    const updated = ensureLiveRowIsLast(copy, currentMonthKey, project.physicalProgress);
+    const updated = ensureLiveRowForActual(copy, currentMonthKey, project.physicalProgress);
     setMonths(updated);
     onUpdateMonthly(updated);
   };
 
   const handleRemoveRow = () => {
     if (months.length === 0) return;
-    const isLiveAtEnd = isSameMonth(months[months.length - 1].month, currentMonthKey);
+    const liveIdx = months.findIndex(m => isSameMonth(m.month, currentMonthKey));
     let updated: MonthlyProgress[];
-    if (isLiveAtEnd && months.length > 1) {
-      // Remove the row immediately above the live row, preserving the live row at the bottom
-      updated = [...months.slice(0, months.length - 2), months[months.length - 1]];
+    if (liveIdx !== -1 && liveIdx < months.length - 1) {
+      // If there are future plan rows at the end, remove the last future plan row
+      updated = months.slice(0, -1);
+    } else if (liveIdx > 0) {
+      // Remove the row immediately above the live row
+      const copy = [...months];
+      copy.splice(liveIdx - 1, 1);
+      updated = copy;
     } else {
       updated = months.slice(0, -1);
     }
-    setMonths(updated);
-    onUpdateMonthly(updated);
+    const finalUpdated = ensureLiveRowForActual(updated, currentMonthKey, project.physicalProgress);
+    setMonths(finalUpdated);
+    onUpdateMonthly(finalUpdated);
   };
 
   const handleDeleteRow = (idx: number) => {
     if (months.length <= 1) return;
     const copy = months.filter((_, i) => i !== idx);
-    const updated = ensureLiveRowIsLast(copy, currentMonthKey, project.physicalProgress);
+    const updated = ensureLiveRowForActual(copy, currentMonthKey, project.physicalProgress);
     setMonths(updated);
     onUpdateMonthly(updated);
   };
@@ -263,22 +295,30 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
             S‑Curve Analysis (Monthly Cumulative %)
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Enter monthly cumulative targets. Any added month is placed above the live row — the bottom-most row is always the live tracking row.
+            Any month added to the cumulative table is placed above the live row. The last row with an Actual value is always the live row; Plan columns can extend into future months.
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5 self-start md:self-auto">
           <button
             onClick={handleAddRow}
-            title="Add a month row above the live tracking row"
+            title="Add a month row directly above the live tracking row"
             className="bg-blue-50 hover:bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-900/40 text-xs font-bold py-1.5 px-3 rounded-xl transition flex items-center gap-1 cursor-pointer border border-blue-200/60 dark:border-blue-800/40"
           >
             <Plus className="w-3.5 h-3.5" />
             Add Month Above Live
           </button>
           <button
+            onClick={handleAddFuturePlanRow}
+            title="Add a future planning month at the end of the schedule (for Original & Revised Plan %)"
+            className="bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-700/60 dark:text-slate-200 dark:hover:bg-slate-700 text-xs font-bold py-1.5 px-3 rounded-xl transition flex items-center gap-1 cursor-pointer border border-slate-200 dark:border-slate-600"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Add Future Plan Month
+          </button>
+          <button
             onClick={handleRemoveRow}
-            title="Remove the month row directly above the live tracking row"
+            title="Remove month row"
             className="bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/20 dark:text-rose-455 px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer border border-rose-200/60 dark:border-rose-900/30"
           >
             <Trash2 className="w-3.5 h-3.5" />
@@ -389,6 +429,10 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
             </thead>
             <tbody className="divide-y divide-slate-55 dark:divide-slate-700/40">
               {months.map((m, idx) => {
+                const liveIdx = months.findIndex(item => isSameMonth(item.month, currentMonthKey));
+                const isCurrentMonthRow = isSameMonth(m.month, currentMonthKey);
+                const isFutureRow = liveIdx !== -1 && idx > liveIdx;
+
                 const isOrigDisabled = idx > 0 && months.slice(0, idx).some(prev => {
                   const v = prev.originalPlan;
                   return (v !== '' && v !== null && v !== undefined && !isNaN(Number(v)) && Number(v) >= 100);
@@ -397,12 +441,10 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
                   const v = prev.revisedPlan;
                   return (v !== '' && v !== null && v !== undefined && !isNaN(Number(v)) && Number(v) >= 100);
                 });
-                const isActDisabled = idx > 0 && months.slice(0, idx).some(prev => {
+                const isActDisabled = isFutureRow || (idx > 0 && months.slice(0, idx).some(prev => {
                   const v = prev.actual;
                   return (v !== '' && v !== null && v !== undefined && !isNaN(Number(v)) && Number(v) >= 100);
-                });
-
-                const isCurrentMonthRow = isSameMonth(m.month, currentMonthKey);
+                }));
 
                 return (
                   <tr 
@@ -410,17 +452,23 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
                     className={`border-b transition-colors ${
                       isCurrentMonthRow 
                         ? 'bg-blue-50/50 dark:bg-blue-950/20 border-blue-200/60 dark:border-blue-900/40' 
+                        : isFutureRow
+                        ? 'bg-slate-50/30 dark:bg-slate-900/5 hover:bg-slate-50/60 border-slate-100 dark:border-slate-800'
                         : 'hover:bg-slate-50/50 dark:hover:bg-slate-900/10 border-slate-100 dark:border-slate-800'
                     }`}
                   >
                     <td className="p-3 text-center font-bold text-slate-400 font-mono">
                       <div className="flex flex-col items-center gap-0.5">
                         <span>{idx + 1}</span>
-                        {isCurrentMonthRow && (
-                          <span className="text-[8px] bg-blue-500 text-white font-bold px-1 py-0.2 rounded leading-tight">
+                        {isCurrentMonthRow ? (
+                          <span className="text-[8px] bg-blue-500 text-white font-bold px-1 py-0.2 rounded leading-tight" title="Live tracking month (Last row for Actual progress)">
                             LIVE
                           </span>
-                        )}
+                        ) : isFutureRow ? (
+                          <span className="text-[8px] bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-medium px-1 py-0.2 rounded leading-tight" title="Future schedule plan month">
+                            PLAN
+                          </span>
+                        ) : null}
                       </div>
                     </td>
                     <td className="p-3">
@@ -522,20 +570,31 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
                       />
                     </td>
                     <td className="p-3">
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={m.actual === null || m.actual === undefined ? '' : m.actual}
-                        disabled={isActDisabled}
-                        onChange={(e) => handleFieldChange(idx, 'actual', e.target.value)}
-                        placeholder={isActDisabled ? '-' : ''}
-                        className={`w-full text-center font-mono font-black text-xs px-2 py-1 rounded-lg outline-none transition-all duration-150 h-7 ${
-                          isActDisabled 
-                            ? 'bg-slate-100 dark:bg-slate-800/80 text-slate-400 dark:text-slate-500 cursor-not-allowed border-none' 
-                            : 'bg-slate-50 dark:bg-slate-900/60 border border-slate-350 dark:border-slate-755 hover:border-slate-400 dark:hover:border-slate-500 focus:border-blue-500 dark:focus:border-blue-450 focus:ring-2 focus:ring-blue-500/20 focus:bg-white dark:focus:bg-slate-950 text-blue-600 dark:text-blue-400'
-                        }`}
-                        title={isActDisabled ? "Column locked: a previous row reached 100%" : ""}
-                      />
+                      {isFutureRow ? (
+                        <div 
+                          className="w-full text-center font-mono text-xs px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800/60 text-slate-400 dark:text-slate-500 select-none h-7 flex items-center justify-center cursor-not-allowed"
+                          title="Actual progress is only recorded up to the current live tracking month"
+                        >
+                          —
+                        </div>
+                      ) : (
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={m.actual === null || m.actual === undefined ? '' : m.actual}
+                          disabled={isActDisabled}
+                          onChange={(e) => handleFieldChange(idx, 'actual', e.target.value)}
+                          placeholder={isActDisabled ? '-' : ''}
+                          className={`w-full text-center font-mono font-black text-xs px-2 py-1 rounded-lg outline-none transition-all duration-150 h-7 ${
+                            isActDisabled 
+                              ? 'bg-slate-100 dark:bg-slate-800/80 text-slate-400 dark:text-slate-500 cursor-not-allowed border-none' 
+                              : isCurrentMonthRow
+                              ? 'bg-blue-50 dark:bg-blue-950/40 border-2 border-blue-500 focus:ring-2 focus:ring-blue-500/30 text-blue-700 dark:text-blue-300 font-extrabold'
+                              : 'bg-slate-50 dark:bg-slate-900/60 border border-slate-350 dark:border-slate-755 hover:border-slate-400 dark:hover:border-slate-500 focus:border-blue-500 dark:focus:border-blue-450 focus:ring-2 focus:ring-blue-500/20 focus:bg-white dark:focus:bg-slate-950 text-blue-600 dark:text-blue-400'
+                          }`}
+                          title={isActDisabled ? "Column locked: a previous row reached 100%" : isCurrentMonthRow ? "Live project actual progress" : ""}
+                        />
+                      )}
                     </td>
                     <td className="p-3 text-center">
                       <div className="flex items-center justify-center gap-1">
@@ -557,8 +616,8 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         ) : (
-                          <span className="text-[9px] bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold px-1.5 py-0.5 rounded" title="Live row is always locked at the end">
-                            LOCKED
+                          <span className="text-[9px] bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold px-1.5 py-0.5 rounded" title="Live row is the active tracking period for Actual progress">
+                            LIVE
                           </span>
                         )}
                       </div>
