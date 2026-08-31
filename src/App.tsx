@@ -194,7 +194,7 @@ import {
 } from './lib/apiSync';
 import { getAccessToken } from './lib/auth';
 import { safeSetItem } from './lib/storage';
-import { updateMonthlyWithProgress, getLastActualProgress, resolveCurrentMonthKey } from './lib/monthlySync';
+import { updateMonthlyWithProgress, getLastActualProgress, resolveCurrentMonthKey, ensureLiveRowIsLast } from './lib/monthlySync';
 import { collection, onSnapshot, doc } from 'firebase/firestore';
 import { db } from './lib/firebase';
 
@@ -2184,8 +2184,10 @@ let isBatchSyncRunning = false;
       updatedProject.physicalProgress = fields.physicalProgress;
     } else if (fields.monthly !== undefined) {
       // Keep overall physicalProgress synchronized with the latest valid Actual value in the monthly table
-      updatedProject.monthly = fields.monthly;
-      const lastActual = getLastActualProgress(fields.monthly);
+      const currentMonthKey = resolveCurrentMonthKey(currentProject);
+      const ensuredMonthly = ensureLiveRowIsLast(fields.monthly, currentMonthKey, currentProject.physicalProgress);
+      updatedProject.monthly = ensuredMonthly;
+      const lastActual = getLastActualProgress(ensuredMonthly);
       if (lastActual.lastValue !== null) {
         updatedProject.physicalProgress = lastActual.lastValue;
       }

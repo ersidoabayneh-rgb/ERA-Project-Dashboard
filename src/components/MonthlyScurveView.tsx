@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { CalendarRange, Plus, Trash2, TrendingUp, Info, Activity } from 'lucide-react';
+import { CalendarRange, Plus, Trash2, TrendingUp, Info, Activity, ArrowUpToLine } from 'lucide-react';
 import { 
   ResponsiveContainer, 
   LineChart, 
@@ -12,7 +12,14 @@ import {
   Legend 
 } from 'recharts';
 import { Project, MonthlyProgress } from '../types';
-import { resolveCurrentMonthKey, isSameMonth } from '../lib/monthlySync';
+import { 
+  resolveCurrentMonthKey, 
+  isSameMonth, 
+  ensureLiveRowIsLast, 
+  insertMonthAboveLiveRow, 
+  parseMonthKey, 
+  MONTH_NAMES 
+} from '../lib/monthlySync';
 
 interface MonthlyScurveViewProps {
   project: Project;
@@ -20,12 +27,15 @@ interface MonthlyScurveViewProps {
 }
 
 export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyScurveViewProps) {
-  const [months, setMonths] = useState<MonthlyProgress[]>(project.monthly || []);
   const currentMonthKey = resolveCurrentMonthKey(project);
+  const [months, setMonths] = useState<MonthlyProgress[]>(() => {
+    return ensureLiveRowIsLast(project.monthly || [], currentMonthKey, project.physicalProgress);
+  });
 
   React.useEffect(() => {
-    setMonths(project.monthly || []);
-  }, [project.id, project.monthly]);
+    const ensured = ensureLiveRowIsLast(project.monthly || [], currentMonthKey, project.physicalProgress);
+    setMonths(ensured);
+  }, [project.id, project.monthly, currentMonthKey, project.physicalProgress]);
 
   const convertToInputMonthFormat = (monthStr: string): string => {
     try {
@@ -86,7 +96,7 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
       }
     }
 
-    const updated = months.map((m, i) => {
+    let updated = months.map((m, i) => {
       if (i === idx) {
         return {
           ...m,
@@ -96,40 +106,92 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
       return m;
     });
 
+    // Ensure the live row always remains the last row
+    updated = ensureLiveRowIsLast(updated, currentMonthKey, project.physicalProgress);
+
     setMonths(updated);
     onUpdateMonthly(updated);
   };
 
   const handleAddRow = () => {
-    // deduce a default name for the next month
+    // Determine the reference row to calculate the next month name
+    const liveIdx = months.findIndex(m => isSameMonth(m.month, currentMonthKey));
+    let refRow: MonthlyProgress | null = null;
+
+    if (liveIdx !== -1) {
+      if (liveIdx > 0) {
+        // Use the row directly before the live row as the reference
+        refRow = months[liveIdx - 1];
+      } else {
+        refRow = months[liveIdx];
+      }
+    } else if (months.length > 0) {
+      refRow = months[months.length - 1];
+    }
+
     let nextName = 'New Month';
-    if (months.length > 0) {
-      const last = months[months.length - 1].month;
-      const parts = last.split('-');
-      if (parts.length === 2) {
-        const monthsList = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        const mIdx = monthsList.indexOf(parts[0]);
-        let year = parseInt(parts[1], 10);
-        if (mIdx !== -1) {
-          const nextMIdx = (mIdx + 1) % 12;
-          if (nextMIdx === 0) year += 1;
-          nextName = `${monthsList[nextMIdx]}-${year.toString().slice(-2)}`;
-        }
+    if (refRow && refRow.month) {
+      const parsed = parseMonthKey(refRow.month);
+      if (parsed) {
+        const nextMIdx = (parsed.monthIndex + 1) % 12;
+        const nextYear = nextMIdx === 0 ? parsed.year + 1 : parsed.year;
+        nextName = `${MONTH_NAMES[nextMIdx]}-${(nextYear % 100).toString().padStart(2, '0')}`;
       }
     }
 
-    // Do NOT fill with zero - leave fields empty
-    const updated = [...months, { month: nextName, originalPlan: '', revisedPlan: '', actual: '' }];
+    const newRow: MonthlyProgress = { month: nextName, originalPlan: '', revisedPlan: '', actual: '' };
+    // Insert new row directly above the live row so the live row always stays at the bottom
+    const updated = insertMonthAboveLiveRow(months, currentMonthKey, newRow, project.physicalProgress);
+    setMonths(updated);
+    onUpdateMonthly(updated);
+  };
+
+  const handleInsertAboveRow = (idx: number) => {
+    let nextName = 'New Month';
+    if (idx > 0 && months[idx - 1]?.month) {
+      const parsed = parseMonthKey(months[idx - 1].month);
+      if (parsed) {
+        const nextMIdx = (parsed.monthIndex + 1) % 12;
+        const nextYear = nextMIdx === 0 ? parsed.year + 1 : parsed.year;
+        nextName = `${MONTH_NAMES[nextMIdx]}-${(nextYear % 100).toString().padStart(2, '0')}`;
+      }
+    } else if (months[idx]?.month) {
+      const parsed = parseMonthKey(months[idx].month);
+      if (parsed) {
+        const prevMIdx = (parsed.monthIndex + 11) % 12;
+        const prevYear = prevMIdx === 11 ? parsed.year - 1 : parsed.year;
+        nextName = `${MONTH_NAMES[prevMIdx]}-${(prevYear % 100).toString().padStart(2, '0')}`;
+      }
+    }
+
+    const newRow: MonthlyProgress = { month: nextName, originalPlan: '', revisedPlan: '', actual: '' };
+    const copy = [...months];
+    copy.splice(idx, 0, newRow);
+    const updated = ensureLiveRowIsLast(copy, currentMonthKey, project.physicalProgress);
     setMonths(updated);
     onUpdateMonthly(updated);
   };
 
   const handleRemoveRow = () => {
-    if (months.length > 0) {
-      const updated = months.slice(0, -1);
-      setMonths(updated);
-      onUpdateMonthly(updated);
+    if (months.length === 0) return;
+    const isLiveAtEnd = isSameMonth(months[months.length - 1].month, currentMonthKey);
+    let updated: MonthlyProgress[];
+    if (isLiveAtEnd && months.length > 1) {
+      // Remove the row immediately above the live row, preserving the live row at the bottom
+      updated = [...months.slice(0, months.length - 2), months[months.length - 1]];
+    } else {
+      updated = months.slice(0, -1);
     }
+    setMonths(updated);
+    onUpdateMonthly(updated);
+  };
+
+  const handleDeleteRow = (idx: number) => {
+    if (months.length <= 1) return;
+    const copy = months.filter((_, i) => i !== idx);
+    const updated = ensureLiveRowIsLast(copy, currentMonthKey, project.physicalProgress);
+    setMonths(updated);
+    onUpdateMonthly(updated);
   };
 
   // Convert for Recharts presentation - STOP drawing the line once 100% is reached
@@ -201,20 +263,22 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
             S‑Curve Analysis (Monthly Cumulative %)
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Enter monthly cumulative targets. Graphs automatically stop plotting once a series reaches 100%. Unentered cells remain clean and empty.
+            Enter monthly cumulative targets. Any added month is placed above the live row — the bottom-most row is always the live tracking row.
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5 self-start md:self-auto">
           <button
             onClick={handleAddRow}
+            title="Add a month row above the live tracking row"
             className="bg-blue-50 hover:bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-900/40 text-xs font-bold py-1.5 px-3 rounded-xl transition flex items-center gap-1 cursor-pointer border border-blue-200/60 dark:border-blue-800/40"
           >
             <Plus className="w-3.5 h-3.5" />
-            Add Month
+            Add Month Above Live
           </button>
           <button
             onClick={handleRemoveRow}
+            title="Remove the month row directly above the live tracking row"
             className="bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/20 dark:text-rose-455 px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer border border-rose-200/60 dark:border-rose-900/30"
           >
             <Trash2 className="w-3.5 h-3.5" />
@@ -320,6 +384,7 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
                 <th className="p-3 w-32 text-center">Original Plan %</th>
                 <th className="p-3 w-32 text-center">Revised Plan %</th>
                 <th className="p-3 w-32 text-center">Actual %</th>
+                <th className="p-3 w-24 text-center">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-55 dark:divide-slate-700/40">
@@ -471,6 +536,32 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
                         }`}
                         title={isActDisabled ? "Column locked: a previous row reached 100%" : ""}
                       />
+                    </td>
+                    <td className="p-3 text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleInsertAboveRow(idx)}
+                          title="Insert a new month above this row"
+                          className="p-1 hover:bg-blue-100 dark:hover:bg-blue-900/50 text-blue-600 dark:text-blue-400 rounded-md transition cursor-pointer"
+                        >
+                          <ArrowUpToLine className="w-3.5 h-3.5" />
+                        </button>
+                        {!isCurrentMonthRow ? (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteRow(idx)}
+                            title="Delete this month row"
+                            className="p-1 hover:bg-rose-100 dark:hover:bg-rose-950/50 text-rose-500 dark:text-rose-400 rounded-md transition cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        ) : (
+                          <span className="text-[9px] bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold px-1.5 py-0.5 rounded" title="Live row is always locked at the end">
+                            LOCKED
+                          </span>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );

@@ -1,7 +1,7 @@
 import { Project, MonthlyProgress } from '../types';
 
-const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const FULL_MONTH_NAMES = [
+export const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+export const FULL_MONTH_NAMES = [
   'january', 'february', 'march', 'april', 'may', 'june', 
   'july', 'august', 'september', 'october', 'november', 'december'
 ];
@@ -167,10 +167,101 @@ export function getLastActualProgress(
 }
 
 /**
+ * Ensures that the live tracking month row is ALWAYS the last row of the Monthly Cumulative table.
+ * If the live row exists anywhere before the end, it moves it to the last row.
+ * If the live row does not exist and liveActualValue is provided, it creates and appends it.
+ */
+export function ensureLiveRowIsLast(
+  monthlyList: MonthlyProgress[] | undefined,
+  currentMonthKey: string,
+  liveActualValue?: number
+): MonthlyProgress[] {
+  if (!monthlyList || monthlyList.length === 0) {
+    if (liveActualValue !== undefined) {
+      return [{
+        month: currentMonthKey,
+        originalPlan: '',
+        revisedPlan: '',
+        actual: liveActualValue
+      }];
+    }
+    return [];
+  }
+
+  const list = [...monthlyList];
+  const liveIdx = list.findIndex(m => isSameMonth(m.month, currentMonthKey));
+
+  if (liveIdx !== -1) {
+    // If the live row is already at the last position, return as-is (or updated with live value if given)
+    if (liveIdx === list.length - 1) {
+      if (liveActualValue !== undefined && list[liveIdx].actual !== liveActualValue) {
+        list[liveIdx] = { ...list[liveIdx], actual: liveActualValue };
+      }
+      return list;
+    }
+
+    // Move the live row to the very end
+    const [liveRow] = list.splice(liveIdx, 1);
+    const updatedLiveRow = liveActualValue !== undefined 
+      ? { ...liveRow, actual: liveActualValue }
+      : liveRow;
+    list.push(updatedLiveRow);
+    return list;
+  }
+
+  // If live row does not exist in the list and a live value is provided, append it to the end
+  if (liveActualValue !== undefined) {
+    list.push({
+      month: currentMonthKey,
+      originalPlan: '',
+      revisedPlan: '',
+      actual: liveActualValue
+    });
+  }
+
+  return list;
+}
+
+/**
+ * Inserts a new month row directly ABOVE the live row so the live row remains the last row.
+ */
+export function insertMonthAboveLiveRow(
+  monthlyList: MonthlyProgress[] | undefined,
+  currentMonthKey: string,
+  newRow: MonthlyProgress,
+  liveActualValue?: number
+): MonthlyProgress[] {
+  const currentList = Array.isArray(monthlyList) ? [...monthlyList] : [];
+  
+  if (currentList.length === 0) {
+    const liveRow: MonthlyProgress = {
+      month: currentMonthKey,
+      originalPlan: '',
+      revisedPlan: '',
+      actual: liveActualValue !== undefined ? liveActualValue : ''
+    };
+    return [newRow, liveRow];
+  }
+
+  const liveIdx = currentList.findIndex(m => isSameMonth(m.month, currentMonthKey));
+  
+  if (liveIdx !== -1) {
+    // If live row is at liveIdx, insert newRow before liveIdx
+    currentList.splice(liveIdx, 0, newRow);
+    // Ensure live row is positioned at the very end
+    return ensureLiveRowIsLast(currentList, currentMonthKey, liveActualValue);
+  } else {
+    // If live row doesn't exist yet, insert newRow and append live row at the bottom
+    currentList.push(newRow);
+    return ensureLiveRowIsLast(currentList, currentMonthKey, liveActualValue);
+  }
+}
+
+/**
  * Updates the monthly cumulative table following all user rules:
- * 1. If current month does not exist, add a new row for current month and set Actual = newProgress.
- * 2. If current month already exists, edit only the Actual column for that existing month with newProgress.
- * 3. Validates that newProgress >= last recorded value in the Actual column.
+ * 1. If current month does not exist, add a new row for current month at the very bottom (last row) and set Actual = newProgress.
+ * 2. If current month already exists, edit the Actual column for that month and guarantee it is the last row.
+ * 3. Validates that newProgress >= last recorded value in the Actual column before the live row.
  */
 export function updateMonthlyWithProgress(
   project: Project,
@@ -200,8 +291,8 @@ export function updateMonthlyWithProgress(
   const existingIndex = monthlyList.findIndex(m => isSameMonth(m.month, currentMonthKey));
 
   if (existingIndex !== -1) {
-    // 2. Current month already exists: edit only the Actual column
-    const updatedMonthly = monthlyList.map((m, idx) => {
+    // 2. Current month already exists: edit the Actual column and ensure it is the last row
+    let updatedMonthly = monthlyList.map((m, idx) => {
       if (idx === existingIndex) {
         return {
           ...m,
@@ -211,6 +302,9 @@ export function updateMonthlyWithProgress(
       return m;
     });
 
+    // Ensure live row is always the last row
+    updatedMonthly = ensureLiveRowIsLast(updatedMonthly, currentMonthKey, newProgress);
+
     return {
       updatedMonthly,
       action: 'edited',
@@ -218,7 +312,7 @@ export function updateMonthlyWithProgress(
       lastActual: lastValue
     };
   } else {
-    // 1. Current month does not exist: add a new row with the current month and set Actual
+    // 1. Current month does not exist: add new row at the very bottom (last row)
     const newRow: MonthlyProgress = {
       month: currentMonthKey,
       originalPlan: '',
@@ -226,28 +320,7 @@ export function updateMonthlyWithProgress(
       actual: newProgress
     };
 
-    const parsedTarget = parseMonthKey(currentMonthKey);
-    let inserted = false;
-    let updatedMonthly = [...monthlyList];
-
-    if (parsedTarget) {
-      const targetTime = parsedTarget.year * 12 + parsedTarget.monthIndex;
-      const insertIdx = monthlyList.findIndex(m => {
-        const p = parseMonthKey(m.month);
-        if (!p) return false;
-        const rowTime = p.year * 12 + p.monthIndex;
-        return rowTime > targetTime;
-      });
-
-      if (insertIdx !== -1) {
-        updatedMonthly.splice(insertIdx, 0, newRow);
-        inserted = true;
-      }
-    }
-
-    if (!inserted) {
-      updatedMonthly.push(newRow);
-    }
+    const updatedMonthly = [...monthlyList, newRow];
 
     return {
       updatedMonthly,
