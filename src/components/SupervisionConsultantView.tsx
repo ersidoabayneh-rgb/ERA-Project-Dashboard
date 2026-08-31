@@ -1075,9 +1075,6 @@ export default function SupervisionConsultantView({
             <h1 className="text-xl md:text-2xl font-black text-slate-900 dark:text-white tracking-tight">
               {consultant.firmName || 'Supervision Consultant Information'}
             </h1>
-            <p className="text-xs md:text-sm text-slate-550 dark:text-slate-400 max-w-3xl">
-              Resident Engineer administration, assigned personnel staffing directory with specific roles and dates of assignment, and supervision fee invoices tracking.
-            </p>
           </div>
 
           {/* Action Buttons */}
@@ -1258,7 +1255,7 @@ export default function SupervisionConsultantView({
             <div 
               onClick={() => setActiveTab('kpis')}
               className="bg-purple-50/70 hover:bg-purple-100/80 dark:bg-purple-950/40 dark:hover:bg-purple-900/50 p-3 rounded-2xl border border-purple-200/80 dark:border-purple-900/60 cursor-pointer transition shadow-xs group"
-              title="Click to open Submittal Log & Audit Trail"
+              title="Click to open Submittal Log"
             >
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-bold text-purple-700 dark:text-purple-300 uppercase tracking-wider block">
@@ -1355,7 +1352,7 @@ export default function SupervisionConsultantView({
           }`}
         >
           {isAdmin ? <Clock className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
-          {isAdmin ? 'Performance KPIs & RFI SLA' : 'Submittal Log & Audit Trail'}
+          {isAdmin ? 'Performance KPIs & RFI SLA' : 'Submittal Log'}
           <span className={`px-2 py-0.5 rounded-full text-xs font-mono ${
             activeTab === 'kpis' ? 'bg-purple-700 text-white' : 'bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-300 font-bold'
           }`}>

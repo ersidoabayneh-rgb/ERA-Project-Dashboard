@@ -862,7 +862,7 @@ export default function ConsultantPerformanceKpiWidget({
           </div>
 
           <h3 className="text-lg md:text-xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
-            {isAdmin ? 'RFI & Submittal Response Performance vs Contract Targets' : 'Submittal Log & Audit Trail (Editable)'}
+            {isAdmin ? 'RFI & Submittal Response Performance vs Contract Targets' : 'Submittal Log'}
           </h3>
           <p className="text-xs text-slate-500 dark:text-slate-400 max-w-2xl">
             {isAdmin 
@@ -1036,7 +1036,7 @@ export default function ConsultantPerformanceKpiWidget({
                   { id: 'comparison', label: '📊 Turnaround vs Targets', icon: Sliders },
                   { id: 'trend', label: '📈 Monthly Performance Trend', icon: TrendingDown }
                 ] : []),
-                { id: 'log', label: '📋 Submittal Log & Audit Trail (Editable)', icon: FileText }
+                { id: 'log', label: '📋 Submittal Log', icon: FileText }
               ].map((tab) => {
                 const IconComponent = tab.icon;
                 return (

@@ -109,7 +109,7 @@ export const ConsultantPerformanceMiniChart: React.FC<ConsultantPerformanceMiniC
           <div>
             <div className="flex items-center gap-2">
               <h4 className="text-xs sm:text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">
-                Consultant Performance & RFI Turnaround SLA Mini-Visualizer
+                Consultant Performance & RFI Turnaround Visualizer
               </h4>
               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold font-mono bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
                 ERA Target Benchmarks
