@@ -20,17 +20,6 @@ import {
   TrendingUp,
   ChevronDown
 } from 'lucide-react';
-import { 
-  ResponsiveContainer, 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  Tooltip, 
-  Legend, 
-  CartesianGrid, 
-  LabelList 
-} from 'recharts';
 import { Project, ProgressPlan, ProgressPlanHistoryItem } from '../types';
 
 interface ProgressPlanViewProps {
@@ -148,42 +137,6 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
     if (field === 'efyLabel') setNewEfyLabel(value);
     onUpdateProgressPlan(plan, updatedLabels);
   };
-
-  // Live Chart Data for the Progress Comparison Bar Chart (strictly reflecting current / loaded milestone)
-  const progressComparisonChartData = [
-    {
-      category: 'Month',
-      name: labels.monthLabel,
-      subLabel: `Monthly Milestone: ${labels.monthLabel}`,
-      Contractor: Number((plan.contractor.month || 0).toFixed(2)),
-      ERA: Number((plan.era.month || 0).toFixed(2)),
-      Actual: Number((plan.actual.month || 0).toFixed(2)),
-    },
-    {
-      category: 'Quarter',
-      name: labels.quarterLabel,
-      subLabel: `Quarterly Milestone: ${labels.quarterLabel}`,
-      Contractor: Number((plan.contractor.quarter || 0).toFixed(2)),
-      ERA: Number((plan.era.quarter || 0).toFixed(2)),
-      Actual: Number((plan.actual.quarter || 0).toFixed(2)),
-    },
-    {
-      category: 'EFY',
-      name: `EFY ${labels.efyLabel}`,
-      subLabel: `Fiscal Year Plan: EFY ${labels.efyLabel}`,
-      Contractor: Number((plan.contractor.efy || 0).toFixed(2)),
-      ERA: Number((plan.era.efy || 0).toFixed(2)),
-      Actual: Number((plan.actual.efy || 0).toFixed(2)),
-    },
-    {
-      category: 'Cumulative',
-      name: 'Cumulative To-Date',
-      subLabel: `Cumulative Progress Saved at ${labels.monthLabel}`,
-      Contractor: Number((plan.contractor.todate || 0).toFixed(2)),
-      ERA: Number((plan.era.todate || 0).toFixed(2)),
-      Actual: Number((plan.actual.todate || 0).toFixed(2)),
-    },
-  ];
 
   // 1. Update Currently Loaded History Record (Overwrite active loaded record in history)
   const handleUpdateLoadedHistoryItem = () => {
@@ -772,110 +725,7 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
         </div>
       </div>
 
-      {/* Visual Progress Comparison Bar Chart Card */}
-      <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-5 rounded-2xl shadow-sm space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-700/50 pb-3">
-          <div className="flex items-center gap-2">
-            <div className="p-1.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg">
-              <BarChart3 className="w-4 h-4" />
-            </div>
-            <div>
-              <h3 className="text-xs font-bold text-slate-800 dark:text-zinc-150 flex items-center gap-2">
-                Progress Comparison Chart ({labels.monthLabel} • EFY {labels.efyLabel})
-                {activeLoadedRecordId && (
-                  <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300">
-                    Live Preview of Reloaded Record
-                  </span>
-                )}
-              </h3>
-              <p className="text-[10.5px] text-slate-400">
-                Exact comparison of Contractor Plan, ERA Milestone, and Actual Completed mileage across Month, Quarter, EFY, and Cumulative targets.
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 font-mono font-bold">
-              Total Length: {project.lengthKm} Km
-            </span>
-          </div>
-        </div>
 
-        <div className="h-60 w-full min-w-0">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={progressComparisonChartData} margin={{ top: 20, right: 15, left: 10, bottom: 10 }}>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-slate-100/60 dark:stroke-slate-700/30" />
-              <XAxis dataKey="name" stroke="#94a3b8" tick={{ fontSize: 9.5, fill: '#64748b', fontWeight: 600 }} />
-              <YAxis stroke="#94a3b8" width={45} tick={{ fontSize: 9.5, fill: '#64748b' }} unit=" Km" />
-              <Tooltip 
-                content={({ active, payload, label }) => {
-                  if (!active || !payload || !payload.length) return null;
-                  const pData = payload[0]?.payload;
-                  const cVal = Number(pData?.Contractor ?? 0);
-                  const eVal = Number(pData?.ERA ?? 0);
-                  const aVal = Number(pData?.Actual ?? 0);
-                  const diffEra = aVal - eVal;
-                  const diffContractor = aVal - cVal;
-                  return (
-                    <div className="bg-slate-900/95 backdrop-blur-md text-white p-3 rounded-xl shadow-xl border border-slate-700/60 text-xs min-w-[230px] space-y-2">
-                      <div className="border-b border-slate-700 pb-1.5">
-                        <div className="font-extrabold text-blue-400 text-xs">{pData?.name || label}</div>
-                        {pData?.subLabel && <div className="text-[10px] text-slate-400">{pData.subLabel}</div>}
-                      </div>
-                      <div className="space-y-1.5 text-[11px]">
-                        <div className="flex justify-between items-center text-blue-300">
-                          <span className="flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />
-                            Contractor Plan:
-                          </span>
-                          <span className="font-mono font-bold">{cVal.toFixed(2)} Km</span>
-                        </div>
-                        <div className="flex justify-between items-center text-orange-300">
-                          <span className="flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-orange-500 inline-block" />
-                            ERA Milestone:
-                          </span>
-                          <span className="font-mono font-bold">{eVal.toFixed(2)} Km</span>
-                        </div>
-                        <div className="flex justify-between items-center text-emerald-300 font-extrabold">
-                          <span className="flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
-                            Actual Completed:
-                          </span>
-                          <span className="font-mono">{aVal.toFixed(2)} Km</span>
-                        </div>
-                      </div>
-                      {project.lengthKm > 0 && (
-                        <div className="pt-1.5 border-t border-slate-800 text-[10px] text-slate-400 flex justify-between">
-                          <span>Actual / Total ({project.lengthKm} Km):</span>
-                          <span className="font-bold text-emerald-400 font-mono">
-                            {((aVal / project.lengthKm) * 100).toFixed(2)}%
-                          </span>
-                        </div>
-                      )}
-                      <div className="pt-1 border-t border-slate-800 flex justify-between text-[10px]">
-                        <span className="text-slate-400">Actual vs ERA:</span>
-                        <span className={`font-mono font-bold ${diffEra >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                          {diffEra >= 0 ? `+${diffEra.toFixed(2)}` : diffEra.toFixed(2)} Km
-                        </span>
-                      </div>
-                    </div>
-                  );
-                }}
-              />
-              <Legend iconSize={8} wrapperStyle={{ fontSize: '10px' }} />
-              <Bar dataKey="Contractor" fill="#3b82f6" radius={[4, 4, 0, 0]}>
-                <LabelList dataKey="Contractor" position="top" formatter={(v: any) => v !== null && v !== undefined && Number(v) > 0 ? `${Number(v).toFixed(2)}` : ''} style={{ fontSize: '8px', fill: '#3b82f6', fontWeight: 'bold' }} />
-              </Bar>
-              <Bar dataKey="ERA" fill="#f97316" radius={[4, 4, 0, 0]}>
-                <LabelList dataKey="ERA" position="top" formatter={(v: any) => v !== null && v !== undefined && Number(v) > 0 ? `${Number(v).toFixed(2)}` : ''} style={{ fontSize: '8px', fill: '#ea580c', fontWeight: 'bold' }} />
-              </Bar>
-              <Bar dataKey="Actual" fill="#10b981" radius={[4, 4, 0, 0]}>
-                <LabelList dataKey="Actual" position="top" formatter={(v: any) => v !== null && v !== undefined && Number(v) > 0 ? `${Number(v).toFixed(2)}` : ''} style={{ fontSize: '8px', fill: '#059669', fontWeight: 'bold' }} />
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
 
       {/* Persistence, Updating, and Archiving Section */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
