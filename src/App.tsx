@@ -2987,7 +2987,7 @@ let isBatchSyncRunning = false;
               <div className="p-2 border-r border-slate-150 dark:border-slate-800/80">
                 <span className="text-[10px] text-slate-400 font-bold uppercase block tracking-wider mb-0.5">Revised Contract Amount</span>
                 <span className="text-sm font-black font-mono text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/20 px-1.5 py-0.5 rounded">
-                  <AnimatedCounter value={(currentProject.origAmount + currentProject.variation) * 1_000_000} prefix="Br. " />
+                  <AnimatedCounter value={(currentProject.origAmount * 1_000_000) + (currentProject.variation || 0)} prefix="Br. " />
                 </span>
               </div>
               <div className="p-2 border-r border-slate-150 dark:border-slate-800/80">
@@ -3184,14 +3184,14 @@ let isBatchSyncRunning = false;
                         <div className="space-y-1">
                           <span className="text-[9px] text-slate-400 block font-sans font-bold">Approved Variations</span>
                           <span className="text-emerald-600 dark:text-emerald-400 block font-mono font-black text-2xs bg-emerald-50 dark:bg-emerald-950/20 px-1 py-0.5 rounded max-w-max">
-                            <AnimatedCounter value={currentProject.variation * 1_000_000} prefix="Br. " />
+                            <AnimatedCounter value={currentProject.variation || 0} prefix="Br. " />
                           </span>
                         </div>
 
                         <div className="space-y-1 border-t border-dashed border-slate-200 dark:border-slate-800 pt-2.5 mt-2.5">
                           <span className="text-[9px] text-slate-400 block font-sans font-bold">Revised Contract Amount</span>
                           <span className="text-emerald-600 dark:text-emerald-400 block font-mono font-black text-2xs">
-                            <AnimatedCounter value={(currentProject.origAmount + currentProject.variation) * 1_000_000} prefix="Br. " />
+                            <AnimatedCounter value={(currentProject.origAmount * 1_000_000) + (currentProject.variation || 0)} prefix="Br. " />
                           </span>
                           <span className="text-[8px] text-slate-400 block font-sans font-normal mt-0.5">Calculating Original Contract Amount plus Approved Variations</span>
                         </div>

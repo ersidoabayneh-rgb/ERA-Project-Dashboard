@@ -1192,7 +1192,7 @@ export default function DashboardView({
     doc.text(`Erecting Contractor: ${p.contractor}`, 300, 165);
     
     doc.text(`Original Cost Base: Br. ${p.origAmount.toFixed(2)} Million`, 55, 185);
-    doc.text(`Approved Variation Orders: Br. ${p.variation.toFixed(2)} Million`, 300, 185);
+    doc.text(`Approved Variation Orders: Br. ${Number(p.variation || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 300, 185);
     
     doc.text(`Contract Construction Period: ${p.origDays} Calendar Days`, 55, 205);
     doc.text(`Revised Time Extension (EOT): ${p.eotDays} Calendar Days`, 300, 205);
