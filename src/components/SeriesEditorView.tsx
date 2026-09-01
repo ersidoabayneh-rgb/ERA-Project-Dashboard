@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { motion } from 'motion/react';
-import { Database, Plus, Trash2, ArrowUpRight, Calculator, Coins, Milestone, Shield, BarChart2, DollarSign } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { Database, Plus, Trash2, ArrowUpRight, Calculator, Coins, Milestone, Shield, BarChart2, DollarSign, Save, RotateCcw, Check, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { Project, SeriesItem, IpcItem, PaymentItem, AnnualItem, formatAccounting } from '../types';
 import { MILLION } from '../data/defaultProject';
@@ -69,6 +69,61 @@ function AmountInput({ value, onChange, readOnly = false, className = '' }: Amou
   );
 }
 
+// Dedicated cell input for financial numbers allowing full unhindered editing (typing decimals, zero, backspacing, pasting)
+interface EditableCurrencyCellProps {
+  value: number;
+  onChange: (val: number) => void;
+  placeholder?: string;
+  className?: string;
+  disabled?: boolean;
+}
+
+function EditableCurrencyCell({ value, onChange, placeholder = '0.00', className = '', disabled = false }: EditableCurrencyCellProps) {
+  const [isFocused, setIsFocused] = useState(false);
+  const [rawText, setRawText] = useState<string>(value !== undefined && value !== null ? String(value) : '');
+
+  useEffect(() => {
+    if (!isFocused) {
+      setRawText(value !== undefined && value !== null ? String(value) : '');
+    }
+  }, [value, isFocused]);
+
+  const handleFocus = () => {
+    if (disabled) return;
+    setIsFocused(true);
+    setRawText(value === 0 ? '' : String(value));
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const txt = e.target.value;
+    setRawText(txt);
+    // Parse value without losing intermediate typing state
+    const cleanNum = parseFloat(txt.replace(/,/g, ''));
+    onChange(isNaN(cleanNum) ? 0 : cleanNum);
+  };
+
+  const handleBlur = () => {
+    setIsFocused(false);
+    const cleanNum = parseFloat(rawText.replace(/,/g, ''));
+    const finalVal = isNaN(cleanNum) ? 0 : cleanNum;
+    onChange(finalVal);
+    setRawText(String(finalVal));
+  };
+
+  return (
+    <input
+      type="text"
+      disabled={disabled}
+      value={isFocused ? rawText : formatAccounting(value || 0, '')}
+      onFocus={handleFocus}
+      onChange={handleChange}
+      onBlur={handleBlur}
+      placeholder={placeholder}
+      className={className}
+    />
+  );
+}
+
 interface SeriesEditorViewProps {
   project: Project;
   onUpdateSeries: (series: SeriesItem[], provisionalSum?: number) => void;
@@ -78,31 +133,68 @@ interface SeriesEditorViewProps {
 
 export default function SeriesEditorView({ project, onUpdateSeries, onProjectUpdate, onUpdateFinance }: SeriesEditorViewProps) {
   const isDB = project.contractType === 'DB';
-  const series = project.series;
+
+  // Draft local state for unhindered user editing before saving to database
+  const [draftSeries, setDraftSeries] = useState<SeriesItem[]>(project.series || []);
+  const [draftProvisionalSum, setDraftProvisionalSum] = useState<number>(project.provisionalSum || 0);
+  const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
+
+  // Sync draft state when the project ID or external project changes
+  const prevProjectIdRef = useRef(project.id);
+  useEffect(() => {
+    if (prevProjectIdRef.current !== project.id) {
+      prevProjectIdRef.current = project.id;
+      setDraftSeries(project.series || []);
+      setDraftProvisionalSum(project.provisionalSum || 0);
+      setSaveSuccessMessage(null);
+    }
+  }, [project.id, project.series, project.provisionalSum]);
+
+  // Compute dirty status
+  const isDirty = useMemo(() => {
+    const origSeries = project.series || [];
+    const origPs = project.provisionalSum || 0;
+    if (draftProvisionalSum !== origPs) return true;
+    if (draftSeries.length !== origSeries.length) return true;
+    for (let i = 0; i < draftSeries.length; i++) {
+      const d = draftSeries[i];
+      const o = origSeries[i];
+      if (!o) return true;
+      if (
+        d.code !== o.code ||
+        d.desc !== o.desc ||
+        d.contractAmt !== o.contractAmt ||
+        d.execAmt !== o.execAmt ||
+        d.contractPct !== o.contractPct
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }, [draftSeries, draftProvisionalSum, project.series, project.provisionalSum]);
 
   const handleFieldChange = (idx: number, field: keyof SeriesItem, value: any) => {
-    const updated = series.map((s, i) => {
+    setDraftSeries(prev => prev.map((s, i) => {
       if (i === idx) {
         const item = { ...s, [field]: value };
-        // recalculate progress as percentage
+        // recalculate progress as percentage when contractAmt or execAmt changes
         if (field === 'contractAmt' || field === 'execAmt') {
-          const ca = field === 'contractAmt' ? value : (s.contractAmt || 0);
-          const ea = field === 'execAmt' ? value : (s.execAmt || 0);
+          const ca = field === 'contractAmt' ? Number(value) || 0 : (s.contractAmt || 0);
+          const ea = field === 'execAmt' ? Number(value) || 0 : (s.execAmt || 0);
           item.progress = ca > 0 ? (ea / ca) * 100 : 0;
         }
         return item;
       }
       return s;
-    });
-    onUpdateSeries(updated);
+    }));
   };
 
   const handleProvisionalSumChange = (val: number) => {
-    onUpdateSeries([...series], val);
+    setDraftProvisionalSum(val);
   };
 
   const handleAddNewItem = () => {
-    const code = isDB ? `S${series.length + 1}` : `${(series.length + 1) * 1000}`;
+    const code = isDB ? `S${draftSeries.length + 1}` : `${(draftSeries.length + 1) * 1000}`;
     const newItem: SeriesItem = {
       code,
       desc: 'New Division Work Item',
@@ -111,21 +203,52 @@ export default function SeriesEditorView({ project, onUpdateSeries, onProjectUpd
       progress: 0,
       contractPct: isDB ? 0 : undefined
     };
-    onUpdateSeries([...series, newItem]);
+    setDraftSeries(prev => [...prev, newItem]);
   };
 
   const handleDeleteItem = (idx: number) => {
-    const updated = series.filter((_, i) => i !== idx);
-    onUpdateSeries(updated);
+    setDraftSeries(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleRevertChanges = () => {
+    setDraftSeries(project.series || []);
+    setDraftProvisionalSum(project.provisionalSum || 0);
+    setSaveSuccessMessage(null);
+  };
+
+  const handleSaveToDatabase = () => {
+    // Sanitize and ensure types
+    const cleanedSeries = draftSeries.map(item => {
+      const ca = Number(item.contractAmt) || 0;
+      const ea = Number(item.execAmt) || 0;
+      const prog = ca > 0 ? (ea / ca) * 100 : 0;
+      return {
+        ...item,
+        code: String(item.code || '').trim(),
+        desc: String(item.desc || '').trim(),
+        contractAmt: ca,
+        execAmt: ea,
+        progress: prog,
+        contractPct: item.contractPct !== undefined ? Number(item.contractPct) || 0 : undefined
+      };
+    });
+
+    const cleanedPs = Number(draftProvisionalSum) || 0;
+
+    onUpdateSeries(cleanedSeries, cleanedPs);
+    setSaveSuccessMessage('Division Work Quantities & Financial Data saved to database successfully!');
+    setTimeout(() => {
+      setSaveSuccessMessage(null);
+    }, 4000);
   };
 
   const formatMoney = (v: number) => 
     formatAccounting(v, '');
 
-  // Calculate local cumulative variables
-  const tc = series.reduce((s, it) => s + (it.contractAmt || 0), 0);
-  const te = series.reduce((s, it) => s + (it.execAmt || 0), 0);
-  const ps = project.provisionalSum || 0;
+  // Calculate local cumulative variables from draftSeries & draftProvisionalSum
+  const tc = draftSeries.reduce((s, it) => s + (it.contractAmt || 0), 0);
+  const te = draftSeries.reduce((s, it) => s + (it.execAmt || 0), 0);
+  const ps = draftProvisionalSum || 0;
   
   // Formulas
   let vat = 0;
@@ -277,7 +400,7 @@ export default function SeriesEditorView({ project, onUpdateSeries, onProjectUpd
   const getCalculatedPercent = (itemDesc: string, amount: number, rate: number = exchangeRate) => {
     const provisionalSum = project.provisionalSum || 0;
     
-    const dayworksItem = series.find(s => 
+    const dayworksItem = draftSeries.find(s => 
       s.code === '11000' || 
       s.desc.toLowerCase().includes('day work') || 
       s.desc.toLowerCase().includes('dayworks')
@@ -394,22 +517,83 @@ export default function SeriesEditorView({ project, onUpdateSeries, onProjectUpd
 
   return (
     <div className="space-y-6">
+      {/* Toast Notification for Successful Save */}
+      <AnimatePresence>
+        {saveSuccessMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="p-3 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200 rounded-2xl flex items-center justify-between shadow-sm text-xs font-semibold"
+          >
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              <span>{saveSuccessMessage}</span>
+            </div>
+            <button
+              onClick={() => setSaveSuccessMessage(null)}
+              className="text-emerald-700 dark:text-emerald-300 hover:text-emerald-900 text-xs underline font-bold"
+            >
+              Dismiss
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Main Header & Save Controls */}
       <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 p-5 rounded-2xl shadow-sm flex justify-between items-center flex-wrap gap-4">
         <div>
           <h2 className="text-lg font-bold text-slate-800 dark:text-zinc-100 mb-1 flex items-center gap-2">
             <Database className="w-5 h-5 text-blue-500" />
             Division Work Quantities & Financial Data
           </h2>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Edit contract codes, descriptions, sums, executed amounts, and provisional sums freely. Click <strong className="text-blue-600 dark:text-blue-400">Save to Database</strong> to commit changes.
+          </p>
         </div>
-        <button
-          onClick={handleAddNewItem}
-          className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-1.5 px-3 rounded-xl flex items-center gap-1 transition shadow-sm"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          Add Item Code
-        </button>
+
+        <div className="flex items-center gap-2.5 flex-wrap">
+          {isDirty && (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 animate-pulse">
+              <AlertCircle className="w-3.5 h-3.5" />
+              Unsaved Changes
+            </span>
+          )}
+
+          {isDirty && (
+            <button
+              onClick={handleRevertChanges}
+              className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-xs font-bold py-1.5 px-3 rounded-xl flex items-center gap-1.5 transition"
+              title="Discard edits and reload database values"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              Revert
+            </button>
+          )}
+
+          <button
+            onClick={handleAddNewItem}
+            className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-700/80 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold py-1.5 px-3 rounded-xl flex items-center gap-1 transition"
+          >
+            <Plus className="w-3.5 h-3.5 text-blue-500" />
+            Add Item Code
+          </button>
+
+          <button
+            onClick={handleSaveToDatabase}
+            className={`text-xs font-bold py-1.5 px-4 rounded-xl flex items-center gap-1.5 transition shadow-sm ${
+              isDirty
+                ? 'bg-blue-600 hover:bg-blue-700 text-white ring-2 ring-blue-500/30'
+                : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+            }`}
+          >
+            <Save className="w-3.5 h-3.5" />
+            Save to Database
+          </button>
+        </div>
       </div>
 
+      {/* Main Series / BOQ Table */}
       <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 rounded-2xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-xs text-slate-700 dark:text-slate-200">
@@ -417,16 +601,17 @@ export default function SeriesEditorView({ project, onUpdateSeries, onProjectUpd
               <tr className="bg-slate-50 dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700/60 text-slate-400 dark:text-slate-500 font-bold">
                 <th className="p-3 w-20 text-center">Code</th>
                 <th className="p-3">Work Item Division Description</th>
-                {isDB && <th className="p-3 w-20 text-center">Contract %</th>}
-                <th className="p-3 w-36 text-right">Contract Sum (Birr)</th>
-                <th className="p-3 w-36 text-right">To-Date Executed (Birr)</th>
-                <th className="p-3 w-24 text-center">Progress %</th>
+                {isDB && <th className="p-3 w-24 text-center">Contract %</th>}
+                <th className="p-3 w-40 text-right">Contract Sum (Birr)</th>
+                <th className="p-3 w-40 text-right">To-Date Executed (Birr)</th>
+                <th className="p-3 w-28 text-center">Progress %</th>
                 <th className="p-3 w-12 text-center">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50 dark:divide-slate-700/40">
-              {series.map((item, idx) => (
+              {draftSeries.map((item, idx) => (
                 <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/10 border-b border-slate-100 dark:border-slate-800">
+                  {/* Code Cell - Fully Editable */}
                   <td className="p-3 text-center font-bold">
                     <input
                       type="text"
@@ -436,54 +621,65 @@ export default function SeriesEditorView({ project, onUpdateSeries, onProjectUpd
                       className="w-16 sm:w-20 bg-slate-50 dark:bg-slate-900/60 border border-slate-350 dark:border-slate-755 text-center font-mono font-bold text-xs px-1.5 py-1 rounded-lg outline-none focus:border-blue-500 dark:focus:border-blue-450 focus:ring-2 focus:ring-blue-500/20 focus:bg-white dark:focus:bg-slate-950 transition-all duration-150 h-7 text-slate-850 dark:text-zinc-50"
                     />
                   </td>
+
+                  {/* Description Cell - Fully Editable */}
                   <td className="p-3">
                     <input
                       type="text"
                       value={item.desc}
                       onChange={(e) => handleFieldChange(idx, 'desc', e.target.value)}
+                      placeholder="Enter item description"
                       className="w-full bg-slate-50 dark:bg-slate-900/60 border border-slate-350 dark:border-slate-755 text-xs text-slate-850 dark:text-zinc-50 px-2.5 py-1 rounded-lg outline-none focus:border-blue-500 dark:focus:border-blue-450 focus:ring-2 focus:ring-blue-500/20 focus:bg-white dark:focus:bg-slate-950 transition-all duration-150 h-7"
                     />
                   </td>
+
+                  {/* Contract % Cell (DB only) */}
                   {isDB && (
                     <td className="p-3">
                       <input
                         type="number"
-                        step="0.1"
-                        value={item.contractPct || 0}
-                        onChange={(e) => handleFieldChange(idx, 'contractPct', parseFloat(e.target.value) || 0)}
-                        className="w-16 bg-slate-50 dark:bg-slate-900/60 border border-slate-350 dark:border-slate-755 text-center font-mono font-bold text-xs px-1.5 py-1 rounded-lg outline-none focus:border-blue-500 dark:focus:border-blue-450 focus:ring-2 focus:ring-blue-500/20 focus:bg-white dark:focus:bg-slate-950 transition-all duration-150 h-7 text-slate-850 dark:text-zinc-50"
+                        step="0.01"
+                        value={item.contractPct !== undefined && item.contractPct !== null ? item.contractPct : ''}
+                        onChange={(e) => handleFieldChange(idx, 'contractPct', e.target.value === '' ? 0 : parseFloat(e.target.value) || 0)}
+                        placeholder="0.00"
+                        className="w-20 bg-slate-50 dark:bg-slate-900/60 border border-slate-350 dark:border-slate-755 text-center font-mono font-bold text-xs px-1.5 py-1 rounded-lg outline-none focus:border-blue-500 dark:focus:border-blue-450 focus:ring-2 focus:ring-blue-500/20 focus:bg-white dark:focus:bg-slate-950 transition-all duration-150 h-7 text-slate-850 dark:text-zinc-50"
                       />
                     </td>
                   )}
+
+                  {/* Contract Sum Cell - Fully Editable unhindered */}
                   <td className="p-3">
-                    <input
-                      type="text"
-                      value={formatMoney(item.contractAmt)}
-                      onChange={(e) => {
-                        const val = parseFloat(e.target.value.replace(/,/g, '')) || 0;
-                        handleFieldChange(idx, 'contractAmt', val);
-                      }}
+                    <EditableCurrencyCell
+                      value={item.contractAmt || 0}
+                      onChange={(val) => handleFieldChange(idx, 'contractAmt', val)}
+                      placeholder="0.00"
                       className="w-full bg-slate-50 dark:bg-slate-900/60 border border-slate-350 dark:border-slate-755 text-right font-mono font-black text-xs px-2.5 py-1 rounded-lg outline-none focus:border-blue-500 dark:focus:border-blue-450 focus:ring-2 focus:ring-blue-500/20 focus:bg-white dark:focus:bg-slate-950 transition-all duration-150 h-7 text-slate-850 dark:text-zinc-50"
                     />
                   </td>
+
+                  {/* To-Date Executed Cell - Fully Editable unhindered */}
                   <td className="p-3">
-                    <input
-                      type="text"
-                      value={formatMoney(item.execAmt)}
-                      onChange={(e) => {
-                        const val = parseFloat(e.target.value.replace(/,/g, '')) || 0;
-                        handleFieldChange(idx, 'execAmt', val);
-                      }}
+                    <EditableCurrencyCell
+                      value={item.execAmt || 0}
+                      onChange={(val) => handleFieldChange(idx, 'execAmt', val)}
+                      placeholder="0.00"
                       className="w-full bg-slate-50 dark:bg-slate-900/60 border border-slate-350 dark:border-slate-755 text-right font-mono font-black text-xs px-2.5 py-1 rounded-lg outline-none focus:border-blue-500 dark:focus:border-blue-450 focus:ring-2 focus:ring-blue-500/20 focus:bg-white dark:focus:bg-slate-950 transition-all duration-150 h-7 text-emerald-600 dark:text-emerald-400"
                     />
                   </td>
-                  <td className="p-3 text-center font-mono font-extrabold text-blue-600 dark:text-blue-400">
-                    {item.progress.toFixed(2)}%
+
+                  {/* Progress % Cell - Automatically calculated, not editable */}
+                  <td className="p-3 text-center font-mono">
+                    <span className="inline-block font-mono font-extrabold text-blue-600 dark:text-blue-400 text-xs px-2 py-1 bg-blue-50 dark:bg-blue-950/40 rounded-lg border border-blue-100 dark:border-blue-900/60">
+                      {((item.contractAmt || 0) > 0 ? ((item.execAmt || 0) / (item.contractAmt || 1)) * 100 : 0).toFixed(2)}%
+                    </span>
                   </td>
+
+                  {/* Action Delete */}
                   <td className="p-3 text-center">
                     <button
                       onClick={() => handleDeleteItem(idx)}
                       className="p-1 hover:bg-rose-50 dark:hover:bg-rose-950/20 text-slate-400 hover:text-rose-500 rounded-lg transition"
+                      title="Delete Item"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -491,7 +687,7 @@ export default function SeriesEditorView({ project, onUpdateSeries, onProjectUpd
                 </tr>
               ))}
 
-              {/* Aggregation Computations rows */}
+              {/* Aggregation Computations rows (DBB vs DB) */}
               {!isDB ? (
                 <>
                   <tr className="bg-slate-50/40 dark:bg-slate-900/5 font-semibold">
@@ -504,10 +700,10 @@ export default function SeriesEditorView({ project, onUpdateSeries, onProjectUpd
                   <tr className="bg-slate-50/40 dark:bg-slate-900/5 font-semibold">
                     <td colSpan={2} className="p-3 text-right text-slate-400 uppercase tracking-wide">B - Provisional Sum deduction:</td>
                     <td className="p-3 text-right">
-                      <input
-                        type="text"
-                        value={formatMoney(ps)}
-                        onChange={(e) => handleProvisionalSumChange(parseFloat(e.target.value.replace(/,/g, '')) || 0)}
+                      <EditableCurrencyCell
+                        value={ps}
+                        onChange={handleProvisionalSumChange}
+                        placeholder="0.00"
                         className="w-full bg-slate-50 dark:bg-slate-900/60 border border-slate-350 dark:border-slate-755 text-right font-mono font-black text-xs px-2.5 py-1 rounded-lg outline-none focus:border-blue-500 dark:focus:border-blue-450 focus:ring-2 focus:ring-blue-500/20 focus:bg-white dark:focus:bg-slate-950 transition-all duration-150 h-7 text-slate-850 dark:text-zinc-50"
                       />
                     </td>
