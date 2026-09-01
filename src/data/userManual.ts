@@ -58,7 +58,7 @@ export function downloadUserManual() {
   }
 
   // Running Header & Footer for pages 2+
-  const addPageHeaderFooter = (pageNo: number, title: string = 'ERA ERP Dashboard Official Website User Guide v1.0') => {
+  const addPageHeaderFooter = (pageNo: number, title: string = 'ERA ERP Dashboard Official User Manual v1.1 Expanded Edition') => {
     doc.setPage(pageNo);
     
     // Top Bar
@@ -213,7 +213,7 @@ export function downloadUserManual() {
   setTextHex(colors.white);
   doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
-  doc.text('VERSION 1.0 (23-PAGE EDITION)', margin + 14, 186);
+  doc.text('VERSION 1.1 • EXPANDED EDITION', margin + 14, 186);
 
   let yPos = 260;
 
@@ -1750,5 +1750,5 @@ export function downloadUserManual() {
   doc.text('• Physical Address: Ethiopian Roads Administration HQ, Ras Abebe Aregay Street, Addis Ababa, Ethiopia', margin + 10, yPos + 47);
 
   // Save the PDF
-  doc.save('ERA_ERP_Dashboard_Official_User_Guide_v1.0.pdf');
+  doc.save('ERA_ERP_Dashboard_Official_User_Manual_v1.1_Expanded_Edition.pdf');
 }

@@ -408,6 +408,17 @@ export interface ConsultantPersonnel {
   remarks?: string;
 }
 
+export interface PersonnelAuditLogEntry {
+  id: string;
+  timestamp: string; // YYYY-MM-DD HH:mm:ss
+  adminUser: string; // username or email of administrative user
+  actionType: 'ASSIGNED' | 'REMOVED' | 'PERMANENT_DELETION' | 'STATUS_CHANGE';
+  personnelName: string;
+  position: string;
+  category: string;
+  details: string;
+}
+
 export interface ConsultantInvoice {
   id: string;
   invoiceNo: string;
@@ -501,6 +512,7 @@ export interface SupervisionConsultantInfo {
   evaluationCriteria?: EvaluationCriteriaItem[];
   personnel: ConsultantPersonnel[];
   personnelHistory?: ConsultantPersonnel[]; // Permanent history log of all assigned/inserted personnel records
+  personnelAuditLog?: PersonnelAuditLogEntry[]; // Action audit log tracking timestamps and admin user identifiers
   invoices: ConsultantInvoice[];
   previousConsultants?: HistoricalSupervisionConsultant[]; // Archive of predecessor supervision consultants
 }
