@@ -415,7 +415,7 @@ export default function SeriesEditorView({ project, onUpdateSeries, onProjectUpd
           <table className="w-full text-left border-collapse text-xs text-slate-700 dark:text-slate-200">
             <thead>
               <tr className="bg-slate-50 dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700/60 text-slate-400 dark:text-slate-500 font-bold">
-                <th className="p-3 w-16 text-center">Code</th>
+                <th className="p-3 w-20 text-center">Code</th>
                 <th className="p-3">Work Item Division Description</th>
                 {isDB && <th className="p-3 w-20 text-center">Contract %</th>}
                 <th className="p-3 w-36 text-right">Contract Sum (Birr)</th>
@@ -428,16 +428,13 @@ export default function SeriesEditorView({ project, onUpdateSeries, onProjectUpd
               {series.map((item, idx) => (
                 <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/10 border-b border-slate-100 dark:border-slate-800">
                   <td className="p-3 text-center font-bold">
-                    {isDB ? (
-                      <input
-                        type="text"
-                        value={item.code}
-                        onChange={(e) => handleFieldChange(idx, 'code', e.target.value)}
-                        className="w-14 bg-slate-50 dark:bg-slate-900/60 border border-slate-350 dark:border-slate-755 text-center font-mono font-bold text-xs px-1 py-1 rounded-lg outline-none focus:border-blue-500 dark:focus:border-blue-450 focus:ring-2 focus:ring-blue-500/20 focus:bg-white dark:focus:bg-slate-950 transition-all duration-150 h-7 text-slate-850 dark:text-zinc-50"
-                      />
-                    ) : (
-                      <span className="text-slate-400 font-mono">{item.code}</span>
-                    )}
+                    <input
+                      type="text"
+                      value={item.code}
+                      onChange={(e) => handleFieldChange(idx, 'code', e.target.value)}
+                      placeholder="Code"
+                      className="w-16 sm:w-20 bg-slate-50 dark:bg-slate-900/60 border border-slate-350 dark:border-slate-755 text-center font-mono font-bold text-xs px-1.5 py-1 rounded-lg outline-none focus:border-blue-500 dark:focus:border-blue-450 focus:ring-2 focus:ring-blue-500/20 focus:bg-white dark:focus:bg-slate-950 transition-all duration-150 h-7 text-slate-850 dark:text-zinc-50"
+                    />
                   </td>
                   <td className="p-3">
                     <input
