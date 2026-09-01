@@ -86,6 +86,18 @@ export default function SupervisionConsultantView({
     );
   }, [currentUser]);
 
+  // Check whether current user is Master Admin
+  const isMasterAdmin = useMemo(() => {
+    if (!currentUser) return false;
+    return (
+      currentUser.role === 'master_admin' ||
+      currentUser.role === 'admin' ||
+      currentUser.role === 'cpm_admin' ||
+      currentUser.username === 'proj_1781786415663' ||
+      Boolean(currentUser.username && currentUser.username.toLowerCase().includes('ersido'))
+    );
+  }, [currentUser]);
+
   // Extract or initialize supervision consultant data
   const consultant: SupervisionConsultantInfo = useMemo(() => {
     if (project.supervisionConsultant) {
@@ -100,6 +112,7 @@ export default function SupervisionConsultantView({
         headOfficeEmail: project.supervisionConsultant.headOfficeEmail || '',
         headOfficeContactPerson: project.supervisionConsultant.headOfficeContactPerson || '',
         personnel: project.supervisionConsultant.personnel || [],
+        personnelHistory: project.supervisionConsultant.personnelHistory || project.supervisionConsultant.personnel || [],
         invoices: project.supervisionConsultant.invoices || [],
         previousConsultants: project.supervisionConsultant.previousConsultants || [],
         submittalKpis: project.supervisionConsultant.submittalKpis || DEFAULT_SUBMITTAL_KPIS,
@@ -374,7 +387,7 @@ export default function SupervisionConsultantView({
 
   // Filtered Personnel List
   const filteredPersonnel = useMemo(() => {
-    let list = consultant.personnel || [];
+    let list = [...(consultant.personnel || [])];
     if (personnelCategoryFilter !== 'ALL') {
       list = list.filter(p => p.category === personnelCategoryFilter);
     }
@@ -392,6 +405,29 @@ export default function SupervisionConsultantView({
         (p.contactPhone && p.contactPhone.toLowerCase().includes(q))
       );
     }
+
+    // Sort: Resident Engineer / Team Leader at top, then Key Personnel, then others
+    list.sort((a, b) => {
+      const posA = (a.position || '').toLowerCase();
+      const posB = (b.position || '').toLowerCase();
+      const catA = (a.category || '').toLowerCase();
+      const catB = (b.category || '').toLowerCase();
+
+      const isLeaderA = posA.includes('resident engineer') || posA.includes('team leader');
+      const isLeaderB = posB.includes('resident engineer') || posB.includes('team leader');
+
+      if (isLeaderA && !isLeaderB) return -1;
+      if (!isLeaderA && isLeaderB) return 1;
+
+      const isKeyA = catA.includes('key') || catA.includes('key personnel');
+      const isKeyB = catB.includes('key') || catB.includes('key personnel');
+
+      if (isKeyA && !isKeyB) return -1;
+      if (!isKeyA && isKeyB) return 1;
+
+      return 0;
+    });
+
     return list;
   }, [consultant.personnel, personnelCategoryFilter, personnelStatusFilter, personnelSearch]);
 
@@ -658,15 +694,20 @@ export default function SupervisionConsultantView({
     }
 
     const currentList = consultant.personnel || [];
+    const currentHistory = consultant.personnelHistory || currentList;
     let updatedList: ConsultantPersonnel[];
+    let updatedHistory: ConsultantPersonnel[];
 
     if (selectedPersonnel) {
       // Edit
       updatedList = currentList.map(item => 
         item.id === selectedPersonnel.id ? { ...item, ...personnelForm } as ConsultantPersonnel : item
       );
+      updatedHistory = currentHistory.map(item =>
+        item.id === selectedPersonnel.id ? { ...item, ...personnelForm } as ConsultantPersonnel : item
+      );
     } else {
-      // Add new
+      // Add new / insert assignment
       const newItem: ConsultantPersonnel = {
         id: 'pers_' + Date.now(),
         name: personnelForm.name || '',
@@ -685,11 +726,14 @@ export default function SupervisionConsultantView({
         remarks: personnelForm.remarks || ''
       };
       updatedList = [newItem, ...currentList];
+      // Permanently preserve historical record in personnelHistory ensuring it remains even if deleted
+      updatedHistory = [newItem, ...currentHistory.filter(h => h.id !== newItem.id)];
     }
 
     const updatedConsultant: SupervisionConsultantInfo = {
       ...consultant,
-      personnel: updatedList
+      personnel: updatedList,
+      personnelHistory: updatedHistory
     };
 
     saveConsultantData(updatedConsultant, selectedPersonnel ? `Updated staff: ${personnelForm.name}` : `Assigned new staff: ${personnelForm.name}`);
@@ -697,11 +741,63 @@ export default function SupervisionConsultantView({
   };
 
   const handleDeletePersonnel = (pId: string, pName: string) => {
+    if (!isAdmin) {
+      alert('Access Denied: Only administrators have the permission to delete assigned personnel.');
+      return;
+    }
     if (!window.confirm(`Are you sure you want to remove "${pName}" from the assigned personnel register?`)) {
       return;
     }
     const updatedList = (consultant.personnel || []).filter(item => item.id !== pId);
     saveConsultantData({ ...consultant, personnel: updatedList }, `Removed staff: ${pName}`);
+  };
+
+  const handleDeletePersonnelHistory = (pId: string, pName: string) => {
+    if (!isMasterAdmin) {
+      alert('Access Denied: Only Master Administrators have permission to permanently delete historical personnel assignment records.');
+      return;
+    }
+    if (!window.confirm(`[MASTER ADMIN] Are you sure you want to PERMANENTLY DELETE historical personnel record for "${pName}" from the system database audit trail? This action cannot be undone.`)) {
+      return;
+    }
+    const updatedHistory = (consultant.personnelHistory || []).filter(item => item.id !== pId);
+    const updatedConsultant: SupervisionConsultantInfo = {
+      ...consultant,
+      personnelHistory: updatedHistory
+    };
+    saveConsultantData(updatedConsultant, `Permanently deleted historical staff record: ${pName}`);
+  };
+
+  const handleDeleteHistoricalPersonnelFromDossier = (histArchivedAt: string, pId: string, pName: string) => {
+    if (!isMasterAdmin) {
+      alert('Access Denied: Only Master Administrators have permission to permanently delete personnel from historical dossiers.');
+      return;
+    }
+    if (!window.confirm(`[MASTER ADMIN] Are you sure you want to permanently delete staff member "${pName}" from this historical consultant dossier?`)) {
+      return;
+    }
+    const updatedPrevious = (consultant.previousConsultants || []).map(prev => {
+      if (prev.archivedAt === histArchivedAt) {
+        return {
+          ...prev,
+          personnel: (prev.personnel || []).filter(p => p.id !== pId)
+        };
+      }
+      return prev;
+    });
+
+    const updatedConsultant: SupervisionConsultantInfo = {
+      ...consultant,
+      previousConsultants: updatedPrevious
+    };
+
+    saveConsultantData(updatedConsultant, `Permanently deleted historical personnel ${pName} from archived dossier`);
+    if (selectedHistoricalConsultant && selectedHistoricalConsultant.archivedAt === histArchivedAt) {
+      setSelectedHistoricalConsultant({
+        ...selectedHistoricalConsultant,
+        personnel: (selectedHistoricalConsultant.personnel || []).filter(p => p.id !== pId)
+      });
+    }
   };
 
   const handleTogglePersonnelStatus = (p: ConsultantPersonnel) => {
@@ -825,6 +921,10 @@ export default function SupervisionConsultantView({
   };
 
   const handleDeleteInvoice = (invId: string, invNo: string) => {
+    if (!isAdmin) {
+      alert('Access Denied: Only administrators have the permission to delete invoices.');
+      return;
+    }
     if (!window.confirm(`Are you sure you want to delete invoice "${invNo}"?`)) {
       return;
     }
@@ -2262,6 +2362,63 @@ export default function SupervisionConsultantView({
                         </button>
                       </div>
                     </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Permanent Personnel Assignment History Audit Log (Master Admin feature) */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
+              <div>
+                <h3 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
+                  <Users className="w-5 h-5 text-indigo-600" />
+                  Permanent Personnel Assignment History Audit Log
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Complete audit trail of all assigned and inserted personnel records. Master Administrators can permanently purge historical assignment records from the system database if required.
+                </p>
+              </div>
+              <span className="px-3 py-1 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 rounded-xl font-mono text-xs font-bold">
+                Total History Records: {consultant.personnelHistory?.length || 0}
+              </span>
+            </div>
+
+            {(!consultant.personnelHistory || consultant.personnelHistory.length === 0) ? (
+              <div className="py-8 text-center text-slate-400 text-xs">
+                No historical personnel assignment logs found.
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-100 dark:divide-slate-800 mt-4">
+                {consultant.personnelHistory.map((histP, hIdx) => (
+                  <div key={histP.id || hIdx} className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <div className="font-bold text-slate-900 dark:text-white text-xs flex items-center gap-2">
+                        {histP.name}
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                          {histP.position}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-500 mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+                        <span>Category: <strong>{histP.category}</strong></span>
+                        <span>•</span>
+                        <span>Assigned: <strong className="font-mono">{histP.assignmentDate || 'N/A'}</strong></span>
+                        <span>•</span>
+                        <span>Status: <strong className={histP.status === 'Active' ? 'text-emerald-600' : 'text-slate-400'}>{histP.status}</strong></span>
+                      </div>
+                    </div>
+
+                    {isMasterAdmin && (
+                      <button
+                        onClick={() => handleDeletePersonnelHistory(histP.id, histP.name)}
+                        className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 rounded-xl font-bold text-xs flex items-center gap-1.5 transition self-start sm:self-center shadow-xs"
+                        title="Permanently purge historical personnel record from database"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Permanently Delete
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -3764,6 +3921,51 @@ export default function SupervisionConsultantView({
                       {selectedHistoricalConsultant.invoices?.length || 0} Invoices
                     </div>
                   </div>
+                </div>
+
+                {/* Recorded Personnel List in Dossier */}
+                <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2">
+                  <h4 className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                    <Users className="w-3.5 h-3.5 text-indigo-600" />
+                    Recorded Personnel Roster ({selectedHistoricalConsultant.personnel?.length || 0})
+                  </h4>
+
+                  {(!selectedHistoricalConsultant.personnel || selectedHistoricalConsultant.personnel.length === 0) ? (
+                    <div className="py-4 text-center text-slate-400 text-[11px] bg-slate-50 dark:bg-slate-800/40 rounded-xl">
+                      No personnel records attached to this historical dossier.
+                    </div>
+                  ) : (
+                    <div className="max-h-56 overflow-y-auto space-y-2 pr-1 divide-y divide-slate-100 dark:divide-slate-800">
+                      {selectedHistoricalConsultant.personnel.map((p) => (
+                        <div key={p.id} className="pt-2.5 first:pt-0 flex items-center justify-between gap-2">
+                          <div>
+                            <div className="font-bold text-slate-900 dark:text-white text-xs flex items-center gap-2">
+                              {p.name}
+                              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                                {p.position}
+                              </span>
+                            </div>
+                            <div className="text-[10px] text-slate-500 mt-0.5 flex items-center gap-2">
+                              <span>Category: <strong>{p.category}</strong></span>
+                              <span>•</span>
+                              <span>Status: <strong className={p.status === 'Active' ? 'text-emerald-600' : 'text-slate-400'}>{p.status}</strong></span>
+                            </div>
+                          </div>
+
+                          {isMasterAdmin && (
+                            <button
+                              onClick={() => handleDeleteHistoricalPersonnelFromDossier(selectedHistoricalConsultant.archivedAt, p.id, p.name)}
+                              className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 rounded-lg font-bold text-[10px] flex items-center gap-1 transition shrink-0 shadow-xs"
+                              title="Permanently delete staff member from historical dossier"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                              Permanently Delete
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 

@@ -500,6 +500,7 @@ export interface SupervisionConsultantInfo {
   targetOverrides?: Record<string, number>;
   evaluationCriteria?: EvaluationCriteriaItem[];
   personnel: ConsultantPersonnel[];
+  personnelHistory?: ConsultantPersonnel[]; // Permanent history log of all assigned/inserted personnel records
   invoices: ConsultantInvoice[];
   previousConsultants?: HistoricalSupervisionConsultant[]; // Archive of predecessor supervision consultants
 }
