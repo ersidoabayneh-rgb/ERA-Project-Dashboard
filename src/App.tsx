@@ -575,6 +575,13 @@ export default function App() {
     const origProj = JSON.stringify([...(original.accessibleProjects || [])].sort());
     if (draftProj !== origProj) return true;
 
+    const draftPages = JSON.stringify([...(draft.assignedPages || [])].sort());
+    const origPages = JSON.stringify([...(original.assignedPages || [])].sort());
+    if (draftPages !== origPages) return true;
+
+    if (draft.assignedDirectorate !== original.assignedDirectorate) return true;
+    if (draft.assignedPmo !== original.assignedPmo) return true;
+
     if (draft.isPendingApproval !== original.isPendingApproval) return true;
 
     return false;
