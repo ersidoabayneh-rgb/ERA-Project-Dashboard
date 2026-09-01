@@ -16,10 +16,16 @@ import {
   SlidersHorizontal,
   ChevronDown,
   Layers,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Calendar
 } from 'lucide-react';
-import { Project, formatAccounting, User } from '../types';
-import { compileWorkloadReportData, printWorkloadReportDocument } from '../lib/workloadReportPrinter';
+import { Project, formatAccounting, User, ConsultantPersonnel } from '../types';
+import { 
+  compileWorkloadReportData, 
+  printWorkloadReportDocument, 
+  EnrichedStaffCommitment,
+  calculateProjectCompletionDate
+} from '../lib/workloadReportPrinter';
 
 interface WorkloadReportModalProps {
   isOpen: boolean;
@@ -44,6 +50,7 @@ export default function WorkloadReportModal({
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [projectScope, setProjectScope] = useState<'all' | 'current'>('all');
+  const [selectedStaffForDetail, setSelectedStaffForDetail] = useState<any | null>(null);
 
   // Filter projects based on scope selection
   const selectedProjects = useMemo(() => {
@@ -68,7 +75,7 @@ export default function WorkloadReportModal({
 
   // Filtered staff list
   const filteredStaff = useMemo(() => {
-    return reportData.allStaff.filter(item => {
+    const list = reportData.allStaff.filter(item => {
       const p = item.person;
       if (directorateFilter !== 'ALL' && item.programDirectorate !== directorateFilter) {
         return false;
@@ -93,6 +100,33 @@ export default function WorkloadReportModal({
       }
       return true;
     });
+
+    list.sort((a, b) => {
+      const isInactiveA = a.person.status === 'Demobilized' || a.person.status === 'Replaced';
+      const isInactiveB = b.person.status === 'Demobilized' || b.person.status === 'Replaced';
+      if (!isInactiveA && isInactiveB) return -1;
+      if (isInactiveA && !isInactiveB) return 1;
+
+      const isLeaderA = (a.person.position || '').toLowerCase().includes('resident engineer') || (a.person.position || '').toLowerCase().includes('team leader');
+      const isLeaderB = (b.person.position || '').toLowerCase().includes('resident engineer') || (b.person.position || '').toLowerCase().includes('team leader');
+      if (isLeaderA && !isLeaderB) return -1;
+      if (!isLeaderA && isLeaderB) return 1;
+
+      const isKeyA = a.person.category === 'Key Personnel' || (a.person.category as any) === 'Key';
+      const isKeyB = b.person.category === 'Key Personnel' || (b.person.category as any) === 'Key';
+      if (isKeyA && !isKeyB) return -1;
+      if (!isKeyA && isKeyB) return 1;
+
+      if (isInactiveA && isInactiveB) {
+        const dateA = a.person.demobilizationDate || a.person.assignmentDate || '';
+        const dateB = b.person.demobilizationDate || b.person.assignmentDate || '';
+        return dateB.localeCompare(dateA);
+      }
+
+      return (a.person.name || '').localeCompare(b.person.name || '');
+    });
+
+    return list;
   }, [reportData.allStaff, directorateFilter, statusFilter, categoryFilter, searchQuery]);
 
   // Filtered projects summary list
@@ -135,8 +169,9 @@ export default function WorkloadReportModal({
       'PMO',
       'Supervision Consultant Firm',
       'Resident Engineer',
-      'Assignment Date',
-      'Demobilization Date',
+      'Date of Assignment',
+      'Personnel Demobilization Date',
+      'Project / Contract Target Completion Date',
       'Status',
       'Station',
       'Man-Months Allocated',
@@ -159,8 +194,9 @@ export default function WorkloadReportModal({
       `"${item.pmo}"`,
       `"${item.consultantFirm}"`,
       `"${item.residentEngineer}"`,
-      `"${item.person.assignmentDate || ''}"`,
-      `"${item.person.demobilizationDate || ''}"`,
+      `"${item.person.assignmentDate || 'N/A'}"`,
+      `"${item.person.demobilizationDate || 'Ongoing'}"`,
+      `"${item.projectCompletionDate || item.contractCompletionDate || 'N/A'}"`,
       `"${item.person.status || 'Active'}"`,
       `"${item.person.siteStation || ''}"`,
       item.allocatedMM,
@@ -335,6 +371,7 @@ export default function WorkloadReportModal({
                 <option value="ALL">All Statuses</option>
                 <option value="Active">Active Only</option>
                 <option value="Demobilized">Demobilized</option>
+                <option value="Replaced">Replaced</option>
                 <option value="On Leave">On Leave</option>
               </select>
 
@@ -415,7 +452,7 @@ export default function WorkloadReportModal({
                       <th className="py-3 px-3">Personnel Name & Role</th>
                       <th className="py-3 px-3">Project Commitment</th>
                       <th className="py-3 px-3">Directorate / PMO</th>
-                      <th className="py-3 px-3">Assignment Date</th>
+                      <th className="py-3 px-3">Assignment & Completion Dates</th>
                       <th className="py-3 px-3 text-center">Status</th>
                       <th className="py-3 px-3 text-right">Workload Input</th>
                       <th className="py-3 px-3">Qualifications & Station</th>
@@ -434,11 +471,14 @@ export default function WorkloadReportModal({
                         const p = item.person;
                         const isActive = (p.status || 'Active') === 'Active';
                         const isKey = p.category === 'Key Personnel' || (p.category as any) === 'Key';
+                        const completionDate = p.demobilizationDate || item.projectCompletionDate || item.contractCompletionDate || 'Ongoing';
 
                         return (
                           <tr 
-                            key={`${item.projectId}_${p.id || 'pers'}_${idx}`} 
-                            className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors"
+                            key={`${item.projectId}_${p.id || 'pers'}_${p.name || 'n'}_${idx}`} 
+                            onClick={() => setSelectedStaffForDetail(item)}
+                            className="hover:bg-indigo-50/70 dark:hover:bg-slate-800/70 transition-colors cursor-pointer group"
+                            title="Click to view complete personnel history, project commitments, assignment dates, qualifications & roles"
                           >
                             <td className="py-2.5 px-3 text-center font-mono text-slate-400 text-[10px]">
                               {idx + 1}
@@ -474,11 +514,21 @@ export default function WorkloadReportModal({
                                 {item.pmo}
                               </span>
                             </td>
-                            <td className="py-2.5 px-3 font-mono text-[11px] text-slate-600 dark:text-slate-300">
-                              <div>{p.assignmentDate || 'N/A'}</div>
-                              {p.demobilizationDate && (
-                                <div className="text-[9px] text-rose-500">Demob: {p.demobilizationDate}</div>
-                              )}
+                            <td className="py-2.5 px-3 font-mono text-[11px] text-slate-700 dark:text-slate-300">
+                              <div className="flex items-center gap-1">
+                                <span className="text-slate-400 text-[10px]">Assigned:</span>
+                                <span className="font-semibold">{p.assignmentDate || 'N/A'}</span>
+                              </div>
+                              <div className="flex items-center gap-1 mt-0.5">
+                                <span className="text-slate-400 text-[10px]">Completion:</span>
+                                {p.demobilizationDate ? (
+                                  <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400">
+                                    {p.status === 'Replaced' ? 'Replaced:' : 'Demob:'} {p.demobilizationDate}
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] text-slate-600 dark:text-slate-400">{completionDate}</span>
+                                )}
+                              </div>
                             </td>
                             <td className="py-2.5 px-3 text-center">
                               <span className={`inline-flex items-center gap-1 text-[9px] font-extrabold px-2 py-0.5 rounded-full ${
@@ -535,6 +585,7 @@ export default function WorkloadReportModal({
                       <th className="py-3 px-3">Directorate & PMO</th>
                       <th className="py-3 px-3">Supervision Consultant</th>
                       <th className="py-3 px-3">Resident Engineer</th>
+                      <th className="py-3 px-3">Supervision Timeline</th>
                       <th className="py-3 px-3 text-center">Staff Count</th>
                       <th className="py-3 px-3 text-right">Workload Input (MM)</th>
                       <th className="py-3 px-3 text-center">Mobilization Status</th>
@@ -543,7 +594,7 @@ export default function WorkloadReportModal({
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 bg-white dark:bg-slate-900">
                     {filteredProjectsSummary.length === 0 ? (
                       <tr>
-                        <td colSpan={8} className="py-12 text-center text-slate-400 dark:text-slate-500">
+                        <td colSpan={9} className="py-12 text-center text-slate-400 dark:text-slate-500">
                           <Building2 className="w-8 h-8 mx-auto mb-2 opacity-40" />
                           No project supervision records found.
                         </td>
@@ -551,7 +602,7 @@ export default function WorkloadReportModal({
                     ) : (
                       filteredProjectsSummary.map((ps, idx) => (
                         <tr 
-                          key={ps.projectId}
+                          key={`${ps.projectId}_${idx}`}
                           className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors"
                         >
                           <td className="py-2.5 px-3 text-center font-mono text-slate-400 text-[10px]">
@@ -583,6 +634,14 @@ export default function WorkloadReportModal({
                           </td>
                           <td className="py-2.5 px-3 font-medium text-slate-700 dark:text-slate-200">
                             {ps.residentEngineer}
+                          </td>
+                          <td className="py-2.5 px-3 font-mono text-[10.5px]">
+                            <div className="text-slate-600 dark:text-slate-300">
+                              <span className="text-slate-400 text-[9.5px]">Start:</span> {ps.commencementDate || 'N/A'}
+                            </div>
+                            <div className="text-slate-600 dark:text-slate-300 mt-0.5">
+                              <span className="text-slate-400 text-[9.5px]">End:</span> {ps.completionDate || 'N/A'}
+                            </div>
                           </td>
                           <td className="py-2.5 px-3 text-center">
                             <div className="font-bold text-slate-800 dark:text-slate-200">
@@ -650,6 +709,306 @@ export default function WorkloadReportModal({
                 Close
               </button>
             </div>
+          </div>
+        </motion.div>
+      </div>
+
+      {/* Personnel Detailed History & Project Commitments Modal */}
+      {selectedStaffForDetail && (
+        <PersonnelDetailModal
+          isOpen={!!selectedStaffForDetail}
+          onClose={() => setSelectedStaffForDetail(null)}
+          staffItem={selectedStaffForDetail}
+          allProjects={projects}
+        />
+      )}
+    </AnimatePresence>
+  );
+}
+
+function PersonnelDetailModal({
+  isOpen,
+  onClose,
+  staffItem,
+  allProjects
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  staffItem: EnrichedStaffCommitment | null;
+  allProjects: Project[];
+}) {
+  if (!isOpen || !staffItem) return null;
+
+  const staffName = staffItem.person.name;
+  
+  // Aggregate all assignments across all projects for this staff member
+  const allAssignments = useMemo(() => {
+    const results: {
+      projectId: string;
+      projectName: string;
+      consultantFirm: string;
+      programDirectorate: string;
+      pmo: string;
+      person: ConsultantPersonnel;
+      allocatedMM: number;
+      expendedMM: number;
+      remainingMM: number;
+      workloadPct: number;
+      commencementDate: string;
+      projectCompletionDate: string;
+      contractCompletionDate: string;
+    }[] = [];
+
+    allProjects.forEach(p => {
+      const personnelList = p.supervisionConsultant?.personnel || [];
+      const projectCompletion = calculateProjectCompletionDate(p);
+      const contractCompletion = p.supervisionConsultant?.revisedCompletionDate || p.supervisionConsultant?.originalCompletionDate || '';
+      const commencement = p.supervisionConsultant?.commencementDate || p.startDate || '';
+
+      personnelList.forEach(pers => {
+        if (pers.name.trim().toLowerCase() === staffName.trim().toLowerCase()) {
+          const allocated = pers.manMonthsAllocated || 0;
+          const expended = pers.manMonthsInput ?? (pers as any).manMonthsExpended ?? 0;
+          const remaining = Math.max(0, allocated - expended);
+          const workloadPct = allocated > 0 ? (expended / allocated) * 100 : 0;
+          results.push({
+            projectId: p.id,
+            projectName: p.name || 'Untitled Project',
+            consultantFirm: p.supervisionConsultant?.firmName || p.consultant || 'Supervision Consultant',
+            programDirectorate: p.programDirectorate || 'Southern',
+            pmo: p.pmo || 'PMO 1',
+            person: pers,
+            allocatedMM: allocated,
+            expendedMM: expended,
+            remainingMM: remaining,
+            workloadPct,
+            commencementDate: commencement,
+            projectCompletionDate: projectCompletion,
+            contractCompletionDate: contractCompletion
+          });
+        }
+      });
+    });
+
+    return results;
+  }, [staffName, allProjects]);
+
+  const totalAllocated = allAssignments.reduce((acc, curr) => acc + curr.allocatedMM, 0);
+  const totalExpended = allAssignments.reduce((acc, curr) => acc + curr.expendedMM, 0);
+  const overallWorkloadPct = totalAllocated > 0 ? (totalExpended / totalAllocated) * 100 : 0;
+
+  const p = staffItem.person;
+  const isActive = (p.status || 'Active') === 'Active';
+  const isKey = p.category === 'Key Personnel' || (p.category as any) === 'Key';
+  const currentCompletionDate = p.demobilizationDate || staffItem.projectCompletionDate || staffItem.contractCompletionDate || 'Ongoing';
+
+  return (
+    <AnimatePresence>
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95, y: 20 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.95, y: 20 }}
+          className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden"
+        >
+          {/* Header */}
+          <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-850/50">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-black text-lg">
+                {p.name.charAt(0)}
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-lg font-black text-slate-900 dark:text-white">
+                    {p.name}
+                  </h2>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                    isActive ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                  }`}>
+                    {p.status || 'Active'}
+                  </span>
+                  {isKey && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300">
+                      Key Expert
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400 mt-0.5">
+                  Position / Role: {p.position}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Body Content */}
+          <div className="p-6 overflow-y-auto space-y-6 flex-1">
+            {/* Bio, Timeline & Workload Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-700/80">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                  Professional Qualification & Station
+                </span>
+                <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                  {p.qualification || 'Not Specified'}
+                </p>
+                <div className="text-[11px] text-slate-500 font-medium mt-1">
+                  📍 {p.siteStation || 'Site Camp'}
+                </div>
+                <p className="text-[10.5px] text-slate-400 font-mono mt-0.5">
+                  {p.contactPhone || 'No Phone'} {p.contactEmail ? `• ${p.contactEmail}` : ''}
+                </p>
+              </div>
+              <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-700/80">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                  Current Assignment Timeline
+                </span>
+                <div className="space-y-1 mt-1 font-mono text-xs">
+                  <div className="flex items-center justify-between text-slate-700 dark:text-slate-300">
+                    <span className="text-slate-400 text-[10px]">Assigned Date:</span>
+                    <span className="font-semibold">{p.assignmentDate || 'N/A'}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-slate-700 dark:text-slate-300">
+                    <span className="text-slate-400 text-[10px]">Completion Date:</span>
+                    <span className={p.demobilizationDate ? "font-bold text-rose-500" : "font-semibold"}>
+                      {p.demobilizationDate ? `${p.status === 'Replaced' ? 'Replaced' : 'Demob'}: ${p.demobilizationDate}` : currentCompletionDate}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-700/80">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                  Total System Workload
+                </span>
+                <div className="flex items-center justify-between mt-1">
+                  <span className="text-xs font-mono font-extrabold text-slate-800 dark:text-slate-100">
+                    {totalExpended.toFixed(1)} / {totalAllocated.toFixed(1)} MM
+                  </span>
+                  <span className="text-xs font-bold font-mono text-indigo-600 dark:text-indigo-400">
+                    {overallWorkloadPct.toFixed(0)}%
+                  </span>
+                </div>
+                <div className="w-full bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden mt-1.5">
+                  <div 
+                    className="bg-indigo-600 h-full rounded-full" 
+                    style={{ width: `${Math.min(100, overallWorkloadPct)}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Assignments & History Section */}
+            <div className="space-y-3">
+              <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
+                <Briefcase className="w-4 h-4 text-indigo-600" />
+                Project Assignments & Commitments History ({allAssignments.length} Projects Assigned)
+              </h3>
+
+              <div className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-xs">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead className="bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-bold uppercase text-[10px] tracking-wider border-b border-slate-200 dark:border-slate-700">
+                    <tr>
+                      <th className="py-3 px-3">Project Name & Firm</th>
+                      <th className="py-3 px-3">Directorate & PMO</th>
+                      <th className="py-3 px-3">Specific Role / Position</th>
+                      <th className="py-3 px-3">Assignment Date</th>
+                      <th className="py-3 px-3">Completion Date</th>
+                      <th className="py-3 px-3 text-right">Workload Input (MM)</th>
+                      <th className="py-3 px-3 text-center">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 bg-white dark:bg-slate-900">
+                    {allAssignments.map((assign, aIdx) => {
+                      const pers = assign.person;
+                      const aActive = (pers.status || 'Active') === 'Active';
+                      const completion = pers.demobilizationDate || assign.projectCompletionDate || assign.contractCompletionDate || 'Ongoing';
+
+                      return (
+                        <tr key={`${assign.projectId}_${assign.person.id || 'pers'}_${aIdx}`} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition">
+                          <td className="py-3 px-3">
+                            <span className="font-extrabold text-slate-900 dark:text-white block">
+                              {assign.projectName}
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-mono">
+                              Firm: {assign.consultantFirm}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3">
+                            <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                              {assign.programDirectorate}
+                            </span>
+                            <span className="text-[10px] text-slate-400 block font-mono mt-0.5">
+                              {assign.pmo}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 font-bold text-indigo-600 dark:text-indigo-400">
+                            {pers.position}
+                          </td>
+                          <td className="py-3 px-3 font-mono text-[11px] text-slate-700 dark:text-slate-300">
+                            <div className="flex items-center gap-1">
+                              <Calendar className="w-3 h-3 text-indigo-500" />
+                              <span>{pers.assignmentDate || 'N/A'}</span>
+                            </div>
+                          </td>
+                          <td className="py-3 px-3 font-mono text-[11px]">
+                            {pers.demobilizationDate ? (
+                              <div className="text-rose-600 dark:text-rose-400 font-bold">
+                                {pers.status === 'Replaced' ? 'Replaced:' : 'Demob:'} {pers.demobilizationDate}
+                              </div>
+                            ) : (
+                              <div className="text-slate-600 dark:text-slate-300">
+                                {completion}
+                              </div>
+                            )}
+                            {assign.contractCompletionDate && !pers.demobilizationDate && (
+                              <div className="text-[9.5px] text-slate-400">
+                                Target: {assign.contractCompletionDate}
+                              </div>
+                            )}
+                          </td>
+                          <td className="py-3 px-3 text-right">
+                            <div className="font-mono text-xs font-bold text-slate-800 dark:text-slate-100">
+                              {assign.expendedMM.toFixed(1)} / {assign.allocatedMM.toFixed(1)} MM
+                            </div>
+                            <span className="text-[9px] font-mono text-slate-400">
+                              {assign.workloadPct.toFixed(0)}% Utilized
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 text-center">
+                            <span className={`inline-flex items-center gap-1 text-[9px] font-extrabold px-2 py-0.5 rounded-full ${
+                              aActive
+                                ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                                : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 border border-slate-200 dark:border-slate-700'
+                            }`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${aActive ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+                              {pers.status || 'Active'}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="p-4 border-t border-slate-150 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-850/70 flex items-center justify-between">
+            <span className="text-xs text-slate-400">
+              Personnel Dossier generated from ERA Supervision & Contract Management Database
+            </span>
+            <button
+              onClick={onClose}
+              className="px-4 py-2 bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition"
+            >
+              Close Dossier
+            </button>
           </div>
         </motion.div>
       </div>

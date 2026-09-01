@@ -1,5 +1,35 @@
 import { Project, ConsultantPersonnel } from '../types';
 
+export function calculateProjectCompletionDate(p: Project): string {
+  if (p.supervisionConsultant?.revisedCompletionDate) {
+    return p.supervisionConsultant.revisedCompletionDate;
+  }
+  if (p.supervisionConsultant?.originalCompletionDate) {
+    return p.supervisionConsultant.originalCompletionDate;
+  }
+  if (p.startDate) {
+    const totalDays = (p.origDays || 0) + (p.eotDays || 0) + (p.interimEotDays || 0);
+    if (totalDays > 0) {
+      try {
+        const parts = p.startDate.split('-');
+        if (parts.length === 3) {
+          const y = parseInt(parts[0], 10);
+          const m = parseInt(parts[1], 10) - 1;
+          const d = parseInt(parts[2], 10);
+          const targetDate = new Date(y, m, d + totalDays);
+          return targetDate.toISOString().split('T')[0];
+        } else {
+          const targetDate = new Date(new Date(p.startDate).getTime() + totalDays * 86400000);
+          return targetDate.toISOString().split('T')[0];
+        }
+      } catch {
+        return '';
+      }
+    }
+  }
+  return '';
+}
+
 export interface EnrichedStaffCommitment {
   person: ConsultantPersonnel;
   projectId: string;
@@ -12,6 +42,11 @@ export interface EnrichedStaffCommitment {
   allocatedMM: number;
   remainingMM: number;
   workloadPct: number;
+  assignmentDate: string;
+  demobilizationDate?: string;
+  projectCompletionDate: string;
+  contractCompletionDate: string;
+  effectiveCompletionDate: string;
 }
 
 export interface ProjectSupervisionSummary {
@@ -29,6 +64,8 @@ export interface ProjectSupervisionSummary {
   expendedMM: number;
   workloadPct: number;
   statusLabel: string;
+  commencementDate: string;
+  completionDate: string;
 }
 
 export interface WorkloadReportData {
@@ -59,6 +96,8 @@ export function compileWorkloadReportData(projects: Project[]): WorkloadReportDa
     const reName = sc?.residentEngineerName || 'N/A';
     const contractRef = sc?.contractRefNo || 'Standard Contract';
     const personnel = sc?.personnel || [];
+    const projCompDate = calculateProjectCompletionDate(p);
+    const constCompDate = sc?.revisedCompletionDate || sc?.originalCompletionDate || '';
 
     let pAllocatedMM = 0;
     let pExpendedMM = 0;
@@ -72,6 +111,7 @@ export function compileWorkloadReportData(projects: Project[]): WorkloadReportDa
       const workloadPct = allocated > 0 ? (expended / allocated) * 100 : 0;
       const isActive = (person.status || 'Active') === 'Active';
       const isKey = person.category === 'Key Personnel' || (person.category as any) === 'Key';
+      const effectiveCompletion = person.demobilizationDate || constCompDate || projCompDate || 'Ongoing';
 
       if (isActive) {
         activePersonnel++;
@@ -98,7 +138,12 @@ export function compileWorkloadReportData(projects: Project[]): WorkloadReportDa
         allocatedMM: allocated,
         expendedMM: expended,
         remainingMM: remaining,
-        workloadPct
+        workloadPct,
+        assignmentDate: person.assignmentDate || 'N/A',
+        demobilizationDate: person.demobilizationDate || '',
+        projectCompletionDate: projCompDate || constCompDate || 'N/A',
+        contractCompletionDate: constCompDate || 'N/A',
+        effectiveCompletionDate: effectiveCompletion
       });
     });
 
@@ -130,13 +175,41 @@ export function compileWorkloadReportData(projects: Project[]): WorkloadReportDa
       allocatedMM: pAllocatedMM,
       expendedMM: pExpendedMM,
       workloadPct: pWorkloadPct,
-      statusLabel
+      statusLabel,
+      commencementDate: sc?.commencementDate || p.startDate || 'N/A',
+      completionDate: sc?.revisedCompletionDate || sc?.originalCompletionDate || projCompDate || 'N/A'
     });
   });
 
   const totalAssignedPersonnel = allStaff.length;
   const overallWorkloadPct = totalAllocatedMM > 0 ? (totalExpendedMM / totalAllocatedMM) * 100 : 0;
   const mobilizationRatePct = totalAssignedPersonnel > 0 ? (activePersonnel / totalAssignedPersonnel) * 100 : 0;
+
+  // Sort staff: Active at the top, Demobilized and Replaced at the bottom
+  allStaff.sort((a, b) => {
+    const isInactiveA = a.person.status === 'Demobilized' || a.person.status === 'Replaced';
+    const isInactiveB = b.person.status === 'Demobilized' || b.person.status === 'Replaced';
+    if (!isInactiveA && isInactiveB) return -1;
+    if (isInactiveA && !isInactiveB) return 1;
+
+    const isLeaderA = (a.person.position || '').toLowerCase().includes('resident engineer') || (a.person.position || '').toLowerCase().includes('team leader');
+    const isLeaderB = (b.person.position || '').toLowerCase().includes('resident engineer') || (b.person.position || '').toLowerCase().includes('team leader');
+    if (isLeaderA && !isLeaderB) return -1;
+    if (!isLeaderA && isLeaderB) return 1;
+
+    const isKeyA = a.person.category === 'Key Personnel' || (a.person.category as any) === 'Key';
+    const isKeyB = b.person.category === 'Key Personnel' || (b.person.category as any) === 'Key';
+    if (isKeyA && !isKeyB) return -1;
+    if (!isKeyA && isKeyB) return 1;
+
+    if (isInactiveA && isInactiveB) {
+      const dateA = a.person.demobilizationDate || a.person.assignmentDate || '';
+      const dateB = b.person.demobilizationDate || b.person.assignmentDate || '';
+      return dateB.localeCompare(dateA);
+    }
+
+    return (a.person.name || '').localeCompare(b.person.name || '');
+  });
 
   return {
     allStaff,
@@ -225,6 +298,7 @@ export function generateWorkloadReportHtml({
               <th>Project Name & ID</th>
               <th>Directorate / PMO</th>
               <th>Supervision Consultant Firm</th>
+              <th>Contract Service Period</th>
               <th>Resident Engineer</th>
               <th style="text-align: center;">Staff (Act/Tot)</th>
               <th style="text-align: center;">Key Staff</th>
@@ -246,7 +320,14 @@ export function generateWorkloadReportHtml({
                   <span class="badge badge-dir">${ps.programDirectorate}</span>
                   <div style="font-size: 8.5px; color: #64748b;">${ps.pmo}</div>
                 </td>
-                <td>${ps.consultantFirm}</td>
+                <td>
+                  <strong>${ps.consultantFirm}</strong>
+                  <div style="font-size: 8.5px; color: #64748b; font-family: monospace;">Ref: ${ps.contractRef}</div>
+                </td>
+                <td style="font-family: monospace; font-size: 8.5px;">
+                  <div><strong>Start:</strong> ${ps.commencementDate || 'N/A'}</div>
+                  <div style="color: #4338ca;"><strong>End:</strong> ${ps.completionDate || 'N/A'}</div>
+                </td>
                 <td><strong>${ps.residentEngineer}</strong></td>
                 <td style="text-align: center; font-weight: bold;">
                   <span style="color: #16a34a;">${ps.activeStaff}</span> / ${ps.totalStaff}
@@ -281,7 +362,7 @@ export function generateWorkloadReportHtml({
               <th>Specific Position / Role</th>
               <th>Category</th>
               <th>Assigned Project & Directorate</th>
-              <th>Assignment Date</th>
+              <th>Assignment & Completion Dates</th>
               <th>Station / Camp</th>
               <th style="text-align: center;">Status</th>
               <th style="text-align: right;">Allocated MM</th>
@@ -315,7 +396,12 @@ export function generateWorkloadReportHtml({
                     <strong>${item.projectName}</strong>
                     <div style="font-size: 8.5px; color: #64748b;">${item.programDirectorate} • ${item.pmo}</div>
                   </td>
-                  <td style="font-family: monospace;">${p.assignmentDate || 'N/A'}</td>
+                  <td style="font-family: monospace; font-size: 8.5px;">
+                    <div><strong>Assigned:</strong> ${p.assignmentDate || 'N/A'}</div>
+                    <div style="color: ${p.demobilizationDate ? '#e11d48' : '#4338ca'};">
+                      <strong>${p.demobilizationDate ? (p.status === 'Replaced' ? 'Replaced End:' : 'Demob End:') : 'Target End:'}</strong> ${p.demobilizationDate || item.projectCompletionDate || item.contractCompletionDate || 'Ongoing'}
+                    </div>
+                  </td>
                   <td>${p.siteStation || 'Site'}</td>
                   <td style="text-align: center;">
                     <span class="badge ${isActive ? 'badge-active' : 'badge-demob'}">${p.status || 'Active'}</span>

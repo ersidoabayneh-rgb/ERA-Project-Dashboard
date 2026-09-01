@@ -206,14 +206,33 @@ export default function SupervisionConsultantView({
   // Modals state
   const [isEditConsultantOpen, setIsEditConsultantOpen] = useState(false);
   const [isPersonnelModalOpen, setIsPersonnelModalOpen] = useState(false);
+  const [isReplaceModalOpen, setIsReplaceModalOpen] = useState(false);
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
   const [isWorkloadReportOpen, setIsWorkloadReportOpen] = useState(false);
   const [isAssignNewConsultantOpen, setIsAssignNewConsultantOpen] = useState(false);
   const [isEditHeadOfficeQuickOpen, setIsEditHeadOfficeQuickOpen] = useState(false);
   const [selectedPersonnel, setSelectedPersonnel] = useState<ConsultantPersonnel | null>(null);
+  const [personnelToReplace, setPersonnelToReplace] = useState<ConsultantPersonnel | null>(null);
   const [selectedInvoice, setSelectedInvoice] = useState<ConsultantInvoice | null>(null);
   const [viewDetailPersonnel, setViewDetailPersonnel] = useState<ConsultantPersonnel | null>(null);
   const [selectedHistoricalConsultant, setSelectedHistoricalConsultant] = useState<HistoricalSupervisionConsultant | null>(null);
+
+  // Form state for Replacing Personnel with a Successor
+  const [replaceForm, setReplaceForm] = useState({
+    replacementDate: new Date().toISOString().split('T')[0],
+    reason: 'Contractual personnel replacement and site demobilization approved by Employer',
+    successorName: '',
+    successorPosition: '',
+    successorCategory: 'Key Personnel',
+    successorQualification: '',
+    successorExperience: 10,
+    successorAllocatedMM: 24,
+    successorInputMM: 0,
+    successorPhone: '',
+    successorEmail: '',
+    successorSiteStation: '',
+    successorRemarks: ''
+  });
 
   // Form states for Consultant Profile
   const [consultantForm, setConsultantForm] = useState<SupervisionConsultantInfo>(consultant);
@@ -445,8 +464,15 @@ export default function SupervisionConsultantView({
       );
     }
 
-    // Sort: Resident Engineer / Team Leader at top, then Key Personnel, then others
+    // Sort: Active at top (Team Leader / RE, then Key Personnel, then other active staff), Demobilized & Replaced immediately taken to the bottom
     list.sort((a, b) => {
+      const isInactiveA = a.status === 'Demobilized' || a.status === 'Replaced';
+      const isInactiveB = b.status === 'Demobilized' || b.status === 'Replaced';
+
+      // Replaced or Demobilized taken immediately to the bottom of the table
+      if (!isInactiveA && isInactiveB) return -1;
+      if (isInactiveA && !isInactiveB) return 1;
+
       const posA = (a.position || '').toLowerCase();
       const posB = (b.position || '').toLowerCase();
       const catA = (a.category || '').toLowerCase();
@@ -464,7 +490,14 @@ export default function SupervisionConsultantView({
       if (isKeyA && !isKeyB) return -1;
       if (!isKeyA && isKeyB) return 1;
 
-      return 0;
+      // Inactive sorted by demobilizationDate descending (recent demobilization first among bottom rows)
+      if (isInactiveA && isInactiveB) {
+        const dateA = a.demobilizationDate || a.assignmentDate || '';
+        const dateB = b.demobilizationDate || b.assignmentDate || '';
+        return dateB.localeCompare(dateA);
+      }
+
+      return (a.name || '').localeCompare(b.name || '');
     });
 
     return list;
@@ -762,44 +795,55 @@ export default function SupervisionConsultantView({
     let updatedList: ConsultantPersonnel[];
     let updatedHistory: ConsultantPersonnel[];
 
+    const isDemobOrReplaced = personnelForm.status === 'Demobilized' || personnelForm.status === 'Replaced';
+    const todayDate = new Date().toISOString().split('T')[0];
+    const effectiveDemobDate = isDemobOrReplaced
+      ? (personnelForm.demobilizationDate || todayDate)
+      : (personnelForm.demobilizationDate || '');
+
+    const resolvedPersonnelForm = {
+      ...personnelForm,
+      demobilizationDate: effectiveDemobDate
+    };
+
     const actionDesc = selectedPersonnel 
-      ? `Updated staff assignment record for ${personnelForm.name} (${personnelForm.position})` 
-      : `Assigned new staff member ${personnelForm.name} as ${personnelForm.position}`;
+      ? `Updated staff assignment record for ${resolvedPersonnelForm.name} (${resolvedPersonnelForm.position})${isDemobOrReplaced ? ` (Commitment completion date set to ${effectiveDemobDate})` : ''}` 
+      : `Assigned new staff member ${resolvedPersonnelForm.name} as ${resolvedPersonnelForm.position}`;
     const updatedAuditLog = recordPersonnelAuditLog(
       currentAuditLog,
-      'ASSIGNED',
-      personnelForm.name || '',
-      personnelForm.position || '',
-      personnelForm.category || 'Key Personnel',
+      isDemobOrReplaced ? 'STATUS_CHANGE' : 'ASSIGNED',
+      resolvedPersonnelForm.name || '',
+      resolvedPersonnelForm.position || '',
+      resolvedPersonnelForm.category || 'Key Personnel',
       actionDesc
     );
 
     if (selectedPersonnel) {
       // Edit
       updatedList = currentList.map(item => 
-        item.id === selectedPersonnel.id ? { ...item, ...personnelForm } as ConsultantPersonnel : item
+        item.id === selectedPersonnel.id ? { ...item, ...resolvedPersonnelForm } as ConsultantPersonnel : item
       );
       updatedHistory = currentHistory.map(item =>
-        item.id === selectedPersonnel.id ? { ...item, ...personnelForm } as ConsultantPersonnel : item
+        item.id === selectedPersonnel.id ? { ...item, ...resolvedPersonnelForm } as ConsultantPersonnel : item
       );
     } else {
       // Add new / insert assignment
       const newItem: ConsultantPersonnel = {
         id: 'pers_' + Date.now(),
-        name: personnelForm.name || '',
-        position: personnelForm.position || '',
-        category: personnelForm.category || 'Key Personnel',
-        assignmentDate: personnelForm.assignmentDate || new Date().toISOString().split('T')[0],
-        demobilizationDate: personnelForm.demobilizationDate || '',
-        qualification: personnelForm.qualification || '',
-        yearsExperience: Number(personnelForm.yearsExperience) || 0,
-        status: personnelForm.status as any || 'Active',
-        manMonthsAllocated: Number(personnelForm.manMonthsAllocated) || 0,
-        manMonthsInput: Number(personnelForm.manMonthsInput) || 0,
-        contactPhone: personnelForm.contactPhone || '',
-        contactEmail: personnelForm.contactEmail || '',
-        siteStation: personnelForm.siteStation || '',
-        remarks: personnelForm.remarks || ''
+        name: resolvedPersonnelForm.name || '',
+        position: resolvedPersonnelForm.position || '',
+        category: resolvedPersonnelForm.category || 'Key Personnel',
+        assignmentDate: resolvedPersonnelForm.assignmentDate || todayDate,
+        demobilizationDate: resolvedPersonnelForm.demobilizationDate || '',
+        qualification: resolvedPersonnelForm.qualification || '',
+        yearsExperience: Number(resolvedPersonnelForm.yearsExperience) || 0,
+        status: resolvedPersonnelForm.status as any || 'Active',
+        manMonthsAllocated: Number(resolvedPersonnelForm.manMonthsAllocated) || 0,
+        manMonthsInput: Number(resolvedPersonnelForm.manMonthsInput) || 0,
+        contactPhone: resolvedPersonnelForm.contactPhone || '',
+        contactEmail: resolvedPersonnelForm.contactEmail || '',
+        siteStation: resolvedPersonnelForm.siteStation || '',
+        remarks: resolvedPersonnelForm.remarks || ''
       };
       updatedList = [newItem, ...currentList];
       // Permanently preserve historical record in personnelHistory ensuring it remains even if deleted
@@ -913,7 +957,10 @@ export default function SupervisionConsultantView({
   };
 
   const handleTogglePersonnelStatus = (p: ConsultantPersonnel) => {
-    const newStatus = p.status === 'Active' ? 'Demobilized' : 'Active';
+    const newStatus: 'Active' | 'Demobilized' = p.status === 'Active' ? 'Demobilized' : 'Active';
+    const todayDate = new Date().toISOString().split('T')[0];
+    const demobDate = newStatus === 'Demobilized' ? (p.demobilizationDate || todayDate) : '';
+
     const currentAuditLog = consultant.personnelAuditLog || [];
     const updatedAuditLog = recordPersonnelAuditLog(
       currentAuditLog,
@@ -921,23 +968,128 @@ export default function SupervisionConsultantView({
       p.name,
       p.position,
       p.category,
-      `Changed employment status of "${p.name}" from ${p.status} to ${newStatus}`
+      `Changed employment status of "${p.name}" from ${p.status} to ${newStatus}${newStatus === 'Demobilized' ? ` (commitment completion date instantly recorded as ${demobDate}, moved to bottom of active roster, record preserved in history)` : ''}`
     );
 
+    const updatedItem: ConsultantPersonnel = {
+      ...p,
+      status: newStatus,
+      demobilizationDate: demobDate
+    };
+
     const updatedList = (consultant.personnel || []).map(item => 
-      item.id === p.id 
-        ? { 
-            ...item, 
-            status: newStatus as any,
-            demobilizationDate: newStatus === 'Demobilized' ? new Date().toISOString().split('T')[0] : ''
-          } 
-        : item
+      item.id === p.id ? updatedItem : item
     );
+
+    const currentHistory = consultant.personnelHistory || consultant.personnel || [];
+    const historyExists = currentHistory.some(h => h.id === p.id);
+    const updatedHistory = historyExists
+      ? currentHistory.map(h => h.id === p.id ? updatedItem : h)
+      : [updatedItem, ...currentHistory];
+
     saveConsultantData({ 
       ...consultant, 
       personnel: updatedList,
+      personnelHistory: updatedHistory,
       personnelAuditLog: updatedAuditLog
-    }, `Changed status of ${p.name} to ${newStatus}`);
+    }, `Changed status of ${p.name} to ${newStatus}${newStatus === 'Demobilized' ? ` (Completion date: ${demobDate})` : ''}`);
+  };
+
+  const handleOpenReplacePersonnel = (p: ConsultantPersonnel) => {
+    setPersonnelToReplace(p);
+    const remainingMM = Math.max(0, (p.manMonthsAllocated || 0) - (p.manMonthsInput || 0));
+    setReplaceForm({
+      replacementDate: new Date().toISOString().split('T')[0],
+      reason: 'Contractual personnel replacement and site demobilization approved by Employer',
+      successorName: '',
+      successorPosition: p.position || '',
+      successorCategory: p.category || 'Key Personnel',
+      successorQualification: '',
+      successorExperience: p.yearsExperience || 10,
+      successorAllocatedMM: remainingMM > 0 ? remainingMM : (p.manMonthsAllocated || 24),
+      successorInputMM: 0,
+      successorPhone: '',
+      successorEmail: '',
+      successorSiteStation: p.siteStation || '',
+      successorRemarks: `Replacement successor for ${p.name} (${p.position}) effective from assignment date.`
+    });
+    setIsReplaceModalOpen(true);
+  };
+
+  const handleConfirmReplacePersonnel = () => {
+    if (!personnelToReplace) return;
+    if (!replaceForm.successorName?.trim()) {
+      alert('Please enter the incoming replacement personnel full name.');
+      return;
+    }
+    if (!replaceForm.replacementDate) {
+      alert('Please specify the effective replacement / handover date.');
+      return;
+    }
+
+    const currentList = consultant.personnel || [];
+    const currentHistory = consultant.personnelHistory || currentList;
+    const currentAuditLog = consultant.personnelAuditLog || [];
+
+    // Outgoing personnel: marked as Replaced, demobilizationDate recorded, notes appended
+    const updatedOutgoing: ConsultantPersonnel = {
+      ...personnelToReplace,
+      status: 'Replaced',
+      demobilizationDate: replaceForm.replacementDate,
+      remarks: `${personnelToReplace.remarks ? personnelToReplace.remarks + ' | ' : ''}Replaced by ${replaceForm.successorName.trim()} on ${replaceForm.replacementDate}. Reason: ${replaceForm.reason}`
+    };
+
+    // Incoming new personnel: marked Active, assignmentDate set
+    const newSuccessor: ConsultantPersonnel = {
+      id: 'pers_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+      name: replaceForm.successorName.trim(),
+      position: replaceForm.successorPosition.trim() || personnelToReplace.position,
+      category: replaceForm.successorCategory || personnelToReplace.category,
+      assignmentDate: replaceForm.replacementDate,
+      demobilizationDate: '',
+      qualification: replaceForm.successorQualification.trim() || '',
+      yearsExperience: Number(replaceForm.successorExperience) || 0,
+      status: 'Active',
+      manMonthsAllocated: Number(replaceForm.successorAllocatedMM) || 0,
+      manMonthsInput: Number(replaceForm.successorInputMM) || 0,
+      contactPhone: replaceForm.successorPhone.trim() || '',
+      contactEmail: replaceForm.successorEmail.trim() || '',
+      siteStation: replaceForm.successorSiteStation.trim() || personnelToReplace.siteStation || '',
+      remarks: replaceForm.successorRemarks.trim() || `Successor replacing ${personnelToReplace.name} (${personnelToReplace.position})`
+    };
+
+    // Update list: outgoing is updated (which drops to bottom of table immediately) + incoming is added (active at top)
+    const updatedList = [
+      newSuccessor,
+      ...currentList.map(item => item.id === personnelToReplace.id ? updatedOutgoing : item)
+    ];
+
+    // Keep both permanently in personnelHistory
+    const updatedHistory = [
+      newSuccessor,
+      updatedOutgoing,
+      ...currentHistory.filter(h => h.id !== personnelToReplace.id && h.id !== newSuccessor.id)
+    ];
+
+    const updatedAuditLog = recordPersonnelAuditLog(
+      currentAuditLog,
+      'STATUS_CHANGE',
+      personnelToReplace.name,
+      personnelToReplace.position,
+      personnelToReplace.category,
+      `Replaced staff "${personnelToReplace.name}" with incoming successor "${newSuccessor.name}" as ${newSuccessor.position} (Effective: ${replaceForm.replacementDate}). Predecessor demobilized to bottom of roster; record preserved in permanent history.`
+    );
+
+    const updatedConsultant: SupervisionConsultantInfo = {
+      ...consultant,
+      personnel: updatedList,
+      personnelHistory: updatedHistory,
+      personnelAuditLog: updatedAuditLog
+    };
+
+    saveConsultantData(updatedConsultant, `Replaced staff: ${personnelToReplace.name} with ${newSuccessor.name}`);
+    setIsReplaceModalOpen(false);
+    setPersonnelToReplace(null);
   };
 
   // Handler for Add/Edit Invoice
@@ -1707,7 +1859,7 @@ export default function SupervisionConsultantView({
                     <th className="py-3 px-4">Assigned Personnel Name</th>
                     <th className="py-3 px-4">Specific Position / Role</th>
                     <th className="py-3 px-4 bg-indigo-50/50 dark:bg-indigo-950/20 text-indigo-900 dark:text-indigo-300 font-black">
-                      Date of Assignment
+                      Assignment & Completion Date
                     </th>
                     <th className="py-3 px-4">Category</th>
                     <th className="py-3 px-4">Qualifications</th>
@@ -1728,13 +1880,18 @@ export default function SupervisionConsultantView({
                   ) : (
                     filteredPersonnel.map((p, idx) => {
                       const durationStr = getAssignmentDuration(p.assignmentDate, p.demobilizationDate);
-                      const isKey = p.category === 'Key Personnel';
+                      const isKey = p.category === 'Key Personnel' || (p.category as any) === 'Key';
                       const isActive = p.status === 'Active';
+                      const isDemobOrReplaced = p.status === 'Demobilized' || p.status === 'Replaced';
 
                       return (
                         <tr 
                           key={p.id ? `${p.id}_${idx}` : `pers_${idx}`}
-                          className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition duration-150"
+                          className={`transition duration-150 ${
+                            isDemobOrReplaced 
+                              ? 'bg-slate-50/70 dark:bg-slate-900/40 opacity-75 hover:opacity-100 hover:bg-slate-100/80 dark:hover:bg-slate-800/80 border-l-2 border-l-slate-300 dark:border-l-slate-600' 
+                              : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/50'
+                          }`}
                         >
                           <td className="py-3.5 px-4 text-center text-slate-400 font-mono font-bold">
                             {idx + 1}
@@ -1743,6 +1900,16 @@ export default function SupervisionConsultantView({
                           <td className="py-3.5 px-4">
                             <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
                               {p.name}
+                              {p.status === 'Replaced' && (
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                                  Replaced
+                                </span>
+                              )}
+                              {p.status === 'Demobilized' && (
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
+                                  Demobilized
+                                </span>
+                              )}
                             </div>
                             {(p.contactPhone || p.contactEmail) && (
                               <div className="flex items-center gap-2 mt-0.5 text-[10px] text-slate-400">
@@ -1763,7 +1930,7 @@ export default function SupervisionConsultantView({
                           </td>
 
                           <td className="py-3.5 px-4">
-                            <div className="font-bold text-indigo-700 dark:text-indigo-400">
+                            <div className={`font-bold ${isDemobOrReplaced ? 'text-slate-600 dark:text-slate-400' : 'text-indigo-700 dark:text-indigo-400'}`}>
                               {p.position}
                             </div>
                             {p.siteStation && (
@@ -1777,11 +1944,18 @@ export default function SupervisionConsultantView({
                           <td className="py-3.5 px-4 bg-indigo-50/30 dark:bg-indigo-950/10">
                             <div className="font-bold font-mono text-slate-900 dark:text-white flex items-center gap-1.5">
                               <Calendar className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-                              {p.assignmentDate || 'Not set'}
+                              <span title="Assignment Date">{p.assignmentDate || 'Not set'}</span>
                             </div>
-                            <div className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium mt-0.5 font-mono">
-                              On site: {durationStr}
-                            </div>
+                            {p.demobilizationDate ? (
+                              <div className="text-[10px] text-rose-600 dark:text-rose-400 font-semibold mt-0.5 font-mono flex items-center gap-1">
+                                <span>{p.status === 'Replaced' ? 'Replaced End:' : 'Completion / Demob:'}</span>
+                                <strong>{p.demobilizationDate}</strong>
+                              </div>
+                            ) : (
+                              <div className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium mt-0.5 font-mono">
+                                On site: {durationStr}
+                              </div>
+                            )}
                           </td>
 
                           <td className="py-3.5 px-4">
@@ -1818,9 +1992,11 @@ export default function SupervisionConsultantView({
                             <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
                               isActive
                                 ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800'
-                                : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                                : p.status === 'Replaced'
+                                ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200 dark:border-amber-800'
+                                : 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400 border border-rose-200 dark:border-rose-800'
                             }`}>
-                              {isActive ? <UserCheck className="w-3 h-3" /> : <UserX className="w-3 h-3" />}
+                              {isActive ? <UserCheck className="w-3 h-3" /> : p.status === 'Replaced' ? <ArrowRightLeft className="w-3 h-3" /> : <UserX className="w-3 h-3" />}
                               {p.status}
                             </span>
                           </td>
@@ -1837,12 +2013,22 @@ export default function SupervisionConsultantView({
 
                               {!isReadonly && (
                                 <>
+                                  {isActive && (
+                                    <button
+                                      onClick={() => handleOpenReplacePersonnel(p)}
+                                      title="Replace staff with incoming successor"
+                                      className="p-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 transition"
+                                    >
+                                      <ArrowRightLeft className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+
                                   <button
                                     onClick={() => handleTogglePersonnelStatus(p)}
-                                    title={isActive ? 'Demobilize staff' : 'Reactivate staff'}
+                                    title={isActive ? 'Demobilize staff (takes to bottom of table)' : 'Reactivate staff'}
                                     className={`p-1.5 rounded-lg transition ${
                                       isActive 
-                                        ? 'hover:bg-amber-100 dark:hover:bg-amber-950/40 text-amber-600' 
+                                        ? 'hover:bg-rose-100 dark:hover:bg-rose-950/40 text-rose-600' 
                                         : 'hover:bg-emerald-100 dark:hover:bg-emerald-950/40 text-emerald-600'
                                     }`}
                                   >
@@ -2551,9 +2737,20 @@ export default function SupervisionConsultantView({
                         <span>Category: <strong>{histP.category}</strong></span>
                         <span>•</span>
                         <span>Assigned: <strong className="font-mono">{histP.assignmentDate || 'N/A'}</strong></span>
+                        {histP.demobilizationDate && (
+                          <>
+                            <span>•</span>
+                            <span>Demobilized: <strong className="font-mono text-rose-600 dark:text-rose-400">{histP.demobilizationDate}</strong></span>
+                          </>
+                        )}
                         <span>•</span>
-                        <span>Status: <strong className={histP.status === 'Active' ? 'text-emerald-600' : 'text-slate-400'}>{histP.status}</strong></span>
+                        <span>Status: <strong className={histP.status === 'Active' ? 'text-emerald-600' : histP.status === 'Replaced' ? 'text-amber-600' : 'text-slate-400'}>{histP.status}</strong></span>
                       </div>
+                      {histP.remarks && (
+                        <div className="mt-1.5 text-[10px] text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50 px-2.5 py-1 rounded-lg border border-slate-200/50 dark:border-slate-700/50 max-w-xl">
+                          {histP.remarks}
+                        </div>
+                      )}
                     </div>
 
                     {isMasterAdmin && (
@@ -3404,8 +3601,22 @@ export default function SupervisionConsultantView({
                   <label className="block text-slate-500 font-semibold mb-1">Deployment Status</label>
                   <select
                     value={personnelForm.status || 'Active'}
-                    onChange={(e) => setPersonnelForm({ ...personnelForm, status: e.target.value as any })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
+                    onChange={(e) => {
+                      const newStatus = e.target.value as any;
+                      const todayStr = new Date().toISOString().split('T')[0];
+                      let nextDemobDate = personnelForm.demobilizationDate;
+                      if ((newStatus === 'Demobilized' || newStatus === 'Replaced') && !nextDemobDate) {
+                        nextDemobDate = todayStr;
+                      } else if (newStatus === 'Active' && nextDemobDate === todayStr) {
+                        nextDemobDate = '';
+                      }
+                      setPersonnelForm({ 
+                        ...personnelForm, 
+                        status: newStatus,
+                        demobilizationDate: nextDemobDate
+                      });
+                    }}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-semibold"
                   >
                     <option value="Active">Active</option>
                     <option value="Demobilized">Demobilized</option>
@@ -3415,13 +3626,20 @@ export default function SupervisionConsultantView({
                 </div>
 
                 <div>
-                  <label className="block text-slate-500 font-semibold mb-1">Date of Demobilization (if applicable)</label>
+                  <label className="block text-slate-500 font-semibold mb-1">
+                    Completion / Demobilization Date {(personnelForm.status === 'Demobilized' || personnelForm.status === 'Replaced') ? '(Instantly Set for Project Commitment)' : '(if applicable)'}
+                  </label>
                   <input
                     type="date"
                     value={personnelForm.demobilizationDate || ''}
                     onChange={(e) => setPersonnelForm({ ...personnelForm, demobilizationDate: e.target.value })}
                     className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white"
                   />
+                  {(personnelForm.status === 'Demobilized' || personnelForm.status === 'Replaced') && (
+                    <span className="text-[10px] text-rose-600 dark:text-rose-400 font-medium block mt-0.5">
+                      Marked as the exact completion date of commitment for this project.
+                    </span>
+                  )}
                 </div>
 
                 <div className="sm:col-span-2">
@@ -3769,6 +3987,16 @@ export default function SupervisionConsultantView({
                       {viewDetailPersonnel.assignmentDate}
                     </span>
                   </div>
+                  {viewDetailPersonnel.demobilizationDate && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-400 font-semibold uppercase text-[10px]">
+                        {viewDetailPersonnel.status === 'Replaced' ? 'Replacement & Completion Date' : 'Demobilization & Completion Date'}
+                      </span>
+                      <span className="font-bold font-mono text-rose-600 dark:text-rose-400">
+                        {viewDetailPersonnel.demobilizationDate}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between">
                     <span className="text-slate-400 font-semibold uppercase text-[10px]">Duration on Project</span>
                     <span className="font-bold text-slate-800 dark:text-slate-200">
@@ -4290,6 +4518,247 @@ export default function SupervisionConsultantView({
                 >
                   Close Dossier
                 </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL: REPLACE PERSONNEL WITH SUCCESSOR */}
+      <AnimatePresence>
+        {isReplaceModalOpen && personnelToReplace && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 w-full max-w-2xl shadow-xl my-8 space-y-4"
+            >
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 flex items-center justify-center text-indigo-600 font-bold">
+                    <ArrowRightLeft className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                      Replace Assigned Personnel
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      Mobilize incoming successor and demobilize predecessor to archive (record preserved in history).
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => { setIsReplaceModalOpen(false); setPersonnelToReplace(null); }}
+                  className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Outgoing Predecessor Summary Card */}
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 space-y-2 text-xs">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400 block">
+                  Outgoing Predecessor (To be Demobilized & Moved to Bottom of Table)
+                </span>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <div className="font-bold text-slate-900 dark:text-white text-sm">
+                      {personnelToReplace.name}
+                    </div>
+                    <div className="text-indigo-600 dark:text-indigo-400 font-medium">
+                      {personnelToReplace.position} ({personnelToReplace.category})
+                    </div>
+                  </div>
+                  <div className="text-right text-[11px] text-slate-500 font-mono">
+                    <div>Assigned: <strong>{personnelToReplace.assignmentDate || 'N/A'}</strong></div>
+                    <div>MM Input: <strong>{personnelToReplace.manMonthsInput || 0} / {personnelToReplace.manMonthsAllocated || 0}</strong></div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Handover & Replacement Transition Details */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <div>
+                  <label className="block text-slate-500 font-semibold mb-1">
+                    Effective Handover / Replacement Date <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={replaceForm.replacementDate}
+                    onChange={(e) => setReplaceForm({ ...replaceForm, replacementDate: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white font-bold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-500 font-semibold mb-1">
+                    Replacement Reason / Approval Basis
+                  </label>
+                  <input
+                    type="text"
+                    value={replaceForm.reason}
+                    onChange={(e) => setReplaceForm({ ...replaceForm, reason: e.target.value })}
+                    placeholder="e.g. Contractual substitution approved by Employer"
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
+                  />
+                </div>
+
+                {/* Successor Form Header */}
+                <div className="sm:col-span-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                  <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider block">
+                    Incoming Successor Personnel Details (Active at Top)
+                  </span>
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-slate-500 font-semibold mb-1">
+                    Successor Full Name <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Eng. Dawit Kebede"
+                    value={replaceForm.successorName}
+                    onChange={(e) => setReplaceForm({ ...replaceForm, successorName: e.target.value })}
+                    className="w-full px-3 py-2 bg-emerald-50/40 dark:bg-emerald-950/20 border border-emerald-300 dark:border-emerald-700 rounded-xl text-slate-900 dark:text-white font-bold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-500 font-semibold mb-1">Specific Position / Role *</label>
+                  <input
+                    type="text"
+                    required
+                    value={replaceForm.successorPosition}
+                    onChange={(e) => setReplaceForm({ ...replaceForm, successorPosition: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-semibold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-500 font-semibold mb-1">Category</label>
+                  <select
+                    value={replaceForm.successorCategory}
+                    onChange={(e) => setReplaceForm({ ...replaceForm, successorCategory: e.target.value as any })}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
+                  >
+                    <option value="Key Personnel">Key Personnel</option>
+                    <option value="Non-Key Personnel">Non-Key Personnel</option>
+                    <option value="Sub-Professional Staff">Sub-Professional Staff</option>
+                    <option value="Support Staff">Support Staff</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-500 font-semibold mb-1">Qualifications / Education</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. MSc in Highway Engineering, BSc Civil Eng."
+                    value={replaceForm.successorQualification}
+                    onChange={(e) => setReplaceForm({ ...replaceForm, successorQualification: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-500 font-semibold mb-1">Years of Experience</label>
+                  <input
+                    type="number"
+                    value={replaceForm.successorExperience}
+                    onChange={(e) => setReplaceForm({ ...replaceForm, successorExperience: Number(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-500 font-semibold mb-1">Allocated Man-Months (MM)</label>
+                  <input
+                    type="number"
+                    value={replaceForm.successorAllocatedMM}
+                    onChange={(e) => setReplaceForm({ ...replaceForm, successorAllocatedMM: Number(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-500 font-semibold mb-1">Initial Expended Man-Months</label>
+                  <input
+                    type="number"
+                    value={replaceForm.successorInputMM}
+                    onChange={(e) => setReplaceForm({ ...replaceForm, successorInputMM: Number(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-500 font-semibold mb-1">Contact Phone</label>
+                  <input
+                    type="text"
+                    placeholder="+251 9..."
+                    value={replaceForm.successorPhone}
+                    onChange={(e) => setReplaceForm({ ...replaceForm, successorPhone: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-500 font-semibold mb-1">Contact Email</label>
+                  <input
+                    type="email"
+                    placeholder="engineer@consultant.com"
+                    value={replaceForm.successorEmail}
+                    onChange={(e) => setReplaceForm({ ...replaceForm, successorEmail: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-slate-500 font-semibold mb-1">Site Station / Assigned Base</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Main Camp KM 42+000 / Bridge Site 2"
+                    value={replaceForm.successorSiteStation}
+                    onChange={(e) => setReplaceForm({ ...replaceForm, successorSiteStation: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-slate-500 font-semibold mb-1">Handover & Substitution Remarks</label>
+                  <textarea
+                    rows={2}
+                    placeholder="Notes regarding handover of duties, timesheet reconciliation, or approvals..."
+                    value={replaceForm.successorRemarks}
+                    onChange={(e) => setReplaceForm({ ...replaceForm, successorRemarks: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-slate-800">
+                <div className="text-[11px] text-slate-500 max-w-xs">
+                  The predecessor will be marked as <strong className="text-amber-600">Replaced</strong> and moved immediately to the bottom of the table.
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setIsReplaceModalOpen(false); setPersonnelToReplace(null); }}
+                    className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmReplacePersonnel}
+                    className="px-5 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-xs flex items-center gap-1.5 transition"
+                  >
+                    <ArrowRightLeft className="w-3.5 h-3.5" />
+                    Confirm Replacement
+                  </button>
+                </div>
               </div>
             </motion.div>
           </div>

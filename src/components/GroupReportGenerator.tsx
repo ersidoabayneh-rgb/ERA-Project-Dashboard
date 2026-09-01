@@ -4968,17 +4968,17 @@ export default function GroupReportGenerator({
               className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-xs font-bold outline-none text-slate-700 dark:text-zinc-200 focus:border-indigo-500 transition cursor-pointer"
             >
               <option value="All">🌐 All Groups (Aggregated View)</option>
-              {groupType === 'directorate' && programDirectorates.map(pd => (
-                <option key={pd} value={pd}>🏢 Directorate: {pd}</option>
+              {groupType === 'directorate' && programDirectorates.map((pd, idx) => (
+                <option key={`pd_${pd}_${idx}`} value={pd}>🏢 Directorate: {pd}</option>
               ))}
-              {groupType === 'pmo' && pmos.map(p => (
-                <option key={p} value={p}>📦 PMO Group: {p}</option>
+              {groupType === 'pmo' && pmos.map((p, idx) => (
+                <option key={`pmo_${p}_${idx}`} value={p}>📦 PMO Group: {p}</option>
               ))}
-              {groupType === 'contractor' && contractors.map(c => (
-                <option key={c} value={c}>🏗️ Contractor: {c}</option>
+              {groupType === 'contractor' && contractors.map((c, idx) => (
+                <option key={`ctr_${c}_${idx}`} value={c}>🏗️ Contractor: {c}</option>
               ))}
-              {groupType === 'consultant' && consultants.map(c => (
-                <option key={c} value={c}>🎓 Consultant: {c}</option>
+              {groupType === 'consultant' && consultants.map((c, idx) => (
+                <option key={`cns_${c}_${idx}`} value={c}>🎓 Consultant: {c}</option>
               ))}
             </select>
           </div>
@@ -5655,10 +5655,10 @@ export default function GroupReportGenerator({
                         </td>
                       </tr>
                     ) : reportMode === 'performance' ? (
-                      processedProjects.map((p) => {
+                      processedProjects.map((p, pIdx) => {
                         const expiredCount = (p.bonds || []).filter(b => b.status === 'Expired').length;
                         return (
-                          <tr key={p.id} className="hover:bg-slate-50/40 dark:hover:bg-slate-800/25 transition">
+                          <tr key={p.id ? `${p.id}_${pIdx}` : `proj_${pIdx}`} className="hover:bg-slate-50/40 dark:hover:bg-slate-800/25 transition">
                             <td className="px-3 py-2.5">
                               <div className="font-extrabold text-slate-700 dark:text-zinc-200 truncate max-w-[200px]">{p.name}</div>
                               <div className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">ID: {p.id.substring(0, 10).toUpperCase()}</div>
@@ -5703,11 +5703,11 @@ export default function GroupReportGenerator({
                       })
                     ) : reportMode === 'audit' ? (
                       groupType === 'consultant' || auditPerspective === 'consultant' ? (
-                        processedProjects.map((p) => {
+                        processedProjects.map((p, pIdx) => {
                           const cAudit = getConsultantAuditMetrics(p);
                           const isExpanded = expandedProjectId === p.id;
                           return (
-                            <React.Fragment key={p.id}>
+                            <React.Fragment key={p.id ? `${p.id}_${pIdx}` : `proj_${pIdx}`}>
                               <tr 
                                 onClick={() => setExpandedProjectId(isExpanded ? null : p.id)}
                                 className="hover:bg-indigo-50/30 dark:hover:bg-indigo-950/20 transition cursor-pointer border-b border-slate-100 dark:border-slate-850"
@@ -5870,8 +5870,8 @@ export default function GroupReportGenerator({
                                           </div>
 
                                           <div className="space-y-2">
-                                            {cAudit.clauses.map((o) => (
-                                              <div key={o.id} className="space-y-0.5 bg-slate-50/50 dark:bg-slate-850/40 p-2 rounded-lg border border-slate-150/60 dark:border-slate-800/60">
+                                            {cAudit.clauses.map((o, oIdx) => (
+                                              <div key={o.id ? `${o.id}_${oIdx}` : `o_${oIdx}`} className="space-y-0.5 bg-slate-50/50 dark:bg-slate-850/40 p-2 rounded-lg border border-slate-150/60 dark:border-slate-800/60">
                                                 <div className="flex justify-between items-center text-[9.5px] font-bold">
                                                   <span className="text-slate-800 dark:text-zinc-200">
                                                     {o.title}
@@ -5908,8 +5908,8 @@ export default function GroupReportGenerator({
                                             </div>
 
                                             <div className="grid grid-cols-2 gap-2 text-[9.5px]">
-                                              {cAudit.submittalBreakdown.map((sb) => (
-                                                <div key={sb.type} className="p-2 rounded-lg bg-slate-50 dark:bg-slate-850 border border-slate-150/60 dark:border-slate-800">
+                                              {cAudit.submittalBreakdown.map((sb, sbIdx) => (
+                                                <div key={sb.type ? `${sb.type}_${sbIdx}` : `sb_${sbIdx}`} className="p-2 rounded-lg bg-slate-50 dark:bg-slate-850 border border-slate-150/60 dark:border-slate-800">
                                                   <div className="font-bold text-slate-700 dark:text-zinc-300 truncate">{sb.type}</div>
                                                   <div className="text-[11px] font-extrabold text-indigo-600 dark:text-indigo-400 mt-0.5">
                                                     {sb.avgDays}d avg <span className="text-[9px] text-slate-400 font-normal">({sb.onTimePct}% on-time)</span>
@@ -5964,11 +5964,11 @@ export default function GroupReportGenerator({
                           );
                         })
                       ) : (
-                        processedProjects.map((p) => {
+                        processedProjects.map((p, pIdx) => {
                           const audit = getAuditMetrics(p);
                           const isExpanded = expandedProjectId === p.id;
                           return (
-                            <React.Fragment key={p.id}>
+                            <React.Fragment key={p.id ? `${p.id}_${pIdx}` : `proj_${pIdx}`}>
                               <tr 
                                 onClick={() => setExpandedProjectId(isExpanded ? null : p.id)}
                                 className="hover:bg-slate-50/40 dark:hover:bg-slate-800/25 transition cursor-pointer border-b border-slate-100 dark:border-slate-850"
@@ -6103,8 +6103,8 @@ export default function GroupReportGenerator({
                                               </div>
                                               
                                               <div className="space-y-2.5">
-                                                {evalData.clauses.map(c => (
-                                                  <div key={c.id} className="space-y-0.5">
+                                                {evalData.clauses.map((c, cIdx) => (
+                                                  <div key={c.id ? `${c.id}_${cIdx}` : `c_${cIdx}`} className="space-y-0.5">
                                                     <div className="flex justify-between items-center text-[9.5px] font-bold">
                                                       <span className="text-slate-700 dark:text-slate-300">{c.title}</span>
                                                       <span className={`text-[8.5px] font-black uppercase px-1 rounded ${
@@ -6142,8 +6142,8 @@ export default function GroupReportGenerator({
                                               </div>
 
                                               <div className="space-y-2.5">
-                                                {evalData.clauses.map(c => (
-                                                  <div key={c.id} className="space-y-0.5">
+                                                {evalData.clauses.map((c, cIdx) => (
+                                                  <div key={c.id ? `${c.id}_${cIdx}` : `c_${cIdx}`} className="space-y-0.5">
                                                     <div className="flex justify-between items-center text-[9.5px] font-bold">
                                                       <span className="text-slate-700 dark:text-slate-300">{c.title}</span>
                                                       <span className={`text-[8.5px] font-black uppercase px-1 rounded ${
@@ -6217,12 +6217,12 @@ export default function GroupReportGenerator({
                         })
                       )
                     ) : reportMode === 'payments' ? (
-                      processedProjects.map((p) => {
+                      processedProjects.map((p, pIdx) => {
                         const m = getProjectPaymentMetrics(p);
                         const isExpanded = expandedProjectId === p.id;
                         const today = new Date();
                         return (
-                          <React.Fragment key={p.id}>
+                          <React.Fragment key={p.id ? `${p.id}_${pIdx}` : `proj_${pIdx}`}>
                             <tr 
                               onClick={() => setExpandedProjectId(isExpanded ? null : p.id)}
                               className="hover:bg-slate-50/40 dark:hover:bg-slate-800/25 transition cursor-pointer border-b border-slate-100 dark:border-slate-850"
@@ -6330,7 +6330,7 @@ export default function GroupReportGenerator({
 
                                           return (
                                             <div 
-                                              key={ipc.id || ipcIdx} 
+                                              key={`${p.id}_ipc_${ipc.id || ipcIdx}_${ipcIdx}`} 
                                               className={`p-3 rounded-xl border flex flex-col justify-between gap-2 transition-all ${
                                                 isMaturedOverdue 
                                                   ? 'bg-rose-50/20 dark:bg-rose-950/10 border-rose-150 dark:border-rose-900/30' 
@@ -6398,7 +6398,7 @@ export default function GroupReportGenerator({
                         );
                       })
                     ) : reportMode === 'bonds' ? (
-                      processedProjects.map((p) => {
+                      processedProjects.map((p, pIdx) => {
                         const bonds = p.bonds || [];
                         const totalCount = bonds.length;
                         const totalVal = bonds.reduce((sum, b) => sum + (b.amount || 0), 0);
@@ -6409,7 +6409,7 @@ export default function GroupReportGenerator({
                         const isExpanded = expandedProjectId === p.id;
 
                         return (
-                          <React.Fragment key={p.id}>
+                          <React.Fragment key={p.id ? `${p.id}_${pIdx}` : `proj_${pIdx}`}>
                             <tr 
                               onClick={() => setExpandedProjectId(isExpanded ? null : p.id)}
                               className="hover:bg-slate-50/40 dark:hover:bg-slate-800/25 transition cursor-pointer border-b border-slate-100 dark:border-slate-850"
@@ -6487,7 +6487,7 @@ export default function GroupReportGenerator({
                                           
                                           return (
                                             <div 
-                                              key={bond.id || bIdx} 
+                                              key={`${p.id}_bond_${bond.id || bIdx}_${bIdx}`} 
                                               className={`p-3 rounded-xl border flex flex-col justify-between gap-2 transition-all bg-white dark:bg-slate-900 ${
                                                 isExpired 
                                                   ? 'border-rose-150 dark:border-rose-900/30 bg-rose-50/5 dark:bg-rose-950/5' 
@@ -6543,7 +6543,7 @@ export default function GroupReportGenerator({
                         );
                       })
                     ) : (
-                      processedProjects.map((p) => {
+                      processedProjects.map((p, pIdx) => {
                         const m = getProjectSupervisionStaffMetrics(p);
                         const isExpanded = expandedProjectId === p.id;
                         const sc = p.supervisionConsultant;
@@ -6551,7 +6551,7 @@ export default function GroupReportGenerator({
                         const invoices = sc?.invoices || [];
 
                         return (
-                          <React.Fragment key={p.id}>
+                          <React.Fragment key={p.id ? `${p.id}_${pIdx}` : `proj_${pIdx}`}>
                             <tr 
                               onClick={() => setExpandedProjectId(isExpanded ? null : p.id)}
                               className="hover:bg-slate-50/40 dark:hover:bg-slate-800/25 transition cursor-pointer border-b border-slate-100 dark:border-slate-850"
