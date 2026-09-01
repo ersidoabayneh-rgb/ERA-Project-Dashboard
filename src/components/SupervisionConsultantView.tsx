@@ -913,6 +913,49 @@ export default function SupervisionConsultantView({
     saveConsultantData(updatedConsultant, `Permanently deleted historical staff record: ${pName}`);
   };
 
+  const handleDeletePersonnelAuditLog = (logId: string) => {
+    if (!isMasterAdmin) {
+      alert('Access Denied: Only Master Administrators have permission to delete Personnel Action Audit Log entries.');
+      return;
+    }
+    const targetLog = (consultant.personnelAuditLog || []).find(l => l.id === logId);
+    const confirmMessage = targetLog 
+      ? `[MASTER ADMIN ONLY] Are you sure you want to permanently delete the audit log for "${targetLog.personnelName}" (${targetLog.actionType}) dated ${targetLog.timestamp}? This action cannot be undone.`
+      : `[MASTER ADMIN ONLY] Are you sure you want to permanently delete this audit log entry?`;
+
+    if (!window.confirm(confirmMessage)) {
+      return;
+    }
+
+    const updatedAuditLog = (consultant.personnelAuditLog || []).filter(l => l.id !== logId);
+    const updatedConsultant: SupervisionConsultantInfo = {
+      ...consultant,
+      personnelAuditLog: updatedAuditLog
+    };
+
+    saveConsultantData(updatedConsultant, `[Master Admin] Deleted personnel audit log entry`);
+  };
+
+  const handleClearAllAuditLogs = () => {
+    if (!isMasterAdmin) {
+      alert('Access Denied: Only Master Administrators have permission to purge Personnel Action Audit Logs.');
+      return;
+    }
+    const logCount = consultant.personnelAuditLog?.length || 0;
+    if (logCount === 0) return;
+
+    if (!window.confirm(`[MASTER ADMIN PRIVILEGE]\n\nWARNING: You are about to permanently purge ALL ${logCount} Personnel Action Audit Log records from this project's database.\n\nAre you sure you want to permanently delete all logs? This cannot be undone.`)) {
+      return;
+    }
+
+    const updatedConsultant: SupervisionConsultantInfo = {
+      ...consultant,
+      personnelAuditLog: []
+    };
+
+    saveConsultantData(updatedConsultant, `[Master Admin] Cleared all ${logCount} personnel audit log records`);
+  };
+
   const handleDeleteHistoricalPersonnelFromDossier = (histArchivedAt: string, pId: string, pName: string) => {
     if (!isMasterAdmin) {
       alert('Access Denied: Only Master Administrators have permission to permanently delete personnel from historical dossiers.');
@@ -2790,6 +2833,22 @@ export default function SupervisionConsultantView({
                 <span className="px-3 py-1 bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 rounded-xl font-mono text-xs font-bold">
                   Showing {filteredAuditLogs.length} of {consultant.personnelAuditLog?.length || 0} Events
                 </span>
+                {isMasterAdmin && (consultant.personnelAuditLog?.length || 0) > 0 && (
+                  <button
+                    onClick={handleClearAllAuditLogs}
+                    className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-900/60 rounded-xl font-bold text-xs flex items-center gap-1.5 transition shadow-xs"
+                    title="[Master Admin Only] Purge all personnel audit logs from system database"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Purge All Logs
+                  </button>
+                )}
+                {!isMasterAdmin && (
+                  <span className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-xl text-[10px] font-bold flex items-center gap-1 border border-slate-200 dark:border-slate-700/60" title="Deletion privilege is restricted to Master Administrators only">
+                    <ShieldCheck className="w-3 h-3 text-emerald-500" />
+                    Read-Only Trail
+                  </span>
+                )}
               </div>
             </div>
 
@@ -2886,6 +2945,7 @@ export default function SupervisionConsultantView({
                       <th className="py-3 px-4">Personnel Name & Position</th>
                       <th className="py-3 px-4">Category</th>
                       <th className="py-3 px-4">Traceability Notes / Details</th>
+                      {isMasterAdmin && <th className="py-3 px-4 text-center w-16">Action</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
@@ -2927,6 +2987,17 @@ export default function SupervisionConsultantView({
                           <td className="py-3.5 px-4 text-slate-600 dark:text-slate-300">
                             {log.details}
                           </td>
+                          {isMasterAdmin && (
+                            <td className="py-3.5 px-4 text-center">
+                              <button
+                                onClick={() => handleDeletePersonnelAuditLog(log.id)}
+                                className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition"
+                                title="[Master Admin Only] Delete this audit log entry permanently"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </td>
+                          )}
                         </tr>
                       );
                     })}
