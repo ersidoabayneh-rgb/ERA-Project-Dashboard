@@ -23,8 +23,9 @@ export default function CircularGauge({
   onKpiClick,
   variant = 'default',
 }: CircularGaugeProps) {
-  const clamped = Math.min(max, Math.max(0, value));
-  const percent = max > 0 ? (clamped / max) : 0;
+  const displayValue = Math.max(0, value !== null && value !== undefined && !isNaN(value) ? value : 0);
+  const arcClamped = Math.min(max, displayValue);
+  const percent = max > 0 ? (arcClamped / max) : 0;
   
   // SVG Arc configuration
   const radius = 50;
@@ -38,34 +39,36 @@ export default function CircularGauge({
   // Decide the color based on EVM or status type
   let color = 'stroke-emerald-500 text-emerald-500';
   if (isCost) {
-    if (clamped < 10) {
+    if (displayValue < 10) {
       color = 'stroke-emerald-500 text-emerald-500';
-    } else if (clamped < 25) {
+    } else if (displayValue < 25) {
       color = 'stroke-amber-500 text-amber-500';
     } else {
       color = 'stroke-rose-500 text-rose-500';
     }
   } else if (isElapsed) {
-    if (clamped < 50) {
+    if (displayValue < 50) {
       color = 'stroke-emerald-400 text-emerald-400';
-    } else if (clamped < 75) {
+    } else if (displayValue < 75) {
       color = 'stroke-amber-500 text-amber-500';
+    } else if (displayValue <= 100) {
+      color = 'stroke-rose-600 text-rose-600';
     } else {
       color = 'stroke-rose-600 text-rose-600';
     }
   } else if (kpiCode === 'G8') {
-    if (clamped <= 50) {
+    if (displayValue <= 50) {
       color = 'stroke-emerald-500 text-emerald-500';
-    } else if (clamped <= 75) {
+    } else if (displayValue <= 75) {
       color = 'stroke-amber-500 text-amber-500';
     } else {
       color = 'stroke-rose-500 text-rose-500';
     }
   } else {
     // Normal progress: high is good, low is bad
-    if (clamped >= 75) {
+    if (displayValue >= 75) {
       color = 'stroke-emerald-500 text-emerald-500';
-    } else if (clamped >= 50) {
+    } else if (displayValue >= 50) {
       color = 'stroke-amber-500 text-amber-500';
     } else {
       color = 'stroke-rose-500 text-rose-500';
@@ -77,10 +80,10 @@ export default function CircularGauge({
   
   const isCompact = variant === 'compact';
   
-  const valueStr = clamped.toFixed(2);
+  const valueStr = displayValue.toFixed(2);
 
   // SVG viewBox proportional typography (SVG units out of 120)
-  const baseFontSize = valueStr.length > 6 ? 15 : (valueStr.length > 5 ? 17 : (valueStr.length > 4 ? 19 : 22));
+  const baseFontSize = valueStr.length > 6 ? 13.5 : (valueStr.length > 5 ? 15.5 : (valueStr.length > 4 ? 18.5 : 21));
   const symbolFontSize = baseFontSize * 0.58;
 
   return (
@@ -125,7 +128,7 @@ export default function CircularGauge({
           {/* SVG-based dynamic, perfectly proportional percentage text */}
           <text
             x="60"
-            y={clamped === value ? "64" : "56"}
+            y="64"
             textAnchor="middle"
             dominantBaseline="middle"
             className="font-black font-mono fill-slate-800 dark:fill-slate-100"
@@ -148,22 +151,6 @@ export default function CircularGauge({
               %
             </tspan>
           </text>
-
-          {clamped !== value && (
-            <text
-              x="60"
-              y="78"
-              textAnchor="middle"
-              dominantBaseline="middle"
-              className="font-bold font-mono fill-slate-400 dark:fill-slate-500 tracking-wide"
-              style={{
-                fontSize: `8px`,
-                ...(isYellow ? { fill: '#eab308' } : {})
-              }}
-            >
-              ({value.toFixed(2)}%)
-            </text>
-          )}
         </svg>
       </div>
       

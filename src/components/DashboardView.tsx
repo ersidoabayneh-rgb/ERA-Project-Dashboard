@@ -254,7 +254,7 @@ export default function DashboardView({
     const rc = new Date(s.getTime() + totalDays * 86400000);
     const now = new Date();
     if (rc.getTime() - s.getTime() <= 0) return 0;
-    return Math.min(100, Math.max(0, ((now.getTime() - s.getTime()) / (rc.getTime() - s.getTime())) * 100));
+    return Math.max(0, ((now.getTime() - s.getTime()) / (rc.getTime() - s.getTime())) * 100);
   };
 
   const elapsed = getElapsedPercent();
@@ -317,8 +317,16 @@ export default function DashboardView({
     contract: getKpiGoalScore('G12')
   };
 
-  // Other dynamic metrics for cost and time overruns
-  const costOverrun = project.origAmount > 0 ? (project.variation / project.origAmount) * 100 : 0;
+  // Cost Overrun % = ((Revised Contract amount - Original Contract amount) / (Original Contract amount)) * 100
+  const origContractVal = project.contractAmountEtb || ((project.origAmount || 0) * 1_000_000) || (project.origAmount || 0);
+  const revContractVal = project.revisedContractAmountEtb
+    ? project.revisedContractAmountEtb
+    : (origContractVal + ((project.variation || 0) > 10000 ? (project.variation || 0) : ((project.variation || 0) * 1_000_000)));
+
+  const costOverrun = origContractVal > 0 
+    ? ((revContractVal - origContractVal) / origContractVal) * 100 
+    : (project.origAmount > 0 ? (project.variation / project.origAmount) * 100 : 0);
+
   const timeOverrun = project.origDays > 0 ? (project.eotDays / project.origDays) * 100 : 0;
 
   // Project Risk Exposure index calculation
