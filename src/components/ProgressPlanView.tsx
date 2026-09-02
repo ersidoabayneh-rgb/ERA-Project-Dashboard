@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   BarChart3, 
@@ -18,9 +18,82 @@ import {
   Undo2,
   Sparkles,
   TrendingUp,
-  ChevronDown
+  ChevronDown,
+  ArrowDownNarrowWide
 } from 'lucide-react';
 import { Project, ProgressPlan, ProgressPlanHistoryItem } from '../types';
+import { parseMonthKey } from '../lib/monthlySync';
+
+export const parseHistoryMonthSortKey = (monthLabel: string | undefined | null, efyLabel?: string): number => {
+  if (!monthLabel) return 0;
+  const s = monthLabel.trim();
+
+  // 1. Try standard parseMonthKey (handles Jan 2026, Dec 2025, 2026-01, etc.)
+  const parsed = parseMonthKey(s);
+  if (parsed) {
+    return parsed.year * 100 + (parsed.monthIndex + 1);
+  }
+
+  // 2. Check Ethiopian months
+  const ethMonths = [
+    'meskerem', 'tikimt', 'hidar', 'tahsas', 'tir', 'yakatit', 
+    'megabit', 'miyazya', 'ginbot', 'sene', 'hamle', 'nehase', 'pagume'
+  ];
+  const ethShort = ['mes', 'tik', 'hid', 'tah', 'tir', 'yak', 'meg', 'miy', 'gin', 'sen', 'ham', 'neh', 'pag'];
+  const sLower = s.toLowerCase();
+  for (let i = 0; i < ethMonths.length; i++) {
+    if (sLower.includes(ethMonths[i]) || sLower.includes(ethShort[i])) {
+      const yearMatch = s.match(/\b(20\d{2}|\d{4}|\d{2})\b/);
+      let year = yearMatch ? parseInt(yearMatch[1], 10) : (parseFloat(efyLabel || '') || 2018);
+      if (year < 100) year += 2000;
+      return year * 100 + (i + 1);
+    }
+  }
+
+  // 3. Month number (e.g. Month 1, Month 12)
+  const monthNumMatch = s.match(/month\s*(\d+)/i);
+  if (monthNumMatch) {
+    const mNum = parseInt(monthNumMatch[1], 10);
+    const yearMatch = s.match(/\b(20\d{2}|\d{4})\b/);
+    const year = yearMatch ? parseInt(yearMatch[1], 10) : (parseFloat(efyLabel || '') || 2000);
+    return year * 100 + mNum;
+  }
+
+  // 4. Generic year match
+  const yearMatch = s.match(/\b(20\d{2}|\d{4})\b/);
+  if (yearMatch) {
+    const year = parseInt(yearMatch[1], 10);
+    return year * 100;
+  }
+
+  if (efyLabel) {
+    const efy = parseFloat(efyLabel) || 0;
+    if (efy > 0) return efy * 100;
+  }
+
+  return 0;
+};
+
+export const sortProgressPlanHistoryDescending = (items: ProgressPlanHistoryItem[]): ProgressPlanHistoryItem[] => {
+  return [...items].sort((a, b) => {
+    const valA = parseHistoryMonthSortKey(a.monthLabel, a.efyLabel);
+    const valB = parseHistoryMonthSortKey(b.monthLabel, b.efyLabel);
+
+    if (valA !== valB) {
+      return valB - valA; // Descending: latest year & month first
+    }
+
+    // Secondary comparison by EFY if numeric
+    const efyA = parseFloat(a.efyLabel) || 0;
+    const efyB = parseFloat(b.efyLabel) || 0;
+    if (efyA !== efyB) {
+      return efyB - efyA;
+    }
+
+    // Fallback comparison by id timestamp or string descending
+    return (b.id || '').localeCompare(a.id || '');
+  });
+};
 
 interface ProgressPlanViewProps {
   project: Project;
@@ -41,7 +114,9 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
     efyLabel: 'EFY'
   };
 
-  const historyList = project.progressPlanHistory || [];
+  const historyList = useMemo(() => {
+    return sortProgressPlanHistoryDescending(project.progressPlanHistory || []);
+  }, [project.progressPlanHistory]);
 
   // Local state for the archiver / update form inputs
   const [newMonthLabel, setNewMonthLabel] = useState(labels.monthLabel);
@@ -173,8 +248,8 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
       efyLabel: updatedItem.efyLabel,
     };
 
-    const updatedHistory = historyList.map(item => 
-      item.id === activeLoadedRecordId ? updatedItem : item
+    const updatedHistory = sortProgressPlanHistoryDescending(
+      historyList.map(item => item.id === activeLoadedRecordId ? updatedItem : item)
     );
 
     setActiveLoadedOriginal(JSON.parse(JSON.stringify(updatedItem)));
@@ -226,7 +301,7 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
       item => !(item.monthLabel.toLowerCase() === newItem.monthLabel.toLowerCase() && item.efyLabel === newItem.efyLabel)
     );
 
-    const updatedHistory = [newItem, ...filteredHistory];
+    const updatedHistory = sortProgressPlanHistoryDescending([newItem, ...filteredHistory]);
 
     if (onProjectUpdate) {
       onProjectUpdate({ progressPlanHistory: updatedHistory }, `Archived milestone record for ${newItem.monthLabel} (EFY ${newItem.efyLabel})`);
@@ -341,8 +416,8 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
       physicalProgress: computedPhysProgress,
     };
 
-    const updatedHistory = historyList.map(item => 
-      item.id === finalizedItem.id ? finalizedItem : item
+    const updatedHistory = sortProgressPlanHistoryDescending(
+      historyList.map(item => item.id === finalizedItem.id ? finalizedItem : item)
     );
 
     const updatePayload: Partial<Project> = {
@@ -879,9 +954,15 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
             <div className="flex items-center gap-2">
               <History className="w-4.5 h-4.5 text-blue-500" />
               <div>
-                <span className="text-xs font-bold text-slate-850 dark:text-zinc-150 block uppercase">
-                  Elapsed Months & EFY Records List
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-850 dark:text-zinc-150 block uppercase">
+                    Elapsed Months & EFY Records List
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-[9px] px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold border border-blue-200/60 dark:border-blue-800/40">
+                    <ArrowDownNarrowWide className="w-2.5 h-2.5" />
+                    Descending by Month
+                  </span>
+                </div>
                 <span className="text-[10px] text-slate-400 block">
                   Click "Load" to restore and edit in table, or click "Edit" to modify any archived record directly.
                 </span>
@@ -896,7 +977,14 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
             <table className="w-full text-left border-collapse text-xs text-slate-700 dark:text-slate-300">
               <thead>
                 <tr className="bg-slate-50 dark:bg-slate-900 text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-extrabold border-b border-slate-100 dark:border-slate-700/60">
-                  <th className="p-3">Period & EFY</th>
+                  <th className="p-3">
+                    <div className="flex items-center gap-1">
+                      <span>Period & EFY</span>
+                      <span className="text-[8.5px] px-1 py-0.2 rounded font-sans font-extrabold bg-blue-100/70 text-blue-700 dark:bg-blue-950/70 dark:text-blue-300">
+                        ↓ Newest First
+                      </span>
+                    </div>
+                  </th>
                   <th className="p-3 text-center">Contractor Plan (Km)</th>
                   <th className="p-3 text-center">ERA Milestone (Km)</th>
                   <th className="p-3 text-center">Actual Accomplished (Km)</th>

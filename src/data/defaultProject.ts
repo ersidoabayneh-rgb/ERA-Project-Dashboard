@@ -1263,25 +1263,6 @@ export function defaultProjectTemplate(): Project {
     },
     progressPlanHistory: [
       {
-        id: 'hist_dec_2025',
-        monthLabel: 'Dec 2025',
-        quarterLabel: 'Oct-Dec 2025',
-        efyLabel: '2018',
-        contractorMonth: 2.10,
-        contractorQuarter: 4.20,
-        contractorEfy: 4.50,
-        eraMonth: 1.20,
-        eraQuarter: 2.40,
-        eraEfy: 2.80,
-        actualMonth: 1.85,
-        actualQuarter: 3.10,
-        actualEfy: 3.90,
-        actualTodate: 23.66,
-        contractorTodate: 60.15,
-        eraTodate: 31.80,
-        physicalProgress: 36.40
-      },
-      {
         id: 'hist_jan_2026',
         monthLabel: 'Jan 2026',
         quarterLabel: 'Jan-Mar 2026',
@@ -1299,6 +1280,25 @@ export function defaultProjectTemplate(): Project {
         contractorTodate: 62.65,
         eraTodate: 33.20,
         physicalProgress: 38.45
+      },
+      {
+        id: 'hist_dec_2025',
+        monthLabel: 'Dec 2025',
+        quarterLabel: 'Oct-Dec 2025',
+        efyLabel: '2018',
+        contractorMonth: 2.10,
+        contractorQuarter: 4.20,
+        contractorEfy: 4.50,
+        eraMonth: 1.20,
+        eraQuarter: 2.40,
+        eraEfy: 2.80,
+        actualMonth: 1.85,
+        actualQuarter: 3.10,
+        actualEfy: 3.90,
+        actualTodate: 23.66,
+        contractorTodate: 60.15,
+        eraTodate: 31.80,
+        physicalProgress: 36.40
       }
     ],
     payment: [
