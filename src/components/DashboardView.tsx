@@ -47,6 +47,7 @@ import BillSummaryPriceAdjChart from './BillSummaryPriceAdjChart';
 import { buildKpiHierarchy, getIntegratedKpiAllocated, parseStation } from '../data/defaultProject';
 import { calculateProjectEvm } from '../lib/evmCalculations';
 import { resolveCurrentMonthKey, getLastActualProgress, isSameMonth } from '../lib/monthlySync';
+import { sortProgressPlanHistoryDescending } from './ProgressPlanView';
 import { QtyItem } from '../types';
 
 interface CriticalQtyAnalysis {
@@ -459,7 +460,9 @@ export default function DashboardView({
 
   // Building progress plan data dynamically
   const progressPlanChartData: any[] = [];
-  const historyList = project.progressPlanHistory || [];
+  const historyList = React.useMemo(() => {
+    return sortProgressPlanHistoryDescending(project.progressPlanHistory || []);
+  }, [project.progressPlanHistory]);
 
   // 1. Month
   if (selectedMonthSource !== 'hide') {
@@ -2416,7 +2419,7 @@ export default function DashboardView({
                   >
                     <option value="" disabled>⚡ Sync All Pillars...</option>
                     <option value="current">Current / Live Active</option>
-                    {(project.progressPlanHistory || []).map(hist => (
+                    {historyList.map(hist => (
                       <option key={`sync-${hist.id}`} value={hist.id}>
                         {hist.monthLabel} (EFY {hist.efyLabel})
                       </option>
@@ -2435,7 +2438,7 @@ export default function DashboardView({
                 <div className="flex items-center justify-between">
                   <label className="text-[9px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-wider">Month</label>
                   <span className="text-[8.5px] font-mono text-slate-400">
-                    {selectedMonthSource === 'current' ? 'Live' : (project.progressPlanHistory?.find(h => h.id === selectedMonthSource)?.monthLabel || 'Archived')}
+                    {selectedMonthSource === 'current' ? 'Live' : (historyList.find(h => h.id === selectedMonthSource)?.monthLabel || 'Archived')}
                   </span>
                 </div>
                 <div className="relative">
@@ -2445,7 +2448,7 @@ export default function DashboardView({
                     className="w-full bg-slate-50 dark:bg-slate-900 text-[10px] font-bold border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 pr-6 cursor-pointer appearance-none text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   >
                     <option value="current">Current ({project.progressPlanLabels?.monthLabel || 'Active'})</option>
-                    {(project.progressPlanHistory || []).map(hist => (
+                    {historyList.map(hist => (
                       <option key={hist.id} value={hist.id}>Archived: {hist.monthLabel}</option>
                     ))}
                     <option value="hide">🚫 Hide Month</option>
@@ -2461,7 +2464,7 @@ export default function DashboardView({
                 <div className="flex items-center justify-between">
                   <label className="text-[9px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-wider">Quarter</label>
                   <span className="text-[8.5px] font-mono text-slate-400">
-                    {selectedQuarterSource === 'current' ? 'Live' : (project.progressPlanHistory?.find(h => h.id === selectedQuarterSource)?.quarterLabel || 'Archived')}
+                    {selectedQuarterSource === 'current' ? 'Live' : (historyList.find(h => h.id === selectedQuarterSource)?.quarterLabel || 'Archived')}
                   </span>
                 </div>
                 <div className="relative">
@@ -2471,7 +2474,7 @@ export default function DashboardView({
                     className="w-full bg-slate-50 dark:bg-slate-900 text-[10px] font-bold border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 pr-6 cursor-pointer appearance-none text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   >
                     <option value="current">Current ({project.progressPlanLabels?.quarterLabel || 'Active'})</option>
-                    {(project.progressPlanHistory || []).map(hist => (
+                    {historyList.map(hist => (
                       <option key={hist.id} value={hist.id}>Archived: {hist.quarterLabel || `Qtr (${hist.monthLabel})`}</option>
                     ))}
                     <option value="hide">🚫 Hide Quarter</option>
@@ -2487,7 +2490,7 @@ export default function DashboardView({
                 <div className="flex items-center justify-between">
                   <label className="text-[9px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-wider">EFY</label>
                   <span className="text-[8.5px] font-mono text-slate-400">
-                    {selectedEfySource === 'current' ? `EFY ${project.progressPlanLabels?.efyLabel || 'Live'}` : `EFY ${project.progressPlanHistory?.find(h => h.id === selectedEfySource)?.efyLabel || ''}`}
+                    {selectedEfySource === 'current' ? `EFY ${project.progressPlanLabels?.efyLabel || 'Live'}` : `EFY ${historyList.find(h => h.id === selectedEfySource)?.efyLabel || ''}`}
                   </span>
                 </div>
                 <div className="relative">
@@ -2497,7 +2500,7 @@ export default function DashboardView({
                     className="w-full bg-slate-50 dark:bg-slate-900 text-[10px] font-bold border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 pr-6 cursor-pointer appearance-none text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   >
                     <option value="current">Current (EFY {project.progressPlanLabels?.efyLabel || 'Active'})</option>
-                    {(project.progressPlanHistory || []).map(hist => (
+                    {historyList.map(hist => (
                       <option key={hist.id} value={hist.id}>Archived EFY: {hist.efyLabel} ({hist.monthLabel})</option>
                     ))}
                     <option value="hide">🚫 Hide EFY</option>
@@ -2513,7 +2516,7 @@ export default function DashboardView({
                 <div className="flex items-center justify-between">
                   <label className="text-[9px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-wider">Cumulative</label>
                   <span className="text-[8.5px] font-mono text-slate-400">
-                    {selectedCumulativeSource === 'current' ? 'To-Date' : (project.progressPlanHistory?.find(h => h.id === selectedCumulativeSource)?.monthLabel || 'Archived')}
+                    {selectedCumulativeSource === 'current' ? 'To-Date' : (historyList.find(h => h.id === selectedCumulativeSource)?.monthLabel || 'Archived')}
                   </span>
                 </div>
                 <div className="relative">
@@ -2523,7 +2526,7 @@ export default function DashboardView({
                     className="w-full bg-slate-50 dark:bg-slate-900 text-[10px] font-bold border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 pr-6 cursor-pointer appearance-none text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   >
                     <option value="current">Current Cumulative</option>
-                    {(project.progressPlanHistory || []).map(hist => (
+                    {historyList.map(hist => (
                       <option key={hist.id} value={hist.id}>Archived Cum: {hist.monthLabel} ({hist.contractorTodate !== undefined ? hist.contractorTodate.toFixed(1) : ''} Km)</option>
                     ))}
                     <option value="hide">🚫 Hide Cumulative</option>

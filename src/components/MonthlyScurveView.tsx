@@ -1,16 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { CalendarRange, Plus, Trash2, TrendingUp, Info, Activity, ArrowUpToLine, AlertCircle, AlertTriangle, X } from 'lucide-react';
-import { 
-  ResponsiveContainer, 
-  LineChart, 
-  Line, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  Legend 
-} from 'recharts';
+import { CalendarRange, Plus, Trash2, Info, Activity, ArrowUpToLine, AlertCircle, AlertTriangle, X } from 'lucide-react';
 import { Project, MonthlyProgress } from '../types';
 import { 
   resolveCurrentMonthKey, 
@@ -363,69 +353,10 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
     onUpdateMonthly(updated);
   };
 
-  // Convert for Recharts presentation - STOP drawing the line once 100% is reached
-  let origStop = false;
-  let revStop = false;
-  let actStop = false;
-
-  const chartData = months.map((m, idx) => {
-    // 1. Original Plan: Stop after reaching 100%
-    let orig: number | null = null;
-    if (!origStop) {
-      const raw = m.originalPlan;
-      if (raw !== '' && raw !== null && raw !== undefined && !isNaN(Number(raw))) {
-        const num = Number(raw);
-        if (num >= 100) {
-          orig = 100;
-          origStop = true; // Stop drawing subsequent points
-        } else if (num >= 0) {
-          orig = num;
-        }
-      }
-    }
-
-    // 2. Revised Plan: Stop after reaching 100%
-    let rev: number | null = null;
-    if (!revStop) {
-      const raw = m.revisedPlan;
-      if (raw !== '' && raw !== null && raw !== undefined && !isNaN(Number(raw))) {
-        const num = Number(raw);
-        if (num >= 100) {
-          rev = 100;
-          revStop = true; // Stop drawing subsequent points
-        } else if (num >= 0) {
-          rev = num;
-        }
-      }
-    }
-
-    // 3. To-Date Actual: Stop after reaching 100%
-    let act: number | null = null;
-    if (!actStop) {
-      const raw = m.actual;
-      if (raw !== '' && raw !== null && raw !== undefined && !isNaN(Number(raw))) {
-        const num = Number(raw);
-        if (num >= 100) {
-          act = 100;
-          actStop = true; // Stop drawing subsequent points
-        } else if (num > 0 || (idx === 0 && num === 0)) {
-          act = num;
-        }
-      }
-    }
-
-    return {
-      name: m.month,
-      'Original Plan (%)': orig,
-      'Revised Plan (%)': rev,
-      'To-Date Actual (%)': act
-    };
-  });
-
   return (
     <div className="space-y-4">
       {/* Header and Controls */}
-      <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 p-5 rounded-2xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-5 rounded-2xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-lg font-bold text-slate-800 dark:text-zinc-100 mb-1 flex items-center gap-2">
             <CalendarRange className="w-5 h-5 text-blue-500" />
@@ -461,92 +392,6 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
             <Trash2 className="w-3.5 h-3.5" />
             Remove Month
           </button>
-        </div>
-      </div>
-
-      {/* S-Curve Interactive Graph Visualization Card */}
-      <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-5 rounded-2xl shadow-sm space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div>
-            <span className="text-xs font-bold text-slate-800 dark:text-zinc-150 block">Cumulative S-Curve Performance Preview</span>
-            <span className="text-[10px] text-slate-400">Live physical progress trajectory (lines terminate immediately upon reaching 100%)</span>
-          </div>
-          <div className="flex items-center gap-3 text-xs">
-            <span className="flex items-center gap-1 text-amber-500 font-medium text-[11px]">
-              <span className="w-2.5 h-0.5 bg-amber-500 inline-block border-b border-dashed border-amber-500" /> Original Plan
-            </span>
-            <span className="flex items-center gap-1 text-blue-500 font-medium text-[11px]">
-              <span className="w-2.5 h-0.5 bg-blue-500 inline-block border-b border-dashed border-blue-500" /> Revised Plan
-            </span>
-            <span className="flex items-center gap-1 text-emerald-500 font-medium text-[11px]">
-              <span className="w-2.5 h-0.5 bg-emerald-500 inline-block" /> To-Date Actual
-            </span>
-          </div>
-        </div>
-
-        <div className="h-72 w-full min-w-0">
-          {chartData.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 text-center p-6 space-y-2">
-              <TrendingUp className="w-8 h-8 text-blue-500 opacity-60" />
-              <p className="text-xs font-bold text-slate-700 dark:text-slate-300">No Monthly Baseline Curve Points Defined</p>
-              <p className="text-[11px] text-slate-500 max-w-sm">Monthly physical progress targets will populate here automatically once entered below.</p>
-            </div>
-          ) : (
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chartData} margin={{ top: 15, right: 25, left: 15, bottom: 10 }}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-slate-100 dark:stroke-slate-700/30" />
-                <XAxis dataKey="name" tick={{ fontSize: 9 }} stroke="#94a3b8" />
-                <YAxis tick={{ fontSize: 9 }} stroke="#94a3b8" width={45} domain={[0, 100]} unit="%" />
-                <Tooltip 
-                  formatter={(val: any) => [val !== null && val !== undefined ? `${Number(val).toFixed(2)}%` : 'N/A']}
-                  contentStyle={{ 
-                    backgroundColor: '#0f172a', 
-                    borderRadius: '12px', 
-                    border: 'none', 
-                    color: '#fff',
-                    fontSize: '11px',
-                    boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
-                  }} 
-                />
-                <Legend verticalAlign="top" height={32} wrapperStyle={{ fontSize: '11px' }} />
-                <Line 
-                  name="Original Plan (%)"
-                  type="monotone" 
-                  dataKey="Original Plan (%)" 
-                  stroke="#f59e0b" 
-                  strokeDasharray="5 5"
-                  strokeWidth={2.5}
-                  dot={false}
-                  connectNulls={false}
-                  isAnimationActive={false}
-                  activeDot={{ r: 5, fill: '#f59e0b' }}
-                />
-                <Line 
-                  name="Revised Plan (%)"
-                  type="monotone" 
-                  dataKey="Revised Plan (%)" 
-                  stroke="#2563eb" 
-                  strokeDasharray="3 3"
-                  strokeWidth={2.5}
-                  dot={false}
-                  connectNulls={false}
-                  isAnimationActive={false}
-                  activeDot={{ r: 2, fill: '#2563eb' }}
-                />
-                <Line 
-                  name="To-Date Actual (%)"
-                  type="monotone" 
-                  dataKey="To-Date Actual (%)" 
-                  stroke="#10b981" 
-                  strokeWidth={3.5} 
-                  dot={false}
-                  connectNulls={false}
-                  isAnimationActive={false}
-                  activeDot={{ r: 5, fill: '#10b981' }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          )}
         </div>
       </div>
 
