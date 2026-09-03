@@ -2350,6 +2350,79 @@ let isBatchSyncRunning = false;
     const rawHistProgress = updatedProject.physicalProgress !== undefined ? updatedProject.physicalProgress : currentProject.physicalProgress;
     const cleanHistProgress = typeof rawHistProgress === 'number' ? rawHistProgress : (parseFloat(String(rawHistProgress || 0)) || 0);
 
+    // 4. Validation: Check if cumulative quantity exceeds total project length defined in contract dossier
+    const validateProjectLengthExceeded = (proj: Project): string | null => {
+      const contractLengthKm = proj.lengthKm || 0;
+      if (contractLengthKm <= 0) return null;
+
+      // 1. Linear Diagram executed layer segments (Main Road + Spur Road)
+      let maxLinearKm = 0;
+      if (proj.linear || proj.linearSpur) {
+        const mainLinear = proj.linear || { subgrade: [], capping: [], subbase: [], basecourse: [], asphalt: [] };
+        const spurLinear = proj.linearSpur || { subgrade: [], capping: [], subbase: [], basecourse: [], asphalt: [] };
+        const layers = ['subgrade', 'capping', 'subbase', 'basecourse', 'asphalt'] as const;
+
+        layers.forEach(layer => {
+          const mainExec = (mainLinear[layer] || []).reduce((acc, seg) => acc + (seg.exec || 0), 0);
+          const spurExec = (spurLinear[layer] || []).reduce((acc, seg) => acc + (seg.exec || 0), 0);
+          const totalExec = mainExec + spurExec;
+          if (totalExec > maxLinearKm) {
+            maxLinearKm = totalExec;
+          }
+        });
+      }
+
+      // 2. Progress Plan & Monthly actual to-date Km
+      let maxPlanActualKm = 0;
+      if (proj.progressPlan && Array.isArray(proj.progressPlan)) {
+        proj.progressPlan.forEach(p => {
+          const val = p.actualTodate !== undefined ? p.actualTodate : (p.actualMonth || 0);
+          if (val > maxPlanActualKm) maxPlanActualKm = val;
+        });
+      }
+
+      // 3. Annual physical progress accomplishments (Km)
+      let totalAnnualKm = 0;
+      if (proj.annual && Array.isArray(proj.annual)) {
+        totalAnnualKm = proj.annual.reduce((sum, a) => {
+          const kmVal = a.km !== undefined ? a.km : (a.amount <= (contractLengthKm * 2) ? a.amount : 0);
+          return sum + kmVal;
+        }, 0);
+      }
+
+      // 4. Quantities schedule items measured in Km
+      let maxQuantityExecKm = 0;
+      if (proj.quantities && Array.isArray(proj.quantities)) {
+        proj.quantities.forEach(q => {
+          if (q.unit && q.unit.toLowerCase() === 'km') {
+            if ((q.exec || 0) > maxQuantityExecKm) maxQuantityExecKm = q.exec || 0;
+          } else {
+            const nameLower = (q.name || '').toLowerCase();
+            if (nameLower.includes('subbase') || nameLower.includes('base course') || nameLower.includes('asphalt') || nameLower.includes('subgrade')) {
+              if ((q.exec || 0) > maxQuantityExecKm) maxQuantityExecKm = q.exec || 0;
+            }
+          }
+        });
+      }
+
+      const cumulativeKm = Math.max(maxLinearKm, maxPlanActualKm, totalAnnualKm, maxQuantityExecKm);
+
+      if (cumulativeKm > contractLengthKm) {
+        return (
+          `⚠️ CUMULATIVE QUANTITY EXCEEDS CONTRACT DOSSIER LENGTH\n\n` +
+          `Validation Warning: The updated Total Length (Km) or physical parameters result in a cumulative executed quantity (${cumulativeKm.toFixed(2)} Km) that exceeds the total project length (${contractLengthKm.toFixed(2)} Km) defined in the Contract Specifications Dossier.\n\n` +
+          `Please verify the 'Total length (Km)' setting in the contract dossier or review your executed physical quantities.`
+        );
+      }
+
+      return null;
+    };
+
+    const lengthWarning = validateProjectLengthExceeded(updatedProject);
+    if (lengthWarning) {
+      alert(lengthWarning);
+    }
+
     const newHistory: typeof currentProject.history = [
       {
         timestamp: new Date().toLocaleString(),

@@ -75,6 +75,7 @@ export interface QtyItem {
   design: number;
   plan: number;
   exec: number;
+  unit?: string;
 }
 
 export interface PlanSet {
