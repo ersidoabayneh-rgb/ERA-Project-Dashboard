@@ -582,6 +582,19 @@ export function buildKpiHierarchy(ct: 'DB' | 'DBB', project?: Project) {
 
   if (project && project.kpiAllocated && Array.isArray(project.kpiAllocated)) {
     project.kpiAllocated.forEach(kpi => {
+      // Strict contract type guard for G6 (Design Management)
+      if (kpi.goalId === 'G6') {
+        if (ct === 'DB') {
+          if (kpi.sscId.endsWith('_DBB') || kpi.itemId.startsWith('DS-DBB') || (kpi.sscId.includes('DBB') && !kpi.sscId.endsWith('_DB'))) {
+            return;
+          }
+        } else {
+          if (kpi.sscId.endsWith('_DB') || (kpi.itemId.startsWith('DS-DB') && !kpi.itemId.startsWith('DS-DBB')) || (kpi.sscId.includes('_DB') && !kpi.sscId.endsWith('_DBB'))) {
+            return;
+          }
+        }
+      }
+
       // Find the parent goal
       let goal = goals.find(g => g.id === kpi.goalId);
       if (!goal) {
@@ -634,6 +647,26 @@ export function buildKpiHierarchy(ct: 'DB' | 'DBB', project?: Project) {
         }
       }
     });
+  }
+
+  // Final cleanup on G6 goal to strictly enforce contract type matching
+  const g6Goal = goals.find(g => g.id === 'G6');
+  if (g6Goal) {
+    if (ct === 'DB') {
+      g6Goal.name = 'Design Management (DB)';
+      g6Goal.sscs = g6Goal.sscs.filter(ssc => {
+        if (ssc.id.endsWith('_DBB') || ssc.id.includes('DBB')) return false;
+        ssc.items = ssc.items.filter(it => !it.id.startsWith('DS-DBB'));
+        return ssc.items.length > 0;
+      });
+    } else {
+      g6Goal.name = 'Design Management (DBB)';
+      g6Goal.sscs = g6Goal.sscs.filter(ssc => {
+        if (ssc.id.endsWith('_DB') && !ssc.id.endsWith('_DBB')) return false;
+        ssc.items = ssc.items.filter(it => !it.id.startsWith('DS-DB') || it.id.startsWith('DS-DBB'));
+        return ssc.items.length > 0;
+      });
+    }
   }
 
   if (project && project.kpiDeletedSubgroups && Array.isArray(project.kpiDeletedSubgroups)) {
