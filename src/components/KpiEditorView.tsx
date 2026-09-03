@@ -732,15 +732,6 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
         </motion.div>
       )}
 
-      {/* 6-Month Target vs Actual Progress Trends Line Chart */}
-      <KpiProgressTrendsChart
-        project={project}
-        selectedGroupId={selectedGroupId}
-        onSelectGroupId={setSelectedGroupId}
-        hierarchy={hierarchy}
-        getGoalScore={getGoalScore}
-      />
-
       {/* Category Group Selector */}
       <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-4 rounded-2xl shadow-sm space-y-2.5">
         <span className="text-[10px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">Filter KPI Category Group</span>
@@ -1213,6 +1204,15 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
           );
         })}
       </div>
+
+      {/* 6-Month Target vs Actual Progress Trends Line Chart - Positioned below KPI Goals list / Facilities provided for Engineer */}
+      <KpiProgressTrendsChart
+        project={project}
+        selectedGroupId={selectedGroupId}
+        onSelectGroupId={setSelectedGroupId}
+        hierarchy={hierarchy}
+        getGoalScore={getGoalScore}
+      />
       
       {/* CSS Injected styling for tooltip */}
       <style>{`

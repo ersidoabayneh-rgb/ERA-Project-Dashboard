@@ -4,6 +4,7 @@ import { History, Save, Sparkles, Trash2, Printer, CheckCircle, AlertTriangle, S
 import { jsPDF } from 'jspdf';
 import { Project, HistoryItem, formatAccounting, isProjectClosed } from '../types';
 import { buildKpiHierarchy, getIntegratedKpiAllocated } from '../data/defaultProject';
+import KpiProgressTrendsChart from './KpiProgressTrendsChart';
 import { calculateProjectEvm } from '../lib/evmCalculations';
 import eraLogo from '../assets/logo.png';
 
@@ -32,6 +33,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory }:
   const [isKpiHistoryOpen, setIsKpiHistoryOpen] = useState(true);
   const [isDataInconsistencyOpen, setIsDataInconsistencyOpen] = useState(true);
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('All');
+  const [historySelectedGroupId, setHistorySelectedGroupId] = useState<string>('all');
 
   // Calculate high-fidelity compliance metrics
   const p = project;
@@ -2308,6 +2310,17 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory }:
                         </div>
                       );
                     })}
+                  </div>
+
+                  {/* Target vs Actual Progress Trends Chart - Positioned below KPI Groups Summary / Facilities provided for Engineer */}
+                  <div className="pt-2">
+                    <KpiProgressTrendsChart
+                      project={project}
+                      selectedGroupId={historySelectedGroupId}
+                      onSelectGroupId={setHistorySelectedGroupId}
+                      hierarchy={buildKpiHierarchy(p.contractType || 'DBB', p)}
+                      getGoalScore={(goalId) => kpiGroupsScores.find(g => g.id === goalId)?.score || 0}
+                    />
                   </div>
                 </div>
               </div>
