@@ -218,6 +218,7 @@ export interface PaymentItem {
 export interface AnnualItem {
   year: number;
   amount: number;
+  km?: number;
   budget?: number;
   percent: number;
 }

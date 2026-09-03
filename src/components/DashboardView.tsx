@@ -23,7 +23,8 @@ import {
   ExternalLink,
   Info,
   PieChart as PieChartIcon,
-  BarChart3
+  BarChart3,
+  BarChart2
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -765,11 +766,16 @@ export default function DashboardView({
     'Amount (Birr)': p.amount
   }));
 
-  const annualChartData = (project.annual || []).map(a => ({
-    name: a.year.toString(),
-    'Payment (%)': a.percent,
-    'Amount (Birr)': a.amount
-  }));
+  const totalProjectKmForAnnual = project.lengthKm || 65;
+  const annualChartData = (project.annual || []).map(a => {
+    const kmVal = a.km !== undefined ? a.km : (a.amount <= (totalProjectKmForAnnual * 2) ? a.amount : Number(((a.percent / 100) * totalProjectKmForAnnual).toFixed(2)));
+    const pctVal = totalProjectKmForAnnual > 0 ? (kmVal / totalProjectKmForAnnual) * 100 : (a.percent || 0);
+    return {
+      name: a.year.toString(),
+      'Progress (%)': Number(pctVal.toFixed(2)),
+      'Accomplished (Km)': Number(kmVal.toFixed(2))
+    };
+  });
 
   const hasSpurRoad = Boolean(
     (project.name && project.name.toLowerCase().includes('spur')) ||
@@ -2627,13 +2633,19 @@ export default function DashboardView({
         </div>
       </section>
 
-      {/* Row for Annual Payouts */}
+      {/* Row for Annual Progress Accomplishment */}
       <div className="grid grid-cols-1 gap-4 mb-4">
         
-        {/* Annual Payments Chart */}
+        {/* Annual Physical Progress Chart */}
         <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-5 rounded-2xl shadow-sm space-y-4 min-w-0">
-          <div>
-            <span className="text-xs font-bold text-slate-800 dark:text-zinc-150 block">EFY Progress</span>
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-800 dark:text-zinc-150 flex items-center gap-1.5">
+              <BarChart2 className="w-4 h-4 text-emerald-500" />
+              Annual Progress Accomplishment (EFY)
+            </span>
+            <span className="text-[10px] font-mono font-bold bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded-md border border-slate-200/80 dark:border-slate-600">
+              Total Project Length: {totalProjectKmForAnnual} Km
+            </span>
           </div>
 
           <div className="h-52 w-full min-w-0">
@@ -2643,20 +2655,23 @@ export default function DashboardView({
                 <XAxis dataKey="name" stroke="#94a3b8" tick={{ fontSize: 9 }} />
                 <YAxis stroke="#94a3b8" width={45} tick={{ fontSize: 9 }} unit="%" domain={[0, 'auto']} />
                 <Tooltip 
-                  formatter={(v: any) => {
-                    const parsed = parseFloat(v);
-                    return [`${isNaN(parsed) ? '0.00' : parsed.toFixed(2)}%`];
+                  formatter={(v: any, name: any, item: any) => {
+                    const kmVal = item?.payload?.['Accomplished (Km)'];
+                    const pctVal = parseFloat(v);
+                    return [`${kmVal} Km (${isNaN(pctVal) ? '0.00' : pctVal.toFixed(2)}%)`, 'Accomplishment'];
                   }} 
                   contentStyle={{ backgroundColor: '#0f172a', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '10px' }}
                 />
-                <Bar dataKey="Payment (%)" fill="#10b981" radius={[4, 4, 0, 0]}>
+                <Bar dataKey="Progress (%)" fill="#10b981" radius={[4, 4, 0, 0]}>
                   {annualChartData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={index % 2 === 0 ? '#10b981' : '#3b82f6'} />
                   ))}
-                  <LabelList dataKey="Payment (%)" position="top" formatter={(v) => {
-                    const parsed = parseFloat(String(v));
-                    return `${isNaN(parsed) ? '0.00' : parsed.toFixed(2)}%`;
-                  }} style={{ fontSize: '7.5px', fill: '#64748b', fontWeight: 'bold' }} />
+                  <LabelList dataKey="Progress (%)" position="top" formatter={((v: any, index: number) => {
+                    const item = annualChartData[index];
+                    const parsedPct = parseFloat(String(v));
+                    const kmVal = item ? item['Accomplished (Km)'] : undefined;
+                    return `${kmVal !== undefined ? kmVal : '0'} Km (${isNaN(parsedPct) ? '0.00' : parsedPct.toFixed(2)}%)`;
+                  }) as any} style={{ fontSize: '7.5px', fill: '#64748b', fontWeight: 'bold' }} />
                 </Bar>
               </BarChart>
             </ResponsiveContainer>

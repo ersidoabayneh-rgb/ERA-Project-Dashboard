@@ -481,13 +481,19 @@ export default function SeriesEditorView({ project, onUpdateSeries, onProjectUpd
     triggerFinanceUpdate(draftPayWithTe, annual, ipcTracker);
   };
 
-  const handleAnnualFieldChange = (idx: number, field: keyof AnnualItem, value: any) => {
+  const totalProjectKm = project.lengthKm || 65;
+
+  const handleAnnualFieldChange = (idx: number, field: keyof AnnualItem | 'km', value: any) => {
     const updatedAnn = annual.map((a, i) => {
       if (i === idx) {
-        const item = { ...a, [field]: field === 'year' ? (parseInt(value, 10) || 0) : (parseFloat(value) || 0) };
-        const orig = (project.origAmount || 1) * 1_000_000;
-        if (field === 'amount') {
-          item.percent = orig > 0 ? (item.amount / orig) * 100 : 0;
+        const item = { ...a };
+        if (field === 'year') {
+          item.year = parseInt(value, 10) || 0;
+        } else if (field === 'amount' || field === 'km') {
+          const kmVal = parseFloat(value) || 0;
+          item.km = kmVal;
+          item.amount = kmVal;
+          item.percent = totalProjectKm > 0 ? Number(((kmVal / totalProjectKm) * 100).toFixed(2)) : 0;
         }
         return item;
       }
@@ -504,7 +510,7 @@ export default function SeriesEditorView({ project, onUpdateSeries, onProjectUpd
 
   const handleAddAnnualRow = () => {
     const nextYear = annual.length > 0 ? annual[annual.length - 1].year + 1 : new Date().getFullYear();
-    const updated = [...annual, { year: nextYear, amount: 0, percent: 0 }];
+    const updated = [...annual, { year: nextYear, amount: 0, km: 0, percent: 0 }];
     triggerFinanceUpdate(payment, updated, ipcTracker);
   };
 
@@ -870,12 +876,12 @@ export default function SeriesEditorView({ project, onUpdateSeries, onProjectUpd
             </div>
           </div>
 
-          {/* Annual Payments Spreadsheet */}
+          {/* Annual Progress Accomplishment Spreadsheet */}
           <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-4 rounded-2xl shadow-sm space-y-4 flex flex-col justify-between">
             <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-700 pb-2">
               <span className="font-bold text-xs flex items-center gap-1.5 text-slate-700 dark:text-slate-200">
                 <Shield className="w-4 h-4 text-emerald-500" />
-                Annual Payout Distribution
+                Annual Progress Accomplishment
               </span>
               <button
                 onClick={handleAddAnnualRow}
@@ -885,10 +891,18 @@ export default function SeriesEditorView({ project, onUpdateSeries, onProjectUpd
               </button>
             </div>
 
-            <div className="bg-slate-50/50 dark:bg-slate-900/35 border border-slate-100 dark:border-slate-800 p-4 rounded-xl space-y-1">
+            <div className="bg-slate-50/50 dark:bg-slate-900/35 border border-slate-100 dark:border-slate-800 p-3 rounded-xl flex items-center justify-between text-xs">
               <span className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 flex items-center gap-1">
-                <BarChart2 className="w-3.5 h-3.5" /> Annual Disbursement Schedule
+                <BarChart2 className="w-3.5 h-3.5 text-emerald-500" /> Annual Physical Execution Schedule
               </span>
+              <div className="flex items-center gap-2 text-[10px] font-mono">
+                <span className="bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800 font-bold">
+                  Total Length: {totalProjectKm} Km
+                </span>
+                <span className="bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-md border border-blue-200 dark:border-blue-800 font-bold">
+                  Total Executed: {annual.reduce((sum, a) => sum + (a.km !== undefined ? a.km : (a.amount <= (totalProjectKm * 2) ? a.amount : Number(((a.percent / 100) * totalProjectKm).toFixed(2)))), 0).toFixed(2)} Km ({((annual.reduce((sum, a) => sum + (a.km !== undefined ? a.km : (a.amount <= (totalProjectKm * 2) ? a.amount : Number(((a.percent / 100) * totalProjectKm).toFixed(2)))), 0) / totalProjectKm) * 100).toFixed(2)}%)
+                </span>
+              </div>
             </div>
 
             <div className="overflow-auto min-h-36">
@@ -896,42 +910,53 @@ export default function SeriesEditorView({ project, onUpdateSeries, onProjectUpd
                 <thead>
                   <tr className="bg-slate-50 dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700 text-slate-400 font-bold">
                     <th className="p-2 w-20 text-center">EFY Year</th>
-                    <th className="p-2 text-right">Annual Certified (Birr)</th>
-                    <th className="p-2 text-center w-16">% of BOQ</th>
+                    <th className="p-2 text-right">Accomplished Length (Km)</th>
+                    <th className="p-2 text-center w-28">% of Total Length</th>
                     <th className="p-2 w-10 text-center">Del</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50 dark:divide-slate-750/30">
-                  {annual.map((a, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/10">
-                      <td className="p-2 text-center font-bold">
-                        <input
-                          type="number"
-                          value={a.year}
-                          onChange={(e) => handleAnnualFieldChange(idx, 'year', e.target.value)}
-                          className="w-16 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-0.5"
-                        />
-                      </td>
-                      <td className="p-2 text-right">
-                        <AmountInput
-                          value={a.amount}
-                          onChange={(val) => handleAnnualFieldChange(idx, 'amount', val)}
-                          className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 border-none outline-none font-mono font-bold text-slate-700 dark:text-slate-350 text-right w-full"
-                        />
-                      </td>
-                      <td className="p-2 text-center font-mono font-black text-blue-600">
-                        {((a.percent !== undefined && a.percent !== null && !isNaN(Number(a.percent))) ? Number(a.percent) : 0).toFixed(2)}%
-                      </td>
-                      <td className="p-2 text-center">
-                        <button
-                          onClick={() => triggerFinanceUpdate(payment, annual.filter((_, i) => i !== idx), ipcTracker)}
-                          className="text-slate-400 hover:text-rose-500 rounded p-0.5"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {annual.map((a, idx) => {
+                    const kmVal = a.km !== undefined ? a.km : (a.amount <= (totalProjectKm * 2) ? a.amount : Number(((a.percent / 100) * totalProjectKm).toFixed(2)));
+                    const pctVal = totalProjectKm > 0 ? (kmVal / totalProjectKm) * 100 : (a.percent || 0);
+                    return (
+                      <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/10">
+                        <td className="p-2 text-center font-bold">
+                          <input
+                            type="number"
+                            value={a.year}
+                            onChange={(e) => handleAnnualFieldChange(idx, 'year', e.target.value)}
+                            className="w-16 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-0.5"
+                          />
+                        </td>
+                        <td className="p-2 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={kmVal}
+                              onChange={(e) => handleAnnualFieldChange(idx, 'km', e.target.value)}
+                              className="w-28 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-right font-mono font-bold text-slate-700 dark:text-slate-300 py-0.5 px-2 text-xs focus:ring-1 focus:ring-emerald-500 outline-none"
+                              placeholder="0.00"
+                            />
+                            <span className="text-slate-400 text-[10px] font-mono">Km</span>
+                          </div>
+                        </td>
+                        <td className="p-2 text-center font-mono font-black text-blue-600 dark:text-blue-400">
+                          {pctVal.toFixed(2)}%
+                        </td>
+                        <td className="p-2 text-center">
+                          <button
+                            onClick={() => triggerFinanceUpdate(payment, annual.filter((_, i) => i !== idx), ipcTracker)}
+                            className="text-slate-400 hover:text-rose-500 rounded p-0.5"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

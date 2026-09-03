@@ -1422,11 +1422,11 @@ export function defaultProjectTemplate(): Project {
       { item: 'Total Todate Certified IPC', amount: 762116445.92, percent: 46.82 }
     ],
     annual: [
-      { year: 2020, amount: 0, percent: 0 },
-      { year: 2021, amount: 101093721.01, percent: 6.21 },
-      { year: 2022, amount: 166193721.01, percent: 10.21 },
-      { year: 2023, amount: 231293721.01, percent: 14.21 },
-      { year: 2024, amount: 296393721.01, percent: 18.21 }
+      { year: 2020, amount: 0, km: 0, percent: 0 },
+      { year: 2021, amount: 4.04, km: 4.04, percent: 6.21 },
+      { year: 2022, amount: 6.64, km: 6.64, percent: 10.21 },
+      { year: 2023, amount: 9.24, km: 9.24, percent: 14.21 },
+      { year: 2024, amount: 11.84, km: 11.84, percent: 18.21 }
     ],
     linear: generateLinearData(),
     linearSpur: generateSpurLinearData(),
