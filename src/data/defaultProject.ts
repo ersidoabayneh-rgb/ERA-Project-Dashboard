@@ -11,6 +11,7 @@ import {
   isProjectClosed
 } from '../types';
 import { calculateProjectEvm } from '../lib/evmCalculations';
+import { resolveCurrentMonthKey, isSameMonth } from '../lib/monthlySync';
 
 export const MILLION = 1_000_000;
 
@@ -861,14 +862,50 @@ export function getIntegratedKpiAllocated(project: Project): KpiAllocatedItem[] 
     const naActive = k.naActive || false;
 
     if (k.itemId === 'PP-1') {
-      const plannedSum = project.monthly.length 
-        ? Math.max(...project.monthly.map(m => Number(m.revisedPlan || m.originalPlan || 0) || 0), 100) 
-        : 100;
-      computedAlloc = Math.min(100, plannedSum > 0 ? (project.physicalProgress / plannedSum) * 100 : 0);
+      let origPlanVal = 100;
+      if (project.monthly && project.monthly.length > 0) {
+        const currentMonthKey = resolveCurrentMonthKey(project);
+        const currentMonthRow = project.monthly.find(m => isSameMonth(m.month, currentMonthKey));
+        
+        if (currentMonthRow) {
+          const rawOrig = Number(currentMonthRow.originalPlan);
+          origPlanVal = (!isNaN(rawOrig) && rawOrig > 0) ? rawOrig : 100;
+        } else {
+          // If no row matches current month, find the last row with actual or original plan
+          const lastWithActual = [...project.monthly].reverse().find(m => 
+            m.actual !== '' && m.actual !== null && m.actual !== undefined && !isNaN(Number(m.actual))
+          );
+          const targetRow = lastWithActual || project.monthly[project.monthly.length - 1];
+          if (targetRow) {
+            const rawOrig = Number(targetRow.originalPlan);
+            origPlanVal = (!isNaN(rawOrig) && rawOrig > 0) ? rawOrig : 100;
+          }
+        }
+      }
+
+      // If the original plan reaches 100%, take it as 100% afterwards
+      if (origPlanVal >= 100) {
+        origPlanVal = 100;
+      }
+
+      if (k.isOverridden && k.alloc !== undefined) {
+        computedAlloc = k.alloc;
+      } else {
+        // Compute: accomplishment of project progress for specific month divided by original plan %
+        computedAlloc = origPlanVal <= 0 ? 0 : Math.min(100, Math.max(0, (project.physicalProgress / origPlanVal) * 100));
+      }
     } else if (k.itemId === 'PT-1') {
       computedAlloc = Math.min(100, Math.max(0, ratio));
     } else if (k.itemId === 'CM-1') {
       computedAlloc = (origContractVal <= 0 || project.physicalProgress === 0) ? 0 : Math.max(0, Math.min(100, 100 - costOverrunPct));
+    } else if (k.itemId === 'CM-2') {
+      const cm1Score = (origContractVal <= 0 || project.physicalProgress === 0) ? 0 : Math.max(0, Math.min(100, 100 - costOverrunPct));
+      if (k.isOverridden && k.alloc !== undefined) {
+        computedAlloc = k.alloc;
+      } else {
+        // If there is no Quarter-over-quarter cost increase rate, evaluate G3 Cost Management based on Approved cost increase vs original contract (CM-1)
+        computedAlloc = cm1Score;
+      }
     } else if (k.itemId === 'TM-1') {
       computedAlloc = (project.origDays <= 0 || project.physicalProgress === 0) ? 0 : Math.max(0, Math.min(100, 100 - timeOverrunPct));
     } else if (k.itemId === 'TM-2') {

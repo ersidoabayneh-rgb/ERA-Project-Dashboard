@@ -4,6 +4,7 @@ import { CheckCircle, Info, HelpCircle, Plus, Trash2, Edit, Save, X, Sliders, Fo
 import { Project, KpiAllocatedItem, User } from '../types';
 import { buildKpiHierarchy, getIntegratedKpiAllocated } from '../data/defaultProject';
 import CircularGauge from './CircularGauge';
+import KpiProgressTrendsChart from './KpiProgressTrendsChart';
 
 interface KpiEditorViewProps {
   project: Project;
@@ -327,7 +328,7 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
 
   const getKpiTooltip = (id: string, desc: string): string => {
     const kpiTooltips: Record<string, string> = {
-      'PP-1': 'Measures the overall physical progress of the project compared to the approved baseline schedule. Score = (Actual progress % / Planned progress %) * 100.',
+      'PP-1': 'Measures physical completion compared to the original S-curve plan for the specific month. Score = (Accomplishment % / Original Plan %) * 100 (taken as 100% when original plan reaches 100%).',
       'PP-3': 'Tracks asphalt paving progress specifically. Score = (Actual km laid / Planned km) * 100.',
       'MS-1': 'Has the contractor completed initial mobilization? Yes = 1, No = 0.',
       'MS-2': "Are all key personnel deployed per contract? Yes = 1, No = 0.",
@@ -338,6 +339,7 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
       'MS-15': 'Earthworks progress vs plan meets 95% conformance.',
       'PT-1': 'Schedule Efficiency: Auto-calculated via Physical Progress % / Elapsed Time %.',
       'CM-1': 'Cost Conformance: Variation amount vs original contract sum.',
+      'CM-2': 'Cost Trend: Quarter-over-quarter cost increase rate. If no QoQ rate is available, evaluated based on Approved cost increase vs original contract (CM-1).',
       'TM-1': 'Time overruns: Approved EOT days vs original duration days.',
       'RW-1': 'ROW Clearance: Calculated via cleared Km vs total project length Km.',
       'RW-2A': 'Properties identified, measured, evaluated: Calculated via Properties identified, measured, evaluated Km vs total project length.',
@@ -349,7 +351,7 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
   };
 
   const isAutoKpi = (id: string) => {
-    return ['PP-1', 'PT-1', 'CM-1', 'TM-1', 'TM-2', 'RW-1', 'RW-2A', 'RW-2B', 'RW-2C', 'RW-3', 'CC-1A', 'CC-3A', 'CC-3B', 'CC-3C', 'CC-3D', 'CC-3E', 'CC-3F'].includes(id);
+    return ['PP-1', 'PT-1', 'CM-1', 'CM-2', 'TM-1', 'TM-2', 'RW-1', 'RW-2A', 'RW-2B', 'RW-2C', 'RW-3', 'CC-1A', 'CC-3A', 'CC-3B', 'CC-3C', 'CC-3D', 'CC-3E', 'CC-3F'].includes(id);
   };
 
   const handleValueChange = (itemId: string, value: number, isNa: boolean) => {
@@ -395,7 +397,7 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
       }
     });
 
-    return maxPossible > 0 ? (earned / maxPossible) * 100 : 0;
+    return maxPossible > 0 ? (earned / maxPossible) * 100 : -1;
   };
 
   const getGoalScore = (goalId: string): number => {
@@ -407,8 +409,10 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
 
     goal.sscs.forEach(ssc => {
       const sscScore = getSscScore(ssc.id);
-      earnedSum += sscScore * (ssc.wt / 100);
-      maxPossibleSum += 100 * (ssc.wt / 100);
+      if (sscScore >= 0) {
+        earnedSum += sscScore * (ssc.wt / 100);
+        maxPossibleSum += 100 * (ssc.wt / 100);
+      }
     });
 
     return maxPossibleSum > 0 ? (earnedSum / maxPossibleSum) * 100 : 0;
@@ -727,6 +731,15 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
           </form>
         </motion.div>
       )}
+
+      {/* 6-Month Target vs Actual Progress Trends Line Chart */}
+      <KpiProgressTrendsChart
+        project={project}
+        selectedGroupId={selectedGroupId}
+        onSelectGroupId={setSelectedGroupId}
+        hierarchy={hierarchy}
+        getGoalScore={getGoalScore}
+      />
 
       {/* Category Group Selector */}
       <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-4 rounded-2xl shadow-sm space-y-2.5">

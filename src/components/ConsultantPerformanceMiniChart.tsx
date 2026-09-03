@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { 
   Clock, 
   CheckCircle2, 
@@ -12,7 +12,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { Project, SupervisionConsultantInfo, ConsultantSubmittalKpi } from '../types';
-import { DEFAULT_SUBMITTAL_KPIS, DEFAULT_SLA_TARGETS } from './ConsultantPerformanceKpiWidget';
+import { DEFAULT_SUBMITTAL_KPIS, DEFAULT_SLA_TARGETS, checkSubmittalDelay } from './ConsultantPerformanceKpiWidget';
 
 interface ConsultantPerformanceMiniChartProps {
   project: Project;
@@ -25,11 +25,57 @@ export const ConsultantPerformanceMiniChart: React.FC<ConsultantPerformanceMiniC
   consultant,
   onOpenFullKpis
 }) => {
-  const submittalsList = (consultant.submittalKpis && consultant.submittalKpis.length > 0) 
-    ? consultant.submittalKpis 
-    : DEFAULT_SUBMITTAL_KPIS;
-    
-  const targetOverrides = consultant.targetOverrides || DEFAULT_SLA_TARGETS;
+  const targetOverrides = useMemo(() => {
+    return {
+      ...DEFAULT_SLA_TARGETS,
+      ...(consultant.targetOverrides || {})
+    };
+  }, [consultant.targetOverrides]);
+
+  // Merge consultant submittals with live IPC tracker items from financial data page (Monthly Payment Bill Summary, IPC Maturation & Interest Ledger)
+  const submittalsList: ConsultantSubmittalKpi[] = useMemo(() => {
+    let baseList: ConsultantSubmittalKpi[] = [];
+    if (consultant.submittalKpis && consultant.submittalKpis.length > 0) {
+      baseList = [...consultant.submittalKpis];
+    } else if (project.id === 'proj_default') {
+      baseList = [...DEFAULT_SUBMITTAL_KPIS];
+    }
+
+    if (project.ipcTracker && project.ipcTracker.length > 0) {
+      const ipcSubmittals: ConsultantSubmittalKpi[] = project.ipcTracker
+        .filter(ipc => ipc.submissionDate)
+        .map(ipc => {
+          let actualDays: number | undefined = undefined;
+          if (ipc.submissionDate && ipc.certificationDate) {
+            const subTime = new Date(ipc.submissionDate).getTime();
+            const certTime = new Date(ipc.certificationDate).getTime();
+            if (!isNaN(subTime) && !isNaN(certTime) && certTime >= subTime) {
+              actualDays = Math.max(0, Math.round((certTime - subTime) / (1000 * 60 * 60 * 24)));
+            }
+          }
+          const target = targetOverrides['IPC Review'] || DEFAULT_SLA_TARGETS['IPC Review'] || 7;
+          return {
+            id: `ipc_kpi_${ipc.id}`,
+            submittalNo: ipc.paymentNo || 'IPC',
+            type: 'IPC Review',
+            title: `Interim Payment Certificate (${ipc.paymentNo || 'IPC'}) - Period: ${ipc.period || 'Monthly'}`,
+            submittedDate: ipc.submissionDate || '',
+            respondedDate: ipc.certificationDate || undefined,
+            targetDays: target,
+            actualDays: actualDays,
+            status: ipc.certificationDate ? 'Approved / Closed' : 'Under Review',
+            priority: 'High',
+            assignedEngineer: consultant.residentEngineerName || 'Resident Engineer / Quantity Surveyor',
+            notes: ipc.remarks || `Financial IPC submitted by Contractor on ${ipc.submissionDate || 'N/A'}${ipc.certificationDate ? ` and Engineer submitted to Employer on ${ipc.certificationDate} (${actualDays} days)` : ' (pending Engineer certification)'}.`
+          };
+        });
+
+      const nonIpcItems = baseList.filter(s => s.type !== 'IPC Review' && !s.id.startsWith('ipc_kpi_'));
+      return [...nonIpcItems, ...ipcSubmittals];
+    }
+
+    return baseList;
+  }, [consultant.submittalKpis, project.id, project.ipcTracker, consultant.residentEngineerName, targetOverrides]);
 
   // Compute metrics per submittal category
   const categories = [
@@ -40,63 +86,67 @@ export const ConsultantPerformanceMiniChart: React.FC<ConsultantPerformanceMiniC
     { key: 'Design Review', label: 'Design Reviews', color: 'amber', icon: BarChart3 }
   ];
 
-  const categoryMetrics = categories.map(cat => {
-    const matched = submittalsList.filter(s => s.type === cat.key);
-    const target = targetOverrides[cat.key] || DEFAULT_SLA_TARGETS[cat.key] || 7;
-    const resolved = matched.filter(s => s.actualDays !== undefined && s.actualDays !== null);
-    
-    const avgDays = resolved.length > 0
-      ? Number((resolved.reduce((sum, s) => sum + (s.actualDays || 0), 0) / resolved.length).toFixed(1))
-      : Number((target * 0.7).toFixed(1)); // default estimate if no records
+  const categoryMetrics = useMemo(() => {
+    return categories.map(cat => {
+      const matched = submittalsList.filter(s => s.type === cat.key || s.type.toLowerCase() === cat.key.toLowerCase());
+      const target = targetOverrides[cat.key] || DEFAULT_SLA_TARGETS[cat.key] || 7;
+      const resolved = matched.filter(s => s.actualDays !== undefined && s.actualDays !== null);
       
-    const onTimeCount = resolved.filter(s => (s.actualDays || 0) <= target).length;
-    const compliancePct = resolved.length > 0 
-      ? Math.round((onTimeCount / resolved.length) * 100) 
-      : 100;
+      const avgDays = resolved.length > 0
+        ? Number((resolved.reduce((sum, s) => sum + (s.actualDays || 0), 0) / resolved.length).toFixed(1))
+        : 0;
+        
+      const onTimeCount = resolved.filter(s => (s.actualDays || 0) <= target).length;
+      const compliancePct = resolved.length > 0 
+        ? Math.round((onTimeCount / resolved.length) * 100) 
+        : 100;
+        
+      const isCompliant = resolved.length > 0 ? avgDays <= target : true;
+      const diffPct = (resolved.length > 0 && target > 0) ? Math.round(Math.abs((target - avgDays) / target) * 100) : 0;
       
-    const isCompliant = avgDays <= target;
-    const diffPct = target > 0 ? Math.round(Math.abs((target - avgDays) / target) * 100) : 0;
-    
-    // Calculate relative percentage width for mini bar (max reference 20 days)
-    const maxRef = Math.max(target * 1.3, avgDays * 1.3, 14);
-    const actualWidthPct = Math.min(100, Math.max(8, (avgDays / maxRef) * 100));
-    const targetWidthPct = Math.min(100, Math.max(8, (target / maxRef) * 100));
+      // Calculate relative percentage width for mini bar (max reference 20 days)
+      const maxRef = Math.max(target * 1.3, avgDays * 1.3, 14);
+      const actualWidthPct = resolved.length > 0 ? Math.min(100, Math.max(8, (avgDays / maxRef) * 100)) : 0;
+      const targetWidthPct = Math.min(100, Math.max(8, (target / maxRef) * 100));
 
-    return {
-      ...cat,
-      count: matched.length,
-      resolvedCount: resolved.length,
-      target,
-      avgDays,
-      compliancePct,
-      isCompliant,
-      diffPct,
-      actualWidthPct,
-      targetWidthPct
-    };
-  });
+      return {
+        ...cat,
+        count: matched.length,
+        resolvedCount: resolved.length,
+        target,
+        avgDays,
+        compliancePct,
+        isCompliant,
+        diffPct,
+        actualWidthPct,
+        targetWidthPct
+      };
+    });
+  }, [submittalsList, targetOverrides]);
 
   // Overall summary
   const totalSubmittals = submittalsList.length;
-  const pendingCount = submittalsList.filter(s => s.status === 'Under Review' || s.actualDays === undefined).length;
-  const overdueCount = submittalsList.filter(s => {
-    const target = s.targetDays || targetOverrides[s.type] || 7;
-    return s.status === 'Overdue' || (s.actualDays !== undefined && s.actualDays > target);
-  }).length;
+  const evaluatedSubmittals = useMemo(() => {
+    return submittalsList.map(s => {
+      const target = s.targetDays || targetOverrides[s.type] || 7;
+      return { ...s, ...checkSubmittalDelay(s, target) };
+    });
+  }, [submittalsList, targetOverrides]);
+
+  const pendingCount = evaluatedSubmittals.filter(s => s.isPending).length;
+  const overdueCount = evaluatedSubmittals.filter(s => s.isOverdue).length;
+  const pendingOverdueCount = evaluatedSubmittals.filter(s => s.isPending && s.isOverdue).length;
   
-  const allResolved = submittalsList.filter(s => s.actualDays !== undefined);
+  const allResolved = useMemo(() => evaluatedSubmittals.filter(s => s.isResolved), [evaluatedSubmittals]);
   const overallAvgDays = allResolved.length > 0
     ? (allResolved.reduce((sum, s) => sum + (s.actualDays || 0), 0) / allResolved.length).toFixed(1)
-    : '4.8';
+    : '0.0';
     
-  const overallOnTimeCount = allResolved.filter(s => {
-    const target = s.targetDays || targetOverrides[s.type] || 7;
-    return (s.actualDays || 0) <= target;
-  }).length;
+  const overallOnTimeCount = evaluatedSubmittals.filter(s => !s.isOverdue).length;
   
-  const overallSlaRate = allResolved.length > 0
-    ? Math.round((overallOnTimeCount / allResolved.length) * 100)
-    : 95;
+  const overallSlaRate = totalSubmittals > 0
+    ? Math.round((overallOnTimeCount / totalSubmittals) * 100)
+    : 100;
 
   return (
     <div className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-900 dark:to-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-3xl p-4 sm:p-5 shadow-xs transition hover:shadow-sm">

@@ -187,9 +187,9 @@ export interface IpcItem {
   id: string;
   paymentNo: string;
   period?: string;
-  submissionDate?: string;
-  certificationDate?: string;
-  paymentDate?: string;
+  submissionDate?: string; // Contractor Submission Date (date Contractor submitted IPC to Engineer)
+  certificationDate?: string; // Engineer's Submission Date (date Engineer certified & submitted IPC to Employer)
+  paymentDate?: string; // Payment Date / Disbursement Date (date Employer disbursed payment to Contractor)
   grossBillEtb?: number;
   grossBillUsd?: number;
   priceAdjustmentEtb?: number;
@@ -473,6 +473,26 @@ export interface HistoricalSupervisionConsultant {
   archivedBy?: string;
   personnel?: ConsultantPersonnel[];
   invoices?: ConsultantInvoice[];
+  // Historical Evaluation & Submittal KPI Snapshot
+  performanceRating?: 'Outstanding' | 'Satisfactory' | 'Needs Improvement' | 'Critical' | string;
+  officialGrade?: 'A' | 'B' | 'C' | 'D' | 'F';
+  evaluationScore?: number;
+  slaComplianceRatePct?: number;
+  submittalKpis?: ConsultantSubmittalKpi[];
+  targetOverrides?: Record<string, number>;
+  evaluationCriteria?: EvaluationCriteriaItem[];
+  evaluationSummary?: {
+    slaScore?: number;
+    staffingScore?: number;
+    ipcScore?: number;
+    contractAdminScore?: number;
+    qualityScore?: number;
+    totalWeightedScore?: number;
+    grade?: string;
+    avgTurnaroundDays?: number;
+    submittalsCount?: number;
+    onTimePct?: number;
+  };
 }
 
 export interface EvaluationCriteriaItem {

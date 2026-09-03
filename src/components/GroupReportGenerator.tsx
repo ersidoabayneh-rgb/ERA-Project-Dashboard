@@ -182,6 +182,7 @@ export default function GroupReportGenerator({
   const [reportMode, setReportMode] = useState<'performance' | 'audit' | 'payments' | 'bonds' | 'supervisionStaff'>('performance');
   const [auditPerspective, setAuditPerspective] = useState<'contractor' | 'consultant'>('consultant');
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
+  const [dossierConsultantMap, setDossierConsultantMap] = useState<Record<string, string>>({});
   const [maturedFilterOnly, setMaturedFilterOnly] = useState(false);
   const [isPrintWorkloadModalOpen, setIsPrintWorkloadModalOpen] = useState(false);
 
@@ -498,7 +499,7 @@ export default function GroupReportGenerator({
           max += k.max * (k.itemWt / 100);
         }
       });
-      return max > 0 ? (earned / max) * 100 : 0;
+      return max > 0 ? (earned / max) * 100 : -1;
     };
 
     const getKpiGoalScore = (goalId: string): number => {
@@ -509,8 +510,10 @@ export default function GroupReportGenerator({
       let maxSum = 0;
       goal.sscs.forEach(ssc => {
         const sscScore = getKpiSubScore(ssc.id);
-        earnedSum += sscScore * (ssc.wt / 100);
-        maxSum += 100 * (ssc.wt / 100);
+        if (sscScore >= 0) {
+          earnedSum += sscScore * (ssc.wt / 100);
+          maxSum += 100 * (ssc.wt / 100);
+        }
       });
       return maxSum > 0 ? (earnedSum / maxSum) * 100 : 0;
     };
@@ -540,23 +543,35 @@ export default function GroupReportGenerator({
     });
   };
 
-  // Detailed Supervision Consultant Compliance & Performance Audit calculator
-  const getConsultantAuditMetrics = (p: Project) => {
+  // Detailed Supervision Consultant Compliance & Performance Audit calculator (supports current or historical consultant)
+  const getConsultantAuditMetrics = (p: Project, selectedHistId?: string) => {
     const isDB = p.contractType === 'DB';
     const isClosed = isProjectClosed(p.status);
-    const sc = p.supervisionConsultant;
+    const mainSc = p.supervisionConsultant;
+    const previousConsultants = mainSc?.previousConsultants || [];
+    
+    // Check if a historical consultant is specifically requested
+    const selectedHist = selectedHistId 
+      ? previousConsultants.find(h => h.id === selectedHistId)
+      : null;
+    const isHistorical = !!selectedHist;
+    
+    const sc = selectedHist || mainSc;
     const consultantFirm = sc?.firmName || p.consultant || 'N/A';
-    const residentEngineer = sc?.residentEngineerName || (p.supervisionConsultant?.personnel?.find(x => x.position.toLowerCase().includes('resident'))?.name) || 'Field Assigned';
+    const residentEngineer = sc?.residentEngineerName || (sc?.personnel?.find(x => x.position.toLowerCase().includes('resident'))?.name) || 'Field Assigned';
     const rePhone = sc?.residentEngineerPhone || 'N/A';
     const reEmail = sc?.residentEngineerEmail || 'N/A';
     const associationType = sc?.associationType || 'Lead Supervision Firm';
+    const commencementDate = sc?.commencementDate || '';
+    const handoverDate = isHistorical ? (selectedHist?.handoverDate || 'Archived') : undefined;
+    const transitionReason = isHistorical ? (selectedHist?.reasonForTransition || selectedHist?.transitionReason || 'Service tenure concluded') : undefined;
 
     const personnel = sc?.personnel || [];
     const totalStaff = personnel.length;
-    const activeStaff = personnel.filter(x => x.status === 'Active').length;
+    const activeStaff = isHistorical ? totalStaff : personnel.filter(x => x.status === 'Active').length;
     const keyStaff = personnel.filter(x => x.category === 'Key Personnel' || x.position.toLowerCase().includes('engineer') || x.position.toLowerCase().includes('specialist'));
     const keyStaffCount = keyStaff.length || (totalStaff > 0 ? totalStaff : 1);
-    const activeKeyStaffCount = keyStaff.filter(x => x.status === 'Active').length || (activeStaff > 0 ? activeStaff : (totalStaff > 0 ? 1 : 0));
+    const activeKeyStaffCount = isHistorical ? keyStaffCount : (keyStaff.filter(x => x.status === 'Active').length || (activeStaff > 0 ? activeStaff : (totalStaff > 0 ? 1 : 0)));
     
     const allocatedMM = personnel.reduce((sum, item) => sum + (item.manMonthsAllocated || 0), 0);
     const expendedMM = personnel.reduce((sum, item) => sum + (item.manMonthsInput || 0), 0);
@@ -597,7 +612,7 @@ export default function GroupReportGenerator({
     // 2. Submittal & RFI Response Turnaround SLA (Max 25 pts)
     const rawSubmittals = (sc?.submittalKpis && sc.submittalKpis.length > 0) 
       ? sc.submittalKpis 
-      : DEFAULT_SUBMITTAL_KPIS;
+      : (isHistorical ? [] : DEFAULT_SUBMITTAL_KPIS);
     const targetOverrides = sc?.targetOverrides || DEFAULT_SLA_TARGETS;
 
     const submittalsList = rawSubmittals.map(s => {
@@ -621,11 +636,11 @@ export default function GroupReportGenerator({
 
     const slaComplianceRatePct = resolvedSubmittalsCount > 0
       ? Math.round((onTimeSubmittalsCount / resolvedSubmittalsCount) * 100)
-      : 92;
+      : (isHistorical && selectedHist?.slaComplianceRatePct ? selectedHist.slaComplianceRatePct : 92);
 
     const avgTurnaroundDays = resolvedSubmittalsCount > 0
       ? Number((resolvedSubmittals.reduce((sum, s) => sum + (s.actualDays || 0), 0) / resolvedSubmittalsCount).toFixed(1))
-      : 5.2;
+      : (isHistorical && selectedHist?.evaluationSummary?.avgTurnaroundDays ? selectedHist.evaluationSummary.avgTurnaroundDays : 5.2);
 
     const rfiItems = resolvedSubmittals.filter(s => s.type === 'RFI');
     const avgRfiDays = rfiItems.length > 0 
@@ -682,13 +697,24 @@ export default function GroupReportGenerator({
 
     // 3. IPC Certification & Payment Timeliness (Max 20 pts)
     const ipcTracker = p.ipcTracker || [];
-    const ipcTrackedCount = ipcTracker.length;
-    const unpaidIpcCount = ipcTracker.filter(i => (i.statusEtb || i.status) === 'Unpaid' || (i.statusUsd || i.status) === 'Unpaid').length;
+    const commencementTime = commencementDate ? new Date(commencementDate).getTime() : null;
+    const relevantIpcTracker = ipcTracker.filter(ipc => {
+      if (!isHistorical && commencementTime && ipc.submissionDate) {
+        const subTime = new Date(ipc.submissionDate).getTime();
+        if (!isNaN(subTime) && subTime < commencementTime) {
+          return false; // Submitted prior to active consultant commencement
+        }
+      }
+      return true;
+    });
+
+    const ipcTrackedCount = relevantIpcTracker.length;
+    const unpaidIpcCount = relevantIpcTracker.filter(i => (i.statusEtb || i.status) === 'Unpaid' || (i.statusUsd || i.status) === 'Unpaid').length;
     
     // Matured IPC check (>56 days)
     const today = new Date().getFullYear() < 2026 ? new Date('2026-06-26') : new Date();
     let maturedIpcCount = 0;
-    ipcTracker.forEach(item => {
+    relevantIpcTracker.forEach(item => {
       const isEtbUnpaid = (item.statusEtb || item.status) === 'Unpaid';
       const isUsdUnpaid = (item.statusUsd || item.status) === 'Unpaid';
       if ((isEtbUnpaid || isUsdUnpaid) && item.submissionDate) {
@@ -744,9 +770,13 @@ export default function GroupReportGenerator({
     const qualitySupervisionScore = qualityScoreVal;
 
     // Total Weighted Score (0 to 100)
-    const totalWeightedScore = Math.min(100, Math.max(0, Math.round(
+    let totalWeightedScore = Math.min(100, Math.max(0, Math.round(
       slaScore + staffingScore + ipcScore + contractAdminScoreVal + qualityScoreVal
     )));
+
+    if (isHistorical && selectedHist?.evaluationScore) {
+      totalWeightedScore = selectedHist.evaluationScore;
+    }
 
     // Official Performance Rating Grade & Standing Assignment
     let officialGrade: 'A' | 'B' | 'C' | 'D' | 'F' = 'B';
@@ -799,6 +829,10 @@ export default function GroupReportGenerator({
       hexColor = '#dc2626';
     }
 
+    if (isHistorical && selectedHist?.officialGrade) {
+      officialGrade = selectedHist.officialGrade;
+    }
+
     // Consultant FIDIC Clauses Evaluation
     const clauses: Array<{ id: string; title: string; score: number; rating: 'Compliant' | 'Minor Deficiency' | 'Critical Breach'; details: string }> = [
       {
@@ -846,6 +880,11 @@ export default function GroupReportGenerator({
       contractType: p.contractType || 'DBB',
       isDB,
       associationType,
+      isHistorical,
+      commencementDate,
+      handoverDate,
+      transitionReason,
+      previousConsultants,
       // Staffing
       totalStaff,
       activeStaff,
@@ -5704,7 +5743,9 @@ export default function GroupReportGenerator({
                     ) : reportMode === 'audit' ? (
                       groupType === 'consultant' || auditPerspective === 'consultant' ? (
                         processedProjects.map((p, pIdx) => {
-                          const cAudit = getConsultantAuditMetrics(p);
+                          const selectedHistId = dossierConsultantMap[p.id];
+                          const cAudit = getConsultantAuditMetrics(p, selectedHistId);
+                          const prevConsultants = p.supervisionConsultant?.previousConsultants || [];
                           const isExpanded = expandedProjectId === p.id;
                           return (
                             <React.Fragment key={p.id ? `${p.id}_${pIdx}` : `proj_${pIdx}`}>
@@ -5720,8 +5761,19 @@ export default function GroupReportGenerator({
                                   </div>
                                 </td>
                                 <td className="px-3 py-2.5 space-y-1">
-                                  <div className="font-bold text-slate-700 dark:text-zinc-200 text-xs truncate max-w-[220px]">
-                                    {cAudit.consultantFirm}
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <div className="font-bold text-slate-700 dark:text-zinc-200 text-xs truncate max-w-[220px]">
+                                      {cAudit.consultantFirm}
+                                    </div>
+                                    {cAudit.isHistorical ? (
+                                      <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300">
+                                        📜 Predecessor Term
+                                      </span>
+                                    ) : prevConsultants.length > 0 ? (
+                                      <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 dark:bg-indigo-950/50 dark:text-indigo-300">
+                                        🟢 Active ({prevConsultants.length} past)
+                                      </span>
+                                    ) : null}
                                   </div>
                                   <div className="flex flex-wrap items-center gap-1 text-[9px]">
                                     <span className="text-slate-500 dark:text-slate-400 font-medium">
@@ -5797,6 +5849,73 @@ export default function GroupReportGenerator({
                                           </span>
                                         </div>
                                       </div>
+
+                                      {/* Consultant Tenure Switcher & Succession Selector Bar */}
+                                      {prevConsultants.length > 0 && (
+                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-150 dark:border-indigo-900/60">
+                                          <div className="flex items-center gap-2 flex-wrap">
+                                            <span className="text-[10.5px] font-black uppercase text-indigo-700 dark:text-indigo-300 flex items-center gap-1">
+                                              <Users className="w-3.5 h-3.5" /> Evaluated Firm:
+                                            </span>
+                                            <span className="text-xs font-black text-slate-800 dark:text-zinc-100">
+                                              {cAudit.consultantFirm}
+                                            </span>
+                                            <span className="text-[9px] px-2 py-0.5 rounded-full font-bold bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
+                                              {cAudit.isHistorical
+                                                ? `Archived Term: ${cAudit.commencementDate || 'Start'} to ${cAudit.handoverDate || 'Archived'}`
+                                                : `Active Term: Since ${cAudit.commencementDate || 'Assignment'}`}
+                                            </span>
+                                          </div>
+
+                                          <div className="flex items-center gap-2">
+                                            <span className="text-[10px] font-bold text-slate-500 flex items-center gap-1">
+                                              <History className="w-3.5 h-3.5" /> Term:
+                                            </span>
+                                            <select
+                                              value={selectedHistId || 'current'}
+                                              onChange={(e) => {
+                                                const val = e.target.value;
+                                                setDossierConsultantMap(prev => ({
+                                                  ...prev,
+                                                  [p.id]: val === 'current' ? '' : val
+                                                }));
+                                              }}
+                                              aria-label="Select Evaluated Consultant Term"
+                                              className="px-2 py-1 text-xs font-bold rounded-lg border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-zinc-100 shadow-2xs focus:ring-2 focus:ring-indigo-500"
+                                            >
+                                              <option value="current">
+                                                🟢 Active: {p.supervisionConsultant?.firmName || p.consultant} (Since {p.supervisionConsultant?.commencementDate || 'Assignment'})
+                                              </option>
+                                              {prevConsultants.map((hist) => (
+                                                <option key={hist.id} value={hist.id}>
+                                                  📜 Predecessor: {hist.firmName} ({hist.commencementDate || 'Start'} — {hist.handoverDate || 'Archived'})
+                                                </option>
+                                              ))}
+                                            </select>
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      {/* Historical Banner Alert when viewing Predecessor */}
+                                      {cAudit.isHistorical && (
+                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-xs">
+                                          <div className="flex items-center gap-2">
+                                            <History className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                                            <span className="text-amber-900 dark:text-amber-200 font-medium">
+                                              Displaying archived evaluation for predecessor <strong>{cAudit.consultantFirm}</strong> (Tenure: {cAudit.commencementDate || 'Start'} to {cAudit.handoverDate || 'Archived'}). Reason: <em>{cAudit.transitionReason || 'Tenure concluded'}</em>
+                                            </span>
+                                          </div>
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setDossierConsultantMap(prev => ({ ...prev, [p.id]: '' }));
+                                            }}
+                                            className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-amber-200/80 hover:bg-amber-300 dark:bg-amber-900 dark:hover:bg-amber-800 text-amber-900 dark:text-amber-100 transition shrink-0 self-start sm:self-auto cursor-pointer"
+                                          >
+                                            Switch to Active Consultant
+                                          </button>
+                                        </div>
+                                      )}
 
                                       {/* 5-Dimension Performance Audit Scorecard */}
                                       <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
@@ -5931,31 +6050,152 @@ export default function GroupReportGenerator({
                                         </div>
                                       </div>
 
-                                      {/* Key Personnel Staffing Roster */}
-                                      {p.supervisionConsultant && (
-                                        <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200/70 dark:border-slate-800 shadow-2xs space-y-2">
-                                          <div className="flex justify-between items-center pb-1 border-b border-slate-100 dark:border-slate-800">
-                                            <span className="text-[10px] font-black text-slate-700 dark:text-zinc-300 uppercase tracking-wider flex items-center gap-1.5">
-                                              👥 Supervision Consultant Field Deployment Team
+                                      {/* Consultant Succession & Historical Evaluation Track Record Table */}
+                                      {prevConsultants.length > 0 && (
+                                        <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-indigo-200/80 dark:border-indigo-900/60 shadow-2xs space-y-2.5">
+                                          <div className="flex justify-between items-center pb-1.5 border-b border-indigo-100 dark:border-indigo-900/40">
+                                            <span className="text-[10.5px] font-black text-indigo-700 dark:text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
+                                              📜 Consultant Succession & Historical Evaluation Track Record ({prevConsultants.length + 1} Total Tenures)
                                             </span>
                                             <span className="text-[9px] font-bold text-slate-500">
-                                              {(p.supervisionConsultant.personnel || []).filter(x => x.status === 'Active').length} Active / {(p.supervisionConsultant.personnel || []).length} Assigned Staff
+                                              Preserved tenure evaluations and historical audit metrics
                                             </span>
                                           </div>
-                                          {(p.supervisionConsultant.personnel || []).length > 0 ? (
-                                            <div className="flex flex-wrap gap-1.5 pt-1">
-                                              {(p.supervisionConsultant.personnel || []).map((person, pIdx) => (
-                                                <span key={`${p.id}_cpers_${person.id || pIdx}_${pIdx}`} className="inline-flex items-center gap-1.5 text-[8.5px] px-2.5 py-1 rounded-lg bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium border border-slate-200/50 dark:border-slate-700/50">
-                                                  <span className={`w-1.5 h-1.5 rounded-full ${person.status === 'Active' ? 'bg-emerald-500' : 'bg-slate-400'}`} />
-                                                  <strong className="font-bold text-slate-900 dark:text-zinc-100">{person.position}:</strong> {person.name} ({person.assignmentDate || 'Assigned'})
-                                                </span>
-                                              ))}
-                                            </div>
-                                          ) : (
-                                            <div className="text-[9px] text-slate-400 italic">No key personnel deployment records logged.</div>
-                                          )}
+
+                                          <div className="overflow-x-auto">
+                                            <table className="w-full text-[9.5px] text-left">
+                                              <thead>
+                                                <tr className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 font-bold border-b border-slate-200/60 dark:border-slate-800">
+                                                  <th className="p-2">Tenure Status</th>
+                                                  <th className="p-2">Supervision Firm & RE</th>
+                                                  <th className="p-2">Service Period</th>
+                                                  <th className="p-2">Evaluation Grade & Score</th>
+                                                  <th className="p-2">SLA On-Time %</th>
+                                                  <th className="p-2">Transition Reason / Notes</th>
+                                                  <th className="p-2 text-right">Dossier Action</th>
+                                                </tr>
+                                              </thead>
+                                              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                                {/* Active Consultant Row */}
+                                                <tr className={`${!cAudit.isHistorical ? 'bg-indigo-50/40 dark:bg-indigo-950/40 font-bold' : 'hover:bg-slate-50 dark:hover:bg-slate-850'}`}>
+                                                  <td className="p-2">
+                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[8.5px] font-black bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                                                      🟢 Active Tenure
+                                                    </span>
+                                                  </td>
+                                                  <td className="p-2">
+                                                    <div className="font-extrabold text-slate-800 dark:text-zinc-100">{p.supervisionConsultant?.firmName || p.consultant}</div>
+                                                    <div className="text-[8.5px] text-slate-400">RE: {p.supervisionConsultant?.residentEngineerName || 'Field Assigned'}</div>
+                                                  </td>
+                                                  <td className="p-2 font-mono text-slate-600 dark:text-slate-300">
+                                                    Since {p.supervisionConsultant?.commencementDate || 'Assignment'}
+                                                  </td>
+                                                  <td className="p-2">
+                                                    <span className="font-extrabold text-indigo-600 dark:text-indigo-400">
+                                                      Grade {getConsultantAuditMetrics(p).officialGrade} ({getConsultantAuditMetrics(p).totalWeightedScore}%)
+                                                    </span>
+                                                  </td>
+                                                  <td className="p-2 font-mono text-slate-700 dark:text-slate-300">
+                                                    {getConsultantAuditMetrics(p).slaComplianceRatePct}%
+                                                  </td>
+                                                  <td className="p-2 text-slate-500 dark:text-slate-400 italic">
+                                                    Currently incumbent supervision consultant.
+                                                  </td>
+                                                  <td className="p-2 text-right">
+                                                    <button
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setDossierConsultantMap(prev => ({ ...prev, [p.id]: '' }));
+                                                      }}
+                                                      className={`px-2 py-1 rounded text-[9px] font-bold transition cursor-pointer ${
+                                                        !cAudit.isHistorical 
+                                                          ? 'bg-indigo-600 text-white shadow-2xs' 
+                                                          : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200'
+                                                      }`}
+                                                    >
+                                                      {!cAudit.isHistorical ? 'Active in View' : 'View Audit'}
+                                                    </button>
+                                                  </td>
+                                                </tr>
+
+                                                {/* Predecessors Rows */}
+                                                {prevConsultants.map((hist, hIdx) => {
+                                                  const isHistSelected = selectedHistId === hist.id;
+                                                  const histAudit = getConsultantAuditMetrics(p, hist.id);
+                                                  return (
+                                                    <tr key={hist.id || `hist_${hIdx}`} className={`${isHistSelected ? 'bg-amber-50/50 dark:bg-amber-950/40 font-bold' : 'hover:bg-slate-50 dark:hover:bg-slate-850'}`}>
+                                                      <td className="p-2">
+                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[8.5px] font-black bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                                                          📜 Term #{prevConsultants.length - hIdx}
+                                                        </span>
+                                                      </td>
+                                                      <td className="p-2">
+                                                        <div className="font-extrabold text-slate-800 dark:text-zinc-100">{hist.firmName}</div>
+                                                        <div className="text-[8.5px] text-slate-400">RE: {hist.residentEngineerName || 'Field Assigned'}</div>
+                                                      </td>
+                                                      <td className="p-2 font-mono text-slate-600 dark:text-slate-300">
+                                                        {hist.commencementDate || 'Start'} → {hist.handoverDate || 'Archived'}
+                                                      </td>
+                                                      <td className="p-2">
+                                                        <span className="font-extrabold text-amber-700 dark:text-amber-400">
+                                                          Grade {histAudit.officialGrade} ({histAudit.totalWeightedScore}%)
+                                                        </span>
+                                                      </td>
+                                                      <td className="p-2 font-mono text-slate-700 dark:text-slate-300">
+                                                        {histAudit.slaComplianceRatePct}%
+                                                      </td>
+                                                      <td className="p-2 text-slate-500 dark:text-slate-400 text-[8.5px]">
+                                                        {hist.reasonForTransition || hist.transitionReason || 'Contract completed / handed over.'}
+                                                      </td>
+                                                      <td className="p-2 text-right">
+                                                        <button
+                                                          onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setDossierConsultantMap(prev => ({ ...prev, [p.id]: hist.id }));
+                                                          }}
+                                                          className={`px-2 py-1 rounded text-[9px] font-bold transition cursor-pointer ${
+                                                            isHistSelected 
+                                                              ? 'bg-amber-600 text-white shadow-2xs' 
+                                                              : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200'
+                                                          }`}
+                                                        >
+                                                          {isHistSelected ? 'Active in View' : 'View Audit'}
+                                                        </button>
+                                                      </td>
+                                                    </tr>
+                                                  );
+                                                })}
+                                              </tbody>
+                                            </table>
+                                          </div>
                                         </div>
                                       )}
+
+                                      {/* Key Personnel Staffing Roster for Evaluated Consultant */}
+                                      <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200/70 dark:border-slate-800 shadow-2xs space-y-2">
+                                        <div className="flex justify-between items-center pb-1 border-b border-slate-100 dark:border-slate-800">
+                                          <span className="text-[10px] font-black text-slate-700 dark:text-zinc-300 uppercase tracking-wider flex items-center gap-1.5">
+                                            👥 Supervision Consultant Field Deployment Team ({cAudit.consultantFirm})
+                                          </span>
+                                          <span className="text-[9px] font-bold text-slate-500">
+                                            {cAudit.activeStaff} Active / {cAudit.totalStaff} Assigned Staff
+                                          </span>
+                                        </div>
+                                        {cAudit.totalStaff > 0 ? (
+                                          <div className="flex flex-wrap gap-1.5 pt-1">
+                                            {((cAudit.isHistorical 
+                                              ? prevConsultants.find(h => h.id === selectedHistId)?.personnel 
+                                              : p.supervisionConsultant?.personnel) || []).map((person, pIdx) => (
+                                              <span key={`${p.id}_cpers_${person.id || pIdx}_${pIdx}`} className="inline-flex items-center gap-1.5 text-[8.5px] px-2.5 py-1 rounded-lg bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium border border-slate-200/50 dark:border-slate-700/50">
+                                                <span className={`w-1.5 h-1.5 rounded-full ${person.status === 'Active' ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+                                                <strong className="font-bold text-slate-900 dark:text-zinc-100">{person.position}:</strong> {person.name} ({person.assignmentDate || 'Assigned'})
+                                              </span>
+                                            ))}
+                                          </div>
+                                        ) : (
+                                          <div className="text-[9px] text-slate-400 italic">No key personnel deployment records logged for this tenure.</div>
+                                        )}
+                                      </div>
                                     </div>
                                   </td>
                                 </tr>
@@ -6345,8 +6585,18 @@ export default function GroupReportGenerator({
                                                     {ipc.paymentNo}
                                                   </span>
                                                   <span className="text-[9px] text-slate-400 dark:text-slate-500 block">
-                                                    Submitted: {ipc.submissionDate || 'N/A'} {ipc.submissionDate && `(${ageDays} days ago)`}
+                                                    Contractor Submitted: {ipc.submissionDate || 'N/A'} {ipc.submissionDate && `(${ageDays}d elapsed)`}
                                                   </span>
+                                                  {ipc.certificationDate && (
+                                                    <span className="text-[9px] text-indigo-500 dark:text-indigo-400 block font-mono">
+                                                      Engineer Certified: {ipc.certificationDate}
+                                                    </span>
+                                                  )}
+                                                  {ipc.paymentDate && (
+                                                    <span className="text-[9px] text-emerald-600 dark:text-emerald-400 block font-mono">
+                                                      Disbursed / Paid: {ipc.paymentDate}
+                                                    </span>
+                                                  )}
                                                 </div>
                                                 <div className="flex flex-col items-end gap-1">
                                                   {isMaturedOverdue ? (

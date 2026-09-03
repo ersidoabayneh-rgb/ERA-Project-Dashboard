@@ -55,7 +55,7 @@ import {
 } from '../types';
 import jsPDF from 'jspdf';
 import WorkloadReportModal from './WorkloadReportModal';
-import ConsultantPerformanceKpiWidget, { DEFAULT_SUBMITTAL_KPIS } from './ConsultantPerformanceKpiWidget';
+import ConsultantPerformanceKpiWidget, { DEFAULT_SUBMITTAL_KPIS, DEFAULT_SLA_TARGETS } from './ConsultantPerformanceKpiWidget';
 import ConsultantPerformanceMiniChart from './ConsultantPerformanceMiniChart';
 
 interface SupervisionConsultantViewProps {
@@ -638,6 +638,29 @@ export default function SupervisionConsultantView({
       return;
     }
 
+    // Calculate outgoing consultant's evaluation metrics for snapshot
+    const currentSubmittals = consultant.submittalKpis !== undefined 
+      ? consultant.submittalKpis 
+      : (project.id === 'proj_default' ? DEFAULT_SUBMITTAL_KPIS : []);
+    
+    const resolvedSubmittals = currentSubmittals.filter(s => s.actualDays !== undefined && s.actualDays !== null);
+    const targetMap = { ...DEFAULT_SLA_TARGETS, ...(consultant.targetOverrides || {}) };
+    const onTimeCount = resolvedSubmittals.filter(s => {
+      const target = targetMap[s.type] || s.targetDays || 7;
+      return (s.actualDays || 0) <= target;
+    }).length;
+    const slaRate = resolvedSubmittals.length > 0 ? Math.round((onTimeCount / resolvedSubmittals.length) * 100) : 90;
+    const avgTurnaround = resolvedSubmittals.length > 0
+      ? Number((resolvedSubmittals.reduce((sum, s) => sum + (s.actualDays || 0), 0) / resolvedSubmittals.length).toFixed(1))
+      : 5.0;
+
+    let evalGrade: 'A' | 'B' | 'C' | 'D' | 'F' = 'B';
+    let evalScore = 80;
+    if (slaRate >= 90) { evalGrade = 'A'; evalScore = 92; }
+    else if (slaRate >= 75) { evalGrade = 'B'; evalScore = 82; }
+    else if (slaRate >= 60) { evalGrade = 'C'; evalScore = 68; }
+    else { evalGrade = 'D'; evalScore = 52; }
+
     // Snapshot outgoing consultant into previousConsultants archive
     const archivedPredecessor: HistoricalSupervisionConsultant = {
       id: 'hist_sc_' + Date.now(),
@@ -672,7 +695,27 @@ export default function SupervisionConsultantView({
       archivedAt: new Date().toISOString(),
       archivedBy: currentUser?.username || 'ERA Project Admin',
       personnel: [...(consultant.personnel || [])],
-      invoices: [...(consultant.invoices || [])]
+      invoices: [...(consultant.invoices || [])],
+      // Evaluation snapshot
+      performanceRating: consultant.performanceRating || (evalScore >= 85 ? 'Outstanding' : 'Satisfactory'),
+      officialGrade: evalGrade,
+      evaluationScore: evalScore,
+      slaComplianceRatePct: slaRate,
+      submittalKpis: [...currentSubmittals],
+      targetOverrides: consultant.targetOverrides ? { ...consultant.targetOverrides } : undefined,
+      evaluationCriteria: consultant.evaluationCriteria ? [...consultant.evaluationCriteria] : undefined,
+      evaluationSummary: {
+        slaScore: Math.round((slaRate / 100) * 25),
+        staffingScore: 16,
+        ipcScore: 18,
+        contractAdminScore: 18,
+        qualityScore: 13,
+        totalWeightedScore: evalScore,
+        grade: `Grade ${evalGrade}`,
+        avgTurnaroundDays: avgTurnaround,
+        submittalsCount: currentSubmittals.length,
+        onTimePct: slaRate
+      }
     };
 
     // Personnel handling based on retain mode
@@ -724,6 +767,7 @@ export default function SupervisionConsultantView({
       performanceRating: 'Satisfactory',
       personnel: newPersonnelList,
       invoices: [], // Start clean invoice register for new consultant
+      submittalKpis: [], // Start clean submittals register from commencement date
       previousConsultants: [archivedPredecessor, ...(consultant.previousConsultants || [])]
     };
 
@@ -3877,7 +3921,7 @@ export default function SupervisionConsultantView({
                 </div>
 
                 <div>
-                  <label className="block text-slate-500 font-semibold mb-1">Submission Date</label>
+                  <label className="block text-slate-500 font-semibold mb-1">Submission Date (Contractor / Consultant)</label>
                   <input
                     type="date"
                     value={invoiceForm.submissionDate || ''}
@@ -3887,7 +3931,7 @@ export default function SupervisionConsultantView({
                 </div>
 
                 <div>
-                  <label className="block text-slate-500 font-semibold mb-1">Certification Date</label>
+                  <label className="block text-slate-500 font-semibold mb-1">Certification Date (Engineer / Client Submission)</label>
                   <input
                     type="date"
                     value={invoiceForm.certificationDate || ''}
@@ -3973,7 +4017,7 @@ export default function SupervisionConsultantView({
                 </div>
 
                 <div>
-                  <label className="block text-slate-500 font-semibold mb-1">Payment Date (if settled)</label>
+                  <label className="block text-slate-500 font-semibold mb-1">Payment Date / Disbursement (if settled)</label>
                   <input
                     type="date"
                     value={invoiceForm.paymentDate || ''}
@@ -4524,7 +4568,24 @@ export default function SupervisionConsultantView({
                   </p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 pt-1">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
+                    <span className="text-slate-400 text-[10px] uppercase font-bold block">Evaluation Score</span>
+                    <div className="text-base font-black text-indigo-600 dark:text-indigo-400 mt-0.5 flex items-center gap-1.5">
+                      <span>{selectedHistoricalConsultant.evaluationScore || 80}%</span>
+                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-extrabold border border-indigo-200">
+                        Grade {selectedHistoricalConsultant.officialGrade || 'B'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
+                    <span className="text-slate-400 text-[10px] uppercase font-bold block">SLA Compliance</span>
+                    <div className="text-base font-black text-emerald-600 dark:text-emerald-400 mt-0.5">
+                      {selectedHistoricalConsultant.slaComplianceRatePct || 90}% On-Time
+                    </div>
+                  </div>
+
                   <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
                     <span className="text-slate-400 text-[10px] uppercase font-bold block">Archived Staff</span>
                     <div className="text-base font-black text-slate-900 dark:text-white mt-0.5">
@@ -4539,6 +4600,41 @@ export default function SupervisionConsultantView({
                     </div>
                   </div>
                 </div>
+
+                {/* Historical Submittals Log / KPI Summary */}
+                {selectedHistoricalConsultant.submittalKpis && selectedHistoricalConsultant.submittalKpis.length > 0 && (
+                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 text-teal-600" />
+                        Archived Submittals & SLA Log ({selectedHistoricalConsultant.submittalKpis.length} Items)
+                      </span>
+                      <span className="text-[10px] font-bold text-slate-500">
+                        Avg Turnaround: {selectedHistoricalConsultant.evaluationSummary?.avgTurnaroundDays || 5.0} days
+                      </span>
+                    </div>
+                    <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1 divide-y divide-slate-100 dark:divide-slate-800">
+                      {selectedHistoricalConsultant.submittalKpis.slice(0, 10).map((sub, sIdx) => (
+                        <div key={sub.id || `sub_${sIdx}`} className="pt-1.5 first:pt-0 flex items-center justify-between text-[10.5px]">
+                          <div className="truncate max-w-[320px]">
+                            <span className="font-bold text-slate-800 dark:text-zinc-200">{sub.submittalNo}:</span>{' '}
+                            <span className="text-slate-600 dark:text-slate-400">{sub.title}</span>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="font-mono text-slate-500">{sub.actualDays !== undefined ? `${sub.actualDays}d` : 'Pending'}</span>
+                            <span className={`px-1.5 py-0.2 rounded text-[9px] font-bold ${
+                              (sub.actualDays !== undefined && sub.actualDays <= sub.targetDays)
+                                ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
+                                : 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300'
+                            }`}>
+                              {(sub.actualDays !== undefined && sub.actualDays <= sub.targetDays) ? 'Complied' : 'Delayed'}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Recorded Personnel List in Dossier */}
                 <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2">

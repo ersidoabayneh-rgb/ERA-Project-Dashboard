@@ -289,7 +289,7 @@ export default function DashboardView({
         max += k.max * (k.itemWt / 100);
       }
     });
-    return max > 0 ? (earned / max) * 100 : 0;
+    return max > 0 ? (earned / max) * 100 : -1;
   };
 
   const getKpiGoalScore = (goalId: string): number => {
@@ -300,8 +300,10 @@ export default function DashboardView({
     let maxSum = 0;
     goal.sscs.forEach(ssc => {
       const sscScore = getKpiSubScore(ssc.id);
-      earnedSum += sscScore * (ssc.wt / 100);
-      maxSum += 100 * (ssc.wt / 100);
+      if (sscScore >= 0) {
+        earnedSum += sscScore * (ssc.wt / 100);
+        maxSum += 100 * (ssc.wt / 100);
+      }
     });
     return maxSum > 0 ? (earnedSum / maxSum) * 100 : 0;
   };

@@ -1,20 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  BarChart,
-  Bar,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-  ReferenceLine,
-  Cell
-} from 'recharts';
-import {
   Clock,
   CheckCircle2,
   AlertTriangle,
@@ -47,7 +33,10 @@ import {
   CheckSquare,
   Square,
   MoreHorizontal,
-  Table as TableIcon
+  ShieldCheck,
+  Table as TableIcon,
+  History,
+  Users
 } from 'lucide-react';
 import {
   SupervisionConsultantInfo,
@@ -85,6 +74,34 @@ export const DEFAULT_EVALUATION_CRITERIA: EvaluationCriteriaItem[] = [
   { id: 'crit_6', name: 'Design Review', targetDays: 14, weightPct: 10 },
   { id: 'crit_7', name: 'Claim / Notice', targetDays: 28, weightPct: 5 }
 ];
+
+// Calculate elapsed calendar days from submitted date to current date or response date
+export const calculateElapsedDays = (submittedDate?: string, respondedDate?: string): number => {
+  if (!submittedDate) return 0;
+  const start = new Date(submittedDate);
+  if (isNaN(start.getTime())) return 0;
+  const end = respondedDate ? new Date(respondedDate) : new Date();
+  const diffTime = end.getTime() - start.getTime();
+  return Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
+};
+
+// Check if a submittal is overdue or delayed past its target SLA (handles both resolved & pending)
+export const checkSubmittalDelay = (item: ConsultantSubmittalKpi, targetDays: number) => {
+  const isResolved = item.actualDays !== undefined && item.actualDays !== null;
+  const elapsedDays = isResolved ? (item.actualDays || 0) : calculateElapsedDays(item.submittedDate, item.respondedDate);
+  const isPending = !isResolved || item.status === 'Under Review';
+  const isOverdue = item.status === 'Overdue' || elapsedDays > targetDays;
+  const delayDays = Math.max(0, elapsedDays - targetDays);
+  
+  return {
+    isResolved,
+    isPending,
+    isOverdue,
+    elapsedDays,
+    delayDays,
+    isDelayed: isOverdue
+  };
+};
 
 export const DEFAULT_SUBMITTAL_KPIS: ConsultantSubmittalKpi[] = [
   {
@@ -375,19 +392,104 @@ export default function ConsultantPerformanceKpiWidget({
   compact = false,
   isAdmin = true
 }: ConsultantPerformanceKpiWidgetProps) {
-  // State for submittals data
+  // Consultant Tenure & Succession selection state ('current' or historical consultant id)
+  const [selectedTenureConsultantId, setSelectedTenureConsultantId] = useState<string>('current');
+
+  const isViewingHistorical = selectedTenureConsultantId !== 'current';
+  const historicalConsultant = useMemo(() => {
+    if (!isViewingHistorical) return null;
+    return (consultant.previousConsultants || []).find(h => h.id === selectedTenureConsultantId) || null;
+  }, [isViewingHistorical, selectedTenureConsultantId, consultant.previousConsultants]);
+
+  // Evaluation Criteria & Weightage state
+  const evaluationCriteria = useMemo(() => {
+    if (isViewingHistorical && historicalConsultant?.evaluationCriteria && historicalConsultant.evaluationCriteria.length > 0) {
+      return historicalConsultant.evaluationCriteria;
+    }
+    return consultant.evaluationCriteria && consultant.evaluationCriteria.length > 0
+      ? consultant.evaluationCriteria
+      : DEFAULT_EVALUATION_CRITERIA;
+  }, [consultant.evaluationCriteria, isViewingHistorical, historicalConsultant]);
+
+  const targetOverrides = useMemo(() => {
+    const map: Record<string, number> = {};
+    evaluationCriteria.forEach(c => {
+      map[c.name] = c.targetDays;
+    });
+    const customOverrides = isViewingHistorical
+      ? (historicalConsultant?.targetOverrides || {})
+      : (consultant.targetOverrides || {});
+    return {
+      ...DEFAULT_SLA_TARGETS,
+      ...map,
+      ...customOverrides
+    };
+  }, [evaluationCriteria, consultant.targetOverrides, isViewingHistorical, historicalConsultant]);
+
+  // State for submittals data, merging consultant submittals with live IPC tracker items from financial data page (Monthly Payment Bill Summary, IPC Maturation & Interest Ledger)
   const submittalsList: ConsultantSubmittalKpi[] = useMemo(() => {
+    if (isViewingHistorical && historicalConsultant) {
+      return historicalConsultant.submittalKpis || [];
+    }
+
+    let baseList: ConsultantSubmittalKpi[] = [];
     if (consultant.submittalKpis !== undefined) {
-      return consultant.submittalKpis;
+      baseList = [...consultant.submittalKpis];
+    } else if (project?.id === 'proj_default') {
+      baseList = [...DEFAULT_SUBMITTAL_KPIS];
     }
-    if (project?.id === 'proj_default') {
-      return DEFAULT_SUBMITTAL_KPIS;
+
+    // Active consultant assignment date filtering
+    const commencementTime = consultant.commencementDate ? new Date(consultant.commencementDate).getTime() : null;
+
+    if (project?.ipcTracker && project.ipcTracker.length > 0) {
+      const ipcSubmittals: ConsultantSubmittalKpi[] = project.ipcTracker
+        .filter(ipc => {
+          if (!ipc.submissionDate) return false;
+          // Filter IPCs submitted on or after consultant commencement date if available
+          if (commencementTime) {
+            const subTime = new Date(ipc.submissionDate).getTime();
+            if (!isNaN(subTime) && subTime < commencementTime) {
+              return false;
+            }
+          }
+          return true;
+        })
+        .map(ipc => {
+          let actualDays: number | undefined = undefined;
+          if (ipc.submissionDate && ipc.certificationDate) {
+            const subTime = new Date(ipc.submissionDate).getTime();
+            const certTime = new Date(ipc.certificationDate).getTime();
+            if (!isNaN(subTime) && !isNaN(certTime) && certTime >= subTime) {
+              actualDays = Math.max(0, Math.round((certTime - subTime) / (1000 * 60 * 60 * 24)));
+            }
+          }
+          const target = targetOverrides['IPC Review'] || DEFAULT_SLA_TARGETS['IPC Review'] || 7;
+          return {
+            id: `ipc_kpi_${ipc.id}`,
+            submittalNo: ipc.paymentNo || 'IPC',
+            type: 'IPC Review',
+            title: `Interim Payment Certificate (${ipc.paymentNo || 'IPC'}) - Period: ${ipc.period || 'Monthly'}`,
+            submittedDate: ipc.submissionDate || '',
+            respondedDate: ipc.certificationDate || undefined,
+            targetDays: target,
+            actualDays: actualDays,
+            status: ipc.certificationDate ? 'Approved / Closed' : 'Under Review',
+            priority: 'High',
+            assignedEngineer: consultant.residentEngineerName || 'Resident Engineer / Quantity Surveyor',
+            notes: ipc.remarks || `Financial IPC submitted by Contractor on ${ipc.submissionDate || 'N/A'}${ipc.certificationDate ? ` and Engineer submitted to Employer on ${ipc.certificationDate} (${actualDays} days)` : ' (pending Engineer certification)'}.`
+          };
+        });
+
+      const nonIpcItems = baseList.filter(s => s.type !== 'IPC Review' && !s.id.startsWith('ipc_kpi_'));
+      return [...nonIpcItems, ...ipcSubmittals];
     }
-    return [];
-  }, [consultant.submittalKpis, project?.id]);
+
+    return baseList;
+  }, [consultant.submittalKpis, project?.id, project?.ipcTracker, consultant.residentEngineerName, consultant.commencementDate, targetOverrides, isViewingHistorical, historicalConsultant]);
 
   // Active sub-view inside the widget
-  const [activeKpiView, setActiveKpiView] = useState<'comparison' | 'trend' | 'log'>(isAdmin ? 'comparison' : 'log');
+  const [activeKpiView, setActiveKpiView] = useState<'comparison' | 'log'>(isAdmin ? 'comparison' : 'log');
 
   React.useEffect(() => {
     if (!isAdmin && activeKpiView !== 'log') {
@@ -427,124 +529,219 @@ export default function ConsultantPerformanceKpiWidget({
     notes: ''
   });
 
-  // Evaluation Criteria & Weightage state
-  const evaluationCriteria = useMemo(() => {
-    return consultant.evaluationCriteria && consultant.evaluationCriteria.length > 0
-      ? consultant.evaluationCriteria
-      : DEFAULT_EVALUATION_CRITERIA;
-  }, [consultant.evaluationCriteria]);
-
-  const targetOverrides = useMemo(() => {
-    const map: Record<string, number> = {};
-    evaluationCriteria.forEach(c => {
-      map[c.name] = c.targetDays;
-    });
-    return {
-      ...DEFAULT_SLA_TARGETS,
-      ...map,
-      ...(consultant.targetOverrides || {})
-    };
-  }, [evaluationCriteria, consultant.targetOverrides]);
-
   const [editCriteriaForm, setEditCriteriaForm] = useState<EvaluationCriteriaItem[]>(evaluationCriteria);
   const [newCritName, setNewCritName] = useState('');
   const [newCritTarget, setNewCritTarget] = useState(7);
   const [newCritWeight, setNewCritWeight] = useState(10);
 
-  // Core Category KPI Statistics Calculation
+  // Core Category KPI Statistics & Weighted Evaluation Scoring Calculation
   const categoryKpiStats = useMemo(() => {
     return evaluationCriteria.map((crit) => {
       const cat = crit.name;
+      const weightPct = crit.weightPct || 0;
       const items = submittalsList.filter(s => s.type === cat || s.type.toLowerCase() === cat.toLowerCase());
-      const resolvedItems = items.filter(s => s.actualDays !== undefined && s.actualDays !== null);
-      
       const targetDays = targetOverrides[cat] !== undefined ? targetOverrides[cat] : crit.targetDays;
-      
+
+      const evaluatedItems = items.map(item => {
+        const delayInfo = checkSubmittalDelay(item, targetDays);
+        return { ...item, ...delayInfo };
+      });
+
+      const resolvedItems = evaluatedItems.filter(i => i.isResolved);
+      const pendingItems = evaluatedItems.filter(i => i.isPending);
+
+      const resolvedDelayedItems = evaluatedItems.filter(i => i.isResolved && i.isDelayed);
+      const pendingDelayedItems = evaluatedItems.filter(i => i.isPending && i.isDelayed);
+      const totalDelayedCount = resolvedDelayedItems.length + pendingDelayedItems.length;
+      const resolvedDelayedCount = resolvedDelayedItems.length;
+      const pendingDelayedCount = pendingDelayedItems.length;
+
+      const totalSubmittals = items.length;
+      const resolvedCount = resolvedItems.length;
+      const pendingCount = pendingItems.length;
+      const onTimeCount = Math.max(0, totalSubmittals - totalDelayedCount);
+      const onTimePct = totalSubmittals > 0 ? (onTimeCount / totalSubmittals) * 100 : 100;
+
       const avgActualDays = resolvedItems.length > 0
         ? parseFloat((resolvedItems.reduce((acc, cur) => acc + (cur.actualDays || 0), 0) / resolvedItems.length).toFixed(1))
-        : targetDays;
+        : (evaluatedItems.length > 0
+            ? parseFloat((evaluatedItems.reduce((acc, cur) => acc + cur.elapsedDays, 0) / evaluatedItems.length).toFixed(1))
+            : 0);
 
-      const onTimeCount = resolvedItems.filter(s => (s.actualDays || 0) <= targetDays).length;
-      const onTimePct = resolvedItems.length > 0 ? (onTimeCount / resolvedItems.length) * 100 : 100;
-      
-      const varianceDays = parseFloat((avgActualDays - targetDays).toFixed(1));
-      const isFaster = avgActualDays <= targetDays;
+      const varianceDays = resolvedCount > 0 ? parseFloat((avgActualDays - targetDays).toFixed(1)) : 0;
+      const isAverageFaster = avgActualDays <= targetDays;
+
+      // Evaluation Mark Scoring & Delayed Penalty Formula:
+      // If within target date / 0 delayed (no resolved delayed AND no pending overdue) -> Full mark (weightPct)
+      // Any item delayed past Target SLA (including pending items overdue) is penalized:
+      // Deduction = (totalDelayedCount / totalSubmittals) * weightPct
+      let deduction = 0;
+      if (totalSubmittals > 0 && totalDelayedCount > 0) {
+        deduction = parseFloat(((totalDelayedCount / totalSubmittals) * weightPct).toFixed(2));
+      }
+      const earnedScore = parseFloat(Math.max(0, weightPct - deduction).toFixed(2));
+
+      // Compliance determination:
+      // Complying requires: Avg Actual Days <= Target SLA AND zero pending overdue items AND zero resolved delay
+      const isComplying = totalSubmittals === 0
+        ? true
+        : (avgActualDays <= targetDays && pendingDelayedCount === 0 && resolvedDelayedCount === 0);
+
+      let complianceBadge: { label: string; type: 'complying' | 'not-complying' | 'no-data' };
+      if (totalSubmittals === 0) {
+        complianceBadge = { label: 'Complying (No Data)', type: 'no-data' };
+      } else if (pendingDelayedCount > 0) {
+        complianceBadge = { label: `Not Complying (${pendingDelayedCount} Pending Overdue)`, type: 'not-complying' };
+      } else if (isComplying) {
+        complianceBadge = { label: 'Complying (Full Mark)', type: 'complying' };
+      } else {
+        complianceBadge = { label: 'Not Complying (Exceeds SLA)', type: 'not-complying' };
+      }
 
       return {
+        id: crit.id,
         category: cat,
         shortName: cat.length > 18 ? cat.substring(0, 16) + '...' : cat,
         targetDays,
         actualDays: avgActualDays,
         varianceDays,
-        isFaster,
-        weightPct: crit.weightPct,
-        totalSubmittals: items.length,
-        resolvedCount: resolvedItems.length,
+        isFaster: isAverageFaster,
+        isComplying,
+        complianceBadge,
+        weightPct,
+        totalSubmittals,
+        resolvedCount,
+        pendingCount,
+        delayedCount: totalDelayedCount,
+        resolvedDelayedCount,
+        pendingDelayedCount,
         onTimeCount,
         onTimePct,
-        minDays: resolvedItems.length > 0 ? Math.min(...resolvedItems.map(s => s.actualDays || 0)) : 0,
-        maxDays: resolvedItems.length > 0 ? Math.max(...resolvedItems.map(s => s.actualDays || 0)) : 0,
-        status: onTimePct >= 90 ? 'Excellent' : onTimePct >= 75 ? 'Good' : 'Needs Review'
+        deduction,
+        earnedScore,
+        minDays: resolvedCount > 0 ? Math.min(...resolvedItems.map(s => s.actualDays || 0)) : 0,
+        maxDays: resolvedCount > 0 ? Math.max(...resolvedItems.map(s => s.actualDays || 0)) : 0,
+        status: totalSubmittals === 0 ? 'No Data' : isComplying ? 'Excellent' : (pendingDelayedCount > 0 ? 'Penalized (Pending Overdue)' : 'Needs Review')
       };
     });
   }, [submittalsList, targetOverrides, evaluationCriteria]);
 
-  // Overall Headline Metrics
+  // Overall Headline Metrics & Evaluation Audit Summary
   const overallMetrics = useMemo(() => {
-    const resolved = submittalsList.filter(s => s.actualDays !== undefined && s.actualDays !== null);
     const totalCount = submittalsList.length;
+    
+    // Evaluate delay status for all submittals
+    const evaluatedAll = submittalsList.map(item => {
+      const target = item.targetDays || targetOverrides[item.type] || 7;
+      return { ...item, ...checkSubmittalDelay(item, target) };
+    });
+
+    const resolved = evaluatedAll.filter(s => s.isResolved);
     const resolvedCount = resolved.length;
-    const pendingCount = submittalsList.filter(s => s.status === 'Under Review' || s.status === 'Overdue').length;
+    const pendingList = evaluatedAll.filter(s => s.isPending);
+    const pendingCount = pendingList.length;
+    const pendingOverdueCount = pendingList.filter(s => s.isDelayed).length;
+    const pendingOnTrackCount = pendingList.filter(s => !s.isDelayed).length;
 
     // RFI specific stats
-    const rfiItems = submittalsList.filter(s => s.type === 'RFI' && s.actualDays !== undefined);
-    const rfiTarget = targetOverrides['RFI'] || 7;
-    const avgRfiDays = rfiItems.length > 0
-      ? parseFloat((rfiItems.reduce((acc, cur) => acc + (cur.actualDays || 0), 0) / rfiItems.length).toFixed(1))
-      : 4.8;
-    const rfiEfficiencyPct = (((rfiTarget - avgRfiDays) / rfiTarget) * 100);
+    const rfiStat = categoryKpiStats.find(s => s.category === 'RFI') || {
+      actualDays: 0,
+      targetDays: targetOverrides['RFI'] || 7,
+      isComplying: true,
+      varianceDays: 0,
+      weightPct: 20,
+      deduction: 0,
+      earnedScore: 20,
+      totalSubmittals: 0,
+      resolvedCount: 0,
+      pendingCount: 0,
+      delayedCount: 0,
+      resolvedDelayedCount: 0,
+      pendingDelayedCount: 0,
+      onTimeCount: 0,
+      complianceBadge: { label: 'Complying', type: 'complying' as const }
+    };
 
-    // Global on-time compliance
-    const onTimeTotal = resolved.filter(s => {
-      const target = s.targetDays || targetOverrides[s.type] || 7;
-      return (s.actualDays || 0) <= target;
-    }).length;
-    const complianceRate = resolvedCount > 0 ? (onTimeTotal / resolvedCount) * 100 : 100;
+    const rfiItems = evaluatedAll.filter(s => s.type === 'RFI');
+    const rfiResolved = rfiItems.filter(s => s.isResolved);
+    const rfiTarget = targetOverrides['RFI'] || 7;
+    const avgRfiDays = rfiStat.actualDays || (rfiResolved.length > 0
+      ? parseFloat((rfiResolved.reduce((acc, cur) => acc + (cur.actualDays || 0), 0) / rfiResolved.length).toFixed(1))
+      : 0);
+    const rfiEfficiencyPct = (rfiTarget > 0 && avgRfiDays > 0) ? (((rfiTarget - avgRfiDays) / rfiTarget) * 100) : 0;
+
+    // Total Weightage & Earned Evaluation Score
+    const totalWeight = evaluationCriteria.reduce((sum, c) => sum + (c.weightPct || 0), 0);
+    const totalEarnedScore = parseFloat(categoryKpiStats.reduce((sum, s) => sum + s.earnedScore, 0).toFixed(2));
+    const totalDeductions = parseFloat(categoryKpiStats.reduce((sum, s) => sum + s.deduction, 0).toFixed(2));
+    const totalDelayedSubmittals = categoryKpiStats.reduce((sum, s) => sum + s.delayedCount, 0);
+    const totalPendingDelayedSubmittals = categoryKpiStats.reduce((sum, s) => sum + s.pendingDelayedCount, 0);
+    const totalResolvedDelayedSubmittals = categoryKpiStats.reduce((sum, s) => sum + s.resolvedDelayedCount, 0);
+
+    // Global on-time compliance (accounting for on-time resolved + on-time pending)
+    const onTimeTotal = evaluatedAll.filter(s => !s.isDelayed).length;
+    const complianceRate = totalCount > 0 ? (onTimeTotal / totalCount) * 100 : 100;
 
     // Overall Average turnaround
     const avgOverallDays = resolvedCount > 0
       ? parseFloat((resolved.reduce((acc, cur) => acc + (cur.actualDays || 0), 0) / resolvedCount).toFixed(1))
-      : 5.2;
+      : 0;
+
+    // Overall Grading Tier
+    let gradeLabel = 'Grade A (Excellent)';
+    let gradeBadgeStyle = 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700';
+    
+    if (totalPendingDelayedSubmittals > 0) {
+      if (totalEarnedScore >= 80) {
+        gradeLabel = `Grade B+ (Penalized: ${totalPendingDelayedSubmittals} Pending Overdue)`;
+        gradeBadgeStyle = 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border-amber-300 dark:border-amber-700';
+      } else if (totalEarnedScore >= 60) {
+        gradeLabel = `Grade C (Penalized: ${totalPendingDelayedSubmittals} Pending Overdue)`;
+        gradeBadgeStyle = 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 border-rose-300 dark:border-rose-700';
+      } else {
+        gradeLabel = `Grade F (Non-Compliant: ${totalPendingDelayedSubmittals} Pending Overdue)`;
+        gradeBadgeStyle = 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 border-rose-300 dark:border-rose-700';
+      }
+    } else if (totalEarnedScore >= 85) {
+      gradeLabel = 'Grade A (Excellent)';
+      gradeBadgeStyle = 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700';
+    } else if (totalEarnedScore >= 70) {
+      gradeLabel = 'Grade B (Satisfactory)';
+      gradeBadgeStyle = 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border-amber-300 dark:border-amber-700';
+    } else {
+      gradeLabel = 'Grade C (Needs Review)';
+      gradeBadgeStyle = 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 border-rose-300 dark:border-rose-700';
+    }
 
     return {
       totalCount,
       resolvedCount,
       pendingCount,
+      pendingOverdueCount,
+      pendingOnTrackCount,
       avgRfiDays,
       rfiTarget,
       rfiEfficiencyPct,
+      rfiStat,
+      totalWeight,
+      totalEarnedScore,
+      totalDeductions,
+      totalDelayedSubmittals,
+      totalPendingDelayedSubmittals,
+      totalResolvedDelayedSubmittals,
       complianceRate,
-      avgOverallDays
+      avgOverallDays,
+      gradeLabel,
+      gradeBadgeStyle
     };
-  }, [submittalsList, targetOverrides]);
-
-  // Monthly trend dataset for chart
-  const monthlyTrendData = useMemo(() => {
-    const months = [
-      { month: 'Sep 25', rfiActual: 5.5, rfiTarget: 7, materialsActual: 13.0, materialsTarget: 14, overallOnTime: 88 },
-      { month: 'Oct 25', rfiActual: 5.0, rfiTarget: 7, materialsActual: 12.5, materialsTarget: 14, overallOnTime: 92 },
-      { month: 'Nov 25', rfiActual: 4.4, rfiTarget: 7, materialsActual: 11.2, materialsTarget: 14, overallOnTime: 95 },
-      { month: 'Dec 25', rfiActual: 4.6, rfiTarget: 7, materialsActual: 10.8, materialsTarget: 14, overallOnTime: 94 },
-      { month: 'Jan 26', rfiActual: 4.8, rfiTarget: 7, materialsActual: 11.5, materialsTarget: 14, overallOnTime: 92 },
-      { month: 'Feb 26', rfiActual: 4.2, rfiTarget: 7, materialsActual: 10.5, materialsTarget: 14, overallOnTime: 96 }
-    ];
-    return months;
-  }, []);
+  }, [submittalsList, targetOverrides, categoryKpiStats, evaluationCriteria]);
 
   // Status breakdown metrics for dropdown options and quick filter chips
   const statusCounts = useMemo(() => {
     const total = submittalsList.length;
     let pending = 0;
+    let pendingOnTrack = 0;
+    let pendingOverdue = 0;
     let approvedClosed = 0;
     let approvedWithComments = 0;
     let overdue = 0;
@@ -554,10 +751,15 @@ export default function ConsultantPerformanceKpiWidget({
 
     submittalsList.forEach(item => {
       const target = item.targetDays || targetOverrides[item.type] || 7;
-      const isResolved = item.actualDays !== undefined && item.actualDays !== null;
+      const delayInfo = checkSubmittalDelay(item, target);
 
-      if (item.status === 'Under Review' || !isResolved) {
+      if (delayInfo.isPending) {
         pending++;
+        if (delayInfo.isOverdue) {
+          pendingOverdue++;
+        } else {
+          pendingOnTrack++;
+        }
       }
       if (item.status === 'Approved / Closed') {
         approvedClosed++;
@@ -565,18 +767,14 @@ export default function ConsultantPerformanceKpiWidget({
       if (item.status === 'Approved with Comments') {
         approvedWithComments++;
       }
-      if (item.status === 'Overdue' || (isResolved && (item.actualDays || 0) > target)) {
+      if (delayInfo.isOverdue) {
         overdue++;
+        delayed++;
+      } else {
+        onTime++;
       }
       if (item.status === 'Rejected / Resubmit') {
         rejected++;
-      }
-      if (isResolved) {
-        if ((item.actualDays || 0) <= target) {
-          onTime++;
-        } else {
-          delayed++;
-        }
       }
     });
 
@@ -585,6 +783,8 @@ export default function ConsultantPerformanceKpiWidget({
     return {
       total,
       pending,
+      pendingOnTrack,
+      pendingOverdue,
       closedTotal,
       approvedClosed,
       approvedWithComments,
@@ -607,26 +807,27 @@ export default function ConsultantPerformanceKpiWidget({
       const matchesType = selectedTypeFilter === 'ALL' || item.type === selectedTypeFilter;
       
       const target = item.targetDays || targetOverrides[item.type] || 7;
+      const delayInfo = checkSubmittalDelay(item, target);
       let matchesStatus = true;
 
       if (selectedStatusFilter === 'ALL') {
         matchesStatus = true;
       } else if (selectedStatusFilter === 'PENDING' || selectedStatusFilter === 'Under Review') {
-        matchesStatus = item.status === 'Under Review' || item.actualDays === undefined || item.actualDays === null;
+        matchesStatus = delayInfo.isPending;
+      } else if (selectedStatusFilter === 'PENDING_OVERDUE') {
+        matchesStatus = delayInfo.isPending && delayInfo.isOverdue;
       } else if (selectedStatusFilter === 'CLOSED') {
         matchesStatus = item.status === 'Approved / Closed' || item.status === 'Approved with Comments';
       } else if (selectedStatusFilter === 'Approved / Closed') {
         matchesStatus = item.status === 'Approved / Closed';
       } else if (selectedStatusFilter === 'Approved with Comments') {
         matchesStatus = item.status === 'Approved with Comments';
-      } else if (selectedStatusFilter === 'OVERDUE' || selectedStatusFilter === 'Overdue') {
-        matchesStatus = item.status === 'Overdue' || (item.actualDays !== undefined && item.actualDays > target);
+      } else if (selectedStatusFilter === 'OVERDUE' || selectedStatusFilter === 'Overdue' || selectedStatusFilter === 'DELAYED') {
+        matchesStatus = delayInfo.isOverdue;
       } else if (selectedStatusFilter === 'Rejected / Resubmit') {
         matchesStatus = item.status === 'Rejected / Resubmit';
       } else if (selectedStatusFilter === 'ON_TIME') {
-        matchesStatus = item.actualDays !== undefined && item.actualDays <= target;
-      } else if (selectedStatusFilter === 'DELAYED') {
-        matchesStatus = item.actualDays !== undefined && item.actualDays > target;
+        matchesStatus = !delayInfo.isOverdue;
       } else {
         matchesStatus = item.status === selectedStatusFilter;
       }
@@ -935,95 +1136,212 @@ export default function ConsultantPerformanceKpiWidget({
         </div>
       </div>
 
+      {/* Consultant Evaluation Scope & Succession History Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-3 rounded-2xl bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/50">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-black uppercase text-indigo-700 dark:text-indigo-300 flex items-center gap-1.5">
+            <Users className="w-4 h-4" /> Evaluation Scope:
+          </span>
+          <span className="text-xs font-extrabold text-slate-800 dark:text-zinc-100">
+            {isViewingHistorical ? historicalConsultant?.firmName : consultant.firmName}
+          </span>
+          <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
+            {isViewingHistorical 
+              ? `Archived Term: ${historicalConsultant?.commencementDate || 'Start'} to ${historicalConsultant?.handoverDate || 'Archived'}`
+              : `Active Term: Since ${consultant.commencementDate || 'Assignment'}`}
+          </span>
+        </div>
+
+        {consultant.previousConsultants && consultant.previousConsultants.length > 0 && (
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-bold text-slate-500 flex items-center gap-1">
+              <History className="w-3.5 h-3.5" /> Consultant History:
+            </span>
+            <select
+              value={selectedTenureConsultantId}
+              onChange={(e) => setSelectedTenureConsultantId(e.target.value)}
+              aria-label="Select Consultant Evaluation Term"
+              className="px-2.5 py-1 text-xs font-bold rounded-lg border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-zinc-100 shadow-2xs focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="current">
+                🟢 Current: {consultant.firmName} (Since {consultant.commencementDate || 'Assignment'})
+              </option>
+              {consultant.previousConsultants.map((hist) => (
+                <option key={hist.id} value={hist.id}>
+                  📜 Predecessor: {hist.firmName} ({hist.commencementDate || 'Start'} — {hist.handoverDate || 'Archived'})
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+      </div>
+
+      {/* Historical View Active Banner */}
+      {isViewingHistorical && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-xs">
+          <div className="flex items-center gap-2">
+            <History className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+            <span className="text-amber-900 dark:text-amber-200 font-medium">
+              Displaying archived performance evaluation for predecessor <strong>{historicalConsultant?.firmName}</strong> (Tenure: {historicalConsultant?.commencementDate || 'Start'} to {historicalConsultant?.handoverDate || 'Archived'}). Reason: <em>{historicalConsultant?.reasonForTransition || historicalConsultant?.transitionReason || 'Service tenure concluded.'}</em>
+            </span>
+          </div>
+          <button
+            onClick={() => setSelectedTenureConsultantId('current')}
+            className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-amber-200/80 hover:bg-amber-300 dark:bg-amber-900 dark:hover:bg-amber-800 text-amber-900 dark:text-amber-100 transition shrink-0 self-start sm:self-auto cursor-pointer"
+          >
+            Switch to Active Consultant
+          </button>
+        </div>
+      )}
+
       {/* Summary Highlight Cards */}
-      <div className={`grid gap-3 ${isAdmin ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-1 sm:grid-cols-3'}`}>
+      <div className={`grid gap-3 ${isAdmin ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4' : 'grid-cols-1 sm:grid-cols-3'}`}>
         {isAdmin && (
           <>
-            {/* RFI Turnaround Card */}
-            <div className="p-3.5 rounded-2xl bg-gradient-to-br from-indigo-50 to-blue-50/50 dark:from-indigo-950/40 dark:to-slate-900 border border-indigo-100 dark:border-indigo-900/60 space-y-1">
+            {/* Avg RFI Response Time Card */}
+            <div className="p-3.5 rounded-2xl bg-gradient-to-br from-indigo-50 to-blue-50/50 dark:from-indigo-950/40 dark:to-slate-900 border border-indigo-100 dark:border-indigo-900/60 space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300 flex items-center gap-1">
+                  <Clock className="w-3.5 h-3.5" />
                   Avg RFI Response Time
                 </span>
-                <span className="p-1 rounded-lg bg-indigo-100 dark:bg-indigo-900/80 text-indigo-700 dark:text-indigo-300">
-                  <Clock className="w-3.5 h-3.5" />
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide border ${
+                  overallMetrics.rfiStat.isComplying
+                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
+                    : 'bg-rose-100 text-rose-800 dark:bg-rose-950/70 dark:text-rose-300 border-rose-300 dark:border-rose-700'
+                }`}>
+                  {overallMetrics.rfiStat.isComplying ? '✓ Complying' : '✕ Not Complying'}
                 </span>
               </div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-xl md:text-2xl font-black font-mono text-indigo-950 dark:text-white">
-                  {overallMetrics.avgRfiDays}
-                </span>
-                <span className="text-xs text-slate-500 font-semibold">days</span>
-                <span className="text-[11px] font-bold font-mono text-emerald-600 dark:text-emerald-400 ml-auto flex items-center">
-                  <TrendingDown className="w-3 h-3 inline mr-0.5" />
-                  {Math.abs(overallMetrics.rfiEfficiencyPct).toFixed(0)}% faster
-                </span>
+
+              <div className="flex items-baseline justify-between gap-2">
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-2xl font-black font-mono text-indigo-950 dark:text-white">
+                    {overallMetrics.avgRfiDays}
+                  </span>
+                  <span className="text-xs text-slate-500 font-semibold">days</span>
+                  <span className="text-[11px] text-slate-400 font-mono">/ {overallMetrics.rfiTarget}d target</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-xs font-black font-mono text-indigo-700 dark:text-indigo-300">
+                    {overallMetrics.rfiStat.earnedScore.toFixed(1)} / {overallMetrics.rfiStat.weightPct} pts
+                  </span>
+                </div>
               </div>
-              <div className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium">
-                Contract Target: <strong className="font-mono">{overallMetrics.rfiTarget} calendar days</strong>
+
+              <div className="pt-1 border-t border-indigo-100/80 dark:border-indigo-900/40 flex items-center justify-between text-[10px]">
+                <span className="text-slate-600 dark:text-slate-400">
+                  {overallMetrics.rfiStat.deduction === 0 ? (
+                    <span className="text-emerald-600 dark:text-emerald-400 font-bold">★ Full Mark (0 delayed)</span>
+                  ) : (
+                    <span className="text-rose-600 dark:text-rose-400 font-bold">
+                      -{overallMetrics.rfiStat.deduction.toFixed(2)} pts ({overallMetrics.rfiStat.delayedCount}/{overallMetrics.rfiStat.totalSubmittals} delayed)
+                    </span>
+                  )}
+                </span>
+                <span className="font-mono text-indigo-600 dark:text-indigo-400 font-bold">
+                  {overallMetrics.rfiEfficiencyPct >= 0 
+                    ? `${Math.abs(overallMetrics.rfiEfficiencyPct).toFixed(0)}% faster` 
+                    : `${Math.abs(overallMetrics.rfiEfficiencyPct).toFixed(0)}% over SLA`}
+                </span>
               </div>
             </div>
 
-            {/* Global SLA Compliance */}
-            <div className="p-3.5 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50/50 dark:from-emerald-950/40 dark:to-slate-900 border border-emerald-100 dark:border-emerald-900/60 space-y-1">
+            {/* Total Consultant Evaluation Score Card */}
+            <div className="p-3.5 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50/50 dark:from-emerald-950/40 dark:to-slate-900 border border-emerald-100 dark:border-emerald-900/60 space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
-                  Overall SLA Adherence
-                </span>
-                <span className="p-1 rounded-lg bg-emerald-100 dark:bg-emerald-900/80 text-emerald-700 dark:text-emerald-300">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300 flex items-center gap-1">
                   <CheckCircle2 className="w-3.5 h-3.5" />
+                  Evaluation Score
+                </span>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide border ${
+                  overallMetrics.totalEarnedScore >= 85
+                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
+                    : overallMetrics.totalEarnedScore >= 70
+                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border-amber-300 dark:border-amber-700'
+                    : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 border-rose-300 dark:border-rose-700'
+                }`}>
+                  {overallMetrics.totalEarnedScore >= 85 ? 'Grade A (Excellent)' : overallMetrics.totalEarnedScore >= 70 ? 'Grade B (Satisfactory)' : 'Needs Review'}
                 </span>
               </div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-xl md:text-2xl font-black font-mono text-emerald-950 dark:text-white">
-                  {overallMetrics.complianceRate.toFixed(1)}%
-                </span>
-                <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 ml-auto">
-                  High Compliance
+
+              <div className="flex items-baseline justify-between gap-2">
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-2xl font-black font-mono text-emerald-950 dark:text-white">
+                    {overallMetrics.totalEarnedScore.toFixed(1)}
+                  </span>
+                  <span className="text-xs text-slate-500 font-semibold">/ {overallMetrics.totalWeight} pts</span>
+                </div>
+                <span className="text-[11px] font-bold font-mono text-emerald-600 dark:text-emerald-400">
+                  {((overallMetrics.totalEarnedScore / (overallMetrics.totalWeight || 100)) * 100).toFixed(1)}% Net
                 </span>
               </div>
-              <div className="text-[10px] text-emerald-700 dark:text-emerald-400 font-medium">
-                Resolved within target threshold
+
+              <div className="pt-1 border-t border-emerald-100/80 dark:border-emerald-900/40 flex items-center justify-between text-[10px]">
+                <span className="text-slate-600 dark:text-slate-400">
+                  {overallMetrics.totalDeductions === 0 ? (
+                    <span className="text-emerald-600 dark:text-emerald-400 font-bold">100% Full SLA Marks</span>
+                  ) : (
+                    <span className="text-amber-600 dark:text-amber-400 font-bold">
+                      Deductions: -{overallMetrics.totalDeductions.toFixed(2)} pts ({overallMetrics.totalDelayedSubmittals} delayed items)
+                    </span>
+                  )}
+                </span>
+                <span className="font-mono text-emerald-700 dark:text-emerald-300 font-semibold">
+                  {overallMetrics.complianceRate.toFixed(0)}% On-Time
+                </span>
               </div>
             </div>
           </>
         )}
 
         {/* Total Submittals Processed */}
-        <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 space-y-1">
+        <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 space-y-1.5">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
+              <FileText className="w-3.5 h-3.5" />
               Processed Submittals
             </span>
-            <FileText className="w-3.5 h-3.5 text-slate-400" />
+            <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-mono">
+              {overallMetrics.complianceRate.toFixed(0)}% SLA
+            </span>
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="text-xl md:text-2xl font-black font-mono text-slate-900 dark:text-white">
+            <span className="text-2xl font-black font-mono text-slate-900 dark:text-white">
               {overallMetrics.resolvedCount}
             </span>
-            <span className="text-xs text-slate-400 font-normal">/ {overallMetrics.totalCount} total</span>
+            <span className="text-xs text-slate-400 font-normal">/ {overallMetrics.totalCount} logged</span>
+            <span className="text-[11px] font-bold font-mono text-emerald-600 dark:text-emerald-400 ml-auto">
+              {overallMetrics.totalCount - overallMetrics.totalDelayedSubmittals} on-time
+            </span>
           </div>
           <div className="text-[10px] text-slate-500 font-medium">
-            Across supervision submittal categories
+            Avg Turnaround: <strong className="font-mono text-slate-700 dark:text-slate-300">{overallMetrics.avgOverallDays} days</strong>
           </div>
         </div>
 
         {/* Pending Queue / In Review */}
-        <div className="p-3.5 rounded-2xl bg-amber-50/60 dark:bg-amber-950/30 border border-amber-100 dark:border-amber-900/50 space-y-1">
+        <div className="p-3.5 rounded-2xl bg-amber-50/60 dark:bg-amber-950/30 border border-amber-100 dark:border-amber-900/50 space-y-1.5">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300">
-              Under Review Queue
+            <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300 flex items-center gap-1">
+              <AlertTriangle className="w-3.5 h-3.5" />
+              Active Review Queue
             </span>
-            <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+            <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-200 dark:bg-amber-900/60 text-amber-800 dark:text-amber-200 font-mono">
+              {statusCounts.overdue > 0 ? `${statusCounts.overdue} Overdue` : 'On Track'}
+            </span>
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="text-xl md:text-2xl font-black font-mono text-amber-900 dark:text-amber-200">
+            <span className="text-2xl font-black font-mono text-amber-900 dark:text-amber-200">
               {overallMetrics.pendingCount}
             </span>
-            <span className="text-xs text-amber-600 dark:text-amber-400 font-semibold">Active</span>
+            <span className="text-xs text-amber-600 dark:text-amber-400 font-semibold">in review</span>
+            <span className="text-[11px] font-bold font-mono text-amber-700 dark:text-amber-300 ml-auto">
+              {statusCounts.delayed} delayed past target
+            </span>
           </div>
           <div className="text-[10px] text-amber-700 dark:text-amber-400 font-medium">
-            Pending consultant / client action
+            Pending consultant / employer certification
           </div>
         </div>
       </div>
@@ -1036,8 +1354,7 @@ export default function ConsultantPerformanceKpiWidget({
             <div className="flex flex-wrap items-center gap-1.5">
               {[
                 ...(isAdmin ? [
-                  { id: 'comparison', label: '📊 Turnaround vs Targets', icon: Sliders },
-                  { id: 'trend', label: '📈 Monthly Performance Trend', icon: TrendingDown }
+                  { id: 'comparison', label: '📊 Turnaround vs Targets Table', icon: Sliders },
                 ] : []),
                 { id: 'log', label: '📋 Submittal Log', icon: FileText }
               ].map((tab) => {
@@ -1082,129 +1399,96 @@ export default function ConsultantPerformanceKpiWidget({
             </div>
           </div>
 
-          {/* VIEW 1: COMPARISON BAR CHART & SUMMARY TABLE */}
+          {/* VIEW 1: RFI & SUBMITTAL RESPONSE PERFORMANCE VS CONTRACT TARGETS TABLE */}
           {activeKpiView === 'comparison' && (
             <div className="space-y-4">
-              <div className="bg-slate-50 dark:bg-slate-800/40 p-4 sm:p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
-                  <div>
-                    <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white">
-                      Average Response Time (Days) vs Contract SLA Target Ceiling
-                    </h4>
-                    <p className="text-[11px] text-slate-500">
-                      Comparing actual consultant average review time (bars) with contractual deadline ceilings (target bars).
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-3 text-[11px] font-semibold">
-                    <span className="inline-flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
-                      <span className="w-3 h-3 rounded-xs bg-slate-300 dark:bg-slate-600 inline-block"></span>
-                      Contract Target SLA
+              {/* Formula & Rule Guidance Banner */}
+              <div className="p-3.5 rounded-2xl bg-gradient-to-r from-slate-50 via-indigo-50/40 to-slate-50 dark:from-slate-800/80 dark:via-indigo-950/30 dark:to-slate-800/80 border border-indigo-100/80 dark:border-indigo-900/50 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                      <ShieldCheck className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                      FIDIC & ERA Consultant SLA Compliance & Evaluation Mark Matrix
                     </span>
-                    <span className="inline-flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400">
-                      <span className="w-3 h-3 rounded-xs bg-indigo-600 inline-block"></span>
-                      Actual Consultant Turnaround
+                    <span className="px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300 font-mono font-bold text-[10px]">
+                      Formula Active
                     </span>
                   </div>
+                  <p className="text-slate-600 dark:text-slate-300 text-[11px] leading-relaxed">
+                    • <strong>Compliance Rule:</strong> Actual Avg Response Time ≤ Target SLA = <span className="text-emerald-600 dark:text-emerald-400 font-bold">Complying</span>; Exceeding Target SLA = <span className="text-rose-600 dark:text-rose-400 font-bold">Not Complying</span>.
+                    <br />
+                    • <strong>Evaluation Mark:</strong> Within target date receives <strong>Full Mark</strong>. For items delayed past target SLA: 
+                    <code className="mx-1 px-1.5 py-0.5 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono text-indigo-600 dark:text-indigo-400 font-bold">
+                      Deduction = (Delayed ÷ Submitted) × Weightage
+                    </code>
+                    → 
+                    <code className="ml-1 px-1.5 py-0.5 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono text-emerald-600 dark:text-emerald-400 font-bold">
+                      Net Mark = Weightage − Deduction
+                    </code>
+                  </p>
                 </div>
 
-                <div className="h-64 sm:h-72 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={categoryKpiStats}
-                      margin={{ top: 15, right: 20, left: -10, bottom: 25 }}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" opacity={0.5} vertical={false} />
-                      <XAxis 
-                        dataKey="shortName" 
-                        tick={{ fontSize: 11, fill: '#64748b' }}
-                        interval={0}
-                        angle={-15}
-                        textAnchor="end"
-                      />
-                      <YAxis 
-                        tick={{ fontSize: 11, fill: '#64748b' }}
-                        unit=" d"
-                      />
-                      <Tooltip
-                        content={({ active, payload, label }) => {
-                          if (active && payload && payload.length) {
-                            const data = payload[0].payload;
-                            return (
-                              <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-700 shadow-lg text-xs space-y-1">
-                                <p className="font-bold text-slate-900 dark:text-white">{data.category}</p>
-                                <div className="text-slate-600 dark:text-slate-300 space-y-0.5">
-                                  <p>• Contract Target: <strong className="font-mono">{data.targetDays} days</strong></p>
-                                  <p>• Actual Average: <strong className="font-mono text-indigo-600 dark:text-indigo-400">{data.actualDays} days</strong></p>
-                                  <p>• Variance: <strong className={`font-mono ${data.isFaster ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                    {data.isFaster ? `${Math.abs(data.varianceDays)} days faster` : `${data.varianceDays} days over target`}
-                                  </strong></p>
-                                  <p>• On-Time Rate: <strong className="font-mono text-emerald-600">{data.onTimePct.toFixed(0)}%</strong> ({data.onTimeCount}/{data.resolvedCount} submittals)</p>
-                                </div>
-                              </div>
-                            );
-                          }
-                          return null;
-                        }}
-                      />
-                      <Bar 
-                        dataKey="targetDays" 
-                        name="Contract Target (Days)" 
-                        fill="#cbd5e1" 
-                        radius={[4, 4, 0, 0]}
-                        maxBarSize={32}
-                      />
-                      <Bar 
-                        dataKey="actualDays" 
-                        name="Actual Average (Days)" 
-                        fill="#4f46e5" 
-                        radius={[4, 4, 0, 0]}
-                        maxBarSize={32}
-                      >
-                        {categoryKpiStats.map((entry, index) => (
-                          <Cell 
-                            key={`cell-${index}`} 
-                            fill={entry.actualDays <= entry.targetDays ? '#4f46e5' : '#ef4444'} 
-                          />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
+                <div className="flex items-center gap-3 bg-white dark:bg-slate-900/80 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 shrink-0">
+                  <div className="text-right">
+                    <div className="text-[10px] uppercase font-bold text-slate-400">Total Net Score</div>
+                    <div className="text-base font-black font-mono text-emerald-600 dark:text-emerald-400">
+                      {overallMetrics.totalEarnedScore.toFixed(2)} / {overallMetrics.totalWeight} pts
+                    </div>
+                  </div>
+                  <div className="h-8 w-px bg-slate-200 dark:bg-slate-700" />
+                  <div className="text-right">
+                    <div className="text-[10px] uppercase font-bold text-slate-400">Total Deductions</div>
+                    <div className="text-base font-black font-mono text-rose-600 dark:text-rose-400">
+                      -{overallMetrics.totalDeductions.toFixed(2)} pts
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              {/* Detailed Performance Metric Table with editable target SLAs */}
-              <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800">
+              {/* Detailed Performance Metric Table with editable target SLAs & weighted evaluation marks */}
+              <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-100/70 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 font-bold border-b border-slate-200 dark:border-slate-800">
+                  <thead className="bg-slate-100/80 dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 font-bold border-b border-slate-200 dark:border-slate-800">
                     <tr>
-                      <th className="py-2.5 px-3.5">Submittal Category</th>
-                      <th className="py-2.5 px-3.5 text-center">
+                      <th className="py-2.5 px-3.5">Submittal Criteria</th>
+                      <th className="py-2.5 px-3 text-center">
                         Target SLA
-                        <span className="text-[10px] font-normal text-indigo-500 block">Click to edit target</span>
+                        <span className="text-[9px] font-normal text-indigo-500 block">Editable</span>
                       </th>
-                      <th className="py-2.5 px-3.5 text-center">Actual Average</th>
-                      <th className="py-2.5 px-3.5 text-center">Variance (Turnaround)</th>
-                      <th className="py-2.5 px-3.5 text-center">On-Time Rate</th>
-                      <th className="py-2.5 px-3.5 text-right">Processed Log</th>
-                      <th className="py-2.5 px-3.5 text-center">Action</th>
+                      <th className="py-2.5 px-3 text-center">Actual Avg</th>
+                      <th className="py-2.5 px-3.5 text-center">Compliance Status</th>
+                      <th className="py-2.5 px-3 text-center">Submitted / Delayed</th>
+                      <th className="py-2.5 px-2.5 text-center">Weight</th>
+                      <th className="py-2.5 px-3 text-center">Deductions</th>
+                      <th className="py-2.5 px-3.5 text-center">Evaluation Mark</th>
+                      <th className="py-2.5 px-3 text-center">On-Time Rate</th>
+                      <th className="py-2.5 px-3 text-center">Audit</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-800 dark:text-slate-200">
                     {categoryKpiStats.map((stat) => (
                       <tr key={stat.category} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
-                        <td className="py-2.5 px-3.5 font-bold flex items-center gap-2">
-                          <span className="w-2 h-2 rounded-full bg-indigo-600"></span>
-                          {stat.category}
+                        {/* Submittal Criteria Name */}
+                        <td className="py-2.5 px-3.5 font-bold">
+                          <div className="flex items-center gap-2">
+                            <span className={`w-2 h-2 rounded-full ${
+                              stat.isComplying ? 'bg-indigo-600' : 'bg-rose-500'
+                            }`}></span>
+                            <span className="text-slate-900 dark:text-white font-semibold">
+                              {stat.category}
+                            </span>
+                          </div>
                         </td>
-                        <td className="py-2.5 px-3.5 text-center font-mono font-semibold">
+
+                        {/* Target SLA (Editable) */}
+                        <td className="py-2.5 px-3 text-center font-mono font-semibold">
                           {!isReadonly ? (
                             <div className="inline-flex items-center justify-center gap-1">
                               <input
                                 type="number"
                                 min="1"
                                 max="90"
-                                value={targetOverrides[stat.category] || DEFAULT_SLA_TARGETS[stat.category] || 7}
+                                value={targetOverrides[stat.category] !== undefined ? targetOverrides[stat.category] : stat.targetDays}
                                 onChange={(e) => {
                                   const val = parseInt(e.target.value) || 1;
                                   const newOverrides = { ...targetOverrides, [stat.category]: val };
@@ -1216,141 +1500,167 @@ export default function ConsultantPerformanceKpiWidget({
                                     onUpdateConsultant(updatedConsultant, `Updated ${stat.category} target SLA to ${val} days`);
                                   }
                                 }}
-                                className="w-14 px-1.5 py-0.5 text-center bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-md font-bold text-slate-900 dark:text-white"
+                                className="w-12 px-1 py-0.5 text-center bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-md font-bold text-slate-900 dark:text-white text-xs"
                               />
                               <span className="text-slate-400 text-[11px]">d</span>
                             </div>
                           ) : (
-                            <span className="text-slate-500">{stat.targetDays} days</span>
+                            <span className="text-slate-500">{stat.targetDays}d</span>
                           )}
                         </td>
-                        <td className="py-2.5 px-3.5 text-center font-mono font-bold text-indigo-600 dark:text-indigo-400">
-                          {stat.actualDays} days
+
+                        {/* Actual Average */}
+                        <td className="py-2.5 px-3 text-center font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                          {stat.actualDays}d
                         </td>
+
+                        {/* Compliance Status */}
                         <td className="py-2.5 px-3.5 text-center">
-                          <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold font-mono inline-flex items-center gap-1 ${
-                            stat.isFaster 
-                              ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800' 
-                              : 'bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold font-mono inline-flex items-center gap-1 border ${
+                            stat.isComplying
+                              ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                              : 'bg-rose-50 text-rose-700 dark:bg-rose-950/70 dark:text-rose-300 border-rose-200 dark:border-rose-800'
                           }`}>
-                            {stat.isFaster ? <TrendingDown className="w-3 h-3" /> : <TrendingUp className="w-3 h-3" />}
-                            {stat.isFaster ? `-${Math.abs(stat.varianceDays)}d` : `+${stat.varianceDays}d`}
+                            {stat.isComplying ? '✓ Complying' : '✕ Not Complying'}
                           </span>
                         </td>
-                        <td className="py-2.5 px-3.5 text-center font-bold">
-                          <div className="flex items-center justify-center gap-2">
-                            <div className="w-16 bg-slate-200 dark:bg-slate-700 rounded-full h-1.5 overflow-hidden">
+
+                        {/* Submitted vs Delayed */}
+                        <td className="py-2.5 px-3 text-center font-mono text-[11px]">
+                          <span className="font-bold text-slate-800 dark:text-slate-200">{stat.totalSubmittals}</span>
+                          <span className="text-slate-400 mx-1">/</span>
+                          <span className={stat.delayedCount > 0 ? 'text-rose-600 dark:text-rose-400 font-bold' : 'text-emerald-600 dark:text-emerald-400 font-semibold'}>
+                            {stat.delayedCount} delayed
+                          </span>
+                        </td>
+
+                        {/* Weightage */}
+                        <td className="py-2.5 px-2.5 text-center font-mono font-semibold text-slate-600 dark:text-slate-300">
+                          {stat.weightPct}%
+                        </td>
+
+                        {/* Deductions */}
+                        <td className="py-2.5 px-3 text-center font-mono">
+                          {stat.deduction > 0 ? (
+                            <span 
+                              title={`Deduction formula: (${stat.delayedCount} delayed ÷ ${stat.totalSubmittals} submitted) × ${stat.weightPct}% = -${stat.deduction.toFixed(2)} pts`}
+                              className="text-rose-600 dark:text-rose-400 font-bold bg-rose-50 dark:bg-rose-950/50 px-1.5 py-0.5 rounded border border-rose-200 dark:border-rose-900 cursor-help"
+                            >
+                              -{stat.deduction.toFixed(2)}
+                            </span>
+                          ) : (
+                            <span className="text-emerald-600 dark:text-emerald-400 font-semibold text-[11px]">
+                              0.00 (Full)
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Evaluation Mark Earned */}
+                        <td className="py-2.5 px-3.5 text-center font-mono font-black text-xs">
+                          <span className={`${
+                            stat.earnedScore === stat.weightPct
+                              ? 'text-emerald-600 dark:text-emerald-400'
+                              : stat.earnedScore >= stat.weightPct * 0.75
+                              ? 'text-indigo-600 dark:text-indigo-400'
+                              : 'text-amber-600 dark:text-amber-400'
+                          }`}>
+                            {stat.earnedScore.toFixed(2)}
+                          </span>
+                          <span className="text-slate-400 text-[10px] font-normal"> / {stat.weightPct}</span>
+                        </td>
+
+                        {/* On-Time Rate */}
+                        <td className="py-2.5 px-3 text-center font-bold">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <div className="w-12 bg-slate-200 dark:bg-slate-700 rounded-full h-1.5 overflow-hidden">
                               <div 
-                                className="bg-emerald-500 h-1.5 rounded-full" 
+                                className={`h-1.5 rounded-full ${
+                                  stat.onTimePct >= 90 ? 'bg-emerald-500' : stat.onTimePct >= 70 ? 'bg-indigo-500' : 'bg-rose-500'
+                                }`}
                                 style={{ width: `${stat.onTimePct}%` }}
                               />
                             </div>
-                            <span className="font-mono text-emerald-600 dark:text-emerald-400">
+                            <span className="font-mono text-[11px] text-slate-700 dark:text-slate-300">
                               {stat.onTimePct.toFixed(0)}%
                             </span>
                           </div>
                         </td>
-                        <td className="py-2.5 px-3.5 text-right font-mono text-slate-500">
-                          <strong>{stat.resolvedCount}</strong> of {stat.totalSubmittals}
-                        </td>
-                        <td className="py-2.5 px-3.5 text-center">
+
+                        {/* Audit Link */}
+                        <td className="py-2.5 px-3 text-center">
                           <button
                             onClick={() => {
                               setSelectedTypeFilter(stat.category);
                               setActiveKpiView('log');
                             }}
-                            className="px-2 py-0.5 rounded-md bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950 dark:hover:bg-indigo-900 text-indigo-700 dark:text-indigo-300 text-[11px] font-semibold transition"
+                            className="px-2 py-0.5 rounded-md bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950 dark:hover:bg-indigo-900 text-indigo-700 dark:text-indigo-300 text-[10px] font-bold transition cursor-pointer"
                           >
-                            View Logs ({stat.totalSubmittals})
+                            Logs ({stat.totalSubmittals})
                           </button>
                         </td>
                       </tr>
                     ))}
                   </tbody>
+
+                  {/* Summary / Totals Footer Row */}
+                  <tfoot className="bg-slate-100/90 dark:bg-slate-800/95 font-bold border-t-2 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white">
+                    <tr>
+                      <td className="py-3 px-3.5 font-black uppercase text-[11px] text-slate-900 dark:text-white">
+                        Total / Performance Matrix
+                      </td>
+                      <td className="py-3 px-3 text-center font-mono text-slate-500">
+                        —
+                      </td>
+                      <td className="py-3 px-3 text-center font-mono font-black text-indigo-600 dark:text-indigo-400">
+                        {overallMetrics.avgOverallDays}d avg
+                      </td>
+                      <td className="py-3 px-3.5 text-center">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-black font-mono uppercase tracking-wide border ${
+                          overallMetrics.totalEarnedScore >= 80
+                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border-emerald-300'
+                            : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border-amber-300'
+                        }`}>
+                          {overallMetrics.totalEarnedScore >= 80 ? '✓ Compliant Portfolio' : '⚠ Attention Required'}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3 text-center font-mono text-xs">
+                        <span className="text-slate-900 dark:text-white font-bold">{overallMetrics.totalCount}</span>
+                        <span className="text-slate-400 mx-1">/</span>
+                        <span className={overallMetrics.totalDelayedSubmittals > 0 ? 'text-rose-600 dark:text-rose-400 font-bold' : 'text-emerald-600'}>
+                          {overallMetrics.totalDelayedSubmittals} delayed
+                        </span>
+                      </td>
+                      <td className="py-3 px-2.5 text-center font-mono font-bold text-slate-800 dark:text-slate-100">
+                        {overallMetrics.totalWeight}%
+                      </td>
+                      <td className="py-3 px-3 text-center font-mono font-black text-rose-600 dark:text-rose-400">
+                        -{overallMetrics.totalDeductions.toFixed(2)} pts
+                      </td>
+                      <td className="py-3 px-3.5 text-center font-mono font-black text-sm text-emerald-600 dark:text-emerald-400">
+                        {overallMetrics.totalEarnedScore.toFixed(2)} / {overallMetrics.totalWeight}
+                      </td>
+                      <td className="py-3 px-3 text-center font-mono font-bold text-slate-800 dark:text-slate-200">
+                        {overallMetrics.complianceRate.toFixed(1)}%
+                      </td>
+                      <td className="py-3 px-3 text-center">
+                        <button
+                          onClick={() => {
+                            setSelectedTypeFilter('ALL');
+                            setActiveKpiView('log');
+                          }}
+                          className="px-2 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold shadow-xs cursor-pointer"
+                        >
+                          All Logs
+                        </button>
+                      </td>
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
             </div>
           )}
 
-          {/* VIEW 2: MONTHLY TREND LINE CHART */}
-          {activeKpiView === 'trend' && (
-            <div className="bg-slate-50 dark:bg-slate-800/40 p-4 sm:p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div>
-                  <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white">
-                    Historical Monthly Response Time (Days) vs SLA Limit
-                  </h4>
-                  <p className="text-[11px] text-slate-500">
-                    6-month timeline showing consistent response efficiency below contractual maximum limits.
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-3 text-[11px] font-semibold">
-                  <span className="inline-flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400">
-                    <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 inline-block"></span>
-                    RFI Turnaround
-                  </span>
-                  <span className="inline-flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 inline-block"></span>
-                    Materials Turnaround
-                  </span>
-                  <span className="inline-flex items-center gap-1.5 text-rose-500">
-                    <span className="w-2.5 h-0.5 bg-rose-500 inline-block"></span>
-                    RFI Target Limit (7d)
-                  </span>
-                </div>
-              </div>
-
-              <div className="h-64 sm:h-72 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart
-                    data={monthlyTrendData}
-                    margin={{ top: 15, right: 20, left: -10, bottom: 5 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" opacity={0.5} />
-                    <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#64748b' }} />
-                    <YAxis tick={{ fontSize: 11, fill: '#64748b' }} unit=" d" />
-                    <Tooltip
-                      content={({ active, payload, label }) => {
-                        if (active && payload && payload.length) {
-                          const data = payload[0].payload;
-                          return (
-                            <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-700 shadow-lg text-xs space-y-1">
-                              <p className="font-bold text-slate-900 dark:text-white">{data.month}</p>
-                              <p className="text-indigo-600">• RFI Avg: <strong className="font-mono">{data.rfiActual} days</strong> (Target: 7d)</p>
-                              <p className="text-emerald-600">• Materials Avg: <strong className="font-mono">{data.materialsActual} days</strong> (Target: 14d)</p>
-                              <p className="text-slate-500">• Month Compliance: <strong className="font-mono text-emerald-600">{data.overallOnTime}%</strong></p>
-                            </div>
-                          );
-                        }
-                        return null;
-                      }}
-                    />
-                    <ReferenceLine y={7} stroke="#ef4444" strokeDasharray="4 4" label={{ value: 'RFI 7d Limit', fill: '#ef4444', fontSize: 10, position: 'insideTopRight' }} />
-                    <Line 
-                      type="monotone" 
-                      dataKey="rfiActual" 
-                      name="RFI Turnaround" 
-                      stroke="#4f46e5" 
-                      strokeWidth={3}
-                      dot={{ r: 4, fill: '#4f46e5' }}
-                    />
-                    <Line 
-                      type="monotone" 
-                      dataKey="materialsActual" 
-                      name="Materials Turnaround" 
-                      stroke="#10b981" 
-                      strokeWidth={2}
-                      strokeDasharray="3 3"
-                      dot={{ r: 3, fill: '#10b981' }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          )}
-
-          {/* VIEW 3: SUBMITTAL AUDIT TRAIL LOG TABLE (EDITABLE & UPDATABLE) */}
+          {/* VIEW 2: SUBMITTAL AUDIT TRAIL LOG TABLE (EDITABLE & UPDATABLE) */}
           {activeKpiView === 'log' && (
             <div className="space-y-3">
               {/* Table Controls & Search Bar */}
@@ -1801,8 +2111,17 @@ export default function ConsultantPerformanceKpiWidget({
                         }
 
                         // DEFAULT READ/INTERACTIVE ROW DISPLAY
+                        const delayInfo = checkSubmittalDelay(sub, target);
+
                         return (
-                          <tr key={sub.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition group">
+                          <tr 
+                            key={sub.id} 
+                            className={`transition group ${
+                              delayInfo.isPending && delayInfo.isOverdue
+                                ? 'bg-rose-50/40 dark:bg-rose-950/20 hover:bg-rose-50/60 dark:hover:bg-rose-950/30 border-l-4 border-l-rose-500'
+                                : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
+                            }`}
+                          >
                             {/* Submittal # */}
                             <td className="py-2.5 px-3 font-mono font-bold text-indigo-600 dark:text-indigo-400 whitespace-nowrap">
                               {sub.submittalNo}
@@ -1832,7 +2151,13 @@ export default function ConsultantPerformanceKpiWidget({
                               {sub.submittedDate}
                             </td>
                             <td className="py-2.5 px-3 whitespace-nowrap font-mono text-[11px] text-slate-500">
-                              {sub.respondedDate ? sub.respondedDate : <span className="text-amber-500 italic">Pending</span>}
+                              {sub.respondedDate ? (
+                                sub.respondedDate
+                              ) : delayInfo.isOverdue ? (
+                                <span className="text-rose-600 dark:text-rose-400 font-bold">Pending Overdue</span>
+                              ) : (
+                                <span className="text-amber-500 italic">Pending (Under Review)</span>
+                              )}
                             </td>
 
                             {/* Target SLA */}
@@ -1850,9 +2175,16 @@ export default function ConsultantPerformanceKpiWidget({
                                 }`}>
                                   {sub.actualDays}d <span className="text-[10px] opacity-75 font-normal">/ {target}d</span>
                                 </span>
+                              ) : delayInfo.isOverdue ? (
+                                <span 
+                                  title={`Submitted ${sub.submittedDate || 'recently'}. Elapsed: ${delayInfo.elapsedDays} days exceeds Target SLA (${target}d) by ${delayInfo.delayDays} days. Penalized on evaluation score.`}
+                                  className="px-2 py-0.5 rounded-full text-[10px] font-bold font-mono inline-flex items-center gap-1 bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 border border-rose-300 cursor-help"
+                                >
+                                  🚨 {delayInfo.elapsedDays}d / {target}d (+{delayInfo.delayDays}d Overdue)
+                                </span>
                               ) : (
                                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300 font-mono">
-                                  In Review
+                                  ⏳ In Review ({delayInfo.elapsedDays}d / {target}d)
                                 </span>
                               )}
                             </td>
@@ -1864,17 +2196,23 @@ export default function ConsultantPerformanceKpiWidget({
 
                             {/* Status */}
                             <td className="py-2.5 px-3 whitespace-nowrap">
-                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                sub.status === 'Approved / Closed' 
-                                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                                  : sub.status === 'Approved with Comments'
-                                  ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300'
-                                  : sub.status === 'Under Review'
-                                  ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
-                                  : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
-                              }`}>
-                                {sub.status}
-                              </span>
+                              {delayInfo.isPending && delayInfo.isOverdue ? (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 border border-rose-300 inline-flex items-center gap-1 shadow-xs">
+                                  🚨 Pending Overdue (Penalized)
+                                </span>
+                              ) : (
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                  sub.status === 'Approved / Closed' 
+                                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                                    : sub.status === 'Approved with Comments'
+                                    ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300'
+                                    : sub.status === 'Under Review'
+                                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                                    : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                                }`}>
+                                  {sub.status}
+                                </span>
+                              )}
                             </td>
 
                             {/* Action Buttons (Edit / Duplicate / Delete) */}

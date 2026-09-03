@@ -246,7 +246,7 @@ export default function MonthlyPaymentIpcSummaryTable({
                 )}
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Tracks 56-day statutory payment maturation from submission date & applies financing charges / delay interest for overdue certificates
+                Tracks 56-day statutory payment maturation from Contractor Submission Date, Engineer's Submission Date (Certification), and Payment Date (Disbursement) under FIDIC Cl. 14.7 & 14.8
               </p>
             </div>
           </div>
@@ -441,7 +441,7 @@ export default function MonthlyPaymentIpcSummaryTable({
           <thead>
             <tr className="bg-slate-100/70 dark:bg-slate-900/60 text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200 dark:border-slate-700">
               <th className="py-3 px-3 w-32">IPC / Certificate</th>
-              <th className="py-3 px-2 w-28">Submission & Age</th>
+              <th className="py-3 px-2 w-32" title="Contractor Submission Date and Elapsed Days">Contractor Submission & Age</th>
               <th className="py-3 px-2 w-36 text-center">56-Day Maturation</th>
               <th className="py-3 px-2 text-right">Bill Summary (ETB)</th>
               <th className="py-3 px-2 text-right text-emerald-700 dark:text-emerald-400">Price Adj. (ETB)</th>
@@ -484,17 +484,17 @@ export default function MonthlyPaymentIpcSummaryTable({
                       </div>
                     </td>
 
-                    {/* Submission Date & Elapsed Calendar Days */}
+                    {/* Contractor Submission Date & Elapsed Calendar Days */}
                     <td className="py-2.5 px-2">
                       <input
                         type="date"
                         value={item.submissionDate || ''}
                         onChange={(e) => handleFieldChange(realIdx, 'submissionDate', e.target.value)}
                         className="w-full bg-transparent border-none focus:ring-1 focus:ring-blue-500 rounded px-1 font-mono text-xs text-slate-700 dark:text-slate-300 outline-none cursor-pointer"
-                        title="Contractor IPC Submission Date"
+                        title="Contractor Submission Date"
                       />
                       <div className="text-[10px] font-mono px-1 font-medium text-slate-500 dark:text-slate-400">
-                        {item.submissionDate ? `${maturation.daysElapsed} days elapsed` : 'No date'}
+                        {item.submissionDate ? `${maturation.daysElapsed} days elapsed` : 'No submission date'}
                       </div>
                     </td>
 
@@ -687,15 +687,15 @@ export default function MonthlyPaymentIpcSummaryTable({
                             
                             <div className="space-y-1.5 pt-1 text-slate-600 dark:text-slate-300 font-mono text-[11px]">
                               <div className="flex justify-between">
-                                <span className="text-slate-400 font-sans">Submission Date:</span>
+                                <span className="text-slate-400 font-sans">Contractor Submission Date:</span>
                                 <span className="font-bold">{item.submissionDate || 'N/A'}</span>
                               </div>
                               <div className="flex justify-between">
-                                <span className="text-slate-400 font-sans">56-Day Maturation Due Date:</span>
+                                <span className="text-slate-400 font-sans">56-Day Payment Due Date:</span>
                                 <span className="font-bold text-indigo-600 dark:text-indigo-400">{maturation.dueDate || 'N/A'}</span>
                               </div>
                               <div className="flex justify-between">
-                                <span className="text-slate-400 font-sans">Elapsed Calendar Days:</span>
+                                <span className="text-slate-400 font-sans">Elapsed Days from Submission:</span>
                                 <span className="font-bold">{maturation.daysElapsed} days</span>
                               </div>
                               <div className="flex justify-between">
@@ -792,22 +792,27 @@ export default function MonthlyPaymentIpcSummaryTable({
                             <div className="space-y-1.5 pt-1">
                               <div className="grid grid-cols-2 gap-2">
                                 <div>
-                                  <label className="text-[10px] text-slate-400 block font-semibold">Certification Date:</label>
+                                  <label className="text-[10px] text-slate-400 block font-semibold" title="Engineer's Submission Date to Employer (Certification Date)">
+                                    Engineer's Submission Date (Certification):
+                                  </label>
                                   <input
                                     type="date"
                                     value={item.certificationDate || ''}
                                     onChange={(e) => handleFieldChange(realIdx, 'certificationDate', e.target.value)}
                                     className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 text-slate-800 dark:text-zinc-100 font-mono text-xs outline-none"
+                                    title="Engineer's Submission Date to Employer (Certification Date)"
                                   />
                                 </div>
                                 <div>
-                                  <label className="text-[10px] text-slate-400 block font-semibold">Disbursement Date:</label>
+                                  <label className="text-[10px] text-slate-400 block font-semibold" title="Payment Date (Disbursement Date to Contractor)">
+                                    Payment Date (Disbursement):
+                                  </label>
                                   <input
                                     type="date"
                                     value={item.paymentDate || ''}
                                     onChange={(e) => handleFieldChange(realIdx, 'paymentDate', e.target.value)}
                                     className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 text-slate-800 dark:text-zinc-100 font-mono text-xs outline-none"
-                                    title="Actual payment disbursement date"
+                                    title="Payment Date (Disbursement Date to Contractor)"
                                   />
                                 </div>
                               </div>
