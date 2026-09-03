@@ -1517,7 +1517,7 @@ export default function DashboardView({
     
     ry += 15;
     
-    p.rowMetrics.forEach((rm) => {
+    (p.rowMetrics || []).forEach((rm) => {
       doc.setFillColor(255, 255, 255);
       doc.rect(40, ry, pageWidth - 80, 16, 'F');
       doc.setDrawColor(241, 245, 249);

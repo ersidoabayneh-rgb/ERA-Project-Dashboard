@@ -545,7 +545,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory }:
     'ROW Obstruction free Section'
   ];
 
-  const displayRowMetrics = p.rowMetrics
+  const displayRowMetrics = (p.rowMetrics || [])
     .filter(rm => allowedRowMetricNames.includes(rm.name))
     .map(rm => {
       if (rm.name === 'Properties identified, measured, evaluated') {

@@ -202,8 +202,8 @@ export default function BondsGuaranteeView({ project, onUpdateBonds }: BondsGuar
       })}
 
       {bonds.length === 0 && (
-        <div className="text-center py-8 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-705 p-6 text-xs text-slate-400">
-          No bank guarantees loaded.
+        <div className="text-center py-10 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700/60 p-6 text-xs text-slate-400">
+          No bank guarantees registered yet. Click "Add Guarantee" above to add new bonds.
         </div>
       )}
     </div>

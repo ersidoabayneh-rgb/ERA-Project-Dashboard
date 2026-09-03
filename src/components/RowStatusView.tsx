@@ -15,6 +15,7 @@ import {
   Wrench
 } from 'lucide-react';
 import { Project, RowMetric, RowCompensationItem, UtilityCompensationItem, RowStatusItem, formatAccounting } from '../types';
+import { defaultZeroRowMetrics, defaultProjectTemplate } from '../data/defaultProject';
 
 interface RowStatusViewProps {
   project: Project;
@@ -31,7 +32,9 @@ export default function RowStatusView({
   onUpdateUtilityCompensation,
   onUpdateRowStatus
 }: RowStatusViewProps) {
-  const metrics = project.rowMetrics || [];
+  const metrics = (project.rowMetrics && project.rowMetrics.length > 0)
+    ? project.rowMetrics
+    : (project.id === 'proj_default' ? defaultProjectTemplate().rowMetrics : defaultZeroRowMetrics());
   const compensations = project.rowCompensation || [];
 
   // Metrics handlers
@@ -297,44 +300,52 @@ export default function RowStatusView({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-55 dark:divide-slate-700/40">
-                {metrics.map((m, idx) => (
-                  <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/10">
-                    <td className="p-3 text-center font-bold text-slate-400 font-mono">{idx + 1}</td>
-                    <td className="p-3 font-semibold text-slate-750 dark:text-slate-350">
-                      <input
-                        type="text"
-                        value={m.name}
-                        onChange={(e) => handleFieldChange(idx, 'name', e.target.value)}
-                        className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-xs font-semibold focus:outline-none focus:border-blue-500"
-                      />
-                    </td>
-                    <td className="p-3 text-center">
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={m.value}
-                        onChange={(e) => handleFieldChange(idx, 'value', e.target.value)}
-                        className="w-28 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-center font-mono font-extrabold text-blue-600 dark:text-blue-400 text-xs focus:outline-none focus:border-blue-500"
-                      />
-                    </td>
-                    <td className="p-3 text-center font-mono">
-                      <input
-                        type="text"
-                        value={m.unit}
-                        onChange={(e) => handleFieldChange(idx, 'unit', e.target.value)}
-                        className="w-16 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-1 py-1 text-center text-xs focus:outline-none focus:border-blue-500"
-                      />
-                    </td>
-                    <td className="p-3 text-center">
-                      <button
-                        onClick={() => onUpdateRowMetrics(metrics.filter((_, i) => i !== idx))}
-                        className="p-1 text-slate-400 hover:text-rose-500 rounded-lg transition"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                {metrics.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="p-8 text-center text-slate-400 dark:text-slate-500">
+                      No ROW / Utility parameters registered. Click 'Add Parameter' above to define parameters.
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  metrics.map((m, idx) => (
+                    <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/10">
+                      <td className="p-3 text-center font-bold text-slate-400 font-mono">{idx + 1}</td>
+                      <td className="p-3 font-semibold text-slate-750 dark:text-slate-350">
+                        <input
+                          type="text"
+                          value={m.name}
+                          onChange={(e) => handleFieldChange(idx, 'name', e.target.value)}
+                          className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-xs font-semibold focus:outline-none focus:border-blue-500"
+                        />
+                      </td>
+                      <td className="p-3 text-center">
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={m.value}
+                          onChange={(e) => handleFieldChange(idx, 'value', e.target.value)}
+                          className="w-28 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-center font-mono font-extrabold text-blue-600 dark:text-blue-400 text-xs focus:outline-none focus:border-blue-500"
+                        />
+                      </td>
+                      <td className="p-3 text-center font-mono">
+                        <input
+                          type="text"
+                          value={m.unit}
+                          onChange={(e) => handleFieldChange(idx, 'unit', e.target.value)}
+                          className="w-16 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-1 py-1 text-center text-xs focus:outline-none focus:border-blue-500"
+                        />
+                      </td>
+                      <td className="p-3 text-center">
+                        <button
+                          onClick={() => onUpdateRowMetrics(metrics.filter((_, i) => i !== idx))}
+                          className="p-1 text-slate-400 hover:text-rose-500 rounded-lg transition"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>

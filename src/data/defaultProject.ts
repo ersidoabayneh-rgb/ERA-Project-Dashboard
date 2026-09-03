@@ -157,6 +157,32 @@ export function generateSpurLinearData(): LinearData {
   return o as LinearData;
 }
 
+export function generateEmptyLinearData(): LinearData {
+  return {
+    subgrade: [],
+    capping: [],
+    subbase: [],
+    basecourse: [],
+    asphalt: []
+  };
+}
+
+export function defaultZeroRowMetrics(): RowMetric[] {
+  return [
+    { name: 'Project Length', value: 0, unit: 'Km' },
+    { name: 'ROW Request By Contractor', value: 0, unit: 'Km' },
+    { name: 'Properties identified, measured, evaluated', value: 0, unit: 'Km' },
+    { name: 'Document Sent ERA for Compensation', value: 0, unit: 'Km' },
+    { name: 'ROW Obstruction free Section', value: 0, unit: 'Km' },
+    { name: 'Compensation Paid by ERA', value: 0, unit: 'Km' },
+    { name: 'Unpaid Section', value: 0, unit: 'Km' },
+    { name: 'Material Source Requested (No)', value: 0, unit: 'No.' },
+    { name: 'Material Source Handedover (No)', value: 0, unit: 'No.' },
+    { name: 'Electric Pole Removal Requested (No)', value: 0, unit: 'No.' },
+    { name: 'Electric Pole Removal Handedover (No)', value: 0, unit: 'No.' }
+  ];
+}
+
 export function getDefaultMonthly(): MonthlyProgress[] {
   return [
     { month: 'Dec-20', originalPlan: 0, revisedPlan: 0, actual: 0 },
@@ -628,11 +654,39 @@ export function buildKpiHierarchy(ct: 'DB' | 'DBB', project?: Project) {
   return goals;
 }
 
-export function flattenKpi(goals: ReturnType<typeof buildKpiHierarchy>): KpiAllocatedItem[] {
+export function flattenKpi(goals: ReturnType<typeof buildKpiHierarchy>, zeroDefault: boolean = false): KpiAllocatedItem[] {
   const arr: KpiAllocatedItem[] = [];
   goals.forEach(g => {
+    const isRiskManagement = g.id === 'G8';
     g.sscs.forEach(ssc => {
       ssc.items.forEach(it => {
+        let alloc = 0;
+        if (zeroDefault && !isRiskManagement) {
+          alloc = 0;
+        } else {
+          if (it.id === 'DS-DBB1') alloc = 100;
+          else if (it.id === 'DS-DBB2') alloc = 100;
+          else if (it.id === 'DS-DBB3') alloc = 100;
+          else if (it.id === 'DS-DBB4') alloc = 100;
+          else if (it.id === 'DS-DBB5') alloc = 100;
+          else if (it.id === 'DS-DBB6') alloc = 33.333; // 5% out of 15%
+          else if (it.id === 'DS-DBB7') alloc = 66.667; // 10% out of 15%
+          else if (it.id === 'DS-DBB8') alloc = 80;     // 8% out of 10%
+          else if (it.id === 'DS-DBB9') alloc = 80;     // 8% out of 10%
+          else if (it.id === 'DS-DB1') alloc = 100;
+          else if (it.id === 'DS-DB2') alloc = 90;
+          else if (it.id === 'DS-DB3') alloc = 80;
+          else if (it.id === 'DS-DB4') alloc = 100;
+          else if (it.id === 'DS-DB5') alloc = 90;
+          else if (it.id === 'DS-DB6') alloc = 100;
+          else if (it.id === 'DS-DB7') alloc = 85;
+          else if (it.id === 'CL-1') alloc = 90;        // 27% out of 30%
+          else if (it.id === 'CL-2') alloc = 90;        // 27% out of 30%
+          else if (it.id === 'CL-3') alloc = 93.333;    // 28% out of 30%
+          else if (it.id === 'CL-4') alloc = 90;        // 9% out of 10%
+          else alloc = it.type === 'yn' ? it.max : (it.type === 'auto' ? 0 : it.max * 0.7);
+        }
+
         arr.push({
           goalId: g.id,
           goalName: g.name,
@@ -646,29 +700,7 @@ export function flattenKpi(goals: ReturnType<typeof buildKpiHierarchy>): KpiAllo
           itemWt: it.wt,
           max: it.max,
           type: it.type,
-          alloc: (() => {
-            if (it.id === 'DS-DBB1') return 100;
-            if (it.id === 'DS-DBB2') return 100;
-            if (it.id === 'DS-DBB3') return 100;
-            if (it.id === 'DS-DBB4') return 100;
-            if (it.id === 'DS-DBB5') return 100;
-            if (it.id === 'DS-DBB6') return 33.333; // 5% out of 15%
-            if (it.id === 'DS-DBB7') return 66.667; // 10% out of 15%
-            if (it.id === 'DS-DBB8') return 80;     // 8% out of 10%
-            if (it.id === 'DS-DBB9') return 80;     // 8% out of 10%
-            if (it.id === 'DS-DB1') return 100;
-            if (it.id === 'DS-DB2') return 90;
-            if (it.id === 'DS-DB3') return 80;
-            if (it.id === 'DS-DB4') return 100;
-            if (it.id === 'DS-DB5') return 90;
-            if (it.id === 'DS-DB6') return 100;
-            if (it.id === 'DS-DB7') return 85;
-            if (it.id === 'CL-1') return 90;        // 27% out of 30%
-            if (it.id === 'CL-2') return 90;        // 27% out of 30%
-            if (it.id === 'CL-3') return 93.333;    // 28% out of 30%
-            if (it.id === 'CL-4') return 90;        // 9% out of 10%
-            return it.type === 'yn' ? it.max : (it.type === 'auto' ? 0 : it.max * 0.7);
-          })(),
+          alloc,
           naActive: false
         });
       });
@@ -677,8 +709,8 @@ export function flattenKpi(goals: ReturnType<typeof buildKpiHierarchy>): KpiAllo
   return arr;
 }
 
-export function generateKpiAllocated(ct: 'DB' | 'DBB'): KpiAllocatedItem[] {
-  return flattenKpi(buildKpiHierarchy(ct));
+export function generateKpiAllocated(ct: 'DB' | 'DBB', zeroDefault: boolean = false): KpiAllocatedItem[] {
+  return flattenKpi(buildKpiHierarchy(ct), zeroDefault);
 }
 
 export function getIntegratedKpiAllocated(project: Project): KpiAllocatedItem[] {
@@ -729,9 +761,11 @@ export function getIntegratedKpiAllocated(project: Project): KpiAllocatedItem[] 
   const poleReqVal = rowMetricsList.find(m => m.name === 'Electric Pole Removal Requested (No)')?.value || 0;
   const poleHandVal = rowMetricsList.find(m => m.name === 'Electric Pole Removal Handedover (No)')?.value || 0;
 
-  const matRatioVal = matReqVal > 0 ? (matHandVal / matReqVal) * 100 : 100;
-  const poleRatioVal = poleReqVal > 0 ? (poleHandVal / poleReqVal) * 100 : 100;
-  const utilitiesCompletenessVal = (matRatioVal + poleRatioVal) / 2;
+  const matRatioVal = matReqVal > 0 ? (matHandVal / matReqVal) * 100 : (matReqVal === 0 && matHandVal === 0 ? 0 : 100);
+  const poleRatioVal = poleReqVal > 0 ? (poleHandVal / poleReqVal) * 100 : (poleReqVal === 0 && poleHandVal === 0 ? 0 : 100);
+  const utilitiesCompletenessVal = (matReqVal === 0 && matHandVal === 0 && poleReqVal === 0 && poleHandVal === 0)
+    ? 0
+    : (matRatioVal + poleRatioVal) / 2;
 
   // 3. Bonds / Guarantees statuses check
   const isBondValidStatus = (st?: string) => {
@@ -834,11 +868,11 @@ export function getIntegratedKpiAllocated(project: Project): KpiAllocatedItem[] 
     } else if (k.itemId === 'PT-1') {
       computedAlloc = Math.min(100, Math.max(0, ratio));
     } else if (k.itemId === 'CM-1') {
-      computedAlloc = Math.max(0, Math.min(100, 100 - costOverrunPct));
+      computedAlloc = (origContractVal <= 0 || project.physicalProgress === 0) ? 0 : Math.max(0, Math.min(100, 100 - costOverrunPct));
     } else if (k.itemId === 'TM-1') {
-      computedAlloc = Math.max(0, Math.min(100, 100 - timeOverrunPct));
+      computedAlloc = (project.origDays <= 0 || project.physicalProgress === 0) ? 0 : Math.max(0, Math.min(100, 100 - timeOverrunPct));
     } else if (k.itemId === 'TM-2') {
-      computedAlloc = Math.max(0, Math.min(100, 100 + SV_pct));
+      computedAlloc = (project.physicalProgress === 0 || PV <= 0) ? 0 : Math.max(0, Math.min(100, 100 + SV_pct));
     } else if (k.itemId === 'RW-1') {
       computedAlloc = Math.min(100, Math.max(0, rowPercent));
     } else if (k.itemId === 'RW-2A') {
@@ -1474,19 +1508,19 @@ export function blankProjectTemplate(): Project {
   d.progressPlan.contractor = { month: 0, quarter: 0, efy: 0, todate: 0 };
   d.progressPlan.era = { month: 0, quarter: 0, efy: 0, todate: 0 };
   d.progressPlan.actual = { month: 0, quarter: 0, efy: 0, todate: 0 };
-  d.bonds.forEach(b => {
-    b.amount = 0;
-    b.issueDate = '';
-    b.expireDate = '';
-    b.bank = '';
-    b.type = '';
-  });
-  d.rowMetrics.forEach(r => {
-    r.value = 0;
-  });
-  d.workProgram.forEach(w => {
-    w.duration = 0;
-  });
+  d.contractAmountEtb = 0;
+  d.revisedContractAmountEtb = 0;
+  d.bonds = [];
+  d.issues = [];
+  d.lengthKm = 0;
+  d.spurRoadLengthKm = 0;
+  d.linear = generateEmptyLinearData();
+  d.linearSpur = generateEmptyLinearData();
+  d.rowMetrics = defaultZeroRowMetrics();
+  d.rowCompensation = [];
+  d.utilityCompensation = [];
+  d.rowStatus = [];
+  d.workProgram = [];
   d.resourceMobilization = [];
   d.materialProduction = [];
   d.ipcTracker = [];
@@ -1515,7 +1549,10 @@ export function blankProjectTemplate(): Project {
     scopeOfServices: '',
     performanceRating: 'Satisfactory',
     personnel: [],
-    invoices: []
+    invoices: [],
+    submittalKpis: [],
+    previousConsultants: [],
+    targetOverrides: {}
   };
   d.lastModifiedBy = null;
   d.lastModifiedAt = null;
@@ -1523,6 +1560,13 @@ export function blankProjectTemplate(): Project {
   d.approvedBy = null;
   d.approvedAt = null;
   d.approverRole = null;
-  d.kpiAllocated = generateKpiAllocated(d.contractType);
+  
+  // Initialize all KPI indicators with zero default, keeping only Risk Management (G8)
+  const dbbZero = generateKpiAllocated('DBB', true);
+  const dbZero = generateKpiAllocated('DB', true);
+  const combinedMap = new Map<string, KpiAllocatedItem>();
+  dbbZero.forEach(item => combinedMap.set(item.itemId, item));
+  dbZero.forEach(item => combinedMap.set(item.itemId, item));
+  d.kpiAllocated = Array.from(combinedMap.values());
   return d;
 }

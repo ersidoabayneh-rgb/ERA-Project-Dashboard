@@ -400,7 +400,9 @@ export function getDepartmentTimeRecords(item: IssueLogItem): DeptTimeRecord[] {
 }
 
 export default function IssueLogView({ project, onProjectUpdate, isAdmin, currentUserObj }: IssueLogViewProps) {
-  const issuesList = (project.issues && project.issues.length > 0) ? project.issues : defaultSampleIssues;
+  const issuesList = (project.issues !== undefined)
+    ? project.issues
+    : (project.id === 'proj_default' ? defaultSampleIssues : []);
 
   const currentUsername = currentUserObj?.username || 'ErsidoAbayneh';
   const effectiveIsAdmin = Boolean(

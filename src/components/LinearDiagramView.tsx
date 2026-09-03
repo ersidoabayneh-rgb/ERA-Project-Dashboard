@@ -3,7 +3,7 @@ import { Ruler, Navigation, Plus, Trash2, Activity, CheckCircle2, Link2, Calcula
 import { motion } from 'framer-motion';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Cell } from 'recharts';
 import { Project, LinearData } from '../types';
-import { parseStation, generateLinearData, generateSpurLinearData } from '../data/defaultProject';
+import { parseStation, generateLinearData, generateSpurLinearData, generateEmptyLinearData } from '../data/defaultProject';
 
 interface LinearDiagramViewProps {
   project: Project;
@@ -27,12 +27,12 @@ export default function LinearDiagramView({
   const [roadType, setRoadType] = useState<'main' | 'spur'>('main');
   const [chartMode, setChartMode] = useState<'combined' | 'main' | 'spur'>('combined');
 
-  const mainLinear = project.linear || generateLinearData();
-  const spurLinear = project.linearSpur || generateSpurLinearData();
+  const mainLinear = project.linear || (project.id === 'proj_default' ? generateLinearData() : generateEmptyLinearData());
+  const spurLinear = project.linearSpur || (project.id === 'proj_default' ? generateSpurLinearData() : generateEmptyLinearData());
 
   // Interconnected Project Lengths
-  const totalProjectKm = project.lengthKm || 65;
-  const spurRoadTargetKm = project.spurRoadLengthKm ?? 8.8;
+  const totalProjectKm = project.lengthKm ?? (project.id === 'proj_default' ? 65 : 0);
+  const spurRoadTargetKm = project.spurRoadLengthKm ?? (project.id === 'proj_default' ? 8.8 : 0);
   const mainRoadTargetKm = Math.max(0, Number((totalProjectKm - spurRoadTargetKm).toFixed(2)));
 
   const activeLinear = roadType === 'main' ? mainLinear : spurLinear;
@@ -140,7 +140,7 @@ export default function LinearDiagramView({
       displayExec = spurExec;
     }
 
-    const fillPct = Math.min(100, (displayExec / (displayTarget || 1)) * 100);
+    const fillPct = displayTarget > 0 ? Math.min(100, (displayExec / displayTarget) * 100) : 0;
     const remainingKm = Math.max(0, displayTarget - displayExec);
 
     return {
@@ -395,42 +395,50 @@ export default function LinearDiagramView({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50 dark:divide-slate-700/40">
-                    {list.map((r, rIdx) => (
-                      <tr key={rIdx} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/10">
-                        <td className="p-2 text-center text-slate-450 font-bold font-mono">{r.no}</td>
-                        <td className="p-2">
-                          <input
-                            type="text"
-                            value={r.from}
-                            placeholder="Km 00+000"
-                            onChange={(e) => handleFieldChange(sec.id, rIdx, 'from', e.target.value)}
-                            className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono text-center text-xs py-0.5 rounded-md w-full focus:outline-none focus:border-blue-500"
-                          />
-                        </td>
-                        <td className="p-2">
-                          <input
-                            type="text"
-                            value={r.to}
-                            placeholder="Km 00+000"
-                            onChange={(e) => handleFieldChange(sec.id, rIdx, 'to', e.target.value)}
-                            className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono text-center text-xs py-0.5 rounded-md w-full focus:outline-none focus:border-blue-500"
-                          />
-                        </td>
-                        <td className="p-2 text-center font-bold text-slate-500 font-mono">
-                          {r.exec.toFixed(2)}
-                        </td>
-                        <td className="p-2 text-center">
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveRow(sec.id, rIdx)}
-                            className="text-slate-400 hover:text-rose-500 p-1 transition cursor-pointer"
-                            title="Delete segment"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
+                    {list.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="p-4 text-center text-slate-400 font-medium">
+                          No station segments recorded yet. Click "+ Add" above to insert chainages.
                         </td>
                       </tr>
-                    ))}
+                    ) : (
+                      list.map((r, rIdx) => (
+                        <tr key={rIdx} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/10">
+                          <td className="p-2 text-center text-slate-450 font-bold font-mono">{r.no}</td>
+                          <td className="p-2">
+                            <input
+                              type="text"
+                              value={r.from}
+                              placeholder="Km 00+000"
+                              onChange={(e) => handleFieldChange(sec.id, rIdx, 'from', e.target.value)}
+                              className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono text-center text-xs py-0.5 rounded-md w-full focus:outline-none focus:border-blue-500"
+                            />
+                          </td>
+                          <td className="p-2">
+                            <input
+                              type="text"
+                              value={r.to}
+                              placeholder="Km 00+000"
+                              onChange={(e) => handleFieldChange(sec.id, rIdx, 'to', e.target.value)}
+                              className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono text-center text-xs py-0.5 rounded-md w-full focus:outline-none focus:border-blue-500"
+                            />
+                          </td>
+                          <td className="p-2 text-center font-bold text-slate-500 font-mono">
+                            {r.exec.toFixed(2)}
+                          </td>
+                          <td className="p-2 text-center">
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveRow(sec.id, rIdx)}
+                              className="text-slate-400 hover:text-rose-500 p-1 transition cursor-pointer"
+                              title="Delete segment"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>

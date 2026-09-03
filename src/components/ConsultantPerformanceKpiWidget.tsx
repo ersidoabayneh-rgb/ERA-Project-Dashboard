@@ -377,11 +377,14 @@ export default function ConsultantPerformanceKpiWidget({
 }: ConsultantPerformanceKpiWidgetProps) {
   // State for submittals data
   const submittalsList: ConsultantSubmittalKpi[] = useMemo(() => {
-    if (consultant.submittalKpis && consultant.submittalKpis.length > 0) {
+    if (consultant.submittalKpis !== undefined) {
       return consultant.submittalKpis;
     }
-    return DEFAULT_SUBMITTAL_KPIS;
-  }, [consultant.submittalKpis]);
+    if (project?.id === 'proj_default') {
+      return DEFAULT_SUBMITTAL_KPIS;
+    }
+    return [];
+  }, [consultant.submittalKpis, project?.id]);
 
   // Active sub-view inside the widget
   const [activeKpiView, setActiveKpiView] = useState<'comparison' | 'trend' | 'log'>(isAdmin ? 'comparison' : 'log');
@@ -1510,7 +1513,11 @@ export default function ConsultantPerformanceKpiWidget({
                     {filteredSubmittals.length === 0 ? (
                       <tr>
                         <td colSpan={10} className="py-10 text-center text-slate-400">
-                          <p className="font-semibold">No submittal records match your current search and filters.</p>
+                          <p className="font-semibold">
+                            {submittalsList.length === 0 
+                              ? 'No submittal records registered yet.' 
+                              : 'No submittal records match your current search and filters.'}
+                          </p>
                           {!isReadonly && (
                             <button
                               onClick={handleInsertQuickRow}

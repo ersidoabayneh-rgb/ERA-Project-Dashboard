@@ -116,7 +116,9 @@ export default function SupervisionConsultantView({
         personnelHistory: project.supervisionConsultant.personnelHistory || project.supervisionConsultant.personnel || [],
         invoices: project.supervisionConsultant.invoices || [],
         previousConsultants: project.supervisionConsultant.previousConsultants || [],
-        submittalKpis: project.supervisionConsultant.submittalKpis || DEFAULT_SUBMITTAL_KPIS,
+        submittalKpis: project.supervisionConsultant.submittalKpis !== undefined 
+          ? project.supervisionConsultant.submittalKpis 
+          : (project.id === 'proj_default' ? DEFAULT_SUBMITTAL_KPIS : []),
         targetOverrides: project.supervisionConsultant.targetOverrides || {}
       };
     }
@@ -148,7 +150,7 @@ export default function SupervisionConsultantView({
       personnel: [],
       invoices: [],
       previousConsultants: [],
-      submittalKpis: DEFAULT_SUBMITTAL_KPIS,
+      submittalKpis: project.id === 'proj_default' ? DEFAULT_SUBMITTAL_KPIS : [],
       targetOverrides: {}
     };
   }, [project.supervisionConsultant, project.consultant, project.signDate, project.startDate, project.id]);
@@ -523,16 +525,18 @@ export default function SupervisionConsultantView({
 
   // RFI performance KPI summary for executive card
   const rfiKpiSummary = useMemo(() => {
-    const list = consultant.submittalKpis || DEFAULT_SUBMITTAL_KPIS;
+    const list = consultant.submittalKpis !== undefined 
+      ? consultant.submittalKpis 
+      : (project.id === 'proj_default' ? DEFAULT_SUBMITTAL_KPIS : []);
     const rfis = list.filter(s => s.type === 'RFI' && s.actualDays !== undefined);
     const target = (consultant.targetOverrides && consultant.targetOverrides['RFI']) || 7;
     const avgDays = rfis.length > 0
       ? parseFloat((rfis.reduce((acc, cur) => acc + (cur.actualDays || 0), 0) / rfis.length).toFixed(1))
-      : 4.8;
+      : 0;
     const isFaster = avgDays <= target;
     const pctDiff = Math.abs(((target - avgDays) / target) * 100).toFixed(0);
     return { avgDays, target, isFaster, pctDiff, totalCount: list.length };
-  }, [consultant.submittalKpis, consultant.targetOverrides]);
+  }, [consultant.submittalKpis, consultant.targetOverrides, project.id]);
 
   // Helper to commit consultant changes to project
   const saveConsultantData = (updatedConsultant: SupervisionConsultantInfo, actionDescription: string) => {
