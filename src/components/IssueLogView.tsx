@@ -4,13 +4,13 @@ import {
   FileText, Plus, ArrowRight, Clock, AlertTriangle, CheckCircle, Trash2,
   UserCheck, History, Printer, Search, Filter, RefreshCw, Layers, ShieldAlert, Edit2, ChevronRight, Download, FileSpreadsheet, FileCheck,
   TrendingUp, AlertOctagon, SlidersHorizontal, X, Calendar, Zap, CheckCircle2, BarChart3, BookOpen, Sparkles, User as UserIcon, MessageSquare, PenTool,
-  ArrowUp, ArrowDown, ArrowUpDown, RotateCcw
+  ArrowUp, ArrowDown, ArrowUpDown, RotateCcw, ListOrdered, Building2
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { 
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, CartesianGrid, AreaChart, Area 
 } from 'recharts';
-import { Project, IssueLogItem, IssueTransferRecord, IssueHistoryRecord, User, formatAccounting } from '../types';
+import { Project, IssueLogItem, IssueTransferRecord, IssueHistoryRecord, ResolutionStepRecord, DeptTimeRecord, IssueColumnChangeDetail, User, formatAccounting } from '../types';
 
 interface IssueLogViewProps {
   project: Project;
@@ -211,6 +211,50 @@ const defaultSampleIssues: IssueLogItem[] = [
     lessonsLearned: 'Establishing accredited mobile site testing facilities or expedited central lab service level agreements prevents quarry testing bottlenecks that impact subbase production schedules.',
     lessonsLearnedUpdatedBy: 'Ato Abebe Tessema (Materials Engineer)',
     lessonsLearnedUpdatedAt: '2025-12-28 11:00',
+    resolutionStatus: 'Resolved / Approved',
+    stepsTakenUntilResolved: 'Step 1: [2025-12-05] Quarry Site #3 aggregate samples collected and dispatched under FIDIC Clause 7.3 by Contractor (Sunshine Construction PLC). Status: Submitted / Under Review.\nStep 2: [2025-12-12] Joint laboratory log-in and test setup at ERA Central Materials Testing Directorate. Verified sample integrity and standard sieve sizing.\nStep 3: [2025-12-20] Los Angeles Abrasion and Aggregate Crushing Value (ACV) testing completed; test result verified at 26.4% abrasion loss (within standard <30% threshold).\nStep 4: [2025-12-26] Official Test Certificate issued by Central ERA Laboratory; Resident Engineer issued formal site clearance approving quarry operations. Status: Resolved / Approved.',
+    resolutionSteps: [
+      {
+        id: 'step-4-1',
+        stepNumber: 1,
+        date: '2025-12-05',
+        actionTaken: 'Aggregate sample collection and laboratory dispatch under Sub-Clause 7.3',
+        performedBy: 'Contractor (Sunshine Construction PLC)',
+        statusAtStep: 'Submitted / Under Review',
+        stage: 'Stage 1: Sample Collection',
+        notes: 'Quarry site #3 Los Angeles Abrasion and ACV samples submitted for compliance certification.'
+      },
+      {
+        id: 'step-4-2',
+        stepNumber: 2,
+        date: '2025-12-12',
+        actionTaken: 'Sample receipt verification and laboratory test bench allocation',
+        performedBy: 'Eng. Worku Mengesha (Lab Tech Lead)',
+        statusAtStep: 'In Progress / Evaluation',
+        stage: 'Stage 2: Laboratory Testing Bench',
+        notes: 'Sieve analysis verified; oven drying and mechanical abrasion drum sequence scheduled.'
+      },
+      {
+        id: 'step-4-3',
+        stepNumber: 3,
+        date: '2025-12-20',
+        actionTaken: 'Abrasion test computation & aggregate crushing value assessment',
+        performedBy: 'Central ERA Laboratory',
+        statusAtStep: 'In Progress / Evaluation',
+        stage: 'Stage 3: Result Certification',
+        notes: 'LA Abrasion recorded at 26.4% (specification requires <30%). ACV recorded at 18.2%.'
+      },
+      {
+        id: 'step-4-4',
+        stepNumber: 4,
+        date: '2025-12-26',
+        actionTaken: 'Certified test clearance issued and Quarry Site #3 approved for subbase processing',
+        performedBy: 'Ato Abebe Tessema (Materials Engineer)',
+        statusAtStep: 'Resolved / Approved',
+        stage: 'Stage 4: Approval Issued & Quarry Operation Cleared',
+        notes: 'Resident Engineer issued official letter permitting subbase production. Turnaround: 21 calendar days.'
+      }
+    ],
     history: [
       {
         id: 'hist-401',
@@ -303,14 +347,6 @@ const defaultSampleIssues: IssueLogItem[] = [
   }
 ];
 
-export interface DeptTimeRecord {
-  department: string;
-  startDate: string;
-  endDate: string;
-  daysTaken: number;
-  status: 'Transferred' | 'Active' | 'Resolved / Closed';
-}
-
 export function getDepartmentTimeRecords(item: IssueLogItem): DeptTimeRecord[] {
   if (!item) return [];
 
@@ -320,6 +356,8 @@ export function getDepartmentTimeRecords(item: IssueLogItem): DeptTimeRecord[] {
                    (item.currentStatus || '').toLowerCase().includes('approved') || 
                    (item.currentStatus || '').toLowerCase().includes('rejected') || 
                    (item.currentStatus || '').toLowerCase().includes('closed');
+
+  const resolvedDate = item.resolvedDate || (isClosed ? todayStr : undefined);
 
   const parseDate = (dStr: string) => {
     if (!dStr) return new Date();
@@ -341,20 +379,23 @@ export function getDepartmentTimeRecords(item: IssueLogItem): DeptTimeRecord[] {
     return Math.floor(diff / (1000 * 60 * 60 * 24));
   };
 
-  const initialDept = (item.transfers && item.transfers.length > 0)
-    ? (item.transfers[0].transferredFrom || item.submittedTo || 'Initial Reviewing Authority')
+  const initialDept = (item.transfers && item.transfers.length > 0 && item.transfers[0].transferredFrom)
+    ? item.transfers[0].transferredFrom
     : (item.submittedTo || 'Initial Reviewing Authority');
   const initialStartDate = item.submittedDate || todayStr;
 
   if (!item.transfers || item.transfers.length === 0) {
-    const endDate = todayStr;
+    const endDate = isClosed && resolvedDate ? resolvedDate : todayStr;
     const days = getDiffDays(initialStartDate, endDate);
     records.push({
       department: initialDept,
       startDate: initialStartDate,
-      endDate: isClosed ? 'Resolution Date' : endDate,
+      endDate: endDate,
       daysTaken: days,
-      status: isClosed ? 'Resolved / Closed' : 'Active'
+      status: isClosed ? 'Resolved / Closed' : 'Active',
+      actionBeforeTransferOrChange: isClosed 
+        ? `Retained and finalized in this department until resolution (${days} days)` 
+        : `Currently under active review in this department (${days} days)`
     });
   } else {
     // 1st department: from submittedDate to 1st transfer date
@@ -365,7 +406,8 @@ export function getDepartmentTimeRecords(item: IssueLogItem): DeptTimeRecord[] {
       startDate: initialStartDate,
       endDate: dept1EndDate,
       daysTaken: dept1Days,
-      status: 'Transferred'
+      status: 'Transferred',
+      actionBeforeTransferOrChange: `Processed for ${dept1Days} days before transfer to [${item.transfers[0].transferredTo}]`
     });
 
     // Subsequent departments
@@ -376,22 +418,30 @@ export function getDepartmentTimeRecords(item: IssueLogItem): DeptTimeRecord[] {
 
       let endDate = todayStr;
       let status: 'Transferred' | 'Active' | 'Resolved / Closed' = 'Transferred';
+      let actionDesc = '';
 
       if (i < item.transfers.length - 1) {
         endDate = item.transfers[i + 1].transferDate || startDate;
         status = 'Transferred';
+        const days = getDiffDays(startDate, endDate);
+        actionDesc = `Held for ${days} days before transfer to [${item.transfers[i + 1].transferredTo}]`;
       } else {
-        endDate = todayStr;
+        endDate = isClosed && resolvedDate ? resolvedDate : todayStr;
         status = isClosed ? 'Resolved / Closed' : 'Active';
+        const days = getDiffDays(startDate, endDate);
+        actionDesc = isClosed 
+          ? `Held for ${days} days before final resolution and closure` 
+          : `Currently active in this department (${days} days)`;
       }
 
       const days = getDiffDays(startDate, endDate);
       records.push({
         department: deptName,
         startDate: startDate,
-        endDate: isClosed && i === item.transfers.length - 1 ? 'Resolution Date' : endDate,
+        endDate: endDate,
         daysTaken: days,
-        status: status
+        status: status,
+        actionBeforeTransferOrChange: actionDesc
       });
     }
   }
@@ -445,19 +495,27 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
   const [showLessonsModal, setShowLessonsModal] = useState(false);
   const [lessonsInput, setLessonsInput] = useState('');
   const [reviewNotesInput, setReviewNotesInput] = useState('');
+  const [stepsTakenInput, setStepsTakenInput] = useState('');
+  const [resolutionStepsList, setResolutionStepsList] = useState<ResolutionStepRecord[]>([]);
+  const [resolutionStatusInput, setResolutionStatusInput] = useState<string>('Resolved / Approved');
+  const [lessonsModalTab, setLessonsModalTab] = useState<'steps' | 'changes' | 'departments' | 'lesson'>('steps');
+  const [newStepDate, setNewStepDate] = useState('');
+  const [newStepAction, setNewStepAction] = useState('');
+  const [newStepPerformedBy, setNewStepPerformedBy] = useState('');
+  const [newStepStatus, setNewStepStatus] = useState('In Progress / Evaluation');
+  const [newStepCategory, setNewStepCategory] = useState('');
+  const [newStepDepartment, setNewStepDepartment] = useState('');
+  const [newStepDeptTime, setNewStepDeptTime] = useState<number | string>('');
+  const [newStepOverallTime, setNewStepOverallTime] = useState<number | string>('');
+  const [newStepChangedColumns, setNewStepChangedColumns] = useState('Current Status, Issue Category');
+  const [newStepNotes, setNewStepNotes] = useState('');
+  const [showAddStepForm, setShowAddStepForm] = useState(false);
 
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [historyNoteInput, setHistoryNoteInput] = useState('');
   const [historyNewStatusInput, setHistoryNewStatusInput] = useState<string>('');
 
   const selectedIssue = issuesList.find(i => i.id === selectedIssueId) || issuesList[0];
-
-  React.useEffect(() => {
-    if (selectedIssue) {
-      setLessonsInput(selectedIssue.lessonsLearned || '');
-      setReviewNotesInput(selectedIssue.reviewNotes || '');
-    }
-  }, [selectedIssueId, selectedIssue?.lessonsLearned, selectedIssue?.reviewNotes]);
 
   // Pending days and threshold calculation helpers
   const calculateDaysPending = (submittedDate: string) => {
@@ -479,7 +537,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
 
   const isPendingStatus = (status: string) => {
     const s = (status || '').toLowerCase();
-    return !s.includes('resolved') && !s.includes('approved') && !s.includes('rejected');
+    return !s.includes('resolved') && !s.includes('approved') && !s.includes('rejected') && !s.includes('closed');
   };
 
   const getIssueTurnaroundInfo = (item: IssueLogItem) => {
@@ -515,6 +573,362 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
         : `${daysPending} Day${daysPending === 1 ? '' : 's'} (Open & Pending)`
     };
   };
+
+  // Comprehensive Compiler: Extract and format all steps taken until resolved, all change dates, authors, and statuses
+  const compileResolutionJourneyData = (issue: IssueLogItem) => {
+    const turnaroundInfo = getIssueTurnaroundInfo(issue);
+    const deptBreakdown = getDepartmentTimeRecords(issue);
+    const subDate = issue.submittedDate || (issue.createdDate ? issue.createdDate.split(' ')[0] : 'N/A');
+
+    const parseDateHelper = (dStr: string) => {
+      if (!dStr || dStr === 'N/A') return new Date();
+      const clean = dStr.split(' ')[0];
+      const parts = clean.split('-');
+      if (parts.length === 3) {
+        return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+      }
+      const d = new Date(dStr);
+      return isNaN(d.getTime()) ? new Date() : d;
+    };
+
+    const getDiffDays = (startStr: string, endStr: string) => {
+      const start = parseDateHelper(startStr);
+      const end = parseDateHelper(endStr);
+      const diff = Math.max(0, end.getTime() - start.getTime());
+      return Math.floor(diff / (1000 * 60 * 60 * 24));
+    };
+
+    // Helper to determine active department and department start date at a specific date
+    const getActiveDeptInfoAtDate = (targetDateStr: string) => {
+      const trs = issue.transfers || [];
+      if (!trs.length) {
+        return {
+          department: issue.submittedTo || 'Initial Reviewing Authority',
+          startDate: subDate
+        };
+      }
+      if (targetDateStr <= (trs[0].transferDate || '')) {
+        return {
+          department: trs[0].transferredFrom || issue.submittedTo || 'Initial Reviewing Authority',
+          startDate: subDate
+        };
+      }
+      for (let i = trs.length - 1; i >= 0; i--) {
+        if (targetDateStr >= (trs[i].transferDate || '')) {
+          return {
+            department: trs[i].transferredTo || 'Reviewing Team',
+            startDate: trs[i].transferDate || subDate
+          };
+        }
+      }
+      return {
+        department: trs[0].transferredFrom || issue.submittedTo || 'Initial Reviewing Authority',
+        startDate: subDate
+      };
+    };
+
+    const buildColumnSnapshot = (
+      statusVal: string,
+      categoryVal: string,
+      deptVal: string,
+      deptDaysVal: number,
+      overallDaysVal: number,
+      stageVal?: string
+    ): IssueColumnChangeDetail => ({
+      dateSubmitted: subDate,
+      issueCategory: categoryVal,
+      currentStatus: statusVal,
+      departmentAndHandover: deptVal,
+      deptTimeTakenDays: deptDaysVal,
+      overallTimeTakenDays: overallDaysVal,
+      financialExposureEtb: issue.financialImpactEtb,
+      timeExposureDays: issue.timeImpactDays,
+      priorityLevel: issue.priority,
+      contractClauseRef: issue.clauseReference || 'General Conditions',
+      milestoneStage: stageVal || issue.currentStage
+    });
+
+    const events: {
+      id: string;
+      date: string;
+      timestamp: string;
+      who: string;
+      action: string;
+      status: string;
+      stage?: string;
+      category: string;
+      department: string;
+      transferredFrom?: string;
+      transferredTo?: string;
+      transferDate?: string;
+      departmentTimeTakenDays: number;
+      overallTimeTakenDays: number;
+      changedColumns: string[];
+      columnSnapshots?: IssueColumnChangeDetail;
+      notes?: string;
+    }[] = [];
+
+    // 1. Initial Notice & Lodging Event
+    const initialColumns = [
+      'Current Status',
+      'Issue Category',
+      'Submitted Date',
+      'Submitted To (Department)',
+      'Financial Exposure (ETB)',
+      'Time Exposure (Days)',
+      'Priority Level',
+      'Contract Clause Ref',
+      'Initial Description'
+    ];
+    events.push({
+      id: `ev-initial-${issue.id}`,
+      date: subDate,
+      timestamp: issue.createdDate || `${subDate} 09:00`,
+      who: issue.submittedBy || 'Contractor / Originator',
+      action: `Initial Issue Lodged & Registered (Ref: ${issue.clauseReference || 'General Conditions'})`,
+      status: 'Submitted / Under Review',
+      stage: 'Stage 1: Initial Submission & Site Verification',
+      category: issue.category,
+      department: issue.submittedTo || 'Initial Reviewing Authority',
+      departmentTimeTakenDays: 0,
+      overallTimeTakenDays: 0,
+      changedColumns: initialColumns,
+      columnSnapshots: buildColumnSnapshot('Submitted / Under Review', issue.category, issue.submittedTo || 'Initial Reviewing Authority', 0, 0, 'Stage 1: Initial Submission & Site Verification'),
+      notes: `Lodged and submitted to ${issue.submittedTo}. Priority: ${issue.priority}. Claim/Issue: ${issue.initialDescription} [Exposure: Br. ${(issue.financialImpactEtb || 0).toLocaleString()} • ${issue.timeImpactDays || 0} Days EOT]`
+    });
+
+    // 2. Department Handover / Transfer Events
+    (issue.transfers || []).forEach((tr, tIdx) => {
+      const prevTransfer = tIdx > 0 ? issue.transfers![tIdx - 1] : null;
+      const deptStartDate = prevTransfer ? (prevTransfer.transferDate || subDate) : subDate;
+      const tDate = tr.transferDate || subDate;
+      const deptDays = getDiffDays(deptStartDate, tDate);
+      const overallDays = getDiffDays(subDate, tDate);
+      const transferChangedCols = [
+        'Current Status',
+        'Department Transferred From',
+        'Department Transferred To',
+        'Transfer Date',
+        'Transfer Reason',
+        'Action Taken by Previous Team',
+        'Recommended Next Steps',
+        'Department Time Taken (Days)',
+        'Overall Time Taken (Days)'
+      ];
+
+      events.push({
+        id: tr.id || `ev-tr-${tIdx}`,
+        date: tDate,
+        timestamp: `${tDate} 12:00`,
+        who: tr.transferredBy || 'Reviewing Engineer',
+        action: `Department Handover: Transferred from [${tr.transferredFrom}] to [${tr.transferredTo}]`,
+        status: 'Transferred / Escalated',
+        stage: `Transferred to: ${tr.transferredTo}`,
+        category: issue.category,
+        department: tr.transferredFrom,
+        transferredFrom: tr.transferredFrom,
+        transferredTo: tr.transferredTo,
+        transferDate: tDate,
+        departmentTimeTakenDays: deptDays,
+        overallTimeTakenDays: overallDays,
+        changedColumns: transferChangedCols,
+        columnSnapshots: buildColumnSnapshot('Transferred / Escalated', issue.category, `${tr.transferredFrom} ➔ ${tr.transferredTo}`, deptDays, overallDays, `Transferred to: ${tr.transferredTo}`),
+        notes: `Reason: ${tr.transferReason}. Action by previous team: ${tr.actionTakenByPreviousTeam}. Recommended: ${tr.recommendedCourseOfAction}. Time in [${tr.transferredFrom}] before handover: ${deptDays} calendar days.`
+      });
+    });
+
+    // 3. Status History & Audit Log Records
+    (issue.history || []).forEach((h, hIdx) => {
+      if (h.changeType === 'Creation') return; // Handled by initial notice
+      const hDate = h.timestamp ? h.timestamp.split(' ')[0] : subDate;
+      const deptInfo = getActiveDeptInfoAtDate(hDate);
+      const deptDays = h.daysInDepartmentBeforeTransferOrChange ?? getDiffDays(deptInfo.startDate, hDate);
+      const overallDays = h.overallElapsedDays ?? getDiffDays(subDate, hDate);
+      const eventCategory = h.category || issue.category;
+      const eventDept = h.department || deptInfo.department;
+
+      const dynamicChangedCols: string[] = [];
+      if (h.previousStatus && h.previousStatus !== h.newStatus) dynamicChangedCols.push('Current Status');
+      if (h.stage) dynamicChangedCols.push('Milestone Stage');
+      if (h.category && h.category !== issue.category) dynamicChangedCols.push('Issue Category');
+      dynamicChangedCols.push('Department Time Taken (Days)', 'Overall Time Taken (Days)', 'Audit Notes');
+
+      events.push({
+        id: h.id || `ev-hist-${hIdx}`,
+        date: hDate,
+        timestamp: h.timestamp || `${hDate} 10:00`,
+        who: h.user || 'ERA Administrator',
+        action: `${h.changeType || 'Status/Progress Update'}${h.previousStatus && h.previousStatus !== h.newStatus ? `: [${h.previousStatus}] ➔ [${h.newStatus}]` : ''}`,
+        status: h.newStatus || issue.currentStatus,
+        stage: h.stage || issue.currentStage,
+        category: eventCategory,
+        department: eventDept,
+        departmentTimeTakenDays: deptDays,
+        overallTimeTakenDays: overallDays,
+        changedColumns: h.changedColumns || dynamicChangedCols,
+        columnSnapshots: buildColumnSnapshot(h.newStatus || issue.currentStatus, eventCategory, eventDept, deptDays, overallDays, h.stage || issue.currentStage),
+        notes: h.notes || 'Status and audit milestone updated'
+      });
+    });
+
+    // 4. Final Resolution Event (if resolved)
+    const isResolved = !isPendingStatus(issue.currentStatus) || issue.currentStatus === 'Resolved / Approved' || issue.currentStatus === 'Rejected / Closed';
+    const resDate = issue.resolvedDate || turnaroundInfo.resolvedDate;
+    if (isResolved && resDate) {
+      const hasExistingResEvent = events.some(e => e.action.includes('Resolution') || e.status === 'Resolved / Approved' || e.status === 'Rejected / Closed');
+      if (!hasExistingResEvent) {
+        const lastDeptRecord = deptBreakdown.length > 0 ? deptBreakdown[deptBreakdown.length - 1] : null;
+        const finalDept = lastDeptRecord ? lastDeptRecord.department : (issue.submittedTo || 'ERA Authority');
+        const finalDeptDays = lastDeptRecord ? lastDeptRecord.daysTaken : getDiffDays(subDate, resDate);
+        const finalChangedCols = [
+          'Current Status',
+          'Resolution Status',
+          'Resolved Date',
+          'Turnaround Days',
+          'Department Time Taken (Days)',
+          'Overall Time Taken (Days)',
+          'Final Progress Summary'
+        ];
+
+        events.push({
+          id: `ev-resolution-${issue.id}`,
+          date: resDate,
+          timestamp: `${resDate} 16:30`,
+          who: issue.lessonsLearnedUpdatedBy || 'ERA Project Authority',
+          action: `Final Resolution & Determination (${issue.currentStatus})`,
+          status: issue.currentStatus,
+          stage: issue.currentStage || 'Final Stage: Resolution',
+          category: issue.category,
+          department: finalDept,
+          departmentTimeTakenDays: finalDeptDays,
+          overallTimeTakenDays: turnaroundInfo.turnaroundDays,
+          changedColumns: finalChangedCols,
+          columnSnapshots: buildColumnSnapshot(issue.currentStatus, issue.category, finalDept, finalDeptDays, turnaroundInfo.turnaroundDays, issue.currentStage || 'Final Stage: Resolution'),
+          notes: issue.latestProgressSummary || `Issue reached final determination in ${turnaroundInfo.turnaroundDays} calendar days.`
+        });
+      }
+    }
+
+    // Sort chronologically ascending
+    events.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+
+    // Map into structured steps
+    const steps: ResolutionStepRecord[] = events.map((ev, idx) => ({
+      id: `step-${idx + 1}-${issue.id}`,
+      stepNumber: idx + 1,
+      date: ev.date,
+      actionTaken: ev.action,
+      performedBy: ev.who,
+      statusAtStep: ev.status,
+      stage: ev.stage,
+      category: ev.category,
+      department: ev.department,
+      transferredFrom: ev.transferredFrom,
+      transferredTo: ev.transferredTo,
+      transferDate: ev.transferDate,
+      departmentTimeTakenDays: ev.departmentTimeTakenDays,
+      overallTimeTakenDays: ev.overallTimeTakenDays,
+      changedColumns: ev.changedColumns,
+      columnSnapshots: ev.columnSnapshots,
+      notes: ev.notes
+    }));
+
+    // Compile narrative text
+    const narrativeLines: string[] = [];
+    narrativeLines.push(`=== LESSONS LEARNED AUDIT RECORD & RESOLUTION DOSSIER ===`);
+    narrativeLines.push(`• Issue Code: ${issue.issueCode} | Title: ${issue.title}`);
+    narrativeLines.push(`• Issue Category: ${issue.category} | Current Status: ${issue.currentStatus}`);
+    narrativeLines.push(`• Overall Time Taken: ${turnaroundInfo.turnaroundDays} Calendar Days (${turnaroundInfo.displayText})`);
+    narrativeLines.push(`• Origin: Lodged on ${issue.submittedDate} by ${issue.submittedBy} to ${issue.submittedTo}`);
+    if (resDate) {
+      narrativeLines.push(`• Resolved / Closed Date: ${resDate} (${issue.currentStatus})`);
+    }
+    narrativeLines.push('');
+    narrativeLines.push(`DEPARTMENT TIME TAKEN BREAKDOWN BEFORE TRANSFER OR CHANGE:`);
+    deptBreakdown.forEach((dept, dIdx) => {
+      narrativeLines.push(`  ${dIdx + 1}. [${dept.department}]`);
+      narrativeLines.push(`     - Dates: ${dept.startDate} ➔ ${dept.endDate}`);
+      narrativeLines.push(`     - Time Taken: ${dept.daysTaken} Calendar Days (${dept.status})`);
+      if (dept.actionBeforeTransferOrChange) {
+        narrativeLines.push(`     - Handover/Action: ${dept.actionBeforeTransferOrChange}`);
+      }
+    });
+    narrativeLines.push('');
+    narrativeLines.push(`CHRONOLOGICAL AUDIT OF ALL STEPS TAKEN, COLUMN CHANGES & HANDOVERS:`);
+
+    steps.forEach(st => {
+      narrativeLines.push(`Step ${st.stepNumber} [${st.date}]: ${st.actionTaken}`);
+      narrativeLines.push(`  - Action Performed By: ${st.performedBy}`);
+      narrativeLines.push(`  - Category: ${st.category || issue.category}`);
+      narrativeLines.push(`  - Issue Status: ${st.statusAtStep}${st.stage ? ` (${st.stage})` : ''}`);
+      narrativeLines.push(`  - Department / Handover: ${st.department || 'N/A'}${st.transferredTo ? ` ➔ Transferred to [${st.transferredTo}]` : ''}`);
+      narrativeLines.push(`  - Department Time Taken: ${st.departmentTimeTakenDays !== undefined ? `${st.departmentTimeTakenDays} Days before transfer/change` : 'N/A'}`);
+      narrativeLines.push(`  - Overall Time Taken: ${st.overallTimeTakenDays !== undefined ? `${st.overallTimeTakenDays} Days since submission` : 'N/A'}`);
+      if (st.changedColumns && st.changedColumns.length > 0) {
+        narrativeLines.push(`  - Changed Columns: ${st.changedColumns.join(', ')}`);
+      }
+      if (st.notes) {
+        narrativeLines.push(`  - Technical Details & Interventions: ${st.notes}`);
+      }
+      narrativeLines.push('');
+    });
+
+    return {
+      steps,
+      stepsText: narrativeLines.join('\n'),
+      changesLog: events,
+      departmentTimeBreakdown: deptBreakdown,
+      resolutionStatus: issue.resolutionStatus || issue.currentStatus,
+      submittedDate: issue.submittedDate,
+      resolvedDate: resDate,
+      turnaroundDays: turnaroundInfo.turnaroundDays,
+      overallTimeTakenDays: turnaroundInfo.turnaroundDays
+    };
+  };
+
+  const openLessonsLearnedModal = (issue: IssueLogItem) => {
+    setSelectedIssueId(issue.id);
+    const compiled = compileResolutionJourneyData(issue);
+    setLessonsInput(issue.lessonsLearned || '');
+    setReviewNotesInput(issue.reviewNotes || '');
+    setStepsTakenInput(issue.stepsTakenUntilResolved || compiled.stepsText);
+    setResolutionStepsList(
+      issue.resolutionSteps && issue.resolutionSteps.length > 0
+        ? issue.resolutionSteps
+        : compiled.steps
+    );
+    setResolutionStatusInput(issue.resolutionStatus || issue.currentStatus);
+    setLessonsModalTab('steps');
+    setShowAddStepForm(false);
+    setNewStepDate(new Date().toISOString().split('T')[0]);
+    setNewStepPerformedBy(currentUsername);
+    setNewStepCategory(issue.category || '');
+    const currentDept = issue.transfers && issue.transfers.length > 0 
+      ? issue.transfers[issue.transfers.length - 1].transferredTo 
+      : (issue.submittedTo || 'Reviewing Team');
+    setNewStepDepartment(currentDept);
+    setNewStepDeptTime('');
+    setNewStepOverallTime('');
+    setNewStepChangedColumns('Current Status, Issue Category');
+    setNewStepAction('');
+    setNewStepNotes('');
+    setShowLessonsModal(true);
+  };
+
+  React.useEffect(() => {
+    if (selectedIssue) {
+      setLessonsInput(selectedIssue.lessonsLearned || '');
+      setReviewNotesInput(selectedIssue.reviewNotes || '');
+      const compiled = compileResolutionJourneyData(selectedIssue);
+      setStepsTakenInput(selectedIssue.stepsTakenUntilResolved || compiled.stepsText);
+      setResolutionStepsList(
+        selectedIssue.resolutionSteps && selectedIssue.resolutionSteps.length > 0
+          ? selectedIssue.resolutionSteps
+          : compiled.steps
+      );
+      setResolutionStatusInput(selectedIssue.resolutionStatus || selectedIssue.currentStatus);
+    }
+  }, [selectedIssueId, selectedIssue?.lessonsLearned, selectedIssue?.reviewNotes, selectedIssue?.stepsTakenUntilResolved, selectedIssue?.resolutionStatus]);
 
   const isOverduePending = (item: IssueLogItem, threshold: number) => {
     return isPendingStatus(item.currentStatus) && calculateDaysPending(item.submittedDate) >= threshold;
@@ -691,12 +1105,23 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
     if (!selectedIssue || !newTransfer.transferredTo) return;
 
     const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
+    const todayStr = newTransfer.transferDate || nowStr.split(' ')[0];
+    const subDate = selectedIssue.submittedDate || todayStr;
     const transferUser = newTransfer.transferredBy || currentUsername;
+    const fromDept = newTransfer.transferredFrom || 'Previous Reviewing Team';
+
+    // Calculate department time before transfer:
+    const lastTransfer = selectedIssue.transfers && selectedIssue.transfers.length > 0
+      ? selectedIssue.transfers[selectedIssue.transfers.length - 1]
+      : null;
+    const deptStartDate = lastTransfer ? (lastTransfer.transferDate || subDate) : subDate;
+    const daysInDeptBeforeTransfer = Math.max(0, Math.floor((new Date(todayStr).getTime() - new Date(deptStartDate).getTime()) / (1000 * 60 * 60 * 24)));
+    const overallElapsed = Math.max(0, Math.floor((new Date(todayStr).getTime() - new Date(subDate).getTime()) / (1000 * 60 * 60 * 24)));
 
     const transferItem: IssueTransferRecord = {
       id: `tr-${Date.now()}`,
-      transferDate: newTransfer.transferDate || new Date().toISOString().split('T')[0],
-      transferredFrom: newTransfer.transferredFrom || 'Previous Reviewing Team',
+      transferDate: todayStr,
+      transferredFrom: fromDept,
       transferredTo: newTransfer.transferredTo,
       transferReason: newTransfer.transferReason || 'Escalated for higher approval authority',
       actionTakenByPreviousTeam: newTransfer.actionTakenByPreviousTeam || 'Reviewed preliminary claim and verified factual documentation.',
@@ -712,7 +1137,23 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
       newStatus: 'Transferred / Escalated',
       stage: `Transferred to: ${newTransfer.transferredTo}`,
       changeType: 'Transfer Handover',
-      notes: `Transferred from [${newTransfer.transferredFrom || 'Previous Team'}] to [${newTransfer.transferredTo}]. Reason: ${newTransfer.transferReason || 'Escalated'}. Recommended Action: ${newTransfer.recommendedCourseOfAction || 'See transfer notes'}`
+      category: selectedIssue.category,
+      department: fromDept,
+      daysInDepartmentBeforeTransferOrChange: daysInDeptBeforeTransfer,
+      overallElapsedDays: overallElapsed,
+      changedColumns: [
+        'Current Status',
+        'Milestone Stage',
+        'Department Transferred From',
+        'Department Transferred To',
+        'Transfer Date',
+        'Transfer Reason',
+        'Action Taken by Previous Team',
+        'Recommended Next Steps',
+        'Department Time Taken (Days)',
+        'Overall Time Taken (Days)'
+      ],
+      notes: `Transferred from [${fromDept}] to [${newTransfer.transferredTo}]. Time in [${fromDept}] before transfer: ${daysInDeptBeforeTransfer} calendar days. Overall time: ${overallElapsed} days. Reason: ${newTransfer.transferReason || 'Escalated'}. Action: ${newTransfer.actionTakenByPreviousTeam || 'Reviewed'}. Recommended: ${newTransfer.recommendedCourseOfAction || 'See notes'}`
     };
 
     const updatedIssue: IssueLogItem = {
@@ -746,6 +1187,18 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
     if (!selectedIssue) return;
 
     const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
+    const todayStr = nowStr.split(' ')[0];
+    const subDate = selectedIssue.submittedDate || todayStr;
+    const currentDept = selectedIssue.transfers && selectedIssue.transfers.length > 0
+      ? selectedIssue.transfers[selectedIssue.transfers.length - 1].transferredTo
+      : (selectedIssue.submittedTo || 'Reviewing Team');
+    const lastTransfer = selectedIssue.transfers && selectedIssue.transfers.length > 0
+      ? selectedIssue.transfers[selectedIssue.transfers.length - 1]
+      : null;
+    const deptStartDate = lastTransfer ? (lastTransfer.transferDate || subDate) : subDate;
+    const daysInDept = Math.max(0, Math.floor((new Date(todayStr).getTime() - new Date(deptStartDate).getTime()) / (1000 * 60 * 60 * 24)));
+    const overallElapsed = Math.max(0, Math.floor((new Date(todayStr).getTime() - new Date(subDate).getTime()) / (1000 * 60 * 60 * 24)));
+
     const historyRecord: IssueHistoryRecord = {
       id: `hist-${Date.now()}`,
       timestamp: nowStr,
@@ -754,7 +1207,21 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
       newStatus: selectedIssue.currentStatus,
       stage: selectedIssue.currentStage,
       changeType: 'Details Edit',
-      notes: `Issue details updated. Summary: ${selectedIssue.latestProgressSummary || 'Details revised'}`
+      category: selectedIssue.category,
+      department: currentDept,
+      daysInDepartmentBeforeTransferOrChange: daysInDept,
+      overallElapsedDays: overallElapsed,
+      changedColumns: [
+        'Issue Category',
+        'Priority Level',
+        'Financial Exposure (ETB)',
+        'Time Exposure (Days)',
+        'Contract Clause Ref',
+        'Current Bottleneck',
+        'Department Time Taken (Days)',
+        'Overall Time Taken (Days)'
+      ],
+      notes: `Issue details & category audited by ${currentUsername}. Active department: [${currentDept}] (${daysInDept} days spent before change). Overall duration: ${overallElapsed} days. Summary: ${selectedIssue.latestProgressSummary || 'Details revised'}`
     };
 
     const updatedIssueWithHistory: IssueLogItem = {
@@ -768,37 +1235,134 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
     setShowEditIssueModal(false);
   };
 
+  const handleAddResolutionStep = () => {
+    if (!newStepAction.trim() || !selectedIssue) return;
+    const stepNum = resolutionStepsList.length + 1;
+    const stepDate = newStepDate || new Date().toISOString().split('T')[0];
+    const subDate = selectedIssue.submittedDate || stepDate;
+    const currentDept = selectedIssue.transfers && selectedIssue.transfers.length > 0
+      ? selectedIssue.transfers[selectedIssue.transfers.length - 1].transferredTo
+      : (selectedIssue.submittedTo || 'Reviewing Authority');
+    const stepDept = (newStepDepartment || '').trim() || currentDept;
+    const stepCategory = (newStepCategory || '').trim() || selectedIssue.category;
+
+    const lastTransfer = selectedIssue.transfers && selectedIssue.transfers.length > 0
+      ? selectedIssue.transfers[selectedIssue.transfers.length - 1]
+      : null;
+    const deptStartDate = lastTransfer ? (lastTransfer.transferDate || subDate) : subDate;
+    const autoDeptDays = Math.max(0, Math.floor((new Date(stepDate).getTime() - new Date(deptStartDate).getTime()) / (1000 * 60 * 60 * 24)));
+    const autoOverallDays = Math.max(0, Math.floor((new Date(stepDate).getTime() - new Date(subDate).getTime()) / (1000 * 60 * 60 * 24)));
+
+    const finalDeptDays = newStepDeptTime !== '' ? Number(newStepDeptTime) : autoDeptDays;
+    const finalOverallDays = newStepOverallTime !== '' ? Number(newStepOverallTime) : autoOverallDays;
+    const parsedCols = (newStepChangedColumns || '').split(',').map(s => s.trim()).filter(Boolean);
+    const finalChangedCols = parsedCols.length > 0 ? parsedCols : ['Current Status', 'Issue Category', 'Department Time Taken (Days)', 'Overall Time Taken (Days)'];
+
+    const newStepItem: ResolutionStepRecord = {
+      id: `step-${Date.now()}`,
+      stepNumber: stepNum,
+      date: stepDate,
+      actionTaken: newStepAction.trim(),
+      performedBy: newStepPerformedBy.trim() || currentUsername,
+      statusAtStep: newStepStatus,
+      stage: selectedIssue.currentStage,
+      category: stepCategory,
+      department: stepDept,
+      departmentTimeTakenDays: finalDeptDays,
+      overallTimeTakenDays: finalOverallDays,
+      changedColumns: finalChangedCols,
+      notes: newStepNotes.trim() || undefined
+    };
+    const updated = [...resolutionStepsList, newStepItem];
+    setResolutionStepsList(updated);
+
+    // Append to narrative text
+    const appendedLine = `\nStep ${stepNum} [${newStepItem.date}]: ${newStepItem.actionTaken}\n  - Performed By: ${newStepItem.performedBy}\n  - Category: ${newStepItem.category}\n  - Issue Status: ${newStepItem.statusAtStep}\n  - Department: ${newStepItem.department}\n  - Dept Time Taken: ${newStepItem.departmentTimeTakenDays} Days before transfer/change\n  - Overall Time Taken: ${newStepItem.overallTimeTakenDays} Days since submission\n  - Changed Columns: ${newStepItem.changedColumns?.join(', ')}${newStepItem.notes ? `\n  - Technical Notes: ${newStepItem.notes}` : ''}\n`;
+    setStepsTakenInput(prev => (prev ? prev + '\n' + appendedLine : appendedLine));
+
+    // Reset step form
+    setNewStepAction('');
+    setNewStepNotes('');
+    setNewStepDeptTime('');
+    setNewStepOverallTime('');
+    setShowAddStepForm(false);
+  };
+
+  const handleRemoveResolutionStep = (stepId: string) => {
+    const filtered = resolutionStepsList.filter(s => s.id !== stepId).map((s, idx) => ({
+      ...s,
+      stepNumber: idx + 1
+    }));
+    setResolutionStepsList(filtered);
+  };
+
   const handleSaveLessonsLearned = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedIssue) return;
     const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
-    const turnaroundInfo = getIssueTurnaroundInfo(selectedIssue);
+    const todayDate = nowStr.split(' ')[0];
+    const subDate = selectedIssue.submittedDate || todayDate;
+    const targetStatus = (resolutionStatusInput || selectedIssue.currentStatus) as IssueLogItem['currentStatus'];
+    const isNowResolved = !isPendingStatus(targetStatus);
+    const resolvedDate = isNowResolved ? (selectedIssue.resolvedDate || todayDate) : undefined;
+    const turnaroundDays = isNowResolved ? (selectedIssue.turnaroundDays ?? calculateTurnaroundDays(selectedIssue.submittedDate, resolvedDate)) : undefined;
+
+    const currentDept = selectedIssue.transfers && selectedIssue.transfers.length > 0
+      ? selectedIssue.transfers[selectedIssue.transfers.length - 1].transferredTo
+      : (selectedIssue.submittedTo || 'Reviewing Authority');
+    const lastTransfer = selectedIssue.transfers && selectedIssue.transfers.length > 0
+      ? selectedIssue.transfers[selectedIssue.transfers.length - 1]
+      : null;
+    const deptStartDate = lastTransfer ? (lastTransfer.transferDate || subDate) : subDate;
+    const daysInDept = Math.max(0, Math.floor((new Date(todayDate).getTime() - new Date(deptStartDate).getTime()) / (1000 * 60 * 60 * 24)));
+    const overallElapsed = turnaroundDays ?? Math.max(0, Math.floor((new Date(todayDate).getTime() - new Date(subDate).getTime()) / (1000 * 60 * 60 * 24)));
+
+    const changedCols = [
+      'Current Status',
+      'Resolution Status',
+      'Lessons Learned',
+      'Review Notes',
+      'Steps Taken Until Resolved',
+      'Resolution Steps',
+      'Department Time Taken (Days)',
+      'Overall Time Taken (Days)',
+      ...(isNowResolved ? ['Resolved Date', 'Turnaround Days'] : [])
+    ];
 
     const historyRecord: IssueHistoryRecord = {
       id: `hist-${Date.now()}`,
       timestamp: nowStr,
       user: currentUsername,
       previousStatus: selectedIssue.currentStatus,
-      newStatus: selectedIssue.currentStatus,
+      newStatus: targetStatus,
       stage: selectedIssue.currentStage,
       changeType: 'Lessons Learned Review',
-      notes: `Lessons learned review recorded by ${currentUsername}. Turnaround Duration: ${turnaroundInfo.turnaroundDays} Days (${turnaroundInfo.displayText}).`
+      category: selectedIssue.category,
+      department: currentDept,
+      daysInDepartmentBeforeTransferOrChange: daysInDept,
+      overallElapsedDays: overallElapsed,
+      changedColumns: changedCols,
+      notes: `Institutional lessons learned recorded by ${currentUsername}. Status set to "${targetStatus}". Resolution steps logged: ${resolutionStepsList.length} step(s). Department time in [${currentDept}] before update: ${daysInDept} days. Overall turnaround recorded: ${overallElapsed} days.`
     };
 
     const updatedIssue: IssueLogItem = {
       ...selectedIssue,
       lastUpdated: nowStr,
+      currentStatus: targetStatus,
+      resolutionStatus: targetStatus,
+      stepsTakenUntilResolved: stepsTakenInput,
+      resolutionSteps: resolutionStepsList,
       lessonsLearned: lessonsInput,
       reviewNotes: reviewNotesInput,
       lessonsLearnedUpdatedBy: currentUsername,
       lessonsLearnedUpdatedAt: nowStr,
-      resolvedDate: selectedIssue.resolvedDate || (turnaroundInfo.isResolved ? turnaroundInfo.resolvedDate : undefined),
-      turnaroundDays: selectedIssue.turnaroundDays ?? (turnaroundInfo.isResolved ? turnaroundInfo.turnaroundDays : undefined),
+      resolvedDate: resolvedDate,
+      turnaroundDays: turnaroundDays,
       history: [historyRecord, ...(selectedIssue.history || [])]
     };
 
     const updatedList = issuesList.map(item => item.id === selectedIssue.id ? updatedIssue : item);
-    saveIssues(updatedList, `Lessons learned updated for issue ${selectedIssue.issueCode}`);
+    saveIssues(updatedList, `Lessons learned & resolution steps recorded for issue ${selectedIssue.issueCode}`);
     setShowLessonsModal(false);
   };
 
@@ -808,7 +1372,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
     const targetIssue = issuesList.find(i => i.id === targetId);
     if (!targetIssue) return;
 
-    if (!window.confirm(`Are you sure you want to permanently delete the lesson learned for Issue ${targetIssue.issueCode}? This will clear the lesson narrative, review notes, and author attributions.`)) {
+    if (!window.confirm(`Are you sure you want to permanently delete the lesson learned for Issue ${targetIssue.issueCode}? This will clear the lesson narrative, resolution steps, review notes, and author attributions.`)) {
       return;
     }
 
@@ -821,7 +1385,9 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
       newStatus: targetIssue.currentStatus,
       stage: targetIssue.currentStage,
       changeType: 'Lessons Learned Deleted',
-      notes: `Lesson learned record deleted by administrator ${currentUsername}. (Previous lesson: "${(targetIssue.lessonsLearned || '').substring(0, 60)}...")`
+      category: targetIssue.category,
+      department: targetIssue.submittedTo || 'Reviewing Authority',
+      notes: `Lesson learned & resolution dossier deleted by administrator ${currentUsername}. (Previous lesson: "${(targetIssue.lessonsLearned || '').substring(0, 60)}...")`
     };
 
     const updatedIssue: IssueLogItem = {
@@ -831,6 +1397,9 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
       reviewNotes: undefined,
       lessonsLearnedUpdatedBy: undefined,
       lessonsLearnedUpdatedAt: undefined,
+      stepsTakenUntilResolved: undefined,
+      resolutionSteps: undefined,
+      resolutionStatus: undefined,
       history: [historyRecord, ...(targetIssue.history || [])]
     };
 
@@ -838,6 +1407,8 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
     saveIssues(updatedList, `Lesson learned deleted for issue ${targetIssue.issueCode}`);
     setLessonsInput('');
     setReviewNotesInput('');
+    setStepsTakenInput('');
+    setResolutionStepsList([]);
     setShowLessonsModal(false);
   };
 
@@ -845,10 +1416,27 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
     e.preventDefault();
     if (!selectedIssue || !historyNoteInput) return;
     const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
+    const todayStr = nowStr.split(' ')[0];
+    const subDate = selectedIssue.submittedDate || todayStr;
+    const currentDept = selectedIssue.transfers && selectedIssue.transfers.length > 0
+      ? selectedIssue.transfers[selectedIssue.transfers.length - 1].transferredTo
+      : (selectedIssue.submittedTo || 'Reviewing Authority');
+    const lastTransfer = selectedIssue.transfers && selectedIssue.transfers.length > 0
+      ? selectedIssue.transfers[selectedIssue.transfers.length - 1]
+      : null;
+    const deptStartDate = lastTransfer ? (lastTransfer.transferDate || subDate) : subDate;
+    const daysInDeptBeforeChange = Math.max(0, Math.floor((new Date(todayStr).getTime() - new Date(deptStartDate).getTime()) / (1000 * 60 * 60 * 24)));
+    const overallElapsed = Math.max(0, Math.floor((new Date(todayStr).getTime() - new Date(subDate).getTime()) / (1000 * 60 * 60 * 24)));
+
     const targetStatus = (historyNewStatusInput || selectedIssue.currentStatus) as IssueLogItem['currentStatus'];
     const isBecomingResolved = targetStatus === 'Resolved / Approved' || targetStatus === 'Rejected / Closed';
-    const resolutionDate = isBecomingResolved ? nowStr.split(' ')[0] : undefined;
-    const turnaround = isBecomingResolved ? calculateTurnaroundDays(selectedIssue.submittedDate, resolutionDate) : undefined;
+    const resolutionDate = isBecomingResolved ? todayStr : undefined;
+    const turnaround = isBecomingResolved ? calculateTurnaroundDays(selectedIssue.submittedDate, resolutionDate) : overallElapsed;
+
+    const changedCols: string[] = [];
+    if (targetStatus !== selectedIssue.currentStatus) changedCols.push('Current Status');
+    changedCols.push('Audit Note / History', 'Department Time Taken (Days)', 'Overall Time Taken (Days)');
+    if (isBecomingResolved) changedCols.push('Resolved Date', 'Turnaround Days', 'Resolution Status');
 
     const historyRecord: IssueHistoryRecord = {
       id: `hist-${Date.now()}`,
@@ -858,9 +1446,14 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
       newStatus: targetStatus,
       stage: selectedIssue.currentStage,
       changeType: targetStatus !== selectedIssue.currentStatus ? 'Status Change' : 'Audit Note',
+      category: selectedIssue.category,
+      department: currentDept,
+      daysInDepartmentBeforeTransferOrChange: daysInDeptBeforeChange,
+      overallElapsedDays: turnaround,
+      changedColumns: changedCols,
       notes: isBecomingResolved && turnaround !== undefined 
-        ? `${historyNoteInput} [Resolution Turnaround Recorded: ${turnaround} Days from submission on ${selectedIssue.submittedDate}]`
-        : historyNoteInput
+        ? `${historyNoteInput} [Department Time in ${currentDept} before change: ${daysInDeptBeforeChange} Days • Resolution Turnaround: ${turnaround} Days from submission on ${selectedIssue.submittedDate}]`
+        : `${historyNoteInput} [Department Time in ${currentDept} before change: ${daysInDeptBeforeChange} Days • Overall Time: ${overallElapsed} Days]`
     };
 
     const updatedIssue: IssueLogItem = {
@@ -3101,14 +3694,10 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                       <History className="w-3 h-3 text-teal-600 dark:text-teal-400" /> View Detailed History & Journey
                     </button>
                     <button
-                      onClick={() => {
-                        setLessonsInput(selectedIssue.lessonsLearned || '');
-                        setReviewNotesInput(selectedIssue.reviewNotes || '');
-                        setShowLessonsModal(true);
-                      }}
-                      className="no-print text-2xs font-bold text-teal-700 dark:text-teal-300 hover:underline flex items-center gap-1 bg-teal-50 dark:bg-teal-950/60 px-2.5 py-1 rounded-lg border border-teal-200 dark:border-teal-800 cursor-pointer"
+                      onClick={() => openLessonsLearnedModal(selectedIssue)}
+                      className="no-print text-2xs font-bold text-teal-700 dark:text-teal-300 hover:underline flex items-center gap-1 bg-teal-50 dark:bg-teal-950/60 px-2.5 py-1 rounded-lg border border-teal-200 dark:border-teal-800 cursor-pointer transition hover:bg-teal-100 dark:hover:bg-teal-900/80"
                     >
-                      <PenTool className="w-3 h-3" /> Record / Edit Lessons Learned
+                      <PenTool className="w-3 h-3" /> Record / Edit Lessons Learned & Resolution Dossier
                     </button>
                   </div>
                 </div>
@@ -3151,7 +3740,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                 })()}
 
                 {selectedIssue.lessonsLearned ? (
-                  <div className="bg-gradient-to-br from-teal-50/60 to-emerald-50/40 dark:from-teal-950/30 dark:to-emerald-950/20 p-4 rounded-xl border border-teal-200/80 dark:border-teal-800/50 space-y-2.5">
+                  <div className="bg-gradient-to-br from-teal-50/60 to-emerald-50/40 dark:from-teal-950/30 dark:to-emerald-950/20 p-4 rounded-xl border border-teal-200/80 dark:border-teal-800/50 space-y-3">
                     <div className="flex flex-wrap justify-between items-center border-b border-teal-200/60 dark:border-teal-800/40 pb-2 gap-2">
                       <div className="flex items-center gap-1.5 text-teal-800 dark:text-teal-300 text-xs font-black uppercase tracking-wider">
                         <Sparkles className="w-4 h-4 text-teal-600 dark:text-teal-400 shrink-0" />
@@ -3178,6 +3767,60 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                       "{selectedIssue.lessonsLearned}"
                     </p>
 
+                    {/* Display Resolution Steps Record if present */}
+                    {selectedIssue.resolutionSteps && selectedIssue.resolutionSteps.length > 0 && (
+                      <div className="pt-2 border-t border-teal-200/60 dark:border-teal-900/40 space-y-2">
+                        <div className="flex items-center justify-between text-2xs font-bold uppercase text-teal-900 dark:text-teal-300">
+                          <span className="flex items-center gap-1">
+                            <ListOrdered className="w-3.5 h-3.5 text-teal-600" />
+                            Codified Steps Taken Until Resolved ({selectedIssue.resolutionSteps.length})
+                          </span>
+                        </div>
+                        <div className="space-y-1.5">
+                          {selectedIssue.resolutionSteps.map((st, sIdx) => (
+                            <div key={st.id || `st-${sIdx}`} className="bg-white/80 dark:bg-slate-900/60 p-2.5 rounded-lg border border-teal-100 dark:border-teal-900/40 text-2xs space-y-1">
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="font-mono font-bold bg-teal-100 dark:bg-teal-900/60 text-teal-800 dark:text-teal-300 px-1.5 py-0.5 rounded text-[10px]">
+                                    Step {st.stepNumber || sIdx + 1}
+                                  </span>
+                                  <span className="text-slate-500 font-mono">{st.date}</span>
+                                  <span className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                                    <UserIcon className="w-2.5 h-2.5 text-teal-600" />
+                                    {st.performedBy}
+                                  </span>
+                                </div>
+                                <span className="font-bold text-[10px] text-teal-800 dark:text-teal-300">
+                                  {st.statusAtStep}
+                                </span>
+                              </div>
+                              <div className="font-medium text-slate-800 dark:text-slate-200">
+                                {st.actionTaken}
+                              </div>
+                              {st.notes && (
+                                <p className="text-slate-500 dark:text-slate-400 italic">
+                                  {st.notes}
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Fallback steps text if present */}
+                    {(!selectedIssue.resolutionSteps || selectedIssue.resolutionSteps.length === 0) && selectedIssue.stepsTakenUntilResolved && (
+                      <div className="pt-2 border-t border-teal-200/60 dark:border-teal-900/40 space-y-1">
+                        <span className="text-[10px] font-extrabold uppercase text-teal-800 dark:text-teal-300 flex items-center gap-1">
+                          <ListOrdered className="w-3.5 h-3.5 text-teal-600" />
+                          Steps Taken Until Resolved
+                        </span>
+                        <div className="bg-white/80 dark:bg-slate-900/60 p-2.5 rounded-lg border border-teal-100 dark:border-teal-900/40 text-2xs font-mono text-slate-700 dark:text-slate-300 whitespace-pre-line leading-relaxed">
+                          {selectedIssue.stepsTakenUntilResolved}
+                        </div>
+                      </div>
+                    )}
+
                     {selectedIssue.reviewNotes && (
                       <div className="pt-1">
                         <span className="text-[10px] font-extrabold uppercase text-slate-400 block mb-1">
@@ -3195,11 +3838,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                       No explicit lesson learned recorded for this issue yet. Recording lessons learned allows future project managers to review resolved challenges and avoid repeating contractual or technical errors.
                     </p>
                     <button
-                      onClick={() => {
-                        setLessonsInput('');
-                        setReviewNotesInput('');
-                        setShowLessonsModal(true);
-                      }}
+                      onClick={() => openLessonsLearnedModal(selectedIssue)}
                       className="no-print inline-flex items-center gap-1.5 text-xs font-bold text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/60 px-3 py-1.5 rounded-lg border border-teal-200 dark:border-teal-800 hover:bg-teal-100 dark:hover:bg-teal-900/80 cursor-pointer"
                     >
                       <PenTool className="w-3.5 h-3.5" /> Record Lessons Learned Now
@@ -3647,14 +4286,26 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                         const resDate = isResolved ? (selectedIssue.resolvedDate || nowStr.split(' ')[0]) : undefined;
                         const tDays = isResolved ? (selectedIssue.turnaroundDays ?? calculateTurnaroundDays(selectedIssue.submittedDate, resDate)) : undefined;
 
+                        const historyRecord: IssueHistoryRecord = {
+                          id: `hist-${Date.now()}`,
+                          timestamp: nowStr,
+                          user: currentUsername,
+                          previousStatus: selectedIssue.currentStatus,
+                          newStatus: newSt,
+                          stage: selectedIssue.currentStage,
+                          changeType: 'Status Change',
+                          notes: `Issue status transitioned from "${selectedIssue.currentStatus}" to "${newSt}" by ${currentUsername}.`
+                        };
+
                         const updated = issuesList.map(item => item.id === selectedIssue.id ? { 
                           ...item, 
                           currentStatus: newSt,
                           resolvedDate: resDate,
                           turnaroundDays: tDays,
-                          lastUpdated: nowStr
+                          lastUpdated: nowStr,
+                          history: [historyRecord, ...(item.history || [])]
                         } : item);
-                        saveIssues(updated, 'Status updated');
+                        saveIssues(updated, `Status updated to ${newSt}`);
                       }}
                       className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
                     >
@@ -3724,88 +4375,728 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
         )}
       </AnimatePresence>
 
-      {/* MODAL 4: RECORD / EDIT LESSONS LEARNED */}
+      {/* MODAL 4: RECORD / EDIT LESSONS LEARNED & RESOLUTION DOSSIER */}
       <AnimatePresence>
         {showLessonsModal && selectedIssue && (
-          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 max-w-xl w-full shadow-xl space-y-4 text-slate-800 dark:text-slate-100"
+              className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl max-w-4xl w-full max-h-[92vh] shadow-2xl flex flex-col text-slate-800 dark:text-slate-100 overflow-hidden"
             >
-              <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-700 pb-3">
-                <h3 className="text-base font-bold flex items-center gap-2 text-teal-700 dark:text-teal-400">
-                  <BookOpen className="w-5 h-5 text-teal-600" /> Record Lessons Learned & Retrospective Review
-                </h3>
+              {/* Modal Header */}
+              <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/50 shrink-0">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-teal-600 text-white rounded-xl shadow-xs">
+                    <BookOpen className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                      Record Institutional Lessons Learned & Resolution Dossier
+                    </h3>
+                    <p className="text-2xs text-slate-500 dark:text-slate-400">
+                      Record all steps taken until resolved, all change dates, authors, and issue status for {selectedIssue.issueCode}.
+                    </p>
+                  </div>
+                </div>
                 <button
+                  type="button"
                   onClick={() => setShowLessonsModal(false)}
-                  className="text-slate-400 hover:text-slate-600 text-sm font-bold cursor-pointer"
+                  className="text-slate-400 hover:text-slate-600 text-sm font-bold cursor-pointer p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition"
                 >
                   ✕
                 </button>
               </div>
 
-              <div className="bg-teal-50 dark:bg-teal-950/30 p-3 rounded-xl border border-teal-100 dark:border-teal-900/50 text-xs space-y-1.5">
-                <div className="flex justify-between items-center flex-wrap gap-2">
-                  <span className="font-bold text-teal-900 dark:text-teal-200">Issue Code: {selectedIssue.issueCode}</span>
-                  <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${
-                    selectedIssue.currentStatus === 'Resolved / Approved'
-                      ? 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800'
-                      : selectedIssue.currentStatus === 'Rejected / Closed'
-                      ? 'bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950 dark:text-rose-300 dark:border-rose-800'
-                      : 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800'
-                  }`}>
-                    {selectedIssue.currentStatus}
-                  </span>
-                </div>
-                <span className="text-teal-800 dark:text-teal-300 font-medium truncate block">{selectedIssue.title}</span>
-                
-                {(() => {
-                  const info = getIssueTurnaroundInfo(selectedIssue);
-                  return (
-                    <div className="pt-1.5 border-t border-teal-200/60 dark:border-teal-900/40 flex items-center justify-between text-2xs text-teal-700 dark:text-teal-300 flex-wrap gap-1 font-semibold">
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-3 h-3 text-teal-600" />
-                        <strong>Turnaround Taken:</strong> {info.turnaroundDays} Days ({info.displayText})
-                      </span>
-                      <span className="font-mono">
-                        Reviewer: <strong className="font-bold">{currentUsername}</strong>
-                      </span>
+              {/* Context Strip with Status Selector */}
+              {(() => {
+                const info = getIssueTurnaroundInfo(selectedIssue);
+                const compiledData = compileResolutionJourneyData(selectedIssue);
+                return (
+                  <div className="px-6 py-3 bg-gradient-to-r from-teal-50/80 via-slate-50 to-emerald-50/60 dark:from-teal-950/40 dark:via-slate-900/60 dark:to-emerald-950/30 border-b border-teal-200/60 dark:border-teal-900/40 text-xs shrink-0 space-y-2">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-2">
+                          <span className="font-extrabold text-teal-950 dark:text-teal-200 text-sm">
+                            {selectedIssue.issueCode}
+                          </span>
+                          <span className="text-2xs font-mono bg-white/80 dark:bg-slate-800 px-2 py-0.5 rounded border border-teal-200 dark:border-teal-800 text-teal-800 dark:text-teal-300">
+                            {selectedIssue.clauseReference || 'General Conditions'}
+                          </span>
+                        </div>
+                        <div className="font-medium text-slate-700 dark:text-slate-300 text-xs truncate max-w-xl">
+                          {selectedIssue.title}
+                        </div>
+                      </div>
+
+                      {/* Status Selector in Modal Context */}
+                      <div className="flex items-center gap-3">
+                        <div className="text-right">
+                          <label className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 block">
+                            Issue Status:
+                          </label>
+                          <select
+                            value={resolutionStatusInput}
+                            onChange={(e) => setResolutionStatusInput(e.target.value)}
+                            className="bg-white dark:bg-slate-900 border border-teal-300 dark:border-teal-700 rounded-lg px-2.5 py-1 text-xs font-bold text-teal-900 dark:text-teal-200 focus:ring-2 focus:ring-teal-500 cursor-pointer shadow-2xs"
+                          >
+                            <option value="Resolved / Approved">Resolved / Approved</option>
+                            <option value="Rejected / Closed">Rejected / Closed</option>
+                            <option value="In Progress / Evaluation">In Progress / Evaluation</option>
+                            <option value="Transferred / Escalated">Transferred / Escalated</option>
+                            <option value="Submitted / Under Review">Submitted / Under Review</option>
+                          </select>
+                        </div>
+
+                        <div className="text-right pl-3 border-l border-teal-200 dark:border-teal-800">
+                          <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 block">
+                            Turnaround Duration:
+                          </span>
+                          <span className="font-extrabold text-teal-800 dark:text-teal-300 text-xs">
+                            {info.turnaroundDays} Calendar Days
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                  );
-                })()}
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-2xs text-slate-600 dark:text-slate-400 pt-1.5 border-t border-teal-200/50 dark:border-teal-900/30">
+                      <span>Submitted: <strong>{selectedIssue.submittedDate || 'N/A'}</strong> by <strong>{selectedIssue.submittedBy}</strong></span>
+                      <span>Resolved Date: <strong>{selectedIssue.resolvedDate || (resolutionStatusInput === 'Resolved / Approved' || resolutionStatusInput === 'Rejected / Closed' ? 'Recorded upon save' : 'In Progress')}</strong></span>
+                      <span>Dossier Recorded By: <strong className="text-teal-700 dark:text-teal-300">{currentUsername}</strong></span>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Navigation Tabs */}
+              <div className="flex items-center border-b border-slate-200 dark:border-slate-700 px-6 bg-slate-50 dark:bg-slate-900/50 shrink-0 text-xs gap-4 overflow-x-auto">
+                <button
+                  type="button"
+                  onClick={() => setLessonsModalTab('steps')}
+                  className={`py-3 border-b-2 font-bold transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                    lessonsModalTab === 'steps'
+                      ? 'border-teal-600 text-teal-700 dark:text-teal-400'
+                      : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                  }`}
+                >
+                  <ListOrdered className="w-4 h-4" />
+                  <span>1. Steps Taken Until Resolved ({resolutionStepsList.length})</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setLessonsModalTab('changes')}
+                  className={`py-3 border-b-2 font-bold transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                    lessonsModalTab === 'changes'
+                      ? 'border-teal-600 text-teal-700 dark:text-teal-400'
+                      : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                  }`}
+                >
+                  <History className="w-4 h-4" />
+                  <span>2. All Column Changes & Handovers ({compileResolutionJourneyData(selectedIssue).changesLog.length})</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setLessonsModalTab('departments')}
+                  className={`py-3 border-b-2 font-bold transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                    lessonsModalTab === 'departments'
+                      ? 'border-teal-600 text-teal-700 dark:text-teal-400'
+                      : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                  }`}
+                >
+                  <Clock className="w-4 h-4" />
+                  <span>3. Department Time Analysis ({compileResolutionJourneyData(selectedIssue).departmentTimeBreakdown.length})</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setLessonsModalTab('lesson')}
+                  className={`py-3 border-b-2 font-bold transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                    lessonsModalTab === 'lesson'
+                      ? 'border-teal-600 text-teal-700 dark:text-teal-400'
+                      : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                  }`}
+                >
+                  <Sparkles className="w-4 h-4" />
+                  <span>4. Key Lesson Learned & Takeaways</span>
+                </button>
               </div>
 
-              <form onSubmit={handleSaveLessonsLearned} className="space-y-4 text-xs">
-                <div>
-                  <label className="font-bold block mb-1.5 text-slate-800 dark:text-slate-200">
-                    Key Lesson Learned & Risk Prevention Takeaway <span className="text-rose-500">*</span>
-                  </label>
-                  <textarea
-                    rows={4}
-                    required
-                    placeholder="Document root cause insights, procedural improvements, FIDIC clause interpretations, or contract management strategies learned from handling this issue..."
-                    value={lessonsInput}
-                    onChange={(e) => setLessonsInput(e.target.value)}
-                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-3 focus:ring-2 focus:ring-teal-500 font-sans leading-relaxed"
-                  />
+              {/* Modal Body (Scrollable) */}
+              <form onSubmit={handleSaveLessonsLearned} className="flex flex-col flex-1 overflow-hidden">
+                <div className="p-6 overflow-y-auto flex-1 space-y-5 text-xs">
+                  
+                  {/* TAB 1: STEPS TAKEN UNTIL RESOLVED */}
+                  {lessonsModalTab === 'steps' && (
+                    <div className="space-y-4">
+                      {/* Action Tools Header */}
+                      <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-teal-50/60 dark:bg-teal-950/30 rounded-xl border border-teal-200/80 dark:border-teal-800/50">
+                        <div>
+                          <div className="font-bold text-teal-900 dark:text-teal-200 flex items-center gap-1.5">
+                            <ListOrdered className="w-4 h-4 text-teal-600" />
+                            <span>Detailed Steps Taken Until Resolved</span>
+                          </div>
+                          <p className="text-2xs text-teal-700 dark:text-teal-300">
+                            Document each technical inspection, contractor submission, site testing, and department handover step executed until resolution.
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const compiled = compileResolutionJourneyData(selectedIssue);
+                              setResolutionStepsList(compiled.steps);
+                              setStepsTakenInput(compiled.stepsText);
+                            }}
+                            className="px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-2xs flex items-center gap-1.5 cursor-pointer transition shadow-xs"
+                            title="Auto-extract and sync steps from submission, department handovers, and status history logs"
+                          >
+                            <Zap className="w-3.5 h-3.5" /> Auto-Compile Steps from History
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setShowAddStepForm(!showAddStepForm)}
+                            className="px-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-600 font-bold text-2xs flex items-center gap-1 cursor-pointer transition"
+                          >
+                            <Plus className="w-3.5 h-3.5 text-teal-600" /> {showAddStepForm ? 'Close Step Form' : 'Add Manual Step'}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Add Manual Step Inline Form */}
+                      {showAddStepForm && (
+                        <div className="bg-slate-50 dark:bg-slate-900/70 p-4 rounded-xl border border-teal-300 dark:border-teal-700 space-y-3">
+                          <div className="font-bold text-teal-900 dark:text-teal-200 text-xs flex items-center gap-1">
+                            <Plus className="w-3.5 h-3.5 text-teal-600" /> Insert Step {resolutionStepsList.length + 1}
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                            <div>
+                              <label className="font-bold block mb-1 text-[11px]">Step Date</label>
+                              <input
+                                type="date"
+                                value={newStepDate}
+                                onChange={(e) => setNewStepDate(e.target.value)}
+                                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs"
+                              />
+                            </div>
+                            <div>
+                              <label className="font-bold block mb-1 text-[11px]">Action Performed By</label>
+                              <input
+                                type="text"
+                                placeholder="Engineer / Committee"
+                                value={newStepPerformedBy}
+                                onChange={(e) => setNewStepPerformedBy(e.target.value)}
+                                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs"
+                              />
+                            </div>
+                            <div>
+                              <label className="font-bold block mb-1 text-[11px]">Issue Category</label>
+                              <input
+                                type="text"
+                                placeholder="e.g. Contractual Claim"
+                                value={newStepCategory}
+                                onChange={(e) => setNewStepCategory(e.target.value)}
+                                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-semibold"
+                              />
+                            </div>
+                            <div>
+                              <label className="font-bold block mb-1 text-[11px]">Issue Status at Step</label>
+                              <select
+                                value={newStepStatus}
+                                onChange={(e) => setNewStepStatus(e.target.value)}
+                                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-semibold"
+                              >
+                                <option value="Submitted / Under Review">Submitted / Under Review</option>
+                                <option value="In Progress / Evaluation">In Progress / Evaluation</option>
+                                <option value="Transferred / Escalated">Transferred / Escalated</option>
+                                <option value="Resolved / Approved">Resolved / Approved</option>
+                                <option value="Rejected / Closed">Rejected / Closed</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div>
+                              <label className="font-bold block mb-1 text-[11px]">Department / Authority</label>
+                              <input
+                                type="text"
+                                placeholder="e.g. Design Review Directorate"
+                                value={newStepDepartment}
+                                onChange={(e) => setNewStepDepartment(e.target.value)}
+                                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs"
+                              />
+                            </div>
+                            <div>
+                              <label className="font-bold block mb-1 text-[11px]">Dept Time Taken Before Transfer (Days)</label>
+                              <input
+                                type="number"
+                                placeholder="Auto-calculated if blank"
+                                value={newStepDeptTime}
+                                onChange={(e) => setNewStepDeptTime(e.target.value)}
+                                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs"
+                              />
+                            </div>
+                            <div>
+                              <label className="font-bold block mb-1 text-[11px]">Overall Time Taken for Issue (Days)</label>
+                              <input
+                                type="number"
+                                placeholder="Auto-calculated if blank"
+                                value={newStepOverallTime}
+                                onChange={(e) => setNewStepOverallTime(e.target.value)}
+                                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs"
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="font-bold block mb-1 text-[11px]">Changed Columns Detail</label>
+                            <input
+                              type="text"
+                              placeholder="e.g. Current Status, Issue Category, Department Time Taken (Days)"
+                              value={newStepChangedColumns}
+                              onChange={(e) => setNewStepChangedColumns(e.target.value)}
+                              className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-mono"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="font-bold block mb-1 text-[11px]">Action Taken / Intervention <span className="text-rose-500">*</span></label>
+                            <input
+                              type="text"
+                              placeholder="e.g. Conducted joint quarry inspection and confirmed aggregate grading curve..."
+                              value={newStepAction}
+                              onChange={(e) => setNewStepAction(e.target.value)}
+                              className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="font-bold block mb-1 text-[11px]">Technical Notes / Interventions</label>
+                            <textarea
+                              rows={2}
+                              placeholder="Key test figures, agreement notes, or contractor undertakings..."
+                              value={newStepNotes}
+                              onChange={(e) => setNewStepNotes(e.target.value)}
+                              className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-sans"
+                            />
+                          </div>
+
+                          <div className="flex justify-end gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={() => setShowAddStepForm(false)}
+                              className="px-3 py-1.5 rounded-lg bg-slate-200 dark:bg-slate-700 text-xs font-bold cursor-pointer"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleAddResolutionStep}
+                              className="px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold cursor-pointer flex items-center gap-1 shadow-xs"
+                            >
+                              <Plus className="w-3.5 h-3.5" /> Insert Step
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Structured Steps Sequence */}
+                      <div className="space-y-2.5">
+                        <div className="flex justify-between items-center text-2xs font-bold uppercase text-slate-500 dark:text-slate-400">
+                          <span>Recorded Resolution Steps ({resolutionStepsList.length})</span>
+                          <span>Chronological Sequence</span>
+                        </div>
+
+                        {resolutionStepsList.length > 0 ? (
+                          <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                            {resolutionStepsList.map((step, sIdx) => (
+                              <div
+                                key={step.id || `step-${sIdx}`}
+                                className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700/80 shadow-2xs space-y-2 relative group hover:border-teal-400 dark:hover:border-teal-700 transition"
+                              >
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="px-2 py-0.5 rounded-full bg-teal-100 dark:bg-teal-900/60 text-teal-800 dark:text-teal-300 font-extrabold text-[10px] font-mono">
+                                      Step {step.stepNumber || sIdx + 1}
+                                    </span>
+                                    <span className="font-mono text-2xs text-slate-500 dark:text-slate-400">
+                                      {step.date}
+                                    </span>
+                                    <span className="text-2xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded">
+                                      <UserIcon className="w-3 h-3 text-teal-600" />
+                                      {step.performedBy}
+                                    </span>
+                                    {step.category && (
+                                      <span className="text-[10px] font-bold bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 px-2 py-0.5 rounded border border-amber-200 dark:border-amber-800">
+                                        📁 {step.category}
+                                      </span>
+                                    )}
+                                    {step.department && (
+                                      <span className="text-[10px] font-bold bg-purple-50 dark:bg-purple-950/60 text-purple-800 dark:text-purple-300 px-2 py-0.5 rounded border border-purple-200 dark:border-purple-800">
+                                        🏢 {step.department}{step.transferredTo ? ` ➔ ${step.transferredTo}` : ''}
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  <div className="flex items-center gap-2">
+                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                                      step.statusAtStep === 'Resolved / Approved'
+                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300'
+                                        : step.statusAtStep === 'Rejected / Closed'
+                                        ? 'bg-rose-50 text-rose-700 border-rose-300 dark:bg-rose-950 dark:text-rose-300'
+                                        : 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300'
+                                    }`}>
+                                      {step.statusAtStep}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveResolutionStep(step.id)}
+                                      className="text-slate-400 hover:text-rose-600 p-1 cursor-pointer transition"
+                                      title="Remove this step"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </div>
+
+                                <div className="font-bold text-slate-800 dark:text-slate-100 text-xs">
+                                  {step.actionTaken}
+                                </div>
+
+                                <div className="flex flex-wrap items-center gap-2 text-[10px] font-mono">
+                                  {step.departmentTimeTakenDays !== undefined && (
+                                    <span className="px-2 py-0.5 bg-teal-50 dark:bg-teal-950/60 text-teal-800 dark:text-teal-300 rounded border border-teal-200 dark:border-teal-800 font-bold">
+                                      ⏱️ Dept Time: {step.departmentTimeTakenDays} Days before transfer/change
+                                    </span>
+                                  )}
+                                  {step.overallTimeTakenDays !== undefined && (
+                                    <span className="px-2 py-0.5 bg-blue-50 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 rounded border border-blue-200 dark:border-blue-800 font-bold">
+                                      🏁 Overall Time: {step.overallTimeTakenDays} Days
+                                    </span>
+                                  )}
+                                </div>
+
+                                {step.changedColumns && step.changedColumns.length > 0 && (
+                                  <div className="flex flex-wrap items-center gap-1 text-[9px]">
+                                    <span className="font-bold text-slate-400 uppercase">Changed Columns:</span>
+                                    {step.changedColumns.map((col, cIdx) => (
+                                      <span key={cIdx} className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 font-mono">
+                                        {col}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {step.notes && (
+                                  <p className="text-2xs text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/60 p-2 rounded-lg border border-slate-100 dark:border-slate-800 font-sans">
+                                    {step.notes}
+                                  </p>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="p-6 text-center bg-slate-50 dark:bg-slate-900/40 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 space-y-2">
+                            <p className="text-xs text-slate-600 dark:text-slate-400">
+                              No resolution steps recorded yet.
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const compiled = compileResolutionJourneyData(selectedIssue);
+                                setResolutionStepsList(compiled.steps);
+                                setStepsTakenInput(compiled.stepsText);
+                              }}
+                              className="px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-2xs cursor-pointer shadow-xs inline-flex items-center gap-1.5"
+                            >
+                              <Zap className="w-3.5 h-3.5" /> Auto-Compile Steps from Issue History
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Detailed Narrative Textarea */}
+                      <div>
+                        <div className="flex justify-between items-center mb-1.5">
+                          <label className="font-bold block text-slate-800 dark:text-slate-200 text-xs">
+                            Complete Chronological Narrative of Steps Taken (Editable Full Record)
+                          </label>
+                          <span className="text-2xs text-slate-400">Preserved in issue dossier</span>
+                        </div>
+                        <textarea
+                          rows={5}
+                          placeholder="Detailed chronological sequence of steps taken until this issue was resolved..."
+                          value={stepsTakenInput}
+                          onChange={(e) => setStepsTakenInput(e.target.value)}
+                          className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-3 focus:ring-2 focus:ring-teal-500 font-mono text-xs leading-relaxed"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TAB 2: AUDIT TRAIL OF ALL COLUMN CHANGES & HANDOVERS */}
+                  {lessonsModalTab === 'changes' && (
+                    <div className="space-y-4">
+                      <div className="p-3 bg-blue-50/60 dark:bg-blue-950/30 rounded-xl border border-blue-200/80 dark:border-blue-800/50">
+                        <div className="font-bold text-blue-900 dark:text-blue-200 flex items-center gap-1.5">
+                          <History className="w-4 h-4 text-blue-600" />
+                          <span>Audit Trail of All Column Changes, Issue Category, Handovers & Time Taken Metrics</span>
+                        </div>
+                        <p className="text-2xs text-blue-700 dark:text-blue-300">
+                          Records all changes occurred on the issue until resolved or closed: column changes, category transitions, change/transfer dates, department time taken before transfer, and overall issue time.
+                        </p>
+                      </div>
+
+                      {/* Chronological Changes List */}
+                      {(() => {
+                        const compiled = compileResolutionJourneyData(selectedIssue);
+                        const changes = compiled.changesLog;
+                        return (
+                          <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+                            {changes.map((ev, idx) => (
+                              <div
+                                key={ev.id || `change-${idx}`}
+                                className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-700/80 space-y-3 shadow-2xs hover:border-blue-300 dark:hover:border-blue-700 transition"
+                              >
+                                {/* Change Event Header */}
+                                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-2">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-mono text-2xs font-bold text-blue-800 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 px-2.5 py-0.5 rounded border border-blue-200 dark:border-blue-800">
+                                      📅 {ev.timestamp}
+                                    </span>
+                                    <span className="text-2xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded">
+                                      <UserIcon className="w-3 h-3 text-blue-600" />
+                                      {ev.who}
+                                    </span>
+                                    <span className="text-[10px] font-extrabold bg-teal-50 dark:bg-teal-950/60 text-teal-800 dark:text-teal-300 px-2 py-0.5 rounded border border-teal-200 dark:border-teal-800">
+                                      📁 Category: {ev.category}
+                                    </span>
+                                  </div>
+
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[10px] text-slate-500 dark:text-slate-400 font-bold uppercase">Status:</span>
+                                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold border ${
+                                      ev.status === 'Resolved / Approved'
+                                        ? 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300'
+                                        : ev.status === 'Rejected / Closed'
+                                        ? 'bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950 dark:text-rose-300'
+                                        : ev.status === 'Transferred / Escalated'
+                                        ? 'bg-purple-100 text-purple-800 border-purple-300 dark:bg-purple-950 dark:text-purple-300'
+                                        : 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-950 dark:text-blue-300'
+                                    }`}>
+                                      {ev.status}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {/* Main Action & Handover */}
+                                <div className="space-y-1">
+                                  <div className="font-bold text-slate-800 dark:text-slate-100 text-xs">
+                                    {ev.action}
+                                  </div>
+                                  {ev.department && (
+                                    <div className="text-2xs font-semibold text-purple-700 dark:text-purple-300 flex items-center gap-1">
+                                      <span>🏢 Department / Holding Authority:</span>
+                                      <span className="bg-purple-50 dark:bg-purple-950/60 px-2 py-0.5 rounded border border-purple-200 dark:border-purple-800">
+                                        {ev.department}{ev.transferredTo ? ` ➔ Transferred to [${ev.transferredTo}]` : ''}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Key Time Metrics & Changed Columns */}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-lg border border-slate-100 dark:border-slate-800 text-2xs font-mono">
+                                  <div className="flex items-center gap-1.5 text-teal-800 dark:text-teal-300">
+                                    <Clock className="w-3.5 h-3.5 text-teal-600" />
+                                    <span><strong>Dept Time Before Transfer/Change:</strong> {ev.departmentTimeTakenDays} Calendar Days</span>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 text-blue-800 dark:text-blue-300">
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />
+                                    <span><strong>Overall Time Taken for Issue:</strong> {ev.overallTimeTakenDays} Calendar Days</span>
+                                  </div>
+                                </div>
+
+                                {/* Changed Columns Tags */}
+                                {ev.changedColumns && ev.changedColumns.length > 0 && (
+                                  <div className="space-y-1">
+                                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase block">
+                                      Columns Changed at this Event ({ev.changedColumns.length}):
+                                    </span>
+                                    <div className="flex flex-wrap gap-1">
+                                      {ev.changedColumns.map((col, cIdx) => (
+                                        <span key={cIdx} className="px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-950/80 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800 font-mono text-[10px]">
+                                          ✓ {col}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Column Snapshot Grid */}
+                                {ev.columnSnapshots && (
+                                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
+                                      Column Snapshot Record:
+                                    </span>
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] font-mono bg-slate-100/70 dark:bg-slate-900/60 p-2 rounded-lg border border-slate-200 dark:border-slate-800">
+                                      <div><span className="text-slate-400 block">Category:</span><strong>{ev.columnSnapshots.issueCategory}</strong></div>
+                                      <div><span className="text-slate-400 block">Status:</span><strong>{ev.columnSnapshots.currentStatus}</strong></div>
+                                      <div><span className="text-slate-400 block">Dept Time:</span><strong>{ev.columnSnapshots.deptTimeTakenDays} Days</strong></div>
+                                      <div><span className="text-slate-400 block">Overall Time:</span><strong>{ev.columnSnapshots.overallTimeTakenDays} Days</strong></div>
+                                      <div><span className="text-slate-400 block">Dept Handover:</span><strong className="truncate block">{ev.columnSnapshots.departmentAndHandover}</strong></div>
+                                      <div><span className="text-slate-400 block">Financial:</span><strong>Br. {(ev.columnSnapshots.financialExposureEtb || 0).toLocaleString()}</strong></div>
+                                      <div><span className="text-slate-400 block">Time Impact:</span><strong>{ev.columnSnapshots.timeImpactDays || 0} Days</strong></div>
+                                      <div><span className="text-slate-400 block">Clause Ref:</span><strong>{ev.columnSnapshots.clauseReference || 'N/A'}</strong></div>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {ev.notes && (
+                                  <p className="text-2xs text-slate-600 dark:text-slate-400 font-sans leading-relaxed bg-slate-50 dark:bg-slate-800/40 p-2.5 rounded-lg border border-slate-100 dark:border-slate-800">
+                                    {ev.notes}
+                                  </p>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+
+                  {/* TAB 3: DEPARTMENT TIME ANALYSIS & HANDOVER BREAKDOWN */}
+                  {lessonsModalTab === 'departments' && (
+                    <div className="space-y-4">
+                      <div className="p-3 bg-purple-50/60 dark:bg-purple-950/30 rounded-xl border border-purple-200/80 dark:border-purple-800/50">
+                        <div className="font-bold text-purple-900 dark:text-purple-200 flex items-center gap-1.5">
+                          <Clock className="w-4 h-4 text-purple-600" />
+                          <span>Department Time Taken & Authority Handover Audit</span>
+                        </div>
+                        <p className="text-2xs text-purple-700 dark:text-purple-300">
+                          Tracks the exact calendar days spent by each department or reviewing team before transfer or resolution.
+                        </p>
+                      </div>
+
+                      {(() => {
+                        const depts = compileResolutionJourneyData(selectedIssue).departmentTimeBreakdown;
+                        const totalDays = getIssueTurnaroundInfo(selectedIssue).turnaroundDays;
+                        return (
+                          <div className="space-y-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs font-mono">
+                              <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-purple-200 dark:border-purple-800 text-center">
+                                <span className="text-[10px] text-slate-400 uppercase block font-bold">Overall Issue Duration</span>
+                                <span className="font-black text-purple-700 dark:text-purple-300 text-sm">{totalDays} Calendar Days</span>
+                              </div>
+                              <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-purple-200 dark:border-purple-800 text-center">
+                                <span className="text-[10px] text-slate-400 uppercase block font-bold">Departments Involved</span>
+                                <span className="font-black text-purple-700 dark:text-purple-300 text-sm">{depts.length} Directorate / Teams</span>
+                              </div>
+                              <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-purple-200 dark:border-purple-800 text-center">
+                                <span className="text-[10px] text-slate-400 uppercase block font-bold">Active Holding Authority</span>
+                                <span className="font-bold text-purple-800 dark:text-purple-200 text-xs truncate block">
+                                  {depts.length > 0 ? depts[depts.length - 1].department : 'Site RE'}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+                              {depts.map((d, dIdx) => (
+                                <div key={dIdx} className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700/80 space-y-2 shadow-2xs">
+                                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-2">
+                                    <div className="flex items-center gap-2">
+                                      <span className="w-5 h-5 rounded-full bg-purple-600 text-white font-bold text-2xs flex items-center justify-center font-mono">
+                                        {dIdx + 1}
+                                      </span>
+                                      <span className="font-bold text-xs text-slate-900 dark:text-white">
+                                        {d.department}
+                                      </span>
+                                    </div>
+                                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold border ${
+                                      d.status.includes('Active')
+                                        ? 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950 dark:text-amber-300'
+                                        : d.status.includes('Resolved') || d.status.includes('Closed')
+                                        ? 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300'
+                                        : 'bg-purple-100 text-purple-800 border-purple-300 dark:bg-purple-950 dark:text-purple-300'
+                                    }`}>
+                                      {d.status}
+                                    </span>
+                                  </div>
+
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-2xs font-mono">
+                                    <div>
+                                      <span className="text-slate-400 block">Holding Date Range:</span>
+                                      <strong>{d.startDate} ➔ {d.endDate}</strong>
+                                    </div>
+                                    <div>
+                                      <span className="text-slate-400 block">Department Time Taken Before Transfer/Change:</span>
+                                      <strong className="text-purple-700 dark:text-purple-300 text-xs">{d.daysTaken} Calendar Days</strong>
+                                    </div>
+                                  </div>
+
+                                  {d.actionBeforeTransferOrChange && (
+                                    <div className="bg-slate-50 dark:bg-slate-800/50 p-2 rounded-lg border border-slate-100 dark:border-slate-800 text-2xs text-slate-700 dark:text-slate-300">
+                                      <strong>Handover Action / Decision Notes:</strong> {d.actionBeforeTransferOrChange}
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+
+                  {/* TAB 4: KEY LESSON LEARNED & DIRECTIVES */}
+                  {lessonsModalTab === 'lesson' && (
+                    <div className="space-y-4">
+                      <div>
+                        <label className="font-bold block mb-1.5 text-slate-800 dark:text-slate-200">
+                          Key Lesson Learned & Risk Prevention Takeaway <span className="text-rose-500">*</span>
+                        </label>
+                        <textarea
+                          rows={4}
+                          required
+                          placeholder="Document root cause insights, procedural improvements, FIDIC clause interpretations, or contract management strategies learned from handling this issue..."
+                          value={lessonsInput}
+                          onChange={(e) => setLessonsInput(e.target.value)}
+                          className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-3 focus:ring-2 focus:ring-teal-500 font-sans leading-relaxed text-xs"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="font-bold block mb-1.5 text-slate-800 dark:text-slate-200">
+                          Additional Case Review Notes & Management Recommendations
+                        </label>
+                        <textarea
+                          rows={3}
+                          placeholder="Provide recommendations for future project stages, standard operating procedures, or steering committee policy changes..."
+                          value={reviewNotesInput}
+                          onChange={(e) => setReviewNotesInput(e.target.value)}
+                          className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-3 focus:ring-2 focus:ring-teal-500 font-sans text-xs"
+                        />
+                      </div>
+
+                      {/* Contractual Prevention Guidance */}
+                      <div className="bg-slate-50 dark:bg-slate-900/60 p-4 rounded-xl border border-slate-200 dark:border-slate-700/80 space-y-2">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-400 block">
+                          Contractual & Operational Prevention Directives:
+                        </span>
+                        <ul className="list-disc pl-4 space-y-1 text-2xs text-slate-600 dark:text-slate-300">
+                          <li>Review contract dossier specifications and ensure SLA enforcement under {selectedIssue.clauseReference || 'General Conditions of Contract'}.</li>
+                          <li>Incorporate proactive risk assessments and utility coordination prior to site handover.</li>
+                          <li>Archive this dossier in the ERA Central Lessons Learned Repository for cross-project reference.</li>
+                        </ul>
+                      </div>
+                    </div>
+                  )}
+
                 </div>
 
-                <div>
-                  <label className="font-bold block mb-1.5 text-slate-800 dark:text-slate-200">
-                    Additional Case Review Notes & Management Recommendations
-                  </label>
-                  <textarea
-                    rows={2}
-                    placeholder="Provide recommendations for future project stages, standard operating procedures, or steering committee policy changes..."
-                    value={reviewNotesInput}
-                    onChange={(e) => setReviewNotesInput(e.target.value)}
-                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-3 focus:ring-2 focus:ring-teal-500 font-sans"
-                  />
-                </div>
-
-                <div className="flex justify-between items-center pt-3 border-t border-slate-100 dark:border-slate-700">
+                {/* Modal Footer */}
+                <div className="flex justify-between items-center px-6 py-4 border-t border-slate-100 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-900/60 shrink-0">
                   {effectiveIsAdmin && selectedIssue.lessonsLearned ? (
                     <button
                       type="button"
@@ -3815,21 +5106,25 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                     >
                       <Trash2 className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" /> Delete Lesson Learned
                     </button>
-                  ) : <div />}
+                  ) : (
+                    <span className="text-2xs text-slate-400 font-mono">
+                      {resolutionStepsList.length} step(s) ready to codify
+                    </span>
+                  )}
 
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
                       onClick={() => setShowLessonsModal(false)}
-                      className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 font-bold cursor-pointer"
+                      className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 font-bold cursor-pointer text-xs"
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
-                      className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold flex items-center gap-1.5 cursor-pointer"
+                      className="px-5 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold flex items-center gap-1.5 cursor-pointer text-xs shadow-xs transition"
                     >
-                      <BookOpen className="w-4 h-4" /> Save Lessons Learned
+                      <BookOpen className="w-4 h-4" /> Save Lessons Learned & Resolution Dossier
                     </button>
                   </div>
                 </div>
@@ -4513,15 +5808,10 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                                 </p>
                                 <button
                                   type="button"
-                                  onClick={() => {
-                                    setSelectedIssueId(trackingIssue.id);
-                                    setLessonsInput('');
-                                    setReviewNotesInput('');
-                                    setShowLessonsModal(true);
-                                  }}
+                                  onClick={() => openLessonsLearnedModal(trackingIssue)}
                                   className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-bold text-xs cursor-pointer shadow-xs inline-flex items-center gap-1.5"
                                 >
-                                  <PenTool className="w-3.5 h-3.5" /> Record Lesson Learned Now
+                                  <PenTool className="w-3.5 h-3.5" /> Record Lesson Learned & Resolution Dossier
                                 </button>
                               </div>
                             )}
@@ -4625,20 +5915,15 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                         <div className="flex justify-between items-center border-b border-teal-200 dark:border-teal-800 pb-3">
                           <div className="flex items-center gap-2 text-teal-900 dark:text-teal-200 font-black text-sm uppercase">
                             <Sparkles className="w-5 h-5 text-teal-600" />
-                            <span>Codified Institutional Lesson Learned</span>
+                            <span>Codified Institutional Lesson Learned & Resolution Dossier</span>
                           </div>
                           {effectiveIsAdmin && (
                             <button
                               type="button"
-                              onClick={() => {
-                                setSelectedIssueId(trackingIssue.id);
-                                setLessonsInput(trackingIssue.lessonsLearned || '');
-                                setReviewNotesInput(trackingIssue.reviewNotes || '');
-                                setShowLessonsModal(true);
-                              }}
+                              onClick={() => openLessonsLearnedModal(trackingIssue)}
                               className="px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1 cursor-pointer transition shadow-xs"
                             >
-                              <PenTool className="w-3.5 h-3.5" /> Edit Lesson
+                              <PenTool className="w-3.5 h-3.5" /> Edit Lessons & Dossier
                             </button>
                           )}
                         </div>
@@ -4664,6 +5949,60 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                               </div>
                             </div>
 
+                            {/* Display Resolution Steps Record if present in Tracking Modal */}
+                            {trackingIssue.resolutionSteps && trackingIssue.resolutionSteps.length > 0 && (
+                              <div className="bg-white/80 dark:bg-slate-900/60 p-3 rounded-xl border border-teal-200/70 dark:border-teal-900/40 space-y-2">
+                                <div className="flex items-center justify-between text-2xs font-bold uppercase text-teal-900 dark:text-teal-300">
+                                  <span className="flex items-center gap-1">
+                                    <ListOrdered className="w-3.5 h-3.5 text-teal-600" />
+                                    Steps Taken Until Resolved ({trackingIssue.resolutionSteps.length} recorded steps)
+                                  </span>
+                                </div>
+                                <div className="space-y-1.5 max-h-60 overflow-y-auto">
+                                  {trackingIssue.resolutionSteps.map((st, sIdx) => (
+                                    <div key={st.id || `st-trk-${sIdx}`} className="bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 text-2xs space-y-1">
+                                      <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                          <span className="font-mono font-bold bg-teal-100 dark:bg-teal-900/60 text-teal-800 dark:text-teal-300 px-1.5 py-0.5 rounded text-[10px]">
+                                            Step {st.stepNumber || sIdx + 1}
+                                          </span>
+                                          <span className="text-slate-500 font-mono">{st.date}</span>
+                                          <span className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                                            <UserIcon className="w-2.5 h-2.5 text-teal-600" />
+                                            {st.performedBy}
+                                          </span>
+                                        </div>
+                                        <span className="font-bold text-[10px] text-teal-800 dark:text-teal-300">
+                                          {st.statusAtStep}
+                                        </span>
+                                      </div>
+                                      <div className="font-medium text-slate-800 dark:text-slate-200">
+                                        {st.actionTaken}
+                                      </div>
+                                      {st.notes && (
+                                        <p className="text-slate-500 dark:text-slate-400 italic">
+                                          {st.notes}
+                                        </p>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Fallback steps text if present */}
+                            {(!trackingIssue.resolutionSteps || trackingIssue.resolutionSteps.length === 0) && trackingIssue.stepsTakenUntilResolved && (
+                              <div className="bg-white/80 dark:bg-slate-900/60 p-3 rounded-xl border border-teal-200/70 dark:border-teal-900/40 space-y-1">
+                                <span className="text-[10px] font-extrabold uppercase text-teal-800 dark:text-teal-300 flex items-center gap-1">
+                                  <ListOrdered className="w-3.5 h-3.5 text-teal-600" />
+                                  Steps Taken Until Resolved
+                                </span>
+                                <div className="text-2xs font-mono text-slate-700 dark:text-slate-300 whitespace-pre-line leading-relaxed">
+                                  {trackingIssue.stepsTakenUntilResolved}
+                                </div>
+                              </div>
+                            )}
+
                             {trackingIssue.reviewNotes && (
                               <div className="bg-white/70 dark:bg-slate-900/60 p-3.5 rounded-lg border border-teal-100 dark:border-teal-900/40 space-y-1">
                                 <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 block">
@@ -4682,12 +6021,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                             </p>
                             <button
                               type="button"
-                              onClick={() => {
-                                setSelectedIssueId(trackingIssue.id);
-                                setLessonsInput('');
-                                setReviewNotesInput('');
-                                setShowLessonsModal(true);
-                              }}
+                              onClick={() => openLessonsLearnedModal(trackingIssue)}
                               className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs cursor-pointer shadow-xs inline-flex items-center gap-1.5"
                             >
                               <PenTool className="w-4 h-4" /> Record Lesson Learned

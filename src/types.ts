@@ -235,6 +235,21 @@ export interface IssueTransferRecord {
   transferredBy?: string;
 }
 
+export interface DeptTimeRecord {
+  department: string;
+  startDate: string;
+  endDate: string;
+  daysTaken: number;
+  status: 'Transferred' | 'Active' | 'Resolved / Closed' | string;
+  actionBeforeTransferOrChange?: string;
+}
+
+export interface IssueColumnChangeDetail {
+  columnName: string; // e.g. "Current Status", "Issue Category", "Transferred To", "Action & Exposure", "Milestone Stage"
+  previousValue?: string | number;
+  newValue: string | number;
+}
+
 export interface IssueHistoryRecord {
   id: string;
   timestamp: string; // Formatted timestamp e.g. "2026-08-04 14:30"
@@ -245,6 +260,35 @@ export interface IssueHistoryRecord {
   changeType?: 'Status Change' | 'Transfer Handover' | 'Creation' | 'Details Edit' | 'Lessons Learned Review' | string;
   notes?: string;
   bottleneck?: string;
+  category?: string; // Issue category at time of change
+  department?: string; // Department holding or processing the issue
+  transferredFrom?: string;
+  transferredTo?: string;
+  transferDate?: string;
+  daysInDepartmentBeforeTransferOrChange?: number; // Department time taken before this transfer or change
+  overallElapsedDays?: number; // Overall elapsed days from submission up to this change
+  changedColumns?: string[]; // Columns that changed at this event e.g. ['Status', 'Category', 'Transferred To']
+  columnChanges?: IssueColumnChangeDetail[]; // Granular column values before and after
+}
+
+export interface ResolutionStepRecord {
+  id: string;
+  stepNumber: number;
+  date: string;
+  actionTaken: string;
+  performedBy: string;
+  statusAtStep: string;
+  category?: string; // Issue category at this step
+  department?: string; // Department responsible / involved
+  transferredFrom?: string;
+  transferredTo?: string;
+  transferDate?: string;
+  departmentTimeTakenDays?: number; // Department time taken before transfer or change
+  overallTimeTakenDays?: number; // Overall time taken from issue submission up to this step
+  stage?: string;
+  notes?: string;
+  changedColumns?: string[]; // Names of columns that changed at this step
+  columnChanges?: IssueColumnChangeDetail[]; // Details of column changes
 }
 
 export interface IssueLogItem {
@@ -275,6 +319,11 @@ export interface IssueLogItem {
   lessonsLearnedUpdatedBy?: string;
   lessonsLearnedUpdatedAt?: string;
   reviewNotes?: string;
+  stepsTakenUntilResolved?: string; // Chronological steps taken until the issue was resolved
+  resolutionSteps?: ResolutionStepRecord[]; // Structured list of steps taken until resolution
+  resolutionStatus?: string; // Status of the issue at resolution / when lesson learned was recorded
+  departmentTimeBreakdown?: DeptTimeRecord[]; // Recorded department time before transfers and resolution
+  overallTimeTakenDays?: number; // Overall total calendar days taken for the issue until resolved/closed
   
   // Resolution / Closure timing & turnaround metrics
   resolvedDate?: string; // Date when approved/resolved or rejected (YYYY-MM-DD)
