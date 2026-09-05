@@ -33,11 +33,22 @@
       "type": "object",
       "properties": {
         "uid": { "type": "string", "maxLength": 128 },
+        "username": { "type": "string", "maxLength": 128 },
+        "fullName": { "type": "string", "maxLength": 255 },
         "email": { "type": "string", "maxLength": 255 },
+        "phone": { "type": "string", "maxLength": 50 },
         "displayName": { "type": "string", "maxLength": 255 },
-        "role": { "type": "string", "maxLength": 50 }
+        "role": { "type": "string", "maxLength": 50 },
+        "status": { "type": "string", "maxLength": 50 },
+        "isPendingApproval": { "type": "boolean" },
+        "assignedDirectorate": { "type": "string", "maxLength": 100 },
+        "assignedPmo": { "type": "string", "maxLength": 100 },
+        "approvedBy": { "type": "string", "maxLength": 128 },
+        "approvedAt": { "type": "string", "maxLength": 100 },
+        "registeredAt": { "type": "string", "maxLength": 100 },
+        "updatedAt": { "type": "string", "maxLength": 100 }
       },
-      "required": ["uid", "email"]
+      "required": ["username"]
     },
     "Approval": {
       "title": "Approval",

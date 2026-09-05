@@ -28,7 +28,8 @@ import {
   Sparkles,
   BookOpen,
   Archive,
-  FolderArchive
+  FolderArchive,
+  UserPlus
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { Project, User, ApprovalRequest, ProjectLifecycleStatus, isProjectClosed, isCpmOrMasterAdmin } from '../types';
@@ -49,6 +50,7 @@ interface ProjectsPageProps {
   onOpenProfile: () => void;
   onOpenApprovals: () => void;
   onOpenAdmin: () => void;
+  onOpenPendingUserApproval?: () => void;
   onOpenDrafts: () => void;
   onOpenUserGuide?: () => void;
   onSaveToCloud?: () => void;
@@ -70,6 +72,7 @@ export default function ProjectsPage({
   onOpenProfile,
   onOpenApprovals,
   onOpenAdmin,
+  onOpenPendingUserApproval,
   onOpenDrafts,
   onOpenUserGuide,
   onSaveToCloud,
@@ -607,6 +610,23 @@ export default function ProjectsPage({
               </button>
             )}
 
+            {canAccessUserAdmin && pendingUserSignupsCount > 0 && (
+              <button 
+                onClick={() => {
+                  if (onOpenPendingUserApproval) {
+                    onOpenPendingUserApproval();
+                  } else {
+                    onOpenAdmin();
+                  }
+                }}
+                className="flex items-center gap-1.5 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-600 hover:to-orange-700 text-white px-3 py-1.5 rounded-xl text-xs font-black transition shadow-md shadow-amber-500/20 animate-pulse cursor-pointer shrink-0"
+                title="Review and approve new user credentials immediately"
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                <span>Approve Credentials ({pendingUserSignupsCount})</span>
+              </button>
+            )}
+
             {!hasNoProjects && isAdmin && (
               <button 
                 onClick={() => {
@@ -671,13 +691,27 @@ export default function ProjectsPage({
                 </p>
               </div>
             </div>
-            <button
-              onClick={onOpenAdmin}
-              className="w-full sm:w-auto px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white text-xs font-black uppercase tracking-wider rounded-xl transition duration-200 shadow-md shadow-amber-500/10 shrink-0 cursor-pointer flex items-center gap-2"
-            >
-              <span>Assign Projects & Approve</span>
-              <span>➜</span>
-            </button>
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0 w-full sm:w-auto">
+              <button
+                onClick={() => {
+                  if (onOpenPendingUserApproval) {
+                    onOpenPendingUserApproval();
+                  } else {
+                    onOpenAdmin();
+                  }
+                }}
+                className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white text-xs font-black uppercase tracking-wider rounded-xl transition duration-200 shadow-md shadow-amber-500/20 cursor-pointer flex items-center justify-center gap-2"
+              >
+                <UserPlus className="w-4 h-4" />
+                <span>Review & Approve Credentials</span>
+              </button>
+              <button
+                onClick={onOpenAdmin}
+                className="px-4 py-2.5 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl border border-slate-200 dark:border-slate-700 transition cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <span>Full Admin</span>
+              </button>
+            </div>
           </motion.div>
         )}
 

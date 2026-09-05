@@ -587,6 +587,27 @@ export default function App() {
     return false;
   };
 
+  const playApprovalChime = () => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+      osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.15); // A5
+      gain.gain.setValueAtTime(0.25, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.5);
+    } catch {
+      // Audio might be blocked before first user gesture
+    }
+  };
+
   const handleApproveUserImmediately = (username: string) => {
     const original = usersListState.find(x => x.username.toLowerCase() === username.toLowerCase());
     if (!original) return;
@@ -632,15 +653,21 @@ export default function App() {
     alert(`User "${username}" has been successfully approved, assigned, and activated!`);
   };
 
-  const handleApproveUserPopup = (userToApprove: User, assignedRole: string, assignedProjects: string[]) => {
+  const handleApproveUserPopup = (
+    userToApprove: User, 
+    assignedRole: string, 
+    assignedProjects: string[],
+    customDir?: string,
+    customPmo?: string
+  ) => {
     const allUsers = getUsers();
     let approvedUser: User | null = null;
 
     const isDir = currentUserObj?.role === 'directorate_admin';
     const isPmo = currentUserObj?.role === 'pmo_admin';
 
-    let assignedDir = userToApprove.assignedDirectorate;
-    let assignedPmo = userToApprove.assignedPmo;
+    let assignedDir = customDir || userToApprove.assignedDirectorate || 'Southern';
+    let assignedPmo = customPmo || userToApprove.assignedPmo || 'PMO 1';
     if (isPmo) {
       assignedDir = currentUserObj?.assignedDirectorate || 'Southern';
       assignedPmo = currentUserObj?.assignedPmo || 'PMO 1';
@@ -672,7 +699,7 @@ export default function App() {
     saveUsers(updatedUsers);
     dismissedUsernamesRef.current.delete(userToApprove.username.toLowerCase());
     setPendingUserPopups(prev => prev.filter(p => p.username.toLowerCase() !== userToApprove.username.toLowerCase()));
-    alert(`User "${userToApprove.username}" has been successfully APPROVED and activated!`);
+    alert(`User "${userToApprove.username}" (${userToApprove.fullName || 'Registered User'}) has been successfully APPROVED and activated!`);
   };
 
   const handleRejectUserPopup = (userToReject: User) => {
@@ -1074,6 +1101,17 @@ let isBatchSyncRunning = false;
     const mergeAndApplyUsers = (cloudUsers: User[]) => {
       if (!cloudUsers || !Array.isArray(cloudUsers)) return;
       setUsersListState(prev => {
+        // Detect newly arrived registration requests that are pending approval
+        cloudUsers.forEach(cu => {
+          if (cu?.isPendingApproval) {
+            const wasPendingInPrev = prev.some(pu => pu.username.toLowerCase() === cu.username.toLowerCase() && pu.isPendingApproval);
+            if (!wasPendingInPrev) {
+              playApprovalChime();
+              dismissedUsernamesRef.current.delete(cu.username.toLowerCase());
+            }
+          }
+        });
+
         const map = new Map<string, User>();
         prev.forEach(u => { if (u?.username) map.set(u.username.toLowerCase(), u); });
         cloudUsers.forEach(u => {
@@ -1524,6 +1562,22 @@ let isBatchSyncRunning = false;
     };
     window.addEventListener('project_globally_deleted', handleProjectGloballyDeleted);
 
+    const handleNewUserRegisteredEvent = (e: any) => {
+      const newUser = e.detail as User;
+      if (newUser && newUser.username) {
+        dismissedUsernamesRef.current.delete(newUser.username.toLowerCase());
+        playApprovalChime();
+        setUsersListState(prev => {
+          const exists = prev.some(u => u.username.toLowerCase() === newUser.username.toLowerCase());
+          if (exists) {
+            return prev.map(u => u.username.toLowerCase() === newUser.username.toLowerCase() ? { ...u, ...newUser } : u);
+          }
+          return [...prev, newUser];
+        });
+      }
+    };
+    window.addEventListener('new_user_registered', handleNewUserRegisteredEvent);
+
     // Run initial sync on mount
     pollAllBackendData();
 
@@ -1546,6 +1600,7 @@ let isBatchSyncRunning = false;
       window.removeEventListener('sync_log_recorded', handleSyncLogRecorded);
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('project_globally_deleted', handleProjectGloballyDeleted);
+      window.removeEventListener('new_user_registered', handleNewUserRegisteredEvent);
       if (broadcastChannel) {
         try { broadcastChannel.close(); } catch (e) {}
       }
@@ -2784,6 +2839,26 @@ let isBatchSyncRunning = false;
               onOpenProfile={() => setShowProfile(true)}
               onOpenApprovals={() => setShowApprovals(true)}
               onOpenAdmin={() => setShowAdmin(true)}
+              onOpenPendingUserApproval={() => {
+                dismissedUsernamesRef.current.clear();
+                const isMaster = Boolean(
+                  currentUserObj?.role === 'admin' || 
+                  currentUserObj?.role === 'master_admin' || 
+                  currentUserObj?.role === 'cpm_admin' || 
+                  currentUserObj?.username === 'proj_1781786415663' ||
+                  (currentUserObj?.username && currentUserObj.username.toLowerCase().includes('ersido'))
+                );
+                const isDir = currentUserObj?.role === 'directorate_admin';
+                const isPmo = currentUserObj?.role === 'pmo_admin';
+                const pending = usersListState.filter(u => {
+                  if (!u || !u.isPendingApproval) return false;
+                  if (isMaster) return true;
+                  if (isDir) return !u.assignedDirectorate || u.assignedDirectorate === currentUserObj?.assignedDirectorate;
+                  if (isPmo) return !u.assignedPmo || u.assignedPmo === currentUserObj?.assignedPmo;
+                  return false;
+                });
+                setPendingUserPopups(pending);
+              }}
               onOpenDrafts={() => setShowDraftsPlayground(true)}
               onOpenUserGuide={() => setIsUserGuideOpen(true)}
               onSaveToCloud={async () => {
@@ -3008,6 +3083,35 @@ let isBatchSyncRunning = false;
                   <CheckCircle className="w-3.5 h-3.5" />
                   Save to Database
                 </button>
+                {isMasterAdmin && usersListState.some(u => u && u.isPendingApproval) && (
+                  <button
+                    onClick={() => {
+                      dismissedUsernamesRef.current.clear();
+                      const isMaster = Boolean(
+                        currentUserObj?.role === 'admin' || 
+                        currentUserObj?.role === 'master_admin' || 
+                        currentUserObj?.role === 'cpm_admin' || 
+                        currentUserObj?.username === 'proj_1781786415663' ||
+                        (currentUserObj?.username && currentUserObj.username.toLowerCase().includes('ersido'))
+                      );
+                      const isDir = currentUserObj?.role === 'directorate_admin';
+                      const isPmo = currentUserObj?.role === 'pmo_admin';
+                      const pending = usersListState.filter(u => {
+                        if (!u || !u.isPendingApproval) return false;
+                        if (isMaster) return true;
+                        if (isDir) return !u.assignedDirectorate || u.assignedDirectorate === currentUserObj?.assignedDirectorate;
+                        if (isPmo) return !u.assignedPmo || u.assignedPmo === currentUserObj?.assignedPmo;
+                        return false;
+                      });
+                      setPendingUserPopups(pending);
+                    }}
+                    className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white p-2 rounded-full border border-amber-600 flex items-center gap-1.5 text-[11px] font-black px-3 py-1.5 transition shadow-sm animate-pulse cursor-pointer"
+                    title="Review and approve pending user credentials"
+                  >
+                    <UserPlus className="w-3.5 h-3.5" />
+                    <span>Approve Credentials ({usersListState.filter(u => u && u.isPendingApproval).length})</span>
+                  </button>
+                )}
                 <button
                   onClick={() => setIsUserGuideOpen(true)}
                   className="bg-emerald-600 hover:bg-emerald-700 p-2 rounded-full border border-emerald-700 flex items-center gap-1.5 text-[11px] font-extrabold text-white px-3 py-1.5 transition shadow-sm"
@@ -5813,7 +5917,7 @@ let isBatchSyncRunning = false;
               initial={{ scale: 0.9, y: 20 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.9, y: 20 }}
-              className="bg-white dark:bg-slate-850 border-2 border-amber-500/80 rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden relative space-y-0"
+              className="bg-white dark:bg-slate-850 border-2 border-amber-500/80 rounded-3xl shadow-2xl max-w-2xl w-full overflow-hidden relative space-y-0"
             >
               {/* Animated Header */}
               <div className="bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 p-5 text-white flex items-center justify-between">
@@ -5823,7 +5927,7 @@ let isBatchSyncRunning = false;
                   </div>
                   <div>
                     <span className="text-[10px] font-black uppercase tracking-widest bg-black/20 px-2 py-0.5 rounded-full border border-white/20 inline-block mb-0.5">
-                      🔔 REAL-TIME APPROVAL REQUEST
+                      🔔 REAL-TIME CREDENTIALS APPROVAL REQUEST
                     </span>
                     <h3 className="text-base font-black tracking-tight leading-none">
                       New User Registration Received!
@@ -5855,60 +5959,160 @@ let isBatchSyncRunning = false;
 
                 return (
                   <div className="p-6 space-y-5">
-                    <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 rounded-2xl p-4 flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 bg-white dark:bg-slate-800 border-2 border-amber-400 rounded-full flex items-center justify-center text-amber-600 font-black text-lg shadow-sm">
-                          👤
+                    {/* Submitted Applicant Credentials Card */}
+                    <div className="bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 space-y-3">
+                      <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2.5">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                          <UserCheck className="w-3.5 h-3.5 text-amber-500" />
+                          Applicant Credentials & Identity
+                        </span>
+                        <span className="bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 font-extrabold text-[10px] px-2.5 py-0.5 rounded-full border border-amber-300 dark:border-amber-700 animate-pulse">
+                          Awaiting Admin Approval
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                        <div className="bg-white dark:bg-slate-800 p-2.5 rounded-xl border border-slate-150 dark:border-slate-750">
+                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Full Name</span>
+                          <span className="font-black text-slate-900 dark:text-white text-sm">
+                            {activePending.fullName || activePending.username}
+                          </span>
                         </div>
-                        <div>
-                          <h4 className="text-sm font-black text-slate-900 dark:text-white">
-                            {activePending.username}
-                          </h4>
-                          <p className="text-2xs font-semibold text-amber-700 dark:text-amber-400 flex items-center gap-1 mt-0.5">
-                            <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping inline-block" />
-                            Status: Pending Admin Activation
-                          </p>
+
+                        <div className="bg-white dark:bg-slate-800 p-2.5 rounded-xl border border-slate-150 dark:border-slate-750">
+                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Username</span>
+                          <span className="font-mono font-black text-slate-800 dark:text-slate-100 text-sm">
+                            @{activePending.username}
+                          </span>
+                        </div>
+
+                        <div className="bg-white dark:bg-slate-800 p-2.5 rounded-xl border border-slate-150 dark:border-slate-750">
+                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Official Email</span>
+                          <span className="font-semibold text-slate-800 dark:text-slate-200 text-xs truncate block" title={activePending.email}>
+                            {activePending.email || 'Not specified'}
+                          </span>
+                        </div>
+
+                        <div className="bg-white dark:bg-slate-800 p-2.5 rounded-xl border border-slate-150 dark:border-slate-750">
+                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Phone Number</span>
+                          <span className="font-semibold text-slate-800 dark:text-slate-200 text-xs">
+                            {activePending.phone || 'Not specified'}
+                          </span>
+                        </div>
+
+                        <div className="bg-white dark:bg-slate-800 p-2.5 rounded-xl border border-slate-150 dark:border-slate-750">
+                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Requested Directorate</span>
+                          <span className="font-bold text-slate-800 dark:text-slate-200 text-xs">
+                            {activePending.assignedDirectorate || 'Southern'}
+                          </span>
+                        </div>
+
+                        <div className="bg-white dark:bg-slate-800 p-2.5 rounded-xl border border-slate-150 dark:border-slate-750">
+                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Requested PMO</span>
+                          <span className="font-bold text-slate-800 dark:text-slate-200 text-xs">
+                            {activePending.assignedPmo || 'PMO 1'}
+                          </span>
                         </div>
                       </div>
-                      <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-800 px-2.5 py-1 rounded-xl border border-slate-200 dark:border-slate-700 uppercase">
-                        Role: {activePending.role || 'editor'}
-                      </span>
+
+                      <div className="flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500 pt-1">
+                        <span>Requested Role: <strong className="capitalize text-slate-700 dark:text-slate-300">{activePending.role || 'editor'}</strong></span>
+                        {activePending.registeredAt && (
+                          <span>Submitted: {new Date(activePending.registeredAt).toLocaleString()}</span>
+                        )}
+                      </div>
                     </div>
 
-                    {/* Role Selector */}
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block uppercase tracking-wider">
-                        Assign Role for Network Access:
-                      </label>
-                      <select
-                        id={`popup-role-${activePending.username}`}
-                        defaultValue={activePending.role || 'editor'}
-                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-amber-500"
-                      >
-                        <option value="editor">✏️ Editor (View & Submit Contract Updates)</option>
-                        <option value="viewer">👁️ Viewer (Read Only Access)</option>
-                        <option value="approver">Approver (Review & Approve Drafts)</option>
-                        {isDir && (
-                          <option value="pmo_admin">PMO Admin (Under {currentUserObj?.assignedDirectorate})</option>
-                        )}
-                        {!isDir && !isPmo && (
-                          <>
-                            <option value="directorate_admin">Directorate Admin</option>
+                    {/* Access Provisioning Selectors */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-700 dark:text-slate-300 block uppercase tracking-wider mb-1">
+                          Assign System Role:
+                        </label>
+                        <select
+                          id={`popup-role-${activePending.username}`}
+                          defaultValue={activePending.role || 'editor'}
+                          className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-amber-500"
+                        >
+                          <option value="editor">✏️ Editor</option>
+                          <option value="viewer">👁️ Viewer</option>
+                          <option value="approver">🛡️ Approver</option>
+                          {isDir && (
                             <option value="pmo_admin">PMO Admin</option>
-                            <option value="admin">⭐ Master Admin (Full System Control)</option>
-                          </>
-                        )}
-                      </select>
+                          )}
+                          {!isDir && !isPmo && (
+                            <>
+                              <option value="directorate_admin">Directorate Admin</option>
+                              <option value="pmo_admin">PMO Admin</option>
+                              <option value="admin">⭐ Master Admin</option>
+                            </>
+                          )}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-700 dark:text-slate-300 block uppercase tracking-wider mb-1">
+                          Assigned Directorate:
+                        </label>
+                        <select
+                          id={`popup-dir-${activePending.username}`}
+                          defaultValue={activePending.assignedDirectorate || 'Southern'}
+                          disabled={isDir || isPmo}
+                          className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-amber-500 disabled:opacity-60"
+                        >
+                          {programDirectorates.map(d => (
+                            <option key={d} value={d}>{d}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-700 dark:text-slate-300 block uppercase tracking-wider mb-1">
+                          Assigned PMO:
+                        </label>
+                        <select
+                          id={`popup-pmo-${activePending.username}`}
+                          defaultValue={activePending.assignedPmo || 'PMO 1'}
+                          disabled={isPmo}
+                          className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-amber-500 disabled:opacity-60"
+                        >
+                          {pmos.map(p => (
+                            <option key={p} value={p}>{p}</option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
 
                     {/* Contracts Checklist */}
                     <div className="space-y-2">
-                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex justify-between items-center uppercase tracking-wider">
-                        <span>Assign Accessible Contracts:</span>
-                        <span className="text-[10px] text-slate-400 font-normal normal-case">
-                          ({visiblePopupProjects.length} Available in Your Scope)
-                        </span>
-                      </label>
+                      <div className="flex justify-between items-center">
+                        <label className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                          Assign Accessible Contracts ({visiblePopupProjects.length}):
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const checkboxes = document.querySelectorAll(`input[data-project-id]`) as NodeListOf<HTMLInputElement>;
+                              checkboxes.forEach(cb => { cb.checked = true; });
+                            }}
+                            className="text-[9px] font-black text-blue-600 hover:underline cursor-pointer uppercase"
+                          >
+                            Select All
+                          </button>
+                          <span className="text-slate-300">|</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const checkboxes = document.querySelectorAll(`input[data-project-id]`) as NodeListOf<HTMLInputElement>;
+                              checkboxes.forEach(cb => { cb.checked = false; });
+                            }}
+                            className="text-[9px] font-black text-slate-500 hover:underline cursor-pointer uppercase"
+                          >
+                            Deselect All
+                          </button>
+                        </div>
+                      </div>
                       <div className="max-h-36 overflow-y-auto border border-slate-200 dark:border-slate-700/80 rounded-2xl p-2.5 bg-slate-50/50 dark:bg-slate-900/50 space-y-1">
                         <div className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 pb-1 border-b border-slate-200 dark:border-slate-800">
                           ✓ All contracts accessible automatically for Admin role
@@ -5934,7 +6138,12 @@ let isBatchSyncRunning = false;
                         type="button"
                         onClick={() => {
                           const roleSelect = document.getElementById(`popup-role-${activePending.username}`) as HTMLSelectElement;
+                          const dirSelect = document.getElementById(`popup-dir-${activePending.username}`) as HTMLSelectElement;
+                          const pmoSelect = document.getElementById(`popup-pmo-${activePending.username}`) as HTMLSelectElement;
+
                           const selectedRole = roleSelect ? roleSelect.value : (activePending.role || 'editor');
+                          const selectedDir = dirSelect ? dirSelect.value : activePending.assignedDirectorate;
+                          const selectedPmo = pmoSelect ? pmoSelect.value : activePending.assignedPmo;
                           
                           const checkboxes = document.querySelectorAll(`input[data-project-id]`) as NodeListOf<HTMLInputElement>;
                           const checkedProjectIds: string[] = [];
@@ -5943,12 +6152,12 @@ let isBatchSyncRunning = false;
                             if (cb.checked && pid) checkedProjectIds.push(pid);
                           });
 
-                          handleApproveUserPopup(activePending, selectedRole, checkedProjectIds);
+                          handleApproveUserPopup(activePending, selectedRole, checkedProjectIds, selectedDir, selectedPmo);
                         }}
                         className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black py-3 rounded-2xl text-xs uppercase tracking-wider shadow-lg shadow-emerald-600/20 transition cursor-pointer flex items-center justify-center gap-2"
                       >
                         <CheckCircle className="w-4 h-4" />
-                        Approve User Now
+                        Approve & Activate Credentials
                       </button>
 
                       <button
@@ -5957,7 +6166,7 @@ let isBatchSyncRunning = false;
                         className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-3 rounded-2xl text-xs uppercase tracking-wider shadow-md transition cursor-pointer flex items-center justify-center gap-2"
                       >
                         <Settings className="w-4 h-4" />
-                        Configure in Admin
+                        Configure in Full Admin
                       </button>
 
                       <button

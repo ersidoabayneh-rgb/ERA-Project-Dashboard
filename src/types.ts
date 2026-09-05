@@ -579,6 +579,9 @@ export interface RiskItem {
 
 export interface User {
   username: string;
+  fullName?: string;
+  email?: string;
+  phone?: string;
   password?: string;
   role: 'master_admin' | 'cpm_admin' | 'directorate_admin' | 'pmo_admin' | 'admin' | 'editor' | 'viewer' | 'approver';
   accessibleProjects: string[]; // Project IDs
