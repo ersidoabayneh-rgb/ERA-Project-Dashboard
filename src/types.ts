@@ -248,12 +248,26 @@ export interface IssueColumnChangeDetail {
   columnName: string; // e.g. "Current Status", "Issue Category", "Transferred To", "Action & Exposure", "Milestone Stage"
   previousValue?: string | number;
   newValue: string | number;
+  dateSubmitted?: string;
+  issueCategory?: string;
+  currentStatus?: string;
+  deptTimeTakenDays?: number;
+  overallTimeTakenDays?: number;
+  departmentAndHandover?: string;
+  financialExposureEtb?: number;
+  timeImpactDays?: number;
+  timeExposureDays?: number;
+  priorityLevel?: string;
+  clauseReference?: string;
+  contractClauseRef?: string;
+  milestoneStage?: string;
 }
 
 export interface IssueHistoryRecord {
   id: string;
   timestamp: string; // Formatted timestamp e.g. "2026-08-04 14:30"
   user: string; // User who made the change
+  sessionRole?: string;
   previousStatus?: string;
   newStatus: string;
   stage?: string;
