@@ -155,6 +155,7 @@ import BondsGuaranteeView from './components/BondsGuaranteeView';
 import ComprehensiveAnalysisView from './components/ComprehensiveAnalysisView';
 import DocumentationView from './components/DocumentationView';
 import SupervisionConsultantView from './components/SupervisionConsultantView';
+import SubmittalLogView from './components/SubmittalLogView';
 import HistoryView from './components/HistoryView';
 import SettingsView from './components/SettingsView';
 import WorkspaceView from './components/WorkspaceView';
@@ -3646,6 +3647,7 @@ let isBatchSyncRunning = false;
                 { id: 'resourceMobilization', label: '🚚 Logistics & Resources' },
                 { id: 'risks', label: '⚠️ Project Risks' },
                 { id: 'consultant', label: '👔 Supervision Consultant' },
+                { id: 'submittalLog', label: '📋 Submittal Log' },
                 /* { id: 'workspace', label: '☁️ Workspace' }, */
                 { id: 'analysis', label: '📊 Comprehensive analysis' },
                 { id: 'documentation', label: '📁 Documentation' },
@@ -3936,6 +3938,17 @@ let isBatchSyncRunning = false;
                   onUpdateProject={handleProjectUpdate}
                   isReadonly={currentUserObj?.role === 'viewer' && currentUserObj?.username !== 'proj_1781786415663'}
                   currentUser={currentUserObj}
+                />
+              )}
+
+              {activeTab === 'submittalLog' && (
+                <SubmittalLogView
+                  project={currentProject}
+                  projects={projects}
+                  onSelectProject={setCurrentProject}
+                  onProjectUpdate={handleProjectUpdate}
+                  isReadonly={currentUserObj?.role === 'viewer' && currentUserObj?.username !== 'proj_1781786415663'}
+                  currentUserObj={currentUserObj}
                 />
               )}
 

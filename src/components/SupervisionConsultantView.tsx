@@ -1698,50 +1698,27 @@ export default function SupervisionConsultantView({
             </span>
           </div>
 
-          {/* RFI Turnaround SLA Mini KPI Metric Card (Admins) / Submittal Log Card (All Users) */}
-          {isAdmin ? (
-            <div 
-              onClick={() => setActiveTab('kpis')}
-              className="bg-purple-50/70 hover:bg-purple-100/80 dark:bg-purple-950/40 dark:hover:bg-purple-900/50 p-3 rounded-2xl border border-purple-200/80 dark:border-purple-900/60 cursor-pointer transition shadow-xs group"
-              title="Click to open Performance KPIs & SLA Analytics"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-purple-700 dark:text-purple-300 uppercase tracking-wider block">
-                  RFI Response SLA
-                </span>
-                <span className="text-[9px] font-bold px-1.5 py-0.2 bg-purple-200 dark:bg-purple-800 text-purple-800 dark:text-purple-100 rounded flex items-center gap-0.5 group-hover:scale-105 transition">
-                  <Clock className="w-2.5 h-2.5" /> KPI
-                </span>
-              </div>
-              <div className="text-base md:text-lg font-black text-purple-950 dark:text-purple-100 font-mono mt-0.5 flex items-baseline gap-1">
-                {rfiKpiSummary.avgDays} <span className="text-xs text-slate-400 font-normal">days avg</span>
-              </div>
-              <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold font-mono flex items-center">
-                ✅ {rfiKpiSummary.pctDiff}% faster vs {rfiKpiSummary.target}d SLA
+          {/* RFI Turnaround SLA Mini KPI Metric Card */}
+          <div 
+            onClick={() => setActiveTab('kpis')}
+            className="bg-purple-50/70 hover:bg-purple-100/80 dark:bg-purple-950/40 dark:hover:bg-purple-900/50 p-3 rounded-2xl border border-purple-200/80 dark:border-purple-900/60 cursor-pointer transition shadow-xs group"
+            title="Click to open Performance KPIs & SLA Analytics"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-purple-700 dark:text-purple-300 uppercase tracking-wider block">
+                RFI Response SLA
+              </span>
+              <span className="text-[9px] font-bold px-1.5 py-0.2 bg-purple-200 dark:bg-purple-800 text-purple-800 dark:text-purple-100 rounded flex items-center gap-0.5 group-hover:scale-105 transition">
+                <Clock className="w-2.5 h-2.5" /> KPI
               </span>
             </div>
-          ) : (
-            <div 
-              onClick={() => setActiveTab('kpis')}
-              className="bg-purple-50/70 hover:bg-purple-100/80 dark:bg-purple-950/40 dark:hover:bg-purple-900/50 p-3 rounded-2xl border border-purple-200/80 dark:border-purple-900/60 cursor-pointer transition shadow-xs group"
-              title="Click to open Submittal Log"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-purple-700 dark:text-purple-300 uppercase tracking-wider block">
-                  Submittal Log Records
-                </span>
-                <span className="text-[9px] font-bold px-1.5 py-0.2 bg-purple-200 dark:bg-purple-800 text-purple-800 dark:text-purple-100 rounded flex items-center gap-0.5 group-hover:scale-105 transition">
-                  <FileText className="w-2.5 h-2.5" /> Log
-                </span>
-              </div>
-              <div className="text-base md:text-lg font-black text-purple-950 dark:text-purple-100 font-mono mt-0.5 flex items-baseline gap-1">
-                {consultant.submittalKpis?.length || 0} <span className="text-xs text-slate-400 font-normal">items</span>
-              </div>
-              <span className="text-[10px] text-purple-600 dark:text-purple-400 font-bold font-mono flex items-center">
-                📋 Open Submittal Log Table
-              </span>
+            <div className="text-base md:text-lg font-black text-purple-950 dark:text-purple-100 font-mono mt-0.5 flex items-baseline gap-1">
+              {rfiKpiSummary.avgDays} <span className="text-xs text-slate-400 font-normal">days avg</span>
             </div>
-          )}
+            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold font-mono flex items-center">
+              ✅ {rfiKpiSummary.pctDiff}% faster vs {rfiKpiSummary.target}d SLA
+            </span>
+          </div>
 
           <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-2xl border border-slate-100 dark:border-slate-800">
             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Active Personnel</span>
@@ -1820,8 +1797,8 @@ export default function SupervisionConsultantView({
               : 'bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
           }`}
         >
-          {isAdmin ? <Clock className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
-          {isAdmin ? 'Performance KPIs & RFI SLA' : 'Submittal Log'}
+          <Clock className="w-4 h-4" />
+          Performance KPIs & RFI SLA Evaluation
           <span className={`px-2 py-0.5 rounded-full text-xs font-mono ${
             activeTab === 'kpis' ? 'bg-purple-700 text-white' : 'bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-300 font-bold'
           }`}>
@@ -2398,7 +2375,7 @@ export default function SupervisionConsultantView({
         </div>
       )}
 
-      {/* TAB: PERFORMANCE KPIS & RFI SLA ANALYTICS / SUBMITTAL LOG */}
+      {/* TAB: PERFORMANCE KPIS & RFI SLA EVALUATION */}
       {activeTab === 'kpis' && (
         <ConsultantPerformanceKpiWidget
           project={project}

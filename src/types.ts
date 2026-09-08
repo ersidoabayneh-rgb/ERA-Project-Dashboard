@@ -690,6 +690,7 @@ export const ALL_EDITABLE_PAGES: EditablePageOption[] = [
   { id: 'analysis', name: '📊 Performance Analysis', description: 'Financial & physical performance analytics' },
   { id: 'documentation', name: '📁 Project Documentation', description: 'Dossier files, monthly reports, contract upload library' },
   { id: 'consultant', name: '👔 Supervision Consultant', description: 'Consultant contract, fee invoices, and assigned personnel directory' },
+  { id: 'submittalLog', name: '📋 Submittal Log & RFI Tracking', description: 'Supervision consultant submittal review log, design approvals, and RFI tracking' },
   { id: 'workspace', name: '☁️ Workspace Notes', description: 'Interactive collaborative scratchpad & design notes' }
 ];
 

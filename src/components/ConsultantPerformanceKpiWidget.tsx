@@ -5,8 +5,6 @@ import {
   CheckCircle2,
   AlertTriangle,
   FileText,
-  Filter,
-  Search,
   Plus,
   ArrowUpRight,
   TrendingDown,
@@ -22,21 +20,11 @@ import {
   ChevronDown,
   ChevronUp,
   Sliders,
-  RefreshCw,
-  Edit2,
-  Edit3,
-  Trash2,
-  Copy,
-  Save,
-  Download,
   RotateCcw,
-  CheckSquare,
-  Square,
-  MoreHorizontal,
   ShieldCheck,
-  Table as TableIcon,
   History,
-  Users
+  Users,
+  ExternalLink
 } from 'lucide-react';
 import {
   SupervisionConsultantInfo,
@@ -45,7 +33,7 @@ import {
   Project
 } from '../types';
 
-interface ConsultantPerformanceKpiWidgetProps {
+export interface ConsultantPerformanceKpiWidgetProps {
   project: Project;
   consultant: SupervisionConsultantInfo;
   onUpdateConsultant?: (updatedConsultant: SupervisionConsultantInfo, actionDescription?: string) => void;
@@ -426,7 +414,7 @@ export default function ConsultantPerformanceKpiWidget({
     };
   }, [evaluationCriteria, consultant.targetOverrides, isViewingHistorical, historicalConsultant]);
 
-  // State for submittals data, merging consultant submittals with live IPC tracker items from financial data page (Monthly Payment Bill Summary, IPC Maturation & Interest Ledger)
+  // State for submittals data, merging consultant submittals with live IPC tracker items
   const submittalsList: ConsultantSubmittalKpi[] = useMemo(() => {
     if (isViewingHistorical && historicalConsultant) {
       return historicalConsultant.submittalKpis || [];
@@ -446,7 +434,6 @@ export default function ConsultantPerformanceKpiWidget({
       const ipcSubmittals: ConsultantSubmittalKpi[] = project.ipcTracker
         .filter(ipc => {
           if (!ipc.submissionDate) return false;
-          // Filter IPCs submitted on or after consultant commencement date if available
           if (commencementTime) {
             const subTime = new Date(ipc.submissionDate).getTime();
             if (!isNaN(subTime) && subTime < commencementTime) {
@@ -464,7 +451,7 @@ export default function ConsultantPerformanceKpiWidget({
               actualDays = Math.max(0, Math.round((certTime - subTime) / (1000 * 60 * 60 * 24)));
             }
           }
-          const target = targetOverrides['IPC Review'] || DEFAULT_SLA_TARGETS['IPC Review'] || 7;
+          const target = targetOverrides['IPC Review'] || 7;
           return {
             id: `ipc_kpi_${ipc.id}`,
             submittalNo: ipc.paymentNo || 'IPC',
@@ -477,7 +464,7 @@ export default function ConsultantPerformanceKpiWidget({
             status: ipc.certificationDate ? 'Approved / Closed' : 'Under Review',
             priority: 'High',
             assignedEngineer: consultant.residentEngineerName || 'Resident Engineer / Quantity Surveyor',
-            notes: ipc.remarks || `Financial IPC submitted by Contractor on ${ipc.submissionDate || 'N/A'}${ipc.certificationDate ? ` and Engineer submitted to Employer on ${ipc.certificationDate} (${actualDays} days)` : ' (pending Engineer certification)'}.`
+            notes: ipc.remarks || `Financial IPC submitted by Contractor on ${ipc.submissionDate || 'N/A'}${ipc.certificationDate ? ` and certified on ${ipc.certificationDate} (${actualDays} days)` : ' (pending Engineer certification)'}.`
           };
         });
 
@@ -488,46 +475,9 @@ export default function ConsultantPerformanceKpiWidget({
     return baseList;
   }, [consultant.submittalKpis, project?.id, project?.ipcTracker, consultant.residentEngineerName, consultant.commencementDate, targetOverrides, isViewingHistorical, historicalConsultant]);
 
-  // Active sub-view inside the widget
-  const [activeKpiView, setActiveKpiView] = useState<'comparison' | 'log'>(isAdmin ? 'comparison' : 'log');
-
-  React.useEffect(() => {
-    if (!isAdmin && activeKpiView !== 'log') {
-      setActiveKpiView('log');
-    }
-  }, [isAdmin, activeKpiView]);
-
-  // Search & filter states
-  const [submittalSearch, setSubmittalSearch] = useState('');
-  const [selectedTypeFilter, setSelectedTypeFilter] = useState<string>('ALL');
-  const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('ALL');
-
-  // Editing Modes
-  const [isSpreadsheetMode, setIsSpreadsheetMode] = useState(false);
-  const [editingRowId, setEditingRowId] = useState<string | null>(null);
-  const [editingRowDraft, setEditingRowDraft] = useState<ConsultantSubmittalKpi | null>(null);
-  const [deletingRowId, setDeletingRowId] = useState<string | null>(null);
-
   // Modal states
-  const [isAddSubmittalModalOpen, setIsAddSubmittalModalOpen] = useState(false);
-  const [isEditSubmittalModalOpen, setIsEditSubmittalModalOpen] = useState(false);
   const [isTargetSettingsOpen, setIsTargetSettingsOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(!compact);
-
-  // Form for adding new submittal
-  const [newSubmittalForm, setNewSubmittalForm] = useState<Partial<ConsultantSubmittalKpi>>({
-    submittalNo: `RFI-0${submittalsList.length + 1}`,
-    type: 'RFI',
-    title: '',
-    submittedDate: new Date().toISOString().split('T')[0],
-    respondedDate: new Date().toISOString().split('T')[0],
-    targetDays: 7,
-    actualDays: 4,
-    status: 'Approved / Closed',
-    priority: 'High',
-    assignedEngineer: consultant.residentEngineerName || 'Resident Engineer',
-    notes: ''
-  });
 
   const [editCriteriaForm, setEditCriteriaForm] = useState<EvaluationCriteriaItem[]>(evaluationCriteria);
   const [newCritName, setNewCritName] = useState('');
@@ -572,17 +522,15 @@ export default function ConsultantPerformanceKpiWidget({
       const isAverageFaster = avgActualDays <= targetDays;
 
       // Evaluation Mark Scoring & Delayed Penalty Formula:
-      // If within target date / 0 delayed (no resolved delayed AND no pending overdue) -> Full mark (weightPct)
-      // Any item delayed past Target SLA (including pending items overdue) is penalized:
-      // Deduction = (totalDelayedCount / totalSubmittals) * weightPct
+      // Net Mark = Weightage − Deduction
+      // Deduction = (Delayed ÷ Submitted) × Weightage
       let deduction = 0;
       if (totalSubmittals > 0 && totalDelayedCount > 0) {
         deduction = parseFloat(((totalDelayedCount / totalSubmittals) * weightPct).toFixed(2));
       }
       const earnedScore = parseFloat(Math.max(0, weightPct - deduction).toFixed(2));
 
-      // Compliance determination:
-      // Complying requires: Avg Actual Days <= Target SLA AND zero pending overdue items AND zero resolved delay
+      // Compliance determination
       const isComplying = totalSubmittals === 0
         ? true
         : (avgActualDays <= targetDays && pendingDelayedCount === 0 && resolvedDelayedCount === 0);
@@ -678,7 +626,7 @@ export default function ConsultantPerformanceKpiWidget({
     const totalPendingDelayedSubmittals = categoryKpiStats.reduce((sum, s) => sum + s.pendingDelayedCount, 0);
     const totalResolvedDelayedSubmittals = categoryKpiStats.reduce((sum, s) => sum + s.resolvedDelayedCount, 0);
 
-    // Global on-time compliance (accounting for on-time resolved + on-time pending)
+    // Global on-time compliance
     const onTimeTotal = evaluatedAll.filter(s => !s.isDelayed).length;
     const complianceRate = totalCount > 0 ? (onTimeTotal / totalCount) * 100 : 100;
 
@@ -736,395 +684,69 @@ export default function ConsultantPerformanceKpiWidget({
     };
   }, [submittalsList, targetOverrides, categoryKpiStats, evaluationCriteria]);
 
-  // Status breakdown metrics for dropdown options and quick filter chips
-  const statusCounts = useMemo(() => {
-    const total = submittalsList.length;
-    let pending = 0;
-    let pendingOnTrack = 0;
-    let pendingOverdue = 0;
-    let approvedClosed = 0;
-    let approvedWithComments = 0;
-    let overdue = 0;
-    let rejected = 0;
-    let onTime = 0;
-    let delayed = 0;
-
-    submittalsList.forEach(item => {
-      const target = item.targetDays || targetOverrides[item.type] || 7;
-      const delayInfo = checkSubmittalDelay(item, target);
-
-      if (delayInfo.isPending) {
-        pending++;
-        if (delayInfo.isOverdue) {
-          pendingOverdue++;
-        } else {
-          pendingOnTrack++;
-        }
-      }
-      if (item.status === 'Approved / Closed') {
-        approvedClosed++;
-      }
-      if (item.status === 'Approved with Comments') {
-        approvedWithComments++;
-      }
-      if (delayInfo.isOverdue) {
-        overdue++;
-        delayed++;
-      } else {
-        onTime++;
-      }
-      if (item.status === 'Rejected / Resubmit') {
-        rejected++;
-      }
-    });
-
-    const closedTotal = approvedClosed + approvedWithComments;
-
-    return {
-      total,
-      pending,
-      pendingOnTrack,
-      pendingOverdue,
-      closedTotal,
-      approvedClosed,
-      approvedWithComments,
-      overdue,
-      rejected,
-      onTime,
-      delayed
-    };
-  }, [submittalsList, targetOverrides]);
-
-  // Filtered submittals list
-  const filteredSubmittals = useMemo(() => {
-    return submittalsList.filter(item => {
-      const matchesSearch = submittalSearch === '' || 
-        item.submittalNo.toLowerCase().includes(submittalSearch.toLowerCase()) ||
-        item.title.toLowerCase().includes(submittalSearch.toLowerCase()) ||
-        (item.assignedEngineer && item.assignedEngineer.toLowerCase().includes(submittalSearch.toLowerCase())) ||
-        (item.notes && item.notes.toLowerCase().includes(submittalSearch.toLowerCase()));
-
-      const matchesType = selectedTypeFilter === 'ALL' || item.type === selectedTypeFilter;
-      
-      const target = item.targetDays || targetOverrides[item.type] || 7;
-      const delayInfo = checkSubmittalDelay(item, target);
-      let matchesStatus = true;
-
-      if (selectedStatusFilter === 'ALL') {
-        matchesStatus = true;
-      } else if (selectedStatusFilter === 'PENDING' || selectedStatusFilter === 'Under Review') {
-        matchesStatus = delayInfo.isPending;
-      } else if (selectedStatusFilter === 'PENDING_OVERDUE') {
-        matchesStatus = delayInfo.isPending && delayInfo.isOverdue;
-      } else if (selectedStatusFilter === 'CLOSED') {
-        matchesStatus = item.status === 'Approved / Closed' || item.status === 'Approved with Comments';
-      } else if (selectedStatusFilter === 'Approved / Closed') {
-        matchesStatus = item.status === 'Approved / Closed';
-      } else if (selectedStatusFilter === 'Approved with Comments') {
-        matchesStatus = item.status === 'Approved with Comments';
-      } else if (selectedStatusFilter === 'OVERDUE' || selectedStatusFilter === 'Overdue' || selectedStatusFilter === 'DELAYED') {
-        matchesStatus = delayInfo.isOverdue;
-      } else if (selectedStatusFilter === 'Rejected / Resubmit') {
-        matchesStatus = item.status === 'Rejected / Resubmit';
-      } else if (selectedStatusFilter === 'ON_TIME') {
-        matchesStatus = !delayInfo.isOverdue;
-      } else {
-        matchesStatus = item.status === selectedStatusFilter;
-      }
-
-      return matchesSearch && matchesType && matchesStatus;
-    });
-  }, [submittalsList, submittalSearch, selectedTypeFilter, selectedStatusFilter, targetOverrides]);
-
-  // Helper to commit submittals update
-  const commitSubmittals = (updatedList: ConsultantSubmittalKpi[], actionDesc: string) => {
-    const updatedConsultant: SupervisionConsultantInfo = {
-      ...consultant,
-      submittalKpis: updatedList
-    };
-
-    if (onUpdateConsultant) {
-      onUpdateConsultant(updatedConsultant, actionDesc);
-    }
-  };
-
-  // Handler for saving a new submittal
-  const handleSaveNewSubmittal = () => {
-    if (!newSubmittalForm.title || !newSubmittalForm.submittalNo) return;
-
-    let actualDays = Number(newSubmittalForm.actualDays);
-    if (newSubmittalForm.respondedDate && newSubmittalForm.submittedDate) {
-      const diff = Math.round((new Date(newSubmittalForm.respondedDate).getTime() - new Date(newSubmittalForm.submittedDate).getTime()) / (1000 * 60 * 60 * 24));
-      if (!isNaN(diff) && diff >= 0) {
-        actualDays = diff;
-      }
-    }
-
-    const target = Number(newSubmittalForm.targetDays) || targetOverrides[newSubmittalForm.type || 'RFI'] || 7;
-
-    const newRecord: ConsultantSubmittalKpi = {
-      id: `sub_${Date.now()}`,
-      submittalNo: newSubmittalForm.submittalNo,
-      type: (newSubmittalForm.type as any) || 'RFI',
-      title: newSubmittalForm.title,
-      submittedDate: newSubmittalForm.submittedDate || new Date().toISOString().split('T')[0],
-      respondedDate: newSubmittalForm.respondedDate || undefined,
-      targetDays: target,
-      actualDays: actualDays >= 0 ? actualDays : undefined,
-      status: (newSubmittalForm.status as any) || 'Approved / Closed',
-      priority: (newSubmittalForm.priority as any) || 'High',
-      assignedEngineer: newSubmittalForm.assignedEngineer || consultant.residentEngineerName || '',
-      notes: newSubmittalForm.notes || ''
-    };
-
-    const updatedList = [newRecord, ...submittalsList];
-    commitSubmittals(updatedList, `Added submittal ${newRecord.submittalNo}`);
-    setIsAddSubmittalModalOpen(false);
-  };
-
-  // Handler for updating a single cell directly in spreadsheet mode or inline
-  const handleUpdateCell = (id: string, field: keyof ConsultantSubmittalKpi, value: any) => {
-    const updatedList = submittalsList.map(item => {
-      if (item.id === id) {
-        const updatedItem = { ...item, [field]: value };
-        
-        // Auto-recalculate turnaround if submitted or responded date changes
-        if (field === 'submittedDate' || field === 'respondedDate') {
-          if (updatedItem.respondedDate && updatedItem.submittedDate) {
-            const subTime = new Date(updatedItem.submittedDate).getTime();
-            const resTime = new Date(updatedItem.respondedDate).getTime();
-            if (!isNaN(subTime) && !isNaN(resTime)) {
-              const days = Math.max(0, Math.round((resTime - subTime) / (1000 * 60 * 60 * 24)));
-              updatedItem.actualDays = days;
-            }
-          }
-        }
-
-        // Auto-update targetDays if category type changes and target is default
-        if (field === 'type') {
-          updatedItem.targetDays = targetOverrides[value] || DEFAULT_SLA_TARGETS[value] || 7;
-        }
-
-        return updatedItem;
-      }
-      return item;
-    });
-
-    commitSubmittals(updatedList, `Updated ${field} on submittal`);
-  };
-
-  // Handler for starting row edit
-  const handleStartRowEdit = (item: ConsultantSubmittalKpi) => {
-    setEditingRowId(item.id);
-    setEditingRowDraft({ ...item });
-  };
-
-  // Handler for saving edited row
-  const handleSaveRowEdit = () => {
-    if (!editingRowDraft) return;
-
-    // Recalculate days if valid dates
-    let actualDays = editingRowDraft.actualDays;
-    if (editingRowDraft.respondedDate && editingRowDraft.submittedDate) {
-      const subTime = new Date(editingRowDraft.submittedDate).getTime();
-      const resTime = new Date(editingRowDraft.respondedDate).getTime();
-      if (!isNaN(subTime) && !isNaN(resTime)) {
-        actualDays = Math.max(0, Math.round((resTime - subTime) / (1000 * 60 * 60 * 24)));
-      }
-    }
-
-    const finalDraft: ConsultantSubmittalKpi = {
-      ...editingRowDraft,
-      actualDays
-    };
-
-    const updatedList = submittalsList.map(item => 
-      item.id === finalDraft.id ? finalDraft : item
-    );
-
-    commitSubmittals(updatedList, `Updated submittal ${finalDraft.submittalNo}`);
-    setEditingRowId(null);
-    setEditingRowDraft(null);
-    setIsEditSubmittalModalOpen(false);
-  };
-
-  // Handler for deleting a row
-  const handleDeleteRow = (id: string) => {
-    const deletedItem = submittalsList.find(s => s.id === id);
-    const updatedList = submittalsList.filter(item => item.id !== id);
-    commitSubmittals(updatedList, `Deleted submittal ${deletedItem?.submittalNo || id}`);
-    setDeletingRowId(null);
-    if (editingRowId === id) {
-      setEditingRowId(null);
-      setEditingRowDraft(null);
-    }
-  };
-
-  // Handler for duplicating a row
-  const handleDuplicateRow = (item: ConsultantSubmittalKpi) => {
-    const newRecord: ConsultantSubmittalKpi = {
-      ...item,
-      id: `sub_${Date.now()}`,
-      submittalNo: `${item.submittalNo}-COPY`,
-      title: `${item.title} (Copy)`,
-      submittedDate: new Date().toISOString().split('T')[0],
-      respondedDate: undefined,
-      actualDays: undefined,
-      status: 'Under Review'
-    };
-
-    const updatedList = [newRecord, ...submittalsList];
-    commitSubmittals(updatedList, `Duplicated submittal to create ${newRecord.submittalNo}`);
-  };
-
-  // Handler for quick row insertion
-  const handleInsertQuickRow = () => {
-    const nextNum = submittalsList.length + 1;
-    const newRecord: ConsultantSubmittalKpi = {
-      id: `sub_${Date.now()}`,
-      submittalNo: `RFI-0${nextNum < 10 ? '0' + nextNum : nextNum}`,
-      type: 'RFI',
-      title: 'New Technical Clarification Inquiry / Submittal',
-      submittedDate: new Date().toISOString().split('T')[0],
-      respondedDate: undefined,
-      targetDays: targetOverrides['RFI'] || 7,
-      actualDays: undefined,
-      status: 'Under Review',
-      priority: 'High',
-      assignedEngineer: consultant.residentEngineerName || 'Resident Engineer',
-      notes: ''
-    };
-
-    const updatedList = [newRecord, ...submittalsList];
-    commitSubmittals(updatedList, `Inserted new draft submittal row ${newRecord.submittalNo}`);
-    setEditingRowId(newRecord.id);
-    setEditingRowDraft(newRecord);
-    setActiveKpiView('log');
-  };
-
-  // Reset to default sample list
   const handleResetToDefaults = () => {
-    if (window.confirm('Reset all submittal KPI records and targets to standard ERA FIDIC baseline benchmarks?')) {
+    if (window.confirm('Reset all submittal evaluation criteria and targets to standard ERA FIDIC baseline benchmarks?')) {
       const updatedConsultant: SupervisionConsultantInfo = {
         ...consultant,
-        submittalKpis: DEFAULT_SUBMITTAL_KPIS,
+        evaluationCriteria: DEFAULT_EVALUATION_CRITERIA,
         targetOverrides: DEFAULT_SLA_TARGETS
       };
       if (onUpdateConsultant) {
-        onUpdateConsultant(updatedConsultant, 'Reset submittal KPIs to standard baseline');
+        onUpdateConsultant(updatedConsultant, 'Reset submittal evaluation benchmarks to standard baseline');
       }
     }
   };
 
-
-
-  // Export CSV
-  const handleExportCsv = () => {
-    const headers = ['Submittal No', 'Type', 'Title / Subject', 'Submitted Date', 'Responded Date', 'Target Days', 'Actual Days', 'Status', 'Priority', 'Assigned Engineer', 'Notes'];
-    const rows = filteredSubmittals.map(s => [
-      `"${s.submittalNo}"`,
-      `"${s.type}"`,
-      `"${s.title.replace(/"/g, '""')}"`,
-      `"${s.submittedDate}"`,
-      `"${s.respondedDate || ''}"`,
-      s.targetDays,
-      s.actualDays !== undefined ? s.actualDays : '',
-      `"${s.status}"`,
-      `"${s.priority}"`,
-      `"${(s.assignedEngineer || '').replace(/"/g, '""')}"`,
-      `"${(s.notes || '').replace(/"/g, '""')}"`
-    ]);
-
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `Consultant_SLA_Submittals_${project.id || 'export'}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
   return (
-    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 md:p-6 shadow-sm space-y-5">
+    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-6">
       {/* Top Banner / Widget Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
         <div className="space-y-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
               <Clock className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-              {isAdmin ? 'Supervision Consultant KPI & SLA Engine' : 'Submittal Register & Audit Log'}
+              Supervision Consultant Performance KPI & SLA Evaluation
             </span>
-            {isAdmin && (
-              <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 font-mono">
-                {overallMetrics.complianceRate.toFixed(1)}% On-Time SLA
-              </span>
-            )}
+            <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 font-mono">
+              {overallMetrics.complianceRate.toFixed(1)}% On-Time SLA
+            </span>
             <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 dark:bg-purple-950/50 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
-              ✍️ Fully Editable & Updatable Table
+              📋 {submittalsList.length} Evaluated Submittal Records
             </span>
           </div>
 
           <h3 className="text-lg md:text-xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
-            {isAdmin ? 'RFI & Submittal Response Performance vs Contract Targets' : 'Submittal Log'}
+            Consultant SLA Response Performance & Weighted Evaluation Matrix
           </h3>
-          <p className="text-xs text-slate-500 dark:text-slate-400 max-w-2xl">
-            {isAdmin 
-              ? 'Real-time benchmarking of technical RFIs, material approvals, and IPC review turnaround times against FIDIC & Ethiopian Roads Administration contract targets. Click any cell or row to edit, update, delete, or add records.'
-              : 'Editable submittal register for technical RFIs, material approvals, IPC review records, and submittal turnaround entries. Click any cell or row to edit, update, delete, or add records.'}
+          <p className="text-xs text-slate-500 dark:text-slate-400 max-w-3xl">
+            Real-time benchmarking of technical RFIs, material approvals, IPC verification, and design turnaround times against FIDIC & Ethiopian Roads Administration contract targets. Performance marks and deductions are dynamically calculated from the evaluated Submittal Log.
           </p>
         </div>
 
         {/* Action Controls */}
         <div className="flex flex-wrap items-center gap-2">
+          {!isReadonly && isAdmin && (
+            <button
+              onClick={() => {
+                setEditCriteriaForm(evaluationCriteria);
+                setIsTargetSettingsOpen(true);
+              }}
+              title="Configure Evaluation Criteria, Target Days & Weightages"
+              className="px-3.5 py-2 text-xs font-bold rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center gap-1.5 transition shadow-xs cursor-pointer"
+            >
+              <Settings2 className="w-4 h-4 text-indigo-600" />
+              Criteria & Weights
+            </button>
+          )}
+
           {!isReadonly && (
-            <>
-              <button
-                onClick={handleInsertQuickRow}
-                title="Quickly insert an editable row directly into the table"
-                className="px-3 py-1.5 text-xs font-bold rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center gap-1.5 transition cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5 text-indigo-600" />
-                Quick Row
-              </button>
-
-              <button
-                onClick={() => {
-                  setNewSubmittalForm({
-                    submittalNo: `RFI-0${submittalsList.length + 1}`,
-                    type: 'RFI',
-                    title: '',
-                    submittedDate: new Date().toISOString().split('T')[0],
-                    respondedDate: new Date().toISOString().split('T')[0],
-                    targetDays: targetOverrides['RFI'] || 7,
-                    actualDays: 4,
-                    status: 'Approved / Closed',
-                    priority: 'High',
-                    assignedEngineer: consultant.residentEngineerName || '',
-                    notes: ''
-                  });
-                  setIsAddSubmittalModalOpen(true);
-                }}
-                className="px-3.5 py-2 text-xs font-bold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1.5 transition shadow-xs cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                Log Submittal
-              </button>
-
-              {isAdmin && (
-                <button
-                  onClick={() => {
-                    setEditCriteriaForm(evaluationCriteria);
-                    setIsTargetSettingsOpen(true);
-                  }}
-                  title="Configure Evaluation Criteria, Target Days & Weightages"
-                  className="px-3.5 py-2 text-xs font-bold rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center gap-1.5 transition shadow-xs cursor-pointer"
-                >
-                  <Settings2 className="w-4 h-4 text-indigo-600" />
-                  Criteria & Weights
-                </button>
-              )}
-            </>
+            <button
+              onClick={handleResetToDefaults}
+              title="Reset to ERA FIDIC standard benchmarks"
+              className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 transition text-xs font-bold"
+            >
+              <RotateCcw className="w-4 h-4" />
+            </button>
           )}
 
           <button
@@ -1182,12 +804,12 @@ export default function ConsultantPerformanceKpiWidget({
           <div className="flex items-center gap-2">
             <History className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
             <span className="text-amber-900 dark:text-amber-200 font-medium">
-              Displaying archived performance evaluation for predecessor <strong>{historicalConsultant?.firmName}</strong> (Tenure: {historicalConsultant?.commencementDate || 'Start'} to {historicalConsultant?.handoverDate || 'Archived'}). Reason: <em>{historicalConsultant?.reasonForTransition || historicalConsultant?.transitionReason || 'Service tenure concluded.'}</em>
+              Displaying archived performance evaluation for predecessor <strong>{historicalConsultant?.firmName}</strong> (Tenure: {historicalConsultant?.commencementDate || 'Start'} to {historicalConsultant?.handoverDate || 'Archived'}).
             </span>
           </div>
           <button
             onClick={() => setSelectedTenureConsultantId('current')}
-            className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-amber-200/80 hover:bg-amber-300 dark:bg-amber-900 dark:hover:bg-amber-800 text-amber-900 dark:text-amber-100 transition shrink-0 self-start sm:self-auto cursor-pointer"
+            className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-amber-200/80 hover:bg-amber-300 dark:bg-amber-900 dark:hover:bg-amber-800 text-amber-900 dark:text-amber-100 transition shrink-0 cursor-pointer"
           >
             Switch to Active Consultant
           </button>
@@ -1195,105 +817,101 @@ export default function ConsultantPerformanceKpiWidget({
       )}
 
       {/* Summary Highlight Cards */}
-      <div className={`grid gap-3 ${isAdmin ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4' : 'grid-cols-1 sm:grid-cols-3'}`}>
-        {isAdmin && (
-          <>
-            {/* Avg RFI Response Time Card */}
-            <div className="p-3.5 rounded-2xl bg-gradient-to-br from-indigo-50 to-blue-50/50 dark:from-indigo-950/40 dark:to-slate-900 border border-indigo-100 dark:border-indigo-900/60 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300 flex items-center gap-1">
-                  <Clock className="w-3.5 h-3.5" />
-                  Avg RFI Response Time
-                </span>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide border ${
-                  overallMetrics.rfiStat.isComplying
-                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
-                    : 'bg-rose-100 text-rose-800 dark:bg-rose-950/70 dark:text-rose-300 border-rose-300 dark:border-rose-700'
-                }`}>
-                  {overallMetrics.rfiStat.isComplying ? '✓ Complying' : '✕ Not Complying'}
-                </span>
-              </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        {/* Avg RFI Response Time Card */}
+        <div className="p-3.5 rounded-2xl bg-gradient-to-br from-indigo-50 to-blue-50/50 dark:from-indigo-950/40 dark:to-slate-900 border border-indigo-100 dark:border-indigo-900/60 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300 flex items-center gap-1">
+              <Clock className="w-3.5 h-3.5" />
+              Avg RFI Response Time
+            </span>
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide border ${
+              overallMetrics.rfiStat.isComplying
+                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
+                : 'bg-rose-100 text-rose-800 dark:bg-rose-950/70 dark:text-rose-300 border-rose-300 dark:border-rose-700'
+            }`}>
+              {overallMetrics.rfiStat.isComplying ? '✓ Complying' : '✕ Not Complying'}
+            </span>
+          </div>
 
-              <div className="flex items-baseline justify-between gap-2">
-                <div className="flex items-baseline gap-1.5">
-                  <span className="text-2xl font-black font-mono text-indigo-950 dark:text-white">
-                    {overallMetrics.avgRfiDays}
-                  </span>
-                  <span className="text-xs text-slate-500 font-semibold">days</span>
-                  <span className="text-[11px] text-slate-400 font-mono">/ {overallMetrics.rfiTarget}d target</span>
-                </div>
-                <div className="text-right">
-                  <span className="text-xs font-black font-mono text-indigo-700 dark:text-indigo-300">
-                    {overallMetrics.rfiStat.earnedScore.toFixed(1)} / {overallMetrics.rfiStat.weightPct} pts
-                  </span>
-                </div>
-              </div>
-
-              <div className="pt-1 border-t border-indigo-100/80 dark:border-indigo-900/40 flex items-center justify-between text-[10px]">
-                <span className="text-slate-600 dark:text-slate-400">
-                  {overallMetrics.rfiStat.deduction === 0 ? (
-                    <span className="text-emerald-600 dark:text-emerald-400 font-bold">★ Full Mark (0 delayed)</span>
-                  ) : (
-                    <span className="text-rose-600 dark:text-rose-400 font-bold">
-                      -{overallMetrics.rfiStat.deduction.toFixed(2)} pts ({overallMetrics.rfiStat.delayedCount}/{overallMetrics.rfiStat.totalSubmittals} delayed)
-                    </span>
-                  )}
-                </span>
-                <span className="font-mono text-indigo-600 dark:text-indigo-400 font-bold">
-                  {overallMetrics.rfiEfficiencyPct >= 0 
-                    ? `${Math.abs(overallMetrics.rfiEfficiencyPct).toFixed(0)}% faster` 
-                    : `${Math.abs(overallMetrics.rfiEfficiencyPct).toFixed(0)}% over SLA`}
-                </span>
-              </div>
+          <div className="flex items-baseline justify-between gap-2">
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-2xl font-black font-mono text-indigo-950 dark:text-white">
+                {overallMetrics.avgRfiDays}
+              </span>
+              <span className="text-xs text-slate-500 font-semibold">days</span>
+              <span className="text-[11px] text-slate-400 font-mono">/ {overallMetrics.rfiTarget}d target</span>
             </div>
-
-            {/* Total Consultant Evaluation Score Card */}
-            <div className="p-3.5 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50/50 dark:from-emerald-950/40 dark:to-slate-900 border border-emerald-100 dark:border-emerald-900/60 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300 flex items-center gap-1">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  Evaluation Score
-                </span>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide border ${
-                  overallMetrics.totalEarnedScore >= 85
-                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
-                    : overallMetrics.totalEarnedScore >= 70
-                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border-amber-300 dark:border-amber-700'
-                    : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 border-rose-300 dark:border-rose-700'
-                }`}>
-                  {overallMetrics.totalEarnedScore >= 85 ? 'Grade A (Excellent)' : overallMetrics.totalEarnedScore >= 70 ? 'Grade B (Satisfactory)' : 'Needs Review'}
-                </span>
-              </div>
-
-              <div className="flex items-baseline justify-between gap-2">
-                <div className="flex items-baseline gap-1.5">
-                  <span className="text-2xl font-black font-mono text-emerald-950 dark:text-white">
-                    {overallMetrics.totalEarnedScore.toFixed(1)}
-                  </span>
-                  <span className="text-xs text-slate-500 font-semibold">/ {overallMetrics.totalWeight} pts</span>
-                </div>
-                <span className="text-[11px] font-bold font-mono text-emerald-600 dark:text-emerald-400">
-                  {((overallMetrics.totalEarnedScore / (overallMetrics.totalWeight || 100)) * 100).toFixed(1)}% Net
-                </span>
-              </div>
-
-              <div className="pt-1 border-t border-emerald-100/80 dark:border-emerald-900/40 flex items-center justify-between text-[10px]">
-                <span className="text-slate-600 dark:text-slate-400">
-                  {overallMetrics.totalDeductions === 0 ? (
-                    <span className="text-emerald-600 dark:text-emerald-400 font-bold">100% Full SLA Marks</span>
-                  ) : (
-                    <span className="text-amber-600 dark:text-amber-400 font-bold">
-                      Deductions: -{overallMetrics.totalDeductions.toFixed(2)} pts ({overallMetrics.totalDelayedSubmittals} delayed items)
-                    </span>
-                  )}
-                </span>
-                <span className="font-mono text-emerald-700 dark:text-emerald-300 font-semibold">
-                  {overallMetrics.complianceRate.toFixed(0)}% On-Time
-                </span>
-              </div>
+            <div className="text-right">
+              <span className="text-xs font-black font-mono text-indigo-700 dark:text-indigo-300">
+                {overallMetrics.rfiStat.earnedScore.toFixed(1)} / {overallMetrics.rfiStat.weightPct} pts
+              </span>
             </div>
-          </>
-        )}
+          </div>
+
+          <div className="pt-1 border-t border-indigo-100/80 dark:border-indigo-900/40 flex items-center justify-between text-[10px]">
+            <span className="text-slate-600 dark:text-slate-400">
+              {overallMetrics.rfiStat.deduction === 0 ? (
+                <span className="text-emerald-600 dark:text-emerald-400 font-bold">★ Full Mark (0 delayed)</span>
+              ) : (
+                <span className="text-rose-600 dark:text-rose-400 font-bold">
+                  -{overallMetrics.rfiStat.deduction.toFixed(2)} pts ({overallMetrics.rfiStat.delayedCount}/{overallMetrics.rfiStat.totalSubmittals} delayed)
+                </span>
+              )}
+            </span>
+            <span className="font-mono text-indigo-600 dark:text-indigo-400 font-bold">
+              {overallMetrics.rfiEfficiencyPct >= 0 
+                ? `${Math.abs(overallMetrics.rfiEfficiencyPct).toFixed(0)}% faster` 
+                : `${Math.abs(overallMetrics.rfiEfficiencyPct).toFixed(0)}% over SLA`}
+            </span>
+          </div>
+        </div>
+
+        {/* Total Consultant Evaluation Score Card */}
+        <div className="p-3.5 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50/50 dark:from-emerald-950/40 dark:to-slate-900 border border-emerald-100 dark:border-emerald-900/60 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300 flex items-center gap-1">
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              Evaluation Score
+            </span>
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide border ${
+              overallMetrics.totalEarnedScore >= 85
+                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
+                : overallMetrics.totalEarnedScore >= 70
+                ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border-amber-300 dark:border-amber-700'
+                : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 border-rose-300 dark:border-rose-700'
+            }`}>
+              {overallMetrics.gradeLabel}
+            </span>
+          </div>
+
+          <div className="flex items-baseline justify-between gap-2">
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-2xl font-black font-mono text-emerald-950 dark:text-white">
+                {overallMetrics.totalEarnedScore.toFixed(1)}
+              </span>
+              <span className="text-xs text-slate-500 font-semibold">/ {overallMetrics.totalWeight} pts</span>
+            </div>
+            <span className="text-[11px] font-bold font-mono text-emerald-600 dark:text-emerald-400">
+              {((overallMetrics.totalEarnedScore / (overallMetrics.totalWeight || 100)) * 100).toFixed(1)}% Net
+            </span>
+          </div>
+
+          <div className="pt-1 border-t border-emerald-100/80 dark:border-emerald-900/40 flex items-center justify-between text-[10px]">
+            <span className="text-slate-600 dark:text-slate-400">
+              {overallMetrics.totalDeductions === 0 ? (
+                <span className="text-emerald-600 dark:text-emerald-400 font-bold">100% Full SLA Marks</span>
+              ) : (
+                <span className="text-amber-600 dark:text-amber-400 font-bold">
+                  Deductions: -{overallMetrics.totalDeductions.toFixed(2)} pts ({overallMetrics.totalDelayedSubmittals} delayed items)
+                </span>
+              )}
+            </span>
+            <span className="font-mono text-emerald-700 dark:text-emerald-300 font-semibold">
+              {overallMetrics.complianceRate.toFixed(0)}% On-Time
+            </span>
+          </div>
+        </div>
 
         {/* Total Submittals Processed */}
         <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 space-y-1.5">
@@ -1315,8 +933,9 @@ export default function ConsultantPerformanceKpiWidget({
               {overallMetrics.totalCount - overallMetrics.totalDelayedSubmittals} on-time
             </span>
           </div>
-          <div className="text-[10px] text-slate-500 font-medium">
-            Avg Turnaround: <strong className="font-mono text-slate-700 dark:text-slate-300">{overallMetrics.avgOverallDays} days</strong>
+          <div className="text-[10px] text-slate-500 font-medium flex items-center justify-between">
+            <span>Avg: <strong className="font-mono text-slate-700 dark:text-slate-300">{overallMetrics.avgOverallDays} days</strong></span>
+            <span className="text-slate-400 font-normal">Completed reviews</span>
           </div>
         </div>
 
@@ -1328,7 +947,7 @@ export default function ConsultantPerformanceKpiWidget({
               Active Review Queue
             </span>
             <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-200 dark:bg-amber-900/60 text-amber-800 dark:text-amber-200 font-mono">
-              {statusCounts.overdue > 0 ? `${statusCounts.overdue} Overdue` : 'On Track'}
+              {overallMetrics.pendingOverdueCount > 0 ? `${overallMetrics.pendingOverdueCount} Overdue` : 'On Track'}
             </span>
           </div>
           <div className="flex items-baseline gap-2">
@@ -1337,11 +956,12 @@ export default function ConsultantPerformanceKpiWidget({
             </span>
             <span className="text-xs text-amber-600 dark:text-amber-400 font-semibold">in review</span>
             <span className="text-[11px] font-bold font-mono text-amber-700 dark:text-amber-300 ml-auto">
-              {statusCounts.delayed} delayed past target
+              {overallMetrics.totalPendingDelayedSubmittals} delayed past target
             </span>
           </div>
-          <div className="text-[10px] text-amber-700 dark:text-amber-400 font-medium">
-            Pending consultant / employer certification
+          <div className="text-[10px] text-amber-700 dark:text-amber-400 font-medium flex items-center justify-between">
+            <span>Pending Engineer certification</span>
+            <span className="text-amber-700 dark:text-amber-300 font-semibold">Active processing</span>
           </div>
         </div>
       </div>
@@ -1349,1453 +969,375 @@ export default function ConsultantPerformanceKpiWidget({
       {/* Expanded Interactive Body */}
       {isExpanded && (
         <div className="space-y-4 pt-2">
-          {/* Sub-View Navigation Tabs */}
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-2">
-            <div className="flex flex-wrap items-center gap-1.5">
-              {[
-                ...(isAdmin ? [
-                  { id: 'comparison', label: '📊 Turnaround vs Targets Table', icon: Sliders },
-                ] : []),
-                { id: 'log', label: '📋 Submittal Log', icon: FileText }
-              ].map((tab) => {
-                const IconComponent = tab.icon;
-                return (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveKpiView(tab.id as any)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
-                      activeKpiView === tab.id
-                        ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-xs'
-                        : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300'
-                    }`}
-                  >
-                    <IconComponent className="w-3.5 h-3.5" />
-                    {tab.label}
-                  </button>
-                );
-              })}
+          {/* Formula & Rule Guidance Banner */}
+          <div className="p-3.5 rounded-2xl bg-gradient-to-r from-slate-50 via-indigo-50/40 to-slate-50 dark:from-slate-800/80 dark:via-indigo-950/30 dark:to-slate-800/80 border border-indigo-100/80 dark:border-indigo-900/50 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                  FIDIC & ERA Consultant SLA Compliance & Evaluation Mark Matrix
+                </span>
+                <span className="px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300 font-mono font-bold text-[10px]">
+                  Formula Active
+                </span>
+              </div>
+              <p className="text-slate-600 dark:text-slate-300 text-[11px] leading-relaxed">
+                • <strong>Compliance Rule:</strong> Actual Avg Response Time ≤ Target SLA = <span className="text-emerald-600 dark:text-emerald-400 font-bold">Complying</span>; Exceeding Target SLA = <span className="text-rose-600 dark:text-rose-400 font-bold">Not Complying</span>.
+                <br />
+                • <strong>Evaluation Mark:</strong> Within target date receives <strong>Full Mark</strong>. For items delayed past target SLA: 
+                <code className="mx-1 px-1.5 py-0.5 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono text-indigo-600 dark:text-indigo-400 font-bold">
+                  Deduction = (Delayed ÷ Submitted) × Weightage
+                </code>
+                → 
+                <code className="ml-1 px-1.5 py-0.5 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono text-emerald-600 dark:text-emerald-400 font-bold">
+                  Net Mark = Weightage − Deduction
+                </code>
+              </p>
             </div>
 
-            <div className="flex items-center gap-2 text-xs">
-              <button
-                onClick={handleExportCsv}
-                title="Export submittal records to CSV"
-                className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center gap-1 font-semibold text-[11px]"
-              >
-                <Download className="w-3 h-3" />
-                CSV Export
-              </button>
-
-              {!isReadonly && (
-                <button
-                  onClick={handleResetToDefaults}
-                  title="Reset to ERA FIDIC standard benchmarks"
-                  className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 flex items-center gap-1 text-[11px]"
-                >
-                  <RotateCcw className="w-3 h-3" />
-                  Reset Defaults
-                </button>
-              )}
+            <div className="flex items-center gap-3 bg-white dark:bg-slate-900/80 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 shrink-0">
+              <div className="text-right">
+                <div className="text-[10px] uppercase font-bold text-slate-400">Total Net Score</div>
+                <div className="text-base font-black font-mono text-emerald-600 dark:text-emerald-400">
+                  {overallMetrics.totalEarnedScore.toFixed(2)} / {overallMetrics.totalWeight} pts
+                </div>
+              </div>
+              <div className="h-8 w-px bg-slate-200 dark:bg-slate-700" />
+              <div className="text-right">
+                <div className="text-[10px] uppercase font-bold text-slate-400">Total Deductions</div>
+                <div className="text-base font-black font-mono text-rose-600 dark:text-rose-400">
+                  -{overallMetrics.totalDeductions.toFixed(2)} pts
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* VIEW 1: RFI & SUBMITTAL RESPONSE PERFORMANCE VS CONTRACT TARGETS TABLE */}
-          {activeKpiView === 'comparison' && (
-            <div className="space-y-4">
-              {/* Formula & Rule Guidance Banner */}
-              <div className="p-3.5 rounded-2xl bg-gradient-to-r from-slate-50 via-indigo-50/40 to-slate-50 dark:from-slate-800/80 dark:via-indigo-950/30 dark:to-slate-800/80 border border-indigo-100/80 dark:border-indigo-900/50 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                      <ShieldCheck className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                      FIDIC & ERA Consultant SLA Compliance & Evaluation Mark Matrix
-                    </span>
-                    <span className="px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300 font-mono font-bold text-[10px]">
-                      Formula Active
-                    </span>
-                  </div>
-                  <p className="text-slate-600 dark:text-slate-300 text-[11px] leading-relaxed">
-                    • <strong>Compliance Rule:</strong> Actual Avg Response Time ≤ Target SLA = <span className="text-emerald-600 dark:text-emerald-400 font-bold">Complying</span>; Exceeding Target SLA = <span className="text-rose-600 dark:text-rose-400 font-bold">Not Complying</span>.
-                    <br />
-                    • <strong>Evaluation Mark:</strong> Within target date receives <strong>Full Mark</strong>. For items delayed past target SLA: 
-                    <code className="mx-1 px-1.5 py-0.5 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono text-indigo-600 dark:text-indigo-400 font-bold">
-                      Deduction = (Delayed ÷ Submitted) × Weightage
-                    </code>
-                    → 
-                    <code className="ml-1 px-1.5 py-0.5 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono text-emerald-600 dark:text-emerald-400 font-bold">
-                      Net Mark = Weightage − Deduction
-                    </code>
-                  </p>
-                </div>
+          {/* Detailed Performance Metric Table with editable target SLAs & weighted evaluation marks */}
+          <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-100/80 dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 font-bold border-b border-slate-200 dark:border-slate-800">
+                <tr>
+                  <th className="py-2.5 px-3.5">Submittal Criteria</th>
+                  <th className="py-2.5 px-3 text-center">
+                    Target SLA
+                    <span className="text-[9px] font-normal text-indigo-500 block">Editable</span>
+                  </th>
+                  <th className="py-2.5 px-3 text-center">Actual Avg</th>
+                  <th className="py-2.5 px-3.5 text-center">Compliance Status</th>
+                  <th className="py-2.5 px-3 text-center">Submitted / Delayed</th>
+                  <th className="py-2.5 px-2.5 text-center">Weight</th>
+                  <th className="py-2.5 px-3 text-center">Deductions</th>
+                  <th className="py-2.5 px-3.5 text-center">Evaluation Mark</th>
+                  <th className="py-2.5 px-3 text-center">On-Time Rate</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-800 dark:text-slate-200">
+                {categoryKpiStats.map((stat, sIdx) => (
+                  <tr key={`stat-cat-${stat.category}-${sIdx}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
+                    {/* Submittal Criteria Name */}
+                    <td className="py-2.5 px-3.5 font-bold">
+                      <div className="flex items-center gap-2">
+                        <span className={`w-2 h-2 rounded-full ${
+                          stat.isComplying ? 'bg-indigo-600' : 'bg-rose-500'
+                        }`}></span>
+                        <span className="text-slate-900 dark:text-white font-semibold">
+                          {stat.category}
+                        </span>
+                      </div>
+                    </td>
 
-                <div className="flex items-center gap-3 bg-white dark:bg-slate-900/80 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 shrink-0">
-                  <div className="text-right">
-                    <div className="text-[10px] uppercase font-bold text-slate-400">Total Net Score</div>
-                    <div className="text-base font-black font-mono text-emerald-600 dark:text-emerald-400">
-                      {overallMetrics.totalEarnedScore.toFixed(2)} / {overallMetrics.totalWeight} pts
-                    </div>
-                  </div>
-                  <div className="h-8 w-px bg-slate-200 dark:bg-slate-700" />
-                  <div className="text-right">
-                    <div className="text-[10px] uppercase font-bold text-slate-400">Total Deductions</div>
-                    <div className="text-base font-black font-mono text-rose-600 dark:text-rose-400">
-                      -{overallMetrics.totalDeductions.toFixed(2)} pts
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Detailed Performance Metric Table with editable target SLAs & weighted evaluation marks */}
-              <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-100/80 dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 font-bold border-b border-slate-200 dark:border-slate-800">
-                    <tr>
-                      <th className="py-2.5 px-3.5">Submittal Criteria</th>
-                      <th className="py-2.5 px-3 text-center">
-                        Target SLA
-                        <span className="text-[9px] font-normal text-indigo-500 block">Editable</span>
-                      </th>
-                      <th className="py-2.5 px-3 text-center">Actual Avg</th>
-                      <th className="py-2.5 px-3.5 text-center">Compliance Status</th>
-                      <th className="py-2.5 px-3 text-center">Submitted / Delayed</th>
-                      <th className="py-2.5 px-2.5 text-center">Weight</th>
-                      <th className="py-2.5 px-3 text-center">Deductions</th>
-                      <th className="py-2.5 px-3.5 text-center">Evaluation Mark</th>
-                      <th className="py-2.5 px-3 text-center">On-Time Rate</th>
-                      <th className="py-2.5 px-3 text-center">Audit</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-800 dark:text-slate-200">
-                    {categoryKpiStats.map((stat, sIdx) => (
-                      <tr key={`stat-cat-${stat.category}-${sIdx}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
-                        {/* Submittal Criteria Name */}
-                        <td className="py-2.5 px-3.5 font-bold">
-                          <div className="flex items-center gap-2">
-                            <span className={`w-2 h-2 rounded-full ${
-                              stat.isComplying ? 'bg-indigo-600' : 'bg-rose-500'
-                            }`}></span>
-                            <span className="text-slate-900 dark:text-white font-semibold">
-                              {stat.category}
-                            </span>
-                          </div>
-                        </td>
-
-                        {/* Target SLA (Editable) */}
-                        <td className="py-2.5 px-3 text-center font-mono font-semibold">
-                          {!isReadonly ? (
-                            <div className="inline-flex items-center justify-center gap-1">
-                              <input
-                                type="number"
-                                min="1"
-                                max="90"
-                                value={targetOverrides[stat.category] !== undefined ? targetOverrides[stat.category] : stat.targetDays}
-                                onChange={(e) => {
-                                  const val = parseInt(e.target.value) || 1;
-                                  const newOverrides = { ...targetOverrides, [stat.category]: val };
-                                  const updatedConsultant: SupervisionConsultantInfo = {
-                                    ...consultant,
-                                    targetOverrides: newOverrides
-                                  };
-                                  if (onUpdateConsultant) {
-                                    onUpdateConsultant(updatedConsultant, `Updated ${stat.category} target SLA to ${val} days`);
-                                  }
-                                }}
-                                className="w-12 px-1 py-0.5 text-center bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-md font-bold text-slate-900 dark:text-white text-xs"
-                              />
-                              <span className="text-slate-400 text-[11px]">d</span>
-                            </div>
-                          ) : (
-                            <span className="text-slate-500">{stat.targetDays}d</span>
-                          )}
-                        </td>
-
-                        {/* Actual Average */}
-                        <td className="py-2.5 px-3 text-center font-mono font-bold text-indigo-600 dark:text-indigo-400">
-                          {stat.actualDays}d
-                        </td>
-
-                        {/* Compliance Status */}
-                        <td className="py-2.5 px-3.5 text-center">
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold font-mono inline-flex items-center gap-1 border ${
-                            stat.isComplying
-                              ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
-                              : 'bg-rose-50 text-rose-700 dark:bg-rose-950/70 dark:text-rose-300 border-rose-200 dark:border-rose-800'
-                          }`}>
-                            {stat.isComplying ? '✓ Complying' : '✕ Not Complying'}
-                          </span>
-                        </td>
-
-                        {/* Submitted vs Delayed */}
-                        <td className="py-2.5 px-3 text-center font-mono text-[11px]">
-                          <span className="font-bold text-slate-800 dark:text-slate-200">{stat.totalSubmittals}</span>
-                          <span className="text-slate-400 mx-1">/</span>
-                          <span className={stat.delayedCount > 0 ? 'text-rose-600 dark:text-rose-400 font-bold' : 'text-emerald-600 dark:text-emerald-400 font-semibold'}>
-                            {stat.delayedCount} delayed
-                          </span>
-                        </td>
-
-                        {/* Weightage */}
-                        <td className="py-2.5 px-2.5 text-center font-mono font-semibold text-slate-600 dark:text-slate-300">
-                          {stat.weightPct}%
-                        </td>
-
-                        {/* Deductions */}
-                        <td className="py-2.5 px-3 text-center font-mono">
-                          {stat.deduction > 0 ? (
-                            <span 
-                              title={`Deduction formula: (${stat.delayedCount} delayed ÷ ${stat.totalSubmittals} submitted) × ${stat.weightPct}% = -${stat.deduction.toFixed(2)} pts`}
-                              className="text-rose-600 dark:text-rose-400 font-bold bg-rose-50 dark:bg-rose-950/50 px-1.5 py-0.5 rounded border border-rose-200 dark:border-rose-900 cursor-help"
-                            >
-                              -{stat.deduction.toFixed(2)}
-                            </span>
-                          ) : (
-                            <span className="text-emerald-600 dark:text-emerald-400 font-semibold text-[11px]">
-                              0.00 (Full)
-                            </span>
-                          )}
-                        </td>
-
-                        {/* Evaluation Mark Earned */}
-                        <td className="py-2.5 px-3.5 text-center font-mono font-black text-xs">
-                          <span className={`${
-                            stat.earnedScore === stat.weightPct
-                              ? 'text-emerald-600 dark:text-emerald-400'
-                              : stat.earnedScore >= stat.weightPct * 0.75
-                              ? 'text-indigo-600 dark:text-indigo-400'
-                              : 'text-amber-600 dark:text-amber-400'
-                          }`}>
-                            {stat.earnedScore.toFixed(2)}
-                          </span>
-                          <span className="text-slate-400 text-[10px] font-normal"> / {stat.weightPct}</span>
-                        </td>
-
-                        {/* On-Time Rate */}
-                        <td className="py-2.5 px-3 text-center font-bold">
-                          <div className="flex items-center justify-center gap-1.5">
-                            <div className="w-12 bg-slate-200 dark:bg-slate-700 rounded-full h-1.5 overflow-hidden">
-                              <div 
-                                className={`h-1.5 rounded-full ${
-                                  stat.onTimePct >= 90 ? 'bg-emerald-500' : stat.onTimePct >= 70 ? 'bg-indigo-500' : 'bg-rose-500'
-                                }`}
-                                style={{ width: `${stat.onTimePct}%` }}
-                              />
-                            </div>
-                            <span className="font-mono text-[11px] text-slate-700 dark:text-slate-300">
-                              {stat.onTimePct.toFixed(0)}%
-                            </span>
-                          </div>
-                        </td>
-
-                        {/* Audit Link */}
-                        <td className="py-2.5 px-3 text-center">
-                          <button
-                            onClick={() => {
-                              setSelectedTypeFilter(stat.category);
-                              setActiveKpiView('log');
+                    {/* Target SLA (Editable) */}
+                    <td className="py-2.5 px-3 text-center font-mono font-semibold">
+                      {!isReadonly ? (
+                        <div className="inline-flex items-center justify-center gap-1">
+                          <input
+                            type="number"
+                            min="1"
+                            max="90"
+                            value={targetOverrides[stat.category] !== undefined ? targetOverrides[stat.category] : stat.targetDays}
+                            onChange={(e) => {
+                              const val = parseInt(e.target.value) || 1;
+                              const newOverrides = { ...targetOverrides, [stat.category]: val };
+                              const updatedConsultant: SupervisionConsultantInfo = {
+                                ...consultant,
+                                targetOverrides: newOverrides
+                              };
+                              if (onUpdateConsultant) {
+                                onUpdateConsultant(updatedConsultant, `Updated ${stat.category} target SLA to ${val} days`);
+                              }
                             }}
-                            className="px-2 py-0.5 rounded-md bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950 dark:hover:bg-indigo-900 text-indigo-700 dark:text-indigo-300 text-[10px] font-bold transition cursor-pointer"
-                          >
-                            Logs ({stat.totalSubmittals})
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
+                            className="w-12 px-1 py-0.5 text-center bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-md font-bold text-slate-900 dark:text-white text-xs"
+                          />
+                          <span className="text-slate-400 text-[11px]">d</span>
+                        </div>
+                      ) : (
+                        <span className="text-slate-500">{stat.targetDays}d</span>
+                      )}
+                    </td>
 
-                  {/* Summary / Totals Footer Row */}
-                  <tfoot className="bg-slate-100/90 dark:bg-slate-800/95 font-bold border-t-2 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white">
-                    <tr>
-                      <td className="py-3 px-3.5 font-black uppercase text-[11px] text-slate-900 dark:text-white">
-                        Total / Performance Matrix
-                      </td>
-                      <td className="py-3 px-3 text-center font-mono text-slate-500">
-                        —
-                      </td>
-                      <td className="py-3 px-3 text-center font-mono font-black text-indigo-600 dark:text-indigo-400">
-                        {overallMetrics.avgOverallDays}d avg
-                      </td>
-                      <td className="py-3 px-3.5 text-center">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-black font-mono uppercase tracking-wide border ${
-                          overallMetrics.totalEarnedScore >= 80
-                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border-emerald-300'
-                            : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border-amber-300'
-                        }`}>
-                          {overallMetrics.totalEarnedScore >= 80 ? '✓ Compliant Portfolio' : '⚠ Attention Required'}
-                        </span>
-                      </td>
-                      <td className="py-3 px-3 text-center font-mono text-xs">
-                        <span className="text-slate-900 dark:text-white font-bold">{overallMetrics.totalCount}</span>
-                        <span className="text-slate-400 mx-1">/</span>
-                        <span className={overallMetrics.totalDelayedSubmittals > 0 ? 'text-rose-600 dark:text-rose-400 font-bold' : 'text-emerald-600'}>
-                          {overallMetrics.totalDelayedSubmittals} delayed
-                        </span>
-                      </td>
-                      <td className="py-3 px-2.5 text-center font-mono font-bold text-slate-800 dark:text-slate-100">
-                        {overallMetrics.totalWeight}%
-                      </td>
-                      <td className="py-3 px-3 text-center font-mono font-black text-rose-600 dark:text-rose-400">
-                        -{overallMetrics.totalDeductions.toFixed(2)} pts
-                      </td>
-                      <td className="py-3 px-3.5 text-center font-mono font-black text-sm text-emerald-600 dark:text-emerald-400">
-                        {overallMetrics.totalEarnedScore.toFixed(2)} / {overallMetrics.totalWeight}
-                      </td>
-                      <td className="py-3 px-3 text-center font-mono font-bold text-slate-800 dark:text-slate-200">
-                        {overallMetrics.complianceRate.toFixed(1)}%
-                      </td>
-                      <td className="py-3 px-3 text-center">
-                        <button
-                          onClick={() => {
-                            setSelectedTypeFilter('ALL');
-                            setActiveKpiView('log');
-                          }}
-                          className="px-2 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold shadow-xs cursor-pointer"
+                    {/* Actual Average */}
+                    <td className="py-2.5 px-3 text-center font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                      {stat.actualDays}d
+                    </td>
+
+                    {/* Compliance Status */}
+                    <td className="py-2.5 px-3.5 text-center">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold font-mono inline-flex items-center gap-1 border ${
+                        stat.isComplying
+                          ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                          : 'bg-rose-50 text-rose-700 dark:bg-rose-950/70 dark:text-rose-300 border-rose-200 dark:border-rose-800'
+                      }`}>
+                        {stat.isComplying ? '✓ Complying' : '✕ Not Complying'}
+                      </span>
+                    </td>
+
+                    {/* Submitted vs Delayed */}
+                    <td className="py-2.5 px-3 text-center font-mono text-[11px]">
+                      <span className="font-bold text-slate-800 dark:text-slate-200">{stat.totalSubmittals}</span>
+                      <span className="text-slate-400 mx-1">/</span>
+                      <span className={stat.delayedCount > 0 ? 'text-rose-600 dark:text-rose-400 font-bold' : 'text-emerald-600 dark:text-emerald-400 font-semibold'}>
+                        {stat.delayedCount} delayed
+                      </span>
+                    </td>
+
+                    {/* Weightage */}
+                    <td className="py-2.5 px-2.5 text-center font-mono font-semibold text-slate-600 dark:text-slate-300">
+                      {stat.weightPct}%
+                    </td>
+
+                    {/* Deductions */}
+                    <td className="py-2.5 px-3 text-center font-mono">
+                      {stat.deduction > 0 ? (
+                        <span 
+                          title={`Deduction formula: (${stat.delayedCount} delayed ÷ ${stat.totalSubmittals} submitted) × ${stat.weightPct}% = -${stat.deduction.toFixed(2)} pts`}
+                          className="text-rose-600 dark:text-rose-400 font-bold bg-rose-50 dark:bg-rose-950/50 px-1.5 py-0.5 rounded border border-rose-200 dark:border-rose-900 cursor-help"
                         >
-                          All Logs
-                        </button>
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            </div>
-          )}
+                          -{stat.deduction.toFixed(2)}
+                        </span>
+                      ) : (
+                        <span className="text-emerald-600 dark:text-emerald-400 font-semibold text-[11px]">
+                          0.00 (Full)
+                        </span>
+                      )}
+                    </td>
 
-          {/* VIEW 2: SUBMITTAL AUDIT TRAIL LOG TABLE (EDITABLE & UPDATABLE) */}
-          {activeKpiView === 'log' && (
-            <div className="space-y-3">
-              {/* Table Controls & Search Bar */}
+                    {/* Evaluation Mark Earned */}
+                    <td className="py-2.5 px-3.5 text-center font-mono font-black text-xs">
+                      <span className={`${
+                        stat.earnedScore === stat.weightPct
+                          ? 'text-emerald-600 dark:text-emerald-400'
+                          : stat.earnedScore >= stat.weightPct * 0.75
+                          ? 'text-indigo-600 dark:text-indigo-400'
+                          : 'text-amber-600 dark:text-amber-400'
+                      }`}>
+                        {stat.earnedScore.toFixed(2)}
+                      </span>
+                      <span className="text-slate-400 text-[10px] font-normal"> / {stat.weightPct}</span>
+                    </td>
+
+                    {/* On-Time Rate */}
+                    <td className="py-2.5 px-3 text-center font-bold">
+                      <div className="flex items-center justify-center gap-1.5">
+                        <div className="w-12 bg-slate-200 dark:bg-slate-700 rounded-full h-1.5 overflow-hidden">
+                          <div 
+                            className={`h-1.5 rounded-full ${
+                              stat.onTimePct >= 90 ? 'bg-emerald-500' : stat.onTimePct >= 70 ? 'bg-indigo-500' : 'bg-rose-500'
+                            }`}
+                            style={{ width: `${stat.onTimePct}%` }}
+                          />
+                        </div>
+                        <span className="font-mono text-[11px] text-slate-700 dark:text-slate-300">
+                          {stat.onTimePct.toFixed(0)}%
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+
+              {/* Summary / Totals Footer Row */}
+              <tfoot className="bg-slate-100/90 dark:bg-slate-800/95 font-bold border-t-2 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white">
+                <tr>
+                  <td className="py-3 px-3.5 font-black uppercase text-[11px] text-slate-900 dark:text-white">
+                    Total / Performance Matrix
+                  </td>
+                  <td className="py-3 px-3 text-center font-mono text-slate-500">
+                    —
+                  </td>
+                  <td className="py-3 px-3 text-center font-mono font-black text-indigo-600 dark:text-indigo-400">
+                    {overallMetrics.avgOverallDays}d avg
+                  </td>
+                  <td className="py-3 px-3.5 text-center">
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-black font-mono uppercase tracking-wide border ${
+                      overallMetrics.totalEarnedScore >= 80
+                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border-emerald-300'
+                        : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border-amber-300'
+                    }`}>
+                      {overallMetrics.totalEarnedScore >= 80 ? '✓ Compliant Portfolio' : '⚠ Attention Required'}
+                    </span>
+                  </td>
+                  <td className="py-3 px-3 text-center font-mono text-xs">
+                    <span className="text-slate-900 dark:text-white font-bold">{overallMetrics.totalCount}</span>
+                    <span className="text-slate-400 mx-1">/</span>
+                    <span className={overallMetrics.totalDelayedSubmittals > 0 ? 'text-rose-600 dark:text-rose-400 font-bold' : 'text-emerald-600'}>
+                      {overallMetrics.totalDelayedSubmittals} delayed
+                    </span>
+                  </td>
+                  <td className="py-3 px-2.5 text-center font-mono font-bold text-slate-800 dark:text-slate-100">
+                    {overallMetrics.totalWeight}%
+                  </td>
+                  <td className="py-3 px-3 text-center font-mono font-black text-rose-600 dark:text-rose-400">
+                    -{overallMetrics.totalDeductions.toFixed(2)} pts
+                  </td>
+                  <td className="py-3 px-3.5 text-center font-mono font-black text-sm text-emerald-600 dark:text-emerald-400">
+                    {overallMetrics.totalEarnedScore.toFixed(2)} / {overallMetrics.totalWeight}
+                  </td>
+                  <td className="py-3 px-3 text-center font-mono font-bold text-slate-800 dark:text-slate-200">
+                    {overallMetrics.complianceRate.toFixed(1)}%
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Target Settings & Weightages Modal */}
+      <AnimatePresence>
+        {isTargetSettingsOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl max-w-lg w-full space-y-4 max-h-[90vh] overflow-y-auto"
+            >
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                <div className="flex items-center gap-2">
+                  <Settings2 className="w-5 h-5 text-indigo-600" />
+                  <h4 className="text-base font-bold text-slate-900 dark:text-white">
+                    Consultant Evaluation Criteria & Target SLA Weights
+                  </h4>
+                </div>
+                <button
+                  onClick={() => setIsTargetSettingsOpen(false)}
+                  className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <p className="text-xs text-slate-500">
+                Configure baseline response deadlines (in calendar days) and percentage weight distribution for consultant evaluation. The sum of all weights should equal 100%.
+              </p>
+
+              {/* Weight Distribution Balance Bar */}
+              {(() => {
+                const sumWeight = editCriteriaForm.reduce((s, c) => s + (c.weightPct || 0), 0);
+                return (
+                  <div className={`p-2.5 rounded-xl border text-xs flex items-center justify-between font-bold ${
+                    sumWeight === 100
+                      ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                      : 'bg-amber-50 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                  }`}>
+                    <span>Total Weight Allocated:</span>
+                    <span className="font-mono text-sm">{sumWeight}% / 100% {sumWeight === 100 ? '✓ Balanced' : '⚠️ Adjust to 100%'}</span>
+                  </div>
+                );
+              })()}
+
               <div className="space-y-2.5">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-2.5">
-                  <div className="relative flex-1">
-                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="text"
-                      placeholder="Search by submittal #, description, reviewer, notes..."
-                      value={submittalSearch}
-                      onChange={(e) => setSubmittalSearch(e.target.value)}
-                      className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 dark:text-slate-100"
-                    />
-                    {submittalSearch && (
+                {editCriteriaForm.map((crit, idx) => (
+                  <div
+                    key={crit.id || `crit_form_${idx}`}
+                    className="flex items-center gap-2 p-2.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 text-xs"
+                  >
+                    <div className="flex-1 font-bold text-slate-800 dark:text-slate-200">
+                      {crit.name}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-slate-400 text-[10px]">Target:</span>
+                      <input
+                        type="number"
+                        min="1"
+                        max="90"
+                        value={crit.targetDays}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value) || 1;
+                          const updated = [...editCriteriaForm];
+                          updated[idx] = { ...updated[idx], targetDays: val };
+                          setEditCriteriaForm(updated);
+                        }}
+                        className="w-14 px-1.5 py-1 text-center bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg font-mono font-bold text-xs"
+                      />
+                      <span className="text-slate-400 text-[10px]">days</span>
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      <span className="text-slate-400 text-[10px]">Weight:</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={crit.weightPct}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value) || 0;
+                          const updated = [...editCriteriaForm];
+                          updated[idx] = { ...updated[idx], weightPct: val };
+                          setEditCriteriaForm(updated);
+                        }}
+                        className="w-14 px-1.5 py-1 text-center bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg font-mono font-bold text-xs"
+                      />
+                      <span className="text-slate-400 text-[10px]">%</span>
+                    </div>
+
+                    {editCriteriaForm.length > 1 && (
                       <button
-                        onClick={() => setSubmittalSearch('')}
-                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                        type="button"
+                        onClick={() => {
+                          setEditCriteriaForm(editCriteriaForm.filter((_, i) => i !== idx));
+                        }}
+                        className="p-1 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg"
+                        title="Remove criterion"
                       >
                         <X className="w-3.5 h-3.5" />
                       </button>
                     )}
                   </div>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    {/* Category Dropdown Filter */}
-                    <div className="relative">
-                      <select
-                        value={selectedTypeFilter}
-                        onChange={(e) => setSelectedTypeFilter(e.target.value)}
-                        className="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1.5 font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      >
-                        <option value="ALL">📁 All Categories ({submittalsList.length})</option>
-                        <option value="RFI">Technical RFIs</option>
-                        <option value="Material Approval">Material Approvals</option>
-                        <option value="IPC Review">IPC Certifications</option>
-                        <option value="Work Inspection (WIR)">Work Inspections (WIR)</option>
-                        <option value="Variation Order">Variation Orders</option>
-                        <option value="Design Review">Design Reviews</option>
-                        <option value="Claim / Notice">Claims / Notices</option>
-                      </select>
-                    </div>
-
-                    {/* Status Dropdown Filter */}
-                    <div className="relative">
-                      <select
-                        value={selectedStatusFilter}
-                        onChange={(e) => setSelectedStatusFilter(e.target.value)}
-                        className="text-xs bg-slate-50 dark:bg-slate-800 border border-indigo-200 dark:border-indigo-900/60 rounded-xl px-2.5 py-1.5 font-bold text-indigo-900 dark:text-indigo-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-gradient-to-r from-indigo-50/40 to-transparent dark:from-indigo-950/30"
-                      >
-                        <option value="ALL">🎯 Status: All ({statusCounts.total})</option>
-                        <option value="PENDING">⏳ Status: Pending / Under Review ({statusCounts.pending})</option>
-                        <option value="CLOSED">✅ Status: All Closed ({statusCounts.closedTotal})</option>
-                        <option value="Approved / Closed">🟢 Status: Approved / Closed ({statusCounts.approvedClosed})</option>
-                        <option value="Approved with Comments">🔵 Status: Approved w/ Comments ({statusCounts.approvedWithComments})</option>
-                        <option value="OVERDUE">🚨 Status: Overdue / Delayed ({statusCounts.overdue})</option>
-                        <option value="Rejected / Resubmit">❌ Status: Rejected / Resubmit ({statusCounts.rejected})</option>
-                        <option value="ON_TIME">⏱️ Turnaround: Within Target SLA ({statusCounts.onTime})</option>
-                        <option value="DELAYED">⚠️ Turnaround: Exceeded SLA ({statusCounts.delayed})</option>
-                      </select>
-                    </div>
-
-                    {!isReadonly && (
-                      <button
-                        onClick={() => setIsSpreadsheetMode(!isSpreadsheetMode)}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
-                          isSpreadsheetMode
-                            ? 'bg-indigo-600 text-white shadow-xs'
-                            : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200'
-                        }`}
-                        title="Toggle Spreadsheet Mode to edit all cells directly"
-                      >
-                        <TableIcon className="w-3.5 h-3.5" />
-                        {isSpreadsheetMode ? '⚡ Direct Grid Edit ON' : 'Direct Grid Edit'}
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {/* Quick Status Filter Pills and Active Filter Bar */}
-                <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100 dark:border-slate-800">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="text-[11px] font-bold text-slate-400 mr-1 flex items-center gap-1">
-                      <Filter className="w-3 h-3" /> Quick Filter:
-                    </span>
-                    {[
-                      { id: 'ALL', label: 'All', count: statusCounts.total, color: 'slate' },
-                      { id: 'PENDING', label: 'Pending', count: statusCounts.pending, color: 'amber' },
-                      { id: 'CLOSED', label: 'Closed', count: statusCounts.closedTotal, color: 'emerald' },
-                      { id: 'OVERDUE', label: 'Overdue', count: statusCounts.overdue, color: 'rose' },
-                      { id: 'ON_TIME', label: 'Within SLA', count: statusCounts.onTime, color: 'indigo' },
-                      { id: 'DELAYED', label: 'Exceeded SLA', count: statusCounts.delayed, color: 'orange' },
-                    ].map((pill) => {
-                      const isSelected = selectedStatusFilter === pill.id;
-                      return (
-                        <button
-                          key={pill.id}
-                          onClick={() => setSelectedStatusFilter(pill.id)}
-                          className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1.5 ${
-                            isSelected
-                              ? 'bg-indigo-600 text-white shadow-xs'
-                              : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300'
-                          }`}
-                        >
-                          <span>{pill.label}</span>
-                          <span
-                            className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
-                              isSelected
-                                ? 'bg-indigo-800/80 text-white'
-                                : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
-                            }`}
-                          >
-                            {pill.count}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {/* Summary of Active Filter Matches */}
-                  <div className="flex items-center gap-2 text-[11px] text-slate-500 font-medium">
-                    <span>
-                      Showing <strong className="text-slate-900 dark:text-white font-bold">{filteredSubmittals.length}</strong> of{' '}
-                      <strong className="text-slate-900 dark:text-white font-bold">{submittalsList.length}</strong> submittals
-                    </span>
-                    {(selectedStatusFilter !== 'ALL' || selectedTypeFilter !== 'ALL' || submittalSearch !== '') && (
-                      <button
-                        onClick={() => {
-                          setSelectedStatusFilter('ALL');
-                          setSelectedTypeFilter('ALL');
-                          setSubmittalSearch('');
-                        }}
-                        className="text-indigo-600 dark:text-indigo-400 hover:underline font-bold flex items-center gap-0.5"
-                      >
-                        <RotateCcw className="w-3 h-3" /> Reset
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Editable Submittals List Table */}
-              <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800 max-h-[520px]">
-                <table className="w-full text-left text-xs border-collapse">
-                  <thead className="bg-slate-100/90 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold border-b border-slate-200 dark:border-slate-800 sticky top-0 z-10 backdrop-blur-md">
-                    <tr>
-                      <th className="py-2.5 px-3 whitespace-nowrap">Submittal #</th>
-                      <th className="py-2.5 px-3 min-w-[200px]">Subject / Scope</th>
-                      <th className="py-2.5 px-3 whitespace-nowrap">Category</th>
-                      <th className="py-2.5 px-3 whitespace-nowrap">Submitted</th>
-                      <th className="py-2.5 px-3 whitespace-nowrap">Responded</th>
-                      <th className="py-2.5 px-3 text-center whitespace-nowrap">Target SLA</th>
-                      <th className="py-2.5 px-3 text-center whitespace-nowrap">Actual Turnaround</th>
-                      <th className="py-2.5 px-3 min-w-[150px]">Reviewer / Expert</th>
-                      <th className="py-2.5 px-3 whitespace-nowrap">Status</th>
-                      <th className="py-2.5 px-3 text-center whitespace-nowrap">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-800 dark:text-slate-200">
-                    {filteredSubmittals.length === 0 ? (
-                      <tr>
-                        <td colSpan={10} className="py-10 text-center text-slate-400">
-                          <p className="font-semibold">
-                            {submittalsList.length === 0 
-                              ? 'No submittal records registered yet.' 
-                              : 'No submittal records match your current search and filters.'}
-                          </p>
-                          {!isReadonly && (
-                            <button
-                              onClick={handleInsertQuickRow}
-                              className="mt-2 px-3 py-1.5 bg-indigo-600 text-white font-bold rounded-xl text-xs inline-flex items-center gap-1"
-                            >
-                              <Plus className="w-3.5 h-3.5" /> Add New Submittal
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    ) : (
-                      filteredSubmittals.map((sub, sIdx) => {
-                        const isEditingThisRow = editingRowId === sub.id;
-                        const rowDraft = isEditingThisRow && editingRowDraft ? editingRowDraft : sub;
-                        const target = sub.targetDays || targetOverrides[sub.type] || 7;
-                        const isUnder = sub.actualDays !== undefined ? sub.actualDays <= target : true;
-                        
-                        // IF IN DIRECT SPREADSHEET MODE
-                        if (isSpreadsheetMode && !isReadonly) {
-                          return (
-                            <tr key={`sub-sheet-${sub.id || sIdx}-${sIdx}`} className="bg-indigo-50/20 dark:bg-indigo-950/10 hover:bg-indigo-50/40 dark:hover:bg-indigo-950/20 transition">
-                              {/* Submittal No */}
-                              <td className="p-1.5">
-                                <input
-                                  type="text"
-                                  value={sub.submittalNo}
-                                  onChange={(e) => handleUpdateCell(sub.id, 'submittalNo', e.target.value)}
-                                  className="w-24 px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg font-mono font-bold text-indigo-600 dark:text-indigo-400 text-xs"
-                                />
-                              </td>
-
-                              {/* Title & Notes */}
-                              <td className="p-1.5">
-                                <input
-                                  type="text"
-                                  value={sub.title}
-                                  onChange={(e) => handleUpdateCell(sub.id, 'title', e.target.value)}
-                                  className="w-full px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white font-medium text-xs mb-1"
-                                />
-                                <input
-                                  type="text"
-                                  placeholder="Review notes / verdicts..."
-                                  value={sub.notes || ''}
-                                  onChange={(e) => handleUpdateCell(sub.id, 'notes', e.target.value)}
-                                  className="w-full px-2 py-0.5 bg-white/70 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-700 rounded-md text-[11px] text-slate-500"
-                                />
-                              </td>
-
-                              {/* Category */}
-                              <td className="p-1.5">
-                                <select
-                                  value={sub.type}
-                                  onChange={(e) => handleUpdateCell(sub.id, 'type', e.target.value)}
-                                  className="w-32 px-1.5 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg font-bold text-[11px]"
-                                >
-                                  <option value="RFI">RFI</option>
-                                  <option value="Material Approval">Material Approval</option>
-                                  <option value="IPC Review">IPC Review</option>
-                                  <option value="Work Inspection (WIR)">Work Inspection</option>
-                                  <option value="Variation Order">Variation Order</option>
-                                  <option value="Design Review">Design Review</option>
-                                  <option value="Claim / Notice">Claim / Notice</option>
-                                </select>
-                              </td>
-
-                              {/* Submitted Date */}
-                              <td className="p-1.5">
-                                <input
-                                  type="date"
-                                  value={sub.submittedDate || ''}
-                                  onChange={(e) => handleUpdateCell(sub.id, 'submittedDate', e.target.value)}
-                                  className="w-28 px-1.5 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg font-mono text-[11px]"
-                                />
-                              </td>
-
-                              {/* Responded Date */}
-                              <td className="p-1.5">
-                                <input
-                                  type="date"
-                                  value={sub.respondedDate || ''}
-                                  onChange={(e) => handleUpdateCell(sub.id, 'respondedDate', e.target.value)}
-                                  className="w-28 px-1.5 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg font-mono text-[11px]"
-                                />
-                              </td>
-
-                              {/* Target SLA */}
-                              <td className="p-1.5 text-center">
-                                <input
-                                  type="number"
-                                  min="1"
-                                  value={sub.targetDays || 7}
-                                  onChange={(e) => handleUpdateCell(sub.id, 'targetDays', parseInt(e.target.value) || 7)}
-                                  className="w-14 px-1 py-1 text-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg font-mono font-bold text-xs"
-                                />
-                              </td>
-
-                              {/* Actual Turnaround Days */}
-                              <td className="p-1.5 text-center">
-                                <input
-                                  type="number"
-                                  min="0"
-                                  placeholder="Days"
-                                  value={sub.actualDays !== undefined ? sub.actualDays : ''}
-                                  onChange={(e) => handleUpdateCell(sub.id, 'actualDays', e.target.value !== '' ? parseInt(e.target.value) : undefined)}
-                                  className={`w-14 px-1 py-1 text-center font-mono font-bold text-xs rounded-lg border ${
-                                    sub.actualDays !== undefined && sub.actualDays <= target
-                                      ? 'bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border-emerald-300'
-                                      : 'bg-rose-50 dark:bg-rose-950 text-rose-700 dark:text-rose-300 border-rose-300'
-                                  }`}
-                                />
-                              </td>
-
-                              {/* Reviewing Engineer */}
-                              <td className="p-1.5">
-                                <input
-                                  type="text"
-                                  value={sub.assignedEngineer || ''}
-                                  onChange={(e) => handleUpdateCell(sub.id, 'assignedEngineer', e.target.value)}
-                                  className="w-full px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-200 text-xs"
-                                />
-                              </td>
-
-                              {/* Status */}
-                              <td className="p-1.5">
-                                <select
-                                  value={sub.status}
-                                  onChange={(e) => handleUpdateCell(sub.id, 'status', e.target.value)}
-                                  className="w-32 px-1.5 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg font-bold text-[11px]"
-                                >
-                                  <option value="Approved / Closed">Approved / Closed</option>
-                                  <option value="Approved with Comments">Approved w/ Comments</option>
-                                  <option value="Under Review">Under Review</option>
-                                  <option value="Rejected / Resubmit">Rejected / Resubmit</option>
-                                  <option value="Overdue">Overdue</option>
-                                </select>
-                              </td>
-
-                              {/* Actions */}
-                              <td className="p-1.5 text-center whitespace-nowrap">
-                                <div className="flex items-center justify-center gap-1">
-                                  <button
-                                    onClick={() => handleDuplicateRow(sub)}
-                                    title="Duplicate row"
-                                    className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
-                                  >
-                                    <Copy className="w-3.5 h-3.5" />
-                                  </button>
-                                  <button
-                                    onClick={() => handleDeleteRow(sub.id)}
-                                    title="Delete row"
-                                    className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        }
-
-                        // IF CURRENT ROW IS BEING EDITED IN ROW EDIT MODE
-                        if (isEditingThisRow && editingRowDraft) {
-                          return (
-                            <tr key={`sub-edit-${sub.id || sIdx}-${sIdx}`} className="bg-indigo-50/50 dark:bg-indigo-950/30 border-2 border-indigo-500/50">
-                              <td className="p-2">
-                                <input
-                                  type="text"
-                                  value={editingRowDraft.submittalNo}
-                                  onChange={(e) => setEditingRowDraft({ ...editingRowDraft, submittalNo: e.target.value })}
-                                  className="w-24 px-2 py-1 bg-white dark:bg-slate-900 border border-indigo-300 rounded font-mono font-bold text-xs"
-                                />
-                              </td>
-                              <td className="p-2">
-                                <input
-                                  type="text"
-                                  value={editingRowDraft.title}
-                                  onChange={(e) => setEditingRowDraft({ ...editingRowDraft, title: e.target.value })}
-                                  className="w-full px-2 py-1 bg-white dark:bg-slate-900 border border-indigo-300 rounded font-semibold text-xs mb-1"
-                                />
-                                <input
-                                  type="text"
-                                  placeholder="Notes & Remarks"
-                                  value={editingRowDraft.notes || ''}
-                                  onChange={(e) => setEditingRowDraft({ ...editingRowDraft, notes: e.target.value })}
-                                  className="w-full px-2 py-0.5 bg-white dark:bg-slate-900 border border-indigo-200 rounded text-[11px]"
-                                />
-                              </td>
-                              <td className="p-2">
-                                <select
-                                  value={editingRowDraft.type}
-                                  onChange={(e) => setEditingRowDraft({ ...editingRowDraft, type: e.target.value as any, targetDays: targetOverrides[e.target.value] || 7 })}
-                                  className="w-32 px-2 py-1 bg-white dark:bg-slate-900 border border-indigo-300 rounded text-xs font-bold"
-                                >
-                                  <option value="RFI">RFI</option>
-                                  <option value="Material Approval">Material Approval</option>
-                                  <option value="IPC Review">IPC Review</option>
-                                  <option value="Work Inspection (WIR)">Work Inspection</option>
-                                  <option value="Variation Order">Variation Order</option>
-                                  <option value="Design Review">Design Review</option>
-                                  <option value="Claim / Notice">Claim / Notice</option>
-                                </select>
-                              </td>
-                              <td className="p-2">
-                                <input
-                                  type="date"
-                                  value={editingRowDraft.submittedDate || ''}
-                                  onChange={(e) => setEditingRowDraft({ ...editingRowDraft, submittedDate: e.target.value })}
-                                  className="w-28 px-1.5 py-1 bg-white dark:bg-slate-900 border border-indigo-300 rounded font-mono text-xs"
-                                />
-                              </td>
-                              <td className="p-2">
-                                <input
-                                  type="date"
-                                  value={editingRowDraft.respondedDate || ''}
-                                  onChange={(e) => setEditingRowDraft({ ...editingRowDraft, respondedDate: e.target.value })}
-                                  className="w-28 px-1.5 py-1 bg-white dark:bg-slate-900 border border-indigo-300 rounded font-mono text-xs"
-                                />
-                              </td>
-                              <td className="p-2 text-center">
-                                <input
-                                  type="number"
-                                  min="1"
-                                  value={editingRowDraft.targetDays || 7}
-                                  onChange={(e) => setEditingRowDraft({ ...editingRowDraft, targetDays: parseInt(e.target.value) || 7 })}
-                                  className="w-14 px-1 py-1 text-center bg-white dark:bg-slate-900 border border-indigo-300 rounded font-mono font-bold text-xs"
-                                />
-                              </td>
-                              <td className="p-2 text-center">
-                                <input
-                                  type="number"
-                                  min="0"
-                                  value={editingRowDraft.actualDays !== undefined ? editingRowDraft.actualDays : ''}
-                                  onChange={(e) => setEditingRowDraft({ ...editingRowDraft, actualDays: e.target.value !== '' ? parseInt(e.target.value) : undefined })}
-                                  className="w-14 px-1 py-1 text-center bg-white dark:bg-slate-900 border border-indigo-300 rounded font-mono font-bold text-xs"
-                                />
-                              </td>
-                              <td className="p-2">
-                                <input
-                                  type="text"
-                                  value={editingRowDraft.assignedEngineer || ''}
-                                  onChange={(e) => setEditingRowDraft({ ...editingRowDraft, assignedEngineer: e.target.value })}
-                                  className="w-full px-2 py-1 bg-white dark:bg-slate-900 border border-indigo-300 rounded text-xs"
-                                />
-                              </td>
-                              <td className="p-2">
-                                <select
-                                  value={editingRowDraft.status}
-                                  onChange={(e) => setEditingRowDraft({ ...editingRowDraft, status: e.target.value as any })}
-                                  className="w-32 px-1.5 py-1 bg-white dark:bg-slate-900 border border-indigo-300 rounded text-xs font-bold"
-                                >
-                                  <option value="Approved / Closed">Approved / Closed</option>
-                                  <option value="Approved with Comments">Approved w/ Comments</option>
-                                  <option value="Under Review">Under Review</option>
-                                  <option value="Rejected / Resubmit">Rejected / Resubmit</option>
-                                  <option value="Overdue">Overdue</option>
-                                </select>
-                              </td>
-                              <td className="p-2 text-center whitespace-nowrap">
-                                <div className="flex items-center justify-center gap-1.5">
-                                  <button
-                                    onClick={handleSaveRowEdit}
-                                    title="Save changes"
-                                    className="p-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
-                                  >
-                                    <Check className="w-4 h-4" />
-                                  </button>
-                                  <button
-                                    onClick={() => {
-                                      setEditingRowId(null);
-                                      setEditingRowDraft(null);
-                                    }}
-                                    title="Cancel"
-                                    className="p-1.5 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 text-slate-700 dark:text-slate-200"
-                                  >
-                                    <X className="w-4 h-4" />
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        }
-
-                        // DEFAULT READ/INTERACTIVE ROW DISPLAY
-                        const delayInfo = checkSubmittalDelay(sub, target);
-
-                        return (
-                          <tr 
-                            key={`sub-row-${sub.id || sIdx}-${sIdx}`} 
-                            className={`transition group ${
-                              delayInfo.isPending && delayInfo.isOverdue
-                                ? 'bg-rose-50/40 dark:bg-rose-950/20 hover:bg-rose-50/60 dark:hover:bg-rose-950/30 border-l-4 border-l-rose-500'
-                                : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
-                            }`}
-                          >
-                            {/* Submittal # */}
-                            <td className="py-2.5 px-3 font-mono font-bold text-indigo-600 dark:text-indigo-400 whitespace-nowrap">
-                              {sub.submittalNo}
-                            </td>
-
-                            {/* Title & Notes */}
-                            <td className="py-2.5 px-3 max-w-xs">
-                              <div className="font-semibold text-slate-900 dark:text-white truncate">
-                                {sub.title}
-                              </div>
-                              {sub.notes && (
-                                <div className="text-[11px] text-slate-400 truncate">
-                                  {sub.notes}
-                                </div>
-                              )}
-                            </td>
-
-                            {/* Category */}
-                            <td className="py-2.5 px-3 whitespace-nowrap">
-                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-                                {sub.type}
-                              </span>
-                            </td>
-
-                            {/* Dates */}
-                            <td className="py-2.5 px-3 whitespace-nowrap font-mono text-[11px] text-slate-600 dark:text-slate-300">
-                              {sub.submittedDate}
-                            </td>
-                            <td className="py-2.5 px-3 whitespace-nowrap font-mono text-[11px] text-slate-500">
-                              {sub.respondedDate ? (
-                                sub.respondedDate
-                              ) : delayInfo.isOverdue ? (
-                                <span className="text-rose-600 dark:text-rose-400 font-bold">Pending Overdue</span>
-                              ) : (
-                                <span className="text-amber-500 italic">Pending (Under Review)</span>
-                              )}
-                            </td>
-
-                            {/* Target SLA */}
-                            <td className="py-2.5 px-3 text-center whitespace-nowrap font-mono font-semibold text-slate-500">
-                              {target}d
-                            </td>
-
-                            {/* Turnaround Status */}
-                            <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                              {sub.actualDays !== undefined ? (
-                                <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold font-mono inline-flex items-center gap-1 ${
-                                  isUnder
-                                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
-                                    : 'bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
-                                }`}>
-                                  {sub.actualDays}d <span className="text-[10px] opacity-75 font-normal">/ {target}d</span>
-                                </span>
-                              ) : delayInfo.isOverdue ? (
-                                <span 
-                                  title={`Submitted ${sub.submittedDate || 'recently'}. Elapsed: ${delayInfo.elapsedDays} days exceeds Target SLA (${target}d) by ${delayInfo.delayDays} days. Penalized on evaluation score.`}
-                                  className="px-2 py-0.5 rounded-full text-[10px] font-bold font-mono inline-flex items-center gap-1 bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 border border-rose-300 cursor-help"
-                                >
-                                  🚨 {delayInfo.elapsedDays}d / {target}d (+{delayInfo.delayDays}d Overdue)
-                                </span>
-                              ) : (
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300 font-mono">
-                                  ⏳ In Review ({delayInfo.elapsedDays}d / {target}d)
-                                </span>
-                              )}
-                            </td>
-
-                            {/* Reviewing Engineer */}
-                            <td className="py-2.5 px-3 text-slate-600 dark:text-slate-400 truncate max-w-40">
-                              {sub.assignedEngineer || 'Resident Engineer'}
-                            </td>
-
-                            {/* Status */}
-                            <td className="py-2.5 px-3 whitespace-nowrap">
-                              {delayInfo.isPending && delayInfo.isOverdue ? (
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 border border-rose-300 inline-flex items-center gap-1 shadow-xs">
-                                  🚨 Pending Overdue (Penalized)
-                                </span>
-                              ) : (
-                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                  sub.status === 'Approved / Closed' 
-                                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                                    : sub.status === 'Approved with Comments'
-                                    ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300'
-                                    : sub.status === 'Under Review'
-                                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
-                                    : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
-                                }`}>
-                                  {sub.status}
-                                </span>
-                              )}
-                            </td>
-
-                            {/* Action Buttons (Edit / Duplicate / Delete) */}
-                            <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                              {!isReadonly ? (
-                                <div className="flex items-center justify-center gap-1">
-                                  {deletingRowId === sub.id ? (
-                                    <div className="flex items-center gap-1 bg-rose-50 dark:bg-rose-950 p-1 rounded-lg border border-rose-200">
-                                      <span className="text-[10px] font-bold text-rose-600">Delete?</span>
-                                      <button
-                                        onClick={() => handleDeleteRow(sub.id)}
-                                        className="px-1.5 py-0.5 bg-rose-600 text-white rounded text-[10px] font-bold"
-                                      >
-                                        Yes
-                                      </button>
-                                      <button
-                                        onClick={() => setDeletingRowId(null)}
-                                        className="px-1.5 py-0.5 bg-slate-200 text-slate-700 rounded text-[10px]"
-                                      >
-                                        No
-                                      </button>
-                                    </div>
-                                  ) : (
-                                    <>
-                                      <button
-                                        onClick={() => handleStartRowEdit(sub)}
-                                        title="Quick inline edit"
-                                        className="p-1 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 hover:text-indigo-600 transition"
-                                      >
-                                        <Edit2 className="w-3.5 h-3.5" />
-                                      </button>
-                                      <button
-                                        onClick={() => {
-                                          setEditingRowDraft({ ...sub });
-                                          setIsEditSubmittalModalOpen(true);
-                                        }}
-                                        title="Edit in full modal"
-                                        className="p-1 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 hover:text-blue-600 transition"
-                                      >
-                                        <Edit3 className="w-3.5 h-3.5" />
-                                      </button>
-                                      <button
-                                        onClick={() => handleDuplicateRow(sub)}
-                                        title="Duplicate record"
-                                        className="p-1 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 hover:text-purple-600 transition"
-                                      >
-                                        <Copy className="w-3.5 h-3.5" />
-                                      </button>
-                                      <button
-                                        onClick={() => setDeletingRowId(sub.id)}
-                                        title="Delete record"
-                                        className="p-1 rounded-lg hover:bg-rose-100 dark:hover:bg-rose-950 text-slate-400 hover:text-rose-600 transition"
-                                      >
-                                        <Trash2 className="w-3.5 h-3.5" />
-                                      </button>
-                                    </>
-                                  )}
-                                </div>
-                              ) : (
-                                <span className="text-slate-400 text-[10px]">Read-only</span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Table Bottom Quick Actions */}
-              {!isReadonly && (
-                <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
-                  <div className="text-slate-500 text-[11px] flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
-                    <span>Tip: Click <strong>Direct Grid Edit</strong> to edit all cells like Excel, or click the pencil icon to edit individual rows.</span>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={handleInsertQuickRow}
-                      className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900 text-indigo-700 dark:text-indigo-300 font-bold rounded-xl flex items-center gap-1"
-                    >
-                      <Plus className="w-3.5 h-3.5" /> Add Submittal Row
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* MODAL 1: LOG NEW SUBMITTAL */}
-      <AnimatePresence>
-        {isAddSubmittalModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs overflow-y-auto">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 w-full max-w-lg shadow-2xl space-y-4 my-8"
-            >
-              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-                <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                  <FileText className="w-5 h-5 text-indigo-600" />
-                  Log Submittal / RFI Turnaround Record
-                </h3>
-                <button
-                  type="button"
-                  onClick={() => setIsAddSubmittalModalOpen(false)}
-                  className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div className="space-y-3 text-xs">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Submittal Reference #</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. RFI-022"
-                      value={newSubmittalForm.submittalNo || ''}
-                      onChange={(e) => setNewSubmittalForm({ ...newSubmittalForm, submittalNo: e.target.value })}
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white font-bold"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Submittal Category</label>
-                    <select
-                      value={newSubmittalForm.type || 'RFI'}
-                      onChange={(e) => {
-                        const newType = e.target.value as any;
-                        const defaultTarget = targetOverrides[newType] || DEFAULT_SLA_TARGETS[newType] || 7;
-                        setNewSubmittalForm({ 
-                          ...newSubmittalForm, 
-                          type: newType,
-                          targetDays: defaultTarget
-                        });
-                      }}
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-semibold"
-                    >
-                      <option value="RFI">Technical RFI</option>
-                      <option value="Material Approval">Material Approval</option>
-                      <option value="IPC Review">IPC Review & Certification</option>
-                      <option value="Work Inspection (WIR)">Work Inspection Request (WIR)</option>
-                      <option value="Variation Order">Variation Order / Rate Analysis</option>
-                      <option value="Design Review">Design Review / Drawing</option>
-                      <option value="Claim / Notice">Contractual Claim / Notice</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Subject / Submittal Description</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Bridge #2 Pile Cap Concrete Mix Design Verification"
-                    value={newSubmittalForm.title || ''}
-                    onChange={(e) => setNewSubmittalForm({ ...newSubmittalForm, title: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Date Submitted</label>
-                    <input
-                      type="date"
-                      value={newSubmittalForm.submittedDate || ''}
-                      onChange={(e) => setNewSubmittalForm({ ...newSubmittalForm, submittedDate: e.target.value })}
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Date Responded / Closed</label>
-                    <input
-                      type="date"
-                      value={newSubmittalForm.respondedDate || ''}
-                      onChange={(e) => setNewSubmittalForm({ ...newSubmittalForm, respondedDate: e.target.value })}
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Target SLA (Days)</label>
-                    <input
-                      type="number"
-                      min="1"
-                      value={newSubmittalForm.targetDays || 7}
-                      onChange={(e) => setNewSubmittalForm({ ...newSubmittalForm, targetDays: parseInt(e.target.value) || 7 })}
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Status</label>
-                    <select
-                      value={newSubmittalForm.status || 'Approved / Closed'}
-                      onChange={(e) => setNewSubmittalForm({ ...newSubmittalForm, status: e.target.value as any })}
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-semibold"
-                    >
-                      <option value="Approved / Closed">Approved / Closed</option>
-                      <option value="Approved with Comments">Approved with Comments</option>
-                      <option value="Under Review">Under Review / In Progress</option>
-                      <option value="Rejected / Resubmit">Rejected / Resubmit</option>
-                      <option value="Overdue">Overdue</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Assigned Resident Expert / Reviewer</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Eng. Birhanu Kebede (Structural)"
-                    value={newSubmittalForm.assignedEngineer || ''}
-                    onChange={(e) => setNewSubmittalForm({ ...newSubmittalForm, assignedEngineer: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Review Notes & Technical Verdict</label>
-                  <textarea
-                    rows={2}
-                    placeholder="e.g. Structural calculations verified against standard ERA highway manual."
-                    value={newSubmittalForm.notes || ''}
-                    onChange={(e) => setNewSubmittalForm({ ...newSubmittalForm, notes: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setIsAddSubmittalModalOpen(false)}
-                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSaveNewSubmittal}
-                  className="px-5 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-xs"
-                >
-                  Save Submittal Record
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* MODAL 2: EDIT SUBMITTAL FULL DIALOG */}
-      <AnimatePresence>
-        {isEditSubmittalModalOpen && editingRowDraft && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs overflow-y-auto">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 w-full max-w-lg shadow-2xl space-y-4 my-8"
-            >
-              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-                <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                  <Edit3 className="w-5 h-5 text-indigo-600" />
-                  Edit Submittal Record: {editingRowDraft.submittalNo}
-                </h3>
-                <button
-                  type="button"
-                  onClick={() => setIsEditSubmittalModalOpen(false)}
-                  className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div className="space-y-3 text-xs">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Submittal Reference #</label>
-                    <input
-                      type="text"
-                      required
-                      value={editingRowDraft.submittalNo}
-                      onChange={(e) => setEditingRowDraft({ ...editingRowDraft, submittalNo: e.target.value })}
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white font-bold"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Category</label>
-                    <select
-                      value={editingRowDraft.type}
-                      onChange={(e) => setEditingRowDraft({ ...editingRowDraft, type: e.target.value as any })}
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-semibold"
-                    >
-                      <option value="RFI">Technical RFI</option>
-                      <option value="Material Approval">Material Approval</option>
-                      <option value="IPC Review">IPC Review & Certification</option>
-                      <option value="Work Inspection (WIR)">Work Inspection Request (WIR)</option>
-                      <option value="Variation Order">Variation Order / Rate Analysis</option>
-                      <option value="Design Review">Design Review / Drawing</option>
-                      <option value="Claim / Notice">Contractual Claim / Notice</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Subject / Scope</label>
-                  <input
-                    type="text"
-                    required
-                    value={editingRowDraft.title}
-                    onChange={(e) => setEditingRowDraft({ ...editingRowDraft, title: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Date Submitted</label>
-                    <input
-                      type="date"
-                      value={editingRowDraft.submittedDate || ''}
-                      onChange={(e) => setEditingRowDraft({ ...editingRowDraft, submittedDate: e.target.value })}
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Date Responded</label>
-                    <input
-                      type="date"
-                      value={editingRowDraft.respondedDate || ''}
-                      onChange={(e) => setEditingRowDraft({ ...editingRowDraft, respondedDate: e.target.value })}
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Target SLA (Days)</label>
-                    <input
-                      type="number"
-                      min="1"
-                      value={editingRowDraft.targetDays || 7}
-                      onChange={(e) => setEditingRowDraft({ ...editingRowDraft, targetDays: parseInt(e.target.value) || 7 })}
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Actual Turnaround (Days)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      placeholder="Auto-calculated if blank"
-                      value={editingRowDraft.actualDays !== undefined ? editingRowDraft.actualDays : ''}
-                      onChange={(e) => setEditingRowDraft({ ...editingRowDraft, actualDays: e.target.value !== '' ? parseInt(e.target.value) : undefined })}
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Reviewing Engineer</label>
-                    <input
-                      type="text"
-                      value={editingRowDraft.assignedEngineer || ''}
-                      onChange={(e) => setEditingRowDraft({ ...editingRowDraft, assignedEngineer: e.target.value })}
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Status</label>
-                    <select
-                      value={editingRowDraft.status}
-                      onChange={(e) => setEditingRowDraft({ ...editingRowDraft, status: e.target.value as any })}
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-semibold"
-                    >
-                      <option value="Approved / Closed">Approved / Closed</option>
-                      <option value="Approved with Comments">Approved with Comments</option>
-                      <option value="Under Review">Under Review / In Progress</option>
-                      <option value="Rejected / Resubmit">Rejected / Resubmit</option>
-                      <option value="Overdue">Overdue</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Notes & Technical Verdict</label>
-                  <textarea
-                    rows={2}
-                    value={editingRowDraft.notes || ''}
-                    onChange={(e) => setEditingRowDraft({ ...editingRowDraft, notes: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setIsEditSubmittalModalOpen(false)}
-                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSaveRowEdit}
-                  className="px-5 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-xs flex items-center gap-1.5"
-                >
-                  <Save className="w-3.5 h-3.5" />
-                  Save & Update
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* MODAL 3: EVALUATION CRITERIA & TARGET SLA SETTINGS */}
-      <AnimatePresence>
-        {isTargetSettingsOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs overflow-y-auto">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 w-full max-w-lg shadow-2xl space-y-5 my-8 max-h-[90vh] flex flex-col"
-            >
-              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-                <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                  <Settings2 className="w-5 h-5 text-indigo-600" />
-                  Evaluation Criteria & Contract Targets
-                </h3>
-                <button
-                  type="button"
-                  onClick={() => setIsTargetSettingsOpen(false)}
-                  className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div className="space-y-1">
-                <p className="text-xs text-slate-500">
-                  Add, delete, or modify evaluation criteria, allowable response target days, and percentage weightages for consultant performance auditing.
-                </p>
-                <div className="flex items-center justify-between text-xs font-semibold pt-1">
-                  <span className="text-slate-600 dark:text-slate-300">Total Weightage Sum:</span>
-                  <span className={`px-2 py-0.5 rounded-md font-mono font-bold ${
-                    editCriteriaForm.reduce((sum, c) => sum + (c.weightPct || 0), 0) === 100
-                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
-                      : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
-                  }`}>
-                    {editCriteriaForm.reduce((sum, c) => sum + (c.weightPct || 0), 0)}%
-                  </span>
-                </div>
-              </div>
-
-              <div className="space-y-3 overflow-y-auto max-h-[42vh] pr-1">
-                {editCriteriaForm.map((crit, index) => (
-                  <div key={`edit-crit-${crit.id || 'c'}-${index}`} className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-100 dark:border-slate-700 space-y-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <input
-                        type="text"
-                        value={crit.name}
-                        onChange={(e) => {
-                          const updated = [...editCriteriaForm];
-                          updated[index].name = e.target.value;
-                          setEditCriteriaForm(updated);
-                        }}
-                        className="flex-1 px-2.5 py-1 text-xs font-bold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white"
-                        placeholder="Criteria Name"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (editCriteriaForm.length <= 1) {
-                            alert('You must maintain at least one evaluation criterion.');
-                            return;
-                          }
-                          setEditCriteriaForm(editCriteriaForm.filter((_, i) => i !== index));
-                        }}
-                        title="Delete criterion"
-                        className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/50 dark:hover:bg-rose-900/80 text-rose-600 dark:text-rose-400 transition cursor-pointer"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div className="flex items-center justify-between bg-white dark:bg-slate-900 px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700">
-                        <span className="text-slate-500 font-medium">Target Days:</span>
-                        <div className="flex items-center gap-1">
-                          <input
-                            type="number"
-                            min="1"
-                            max="120"
-                            value={crit.targetDays}
-                            onChange={(e) => {
-                              const updated = [...editCriteriaForm];
-                              updated[index].targetDays = parseInt(e.target.value) || 1;
-                              setEditCriteriaForm(updated);
-                            }}
-                            className="w-14 px-1.5 py-0.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-md text-center font-mono font-bold text-slate-900 dark:text-white text-xs"
-                          />
-                          <span className="text-slate-400 text-[11px]">days</span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between bg-white dark:bg-slate-900 px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700">
-                        <span className="text-slate-500 font-medium">Weightage:</span>
-                        <div className="flex items-center gap-1">
-                          <input
-                            type="number"
-                            min="1"
-                            max="100"
-                            value={crit.weightPct}
-                            onChange={(e) => {
-                              const updated = [...editCriteriaForm];
-                              updated[index].weightPct = parseFloat(e.target.value) || 0;
-                              setEditCriteriaForm(updated);
-                            }}
-                            className="w-14 px-1.5 py-0.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-md text-center font-mono font-bold text-slate-900 dark:text-white text-xs"
-                          />
-                          <span className="text-slate-400 text-[11px]">%</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
                 ))}
 
-                {/* Add New Criterion Box */}
-                <div className="p-3 rounded-2xl bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/50 space-y-2.5">
-                  <span className="text-xs font-bold text-indigo-900 dark:text-indigo-300 flex items-center gap-1.5">
-                    <Plus className="w-3.5 h-3.5" /> Add New Evaluation Criterion
-                  </span>
-                  <input
-                    type="text"
-                    value={newCritName}
-                    onChange={(e) => setNewCritName(e.target.value)}
-                    placeholder="Criterion Name (e.g., Geotechnical Review)"
-                    className="w-full px-2.5 py-1.5 text-xs font-medium bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 rounded-xl text-slate-900 dark:text-white"
-                  />
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div className="flex items-center gap-2">
-                      <span className="text-slate-500 text-[11px]">Target:</span>
+                {/* Add New Criterion Row */}
+                <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-2">
+                  <div className="text-[11px] font-bold text-slate-500">Add Custom Submittal Type:</div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      placeholder="e.g. Environmental Clearance"
+                      value={newCritName}
+                      onChange={(e) => setNewCritName(e.target.value)}
+                      className="flex-1 px-2.5 py-1.5 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl"
+                    />
+                    <div className="flex items-center gap-1">
                       <input
                         type="number"
                         min="1"
-                        max="120"
+                        max="90"
+                        placeholder="Days"
                         value={newCritTarget}
-                        onChange={(e) => setNewCritTarget(parseInt(e.target.value) || 7)}
-                        className="w-16 px-2 py-1 bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 rounded-lg text-center font-mono font-bold text-xs"
+                        onChange={(e) => setNewCritTarget(parseInt(e.target.value) || 1)}
+                        className="w-14 px-1.5 py-1.5 text-center bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl font-mono text-xs"
                       />
-                      <span className="text-slate-400 text-[11px]">days</span>
+                      <span className="text-slate-400 text-[11px]">d</span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-slate-500 text-[11px]">Weight:</span>
+                    <div className="flex items-center gap-1">
                       <input
                         type="number"
-                        min="1"
+                        min="0"
                         max="100"
+                        placeholder="Weight"
                         value={newCritWeight}
-                        onChange={(e) => setNewCritWeight(parseFloat(e.target.value) || 10)}
-                        className="w-16 px-2 py-1 bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 rounded-lg text-center font-mono font-bold text-xs"
+                        onChange={(e) => setNewCritWeight(parseInt(e.target.value) || 0)}
+                        className="w-14 px-1.5 py-1.5 text-center bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl font-mono text-xs"
                       />
                       <span className="text-slate-400 text-[11px]">%</span>
                     </div>
