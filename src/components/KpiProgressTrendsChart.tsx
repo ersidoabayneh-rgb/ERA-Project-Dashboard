@@ -915,7 +915,7 @@ export default function KpiProgressTrendsChart({
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {currentGroupTrendData.map((row, idx) => (
                 <tr
-                  key={row.month || idx}
+                  key={`trend-row-${row.month || 'm'}-${idx}`}
                   className={`hover:bg-slate-50/60 dark:hover:bg-slate-900/40 transition ${
                     row.isCurrent ? 'bg-blue-50/30 dark:bg-blue-950/20 font-bold' : ''
                   }`}

@@ -406,9 +406,9 @@ export default function MonthlyPaymentIpcSummaryTable({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs border-b border-slate-100 dark:border-slate-700/60 pb-2">
         <div className="flex items-center gap-1 font-semibold flex-wrap">
           <span className="text-slate-500 dark:text-slate-400 mr-1 text-[11px]">Filter:</span>
-          {(['All', 'Paid', 'Unpaid', 'Partially Paid', 'Matured Overdue'] as const).map((st) => (
+          {(['All', 'Paid', 'Unpaid', 'Partially Paid', 'Matured Overdue'] as const).map((st, sIdx) => (
             <button
-              key={st}
+              key={`ipc-st-${st}-${sIdx}`}
               onClick={() => setFilterStatus(st)}
               className={`px-2.5 py-1 rounded-lg transition text-[11px] font-bold flex items-center gap-1 ${
                 filterStatus === st
@@ -465,7 +465,7 @@ export default function MonthlyPaymentIpcSummaryTable({
               const isExpanded = expandedIpcId === item.id;
 
               return (
-                <React.Fragment key={item.id || idx}>
+                <React.Fragment key={`ipc-row-${item.id || 'i'}-${idx}`}>
                   <tr className={`transition duration-100 ${
                     maturation.isOverdue 
                       ? 'bg-rose-50/30 dark:bg-rose-950/10 hover:bg-rose-50/60 dark:hover:bg-rose-950/20' 

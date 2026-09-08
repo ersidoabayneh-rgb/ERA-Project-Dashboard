@@ -1466,8 +1466,8 @@ export default function ConsultantPerformanceKpiWidget({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-800 dark:text-slate-200">
-                    {categoryKpiStats.map((stat) => (
-                      <tr key={stat.category} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
+                    {categoryKpiStats.map((stat, sIdx) => (
+                      <tr key={`stat-cat-${stat.category}-${sIdx}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
                         {/* Submittal Criteria Name */}
                         <td className="py-2.5 px-3.5 font-bold">
                           <div className="flex items-center gap-2">
@@ -2691,7 +2691,7 @@ export default function ConsultantPerformanceKpiWidget({
 
               <div className="space-y-3 overflow-y-auto max-h-[42vh] pr-1">
                 {editCriteriaForm.map((crit, index) => (
-                  <div key={crit.id || index} className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-100 dark:border-slate-700 space-y-2">
+                  <div key={`edit-crit-${crit.id || 'c'}-${index}`} className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-100 dark:border-slate-700 space-y-2">
                     <div className="flex items-center justify-between gap-2">
                       <input
                         type="text"

@@ -448,8 +448,8 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-xs font-bold text-slate-700 dark:text-zinc-300">Hidden Subgroups:</span>
                 <div className="flex gap-1.5 flex-wrap">
-                  {project.kpiDeletedSubgroups.map(id => (
-                    <span key={id} className="bg-rose-50 dark:bg-rose-950/25 border border-rose-200/50 dark:border-rose-900/30 text-rose-600 dark:text-rose-400 px-2 py-0.5 rounded-lg font-bold font-mono text-[10px]">
+                  {project.kpiDeletedSubgroups.map((id, idx) => (
+                    <span key={`h-sub-${id}-${idx}`} className="bg-rose-50 dark:bg-rose-950/25 border border-rose-200/50 dark:border-rose-900/30 text-rose-600 dark:text-rose-400 px-2 py-0.5 rounded-lg font-bold font-mono text-[10px]">
                       {id}
                     </span>
                   ))}
@@ -460,8 +460,8 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-xs font-bold text-slate-700 dark:text-zinc-300">Hidden Criteria:</span>
                 <div className="flex gap-1.5 flex-wrap">
-                  {project.kpiDeletedItems.map(id => (
-                    <span key={id} className="bg-amber-50 dark:bg-amber-950/25 border border-amber-200/50 dark:border-amber-900/30 text-amber-650 dark:text-amber-400 px-2 py-0.5 rounded-lg font-bold font-mono text-[10px]">
+                  {project.kpiDeletedItems.map((id, idx) => (
+                    <span key={`h-crit-${id}-${idx}`} className="bg-amber-50 dark:bg-amber-950/25 border border-amber-200/50 dark:border-amber-900/30 text-amber-650 dark:text-amber-400 px-2 py-0.5 rounded-lg font-bold font-mono text-[10px]">
                       {id}
                     </span>
                   ))}
@@ -540,8 +540,8 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
               onChange={(e) => onProjectUpdate?.({ contractorGrade: e.target.value }, `Updated Contractor Grade to ${e.target.value}`)}
               className={`bg-white dark:bg-slate-800 text-xs font-bold border border-slate-350 dark:border-slate-650 px-2.5 py-1 rounded-lg outline-none text-slate-850 dark:text-zinc-100 focus:border-blue-500 transition-colors ${!isAdmin ? 'cursor-not-allowed opacity-80' : 'cursor-pointer'}`}
             >
-              {Array.from({ length: 12 }, (_, i) => `G${i + 1}`).map(grade => (
-                <option key={grade} value={grade}>{grade} Contractor</option>
+              {Array.from({ length: 12 }, (_, i) => `G${i + 1}`).map((grade, idx) => (
+                <option key={`grade-${grade}-${idx}`} value={grade}>{grade} Contractor</option>
               ))}
             </select>
           </div>

@@ -2265,7 +2265,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory }:
                     Strategic Compliance Audit (12 KPI Groups Summary)
                   </h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {kpiGroupsScores.map((g) => {
+                    {kpiGroupsScores.map((g, gIdx) => {
                       let scoreColor = "text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/20 border-rose-100 dark:border-rose-900/55";
                       let barColor = "bg-rose-500";
                       
@@ -2291,7 +2291,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory }:
                       }
 
                       return (
-                        <div key={g.id} className="p-3 border rounded-xl bg-slate-50/50 dark:bg-slate-900/40 border-slate-200/60 dark:border-slate-800/80 hover:shadow-2xs transition-all duration-200 flex flex-col justify-between gap-2.5 shadow-2xs">
+                        <div key={`group-${g.id || 'g'}-${gIdx}`} className="p-3 border rounded-xl bg-slate-50/50 dark:bg-slate-900/40 border-slate-200/60 dark:border-slate-800/80 hover:shadow-2xs transition-all duration-200 flex flex-col justify-between gap-2.5 shadow-2xs">
                           <div className="flex justify-between items-start gap-1.5">
                             <div>
                               <span className="text-[9px] font-black font-mono text-slate-400 dark:text-slate-500 uppercase tracking-wider">{g.id}</span>
@@ -2329,7 +2329,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory }:
                         {criticalGuarantees.map((b, bIdx) => {
                           const isExpired = new Date(b.expireDate) < new Date();
                           return (
-                            <div key={bIdx} className="p-2 border rounded-lg bg-slate-50 dark:bg-slate-900/80 border-slate-200 dark:border-slate-800 flex justify-between items-center">
+                            <div key={`bond-${b.type || 'b'}-${bIdx}`} className="p-2 border rounded-lg bg-slate-50 dark:bg-slate-900/80 border-slate-200 dark:border-slate-800 flex justify-between items-center">
                               <div>
                                 <strong className="block text-slate-805 dark:text-zinc-150">{b.type}</strong>
                                 <span className="text-[9px] text-slate-400">Issuer: {b.bank}</span>

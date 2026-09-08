@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   FileText, Plus, ArrowRight, Clock, AlertTriangle, CheckCircle, Trash2,
-  UserCheck, History, Printer, Search, Filter, RefreshCw, Layers, ShieldAlert, Edit2, ChevronRight, Download, FileSpreadsheet, FileCheck,
+  UserCheck, History, Printer, Search, Filter, RefreshCw, Layers, ShieldAlert, Edit2, ChevronRight, ChevronDown, Download, FileSpreadsheet, FileCheck,
   TrendingUp, AlertOctagon, SlidersHorizontal, X, Calendar, Zap, CheckCircle2, BarChart3, BookOpen, Sparkles, User as UserIcon, MessageSquare, PenTool,
   ArrowUp, ArrowDown, ArrowUpDown, RotateCcw, ListOrdered, Building2,
   Hash, ShieldCheck, Activity, Fingerprint, FileCode, FileClock, MoreVertical
@@ -43,6 +43,8 @@ const defaultSampleIssues: IssueLogItem[] = [
     lessonsLearned: 'Right-of-Way valuation and utility relocation clearance with local Woreda administration must be finalized prior to issuing Site Access under FIDIC Clause 2.1. Establishing a joint ERA-Woreda taskforce reduced valuation dispute cycle time by 60%.',
     lessonsLearnedUpdatedBy: 'Eng. Solomon Tadesse (Senior RE)',
     lessonsLearnedUpdatedAt: '2026-02-20 14:30',
+    lessonsLearnedDate: '2026-02-20',
+    totalDaysUntilLessonsLearned: 98,
     history: [
       {
         id: 'hist-1',
@@ -77,7 +79,7 @@ const defaultSampleIssues: IssueLogItem[] = [
     ],
     transfers: [
       {
-        id: 'tr-1-1',
+        id: 'tr-sample-row-1',
         transferDate: '2025-12-02',
         transferredFrom: 'Consultant Resident Engineer (Site Team)',
         transferredTo: 'ERA Regional Directorate & ROW Valuation Team',
@@ -87,7 +89,7 @@ const defaultSampleIssues: IssueLogItem[] = [
         transferredBy: 'Eng. Solomon Tadesse (Senior RE)'
       },
       {
-        id: 'tr-1-2',
+        id: 'tr-sample-row-2',
         transferDate: '2026-02-18',
         transferredFrom: 'ERA Regional Directorate',
         transferredTo: 'ERA Contractual Claims & Steering Committee',
@@ -120,6 +122,8 @@ const defaultSampleIssues: IssueLogItem[] = [
     lessonsLearned: 'Centralizing foreign exchange allocation requests with National Bank under specialized infrastructure import quotas prevents asphalt supply chain stoppages during peak dry construction season.',
     lessonsLearnedUpdatedBy: 'W/ro Bethlehem Girma (Senior Finance Officer)',
     lessonsLearnedUpdatedAt: '2026-01-30 10:20',
+    lessonsLearnedDate: '2026-01-30',
+    totalDaysUntilLessonsLearned: 120,
     history: [
       {
         id: 'hist-201',
@@ -212,6 +216,8 @@ const defaultSampleIssues: IssueLogItem[] = [
     lessonsLearned: 'Establishing accredited mobile site testing facilities or expedited central lab service level agreements prevents quarry testing bottlenecks that impact subbase production schedules.',
     lessonsLearnedUpdatedBy: 'Ato Abebe Tessema (Materials Engineer)',
     lessonsLearnedUpdatedAt: '2025-12-28 11:00',
+    lessonsLearnedDate: '2025-12-28',
+    totalDaysUntilLessonsLearned: 23,
     resolutionStatus: 'Resolved / Approved',
     stepsTakenUntilResolved: 'Step 1: [2025-12-05] Quarry Site #3 aggregate samples collected and dispatched under FIDIC Clause 7.3 by Contractor (Sunshine Construction PLC). Status: Submitted / Under Review.\nStep 2: [2025-12-12] Joint laboratory log-in and test setup at ERA Central Materials Testing Directorate. Verified sample integrity and standard sieve sizing.\nStep 3: [2025-12-20] Los Angeles Abrasion and Aggregate Crushing Value (ACV) testing completed; test result verified at 26.4% abrasion loss (within standard <30% threshold).\nStep 4: [2025-12-26] Official Test Certificate issued by Central ERA Laboratory; Resident Engineer issued formal site clearance approving quarry operations. Status: Resolved / Approved.',
     resolutionSteps: [
@@ -223,6 +229,11 @@ const defaultSampleIssues: IssueLogItem[] = [
         performedBy: 'Contractor (Sunshine Construction PLC)',
         statusAtStep: 'Submitted / Under Review',
         stage: 'Stage 1: Sample Collection',
+        department: 'Consultant Materials Engineer',
+        departmentTimeTakenDays: 0,
+        overallTimeTakenDays: 0,
+        daysUntilNextStep: 7,
+        timeTakenBeforeNextStepText: '7 Calendar Days before Step 2 (Sample receipt & test bench allocation)',
         notes: 'Quarry site #3 Los Angeles Abrasion and ACV samples submitted for compliance certification.'
       },
       {
@@ -233,6 +244,11 @@ const defaultSampleIssues: IssueLogItem[] = [
         performedBy: 'Eng. Worku Mengesha (Lab Tech Lead)',
         statusAtStep: 'In Progress / Evaluation',
         stage: 'Stage 2: Laboratory Testing Bench',
+        department: 'ERA Central Materials Directorate',
+        departmentTimeTakenDays: 7,
+        overallTimeTakenDays: 7,
+        daysUntilNextStep: 8,
+        timeTakenBeforeNextStepText: '8 Calendar Days before Step 3 (Abrasion test computation & ACV assessment)',
         notes: 'Sieve analysis verified; oven drying and mechanical abrasion drum sequence scheduled.'
       },
       {
@@ -243,6 +259,11 @@ const defaultSampleIssues: IssueLogItem[] = [
         performedBy: 'Central ERA Laboratory',
         statusAtStep: 'In Progress / Evaluation',
         stage: 'Stage 3: Result Certification',
+        department: 'ERA Central Materials Directorate',
+        departmentTimeTakenDays: 8,
+        overallTimeTakenDays: 15,
+        daysUntilNextStep: 6,
+        timeTakenBeforeNextStepText: '6 Calendar Days before Step 4 (Certified test clearance issued & approval)',
         notes: 'LA Abrasion recorded at 26.4% (specification requires <30%). ACV recorded at 18.2%.'
       },
       {
@@ -253,6 +274,11 @@ const defaultSampleIssues: IssueLogItem[] = [
         performedBy: 'Ato Abebe Tessema (Materials Engineer)',
         statusAtStep: 'Resolved / Approved',
         stage: 'Stage 4: Approval Issued & Quarry Operation Cleared',
+        department: 'Consultant Materials Engineer',
+        departmentTimeTakenDays: 6,
+        overallTimeTakenDays: 21,
+        daysUntilNextStep: 2,
+        timeTakenBeforeNextStepText: '2 Calendar Days before Codified into Lessons Learned (2025-12-28)',
         notes: 'Resident Engineer issued official letter permitting subbase production. Turnaround: 21 calendar days.'
       }
     ],
@@ -456,12 +482,18 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
     : (project.id === 'proj_default' ? defaultSampleIssues : []);
 
   const currentUsername = currentUserObj?.username || 'ErsidoAbayneh';
-  const effectiveIsAdmin = Boolean(
+  const isMasterAdmin = Boolean(
     isAdmin ||
     currentUserObj?.role === 'admin' ||
+    currentUserObj?.role === 'master_admin' ||
+    currentUserObj?.role === 'cpm_admin' ||
+    (currentUserObj?.role as string) === 'super_admin' ||
     currentUserObj?.username === 'ErsidoAbayneh' ||
-    currentUserObj?.username === 'proj_1781786415663'
+    currentUserObj?.username === 'proj_1781786415663' ||
+    (currentUserObj?.username && currentUserObj.username.toLowerCase().includes('ersido')) ||
+    (currentUserObj?.username && currentUserObj.username.toLowerCase().includes('admin'))
   );
+  const effectiveIsAdmin = isMasterAdmin;
 
   const [selectedIssueId, setSelectedIssueId] = useState<string>(issuesList[0]?.id || '');
   const [searchQuery, setSearchQuery] = useState('');
@@ -516,6 +548,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
   const [historyNoteInput, setHistoryNoteInput] = useState('');
   const [historyNewStatusInput, setHistoryNewStatusInput] = useState<string>('');
   const [activeActionMenuId, setActiveActionMenuId] = useState<string | null>(null);
+  const [showMoreFilters, setShowMoreFilters] = useState<boolean>(false);
 
   // System Traceability & User Action Audit Log State
   const [showAuditLogModal, setShowAuditLogModal] = useState<boolean>(false);
@@ -1087,6 +1120,46 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
     };
   };
 
+  const getIssueLessonsLearnedInfo = (item: IssueLogItem) => {
+    const subDate = item.submittedDate || (item.createdDate ? item.createdDate.split(' ')[0] : '');
+    const hasLessonsLearned = Boolean(item.lessonsLearned && item.lessonsLearned.trim().length > 0);
+
+    let lessonsLearnedDate = item.lessonsLearnedDate;
+    if (!lessonsLearnedDate && item.lessonsLearnedUpdatedAt) {
+      lessonsLearnedDate = item.lessonsLearnedUpdatedAt.split(' ')[0];
+    }
+    if (!lessonsLearnedDate && item.history && item.history.length > 0) {
+      const llHist = item.history.find(h =>
+        h.changeType === 'Lessons Learned Review' ||
+        h.changeType === 'Lessons Learned Recorded' ||
+        (h.notes && h.notes.toLowerCase().includes('lesson learned'))
+      );
+      if (llHist && llHist.timestamp) {
+        lessonsLearnedDate = llHist.timestamp.split(' ')[0];
+      }
+    }
+    if (hasLessonsLearned && !lessonsLearnedDate) {
+      lessonsLearnedDate = item.resolvedDate || new Date().toISOString().split('T')[0];
+    }
+
+    let totalDaysUntilLessonsLearned = item.totalDaysUntilLessonsLearned;
+    if ((totalDaysUntilLessonsLearned === undefined || totalDaysUntilLessonsLearned === null) && subDate && lessonsLearnedDate) {
+      totalDaysUntilLessonsLearned = calculateTurnaroundDays(subDate, lessonsLearnedDate);
+    }
+
+    return {
+      hasLessonsLearned,
+      lessonsLearnedDate,
+      lessonsLearnedUpdatedAt: item.lessonsLearnedUpdatedAt,
+      lessonsLearnedUpdatedBy: item.lessonsLearnedUpdatedBy,
+      totalDaysUntilLessonsLearned: hasLessonsLearned ? (totalDaysUntilLessonsLearned ?? 0) : null,
+      submittedDate: subDate,
+      displayText: hasLessonsLearned
+        ? `${totalDaysUntilLessonsLearned ?? 0} Calendar Days (from ${subDate} to ${lessonsLearnedDate || 'Codification'})`
+        : 'Pending Codification into Lessons Learned'
+    };
+  };
+
   // Comprehensive Compiler: Extract and format all steps taken until resolved, all change dates, authors, and statuses
   const compileResolutionJourneyData = (issue: IssueLogItem) => {
     const turnaroundInfo = getIssueTurnaroundInfo(issue);
@@ -1327,26 +1400,51 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
     // Sort chronologically ascending
     events.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 
-    // Map into structured steps
-    const steps: ResolutionStepRecord[] = events.map((ev, idx) => ({
-      id: `step-${idx + 1}-${issue.id}`,
-      stepNumber: idx + 1,
-      date: ev.date,
-      actionTaken: ev.action,
-      performedBy: ev.who,
-      statusAtStep: ev.status,
-      stage: ev.stage,
-      category: ev.category,
-      department: ev.department,
-      transferredFrom: ev.transferredFrom,
-      transferredTo: ev.transferredTo,
-      transferDate: ev.transferDate,
-      departmentTimeTakenDays: ev.departmentTimeTakenDays,
-      overallTimeTakenDays: ev.overallTimeTakenDays,
-      changedColumns: ev.changedColumns,
-      columnSnapshots: ev.columnSnapshots,
-      notes: ev.notes
-    }));
+    const llInfo = getIssueLessonsLearnedInfo(issue);
+    const targetCodifiedDate = llInfo.lessonsLearnedDate;
+
+    // Map into structured steps with inter-step duration calculations
+    const steps: ResolutionStepRecord[] = events.map((ev, idx) => {
+      let daysUntilNextStep = 0;
+      let timeTakenBeforeNextStepText = '';
+
+      if (idx < events.length - 1) {
+        const nextEv = events[idx + 1];
+        daysUntilNextStep = getDiffDays(ev.date, nextEv.date);
+        timeTakenBeforeNextStepText = `${daysUntilNextStep} Day${daysUntilNextStep === 1 ? '' : 's'} before Step ${idx + 2} (${nextEv.action.slice(0, 32)}...)`;
+      } else {
+        if (targetCodifiedDate) {
+          daysUntilNextStep = getDiffDays(ev.date, targetCodifiedDate);
+          timeTakenBeforeNextStepText = `${daysUntilNextStep} Day${daysUntilNextStep === 1 ? '' : 's'} before Codified into Lessons Learned (${targetCodifiedDate})`;
+        } else {
+          const todayStr = new Date().toISOString().split('T')[0];
+          daysUntilNextStep = getDiffDays(ev.date, todayStr);
+          timeTakenBeforeNextStepText = `${daysUntilNextStep} Day${daysUntilNextStep === 1 ? '' : 's'} elapsed (Pending Lessons Learned)`;
+        }
+      }
+
+      return {
+        id: `step-${idx + 1}-${issue.id}`,
+        stepNumber: idx + 1,
+        date: ev.date,
+        actionTaken: ev.action,
+        performedBy: ev.who,
+        statusAtStep: ev.status,
+        stage: ev.stage,
+        category: ev.category,
+        department: ev.department,
+        transferredFrom: ev.transferredFrom,
+        transferredTo: ev.transferredTo,
+        transferDate: ev.transferDate,
+        departmentTimeTakenDays: ev.departmentTimeTakenDays,
+        overallTimeTakenDays: ev.overallTimeTakenDays,
+        daysUntilNextStep,
+        timeTakenBeforeNextStepText,
+        changedColumns: ev.changedColumns,
+        columnSnapshots: ev.columnSnapshots,
+        notes: ev.notes
+      };
+    });
 
     // Compile narrative text
     const narrativeLines: string[] = [];
@@ -1369,7 +1467,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
       }
     });
     narrativeLines.push('');
-    narrativeLines.push(`CHRONOLOGICAL AUDIT OF ALL STEPS TAKEN, COLUMN CHANGES & HANDOVERS:`);
+    narrativeLines.push(`CHRONOLOGICAL AUDIT OF ALL STEPS TAKEN, TIME TAKEN BEFORE NEXT STEP & HANDOVERS:`);
 
     steps.forEach(st => {
       narrativeLines.push(`Step ${st.stepNumber} [${st.date}]: ${st.actionTaken}`);
@@ -1377,6 +1475,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
       narrativeLines.push(`  - Category: ${st.category || issue.category}`);
       narrativeLines.push(`  - Issue Status: ${st.statusAtStep}${st.stage ? ` (${st.stage})` : ''}`);
       narrativeLines.push(`  - Department / Handover: ${st.department || 'N/A'}${st.transferredTo ? ` ➔ Transferred to [${st.transferredTo}]` : ''}`);
+      narrativeLines.push(`  - Time Taken at This Step Before Next Step: ${st.daysUntilNextStep !== undefined ? `${st.daysUntilNextStep} Calendar Days (${st.timeTakenBeforeNextStepText})` : 'N/A'}`);
       narrativeLines.push(`  - Department Time Taken: ${st.departmentTimeTakenDays !== undefined ? `${st.departmentTimeTakenDays} Days before transfer/change` : 'N/A'}`);
       narrativeLines.push(`  - Overall Time Taken: ${st.overallTimeTakenDays !== undefined ? `${st.overallTimeTakenDays} Days since submission` : 'N/A'}`);
       if (st.changedColumns && st.changedColumns.length > 0) {
@@ -1388,6 +1487,14 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
       narrativeLines.push('');
     });
 
+    if (llInfo.hasLessonsLearned) {
+      narrativeLines.push(`=== FINAL INSTITUTIONAL LESSON LEARNED CODIFICATION ===`);
+      narrativeLines.push(`• Date Issue Became Part of Lesson Learned: ${llInfo.lessonsLearnedDate || 'N/A'} (Recorded: ${llInfo.lessonsLearnedUpdatedAt || 'N/A'})`);
+      narrativeLines.push(`• Total Time Taken For Issue Before Lesson Learned: ${llInfo.totalDaysUntilLessonsLearned !== null ? `${llInfo.totalDaysUntilLessonsLearned} Calendar Days` : 'N/A'} (from initial submission ${subDate} to ${llInfo.lessonsLearnedDate})`);
+      narrativeLines.push(`• Recorded / Reviewed By: ${llInfo.lessonsLearnedUpdatedBy || 'ERA Project Authority'}`);
+      narrativeLines.push(`• Codified Lesson Learned: ${issue.lessonsLearned || 'N/A'}`);
+    }
+
     return {
       steps,
       stepsText: narrativeLines.join('\n'),
@@ -1397,7 +1504,12 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
       submittedDate: issue.submittedDate,
       resolvedDate: resDate,
       turnaroundDays: turnaroundInfo.turnaroundDays,
-      overallTimeTakenDays: turnaroundInfo.turnaroundDays
+      overallTimeTakenDays: turnaroundInfo.turnaroundDays,
+      lessonsLearnedDate: llInfo.lessonsLearnedDate,
+      lessonsLearnedUpdatedAt: llInfo.lessonsLearnedUpdatedAt,
+      lessonsLearnedUpdatedBy: llInfo.lessonsLearnedUpdatedBy,
+      totalDaysUntilLessonsLearned: llInfo.totalDaysUntilLessonsLearned,
+      hasLessonsLearned: llInfo.hasLessonsLearned
     };
   };
 
@@ -1860,6 +1972,8 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
       notes: `Institutional lessons learned recorded by ${currentUsername}. Status set to "${targetStatus}". Resolution steps logged: ${resolutionStepsList.length} step(s). Department time in [${currentDept}] before update: ${daysInDept} days. Overall turnaround recorded: ${overallElapsed} days.`
     };
 
+    const totalDaysToLessonsLearned = calculateTurnaroundDays(subDate, todayDate);
+
     const updatedIssue: IssueLogItem = {
       ...selectedIssue,
       lastUpdated: nowStr,
@@ -1871,6 +1985,8 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
       reviewNotes: reviewNotesInput,
       lessonsLearnedUpdatedBy: currentUsername,
       lessonsLearnedUpdatedAt: nowStr,
+      lessonsLearnedDate: todayDate,
+      totalDaysUntilLessonsLearned: totalDaysToLessonsLearned,
       resolvedDate: resolvedDate,
       turnaroundDays: turnaroundDays,
       history: [historyRecord, ...(selectedIssue.history || [])]
@@ -1887,7 +2003,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
     const targetIssue = issuesList.find(i => i.id === targetId);
     if (!targetIssue) return;
 
-    if (!window.confirm(`Are you sure you want to permanently delete the lesson learned for Issue ${targetIssue.issueCode}? This will clear the lesson narrative, resolution steps, review notes, and author attributions.`)) {
+    if (!window.confirm(`Master Admin Action: Are you sure you want to permanently delete the lesson learned for Issue ${targetIssue.issueCode} from the system? This will completely wipe the codified institutional lesson, resolution dossier, and timing audit.`)) {
       return;
     }
 
@@ -1902,13 +2018,15 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
       changeType: 'Lessons Learned Deleted',
       category: targetIssue.category,
       department: targetIssue.submittedTo || 'Reviewing Authority',
-      notes: `Lesson learned & resolution dossier deleted by administrator ${currentUsername}. (Previous lesson: "${(targetIssue.lessonsLearned || '').substring(0, 60)}...")`
+      notes: `Institutional lesson learned & resolution dossier permanently deleted from system by Master Admin ${currentUsername}. (Previous lesson: "${(targetIssue.lessonsLearned || '').substring(0, 60)}...")`
     };
 
     const updatedIssue: IssueLogItem = {
       ...targetIssue,
       lastUpdated: nowStr,
       lessonsLearned: undefined,
+      lessonsLearnedDate: undefined,
+      totalDaysUntilLessonsLearned: undefined,
       reviewNotes: undefined,
       lessonsLearnedUpdatedBy: undefined,
       lessonsLearnedUpdatedAt: undefined,
@@ -2861,10 +2979,16 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
 
   const getPriorityBadgeClass = (p: string) => {
     switch (p) {
-      case 'Critical': return 'bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border-rose-200 dark:border-rose-800';
-      case 'High': return 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border-amber-200 dark:border-amber-800';
-      case 'Medium': return 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border-blue-200 dark:border-blue-800';
-      default: return 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700';
+      case 'Critical': 
+        return 'bg-rose-100 text-rose-800 dark:bg-rose-950/70 dark:text-rose-300 border-rose-300 dark:border-rose-800 font-extrabold';
+      case 'High': 
+        return 'bg-orange-100 text-orange-800 dark:bg-orange-950/70 dark:text-orange-300 border-orange-300 dark:border-orange-800 font-extrabold';
+      case 'Medium': 
+        return 'bg-amber-100 text-amber-900 dark:bg-amber-950/70 dark:text-amber-300 border-amber-300 dark:border-amber-800 font-extrabold';
+      case 'Low': 
+        return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800 font-extrabold';
+      default: 
+        return 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700 font-bold';
     }
   };
 
@@ -2909,75 +3033,72 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
         }
       `}</style>
 
-      {/* Overdue Pending Critical Warning Action Banner */}
+      {/* Overdue Pending Action Banner */}
       {overduePendingCount > 0 && (
-        <div className="bg-gradient-to-r from-rose-600 via-rose-500 to-amber-600 text-white p-3.5 rounded-2xl shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3 no-print border border-rose-400/30">
+        <div className="bg-rose-50 dark:bg-rose-950/40 text-rose-900 dark:text-rose-200 p-3.5 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-3 no-print border border-rose-200 dark:border-rose-800">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-white/20 backdrop-blur-md rounded-xl animate-bounce shrink-0">
-              <AlertOctagon className="w-5 h-5 text-white" />
+            <div className="p-2 bg-rose-100 dark:bg-rose-900/60 rounded-lg shrink-0">
+              <AlertOctagon className="w-5 h-5 text-rose-600 dark:text-rose-400" />
             </div>
             <div>
-              <h4 className="text-xs font-black uppercase tracking-wider">
-                ⚠️ Critical Action Alert: {overduePendingCount} Issue(s) Pending Beyond {pendingDaysThreshold}-Day Review Limit
+              <h4 className="text-xs font-bold uppercase tracking-wider text-rose-800 dark:text-rose-300">
+                Action Required: {overduePendingCount} Issue{overduePendingCount > 1 ? 's' : ''} Pending Over {pendingDaysThreshold} Days
               </h4>
-              <p className="text-2xs text-rose-100 mt-0.5">
-                Submitted issues exceeding {pendingDaysThreshold} calendar days without team resolution or transfer require immediate escalation to prevent extension-of-time (EOT) claims.
+              <p className="text-xs text-rose-700/90 dark:text-rose-300/80 mt-0.5">
+                Issues exceeding the {pendingDaysThreshold}-day resolution limit require review or transfer handover.
               </p>
             </div>
           </div>
           <button
             onClick={() => setStatusFilter('Overdue Pending')}
-            className="bg-white text-rose-700 hover:bg-rose-50 text-2xs font-extrabold px-3 py-1.5 rounded-xl transition shadow-xs whitespace-nowrap cursor-pointer shrink-0"
+            className="bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition whitespace-nowrap cursor-pointer shrink-0"
           >
-            View Overdue Issues ({overduePendingCount})
+            Review Overdue ({overduePendingCount})
           </button>
         </div>
       )}
 
-      {/* High / Critical Priority Admin Notification Flag Banner */}
+      {/* High / Critical Priority Notification Banner */}
       {urgentNotificationFlag && (
-        <div className="bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 text-white p-3.5 rounded-2xl shadow-md flex items-center justify-between gap-3 no-print border border-red-400/40 animate-pulse">
+        <div className="bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 p-3.5 rounded-xl flex items-center justify-between gap-3 no-print border border-amber-200 dark:border-amber-800">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-white text-rose-600 rounded-xl font-bold shrink-0">
-              <AlertTriangle className="w-5 h-5" />
+            <div className="p-2 bg-amber-100 dark:bg-amber-900/60 rounded-lg shrink-0">
+              <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-2xs font-black uppercase tracking-wider bg-white/20 text-white px-2 py-0.5 rounded border border-white/30">
-                  🚨 URGENT ADMIN NOTIFICATION FLAG ACTIVE
+                <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-200 dark:bg-amber-800 text-amber-900 dark:text-amber-100">
+                  {urgentNotificationFlag.priority} Priority
                 </span>
-                <span className="text-2xs font-mono font-bold text-rose-100">
-                  [{urgentNotificationFlag.priority.toUpperCase()} PRIORITY]
+                <span className="text-xs font-semibold">
+                  New Issue: {urgentNotificationFlag.issueCode} — {urgentNotificationFlag.title}
                 </span>
               </div>
-              <p className="text-xs font-extrabold mt-0.5 text-white">
-                New Issue Registered: {urgentNotificationFlag.issueCode} — "{urgentNotificationFlag.title}"
-              </p>
-              <p className="text-2xs text-rose-100">
-                Project administrators have been alerted for immediate prompt escalation and evaluation.
+              <p className="text-xs text-amber-700/90 dark:text-amber-300/80 mt-0.5">
+                Prompt evaluation recommended for high-severity site or contractual events.
               </p>
             </div>
           </div>
           <button
             onClick={() => setUrgentNotificationFlag(null)}
-            className="bg-white/20 hover:bg-white/30 text-white text-2xs font-bold px-2.5 py-1 rounded-lg transition cursor-pointer border border-white/30 shrink-0"
+            className="bg-white dark:bg-slate-800 hover:bg-amber-100 dark:hover:bg-slate-700 text-amber-800 dark:text-amber-200 text-xs font-medium px-2.5 py-1 rounded-lg transition cursor-pointer border border-amber-300 dark:border-amber-700 shrink-0"
           >
-            Dismiss Flag
+            Dismiss
           </button>
         </div>
       )}
 
       {/* Header Banner */}
-      <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-5 rounded-2xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/60 p-4 sm:p-5 rounded-2xl shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <ShieldAlert className="w-6 h-6 text-rose-500" />
-            <h2 className="text-xl font-bold text-slate-800 dark:text-zinc-100">
+            <ShieldAlert className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+            <h2 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white">
               Issue Log
             </h2>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Complete contractual tracking sheet recording when the issue was submitted, the current progress stage reached, and team transfer handovers with recommended courses of action.
+            Track, evaluate, and resolve project issues, contractual claims, and team handovers.
           </p>
         </div>
 
@@ -2987,108 +3108,121 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
               setAuditLogIssueFilter('All');
               setShowAuditLogModal(true);
             }}
-            className="flex items-center gap-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold px-3 py-2 rounded-xl transition shadow-xs cursor-pointer"
+            className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-xs font-medium px-3 py-2 rounded-xl transition border border-slate-200 dark:border-slate-600 cursor-pointer"
           >
-            <History className="w-4 h-4" /> Action Audit Log & Traceability ({allActionAuditLogs.length})
+            <History className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+            <span>Audit Log</span>
+            <span className="ml-0.5 bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-full">
+              {allActionAuditLogs.length}
+            </span>
           </button>
+
           <button
             onClick={() => setShowArchiveModal(true)}
-            className="flex items-center gap-1.5 bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold px-3 py-2 rounded-xl transition shadow-xs cursor-pointer"
+            className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-xs font-medium px-3 py-2 rounded-xl transition border border-slate-200 dark:border-slate-600 cursor-pointer"
           >
-            <BookOpen className="w-4 h-4" /> Lessons Learned & Resolved Archive ({resolvedIssuesList.length})
+            <BookOpen className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+            <span>Lessons Learned</span>
+            <span className="ml-0.5 bg-teal-100 dark:bg-teal-950 text-teal-700 dark:text-teal-300 text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-full">
+              {resolvedIssuesList.length}
+            </span>
           </button>
+
           <button
             onClick={() => setShowNewIssueModal(true)}
-            className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-2 rounded-xl transition shadow-xs cursor-pointer"
+            className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3.5 py-2 rounded-xl transition shadow-xs cursor-pointer"
           >
-            <Plus className="w-4 h-4" /> Log New Issue
+            <Plus className="w-4 h-4" />
+            <span>New Issue</span>
           </button>
         </div>
       </div>
 
       {/* Overview Stats Bar */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-3.5 rounded-xl shadow-sm">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Active Issues Log</span>
-          <span className="text-xl font-extrabold text-slate-800 dark:text-white font-mono mt-0.5 block">
+        <div className="bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/60 p-3.5 rounded-xl shadow-xs">
+          <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block">Total Active</span>
+          <span className="text-xl font-bold text-slate-900 dark:text-white font-mono mt-0.5 block">
             {activeIssuesCount}
           </span>
         </div>
-        <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-3.5 rounded-xl shadow-sm">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-amber-500 block">Pending / Under Review</span>
-          <span className="text-xl font-extrabold text-amber-600 dark:text-amber-400 font-mono mt-0.5 block">
+        <div className="bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/60 p-3.5 rounded-xl shadow-xs">
+          <span className="text-[11px] font-medium text-amber-600 dark:text-amber-400 block">Under Review</span>
+          <span className="text-xl font-bold text-amber-600 dark:text-amber-400 font-mono mt-0.5 block">
             {issuesList.filter(i => isPendingStatus(i.currentStatus)).length}
           </span>
         </div>
-        <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-3.5 rounded-xl shadow-sm">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-rose-500 block">Overdue Pending ({pendingDaysThreshold}d+ Limit)</span>
-          <span className="text-xl font-extrabold text-rose-600 dark:text-rose-400 font-mono mt-0.5 block">
+        <div className="bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/60 p-3.5 rounded-xl shadow-xs">
+          <span className="text-[11px] font-medium text-rose-600 dark:text-rose-400 block">Overdue (&gt;{pendingDaysThreshold}d)</span>
+          <span className="text-xl font-bold text-rose-600 dark:text-rose-400 font-mono mt-0.5 block">
             {overduePendingCount}
           </span>
         </div>
-        <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-3.5 rounded-xl shadow-sm">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-teal-600 dark:text-teal-400 block">Resolved / Archived</span>
-          <span className="text-xl font-extrabold text-teal-600 dark:text-teal-400 font-mono mt-0.5 block">
+        <div className="bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/60 p-3.5 rounded-xl shadow-xs">
+          <span className="text-[11px] font-medium text-teal-600 dark:text-teal-400 block">Resolved</span>
+          <span className="text-xl font-bold text-teal-600 dark:text-teal-400 font-mono mt-0.5 block">
             {resolvedIssuesList.length}
           </span>
         </div>
         <div 
           onClick={() => { setAuditLogIssueFilter('All'); setShowAuditLogModal(true); }}
-          className="bg-purple-50/70 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800/60 p-3.5 rounded-xl shadow-sm cursor-pointer hover:border-purple-400 transition"
+          className="bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/60 p-3.5 rounded-xl shadow-xs cursor-pointer hover:border-purple-300 dark:hover:border-purple-700 transition"
         >
-          <span className="text-[10px] font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400 block flex items-center justify-between">
-            <span>Action Audit Trail</span>
-            <ShieldCheck className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+          <span className="text-[11px] font-medium text-purple-600 dark:text-purple-400 block flex items-center justify-between">
+            <span>Audit History</span>
+            <ShieldCheck className="w-3.5 h-3.5 text-purple-500" />
           </span>
-          <span className="text-xl font-extrabold text-purple-700 dark:text-purple-300 font-mono mt-0.5 block">
-            {allActionAuditLogs.length} Actions
+          <span className="text-xl font-bold text-purple-600 dark:text-purple-400 font-mono mt-0.5 block">
+            {allActionAuditLogs.length}
           </span>
         </div>
       </div>
 
       {/* Structured Issue Log Master Table */}
-      <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-5 rounded-2xl shadow-sm space-y-4">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-700/60 pb-4">
+      <div className="bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/60 p-4 sm:p-5 rounded-2xl shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-700/60 pb-3">
           <div>
-            <h3 className="text-base font-bold text-slate-800 dark:text-zinc-100 flex items-center gap-2">
-              <FileSpreadsheet className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-              Structured Issue Log Table
+            <h3 className="text-base font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+              <FileSpreadsheet className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+              Issue Registry
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Active project issues registry. Approved and resolved issues are archived for historical records & lessons learned.
+              Review active issues, contract risk, and team progression.
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2">
             <button
-              onClick={() => setShowArchiveModal(true)}
-              className="bg-teal-50 dark:bg-teal-950/60 hover:bg-teal-100 dark:hover:bg-teal-900/80 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800 text-xs font-bold py-2 px-3.5 rounded-xl transition shadow-xs flex items-center gap-1.5 cursor-pointer"
+              onClick={handleExportCsv}
+              className="bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-xs font-medium px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 cursor-pointer border border-slate-200 dark:border-slate-600"
+              title="Export all issues to CSV"
             >
-              <BookOpen className="w-4 h-4 text-teal-600" />
-              Lessons Learned Repository ({resolvedIssuesList.length})
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Export CSV</span>
             </button>
             <button
-              onClick={() => setShowNewIssueModal(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-2 px-3.5 rounded-xl transition shadow-xs flex items-center gap-1.5 cursor-pointer"
+              onClick={handleExportFullRegistryPdf}
+              className="bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-xs font-medium px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 cursor-pointer border border-slate-200 dark:border-slate-600"
+              title="Export complete report to PDF"
             >
-              <Plus className="w-4 h-4" />
-              Add New Issue
+              <Download className="w-3.5 h-3.5 text-rose-600" />
+              <span>Export PDF</span>
             </button>
           </div>
         </div>
 
-        {/* Search, Column Filters & Status-Based Sorting Toolbar */}
-        <div className="space-y-3 bg-slate-50 dark:bg-slate-900/60 p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-700/80 text-xs shadow-2xs">
+        {/* Search, Status Tabs & Filter Controls */}
+        <div className="space-y-3 bg-slate-50 dark:bg-slate-900/50 p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-700/80 text-xs">
           {/* Search Box & Quick Status Tabs */}
           <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
             <div className="relative flex-1">
               <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
               <input
                 type="text"
-                placeholder="Search issues by title, code, category, party, or lesson learned..."
+                placeholder="Search by title, code, party, category..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl pl-9 pr-8 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-500 text-slate-800 dark:text-slate-100"
+                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg pl-9 pr-8 py-1.5 text-xs outline-none focus:ring-1 focus:ring-blue-500 text-slate-800 dark:text-slate-100"
               />
               {searchQuery && (
                 <button
@@ -3100,42 +3234,42 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
               )}
             </div>
 
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 lg:pb-0 scrollbar-none">
+            <div className="flex items-center gap-1 overflow-x-auto pb-1 lg:pb-0 scrollbar-none">
               {[
-                { label: 'Active Issues', value: 'Active', count: activeIssuesCount },
-                { label: 'Submitted', value: 'Submitted / Under Review' },
+                { label: 'All', value: 'All', count: issuesList.length },
+                { label: 'Active', value: 'Active', count: activeIssuesCount },
+                { label: 'Under Review', value: 'Submitted / Under Review' },
                 { label: 'In Progress', value: 'In Progress / Evaluation' },
                 { label: 'Transferred', value: 'Transferred / Escalated' },
                 { label: 'Overdue', value: 'Overdue Pending', count: overduePendingCount },
-                { label: 'Resolved Archive', value: 'Resolved / Approved', count: resolvedIssuesList.length },
-                { label: 'All Records', value: 'All' }
-              ].map((tab) => {
+                { label: 'Resolved', value: 'Resolved / Approved', count: resolvedIssuesList.length },
+              ].map((tab, tabIdx) => {
                 const isActive = statusFilter === tab.value;
                 const isOverdue = tab.value === 'Overdue Pending';
                 const isResolved = tab.value === 'Resolved / Approved';
 
                 return (
                   <button
-                    key={tab.value}
+                    key={`top-status-tab-${tab.value}-${tabIdx}`}
                     onClick={() => setStatusFilter(tab.value)}
-                    className={`px-2.5 py-1.5 rounded-lg text-2xs font-extrabold whitespace-nowrap transition flex items-center gap-1 cursor-pointer ${
+                    className={`px-2.5 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition flex items-center gap-1 cursor-pointer ${
                       isActive
                         ? isOverdue
-                          ? 'bg-rose-600 text-white shadow-2xs'
+                          ? 'bg-rose-600 text-white font-semibold'
                           : isResolved
-                            ? 'bg-teal-600 text-white shadow-2xs'
-                            : 'bg-blue-600 text-white shadow-2xs'
+                            ? 'bg-teal-600 text-white font-semibold'
+                            : 'bg-blue-600 text-white font-semibold'
                         : isOverdue
                           ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
                           : isResolved
                             ? 'bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300 border border-teal-200 dark:border-teal-800'
-                            : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                            : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
                     }`}
                   >
                     {tab.label}
                     {tab.count !== undefined && (
-                      <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-mono ${
-                        isActive ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                      <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+                        isActive ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
                       }`}>
                         {tab.count}
                       </span>
@@ -3146,198 +3280,158 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
             </div>
           </div>
 
-          {/* Column-Based Filters & Risk Sorting Controls Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 pt-2 border-t border-slate-200/60 dark:border-slate-800/80">
-            {/* Category Filter */}
-            <div>
-              <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-0.5 flex items-center gap-1">
-                <Filter className="w-3 h-3 text-blue-500" /> Category
-              </label>
-              <select
-                value={categoryFilter}
-                onChange={(e) => setCategoryFilter(e.target.value)}
-                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-xs font-semibold text-slate-800 dark:text-slate-200 outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
-              >
-                <option value="All">All Categories</option>
-                {categoriesList.map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Priority Filter */}
-            <div>
-              <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-0.5 flex items-center gap-1">
-                <AlertTriangle className="w-3 h-3 text-amber-500" /> Priority Level
-              </label>
-              <select
-                value={priorityFilter}
-                onChange={(e) => setPriorityFilter(e.target.value)}
-                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-xs font-semibold text-slate-800 dark:text-slate-200 outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
-              >
-                <option value="All">All Priorities</option>
-                <option value="Critical">🔴 Critical</option>
-                <option value="High">🟠 High</option>
-                <option value="Medium">🔵 Medium</option>
-                <option value="Low">🟢 Low</option>
-              </select>
-            </div>
-
-            {/* Submitted By / Party Filter */}
-            <div>
-              <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-0.5 flex items-center gap-1">
-                <UserIcon className="w-3 h-3 text-purple-500" /> Originating Party
-              </label>
-              <select
-                value={submittedByFilter}
-                onChange={(e) => setSubmittedByFilter(e.target.value)}
-                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-xs font-semibold text-slate-800 dark:text-slate-200 outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer truncate"
-              >
-                <option value="All">All Originators</option>
-                {submittedByList.map(party => (
-                  <option key={party} value={party}>{party}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Financial & Time Impact Filter */}
-            <div>
-              <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-0.5 flex items-center gap-1">
-                <Zap className="w-3 h-3 text-rose-500" /> Impact Level
-              </label>
-              <select
-                value={impactFilter}
-                onChange={(e) => setImpactFilter(e.target.value)}
-                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-xs font-semibold text-slate-800 dark:text-slate-200 outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
-              >
-                <option value="All">All Impact Levels</option>
-                <option value="financial">💰 Financial Exposure (&gt;0 ETB)</option>
-                <option value="majorFinancial">🚨 Major Cost (&gt;5M ETB)</option>
-                <option value="eot">⏱ Has EOT Delay (&gt;0 Days)</option>
-                <option value="majorEot">⏳ Major EOT (&gt;30 Days)</option>
-              </select>
-            </div>
-
-            {/* Pending Age / Overdue Filter */}
-            <div>
-              <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-0.5 flex items-center gap-1">
-                <Clock className="w-3 h-3 text-emerald-500" /> Days Pending / Age
-              </label>
-              <select
-                value={ageFilter}
-                onChange={(e) => setAgeFilter(e.target.value)}
-                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-xs font-semibold text-slate-800 dark:text-slate-200 outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
-              >
-                <option value="All">All Pending Ages</option>
-                <option value="overdue">⚠ Overdue Pending (&gt;={pendingDaysThreshold}d)</option>
-                <option value="under15">⚡ &lt; 15 Days</option>
-                <option value="15to30">📅 15 – 30 Days</option>
-                <option value="over30">⏳ &gt; 30 Days</option>
-              </select>
-            </div>
-
-            {/* Sort Controls */}
-            <div>
-              <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-0.5 flex items-center gap-1">
-                <SlidersHorizontal className="w-3 h-3 text-blue-500" /> Sort Controls
-              </label>
-              <div className="flex items-center gap-1">
+          {/* Quick Filters Row with Category, Priority, and More Filters Toggle */}
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200/60 dark:border-slate-800">
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Category Filter */}
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Category:</span>
                 <select
-                  value={sortColumn}
-                  onChange={(e) => setSortColumn(e.target.value as any)}
-                  className="flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-xs font-bold text-blue-700 dark:text-blue-300 outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                  className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1 text-xs font-medium text-slate-800 dark:text-slate-200 outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
                 >
-                  <option value="currentStatus">Status Risk Severity</option>
-                  <option value="submittedDate">Date Submitted</option>
-                  <option value="createdDate">Created Date (Audit Timestamp)</option>
-                  <option value="lastUpdated">Last Updated (Audit Timestamp)</option>
-                  <option value="priority">Priority Level</option>
-                  <option value="financialImpactEtb">Financial Impact (ETB)</option>
-                  <option value="timeImpactDays">EOT Delay Impact (Days)</option>
-                  <option value="daysPending">Days Pending / Age</option>
-                  <option value="requiredDaysContract">Required Contract Days</option>
-                  <option value="submittedBy">Originating Party</option>
-                  <option value="category">Category</option>
-                  <option value="title">Issue Title</option>
+                  <option value="All">All Categories</option>
+                  {categoriesList.map((cat, cIdx) => (
+                    <option key={`cat-opt-top-${cat}-${cIdx}`} value={cat}>{cat}</option>
+                  ))}
                 </select>
-                <button
-                  onClick={() => setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')}
-                  className="p-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition cursor-pointer shrink-0"
-                  title={`Toggle Sort Direction (${sortDirection.toUpperCase()})`}
-                >
-                  {sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />}
-                </button>
               </div>
-            </div>
-          </div>
 
-          {/* Active Filters Pill Bar & Results Count */}
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200/60 dark:border-slate-800/80 text-2xs">
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="font-extrabold text-slate-500 dark:text-slate-400 flex items-center gap-1">
-                <Filter className="w-3 h-3" /> Active Filters:
-              </span>
+              {/* Priority Filter */}
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Priority:</span>
+                <select
+                  value={priorityFilter}
+                  onChange={(e) => setPriorityFilter(e.target.value)}
+                  className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1 text-xs font-medium text-slate-800 dark:text-slate-200 outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+                >
+                  <option value="All">All Priorities</option>
+                  <option value="Critical">🔴 Critical</option>
+                  <option value="High">🟠 High</option>
+                  <option value="Medium">🟡 Medium</option>
+                  <option value="Low">🟢 Low</option>
+                </select>
+              </div>
 
-              {statusFilter !== 'All' && (
-                <span className="inline-flex items-center gap-1 bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-full font-bold border border-blue-200 dark:border-blue-800">
-                  Status: {statusFilter}
-                  <button onClick={() => setStatusFilter('All')} className="hover:text-rose-600 cursor-pointer"><X className="w-2.5 h-2.5" /></button>
-                </span>
-              )}
+              {/* Toggle More Filters Button */}
+              <button
+                type="button"
+                onClick={() => setShowMoreFilters(!showMoreFilters)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium border flex items-center gap-1.5 transition cursor-pointer ${
+                  showMoreFilters || (submittedByFilter !== 'All' || impactFilter !== 'All' || ageFilter !== 'All')
+                    ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800'
+                    : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5" />
+                <span>{showMoreFilters ? 'Fewer Filters' : 'More Filters'}</span>
+                {(submittedByFilter !== 'All' || impactFilter !== 'All' || ageFilter !== 'All') && (
+                  <span className="w-2 h-2 rounded-full bg-blue-600"></span>
+                )}
+              </button>
 
-              {categoryFilter !== 'All' && (
-                <span className="inline-flex items-center gap-1 bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 px-2 py-0.5 rounded-full font-bold border border-purple-200 dark:border-purple-800">
-                  Category: {categoryFilter}
-                  <button onClick={() => setCategoryFilter('All')} className="hover:text-rose-600 cursor-pointer"><X className="w-2.5 h-2.5" /></button>
-                </span>
-              )}
-
-              {priorityFilter !== 'All' && (
-                <span className="inline-flex items-center gap-1 bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 px-2 py-0.5 rounded-full font-bold border border-amber-200 dark:border-amber-800">
-                  Priority: {priorityFilter}
-                  <button onClick={() => setPriorityFilter('All')} className="hover:text-rose-600 cursor-pointer"><X className="w-2.5 h-2.5" /></button>
-                </span>
-              )}
-
-              {submittedByFilter !== 'All' && (
-                <span className="inline-flex items-center gap-1 bg-teal-100 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 px-2 py-0.5 rounded-full font-bold border border-teal-200 dark:border-teal-800">
-                  Originator: {submittedByFilter}
-                  <button onClick={() => setSubmittedByFilter('All')} className="hover:text-rose-600 cursor-pointer"><X className="w-2.5 h-2.5" /></button>
-                </span>
-              )}
-
-              {impactFilter !== 'All' && (
-                <span className="inline-flex items-center gap-1 bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 px-2 py-0.5 rounded-full font-bold border border-rose-200 dark:border-rose-800">
-                  Impact: {impactFilter}
-                  <button onClick={() => setImpactFilter('All')} className="hover:text-rose-600 cursor-pointer"><X className="w-2.5 h-2.5" /></button>
-                </span>
-              )}
-
-              {ageFilter !== 'All' && (
-                <span className="inline-flex items-center gap-1 bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 rounded-full font-bold border border-emerald-200 dark:border-emerald-800">
-                  Age: {ageFilter}
-                  <button onClick={() => setAgeFilter('All')} className="hover:text-rose-600 cursor-pointer"><X className="w-2.5 h-2.5" /></button>
-                </span>
-              )}
-
-              <span className="inline-flex items-center gap-1 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-2 py-0.5 rounded-full font-bold">
-                Sort: {sortColumn} ({sortDirection.toUpperCase()})
-              </span>
-
+              {/* Reset Button if active filters */}
               {hasActiveColumnFilters && (
                 <button
                   onClick={handleResetFiltersAndSort}
-                  className="ml-1 text-rose-600 dark:text-rose-400 hover:underline font-extrabold flex items-center gap-1 cursor-pointer"
+                  className="text-rose-600 dark:text-rose-400 hover:underline text-xs font-medium flex items-center gap-1 cursor-pointer ml-1"
                 >
-                  <RotateCcw className="w-3 h-3" /> Reset Filters
+                  <RotateCcw className="w-3 h-3" /> Reset
                 </button>
               )}
             </div>
 
-            <div className="font-mono font-bold text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700">
-              Showing <span className="text-blue-600 dark:text-blue-400 font-extrabold">{filteredIssues.length}</span> of {issuesList.length} Risk Entries
+            {/* Results Counter */}
+            <div className="text-xs text-slate-500 dark:text-slate-400">
+              Showing <span className="font-bold text-slate-800 dark:text-slate-200">{filteredIssues.length}</span> of {issuesList.length} issues
             </div>
           </div>
+
+          {/* Expandable Advanced Filters Grid */}
+          {showMoreFilters && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 pt-2.5 border-t border-slate-200/60 dark:border-slate-800 animate-in fade-in duration-150">
+              <div>
+                <label className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block mb-1">
+                  Originating Party
+                </label>
+                <select
+                  value={submittedByFilter}
+                  onChange={(e) => setSubmittedByFilter(e.target.value)}
+                  className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-xs font-medium text-slate-800 dark:text-slate-200 outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+                >
+                  <option value="All">All Originators</option>
+                  {submittedByList.map((party, pIdx) => (
+                    <option key={`party-opt-${party}-${pIdx}`} value={party}>{party}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block mb-1">
+                  Impact Level
+                </label>
+                <select
+                  value={impactFilter}
+                  onChange={(e) => setImpactFilter(e.target.value)}
+                  className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-xs font-medium text-slate-800 dark:text-slate-200 outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+                >
+                  <option value="All">All Impact Levels</option>
+                  <option value="financial">Financial Impact (&gt;0 ETB)</option>
+                  <option value="majorFinancial">Major Cost (&gt;5M ETB)</option>
+                  <option value="eot">Has EOT Delay (&gt;0 Days)</option>
+                  <option value="majorEot">Major EOT (&gt;30 Days)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block mb-1">
+                  Days Pending / Age
+                </label>
+                <select
+                  value={ageFilter}
+                  onChange={(e) => setAgeFilter(e.target.value)}
+                  className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-xs font-medium text-slate-800 dark:text-slate-200 outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+                >
+                  <option value="All">All Pending Ages</option>
+                  <option value="overdue">Overdue (&gt;={pendingDaysThreshold}d)</option>
+                  <option value="under15">&lt; 15 Days</option>
+                  <option value="15to30">15 – 30 Days</option>
+                  <option value="over30">&gt; 30 Days</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block mb-1">
+                  Sort By
+                </label>
+                <div className="flex items-center gap-1">
+                  <select
+                    value={sortColumn}
+                    onChange={(e) => setSortColumn(e.target.value as any)}
+                    className="flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-xs font-medium text-slate-800 dark:text-slate-200 outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+                  >
+                    <option value="currentStatus">Status Severity</option>
+                    <option value="submittedDate">Date Submitted</option>
+                    <option value="createdDate">Created Date</option>
+                    <option value="lastUpdated">Last Updated</option>
+                    <option value="priority">Priority</option>
+                    <option value="financialImpactEtb">Financial Impact</option>
+                    <option value="timeImpactDays">EOT Delay</option>
+                    <option value="daysPending">Days Pending</option>
+                    <option value="title">Issue Title</option>
+                  </select>
+                  <button
+                    onClick={() => setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')}
+                    className="p-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition cursor-pointer shrink-0"
+                    title={`Toggle Sort Direction (${sortDirection.toUpperCase()})`}
+                  >
+                    {sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Structured Table Container */}
@@ -3346,6 +3440,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
             <thead>
               <tr className="bg-slate-100/80 dark:bg-slate-900/80 border-b border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 font-bold uppercase tracking-wider text-[11px]">
                 {renderSortableHeader('Date Submitted', 'submittedDate', 'w-32')}
+                {renderSortableHeader('Priority', 'priority', 'w-28 text-center')}
                 {renderSortableHeader('Required Days (Contract)', 'requiredDaysContract', 'w-28 text-center')}
                 {renderSortableHeader('Issue Description & Category', 'title', 'min-w-[260px]')}
                 {renderSortableHeader('Current Status (Risk)', 'currentStatus', 'w-40')}
@@ -3358,12 +3453,12 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
             <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
               {filteredIssues.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="p-6 text-center text-slate-400 font-medium">
+                  <td colSpan={9} className="p-6 text-center text-slate-400 font-medium">
                     No matching issues found in the registry. Click "Add New Issue" above to create one.
                   </td>
                 </tr>
               ) : (
-                filteredIssues.map((item) => {
+                filteredIssues.map((item, itemIdx) => {
                   const isSelected = item.id === selectedIssue?.id;
                   const overdue = isOverduePending(item, pendingDaysThreshold);
                   const daysPending = calculateDaysPending(item.submittedDate);
@@ -3373,7 +3468,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
 
                   return (
                     <tr 
-                      key={item.id}
+                      key={`issue-row-${item.id}-${itemIdx}`}
                       onClick={() => setSelectedIssueId(item.id)}
                       className={`transition-colors cursor-pointer ${
                         isSelected 
@@ -3410,6 +3505,17 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                             </span>
                           )}
                         </div>
+                      </td>
+
+                      {/* Priority Column */}
+                      <td className="p-3 align-top text-center">
+                        <span className={`inline-flex items-center gap-1.5 text-[10px] uppercase font-black px-2.5 py-1 rounded-lg border shadow-2xs ${getPriorityBadgeClass(item.priority)}`}>
+                          {item.priority === 'Critical' && <span className="w-1.5 h-1.5 rounded-full bg-rose-600 animate-ping shrink-0" />}
+                          {item.priority === 'High' && <span className="w-1.5 h-1.5 rounded-full bg-orange-500 shrink-0" />}
+                          {item.priority === 'Medium' && <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />}
+                          {item.priority === 'Low' && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />}
+                          <span>{item.priority}</span>
+                        </span>
                       </td>
 
                       {/* Required Days (Contract) */}
@@ -3506,7 +3612,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                               <div className="space-y-1 max-h-[140px] overflow-y-auto pr-0.5 custom-scrollbar">
                                 {deptRecords.map((rec, rIdx) => (
                                   <div 
-                                    key={rIdx}
+                                    key={`dept-rec-${rec.department}-${rIdx}`}
                                     className="bg-slate-50 dark:bg-slate-900/60 p-1.5 rounded-lg border border-slate-200/60 dark:border-slate-700/60 text-[10px] flex items-center justify-between gap-1.5"
                                   >
                                     <div className="min-w-0 flex-1">
@@ -3738,12 +3844,12 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
             <div>
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Status Filter</span>
               <div className="flex items-center gap-1.5 text-2xs overflow-x-auto pb-1 scrollbar-none">
-                {['All', 'Submitted / Under Review', 'In Progress / Evaluation', 'Transferred / Escalated', 'Resolved / Approved', 'Overdue Pending'].map((st) => {
+                {['All', 'Submitted / Under Review', 'In Progress / Evaluation', 'Transferred / Escalated', 'Resolved / Approved', 'Overdue Pending'].map((st, sIdx) => {
                   const isSelected = statusFilter === st;
                   const isOverdueTab = st === 'Overdue Pending';
                   return (
                     <button
-                      key={st}
+                      key={`mob-status-pill-${st}-${sIdx}`}
                       onClick={() => setStatusFilter(st)}
                       className={`px-2 py-1 rounded-lg whitespace-nowrap font-bold transition flex items-center gap-1 cursor-pointer ${
                         isSelected
@@ -3786,8 +3892,8 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                   className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 font-semibold text-slate-800 dark:text-slate-200 outline-none"
                 >
                   <option value="All">All Categories</option>
-                  {categoriesList.map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
+                  {categoriesList.map((cat, cIdx) => (
+                    <option key={`cat-opt-mob-${cat}-${cIdx}`} value={cat}>{cat}</option>
                   ))}
                 </select>
               </div>
@@ -3833,14 +3939,14 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                 No matching issues found for selected filter criteria.
               </div>
             ) : (
-              filteredIssues.map((item) => {
+              filteredIssues.map((item, itemIdx) => {
                 const isSelected = item.id === selectedIssue?.id;
                 const overdue = isOverduePending(item, pendingDaysThreshold);
                 const daysPending = calculateDaysPending(item.submittedDate);
 
                 return (
                   <div
-                    key={item.id}
+                    key={`issue-card-${item.id}-${itemIdx}`}
                     onClick={() => setSelectedIssueId(item.id)}
                     className={`p-3 rounded-xl border text-left cursor-pointer transition-all ${
                       isSelected
@@ -4157,7 +4263,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                   <div className="space-y-3 relative before:absolute before:inset-0 before:left-3.5 before:w-0.5 before:bg-purple-200 dark:before:bg-purple-900/60 before:z-0">
                     {selectedIssue.transfers.map((tr, index) => (
                       <div 
-                        key={`tr-${selectedIssue.id}-${tr.id || index}`} 
+                        key={`tr-${selectedIssue.id}-${tr.id || index}-${index}`} 
                         className="relative z-10 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-4 rounded-xl shadow-xs space-y-2 ml-7"
                       >
                         {/* Timeline dot */}
@@ -4247,7 +4353,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                   <div className="space-y-2.5 relative before:absolute before:inset-0 before:left-3.5 before:w-0.5 before:bg-blue-200 dark:before:bg-blue-900/60 before:z-0">
                     {selectedIssue.history.map((hist, hIdx) => (
                       <div
-                        key={`hist-${selectedIssue.id}-${hist.id || hIdx}`}
+                        key={`hist-${selectedIssue.id}-${hist.id || hIdx}-${hIdx}`}
                         className="relative z-10 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-xl shadow-xs text-xs space-y-1.5 ml-7"
                       >
                         <div className="absolute -left-[31px] top-3.5 w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center text-[9px] font-bold shadow-xs">
@@ -4396,7 +4502,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                         </div>
                         <div className="space-y-1.5">
                           {selectedIssue.resolutionSteps.map((st, sIdx) => (
-                            <div key={st.id || `st-${sIdx}`} className="bg-white/80 dark:bg-slate-900/60 p-2.5 rounded-lg border border-teal-100 dark:border-teal-900/40 text-2xs space-y-1">
+                            <div key={`st-${selectedIssue.id}-${st.id || sIdx}-${sIdx}`} className="bg-white/80 dark:bg-slate-900/60 p-2.5 rounded-lg border border-teal-100 dark:border-teal-900/40 text-2xs space-y-1">
                               <div className="flex items-center justify-between gap-2">
                                 <div className="flex items-center gap-1.5 flex-wrap">
                                   <span className="font-mono font-bold bg-teal-100 dark:bg-teal-900/60 text-teal-800 dark:text-teal-300 px-1.5 py-0.5 rounded text-[10px]">
@@ -4669,10 +4775,10 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                       onChange={(e) => setNewIssue({ ...newIssue, priority: e.target.value as any })}
                       className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-bold"
                     >
-                      <option value="Critical">Critical</option>
-                      <option value="High">High</option>
-                      <option value="Medium">Medium</option>
-                      <option value="Low">Low</option>
+                      <option value="Critical">🔴 Critical (Immediate Action)</option>
+                      <option value="High">🟠 High (Urgent Review)</option>
+                      <option value="Medium">🟡 Medium (Standard Priority)</option>
+                      <option value="Low">🟢 Low (Routine Notice)</option>
                     </select>
                   </div>
                   <div>
@@ -5331,7 +5437,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                           <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
                             {resolutionStepsList.map((step, sIdx) => (
                               <div
-                                key={step.id || `step-${sIdx}`}
+                                key={`step-${step.id || sIdx}-${sIdx}`}
                                 className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700/80 shadow-2xs space-y-2 relative group hover:border-teal-400 dark:hover:border-teal-700 transition"
                               >
                                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -5400,7 +5506,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                                   <div className="flex flex-wrap items-center gap-1 text-[9px]">
                                     <span className="font-bold text-slate-400 uppercase">Changed Columns:</span>
                                     {step.changedColumns.map((col, cIdx) => (
-                                      <span key={cIdx} className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 font-mono">
+                                      <span key={`step-col-${cIdx}-${col}`} className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 font-mono">
                                         {col}
                                       </span>
                                     ))}
@@ -5475,7 +5581,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                           <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
                             {changes.map((ev, idx) => (
                               <div
-                                key={ev.id || `change-${idx}`}
+                                key={`change-ev-${ev.id || idx}-${idx}`}
                                 className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-700/80 space-y-3 shadow-2xs hover:border-blue-300 dark:hover:border-blue-700 transition"
                               >
                                 {/* Change Event Header */}
@@ -5544,7 +5650,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                                     </span>
                                     <div className="flex flex-wrap gap-1">
                                       {ev.changedColumns.map((col, cIdx) => (
-                                        <span key={cIdx} className="px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-950/80 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800 font-mono text-[10px]">
+                                        <span key={`ev-col-${cIdx}-${col}`} className="px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-950/80 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800 font-mono text-[10px]">
                                           ✓ {col}
                                         </span>
                                       ))}
@@ -5621,7 +5727,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
 
                             <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
                               {depts.map((d, dIdx) => (
-                                <div key={dIdx} className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700/80 space-y-2 shadow-2xs">
+                                <div key={`dept-d-${dIdx}-${d.department}`} className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700/80 space-y-2 shadow-2xs">
                                   <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-2">
                                     <div className="flex items-center gap-2">
                                       <span className="w-5 h-5 rounded-full bg-purple-600 text-white font-bold text-2xs flex items-center justify-center font-mono">
@@ -5894,9 +6000,9 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                     );
                   }
 
-                  return filteredArchive.map((item) => (
+                  return filteredArchive.map((item, aIdx) => (
                     <div 
-                      key={item.id}
+                      key={`arch-item-${item.id}-${aIdx}`}
                       className="bg-slate-50/80 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-700/80 p-4 rounded-xl space-y-2.5 transition hover:border-teal-300 dark:hover:border-teal-700"
                     >
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/60 dark:border-slate-800 pb-2">
@@ -6034,6 +6140,8 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
           const trackingIssue = issuesList.find(i => i.id === retroTrackingIssueId);
           if (!trackingIssue) return null;
           const turnaroundInfo = getIssueTurnaroundInfo(trackingIssue);
+          const lessonsLearnedInfo = getIssueLessonsLearnedInfo(trackingIssue);
+          const compiledJourney = compileResolutionJourneyData(trackingIssue);
           const sortedHistory = [...(trackingIssue.history || [])].sort((a, b) => {
             const tA = new Date(a.timestamp || 0).getTime();
             const tB = new Date(b.timestamp || 0).getTime();
@@ -6058,13 +6166,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                       <span className="px-2 py-0.5 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded text-2xs font-semibold">
                         {trackingIssue.category}
                       </span>
-                      <span className={`px-2 py-0.5 rounded text-2xs font-extrabold border ${
-                        trackingIssue.priority === 'Critical'
-                          ? 'bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300 border-rose-300'
-                          : trackingIssue.priority === 'High'
-                          ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border-amber-300'
-                          : 'bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 border-blue-300'
-                      }`}>
+                      <span className={`px-2 py-0.5 rounded text-2xs font-extrabold border ${getPriorityBadgeClass(trackingIssue.priority)}`}>
                         {trackingIssue.priority} Priority
                       </span>
                       <span className={`px-2 py-0.5 rounded text-2xs font-extrabold border ${
@@ -6118,14 +6220,34 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                 </div>
 
                 {/* Quick Metrics KPI Bar */}
-                <div className="px-5 py-2.5 bg-slate-100/70 dark:bg-slate-900/40 border-b border-slate-200 dark:border-slate-700 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs shrink-0 font-mono">
+                <div className="px-5 py-2.5 bg-slate-100/70 dark:bg-slate-900/40 border-b border-slate-200 dark:border-slate-700 grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs shrink-0 font-mono">
                   <div>
                     <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold block">Turnaround Duration</span>
                     <span className="font-extrabold text-teal-700 dark:text-teal-300 text-sm">
                       {turnaroundInfo.turnaroundDays} Days
                     </span>
                     <span className="text-[10px] text-slate-400 block">
-                      {turnaroundInfo.isResolved ? 'Submission ➔ Resolution' : 'Days Pending Active'}
+                      {turnaroundInfo.isResolved ? 'Lodged ➔ Resolved' : 'Days Pending Active'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold block">Lesson Learned Date</span>
+                    <span className="font-extrabold text-teal-700 dark:text-teal-300 text-sm">
+                      {lessonsLearnedInfo.hasLessonsLearned ? (lessonsLearnedInfo.lessonsLearnedDate || 'Codified') : 'Pending'}
+                    </span>
+                    <span className="text-[10px] text-slate-400 block">
+                      {lessonsLearnedInfo.hasLessonsLearned ? 'Institutionalized Date' : 'Not Yet Codified'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold block">Total Time to Lesson</span>
+                    <span className="font-extrabold text-emerald-700 dark:text-emerald-400 text-sm">
+                      {lessonsLearnedInfo.totalDaysUntilLessonsLearned !== null
+                        ? `${lessonsLearnedInfo.totalDaysUntilLessonsLearned} Days`
+                        : `${turnaroundInfo.daysPending}d (In-flight)`}
+                    </span>
+                    <span className="text-[10px] text-slate-400 block">
+                      {lessonsLearnedInfo.hasLessonsLearned ? 'Inception ➔ Codified' : 'Days Active So Far'}
                     </span>
                   </div>
                   <div>
@@ -6136,18 +6258,11 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                     <span className="text-[10px] text-slate-400 block">Claimed / Evaluated</span>
                   </div>
                   <div>
-                    <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold block">Time Impact</span>
-                    <span className="font-extrabold text-amber-700 dark:text-amber-400 text-sm">
-                      {trackingIssue.timeImpactDays || 0} Days EOT
-                    </span>
-                    <span className="text-[10px] text-slate-400 block">Req: {trackingIssue.requiredDaysContract || 28}d SLA</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold block">Handovers & Audits</span>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold block">Journey Steps</span>
                     <span className="font-extrabold text-purple-700 dark:text-purple-300 text-sm">
-                      {(trackingIssue.transfers?.length || 0)} Transfers
+                      {compiledJourney.steps.length} Steps
                     </span>
-                    <span className="text-[10px] text-slate-400 block">{(trackingIssue.history?.length || 0)} Audit Milestones</span>
+                    <span className="text-[10px] text-slate-400 block">{(trackingIssue.transfers?.length || 0)} Handover Transfers</span>
                   </div>
                 </div>
 
@@ -6195,6 +6310,90 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                 <div className="p-4 sm:p-5 overflow-y-auto space-y-6 flex-1 text-xs">
                   {trackingModalTab === 'journey' && (
                     <div className="space-y-6">
+                      {/* EXECUTIVE JOURNEY & TIMING SUMMARY CARD */}
+                      <div className="bg-gradient-to-r from-teal-500/10 via-emerald-500/10 to-blue-500/10 dark:from-teal-950/50 dark:via-emerald-950/40 dark:to-blue-950/40 border-2 border-teal-300/80 dark:border-teal-700/80 rounded-2xl p-4 sm:p-5 shadow-sm space-y-3">
+                        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-teal-200/60 dark:border-teal-800/60 pb-3">
+                          <div className="flex items-center gap-2">
+                            <div className="p-2 bg-teal-600 text-white rounded-xl shadow-xs">
+                              <Sparkles className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <h3 className="text-xs sm:text-sm font-black uppercase tracking-wider text-teal-950 dark:text-teal-200">
+                                Institutional Issue Journey & Lessons Learned Metrics
+                              </h3>
+                              <p className="text-2xs text-slate-600 dark:text-slate-400">
+                                Comprehensive step-by-step turnaround and full institutional memory timeline.
+                              </p>
+                            </div>
+                          </div>
+
+                          {effectiveIsAdmin && trackingIssue.lessonsLearned && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteLessonsLearned(trackingIssue.id)}
+                              className="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/80 dark:hover:bg-rose-900 text-rose-700 dark:text-rose-300 font-bold text-xs flex items-center gap-1.5 border border-rose-300 dark:border-rose-800 cursor-pointer transition shadow-xs"
+                              title="Master Admin Permission: Permanently delete lesson learned from system"
+                            >
+                              <Trash2 className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+                              <span>Master Admin: Delete Lesson Learned</span>
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Timing KPIs Grid */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1 text-xs">
+                          {/* 1. Date Issue Became Part of Lesson Learned */}
+                          <div className="bg-white/80 dark:bg-slate-900/80 p-3 rounded-xl border border-teal-200/80 dark:border-teal-800/60 space-y-1 shadow-2xs">
+                            <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-teal-800 dark:text-teal-300">
+                              <Calendar className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
+                              <span>Date Issue Became Lesson Learned</span>
+                            </div>
+                            <div className="font-extrabold text-sm sm:text-base text-slate-900 dark:text-white font-mono">
+                              {lessonsLearnedInfo.hasLessonsLearned
+                                ? (lessonsLearnedInfo.lessonsLearnedDate || 'Codified')
+                                : 'Pending Codification'}
+                            </div>
+                            <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                              {lessonsLearnedInfo.hasLessonsLearned
+                                ? `Institutionalized by ${lessonsLearnedInfo.lessonsLearnedUpdatedBy || 'Project Authority'}`
+                                : 'Active dispute / in evaluation'}
+                            </div>
+                          </div>
+
+                          {/* 2. Total Time Taken for Issue Before Becoming Lesson Learned */}
+                          <div className="bg-white/80 dark:bg-slate-900/80 p-3 rounded-xl border border-emerald-200/80 dark:border-emerald-800/60 space-y-1 shadow-2xs">
+                            <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
+                              <Clock className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                              <span>Total Time Taken Before Lesson Learned</span>
+                            </div>
+                            <div className="font-extrabold text-sm sm:text-base text-emerald-700 dark:text-emerald-300 font-mono">
+                              {lessonsLearnedInfo.totalDaysUntilLessonsLearned !== null
+                                ? `${lessonsLearnedInfo.totalDaysUntilLessonsLearned} Calendar Days`
+                                : `${turnaroundInfo.daysPending} Days (Active & In-Progress)`}
+                            </div>
+                            <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                              From initial notice ({trackingIssue.submittedDate || 'Submission'}) to {lessonsLearnedInfo.lessonsLearnedDate || 'Lesson Codification'}
+                            </div>
+                          </div>
+
+                          {/* 3. Operational Lifecycle Turnaround */}
+                          <div className="bg-white/80 dark:bg-slate-900/80 p-3 rounded-xl border border-blue-200/80 dark:border-blue-800/60 space-y-1 shadow-2xs">
+                            <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-blue-800 dark:text-blue-300">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                              <span>Operational Resolution Turnaround</span>
+                            </div>
+                            <div className="font-extrabold text-sm sm:text-base text-blue-700 dark:text-blue-300 font-mono">
+                              {turnaroundInfo.turnaroundDays} Calendar Days
+                            </div>
+                            <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                              {turnaroundInfo.isResolved
+                                ? `Resolved on ${turnaroundInfo.resolvedDate}`
+                                : `${turnaroundInfo.daysPending} days open and pending determination`}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
                       {/* Visual Stepper Timeline */}
                       <div className="relative pl-6 sm:pl-8 space-y-8 before:absolute before:left-3 sm:before:left-4 before:top-2 before:bottom-2 before:w-0.5 before:bg-gradient-to-b before:from-blue-500 before:via-purple-500 before:via-emerald-500 before:to-teal-500">
                         
@@ -6203,16 +6402,28 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                           <div className="absolute -left-6 sm:-left-8 top-0.5 w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-md ring-4 ring-white dark:ring-slate-800 font-bold text-2xs">
                             1
                           </div>
-                          <div className="bg-blue-50/60 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/60 rounded-xl p-4 space-y-2">
+                          <div className="bg-blue-50/60 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/60 rounded-xl p-4 space-y-3">
                             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-blue-200/60 dark:border-blue-800/40 pb-2">
                               <div className="flex items-center gap-1.5 font-bold text-blue-900 dark:text-blue-300">
                                 <AlertTriangle className="w-4 h-4 text-blue-600" />
                                 <span>Phase 1: Claim Lodging & Initial Notice</span>
                               </div>
-                              <span className="text-2xs font-mono bg-blue-100 dark:bg-blue-900/60 text-blue-800 dark:text-blue-300 px-2 py-0.5 rounded font-bold">
-                                {trackingIssue.submittedDate || 'Initial Submission'}
-                              </span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-2xs font-mono bg-blue-100 dark:bg-blue-900/60 text-blue-800 dark:text-blue-300 px-2 py-0.5 rounded font-bold">
+                                  {trackingIssue.submittedDate || 'Initial Submission'}
+                                </span>
+                              </div>
                             </div>
+
+                            {/* Step Duration Badge */}
+                            {compiledJourney.steps[0] && (
+                              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-lg bg-blue-100/80 dark:bg-blue-900/50 border border-blue-300/80 dark:border-blue-800 text-blue-950 dark:text-blue-200 font-mono text-2xs font-bold">
+                                <Clock className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                                <span>
+                                  Time Taken at this Initial Step Before Next Step: <strong>{compiledJourney.steps[0].daysUntilNextStep} Calendar Days</strong> ({compiledJourney.steps[0].timeTakenBeforeNextStepText})
+                                </span>
+                              </div>
+                            )}
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-2xs pt-1">
                               <div>
@@ -6264,37 +6475,50 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                             {trackingIssue.transfers && trackingIssue.transfers.length > 0 ? (
                               <div className="space-y-2.5">
                                 <span className="text-[10px] uppercase font-bold text-purple-800 dark:text-purple-300 block">Department Transfer Chain:</span>
-                                {trackingIssue.transfers.map((tr, tIdx) => (
-                                  <div key={tr.id || tIdx} className="bg-white/80 dark:bg-slate-900/60 border border-purple-200/80 dark:border-purple-800/50 p-3 rounded-lg space-y-2">
-                                    <div className="flex flex-wrap items-center justify-between text-2xs font-bold gap-2">
-                                      <span className="text-purple-800 dark:text-purple-300 flex items-center gap-1">
-                                        <span>Transfer #{tIdx + 1}:</span>
-                                        <span className="text-slate-800 dark:text-slate-200">{tr.transferredFrom}</span>
-                                        <ArrowRight className="w-3 h-3 text-purple-600" />
-                                        <span className="text-purple-700 dark:text-purple-300">{tr.transferredTo}</span>
-                                      </span>
-                                      <span className="font-mono text-slate-500 dark:text-slate-400">{tr.transferDate}</span>
-                                    </div>
-                                    <p className="text-2xs text-slate-700 dark:text-slate-300">
-                                      <strong>Reason for Handover:</strong> {tr.transferReason}
-                                    </p>
-                                    {tr.actionTakenByPreviousTeam && (
-                                      <p className="text-2xs text-slate-600 dark:text-slate-400">
-                                        <strong>Action Taken by Handing-over Team:</strong> {tr.actionTakenByPreviousTeam}
-                                      </p>
-                                    )}
-                                    {tr.recommendedCourseOfAction && (
-                                      <p className="text-2xs text-purple-900 dark:text-purple-200 bg-purple-50 dark:bg-purple-950/40 p-1.5 rounded border border-purple-100 dark:border-purple-900/30">
-                                        <strong>Recommended Next Steps:</strong> {tr.recommendedCourseOfAction}
-                                      </p>
-                                    )}
-                                    {tr.transferredBy && (
-                                      <div className="text-[10px] text-slate-400 text-right italic font-mono">
-                                        Authorized By: {tr.transferredBy}
+                                {trackingIssue.transfers.map((tr, tIdx) => {
+                                  // Find corresponding journey step if exists
+                                  const matchingStep = compiledJourney.steps.find(s => s.transferDate === tr.transferDate || s.transferredTo === tr.transferredTo);
+                                  return (
+                                    <div key={`track-tr-${tr.id || tIdx}-${tIdx}`} className="bg-white/80 dark:bg-slate-900/60 border border-purple-200/80 dark:border-purple-800/50 p-3 rounded-lg space-y-2">
+                                      <div className="flex flex-wrap items-center justify-between text-2xs font-bold gap-2">
+                                        <span className="text-purple-800 dark:text-purple-300 flex items-center gap-1">
+                                          <span>Transfer #{tIdx + 1}:</span>
+                                          <span className="text-slate-800 dark:text-slate-200">{tr.transferredFrom}</span>
+                                          <ArrowRight className="w-3 h-3 text-purple-600" />
+                                          <span className="text-purple-700 dark:text-purple-300">{tr.transferredTo}</span>
+                                        </span>
+                                        <span className="font-mono text-slate-500 dark:text-slate-400">{tr.transferDate}</span>
                                       </div>
-                                    )}
-                                  </div>
-                                ))}
+
+                                      {/* Duration at this step before next handover */}
+                                      {matchingStep && (
+                                        <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-purple-100/70 dark:bg-purple-950/60 border border-purple-300/70 dark:border-purple-800 text-purple-900 dark:text-purple-200 font-mono text-[11px] font-bold">
+                                          <Clock className="w-3 h-3 text-purple-600 dark:text-purple-400" />
+                                          <span>Time taken before next step: {matchingStep.daysUntilNextStep} Calendar Days ({matchingStep.timeTakenBeforeNextStepText})</span>
+                                        </div>
+                                      )}
+
+                                      <p className="text-2xs text-slate-700 dark:text-slate-300">
+                                        <strong>Reason for Handover:</strong> {tr.transferReason}
+                                      </p>
+                                      {tr.actionTakenByPreviousTeam && (
+                                        <p className="text-2xs text-slate-600 dark:text-slate-400">
+                                          <strong>Action Taken by Handing-over Team:</strong> {tr.actionTakenByPreviousTeam}
+                                        </p>
+                                      )}
+                                      {tr.recommendedCourseOfAction && (
+                                        <p className="text-2xs text-purple-900 dark:text-purple-200 bg-purple-50 dark:bg-purple-950/40 p-1.5 rounded border border-purple-100 dark:border-purple-900/30">
+                                          <strong>Recommended Next Steps:</strong> {tr.recommendedCourseOfAction}
+                                        </p>
+                                      )}
+                                      {tr.transferredBy && (
+                                        <div className="text-[10px] text-slate-400 text-right italic font-mono">
+                                          Authorized By: {tr.transferredBy}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
                               </div>
                             ) : (
                               <div className="bg-white/60 dark:bg-slate-900/40 p-2.5 rounded-lg border border-dashed border-purple-200 dark:border-purple-800/50 text-2xs text-slate-500">
@@ -6325,7 +6549,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                           <div className="absolute -left-6 sm:-left-8 top-0.5 w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-emerald-600 text-white flex items-center justify-center shadow-md ring-4 ring-white dark:ring-slate-800 font-bold text-2xs">
                             3
                           </div>
-                          <div className="bg-emerald-50/50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60 rounded-xl p-4 space-y-2.5">
+                          <div className="bg-emerald-50/50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60 rounded-xl p-4 space-y-3">
                             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-emerald-200/60 dark:border-emerald-800/40 pb-2">
                               <div className="flex items-center gap-1.5 font-bold text-emerald-900 dark:text-emerald-300">
                                 <CheckCircle2 className="w-4 h-4 text-emerald-600" />
@@ -6376,11 +6600,55 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                                 <Sparkles className="w-4 h-4 text-teal-600 dark:text-teal-400" />
                                 <span>Phase 4: Transformation into Codified Institutional Lesson Learned</span>
                               </div>
-                              {trackingIssue.lessonsLearnedUpdatedAt && (
-                                <span className="text-2xs font-mono bg-teal-100 dark:bg-teal-900/80 text-teal-800 dark:text-teal-300 px-2.5 py-0.5 rounded-full font-bold border border-teal-200 dark:border-teal-800">
-                                  Codified on {trackingIssue.lessonsLearnedUpdatedAt}
+                              <div className="flex items-center gap-2">
+                                {effectiveIsAdmin && trackingIssue.lessonsLearned && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteLessonsLearned(trackingIssue.id)}
+                                    className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 dark:bg-rose-950 dark:hover:bg-rose-900 text-rose-700 dark:text-rose-300 font-bold text-2xs flex items-center gap-1 border border-rose-300 dark:border-rose-800 cursor-pointer transition shadow-2xs"
+                                    title="Master Admin Permission: Permanently delete lesson learned from system"
+                                  >
+                                    <Trash2 className="w-3 h-3 text-rose-600 dark:text-rose-400" />
+                                    <span>Delete Lesson Learned</span>
+                                  </button>
+                                )}
+                                {lessonsLearnedInfo.hasLessonsLearned && (
+                                  <span className="text-2xs font-mono bg-teal-100 dark:bg-teal-900/80 text-teal-800 dark:text-teal-300 px-2.5 py-0.5 rounded-full font-bold border border-teal-200 dark:border-teal-800">
+                                    Codified: {lessonsLearnedInfo.lessonsLearnedDate}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Prominent Institutional Metrics Callout */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-white/90 dark:bg-slate-900/80 rounded-xl border border-teal-200 dark:border-teal-800 font-mono text-xs">
+                              <div className="space-y-0.5">
+                                <span className="text-[10px] uppercase font-bold text-teal-800 dark:text-teal-300 font-sans block">
+                                  📅 Date Issue Became Part of Lesson Learned:
                                 </span>
-                              )}
+                                <span className="font-extrabold text-teal-700 dark:text-teal-300 text-sm">
+                                  {lessonsLearnedInfo.hasLessonsLearned
+                                    ? (lessonsLearnedInfo.lessonsLearnedDate || 'Codified')
+                                    : 'Pending Codification'}
+                                </span>
+                                <span className="text-[10px] text-slate-400 block font-sans">
+                                  {lessonsLearnedInfo.lessonsLearnedUpdatedAt ? `Recorded on ${lessonsLearnedInfo.lessonsLearnedUpdatedAt}` : 'Awaiting entry'}
+                                </span>
+                              </div>
+
+                              <div className="space-y-0.5">
+                                <span className="text-[10px] uppercase font-bold text-emerald-800 dark:text-emerald-300 font-sans block">
+                                  ⏱️ Total Time Taken for Issue Before Lesson Learned:
+                                </span>
+                                <span className="font-extrabold text-emerald-700 dark:text-emerald-300 text-sm">
+                                  {lessonsLearnedInfo.totalDaysUntilLessonsLearned !== null
+                                    ? `${lessonsLearnedInfo.totalDaysUntilLessonsLearned} Calendar Days`
+                                    : 'N/A (Pending Lesson Learned)'}
+                                </span>
+                                <span className="text-[10px] text-slate-400 block font-sans">
+                                  From initial notice {trackingIssue.submittedDate} to lesson codification
+                                </span>
+                              </div>
                             </div>
 
                             {/* Institutional Retrospective Rationale */}
@@ -6389,7 +6657,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                                 <BookOpen className="w-3.5 h-3.5 text-teal-600" /> Institutional Retrospective & Prevention Rationale
                               </span>
                               <p className="text-2xs text-slate-600 dark:text-slate-300 leading-normal">
-                                This issue was elevated into the ERA institutional knowledge repository because the root causes (uncoordinated utility relocation, delayed currency allocation, or centralized testing bottlenecks) repeatedly cause critical path delays and multi-million ETB claims across federal road contracts. Documenting the resolution trajectory provides binding risk mitigation directives for future tenders and supervision teams.
+                                This issue was elevated into the ERA institutional knowledge repository because the root causes repeatedly cause critical path delays and multi-million ETB claims across federal road contracts. Documenting the resolution trajectory provides binding risk mitigation directives for future tenders and supervision teams.
                               </p>
                             </div>
 
@@ -6437,6 +6705,108 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                         </div>
 
                       </div>
+
+                      {/* DETAILED CHRONOLOGICAL STEP-BY-STEP DURATION AUDIT */}
+                      <div className="bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 sm:p-5 space-y-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-700 pb-3">
+                          <div>
+                            <h4 className="text-xs sm:text-sm font-black uppercase tracking-wider text-slate-900 dark:text-white flex items-center gap-2">
+                              <ListOrdered className="w-4 h-4 text-teal-600" />
+                              <span>Chronological Step-by-Step Transition Journey & Duration Audit</span>
+                            </h4>
+                            <p className="text-2xs text-slate-500 dark:text-slate-400">
+                              Detailed days taken for each transition step before proceeding to the subsequent step, culminating in institutional lesson learned codification.
+                            </p>
+                          </div>
+                          <span className="text-2xs font-mono font-bold px-2.5 py-1 rounded-full bg-teal-100 dark:bg-teal-950 text-teal-800 dark:text-teal-300 border border-teal-300 dark:border-teal-800">
+                            {compiledJourney.steps.length} Logged Step{(compiledJourney.steps.length === 1 ? '' : 's')}
+                          </span>
+                        </div>
+
+                        <div className="space-y-3">
+                          {compiledJourney.steps.map((st, sIdx) => {
+                            const isFinalStep = sIdx === compiledJourney.steps.length - 1;
+                            return (
+                              <div
+                                key={`journey-step-${st.id || sIdx}-${sIdx}`}
+                                className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3.5 sm:p-4 space-y-2.5 transition hover:border-teal-300 dark:hover:border-teal-600 shadow-2xs"
+                              >
+                                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-700/60 pb-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className="w-6 h-6 rounded-full bg-teal-600 text-white font-bold text-2xs flex items-center justify-center shadow-xs">
+                                      {st.stepNumber}
+                                    </span>
+                                    <span className="font-bold text-xs text-slate-900 dark:text-white">
+                                      {st.actionTaken}
+                                    </span>
+                                    <span className="text-2xs px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-mono font-semibold">
+                                      {st.statusAtStep}
+                                    </span>
+                                  </div>
+
+                                  <span className="text-2xs font-mono text-slate-500 dark:text-slate-400">
+                                    Date: <strong>{st.date}</strong>
+                                  </span>
+                                </div>
+
+                                {/* CRITICAL TIME TAKEN HIGHLIGHT */}
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 font-mono text-xs font-bold shadow-2xs">
+                                    <Clock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                                    <span>
+                                      Time Taken Before Next Step: <strong>{st.daysUntilNextStep} Calendar Day{(st.daysUntilNextStep === 1 ? '' : 's')}</strong>
+                                    </span>
+                                  </div>
+
+                                  {st.overallTimeTakenDays !== undefined && (
+                                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-mono text-2xs">
+                                      <span>Cumulative Elapsed: {st.overallTimeTakenDays} Days</span>
+                                    </div>
+                                  )}
+
+                                  {st.departmentTimeTakenDays !== undefined && st.department && (
+                                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-purple-50 dark:bg-purple-950/40 text-purple-800 dark:text-purple-300 border border-purple-200 dark:border-purple-800 font-mono text-2xs">
+                                      <span>{st.departmentTimeTakenDays} Days in [{st.department}]</span>
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-2xs text-slate-600 dark:text-slate-400">
+                                  <div>
+                                    <strong className="text-slate-700 dark:text-slate-300">Action Performed By:</strong> {st.performedBy}
+                                  </div>
+                                  <div>
+                                    <strong className="text-slate-700 dark:text-slate-300">Category:</strong> {st.category || trackingIssue.category}
+                                  </div>
+                                  <div>
+                                    <strong className="text-slate-700 dark:text-slate-300">Department:</strong> {st.department || 'Originating Directorate'}
+                                    {st.transferredTo && <span className="text-purple-600 dark:text-purple-400 font-semibold"> ➔ {st.transferredTo}</span>}
+                                  </div>
+                                </div>
+
+                                {st.notes && (
+                                  <p className="text-2xs text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-900/50 p-2.5 rounded-lg border border-slate-200 dark:border-slate-700/60 leading-relaxed font-sans">
+                                    {st.notes}
+                                  </p>
+                                )}
+
+                                {isFinalStep && lessonsLearnedInfo.hasLessonsLearned && (
+                                  <div className="mt-2 p-2.5 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 rounded-lg flex flex-wrap items-center justify-between gap-2 text-2xs">
+                                    <div className="flex items-center gap-1.5 text-emerald-900 dark:text-emerald-200 font-bold">
+                                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                                      <span>Issue officially codified into institutional lesson learned on {lessonsLearnedInfo.lessonsLearnedDate}</span>
+                                    </div>
+                                    <div className="font-mono font-bold text-emerald-800 dark:text-emerald-300">
+                                      Total Time: {lessonsLearnedInfo.totalDaysUntilLessonsLearned} Calendar Days
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
                     </div>
                   )}
 
@@ -6472,7 +6842,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                             const stepNum = sortHistoryAsc ? hIdx + 1 : sortedHistory.length - hIdx;
                             return (
                               <div
-                                key={hist.id || hIdx}
+                                key={`track-hist-${hist.id || hIdx}-${hIdx}`}
                                 className="bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700/80 p-3.5 rounded-xl space-y-2 transition hover:border-teal-300 dark:hover:border-teal-700"
                               >
                                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/60 dark:border-slate-800 pb-2">
@@ -6530,20 +6900,64 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                   {trackingModalTab === 'lessons' && (
                     <div className="space-y-4">
                       <div className="bg-gradient-to-br from-teal-50 to-emerald-50 dark:from-teal-950/40 dark:to-emerald-950/30 p-5 rounded-2xl border border-teal-200 dark:border-teal-800 space-y-4">
-                        <div className="flex justify-between items-center border-b border-teal-200 dark:border-teal-800 pb-3">
+                        <div className="flex flex-wrap justify-between items-center border-b border-teal-200 dark:border-teal-800 pb-3 gap-2">
                           <div className="flex items-center gap-2 text-teal-900 dark:text-teal-200 font-black text-sm uppercase">
                             <Sparkles className="w-5 h-5 text-teal-600" />
                             <span>Codified Institutional Lesson Learned & Resolution Dossier</span>
                           </div>
-                          {effectiveIsAdmin && (
-                            <button
-                              type="button"
-                              onClick={() => openLessonsLearnedModal(trackingIssue)}
-                              className="px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1 cursor-pointer transition shadow-xs"
-                            >
-                              <PenTool className="w-3.5 h-3.5" /> Edit Lessons & Dossier
-                            </button>
-                          )}
+                          <div className="flex items-center gap-2">
+                            {effectiveIsAdmin && trackingIssue.lessonsLearned && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteLessonsLearned(trackingIssue.id)}
+                                className="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950 dark:hover:bg-rose-900 text-rose-700 dark:text-rose-300 font-bold text-xs flex items-center gap-1.5 border border-rose-300 dark:border-rose-800 cursor-pointer transition shadow-xs"
+                                title="Master Admin Permission: Permanently delete lesson learned from system"
+                              >
+                                <Trash2 className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+                                <span>Master Admin: Delete Lesson Learned</span>
+                              </button>
+                            )}
+                            {effectiveIsAdmin && (
+                              <button
+                                type="button"
+                                onClick={() => openLessonsLearnedModal(trackingIssue)}
+                                className="px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1 cursor-pointer transition shadow-xs"
+                              >
+                                <PenTool className="w-3.5 h-3.5" /> Edit Lessons & Dossier
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Timing and Institutional Metrics Card */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 bg-white/90 dark:bg-slate-900/80 rounded-xl border border-teal-200 dark:border-teal-800 font-mono text-xs">
+                          <div className="space-y-1">
+                            <span className="text-[10px] uppercase font-bold text-teal-800 dark:text-teal-300 font-sans block flex items-center gap-1">
+                              <Calendar className="w-3.5 h-3.5 text-teal-600" /> Date Issue Became Lesson Learned:
+                            </span>
+                            <span className="font-extrabold text-teal-700 dark:text-teal-300 text-sm">
+                              {lessonsLearnedInfo.hasLessonsLearned
+                                ? (lessonsLearnedInfo.lessonsLearnedDate || 'Codified')
+                                : 'Pending Codification'}
+                            </span>
+                            <span className="text-[10px] text-slate-400 block font-sans">
+                              {lessonsLearnedInfo.lessonsLearnedUpdatedAt ? `Recorded on ${lessonsLearnedInfo.lessonsLearnedUpdatedAt}` : 'Awaiting entry'}
+                            </span>
+                          </div>
+
+                          <div className="space-y-1">
+                            <span className="text-[10px] uppercase font-bold text-emerald-800 dark:text-emerald-300 font-sans block flex items-center gap-1">
+                              <Clock className="w-3.5 h-3.5 text-emerald-600" /> Total Time Taken Before Becoming Lesson Learned:
+                            </span>
+                            <span className="font-extrabold text-emerald-700 dark:text-emerald-300 text-sm">
+                              {lessonsLearnedInfo.totalDaysUntilLessonsLearned !== null
+                                ? `${lessonsLearnedInfo.totalDaysUntilLessonsLearned} Calendar Days`
+                                : 'N/A (Pending Lesson Learned)'}
+                            </span>
+                            <span className="text-[10px] text-slate-400 block font-sans">
+                              From initial lodging {trackingIssue.submittedDate} to lesson codification
+                            </span>
+                          </div>
                         </div>
 
                         {trackingIssue.lessonsLearned ? (
@@ -6578,7 +6992,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                                 </div>
                                 <div className="space-y-1.5 max-h-60 overflow-y-auto">
                                   {trackingIssue.resolutionSteps.map((st, sIdx) => (
-                                    <div key={st.id || `st-trk-${sIdx}`} className="bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 text-2xs space-y-1">
+                                    <div key={`track-st-${st.id || sIdx}-${sIdx}`} className="bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 text-2xs space-y-1">
                                       <div className="flex items-center justify-between gap-2">
                                         <div className="flex items-center gap-1.5 flex-wrap">
                                           <span className="font-mono font-bold bg-teal-100 dark:bg-teal-900/60 text-teal-800 dark:text-teal-300 px-1.5 py-0.5 rounded text-[10px]">
@@ -6793,8 +7207,8 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                       className="bg-slate-800 border border-slate-700 rounded-xl px-2.5 py-1 text-xs font-bold text-indigo-300 outline-none cursor-pointer max-w-[260px]"
                     >
                       <option value="All">First Issue / Select Below...</option>
-                      {issuesList.map(i => (
-                        <option key={i.id} value={i.id}>[{i.issueCode}] {i.title.slice(0, 24)}...</option>
+                      {issuesList.map((i, iIdx) => (
+                        <option key={`opt-audit-iss-${i.id}-${iIdx}`} value={i.id}>[{i.issueCode}] {i.title.slice(0, 24)}...</option>
                       ))}
                     </select>
                   </div>
@@ -6873,8 +7287,8 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                           className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-1 text-xs font-bold text-purple-700 dark:text-purple-300 outline-none cursor-pointer"
                         >
                           <option value="All">All Officers ({auditLogUsersList.length})</option>
-                          {auditLogUsersList.map(u => (
-                            <option key={u} value={u}>{u}</option>
+                          {auditLogUsersList.map((u, uIdx) => (
+                            <option key={`opt-audit-user-${u}-${uIdx}`} value={u}>{u}</option>
                           ))}
                         </select>
                       </div>
@@ -6888,8 +7302,8 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                           className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-1 text-xs font-bold text-blue-700 dark:text-blue-300 outline-none cursor-pointer"
                         >
                           <option value="All">All Action Types</option>
-                          {auditLogActionTypesList.map(t => (
-                            <option key={t} value={t}>{t}</option>
+                          {auditLogActionTypesList.map((t, tIdx) => (
+                            <option key={`opt-audit-type-${t}-${tIdx}`} value={t}>{t}</option>
                           ))}
                         </select>
                       </div>
@@ -6903,8 +7317,8 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                           className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-1 text-xs font-bold text-teal-700 dark:text-teal-300 outline-none cursor-pointer max-w-[160px]"
                         >
                           <option value="All">All Issues ({issuesList.length})</option>
-                          {issuesList.map(i => (
-                            <option key={i.id} value={i.id}>[{i.issueCode}] {i.title.slice(0, 20)}...</option>
+                          {issuesList.map((i, iIdx) => (
+                            <option key={`opt-audit-iss-flt-${i.id}-${iIdx}`} value={i.id}>[{i.issueCode}] {i.title.slice(0, 20)}...</option>
                           ))}
                         </select>
                       </div>
@@ -6944,14 +7358,14 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                         <p className="text-xs text-slate-400">Try adjusting your search filters or selecting 'All Issues'.</p>
                       </div>
                     ) : (
-                      filteredAuditLogs.map((entry) => {
+                      filteredAuditLogs.map((entry, eIdx) => {
                         const isTransfer = entry.changeType === 'Transfer Handover';
                         const isCreation = entry.changeType === 'Creation';
                         const isLessons = entry.changeType === 'Lessons Learned Review';
 
                         return (
                           <div
-                            key={entry.id}
+                            key={`audit-log-entry-${entry.id}-${eIdx}`}
                             className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 p-4 shadow-xs space-y-2.5 transition hover:border-purple-300 dark:hover:border-purple-700"
                           >
                             {/* Entry Top Header */}
@@ -7067,7 +7481,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                                 </span>
                                 {entry.changedColumns.map((col, cIdx) => (
                                   <span
-                                    key={cIdx}
+                                    key={`audit-col-${cIdx}-${col}`}
                                     className="bg-purple-50 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 px-2 py-0.5 rounded-md text-[10px] font-mono font-bold border border-purple-200 dark:border-purple-800"
                                   >
                                     {col}
@@ -7190,7 +7604,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                         </span>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-2xs">
                           {deptRecords.map((dRec, dIdx) => (
-                            <div key={dIdx} className="bg-white dark:bg-slate-800 p-2 rounded-xl border border-slate-200 dark:border-slate-700 space-y-1">
+                            <div key={`dept-rec-trail-${dIdx}-${dRec.department}`} className="bg-white dark:bg-slate-800 p-2 rounded-xl border border-slate-200 dark:border-slate-700 space-y-1">
                               <div className="flex items-center justify-between font-bold">
                                 <span className="text-slate-900 dark:text-white font-black">{dRec.department}</span>
                                 <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
@@ -7244,7 +7658,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
 
                           return (
                             <div
-                              key={entry.id}
+                              key={`trail-entry-${entry.id}-${idx}`}
                               className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 p-4 shadow-xs space-y-2.5 transition hover:border-indigo-300 dark:hover:border-indigo-700"
                             >
                               {/* Event Header */}
@@ -7336,7 +7750,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                                   </span>
                                   {entry.changedColumns.map((col, cIdx) => (
                                     <span
-                                      key={cIdx}
+                                      key={`trail-col-${cIdx}-${col}`}
                                       className="bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 px-2 py-0.5 rounded-md text-[10px] font-mono font-bold border border-indigo-200 dark:border-indigo-800"
                                     >
                                       {col}

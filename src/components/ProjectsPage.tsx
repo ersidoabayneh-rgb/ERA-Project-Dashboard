@@ -817,8 +817,8 @@ export default function ProjectsPage({
                       className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-xs font-bold outline-none text-slate-700 dark:text-zinc-200 focus:border-indigo-500 transition cursor-pointer"
                     >
                       <option value="All">🌐 All Directorates</option>
-                      {programDirectorates.map(pd => (
-                        <option key={pd} value={pd}>🏢 {pd}</option>
+                      {programDirectorates.map((pd, pdIdx) => (
+                        <option key={`proj-dir-filter-${pd}-${pdIdx}`} value={pd}>🏢 {pd}</option>
                       ))}
                     </select>
                   </div>
@@ -1449,8 +1449,8 @@ export default function ProjectsPage({
                     onChange={(e) => setNewProjectDirectorate(e.target.value)}
                     className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 dark:text-zinc-100 outline-none focus:border-blue-500 disabled:opacity-70 disabled:cursor-not-allowed"
                   >
-                    {programDirectorates.map(pd => (
-                      <option key={pd} value={pd}>{pd}</option>
+                    {programDirectorates.map((pd, pdIdx) => (
+                      <option key={`proj-dir-new-${pd}-${pdIdx}`} value={pd}>{pd}</option>
                     ))}
                   </select>
                 </div>
@@ -1465,8 +1465,8 @@ export default function ProjectsPage({
                     onChange={(e) => setNewProjectPmo(e.target.value)}
                     className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 dark:text-zinc-100 outline-none focus:border-blue-500 disabled:opacity-70 disabled:cursor-not-allowed"
                   >
-                    {pmos.map(p => (
-                      <option key={p} value={p}>{p}</option>
+                    {pmos.map((p, pIdx) => (
+                      <option key={`proj-pmo-new-${p}-${pIdx}`} value={p}>{p}</option>
                     ))}
                   </select>
                 </div>

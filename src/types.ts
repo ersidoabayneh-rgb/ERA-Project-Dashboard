@@ -299,6 +299,8 @@ export interface ResolutionStepRecord {
   transferDate?: string;
   departmentTimeTakenDays?: number; // Department time taken before transfer or change
   overallTimeTakenDays?: number; // Overall time taken from issue submission up to this step
+  daysUntilNextStep?: number; // Calendar days elapsed at this step before the next step
+  timeTakenBeforeNextStepText?: string; // Formatted description of time taken before next step
   stage?: string;
   notes?: string;
   changedColumns?: string[]; // Names of columns that changed at this step
@@ -330,8 +332,10 @@ export interface IssueLogItem {
   
   // Lessons learned & retrospective review
   lessonsLearned?: string;
+  lessonsLearnedDate?: string; // Date when the issue became part of the institutional lessons learned repository (YYYY-MM-DD)
   lessonsLearnedUpdatedBy?: string;
   lessonsLearnedUpdatedAt?: string;
+  totalDaysUntilLessonsLearned?: number; // Total calendar days taken from initial submission until becoming part of lessons learned
   reviewNotes?: string;
   stepsTakenUntilResolved?: string; // Chronological steps taken until the issue was resolved
   resolutionSteps?: ResolutionStepRecord[]; // Structured list of steps taken until resolution

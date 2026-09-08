@@ -3456,8 +3456,8 @@ let isBatchSyncRunning = false;
                             onChange={(e) => setEditProgramDirectorate(e.target.value)}
                             className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1.5 rounded-lg text-slate-850 dark:text-zinc-100 outline-none font-bold"
                           >
-                            {programDirectorates.map(pd => (
-                              <option key={pd} value={pd}>{pd}</option>
+                            {programDirectorates.map((pd, pdIdx) => (
+                              <option key={`edit-pd-${pd}-${pdIdx}`} value={pd}>{pd}</option>
                             ))}
                           </select>
                         </div>
@@ -3469,8 +3469,8 @@ let isBatchSyncRunning = false;
                             onChange={(e) => setEditPmo(e.target.value)}
                             className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1.5 rounded-lg text-slate-850 dark:text-zinc-100 outline-none font-bold"
                           >
-                            {pmos.map(p => (
-                              <option key={p} value={p}>{p}</option>
+                            {pmos.map((p, pIdx) => (
+                              <option key={`edit-pmo-${p}-${pIdx}`} value={p}>{p}</option>
                             ))}
                           </select>
                         </div>
@@ -4204,7 +4204,7 @@ let isBatchSyncRunning = false;
                     ) : (
                       <select name="dir" className="bg-white dark:bg-slate-800 text-xs py-1 px-2 border rounded-lg font-semibold">
                         {newUserRole !== 'directorate_admin' && <option value="">-- None / All --</option>}
-                        {programDirectorates.map(d => <option key={d} value={d}>{d}</option>)}
+                        {programDirectorates.map((d, dIdx) => <option key={`newusr-dir-${d}-${dIdx}`} value={d}>{d}</option>)}
                       </select>
                     )}
                   </div>
@@ -4223,7 +4223,7 @@ let isBatchSyncRunning = false;
                       ) : (
                         <select name="pmo" className="bg-white dark:bg-slate-800 text-xs py-1 px-2 border rounded-lg font-semibold">
                           {newUserRole !== 'pmo_admin' && <option value="">-- None / All --</option>}
-                          {pmos.map(p => <option key={p} value={p}>{p}</option>)}
+                          {pmos.map((p, pIdx) => <option key={`newusr-pmo-${p}-${pIdx}`} value={p}>{p}</option>)}
                         </select>
                       )}
                     </div>
@@ -4784,7 +4784,7 @@ let isBatchSyncRunning = false;
                                               }`}
                                             >
                                               <option value="">-- None / All --</option>
-                                              {programDirectorates.map(d => <option key={d} value={d}>{d}</option>)}
+                                              {programDirectorates.map((d, dIdx) => <option key={`udraft-dir-${d}-${dIdx}`} value={d}>{d}</option>)}
                                             </select>
                                           )}
                                         </div>
@@ -4809,7 +4809,7 @@ let isBatchSyncRunning = false;
                                               }`}
                                             >
                                               <option value="">-- None / All --</option>
-                                              {pmos.map(p => <option key={p} value={p}>{p}</option>)}
+                                              {pmos.map((p, pIdx) => <option key={`udraft-pmo-${p}-${pIdx}`} value={p}>{p}</option>)}
                                             </select>
                                           )}
                                         </div>
@@ -4941,12 +4941,12 @@ let isBatchSyncRunning = false;
                       Program Directorates {currentUserObj?.role === 'directorate_admin' ? '(Read Only)' : ''}
                     </span>
                     <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl">
-                      {programDirectorates.map(pd => {
+                      {programDirectorates.map((pd, pdIdx) => {
                         const isEditing = editingPd === pd;
                         const canManageDir = currentUserObj?.role === 'admin' || currentUserObj?.role === 'master_admin' || currentUserObj?.username === 'proj_1781786415663';
 
                         return isEditing && canManageDir ? (
-                          <div key={pd} className="inline-flex items-center gap-1.5 bg-indigo-50 dark:bg-indigo-950/40 px-2 py-0.5 rounded-lg text-2xs font-bold border border-indigo-200 dark:border-indigo-900">
+                          <div key={`edit-pd-badge-${pd}-${pdIdx}`} className="inline-flex items-center gap-1.5 bg-indigo-50 dark:bg-indigo-950/40 px-2 py-0.5 rounded-lg text-2xs font-bold border border-indigo-200 dark:border-indigo-900">
                             <input
                               type="text"
                               value={editingPdVal}
@@ -4983,7 +4983,7 @@ let isBatchSyncRunning = false;
                             </button>
                           </div>
                         ) : (
-                          <span key={pd} className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-2xs font-bold border ${
+                          <span key={`pd-badge-${pd}-${pdIdx}`} className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-2xs font-bold border ${
                             currentUserObj?.assignedDirectorate === pd
                               ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
                               : 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-400 border-indigo-150 dark:border-indigo-900/50'
@@ -5050,10 +5050,10 @@ let isBatchSyncRunning = false;
                   <div className="bg-slate-50 dark:bg-slate-900/40 p-3 rounded-2xl border border-slate-150 dark:border-slate-700/60 space-y-2.5">
                     <span className="text-2xs font-extrabold text-slate-400 uppercase tracking-wider block">PMO Groupings</span>
                     <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl">
-                      {pmos.map(p => {
+                      {pmos.map((p, pIdx) => {
                         const isEditing = editingPmo === p;
                         return isEditing ? (
-                          <div key={p} className="inline-flex items-center gap-1.5 bg-purple-50 dark:bg-purple-950/40 px-2 py-0.5 rounded-lg text-2xs font-bold border border-purple-200 dark:border-purple-900">
+                          <div key={`edit-pmo-badge-${p}-${pIdx}`} className="inline-flex items-center gap-1.5 bg-purple-50 dark:bg-purple-950/40 px-2 py-0.5 rounded-lg text-2xs font-bold border border-purple-200 dark:border-purple-900">
                             <input
                               type="text"
                               value={editingPmoVal}
@@ -5090,7 +5090,7 @@ let isBatchSyncRunning = false;
                             </button>
                           </div>
                         ) : (
-                          <span key={p} className="inline-flex items-center gap-1.5 bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-400 px-2 py-1 rounded-lg text-2xs font-bold border border-purple-150 dark:border-purple-900/50">
+                          <span key={`pmo-badge-${p}-${pIdx}`} className="inline-flex items-center gap-1.5 bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-400 px-2 py-1 rounded-lg text-2xs font-bold border border-purple-150 dark:border-purple-900/50">
                             <span>{p}</span>
                             <div className="flex items-center gap-1 ml-0.5 border-l border-purple-200 dark:border-purple-900 pl-1.5 shrink-0">
                               <button
@@ -6060,8 +6060,8 @@ let isBatchSyncRunning = false;
                           disabled={isDir || isPmo}
                           className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-amber-500 disabled:opacity-60"
                         >
-                          {programDirectorates.map(d => (
-                            <option key={d} value={d}>{d}</option>
+                          {programDirectorates.map((d, dIdx) => (
+                            <option key={`popup-dir-${d}-${dIdx}`} value={d}>{d}</option>
                           ))}
                         </select>
                       </div>
@@ -6076,8 +6076,8 @@ let isBatchSyncRunning = false;
                           disabled={isPmo}
                           className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-amber-500 disabled:opacity-60"
                         >
-                          {pmos.map(p => (
-                            <option key={p} value={p}>{p}</option>
+                          {pmos.map((p, pIdx) => (
+                            <option key={`popup-pmo-${p}-${pIdx}`} value={p}>{p}</option>
                           ))}
                         </select>
                       </div>

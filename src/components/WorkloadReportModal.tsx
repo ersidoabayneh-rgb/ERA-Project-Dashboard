@@ -359,7 +359,7 @@ export default function WorkloadReportModal({
                 className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-200 font-bold focus:outline-none"
               >
                 <option value="ALL">All Directorates</option>
-                {directorates.map(d => <option key={d} value={d}>{d}</option>)}
+                {directorates.map((d, dIdx) => <option key={`workload-dir-${d}-${dIdx}`} value={d}>{d}</option>)}
               </select>
 
               {/* Status Filter */}

@@ -2435,8 +2435,8 @@ export default function DashboardView({
                   >
                     <option value="" disabled>⚡ Sync All Pillars...</option>
                     <option value="current">Current / Live Active</option>
-                    {historyList.map(hist => (
-                      <option key={`sync-${hist.id}`} value={hist.id}>
+                    {historyList.map((hist, hIdx) => (
+                      <option key={`sync-${hist.id || hIdx}-${hIdx}`} value={hist.id}>
                         {hist.monthLabel} (EFY {hist.efyLabel})
                       </option>
                     ))}
@@ -2464,8 +2464,8 @@ export default function DashboardView({
                     className="w-full bg-slate-50 dark:bg-slate-900 text-[10px] font-bold border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 pr-6 cursor-pointer appearance-none text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   >
                     <option value="current">Current ({project.progressPlanLabels?.monthLabel || 'Active'})</option>
-                    {historyList.map(hist => (
-                      <option key={hist.id} value={hist.id}>Archived: {hist.monthLabel}</option>
+                    {historyList.map((hist, hIdx) => (
+                      <option key={`m-src-${hist.id || hIdx}-${hIdx}`} value={hist.id}>Archived: {hist.monthLabel}</option>
                     ))}
                     <option value="hide">🚫 Hide Month</option>
                   </select>
@@ -2490,8 +2490,8 @@ export default function DashboardView({
                     className="w-full bg-slate-50 dark:bg-slate-900 text-[10px] font-bold border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 pr-6 cursor-pointer appearance-none text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   >
                     <option value="current">Current ({project.progressPlanLabels?.quarterLabel || 'Active'})</option>
-                    {historyList.map(hist => (
-                      <option key={hist.id} value={hist.id}>Archived: {hist.quarterLabel || `Qtr (${hist.monthLabel})`}</option>
+                    {historyList.map((hist, hIdx) => (
+                      <option key={`q-src-${hist.id || hIdx}-${hIdx}`} value={hist.id}>Archived: {hist.quarterLabel || `Qtr (${hist.monthLabel})`}</option>
                     ))}
                     <option value="hide">🚫 Hide Quarter</option>
                   </select>
@@ -2516,8 +2516,8 @@ export default function DashboardView({
                     className="w-full bg-slate-50 dark:bg-slate-900 text-[10px] font-bold border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 pr-6 cursor-pointer appearance-none text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   >
                     <option value="current">Current (EFY {project.progressPlanLabels?.efyLabel || 'Active'})</option>
-                    {historyList.map(hist => (
-                      <option key={hist.id} value={hist.id}>Archived EFY: {hist.efyLabel} ({hist.monthLabel})</option>
+                    {historyList.map((hist, hIdx) => (
+                      <option key={`efy-src-${hist.id || hIdx}-${hIdx}`} value={hist.id}>Archived EFY: {hist.efyLabel} ({hist.monthLabel})</option>
                     ))}
                     <option value="hide">🚫 Hide EFY</option>
                   </select>
@@ -2542,8 +2542,8 @@ export default function DashboardView({
                     className="w-full bg-slate-50 dark:bg-slate-900 text-[10px] font-bold border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 pr-6 cursor-pointer appearance-none text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   >
                     <option value="current">Current Cumulative</option>
-                    {historyList.map(hist => (
-                      <option key={hist.id} value={hist.id}>Archived Cum: {hist.monthLabel} ({hist.contractorTodate !== undefined ? hist.contractorTodate.toFixed(1) : ''} Km)</option>
+                    {historyList.map((hist, hIdx) => (
+                      <option key={`cum-src-${hist.id || hIdx}-${hIdx}`} value={hist.id}>Archived Cum: {hist.monthLabel} ({hist.contractorTodate !== undefined ? hist.contractorTodate.toFixed(1) : ''} Km)</option>
                     ))}
                     <option value="hide">🚫 Hide Cumulative</option>
                   </select>
@@ -2719,7 +2719,7 @@ export default function DashboardView({
               const amountBirr = entry['Amount (Birr)'];
 
               return (
-                <div key={entry.name} className="space-y-1.5">
+                <div key={`ipc-legend-${entry.name || 'e'}-${index}`} className="space-y-1.5">
                   <div className="flex justify-between items-center text-[10px] font-bold text-slate-500 dark:text-slate-400">
                     <span className="flex items-center gap-1.5 font-sans">
                       <span className={`w-2.5 h-2.5 rounded-sm ${progressColor}`} />
