@@ -4518,7 +4518,7 @@ let isBatchSyncRunning = false;
                                       const isChanged = !hasAutoAccess && (accessible !== originalAccessible);
 
                                       return (
-                                        <label key={proj.id} className={`flex items-center gap-2 p-2 rounded-xl cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition ${
+                                        <label key={`uacc-proj-${proj.id}`} className={`flex items-center gap-2 p-2 rounded-xl cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition ${
                                           isChanged ? 'text-amber-700 dark:text-amber-400 font-extrabold bg-amber-500/5' : 'text-slate-650 dark:text-slate-350 bg-slate-50/40 dark:bg-slate-900/10'
                                         }`}>
                                           <input
@@ -5286,7 +5286,7 @@ let isBatchSyncRunning = false;
                     {syncLogs.length === 0 ? (
                       <p className="text-center py-6 text-2xs text-slate-400 font-medium font-mono">No synchronization events recorded yet.</p>
                     ) : (
-                      syncLogs.map((log) => {
+                      syncLogs.map((log, lIdx) => {
                         let statusColor = 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-900';
                         if (log.status === 'validation_failed') statusColor = 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/20 dark:text-amber-400 dark:border-amber-900';
                         if (log.status === 'server_error') statusColor = 'bg-rose-50 text-rose-800 border-rose-200 dark:bg-rose-950/20 dark:text-rose-400 dark:border-rose-900';
@@ -5294,7 +5294,7 @@ let isBatchSyncRunning = false;
                         if (log.status === 'deleted') statusColor = 'bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700';
 
                         return (
-                          <div key={log.id} className="p-2.5 space-y-1 text-2xs">
+                          <div key={`slog-${log.id || lIdx}-${lIdx}`} className="p-2.5 space-y-1 text-2xs">
                             <div className="flex justify-between items-center">
                               <span className="font-mono text-slate-400 text-[10px]">{new Date(log.createdAt).toLocaleString()}</span>
                               <span className={`px-1.5 py-0.5 rounded border text-[9px] font-extrabold uppercase ${statusColor}`}>
@@ -5404,8 +5404,8 @@ let isBatchSyncRunning = false;
             </div>
 
             <div className="space-y-4">
-              {pendingApprovals.filter(a => a.status === 'pending' && canUserApproveRequest(currentUserObj, a, projects)).map((a) => (
-                <div key={a.id} className="p-3.5 bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-2xl text-xs space-y-3 shadow-sm">
+              {pendingApprovals.filter(a => a.status === 'pending' && canUserApproveRequest(currentUserObj, a, projects)).map((a, aIdx) => (
+                <div key={`papp-${a.id || aIdx}-${aIdx}`} className="p-3.5 bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-2xl text-xs space-y-3 shadow-sm">
                   <div className="flex justify-between items-center flex-wrap gap-2 text-2xs text-slate-400 font-bold border-b border-slate-200/60 dark:border-slate-800/80 pb-2">
                     <span className="text-slate-700 dark:text-slate-300 font-extrabold text-xs">{a.projectName}</span>
                     <span className="bg-slate-200/60 dark:bg-slate-800 px-2 py-0.5 rounded-full">Requested: {new Date(a.requestedAt).toLocaleString()}</span>
@@ -5764,7 +5764,7 @@ let isBatchSyncRunning = false;
                                             const isRemoved = diff.removed.some(r => String(r[diff.idKey] || r.name || r.desc) === String(label));
                                             const isMod = diff.modified.some(m => String(m.itemKey) === String(label));
                                             return (
-                                              <div key={idx} className={`p-2 rounded-lg border text-[10px] space-y-0.5 ${isRemoved ? 'bg-rose-50 border-rose-200 text-rose-800 dark:bg-rose-950/40 dark:border-rose-900/60 dark:text-rose-300 line-through' : 'bg-amber-50/50 border-amber-200 text-slate-700 dark:bg-amber-950/20 dark:border-amber-900/40 dark:text-slate-300'}`}>
+                                              <div key={`old-item-${idx}`} className={`p-2 rounded-lg border text-[10px] space-y-0.5 ${isRemoved ? 'bg-rose-50 border-rose-200 text-rose-800 dark:bg-rose-950/40 dark:border-rose-900/60 dark:text-rose-300 line-through' : 'bg-amber-50/50 border-amber-200 text-slate-700 dark:bg-amber-950/20 dark:border-amber-900/40 dark:text-slate-300'}`}>
                                                 <div className="font-bold flex justify-between">
                                                   <span>{String(label)}</span>
                                                   {isRemoved && <span className="no-underline text-2xs font-extrabold text-rose-600">REMOVED IN DRAFT</span>}
@@ -5793,7 +5793,7 @@ let isBatchSyncRunning = false;
                                             const modObj = diff.modified.find(m => String(m.itemKey) === String(label));
 
                                             return (
-                                              <div key={idx} className={`p-2 rounded-lg border text-[10px] space-y-1 ${isAdded ? 'bg-emerald-50 border-emerald-200 text-emerald-900 dark:bg-emerald-950/40 dark:border-emerald-900/60 dark:text-emerald-300' : 'bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-900/50'}`}>
+                                              <div key={`new-item-${idx}`} className={`p-2 rounded-lg border text-[10px] space-y-1 ${isAdded ? 'bg-emerald-50 border-emerald-200 text-emerald-900 dark:bg-emerald-950/40 dark:border-emerald-900/60 dark:text-emerald-300' : 'bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-900/50'}`}>
                                                 <div className="font-bold flex justify-between items-center">
                                                   <span>{String(label)}</span>
                                                   {isAdded && <span className="bg-emerald-600 text-white text-[9px] px-1.5 py-0.2 rounded font-extrabold">+ ADDED</span>}
@@ -6117,8 +6117,8 @@ let isBatchSyncRunning = false;
                         <div className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 pb-1 border-b border-slate-200 dark:border-slate-800">
                           ✓ All contracts accessible automatically for Admin role
                         </div>
-                        {visiblePopupProjects.map(proj => (
-                          <label key={proj.id} className="flex items-center gap-2 text-xs font-semibold p-1.5 hover:bg-white dark:hover:bg-slate-800 rounded-lg cursor-pointer transition">
+                        {visiblePopupProjects.map((proj, pIdx) => (
+                          <label key={`popup-proj-${proj.id}-${pIdx}`} className="flex items-center gap-2 text-xs font-semibold p-1.5 hover:bg-white dark:hover:bg-slate-800 rounded-lg cursor-pointer transition">
                             <input
                               type="checkbox"
                               defaultChecked={true}

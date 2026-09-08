@@ -1839,7 +1839,7 @@ export default function ConsultantPerformanceKpiWidget({
                         </td>
                       </tr>
                     ) : (
-                      filteredSubmittals.map((sub) => {
+                      filteredSubmittals.map((sub, sIdx) => {
                         const isEditingThisRow = editingRowId === sub.id;
                         const rowDraft = isEditingThisRow && editingRowDraft ? editingRowDraft : sub;
                         const target = sub.targetDays || targetOverrides[sub.type] || 7;
@@ -1848,7 +1848,7 @@ export default function ConsultantPerformanceKpiWidget({
                         // IF IN DIRECT SPREADSHEET MODE
                         if (isSpreadsheetMode && !isReadonly) {
                           return (
-                            <tr key={sub.id} className="bg-indigo-50/20 dark:bg-indigo-950/10 hover:bg-indigo-50/40 dark:hover:bg-indigo-950/20 transition">
+                            <tr key={`sub-sheet-${sub.id || sIdx}-${sIdx}`} className="bg-indigo-50/20 dark:bg-indigo-950/10 hover:bg-indigo-50/40 dark:hover:bg-indigo-950/20 transition">
                               {/* Submittal No */}
                               <td className="p-1.5">
                                 <input
@@ -1991,7 +1991,7 @@ export default function ConsultantPerformanceKpiWidget({
                         // IF CURRENT ROW IS BEING EDITED IN ROW EDIT MODE
                         if (isEditingThisRow && editingRowDraft) {
                           return (
-                            <tr key={sub.id} className="bg-indigo-50/50 dark:bg-indigo-950/30 border-2 border-indigo-500/50">
+                            <tr key={`sub-edit-${sub.id || sIdx}-${sIdx}`} className="bg-indigo-50/50 dark:bg-indigo-950/30 border-2 border-indigo-500/50">
                               <td className="p-2">
                                 <input
                                   type="text"
@@ -2115,7 +2115,7 @@ export default function ConsultantPerformanceKpiWidget({
 
                         return (
                           <tr 
-                            key={sub.id} 
+                            key={`sub-row-${sub.id || sIdx}-${sIdx}`} 
                             className={`transition group ${
                               delayInfo.isPending && delayInfo.isOverdue
                                 ? 'bg-rose-50/40 dark:bg-rose-950/20 hover:bg-rose-50/60 dark:hover:bg-rose-950/30 border-l-4 border-l-rose-500'

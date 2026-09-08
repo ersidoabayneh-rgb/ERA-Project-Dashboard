@@ -311,7 +311,7 @@ export default function CPMChart({ project, activities }: CPMChartProps) {
                       No schedule items match your filter criteria.
                     </div>
                   ) : (
-                    filteredActivities.map((item) => {
+                    filteredActivities.map((item, itemIdx) => {
                       const est = item.est || 0;
                       const duration = item.duration || 0;
                       const eft = item.eft || 0;
@@ -328,7 +328,7 @@ export default function CPMChart({ project, activities }: CPMChartProps) {
 
                       return (
                         <div 
-                          key={item.id}
+                          key={`cpm-gantt-${item.id || itemIdx}-${itemIdx}`}
                           className={`flex items-center transition-colors duration-150 hover:bg-slate-50/50 dark:hover:bg-slate-900/10 ${
                             isCritical ? 'bg-rose-500/1 text-rose-900/90' : ''
                           }`}
@@ -511,7 +511,7 @@ export default function CPMChart({ project, activities }: CPMChartProps) {
                     </div>
 
                     <div className="w-full flex flex-col gap-4">
-                      {lvl.nodes.map((node) => {
+                      {lvl.nodes.map((node, nodeIdx) => {
                         const isCritical = node.critical;
                         const float = node.float || 0;
                         const isHovered = hoveredActivityId === node.id;
@@ -527,7 +527,7 @@ export default function CPMChart({ project, activities }: CPMChartProps) {
 
                         return (
                           <div
-                            key={node.id}
+                            key={`cpm-net-${node.id || nodeIdx}-${nodeIdx}`}
                             className={`transition-all duration-200 relative select-text text-left ${
                               isHovered ? 'scale-105 z-10' : ''
                             }`}

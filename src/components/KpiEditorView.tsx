@@ -847,10 +847,10 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
 
               {/* Sub Categories inside Goal */}
               <div className="p-4 space-y-4">
-                {goal.sscs.map((ssc) => {
+                {goal.sscs.map((ssc, sscIdx) => {
                   const sscScore = getSscScore(ssc.id);
                   return (
-                    <div key={ssc.id} className="space-y-2">
+                    <div key={`ssc-block-${ssc.id}-${sscIdx}`} className="space-y-2">
                       <div className="flex justify-between items-center text-xs font-semibold text-blue-700 dark:text-blue-400 border-b border-blue-50/50 pb-1.5 flex-wrap gap-2">
                         <div className="flex items-center gap-2 flex-wrap">
                           {editingSscDetailsId === ssc.id ? (
@@ -1063,13 +1063,13 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
 
                       {/* Items */}
                       <div className="space-y-1">
-                        {ssc.items.map((it) => {
+                        {ssc.items.map((it, itIdx) => {
                           const kpi = kpis.find(k => k.itemId === it.id);
                           if (!kpi) return null;
 
                           return (
                             <div 
-                              key={it.id} 
+                              key={`ssc-item-${it.id}-${itIdx}`} 
                               className="group flex flex-col md:flex-row md:items-center justify-between text-xs p-2.5 rounded-xl border border-dotted border-slate-100 hover:border-slate-350 dark:border-slate-700/40 dark:hover:border-slate-600 bg-slate-50/40 dark:bg-slate-900/10 hover:bg-white dark:hover:bg-slate-900/40 transition gap-2"
                             >
                               {/* Left parameters */}

@@ -1052,12 +1052,12 @@ export default function ProjectRisksView({
                   <p className="text-[10px] text-slate-400 mt-1">Refine your matrix selection or category filters.</p>
                 </div>
               ) : (
-                filteredRisks.map(r => {
+                filteredRisks.map((r, rIdx) => {
                   const score = r.probability * r.impact;
                   const expMeta = getExposureLevel(score);
                   return (
                     <div 
-                      key={r.id} 
+                      key={`risk-card-${r.id}-${rIdx}`} 
                       className="border border-slate-100 dark:border-slate-800/80 p-3.5 rounded-2xl space-y-2 hover:bg-slate-50/50 dark:hover:bg-slate-900/10 transition"
                     >
                       <div className="flex items-start justify-between gap-3">

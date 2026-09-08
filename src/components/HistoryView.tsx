@@ -1809,6 +1809,11 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory }:
                   <p className="text-slate-705 dark:text-slate-350">
                     Modified by <strong>{h.user}</strong> during updates on <strong>{h.section || 'General'}</strong>
                   </p>
+                  {h.details && (
+                    <p className="text-[11px] text-slate-600 dark:text-slate-400 italic mt-1 pt-1 border-t border-slate-200/60 dark:border-slate-800">
+                      {h.details}
+                    </p>
+                  )}
                 </div>
               );
             })}

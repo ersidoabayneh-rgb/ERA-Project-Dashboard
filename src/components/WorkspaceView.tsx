@@ -336,8 +336,8 @@ export default function WorkspaceView({ projects = [], onRestoreProjects }: Work
                 </div>
 
                 <div className="bg-slate-950 text-slate-200 p-4 rounded-2xl border border-slate-800 font-mono text-[11px] space-y-1.5 max-h-48 overflow-y-auto leading-relaxed shadow-inner">
-                  {firestoreLogs.map(log => (
-                    <div key={log.id} className="flex items-start gap-2 border-b border-slate-900 pb-1.5 last:border-0 last:pb-0">
+                  {firestoreLogs.map((log, lIdx) => (
+                    <div key={`fslog-${log.id}-${lIdx}`} className="flex items-start gap-2 border-b border-slate-900 pb-1.5 last:border-0 last:pb-0">
                       <span className="text-slate-500 shrink-0">[{log.time}]</span>
                       <span className={`font-bold shrink-0 uppercase text-[9px] px-1 rounded ${
                         log.level === 'success' ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' :

@@ -503,7 +503,7 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
 
                 return (
                   <tr 
-                    key={idx} 
+                    key={`month-row-${m.month || idx}-${idx}`} 
                     className={`border-b transition-colors ${
                       isCurrentMonthRow 
                         ? 'bg-blue-50/50 dark:bg-blue-950/20 border-blue-200/60 dark:border-blue-900/40' 

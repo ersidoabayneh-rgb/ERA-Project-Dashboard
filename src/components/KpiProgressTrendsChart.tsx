@@ -557,14 +557,14 @@ export default function KpiProgressTrendsChart({
           </button>
 
           {/* Individual Hierarchy Groups */}
-          {hierarchy.map((goal) => {
+          {hierarchy.map((goal, gIdx) => {
             const score = computeGoalScore(goal.id);
             const isSelected = activeGroupId === goal.id;
             const groupColor = GROUP_COLORS[goal.id] || '#3b82f6';
 
             return (
               <button
-                key={goal.id}
+                key={`goal-tab-${goal.id}-${gIdx}`}
                 onClick={() => handleGroupSelect(goal.id)}
                 className={`px-3 py-1.5 rounded-xl text-2xs font-bold whitespace-nowrap transition flex items-center gap-1.5 shrink-0 cursor-pointer ${
                   isSelected
@@ -752,12 +752,12 @@ export default function KpiProgressTrendsChart({
                 dot={{ r: 4, fill: GROUP_COLORS.all, strokeWidth: 1.5, stroke: '#fff' }}
               />
               {/* Individual Group Lines */}
-              {hierarchy.slice(0, 6).map((g) => {
+              {hierarchy.slice(0, 6).map((g, gIdx) => {
                 const groupKey = `${g.id}: ${g.name.split(' ')[0]} (%)`;
                 const color = GROUP_COLORS[g.id] || '#64748b';
                 return (
                   <Line
-                    key={g.id}
+                    key={`group-line-${g.id}-${gIdx}`}
                     name={groupKey}
                     type="monotone"
                     dataKey={groupKey}

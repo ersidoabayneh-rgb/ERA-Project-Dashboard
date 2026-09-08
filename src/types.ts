@@ -129,6 +129,7 @@ export interface HistoryItem {
   user: string;
   section: string;
   physicalProgress: number;
+  details?: string;
 }
 
 export interface WorkProgramActivity {
