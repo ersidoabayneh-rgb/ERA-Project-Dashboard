@@ -1,6 +1,6 @@
-import { Project, User as AppUser, ApprovalRequest } from '../types';
+import { Project, User as AppUser, ApprovalRequest, ContractorScoringWeights, ConsultantScoringWeights } from '../types';
 import { db } from './firebase';
-import { doc, setDoc, deleteDoc, getDocs, collection } from 'firebase/firestore';
+import { doc, setDoc, deleteDoc, getDocs, getDoc, collection } from 'firebase/firestore';
 import { defaultProjectTemplate, defaultZeroRowMetrics } from '../data/defaultProject';
 
 export enum OperationType {
@@ -857,5 +857,74 @@ export async function safeFetchConfig(): Promise<{ pmos: string[], directorates:
   }
 
   return fetched;
+}
+
+/**
+ * Synchronizes Contractor and Consultant scoring weights with Firestore configuration database.
+ */
+export async function safeSyncScoringWeights(
+  contractorWeights: ContractorScoringWeights,
+  consultantWeights: ConsultantScoringWeights,
+  updatedBy?: string
+): Promise<void> {
+  if (!isSyncSuspended()) {
+    try {
+      await setDoc(doc(db, 'config', 'scoring_weights'), {
+        contractorWeights,
+        consultantWeights,
+        updatedAt: new Date().toISOString(),
+        updatedBy: updatedBy || 'master_admin'
+      }, { merge: true }).catch(err => handleFsError(err));
+
+      recordSyncLog({
+        recordType: 'config',
+        status: 'firestore_synced',
+        details: `Updated Contractor & Consultant Scoring Weights in configuration database`
+      });
+    } catch (e) {
+      handleFsError(e);
+      console.warn('Firestore scoring weights sync notice:', e);
+      recordSyncLog({
+        recordType: 'config',
+        status: 'server_error',
+        errorMessage: e instanceof Error ? e.message : String(e)
+      });
+    }
+  }
+
+  try {
+    const response = await fetch('/api/config/scoring-weights', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ contractorWeights, consultantWeights })
+    });
+    if (response.ok) {
+      console.log('Scoring weights successfully synchronized with backend API');
+    }
+  } catch (err: any) {}
+}
+
+/**
+ * Fetches synchronized scoring weights from Firestore configuration database.
+ */
+export async function safeFetchScoringWeights(): Promise<{
+  contractorWeights: ContractorScoringWeights;
+  consultantWeights: ConsultantScoringWeights;
+} | null> {
+  try {
+    const docSnap = await getDoc(doc(db, 'config', 'scoring_weights')).catch(() => null);
+    if (docSnap && docSnap.exists()) {
+      const data = docSnap.data();
+      if (data && data.contractorWeights && data.consultantWeights) {
+        return {
+          contractorWeights: data.contractorWeights,
+          consultantWeights: data.consultantWeights
+        };
+      }
+    }
+  } catch (e) {
+    console.warn('Firestore fetch scoring weights notice:', e);
+  }
+  return null;
 }
 

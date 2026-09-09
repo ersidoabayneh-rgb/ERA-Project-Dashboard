@@ -1,5 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion } from 'motion/react';
+import { db } from '../lib/firebase';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { safeSyncScoringWeights } from '../lib/apiSync';
 import { 
   FileText, 
   Download, 
@@ -27,10 +30,19 @@ import {
   Sparkles,
   SlidersHorizontal,
   BookOpen,
-  AlertCircle
+  AlertCircle,
+  Sliders,
+  RotateCcw,
+  Save,
+  CheckCircle,
+  Settings,
+  Plus,
+  Trash2,
+  Edit3,
+  RefreshCcw
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
-import { Project, User, formatAccounting, isProjectClosed } from '../types';
+import { Project, User, formatAccounting, isProjectClosed, ContractorScoringWeights, DEFAULT_CONTRACTOR_SCORING_WEIGHTS, ConsultantScoringWeights, DEFAULT_CONSULTANT_SCORING_WEIGHTS, CustomScoringCriterion } from '../types';
 import { buildKpiHierarchy, getIntegratedKpiAllocated } from '../data/defaultProject';
 import { QtyItem } from '../types';
 import { calculateIpcMaturation } from '../lib/ipcCalculations';
@@ -185,6 +197,74 @@ export default function GroupReportGenerator({
   const [dossierConsultantMap, setDossierConsultantMap] = useState<Record<string, string>>({});
   const [maturedFilterOnly, setMaturedFilterOnly] = useState(false);
   const [isPrintWorkloadModalOpen, setIsPrintWorkloadModalOpen] = useState(false);
+
+  // Master Admin verification check
+  const isMasterAdmin = Boolean(
+    currentUserObj?.role === 'master_admin' ||
+    currentUserObj?.role === 'admin' ||
+    currentUserObj?.username === 'proj_1781786415663' ||
+    (currentUserObj?.username && currentUserObj.username.toLowerCase().includes('ersido'))
+  );
+
+  // Contractor scoring weights state (Master Admin editable)
+  const [contractorWeights, setContractorWeights] = useState<ContractorScoringWeights>(() => {
+    try {
+      const saved = localStorage.getItem('era_contractor_scoring_weights');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed.fidic === 'number' && typeof parsed.projectMgmt === 'number' &&
+            typeof parsed.evm === 'number' && typeof parsed.kpi === 'number' && typeof parsed.linear === 'number') {
+          return parsed;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to parse contractor weights', e);
+    }
+    return DEFAULT_CONTRACTOR_SCORING_WEIGHTS;
+  });
+
+  // Consultant scoring weights state (Master Admin editable)
+  const [consultantWeights, setConsultantWeights] = useState<ConsultantScoringWeights>(() => {
+    try {
+      const saved = localStorage.getItem('era_consultant_scoring_weights');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed.sla === 'number' && typeof parsed.staff === 'number' &&
+            typeof parsed.ipc === 'number' && typeof parsed.claims === 'number' && typeof parsed.quality === 'number') {
+          return parsed;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to parse consultant weights', e);
+    }
+    return DEFAULT_CONSULTANT_SCORING_WEIGHTS;
+  });
+
+  const [isEditingWeightsModalOpen, setIsEditingWeightsModalOpen] = useState(false);
+  const [tempContractorWeights, setTempContractorWeights] = useState<ContractorScoringWeights>(contractorWeights);
+  const [tempConsultantWeights, setTempConsultantWeights] = useState<ConsultantScoringWeights>(consultantWeights);
+
+  // Listen to Firestore scoring weights configuration database in real-time
+  useEffect(() => {
+    try {
+      const unsub = onSnapshot(doc(db, 'config', 'scoring_weights'), (docSnap) => {
+        if (docSnap && docSnap.exists()) {
+          const data = docSnap.data();
+          if (data && data.contractorWeights) {
+            setContractorWeights(data.contractorWeights);
+            localStorage.setItem('era_contractor_scoring_weights', JSON.stringify(data.contractorWeights));
+          }
+          if (data && data.consultantWeights) {
+            setConsultantWeights(data.consultantWeights);
+            localStorage.setItem('era_consultant_scoring_weights', JSON.stringify(data.consultantWeights));
+          }
+        }
+      });
+      return () => unsub();
+    } catch (e) {
+      console.warn('Scoring weights listener notice:', e);
+    }
+  }, []);
 
   // Helper check for project access (matching standard view limits) - all users share the single database
   const isAccessible = (p: Project) => {
@@ -347,42 +427,102 @@ export default function GroupReportGenerator({
     const asphaltPlan = asphaltData.plan;
 
     // 6. Comprehensive Weightage-Based Score Calculation
-    // Total: 100 Points across 5 Dimensions:
-    // Dimension 1: FIDIC contract Compliance (10% weightage) - Bonds & Notices
-    const bondRatio = totalBonds > 0 ? (totalBonds - expiredBondsCount) / totalBonds : 1.0;
-    const fidicBondScore = 7.0 * bondRatio;
-    const fidicNoticeScore = Math.max(0, 3.0 - (criticalRisksCount * 1.0));
-    const fidicScore = Math.min(10, Math.max(0, fidicBondScore + fidicNoticeScore));
+    // Total: 100 Points across Master Admin customizable dimensions:
+    const wFidic = contractorWeights.fidic;
+    const wPm = contractorWeights.projectMgmt;
+    const wEvm = contractorWeights.evm;
+    const wKpi = contractorWeights.kpi;
+    const wLinear = contractorWeights.linear;
+    const wRfi = contractorWeights.rfi ?? 10;
+    const wMaterial = contractorWeights.materialApproval ?? 10;
+    const wWorkInspection = contractorWeights.workInspection ?? 5;
+    const wResourceMobilization = contractorWeights.resourceMobilization ?? 5;
 
-    // Dimension 2: Project Management (35% weightage) - Time & progress
-    // If time overrun is below 10%, give full mark (35). Afterwards proportionally deduct weightage based on original project duration.
-    let pmScore = 35;
+    // Dimension 1: FIDIC contract Compliance (Bonds & Notices)
+    const bondRatio = totalBonds > 0 ? (totalBonds - expiredBondsCount) / totalBonds : 1.0;
+    const fidicBondScore = (0.7 * wFidic) * bondRatio;
+    const fidicNoticeScore = Math.max(0, (0.3 * wFidic) - (criticalRisksCount * 1.0));
+    const fidicScore = Math.min(wFidic, Math.max(0, fidicBondScore + fidicNoticeScore));
+
+    // Dimension 2: Project Management (Time & progress overrun)
+    let pmScore = wPm;
     if (timeOverrunPct > 10) {
       const excessOverrun = timeOverrunPct - 10;
-      const deduction = (excessOverrun / 100) * 35;
-      pmScore = Math.max(0, Math.min(35, 35 - deduction));
+      const deduction = (excessOverrun / 100) * wPm;
+      pmScore = Math.max(0, Math.min(wPm, wPm - deduction));
     }
 
-    // Dimension 3: EVM Metrics (25% weightage) - CPI (12.5%) & SPI (12.5%)
-    // Give full mark if 1.0 or above; if below 1.0 deduct mark proportionally down to zero
-    const cpiScore = CPI >= 1.0 ? 12.5 : Math.max(0, 12.5 * CPI);
-    const spiScore = SPI >= 1.0 ? 12.5 : Math.max(0, 12.5 * SPI);
+    // Dimension 3: EVM Metrics - CPI & SPI
+    const halfEvm = wEvm / 2;
+    const cpiScore = CPI >= 1.0 ? halfEvm : Math.max(0, halfEvm * CPI);
+    const spiScore = SPI >= 1.0 ? halfEvm : Math.max(0, halfEvm * SPI);
     const evmScore = cpiScore + spiScore;
 
-    // Dimension 4: Key Performance Indicators (15% weightage)
-    const kpiBaseScore = 15;
-    const kpiDeductions = (expiredBondsCount * 3) + (criticalRisksCount * 1.5);
+    // Dimension 4: Key Performance Indicators & Quality Milestones
+    const kpiBaseScore = wKpi;
+    const kpiDeductions = (expiredBondsCount * Math.max(1, wKpi / 5)) + (criticalRisksCount * Math.max(0.5, wKpi / 10));
     const kpiScore = Math.max(0, kpiBaseScore - kpiDeductions);
 
-    // Dimension 5: Linear Layer Progress vs. S-Curve (15% weightage)
+    // Dimension 5: Linear Layer Progress vs. S-Curve
     const averageLayerPct = (subgradePct + cappingPct + subbasePct + basecoursePct + asphaltPct) / 5;
-    const linearScore = Math.min(15, 15 * (averageLayerPct / 100));
+    const linearScore = Math.min(wLinear, wLinear * (averageLayerPct / 100));
+
+    // Dimension 6: Technical RFIs Performance
+    const submittalsList = p.supervisionConsultant?.submittalKpis || [];
+    const rfiList = submittalsList.filter(s => s.type === 'RFI');
+    let rfiScore = wRfi;
+    if (rfiList.length > 0) {
+      const approvedRfiCount = rfiList.filter(s => 
+        s.status === 'Approved' || s.status === 'Closed' || s.status === 'Approved with Comment' || 
+        s.status === 'Approved / Closed' || s.status === 'Approved with Comments'
+      ).length;
+      rfiScore = wRfi * (approvedRfiCount / rfiList.length);
+    }
+
+    // Dimension 7: Material Approval Submittals Performance
+    const materialList = submittalsList.filter(s => s.type === 'Material Approval');
+    let materialScore = wMaterial;
+    if (materialList.length > 0) {
+      const approvedMatCount = materialList.filter(s => 
+        s.status === 'Approved' || s.status === 'Closed' || s.status === 'Approved with Comment' || 
+        s.status === 'Approved / Closed' || s.status === 'Approved with Comments'
+      ).length;
+      materialScore = wMaterial * (approvedMatCount / materialList.length);
+    }
+
+    // Dimension 8: Work Inspection Requests (WIR) Performance
+    const wirList = submittalsList.filter(s => s.type === 'Work Inspection (WIR)');
+    let workInspectionScore = wWorkInspection;
+    if (wirList.length > 0) {
+      const approvedWirCount = wirList.filter(s => 
+        s.status === 'Approved' || s.status === 'Closed' || s.status === 'Approved with Comment' || 
+        s.status === 'Approved / Closed' || s.status === 'Approved with Comments'
+      ).length;
+      workInspectionScore = wWorkInspection * (approvedWirCount / wirList.length);
+    }
+
+    // Dimension 9: Mobilization of Resources (Equipment & Key Personnel)
+    const allPersonnel = p.supervisionConsultant?.personnel || [];
+    const keyPersonnelList = allPersonnel.filter(pers => pers.category === 'Key Personnel');
+    let resourceScore = wResourceMobilization;
+    if (keyPersonnelList.length > 0) {
+      const activePersonnel = keyPersonnelList.filter(pers => pers.status === 'Active').length;
+      resourceScore = wResourceMobilization * (activePersonnel / keyPersonnelList.length);
+    }
+
+    // Dimension 10: Custom Added Evaluation Criteria
+    let customCriteriaScore = 0;
+    if (contractorWeights.customCriteria && Array.isArray(contractorWeights.customCriteria)) {
+      contractorWeights.customCriteria.forEach(c => {
+        customCriteriaScore += Number(c.weight) || 0;
+      });
+    }
 
     // Calculate Raw Weighted Score (Out of 100)
     const progressVsTimeScore = pmScore;
     const linearLayersScore = linearScore;
     const riskAndBondScore = fidicScore;
-    const rawWeightedScore = fidicScore + pmScore + evmScore + kpiScore + linearScore;
+    const rawWeightedScore = fidicScore + pmScore + evmScore + kpiScore + linearScore + rfiScore + materialScore + workInspectionScore + resourceScore + customCriteriaScore;
 
     // No additional penalty for breach during evaluation
     const breachPenalties = 0;
@@ -1552,8 +1692,8 @@ export default function GroupReportGenerator({
       } else if (sortBy === 'progress') {
         comparison = (a.physicalProgress || 0) - (b.physicalProgress || 0);
       } else if (sortBy === 'value') {
-        const valA = (a.origAmount + (a.variation || 0)) * 1_000_000;
-        const valB = (b.origAmount + (b.variation || 0)) * 1_000_000;
+        const valA = (a.origAmount * 1_000_000) + ((a.variation || 0) > 10000 ? (a.variation || 0) : ((a.variation || 0) * 1_000_000));
+        const valB = (b.origAmount * 1_000_000) + ((b.variation || 0) > 10000 ? (b.variation || 0) : ((b.variation || 0) * 1_000_000));
         comparison = valA - valB;
       }
       return sortOrder === 'asc' ? comparison : -comparison;
@@ -1575,7 +1715,7 @@ export default function GroupReportGenerator({
       };
     }
 
-    const totalValue = rawGroupProjects.reduce((sum, p) => sum + (p.origAmount + (p.variation || 0)) * 1_000_000, 0);
+    const totalValue = rawGroupProjects.reduce((sum, p) => sum + (p.origAmount || 0) * 1_000_000, 0);
     const avgProgress = rawGroupProjects.reduce((sum, p) => sum + (p.physicalProgress || 0), 0) / totalCount;
     const provisionalTotal = rawGroupProjects.reduce((sum, p) => sum + (p.provisionalSum || 0), 0);
 
@@ -2251,7 +2391,8 @@ export default function GroupReportGenerator({
       doc.setFontSize(12);
       const progLines = doc.splitTextToSize(progText, colWidths.progress - 12);
 
-      const valAmount = (p.origAmount + (p.variation || 0)) * 1_000_000;
+      const varVal = (p.variation || 0) > 10000 ? (p.variation || 0) : ((p.variation || 0) * 1_000_000);
+      const valAmount = (p.origAmount * 1_000_000) + varVal;
       const valText = `${valAmount.toLocaleString()} ETB`;
       const provText = `Prov. Sum: ${p.provisionalSum?.toLocaleString() || '0'}`;
       doc.setFont('times', 'bold');
@@ -2554,7 +2695,8 @@ export default function GroupReportGenerator({
       }
 
       const origVal = p.origAmount ? Math.round(p.origAmount * 1_000_000) : 0;
-      const revisedVal = p.origAmount ? Math.round((p.origAmount + (p.variation || 0)) * 1_000_000) : 0;
+      const varVal = (p.variation || 0) > 10000 ? (p.variation || 0) : ((p.variation || 0) * 1_000_000);
+      const revisedVal = p.origAmount ? Math.round((p.origAmount * 1_000_000) + varVal) : 0;
 
       return [
         p.name || 'Untitled Project',
@@ -2826,10 +2968,10 @@ export default function GroupReportGenerator({
       );
     } else {
       doc.text(
-        "• Progress vs Time (20%): direct output ratio   • EVM Performance (30%): SPI (15%) + CPI (15%)   • Linear Layers (25%): Average of Subgrade, Capping, Subbase, Basecourse & Asphalt %", 48, curY + 18
+        `• FIDIC Compliance (${contractorWeights.fidic}%): Bonds & Risks   • Time Overrun (${contractorWeights.projectMgmt}%): EOT & Schedule Slippage   • EVM Metrics (${contractorWeights.evm}%): SPI (${(contractorWeights.evm / 2).toFixed(1)}%) + CPI (${(contractorWeights.evm / 2).toFixed(1)}%)`, 48, curY + 18
       );
       doc.text(
-        "• Audit Risks & Guarantees (25%): Valid Guarantees (15%) + Risk Mitigation (10%)   • Breach Penalties: CPI < 0.85 (-10 pts) | SPI < 0.85 (-10 pts) | Expired Bonds (-15 pts) | Critical Risks > 2 (-10 pts)", 48, curY + 24
+        `• KPIs & Quality (${contractorWeights.kpi}%): Bond/Risk Deductions   • Linear Layers (${contractorWeights.linear}%): Layer Progress %   • Rating Scale: Grade A (>=85%) | B (75-84%) | C (65-74%) | D/F (<65%)`, 48, curY + 24
       );
     }
 
@@ -3626,7 +3768,7 @@ export default function GroupReportGenerator({
         spiStr,
         audit.expiredBondsCount || 0,
         formatFinancialForCSV(p.origAmount),
-        formatFinancialForCSV(p.origAmount + (p.variation || 0)),
+        formatFinancialForCSV(p.origAmount + ((p.variation || 0) > 10000 ? (p.variation || 0) / 1_000_000 : (p.variation || 0))),
         billSummary,
         priceAdj,
         certifiedIpc,
@@ -5580,30 +5722,102 @@ export default function GroupReportGenerator({
                 </div>
 
                 <div className="bg-slate-50 dark:bg-slate-900/30 border border-slate-200 dark:border-slate-800 p-3.5 rounded-xl text-2xs space-y-2.5 text-slate-600 dark:text-slate-400">
-                  <div className="flex items-center gap-2 font-black uppercase text-slate-700 dark:text-zinc-200 tracking-wider text-[10px]">
-                    <span>📋 {auditPerspective === 'consultant' ? 'SUPERVISION CONSULTANT' : 'PROJECT CONTRACTOR'} COMPLIANCE & GRADE SCORING MODEL WEIGHT DISTRIBUTION</span>
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-2 font-black uppercase text-slate-700 dark:text-zinc-200 tracking-wider text-[10px]">
+                      <span>📋 {auditPerspective === 'consultant' ? 'SUPERVISION CONSULTANT' : 'PROJECT CONTRACTOR'} COMPLIANCE & GRADE SCORING MODEL WEIGHT DISTRIBUTION</span>
+                    </div>
+                    {isMasterAdmin && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTempContractorWeights(contractorWeights);
+                          setTempConsultantWeights(consultantWeights);
+                          setIsEditingWeightsModalOpen(true);
+                        }}
+                        className="px-2.5 py-1 text-[10px] font-extrabold text-amber-800 dark:text-amber-300 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs group"
+                        title="Master Admin Permission: Edit and update weightages for scoring model"
+                      >
+                        <Sliders className="w-3 h-3 text-amber-600 dark:text-amber-400 group-hover:rotate-45 transition-transform" />
+                        <span>⚙️ Edit Weightages (Master Admin)</span>
+                      </button>
+                    )}
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-2 text-center text-[10px]">
-                    <div className="bg-white dark:bg-slate-900/50 p-2 rounded border border-slate-100 dark:border-slate-800">
-                      <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5">{auditPerspective === 'consultant' ? '25% WEIGHT' : '10% WEIGHT'}</span>
-                      <span className="text-[9px] font-medium block">{auditPerspective === 'consultant' ? '1. Submittal SLA & RFI Turnaround' : '1. FIDIC Contract Compliance'}</span>
-                    </div>
-                    <div className="bg-white dark:bg-slate-900/50 p-2 rounded border border-slate-100 dark:border-slate-800">
-                      <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5">{auditPerspective === 'consultant' ? '20% WEIGHT' : '35% WEIGHT'}</span>
-                      <span className="text-[9px] font-medium block">{auditPerspective === 'consultant' ? '2. Key Staff Mobilization' : '2. Project Management (Time)'}</span>
-                    </div>
-                    <div className="bg-white dark:bg-slate-900/50 p-2 rounded border border-slate-100 dark:border-slate-800">
-                      <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5">20% WEIGHT</span>
-                      <span className="text-[9px] font-medium block">{auditPerspective === 'consultant' ? '3. IPC Verification Timeliness' : '3. EVM Metrics (CPI & SPI)'}</span>
-                    </div>
-                    <div className="bg-white dark:bg-slate-900/50 p-2 rounded border border-slate-100 dark:border-slate-800">
-                      <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5">20% WEIGHT</span>
-                      <span className="text-[9px] font-medium block">{auditPerspective === 'consultant' ? '4. Claims & Determinations' : '4. KPIs & Quality Milestones'}</span>
-                    </div>
-                    <div className="bg-white dark:bg-slate-900/50 p-2 rounded border border-slate-100 dark:border-slate-800">
-                      <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5">15% WEIGHT</span>
-                      <span className="text-[9px] font-medium block">{auditPerspective === 'consultant' ? '5. Quality Assurance & WIR' : '5. Linear Layer Progress'}</span>
-                    </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 text-center text-[10px]">
+                    {auditPerspective === 'consultant' ? (
+                      <>
+                        <div className="bg-white dark:bg-slate-900/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+                          <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{consultantWeights.sla}% WEIGHT</span>
+                          <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block">{consultantWeights.labels?.sla || '1. Submittal SLA & RFI Turnaround'}</span>
+                        </div>
+                        <div className="bg-white dark:bg-slate-900/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+                          <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{consultantWeights.staff}% WEIGHT</span>
+                          <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block">{consultantWeights.labels?.staff || '2. Key Staff Mobilization'}</span>
+                        </div>
+                        <div className="bg-white dark:bg-slate-900/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+                          <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{consultantWeights.ipc}% WEIGHT</span>
+                          <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block">{consultantWeights.labels?.ipc || '3. IPC Verification Timeliness'}</span>
+                        </div>
+                        <div className="bg-white dark:bg-slate-900/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+                          <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{consultantWeights.claims}% WEIGHT</span>
+                          <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block">{consultantWeights.labels?.claims || '4. Claims & Determinations'}</span>
+                        </div>
+                        <div className="bg-white dark:bg-slate-900/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+                          <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{consultantWeights.quality}% WEIGHT</span>
+                          <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block">{consultantWeights.labels?.quality || '5. Quality Assurance & WIR'}</span>
+                        </div>
+                        {(consultantWeights.customCriteria || []).map((c) => (
+                          <div key={c.id} className="bg-indigo-50/50 dark:bg-indigo-950/30 p-2 rounded-xl border border-indigo-200 dark:border-indigo-800 shadow-2xs">
+                            <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{c.weight}% WEIGHT</span>
+                            <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block truncate">{c.label}</span>
+                          </div>
+                        ))}
+                      </>
+                    ) : (
+                      <>
+                        <div className="bg-white dark:bg-slate-900/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+                          <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{contractorWeights.fidic}% WEIGHT</span>
+                          <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.fidic || '1. FIDIC Compliance'}</span>
+                        </div>
+                        <div className="bg-white dark:bg-slate-900/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+                          <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{contractorWeights.projectMgmt}% WEIGHT</span>
+                          <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.projectMgmt || '2. Project Mgmt (Time)'}</span>
+                        </div>
+                        <div className="bg-white dark:bg-slate-900/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+                          <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{contractorWeights.evm}% WEIGHT</span>
+                          <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.evm || '3. EVM (CPI & SPI)'}</span>
+                        </div>
+                        <div className="bg-white dark:bg-slate-900/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+                          <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{contractorWeights.kpi}% WEIGHT</span>
+                          <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.kpi || '4. KPIs & Quality'}</span>
+                        </div>
+                        <div className="bg-white dark:bg-slate-900/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+                          <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{contractorWeights.linear}% WEIGHT</span>
+                          <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.linear || '5. Linear Layer Progress'}</span>
+                        </div>
+                        <div className="bg-white dark:bg-slate-900/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+                          <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{contractorWeights.rfi ?? 10}% WEIGHT</span>
+                          <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.rfi || '6. Technical RFIs'}</span>
+                        </div>
+                        <div className="bg-white dark:bg-slate-900/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+                          <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{contractorWeights.materialApproval ?? 10}% WEIGHT</span>
+                          <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.materialApproval || '7. Material Approval'}</span>
+                        </div>
+                        <div className="bg-white dark:bg-slate-900/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+                          <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{contractorWeights.workInspection ?? 5}% WEIGHT</span>
+                          <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.workInspection || '8. Work Inspection (WIR)'}</span>
+                        </div>
+                        <div className="bg-white dark:bg-slate-900/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+                          <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{contractorWeights.resourceMobilization ?? 5}% WEIGHT</span>
+                          <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.resourceMobilization || '9. Resource Mobilization'}</span>
+                        </div>
+                        {(contractorWeights.customCriteria || []).map((c) => (
+                          <div key={c.id} className="bg-indigo-50/50 dark:bg-indigo-950/30 p-2 rounded-xl border border-indigo-200 dark:border-indigo-800 shadow-2xs">
+                            <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{c.weight}% WEIGHT</span>
+                            <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block truncate">{c.label}</span>
+                          </div>
+                        ))}
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -5730,7 +5944,7 @@ export default function GroupReportGenerator({
                               </div>
                             </td>
                             <td className="px-3 py-2.5 text-right font-bold text-slate-600 dark:text-zinc-300 font-mono">
-                              <div>{((p.origAmount + (p.variation || 0)) * 1_000_000).toLocaleString()}</div>
+                              <div>{(((p.origAmount || 0) * 1_000_000) + ((p.variation || 0) > 10000 ? (p.variation || 0) : ((p.variation || 0) * 1_000_000))).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                               {expiredCount > 0 && (
                                 <span className="text-[8px] bg-red-50 text-red-600 dark:bg-rose-950/20 dark:text-rose-400 border border-red-100 dark:border-rose-900/30 px-1 py-0.5 rounded font-black block mt-0.5 max-w-max ml-auto">
                                   ⚠️ {expiredCount} Expired Guarantees
@@ -7002,6 +7216,648 @@ export default function GroupReportGenerator({
         currentUser={currentUserObj}
         title="Supervision Personnel Workload & Project Commitments Summary"
       />
+
+      {/* MASTER ADMIN ONLY: Compliance & Grade Scoring Model Weight Distribution Modal */}
+      {isEditingWeightsModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl max-w-4xl w-full overflow-hidden flex flex-col max-h-[92vh]"
+          >
+            {/* Modal Header */}
+            <div className="bg-slate-900 text-white p-5 flex items-center justify-between border-b border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-amber-500/20 text-amber-400 rounded-xl border border-amber-500/30">
+                  <Sliders className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-black tracking-tight">Master Admin: Scoring Model Weight Distribution</h3>
+                    <span className="text-[9px] font-black uppercase px-2 py-0.5 bg-amber-500 text-slate-950 rounded font-mono">
+                      Master Admin Full Control
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Customize criteria names, descriptions, and percentage weightages. Add or remove criteria and auto-balance to 100%.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsEditingWeightsModalOpen(false)}
+                className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-6 overflow-y-auto space-y-6 text-slate-800 dark:text-zinc-100 text-xs">
+              
+              {/* Domain Perspective Selector */}
+              <div className="flex items-center justify-between bg-slate-100 dark:bg-slate-800/60 p-1.5 rounded-xl border border-slate-200 dark:border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => setAuditPerspective('contractor')}
+                  className={`flex-1 py-2.5 rounded-lg font-bold text-xs transition flex items-center justify-center gap-2 cursor-pointer ${
+                    auditPerspective === 'contractor'
+                      ? 'bg-amber-500 text-slate-950 shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  <Building className="w-4 h-4" />
+                  <span>Project Contractor Scoring Model</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAuditPerspective('consultant')}
+                  className={`flex-1 py-2.5 rounded-lg font-bold text-xs transition flex items-center justify-center gap-2 cursor-pointer ${
+                    auditPerspective === 'consultant'
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  <Users className="w-4 h-4" />
+                  <span>Supervision Consultant Scoring Model</span>
+                </button>
+              </div>
+
+              {/* Total Weight Balance Meter & Quick Actions */}
+              {(() => {
+                const currentSum = auditPerspective === 'contractor'
+                  ? (
+                      Number(tempContractorWeights.fidic || 0) +
+                      Number(tempContractorWeights.projectMgmt || 0) +
+                      Number(tempContractorWeights.evm || 0) +
+                      Number(tempContractorWeights.kpi || 0) +
+                      Number(tempContractorWeights.linear || 0) +
+                      Number(tempContractorWeights.rfi ?? 10) +
+                      Number(tempContractorWeights.materialApproval ?? 10) +
+                      Number(tempContractorWeights.workInspection ?? 5) +
+                      Number(tempContractorWeights.resourceMobilization ?? 5) +
+                      (tempContractorWeights.customCriteria || []).reduce((s, c) => s + (Number(c.weight) || 0), 0)
+                    )
+                  : (
+                      Number(tempConsultantWeights.sla || 0) +
+                      Number(tempConsultantWeights.staff || 0) +
+                      Number(tempConsultantWeights.ipc || 0) +
+                      Number(tempConsultantWeights.claims || 0) +
+                      Number(tempConsultantWeights.quality || 0) +
+                      (tempConsultantWeights.customCriteria || []).reduce((s, c) => s + (Number(c.weight) || 0), 0)
+                    );
+                const isBalanced = currentSum === 100;
+
+                const autoBalance = () => {
+                  if (auditPerspective === 'contractor') {
+                    const keys = ['fidic', 'projectMgmt', 'evm', 'kpi', 'linear', 'rfi', 'materialApproval', 'workInspection', 'resourceMobilization'] as const;
+                    const customList = tempContractorWeights.customCriteria || [];
+                    const items: { key?: string; customIndex?: number; val: number }[] = [];
+                    keys.forEach((k) => items.push({ key: k, val: Number(tempContractorWeights[k] ?? (DEFAULT_CONTRACTOR_SCORING_WEIGHTS as any)[k] ?? 0) }));
+                    customList.forEach((c, idx) => items.push({ customIndex: idx, val: Number(c.weight) || 0 }));
+                    
+                    const totalRaw = items.reduce((s, it) => s + it.val, 0);
+                    const count = items.length;
+                    if (count === 0) return;
+                    let accumulated = 0;
+                    const balanced = items.map((it, i) => {
+                      if (i === count - 1) return Math.max(0, 100 - accumulated);
+                      const pct = totalRaw > 0 ? (it.val / totalRaw) * 100 : 100 / count;
+                      const rounded = Math.round(pct);
+                      accumulated += rounded;
+                      return rounded;
+                    });
+                    const updated: any = { ...tempContractorWeights };
+                    const updatedCustom = [...customList];
+                    items.forEach((it, i) => {
+                      if (it.key) updated[it.key] = balanced[i];
+                      else if (it.customIndex !== undefined && updatedCustom[it.customIndex]) {
+                        updatedCustom[it.customIndex] = { ...updatedCustom[it.customIndex], weight: balanced[i] };
+                      }
+                    });
+                    updated.customCriteria = updatedCustom;
+                    setTempContractorWeights(updated);
+                  } else {
+                    const keys = ['sla', 'staff', 'ipc', 'claims', 'quality'] as const;
+                    const customList = tempConsultantWeights.customCriteria || [];
+                    const items: { key?: string; customIndex?: number; val: number }[] = [];
+                    keys.forEach((k) => items.push({ key: k, val: Number(tempConsultantWeights[k] ?? (DEFAULT_CONSULTANT_SCORING_WEIGHTS as any)[k] ?? 0) }));
+                    customList.forEach((c, idx) => items.push({ customIndex: idx, val: Number(c.weight) || 0 }));
+                    
+                    const totalRaw = items.reduce((s, it) => s + it.val, 0);
+                    const count = items.length;
+                    if (count === 0) return;
+                    let accumulated = 0;
+                    const balanced = items.map((it, i) => {
+                      if (i === count - 1) return Math.max(0, 100 - accumulated);
+                      const pct = totalRaw > 0 ? (it.val / totalRaw) * 100 : 100 / count;
+                      const rounded = Math.round(pct);
+                      accumulated += rounded;
+                      return rounded;
+                    });
+                    const updated: any = { ...tempConsultantWeights };
+                    const updatedCustom = [...customList];
+                    items.forEach((it, i) => {
+                      if (it.key) updated[it.key] = balanced[i];
+                      else if (it.customIndex !== undefined && updatedCustom[it.customIndex]) {
+                        updatedCustom[it.customIndex] = { ...updatedCustom[it.customIndex], weight: balanced[i] };
+                      }
+                    });
+                    updated.customCriteria = updatedCustom;
+                    setTempConsultantWeights(updated);
+                  }
+                };
+
+                return (
+                  <div className={`p-4 rounded-xl border transition-all ${
+                    isBalanced
+                      ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800/60 text-emerald-900 dark:text-emerald-200'
+                      : 'bg-rose-50 dark:bg-rose-950/30 border-rose-300 dark:border-rose-800/60 text-rose-900 dark:text-rose-200'
+                  }`}>
+                    <div className="flex flex-wrap items-center justify-between gap-3 font-extrabold text-xs mb-2">
+                      <span className="flex items-center gap-1.5">
+                        {isBalanced ? (
+                          <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                        ) : (
+                          <AlertTriangle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
+                        )}
+                        <span>Total Model Weight Distribution Balance</span>
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={autoBalance}
+                          className="px-2.5 py-1 text-[11px] font-bold bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600 rounded-lg transition flex items-center gap-1 cursor-pointer shadow-2xs"
+                        >
+                          <RefreshCcw className="w-3 h-3 text-amber-500" />
+                          <span>⚡ Auto-Balance to 100%</span>
+                        </button>
+                        <span className={`font-mono text-sm px-2.5 py-0.5 rounded-lg border font-black ${
+                          isBalanced 
+                            ? 'bg-emerald-500 text-white border-emerald-600' 
+                            : 'bg-rose-600 text-white border-rose-700'
+                        }`}>
+                          {currentSum}% / 100%
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="w-full bg-slate-200 dark:bg-slate-700 h-2.5 rounded-full overflow-hidden my-2">
+                      <div
+                        className={`h-full transition-all duration-300 ${
+                          isBalanced ? 'bg-emerald-500' : 'bg-rose-500'
+                        }`}
+                        style={{ width: `${Math.min(100, currentSum)}%` }}
+                      />
+                    </div>
+
+                    <p className="text-[11px] font-medium leading-relaxed">
+                      {isBalanced ? (
+                        <span>✅ Perfect model balance. All weights sum to exactly 100%. Ready to save and deploy.</span>
+                      ) : (
+                        <span>
+                          ⚠️ Model weights sum to <strong>{currentSum}%</strong> (must equal 100%).{' '}
+                          {currentSum < 100 ? `Allocate remaining ${100 - currentSum}% or click Auto-Balance.` : `Reduce ${currentSum - 100}% or click Auto-Balance.`}
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                );
+              })()}
+
+              {/* Weight Fields Grid */}
+              {auditPerspective === 'contractor' ? (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 text-[11px] flex items-center gap-2">
+                      <span>PROJECT CONTRACTOR EVALUATION DIMENSIONS & CRITERIA</span>
+                    </h4>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const newCustom: CustomScoringCriterion = {
+                            id: `custom_${Date.now()}`,
+                            label: `Custom Contractor Criterion ${(tempContractorWeights.customCriteria?.length || 0) + 1}`,
+                            description: 'Enter evaluation notes and criteria explanation',
+                            weight: 5
+                          };
+                          setTempContractorWeights({
+                            ...tempContractorWeights,
+                            customCriteria: [...(tempContractorWeights.customCriteria || []), newCustom]
+                          });
+                        }}
+                        className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 text-xs font-bold flex items-center gap-1 cursor-pointer bg-indigo-50 dark:bg-indigo-950/40 px-2.5 py-1 rounded-lg border border-indigo-200 dark:border-indigo-800"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Add Custom Criteria</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTempContractorWeights(DEFAULT_CONTRACTOR_SCORING_WEIGHTS)}
+                        className="text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1 font-bold text-xs cursor-pointer"
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                        <span>Reset Defaults</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                    {[
+                      { key: 'fidic', defaultLabel: '1. FIDIC Contract Compliance', defaultDesc: 'Performance/Mobilization Guarantees & Risk notices', defaultWeight: 10 },
+                      { key: 'projectMgmt', defaultLabel: '2. Project Management (Time)', defaultDesc: 'Schedule overrun & EOT extension compliance', defaultWeight: 20 },
+                      { key: 'evm', defaultLabel: '3. EVM Metrics (CPI & SPI)', defaultDesc: 'Cost Efficiency Index (CPI) & Schedule Performance (SPI)', defaultWeight: 15 },
+                      { key: 'kpi', defaultLabel: '4. KPIs & Quality Milestones', defaultDesc: 'Key milestone completions & critical risk mitigations', defaultWeight: 10 },
+                      { key: 'linear', defaultLabel: '5. Linear Layer Physical Progress', defaultDesc: 'Earthwork, Subgrade, Subbase, Basecourse, & Asphalt pavement layers', defaultWeight: 15 },
+                      { key: 'rfi', defaultLabel: '6. Technical RFIs Performance', defaultDesc: 'RFI response, quality & resolution compliance ratio', defaultWeight: 10 },
+                      { key: 'materialApproval', defaultLabel: '7. Material Approval Submittals', defaultDesc: 'Timeliness & specification compliance of material samples', defaultWeight: 10 },
+                      { key: 'workInspection', defaultLabel: '8. Work Inspections (WIR)', defaultDesc: 'First-time pass rate and quality inspection submittals', defaultWeight: 5 },
+                      { key: 'resourceMobilization', defaultLabel: '9. Resource Mobilization', defaultDesc: 'Equipment, machinery & key personnel site presence', defaultWeight: 5 }
+                    ].map((item) => {
+                      const currentLabel = tempContractorWeights.labels?.[item.key] ?? item.defaultLabel;
+                      const currentDesc = tempContractorWeights.descriptions?.[item.key] ?? item.defaultDesc;
+                      const currentWeight = tempContractorWeights[item.key] ?? item.defaultWeight;
+
+                      return (
+                        <div key={item.key} className="bg-slate-50 dark:bg-slate-800/40 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2.5">
+                          <div className="flex items-center justify-between gap-2">
+                            <input
+                              type="text"
+                              value={currentLabel}
+                              onChange={(e) => {
+                                setTempContractorWeights({
+                                  ...tempContractorWeights,
+                                  labels: {
+                                    ...(tempContractorWeights.labels || DEFAULT_CONTRACTOR_SCORING_WEIGHTS.labels),
+                                    [item.key]: e.target.value
+                                  }
+                                });
+                              }}
+                              className="font-bold text-slate-900 dark:text-slate-100 bg-transparent border-b border-transparent hover:border-slate-300 dark:hover:border-slate-600 focus:border-indigo-500 outline-none w-full text-xs py-0.5"
+                              title="Click to edit criterion title"
+                            />
+                            <div className="flex items-center gap-1 shrink-0">
+                              <span className="font-mono font-extrabold text-indigo-600 dark:text-indigo-400 text-xs px-2 py-0.5 bg-indigo-50 dark:bg-indigo-950/50 rounded border border-indigo-200 dark:border-indigo-800">
+                                {currentWeight}%
+                              </span>
+                            </div>
+                          </div>
+
+                          <input
+                            type="text"
+                            value={currentDesc}
+                            onChange={(e) => {
+                              setTempContractorWeights({
+                                ...tempContractorWeights,
+                                descriptions: {
+                                  ...(tempContractorWeights.descriptions || DEFAULT_CONTRACTOR_SCORING_WEIGHTS.descriptions),
+                                  [item.key]: e.target.value
+                                }
+                              });
+                            }}
+                            className="text-[10.5px] text-slate-600 dark:text-slate-400 bg-white/60 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700/80 rounded px-2 py-1 w-full outline-none focus:border-indigo-500"
+                            placeholder="Criteria description..."
+                          />
+
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 shrink-0">Weight (%):</span>
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              value={currentWeight}
+                              onChange={(e) => {
+                                const val = Math.max(0, Math.min(100, parseInt(e.target.value) || 0));
+                                setTempContractorWeights({
+                                  ...tempContractorWeights,
+                                  [item.key]: val
+                                });
+                              }}
+                              className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1 font-mono font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500"
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {/* Custom Contractor Criteria */}
+                    {(tempContractorWeights.customCriteria || []).map((custom, index) => (
+                      <div key={custom.id || index} className="bg-indigo-50/40 dark:bg-indigo-950/20 p-3.5 rounded-xl border border-indigo-200 dark:border-indigo-800 space-y-2.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <input
+                            type="text"
+                            value={custom.label}
+                            onChange={(e) => {
+                              const updatedCustom = [...(tempContractorWeights.customCriteria || [])];
+                              updatedCustom[index] = { ...updatedCustom[index], label: e.target.value };
+                              setTempContractorWeights({ ...tempContractorWeights, customCriteria: updatedCustom });
+                            }}
+                            className="font-bold text-indigo-900 dark:text-indigo-200 bg-transparent border-b border-transparent hover:border-indigo-300 dark:hover:border-indigo-700 focus:border-indigo-500 outline-none w-full text-xs py-0.5"
+                            placeholder="Custom Criterion Name"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updatedCustom = (tempContractorWeights.customCriteria || []).filter((_, i) => i !== index);
+                              setTempContractorWeights({ ...tempContractorWeights, customCriteria: updatedCustom });
+                            }}
+                            className="text-rose-500 hover:text-rose-700 dark:hover:text-rose-400 p-1 rounded hover:bg-rose-50 dark:hover:bg-rose-950/40 transition cursor-pointer"
+                            title="Delete custom criterion"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        <input
+                          type="text"
+                          value={custom.description || ''}
+                          onChange={(e) => {
+                            const updatedCustom = [...(tempContractorWeights.customCriteria || [])];
+                            updatedCustom[index] = { ...updatedCustom[index], description: e.target.value };
+                            setTempContractorWeights({ ...tempContractorWeights, customCriteria: updatedCustom });
+                          }}
+                          className="text-[10.5px] text-slate-600 dark:text-slate-400 bg-white/80 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 w-full outline-none focus:border-indigo-500"
+                          placeholder="Custom criterion notes or description..."
+                        />
+
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 shrink-0">Weight (%):</span>
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            value={custom.weight}
+                            onChange={(e) => {
+                              const val = Math.max(0, Math.min(100, parseInt(e.target.value) || 0));
+                              const updatedCustom = [...(tempContractorWeights.customCriteria || [])];
+                              updatedCustom[index] = { ...updatedCustom[index], weight: val };
+                              setTempContractorWeights({ ...tempContractorWeights, customCriteria: updatedCustom });
+                            }}
+                            className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1 font-mono font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                /* Supervision Consultant Weights Grid */
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 text-[11px] flex items-center gap-2">
+                      <span>SUPERVISION CONSULTANT EVALUATION DIMENSIONS & CRITERIA</span>
+                    </h4>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const newCustom: CustomScoringCriterion = {
+                            id: `custom_cons_${Date.now()}`,
+                            label: `Custom Consultant Criterion ${(tempConsultantWeights.customCriteria?.length || 0) + 1}`,
+                            description: 'Enter evaluation notes and criteria explanation',
+                            weight: 5
+                          };
+                          setTempConsultantWeights({
+                            ...tempConsultantWeights,
+                            customCriteria: [...(tempConsultantWeights.customCriteria || []), newCustom]
+                          });
+                        }}
+                        className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 text-xs font-bold flex items-center gap-1 cursor-pointer bg-indigo-50 dark:bg-indigo-950/40 px-2.5 py-1 rounded-lg border border-indigo-200 dark:border-indigo-800"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Add Custom Criteria</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTempConsultantWeights(DEFAULT_CONSULTANT_SCORING_WEIGHTS)}
+                        className="text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1 font-bold text-xs cursor-pointer"
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                        <span>Reset Defaults</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                    {[
+                      { key: 'sla', defaultLabel: '1. Submittal SLA & RFI Turnaround', defaultDesc: 'Response time on contractor submittals and technical RFIs against SLA targets', defaultWeight: 25 },
+                      { key: 'staff', defaultLabel: '2. Key Staff Mobilization', defaultDesc: 'Resident Engineer and active key personnel presence against allocated MM', defaultWeight: 20 },
+                      { key: 'ipc', defaultLabel: '3. IPC Verification Timeliness', defaultDesc: 'Interim Payment Certificate verification turnaround within contract window', defaultWeight: 20 },
+                      { key: 'claims', defaultLabel: '4. Claims & Determinations', defaultDesc: 'Contract administration, timely claim assessments, and dispute mitigations', defaultWeight: 20 },
+                      { key: 'quality', defaultLabel: '5. Quality Assurance & WIR', defaultDesc: 'Inspection hold points, material approvals, and site test approvals', defaultWeight: 15 }
+                    ].map((item) => {
+                      const currentLabel = tempConsultantWeights.labels?.[item.key] ?? item.defaultLabel;
+                      const currentDesc = tempConsultantWeights.descriptions?.[item.key] ?? item.defaultDesc;
+                      const currentWeight = tempConsultantWeights[item.key] ?? item.defaultWeight;
+
+                      return (
+                        <div key={item.key} className="bg-slate-50 dark:bg-slate-800/40 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2.5">
+                          <div className="flex items-center justify-between gap-2">
+                            <input
+                              type="text"
+                              value={currentLabel}
+                              onChange={(e) => {
+                                setTempConsultantWeights({
+                                  ...tempConsultantWeights,
+                                  labels: {
+                                    ...(tempConsultantWeights.labels || DEFAULT_CONSULTANT_SCORING_WEIGHTS.labels),
+                                    [item.key]: e.target.value
+                                  }
+                                });
+                              }}
+                              className="font-bold text-slate-900 dark:text-slate-100 bg-transparent border-b border-transparent hover:border-slate-300 dark:hover:border-slate-600 focus:border-indigo-500 outline-none w-full text-xs py-0.5"
+                              title="Click to edit criterion title"
+                            />
+                            <div className="flex items-center gap-1 shrink-0">
+                              <span className="font-mono font-extrabold text-indigo-600 dark:text-indigo-400 text-xs px-2 py-0.5 bg-indigo-50 dark:bg-indigo-950/50 rounded border border-indigo-200 dark:border-indigo-800">
+                                {currentWeight}%
+                              </span>
+                            </div>
+                          </div>
+
+                          <input
+                            type="text"
+                            value={currentDesc}
+                            onChange={(e) => {
+                              setTempConsultantWeights({
+                                ...tempConsultantWeights,
+                                descriptions: {
+                                  ...(tempConsultantWeights.descriptions || DEFAULT_CONSULTANT_SCORING_WEIGHTS.descriptions),
+                                  [item.key]: e.target.value
+                                }
+                              });
+                            }}
+                            className="text-[10.5px] text-slate-600 dark:text-slate-400 bg-white/60 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700/80 rounded px-2 py-1 w-full outline-none focus:border-indigo-500"
+                            placeholder="Criteria description..."
+                          />
+
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 shrink-0">Weight (%):</span>
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              value={currentWeight}
+                              onChange={(e) => {
+                                const val = Math.max(0, Math.min(100, parseInt(e.target.value) || 0));
+                                setTempConsultantWeights({
+                                  ...tempConsultantWeights,
+                                  [item.key]: val
+                                });
+                              }}
+                              className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1 font-mono font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500"
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {/* Custom Consultant Criteria */}
+                    {(tempConsultantWeights.customCriteria || []).map((custom, index) => (
+                      <div key={custom.id || index} className="bg-indigo-50/40 dark:bg-indigo-950/20 p-3.5 rounded-xl border border-indigo-200 dark:border-indigo-800 space-y-2.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <input
+                            type="text"
+                            value={custom.label}
+                            onChange={(e) => {
+                              const updatedCustom = [...(tempConsultantWeights.customCriteria || [])];
+                              updatedCustom[index] = { ...updatedCustom[index], label: e.target.value };
+                              setTempConsultantWeights({ ...tempConsultantWeights, customCriteria: updatedCustom });
+                            }}
+                            className="font-bold text-indigo-900 dark:text-indigo-200 bg-transparent border-b border-transparent hover:border-indigo-300 dark:hover:border-indigo-700 focus:border-indigo-500 outline-none w-full text-xs py-0.5"
+                            placeholder="Custom Criterion Name"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updatedCustom = (tempConsultantWeights.customCriteria || []).filter((_, i) => i !== index);
+                              setTempConsultantWeights({ ...tempConsultantWeights, customCriteria: updatedCustom });
+                            }}
+                            className="text-rose-500 hover:text-rose-700 dark:hover:text-rose-400 p-1 rounded hover:bg-rose-50 dark:hover:bg-rose-950/40 transition cursor-pointer"
+                            title="Delete custom criterion"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        <input
+                          type="text"
+                          value={custom.description || ''}
+                          onChange={(e) => {
+                            const updatedCustom = [...(tempConsultantWeights.customCriteria || [])];
+                            updatedCustom[index] = { ...updatedCustom[index], description: e.target.value };
+                            setTempConsultantWeights({ ...tempConsultantWeights, customCriteria: updatedCustom });
+                          }}
+                          className="text-[10.5px] text-slate-600 dark:text-slate-400 bg-white/80 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 w-full outline-none focus:border-indigo-500"
+                          placeholder="Custom criterion notes or description..."
+                        />
+
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 shrink-0">Weight (%):</span>
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            value={custom.weight}
+                            onChange={(e) => {
+                              const val = Math.max(0, Math.min(100, parseInt(e.target.value) || 0));
+                              const updatedCustom = [...(tempConsultantWeights.customCriteria || [])];
+                              updatedCustom[index] = { ...updatedCustom[index], weight: val };
+                              setTempConsultantWeights({ ...tempConsultantWeights, customCriteria: updatedCustom });
+                            }}
+                            className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1 font-mono font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+            </div>
+
+            {/* Modal Actions Footer */}
+            <div className="p-4 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  if (auditPerspective === 'contractor') {
+                    setTempContractorWeights(DEFAULT_CONTRACTOR_SCORING_WEIGHTS);
+                  } else {
+                    setTempConsultantWeights(DEFAULT_CONSULTANT_SCORING_WEIGHTS);
+                  }
+                }}
+                className="px-3.5 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-slate-200/80 dark:bg-slate-700/80 rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Reset Defaults</span>
+              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsEditingWeightsModalOpen(false)}
+                  className="px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+
+                {(() => {
+                  const currentSum = auditPerspective === 'contractor'
+                    ? (
+                        Number(tempContractorWeights.fidic || 0) +
+                        Number(tempContractorWeights.projectMgmt || 0) +
+                        Number(tempContractorWeights.evm || 0) +
+                        Number(tempContractorWeights.kpi || 0) +
+                        Number(tempContractorWeights.linear || 0) +
+                        Number(tempContractorWeights.rfi ?? 10) +
+                        Number(tempContractorWeights.materialApproval ?? 10) +
+                        Number(tempContractorWeights.workInspection ?? 5) +
+                        Number(tempContractorWeights.resourceMobilization ?? 5) +
+                        (tempContractorWeights.customCriteria || []).reduce((s, c) => s + (Number(c.weight) || 0), 0)
+                      )
+                    : (
+                        Number(tempConsultantWeights.sla || 0) +
+                        Number(tempConsultantWeights.staff || 0) +
+                        Number(tempConsultantWeights.ipc || 0) +
+                        Number(tempConsultantWeights.claims || 0) +
+                        Number(tempConsultantWeights.quality || 0) +
+                        (tempConsultantWeights.customCriteria || []).reduce((s, c) => s + (Number(c.weight) || 0), 0)
+                      );
+                  const isValid = currentSum === 100;
+
+                  return (
+                    <button
+                      type="button"
+                      disabled={!isValid}
+                      onClick={async () => {
+                        if (!isValid) return;
+                        localStorage.setItem('era_contractor_scoring_weights', JSON.stringify(tempContractorWeights));
+                        localStorage.setItem('era_consultant_scoring_weights', JSON.stringify(tempConsultantWeights));
+                        setContractorWeights(tempContractorWeights);
+                        setConsultantWeights(tempConsultantWeights);
+                        await safeSyncScoringWeights(tempContractorWeights, tempConsultantWeights, currentUserObj?.username);
+                        setIsEditingWeightsModalOpen(false);
+                        alert(`✅ Master Admin Update Successful!\n\nAll criteria names, descriptions, and weight distribution for ${auditPerspective === 'contractor' ? 'Project Contractor' : 'Supervision Consultant'} scoring model have been saved to the database and applied across all reports.`);
+                      }}
+                      className={`px-5 py-2 text-xs font-black rounded-xl transition flex items-center gap-2 cursor-pointer shadow-sm ${
+                        isValid
+                          ? 'bg-amber-500 hover:bg-amber-600 text-slate-950 active:scale-98'
+                          : 'bg-slate-300 dark:bg-slate-700 text-slate-500 dark:text-slate-400 cursor-not-allowed opacity-60'
+                      }`}
+                    >
+                      <Save className="w-4 h-4" />
+                      <span>Save & Apply Scoring Model</span>
+                    </button>
+                  );
+                })()}
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </motion.div>
   );
 }

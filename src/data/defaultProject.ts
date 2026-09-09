@@ -770,7 +770,7 @@ export function getIntegratedKpiAllocated(project: Project): KpiAllocatedItem[] 
     : (origContractVal + ((project.variation || 0) > 10000 ? (project.variation || 0) : ((project.variation || 0) * 1_000_000)));
   const costOverrunPct = origContractVal > 0
     ? ((revContractVal - origContractVal) / origContractVal) * 100
-    : (project.origAmount > 0 ? (project.variation / project.origAmount) * 100 : 0);
+    : 0;
   const timeOverrunPct = project.origDays > 0 ? (project.eotDays / project.origDays) * 100 : 0;
 
   // 2. Right of Way (ROW) calculated clearance & utilities relocation
@@ -1309,7 +1309,7 @@ export function defaultProjectTemplate(): Project {
     origDays: 1095,
     eotDays: 730,
     interimEotDays: 0,
-    variation: 72.1636, // In Millions
+    variation: 72163600.00, // In Birr (as-is number format with two decimal places)
     origAmount: 1555.70816788, // In Millions
     lengthKm: 65,
     spurRoadLengthKm: 8.8,

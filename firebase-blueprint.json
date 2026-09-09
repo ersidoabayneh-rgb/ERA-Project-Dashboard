@@ -63,11 +63,13 @@
     },
     "Config": {
       "title": "Config",
-      "description": "System taxonomy configuration",
+      "description": "System taxonomy and scoring model weights configuration",
       "type": "object",
       "properties": {
         "pmos": { "type": "string", "maxLength": 500 },
-        "directorates": { "type": "string", "maxLength": 500 }
+        "directorates": { "type": "string", "maxLength": 500 },
+        "contractorWeights": { "type": "string", "maxLength": 500 },
+        "consultantWeights": { "type": "string", "maxLength": 500 }
       }
     },
     "DeletedProject": {

@@ -446,17 +446,21 @@ export default function SubmittalLogView({
       if (selectedStatusFilter === 'ALL') {
         matchesStatus = true;
       } else if (selectedStatusFilter === 'PENDING' || selectedStatusFilter === 'Under Review') {
-        matchesStatus = delayInfo.isPending;
+        matchesStatus = delayInfo.isPending || item.status === 'Under Review';
       } else if (selectedStatusFilter === 'PENDING_OVERDUE') {
         matchesStatus = delayInfo.isPending && delayInfo.isOverdue;
       } else if (selectedStatusFilter === 'CLOSED') {
-        matchesStatus = item.status === 'Approved / Closed' || item.status === 'Approved with Comments';
+        matchesStatus = item.status === 'Closed' || item.status === 'Approved / Closed';
       } else if (selectedStatusFilter === 'OVERDUE' || selectedStatusFilter === 'Overdue') {
-        matchesStatus = delayInfo.isOverdue;
+        matchesStatus = delayInfo.isOverdue || item.status === 'Overdue';
       } else if (selectedStatusFilter === 'ON_TIME') {
         matchesStatus = !delayInfo.isOverdue;
       } else {
-        matchesStatus = item.status === selectedStatusFilter;
+        matchesStatus = item.status === selectedStatusFilter ||
+          (selectedStatusFilter === 'Approved' && (item.status === 'Approved' || item.status === 'Approved / Closed')) ||
+          (selectedStatusFilter === 'Approved with Comment' && (item.status === 'Approved with Comment' || item.status === 'Approved with Comments')) ||
+          (selectedStatusFilter === 'Rejected' && (item.status === 'Rejected' || item.status === 'Rejected / Resubmit')) ||
+          (selectedStatusFilter === 'Resubmit' && (item.status === 'Resubmit' || item.status === 'Rejected / Resubmit'));
       }
 
       return matchesSearch && matchesType && matchesStatus;
@@ -722,12 +726,15 @@ export default function SubmittalLogView({
               className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white font-medium cursor-pointer"
             >
               <option value="ALL">All Statuses</option>
-              <option value="PENDING">Under Review (Pending)</option>
+              <option value="Approved">Approved</option>
+              <option value="Closed">Closed</option>
+              <option value="Approved with Comment">Approved with Comment</option>
+              <option value="Under Review">Under Review</option>
+              <option value="Rejected">Rejected</option>
+              <option value="Resubmit">Resubmit</option>
+              <option value="Overdue">Overdue</option>
+              <option value="PENDING">Pending Review</option>
               <option value="PENDING_OVERDUE">Pending Overdue</option>
-              <option value="CLOSED">Approved / Closed</option>
-              <option value="OVERDUE">Overdue (Delayed)</option>
-              <option value="ON_TIME">On-Time</option>
-              <option value="Rejected / Resubmit">Rejected / Resubmit</option>
             </select>
           </div>
 
@@ -980,9 +987,13 @@ export default function SubmittalLogView({
                       <td className="p-3.5">
                         <div className="flex flex-col gap-1">
                           <span className={`inline-flex px-2 py-0.5 rounded-md text-[10px] font-bold w-fit ${
-                            item.status === 'Approved / Closed' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300' :
-                            item.status === 'Approved with Comments' ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300' :
-                            item.status === 'Rejected / Resubmit' ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300' :
+                            item.status === 'Approved' || item.status === 'Approved / Closed' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300' :
+                            item.status === 'Closed' ? 'bg-slate-200 text-slate-800 dark:bg-slate-800 dark:text-slate-200' :
+                            item.status === 'Approved with Comment' || item.status === 'Approved with Comments' ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300' :
+                            item.status === 'Under Review' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300' :
+                            item.status === 'Rejected' || item.status === 'Rejected / Resubmit' ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300' :
+                            item.status === 'Resubmit' ? 'bg-orange-100 text-orange-800 dark:bg-orange-950/60 dark:text-orange-300' :
+                            item.status === 'Overdue' ? 'bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300' :
                             'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
                           }`}>
                             {item.status}
@@ -1185,10 +1196,12 @@ export default function SubmittalLogView({
                       onChange={(e) => setEditingRowDraft({ ...editingRowDraft, status: e.target.value as any })}
                       className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-semibold"
                     >
-                      <option value="Approved / Closed">Approved / Closed</option>
-                      <option value="Approved with Comments">Approved with Comments</option>
+                      <option value="Approved">Approved</option>
+                      <option value="Closed">Closed</option>
+                      <option value="Approved with Comment">Approved with Comment</option>
                       <option value="Under Review">Under Review</option>
-                      <option value="Rejected / Resubmit">Rejected / Resubmit</option>
+                      <option value="Rejected">Rejected</option>
+                      <option value="Resubmit">Resubmit</option>
                       <option value="Overdue">Overdue</option>
                     </select>
                   </div>

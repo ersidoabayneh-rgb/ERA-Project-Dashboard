@@ -328,7 +328,7 @@ export default function DashboardView({
 
   const costOverrun = origContractVal > 0 
     ? ((revContractVal - origContractVal) / origContractVal) * 100 
-    : (project.origAmount > 0 ? (project.variation / project.origAmount) * 100 : 0);
+    : 0;
 
   const timeOverrun = project.origDays > 0 ? (project.eotDays / project.origDays) * 100 : 0;
 

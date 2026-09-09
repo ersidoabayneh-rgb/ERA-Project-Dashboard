@@ -39,7 +39,7 @@ import {
   Sparkles
 } from 'lucide-react';
 
-import { Project, User, ApprovalRequest, KpiAllocatedItem, SeriesItem, MonthlyProgress, LinearData, RowMetric, ProgressPlan, PaymentItem, AnnualItem, WorkProgramActivity, BondGuarantee, formatAccounting, ProjectDocument, ALL_EDITABLE_PAGES, EditablePageOption, ProjectLifecycleStatus, isProjectClosed, isCpmOrMasterAdmin, isRecentlyUpdated, formatRelativeTime } from './types';
+import { Project, User, ApprovalRequest, KpiAllocatedItem, SeriesItem, MonthlyProgress, LinearData, RowMetric, ProgressPlan, PaymentItem, AnnualItem, WorkProgramActivity, BondGuarantee, formatAccounting, ProjectDocument, ALL_EDITABLE_PAGES, EditablePageOption, ProjectLifecycleStatus, isProjectClosed, isCpmOrMasterAdmin, isRecentlyUpdated, formatRelativeTime, ContractorScoringWeights, ConsultantScoringWeights, DEFAULT_CONTRACTOR_SCORING_WEIGHTS, DEFAULT_CONSULTANT_SCORING_WEIGHTS } from './types';
 
 export function hasApprovalCredentials(user: User | null): boolean {
   if (!user) return false;
@@ -372,6 +372,7 @@ export default function App() {
   const [editOrigAmount, setEditOrigAmount] = useState(0);
   const [editProvisionalSum, setEditProvisionalSum] = useState(0);
   const [editVariation, setEditVariation] = useState(0);
+  const [editVariationStr, setEditVariationStr] = useState('');
   const [editEnableUsdPayments, setEditEnableUsdPayments] = useState(false);
   const [editLengthKm, setEditLengthKm] = useState(0);
   const [editClassification, setEditClassification] = useState('');
@@ -413,7 +414,9 @@ export default function App() {
       setEditInterimEotDays(currentProject.interimEotDays || 0);
       setEditOrigAmount(currentProject.origAmount || 0);
       setEditProvisionalSum(currentProject.provisionalSum || 0);
-      setEditVariation(currentProject.variation || 0);
+      const vVal = currentProject.variation || 0;
+      setEditVariation(vVal);
+      setEditVariationStr(formatAccounting(vVal, ''));
       setEditEnableUsdPayments(currentProject.enableUsdPayments !== undefined ? Boolean(currentProject.enableUsdPayments) : Boolean(currentProject.supervisionConsultant?.enableUsdPayments));
       setEditLengthKm(currentProject.lengthKm || 0);
       setEditClassification(currentProject.classification || '');
@@ -523,6 +526,39 @@ export default function App() {
   const [pendingUserPopups, setPendingUserPopups] = useState<User[]>([]);
   const dismissedUsernamesRef = useRef<Set<string>>(new Set());
   const globalWsRef = useRef<WebSocket | null>(null);
+
+  // Scoring Weights state for Master Admin scoring model configuration
+  const [contractorWeights, setContractorWeights] = useState<ContractorScoringWeights>(() => {
+    try {
+      const saved = localStorage.getItem('era_contractor_scoring_weights');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed.fidic === 'number' && typeof parsed.projectMgmt === 'number' &&
+            typeof parsed.evm === 'number' && typeof parsed.kpi === 'number' && typeof parsed.linear === 'number') {
+          return parsed;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to parse contractor weights', e);
+    }
+    return DEFAULT_CONTRACTOR_SCORING_WEIGHTS;
+  });
+
+  const [consultantWeights, setConsultantWeights] = useState<ConsultantScoringWeights>(() => {
+    try {
+      const saved = localStorage.getItem('era_consultant_scoring_weights');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed.sla === 'number' && typeof parsed.staff === 'number' &&
+            typeof parsed.ipc === 'number' && typeof parsed.claims === 'number' && typeof parsed.quality === 'number') {
+          return parsed;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to parse consultant weights', e);
+    }
+    return DEFAULT_CONSULTANT_SCORING_WEIGHTS;
+  });
 
   const saveUsers = (u: User[]) => {
     const deduped = deduplicateUsers(u);
@@ -1434,6 +1470,24 @@ let isBatchSyncRunning = false;
       }, err => {
         handleFsError(err);
         console.warn('[Firestore Config Listener Notice]:', err?.message || err);
+      });
+
+      // 6. Listen for scoring weights configuration database
+      onSnapshot(doc(db, 'config', 'scoring_weights'), (docSnap) => {
+        if (docSnap && docSnap.exists()) {
+          const data = docSnap.data();
+          if (data && data.contractorWeights) {
+            setContractorWeights(data.contractorWeights);
+            localStorage.setItem('era_contractor_scoring_weights', JSON.stringify(data.contractorWeights));
+          }
+          if (data && data.consultantWeights) {
+            setConsultantWeights(data.consultantWeights);
+            localStorage.setItem('era_consultant_scoring_weights', JSON.stringify(data.consultantWeights));
+          }
+        }
+      }, err => {
+        handleFsError(err);
+        console.warn('[Firestore Scoring Weights Listener Notice]:', err?.message || err);
       });
     } catch (e) {
       console.warn('[Firestore Listeners Setup Notice]:', e);
@@ -3253,7 +3307,9 @@ let isBatchSyncRunning = false;
                                 setEditInterimEotDays(currentProject.interimEotDays || 0);
                                 setEditOrigAmount(currentProject.origAmount);
                                 setEditProvisionalSum(currentProject.provisionalSum);
-                                setEditVariation(currentProject.variation);
+                                const vVal = currentProject.variation || 0;
+                                setEditVariation(vVal);
+                                setEditVariationStr(formatAccounting(vVal, ''));
                                 setEditEnableUsdPayments(currentProject.enableUsdPayments !== undefined ? Boolean(currentProject.enableUsdPayments) : Boolean(currentProject.supervisionConsultant?.enableUsdPayments));
                                 setEditLengthKm(currentProject.lengthKm);
                                 setEditClassification(currentProject.classification);
@@ -3569,14 +3625,42 @@ let isBatchSyncRunning = false;
                         </div>
 
                         <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
-                          <label className="text-[9px] text-slate-400 block font-sans font-bold text-amber-500">APPROVED VARIATIONS</label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={editVariation}
-                            onChange={(e) => setEditVariation(parseFloat(e.target.value) || 0)}
-                            className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1 text-slate-850 dark:text-zinc-150 outline-none font-mono"
-                          />
+                          <div className="flex items-center justify-between">
+                            <label className="text-[9px] text-slate-400 block font-sans font-bold text-amber-500 uppercase">
+                              APPROVED VARIATIONS (Br.)
+                            </label>
+                            <span className="text-[8px] font-mono text-emerald-600 dark:text-emerald-400 font-bold">
+                              Accounting Format (2 Decimals)
+                            </span>
+                          </div>
+                          <div className="relative flex items-center">
+                            <span className="absolute left-2.5 text-xs font-mono font-bold text-slate-400 select-none pointer-events-none">
+                              Br.
+                            </span>
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              value={editVariationStr}
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) => {
+                                const rawVal = e.target.value;
+                                setEditVariationStr(rawVal);
+                                const isNegative = rawVal.includes('-') || (rawVal.includes('(') && rawVal.includes(')'));
+                                const cleaned = rawVal.replace(/[^0-9.]/g, '');
+                                const parsed = parseFloat(cleaned);
+                                const numVal = isNaN(parsed) ? 0 : (isNegative ? -parsed : parsed);
+                                setEditVariation(numVal);
+                              }}
+                              onBlur={() => {
+                                setEditVariationStr(formatAccounting(editVariation, ''));
+                              }}
+                              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 pl-8 pr-2 py-1 text-slate-850 dark:text-zinc-150 outline-none font-mono text-xs rounded font-bold"
+                              placeholder="0.00"
+                            />
+                          </div>
+                          <span className="text-[8px] text-slate-400 block font-sans">
+                            As-is number format in Birr (not in millions).
+                          </span>
                         </div>
 
                         <div className="flex items-center justify-between p-2 rounded-lg bg-blue-50/50 dark:bg-blue-950/30 border border-blue-200/60 dark:border-blue-900/40">
@@ -4024,6 +4108,13 @@ let isBatchSyncRunning = false;
                   customChartTooltipBgColor={customChartTooltipBgColor}
                   onUpdateCustomColors={handleUpdateCustomColors}
                   onResetCustomColors={handleResetCustomColors}
+                  currentUser={currentUserObj}
+                  contractorWeights={contractorWeights}
+                  consultantWeights={consultantWeights}
+                  onUpdateScoringWeights={(cont, cons) => {
+                    setContractorWeights(cont);
+                    setConsultantWeights(cons);
+                  }}
                 />
               )}
             </>
@@ -5578,8 +5669,10 @@ let isBatchSyncRunning = false;
                           if (typeof val === 'boolean') return val ? 'True' : 'False';
                           if (typeof val === 'object') return JSON.stringify(val);
                           
-                          if (field === 'origAmount' || field === 'variation' || field === 'provisionalSum') {
+                          if (field === 'origAmount' || field === 'provisionalSum') {
                             return `${val} Million Birr`;
+                          } else if (field === 'variation') {
+                            return formatAccounting(Number(val) || 0, 'Br.');
                           } else if (field === 'physicalProgress') {
                             return `${val}%`;
                           } else if (field === 'lengthKm') {

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { 
   Settings, 
@@ -11,8 +11,26 @@ import {
   Globe, 
   CheckCircle2, 
   AlertCircle, 
-  RefreshCw 
+  RefreshCw,
+  Sliders,
+  Shield,
+  Save,
+  X,
+  CheckCircle,
+  AlertTriangle,
+  Scale,
+  Award,
+  Plus,
+  Trash2
 } from 'lucide-react';
+import { 
+  User, 
+  ContractorScoringWeights, 
+  ConsultantScoringWeights, 
+  DEFAULT_CONTRACTOR_SCORING_WEIGHTS, 
+  DEFAULT_CONSULTANT_SCORING_WEIGHTS 
+} from '../types';
+import { safeSyncScoringWeights } from '../lib/apiSync';
 
 interface SettingsViewProps {
   darkMode: boolean;
@@ -29,6 +47,10 @@ interface SettingsViewProps {
   customChartTooltipBgColor: string;
   onUpdateCustomColors: (bg: string, txt: string, word: string, txtBg: string, chartTooltipBg: string) => void;
   onResetCustomColors: () => void;
+  currentUser?: User | null;
+  contractorWeights?: ContractorScoringWeights;
+  consultantWeights?: ConsultantScoringWeights;
+  onUpdateScoringWeights?: (contractorWeights: ContractorScoringWeights, consultantWeights: ConsultantScoringWeights) => Promise<void> | void;
 }
 
 export default function SettingsView({
@@ -45,21 +67,327 @@ export default function SettingsView({
   customTxtBgColor,
   customChartTooltipBgColor,
   onUpdateCustomColors,
-  onResetCustomColors
+  onResetCustomColors,
+  currentUser,
+  contractorWeights = DEFAULT_CONTRACTOR_SCORING_WEIGHTS,
+  consultantWeights = DEFAULT_CONSULTANT_SCORING_WEIGHTS,
+  onUpdateScoringWeights
 }: SettingsViewProps) {
 
+  const isMasterAdmin = Boolean(
+    currentUser?.role === 'master_admin' ||
+    currentUser?.role === 'admin' ||
+    currentUser?.username === 'proj_1781786415663' ||
+    (currentUser?.username && currentUser.username.toLowerCase().includes('ersido'))
+  );
+
+  const [activeModelTab, setActiveModelTab] = useState<'contractor' | 'consultant'>('contractor');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [tempContractorWeights, setTempContractorWeights] = useState<ContractorScoringWeights>(contractorWeights);
+  const [tempConsultantWeights, setTempConsultantWeights] = useState<ConsultantScoringWeights>(consultantWeights);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
+
+  const handleOpenModal = () => {
+    setTempContractorWeights(contractorWeights);
+    setTempConsultantWeights(consultantWeights);
+    setIsModalOpen(true);
+  };
+
+  const handleSaveWeights = async () => {
+    setIsSaving(true);
+    try {
+      localStorage.setItem('era_contractor_scoring_weights', JSON.stringify(tempContractorWeights));
+      localStorage.setItem('era_consultant_scoring_weights', JSON.stringify(tempConsultantWeights));
+
+      await safeSyncScoringWeights(tempContractorWeights, tempConsultantWeights, currentUser?.username);
+
+      if (onUpdateScoringWeights) {
+        await onUpdateScoringWeights(tempContractorWeights, tempConsultantWeights);
+      }
+
+      setSaveSuccessMessage('Scoring model weightages successfully updated and saved to configuration database!');
+      setTimeout(() => setSaveSuccessMessage(null), 5000);
+      setIsModalOpen(false);
+    } catch (e) {
+      console.error('Failed to save scoring weights', e);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       
       {/* Header Box */}
-      <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 p-5 rounded-2xl shadow-sm">
-        <h2 className="text-lg font-bold text-slate-800 dark:text-zinc-100 mb-1 flex items-center gap-2">
-          <Settings className="w-5 h-5 text-blue-500" />
-          ERP Dashboard Workspace Settings
-        </h2>
-        <p className="text-xs text-slate-500 dark:text-slate-400">
-          Personalize colors, toggle themes, and customize ambient visual densities.
-        </p>
+      <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 p-5 rounded-2xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-lg font-bold text-slate-800 dark:text-zinc-100 mb-1 flex items-center gap-2">
+            <Settings className="w-5 h-5 text-blue-500" />
+            ERP Dashboard Workspace Settings
+          </h2>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Personalize workspace parameters, configure scoring model weightages, and customize ambient visual densities.
+          </p>
+        </div>
+
+        {isMasterAdmin && (
+          <div className="shrink-0">
+            <span className="px-3 py-1.5 text-2xs font-extrabold text-amber-900 dark:text-amber-200 bg-amber-500/20 border border-amber-500/30 rounded-xl flex items-center gap-1.5">
+              <Shield className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+              <span>Master Admin Authenticated</span>
+            </span>
+          </div>
+        )}
+      </div>
+
+      {saveSuccessMessage && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="p-4 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 rounded-2xl text-emerald-800 dark:text-emerald-200 text-xs font-bold flex items-center gap-2 shadow-xs"
+        >
+          <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+          <span>{saveSuccessMessage}</span>
+        </motion.div>
+      )}
+
+      {/* MASTER ADMIN EXCLUSIVE: Contractor & Consultant Compliance & Grade Scoring Model Section */}
+      <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/70 p-6 rounded-2xl shadow-sm space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-700/60 pb-4">
+          <div className="flex items-center gap-3">
+            <div className="p-3 bg-amber-500/15 text-amber-600 dark:text-amber-400 rounded-xl border border-amber-500/30">
+              <Scale className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="font-extrabold text-sm text-slate-900 dark:text-zinc-100">
+                  Project Contractor Compliance & Grade Scoring Model Configuration
+                </h3>
+                {isMasterAdmin ? (
+                  <span className="text-[10px] font-black uppercase px-2.5 py-0.5 bg-amber-500 text-slate-950 rounded-md font-mono">
+                    Master Admin Configurable
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-bold uppercase px-2.5 py-0.5 bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-md">
+                    🔒 Master Admin Restricted
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Defines the 5-dimension weighted evaluation scoring matrix applied across executive group reports and project audits. Saved to the configuration database.
+              </p>
+            </div>
+          </div>
+
+          {isMasterAdmin && (
+            <button
+              type="button"
+              onClick={handleOpenModal}
+              className="px-4 py-2 text-xs font-black text-slate-950 bg-amber-500 hover:bg-amber-400 active:scale-98 rounded-xl transition-all shadow-sm flex items-center gap-2 cursor-pointer shrink-0 self-start sm:self-center"
+            >
+              <Sliders className="w-4 h-4" />
+              <span>⚙️ Edit Scoring Model Weights</span>
+            </button>
+          )}
+        </div>
+
+        {/* Tab switcher for model perspective view */}
+        <div className="flex items-center gap-2 border-b border-slate-100 dark:border-slate-750 pb-2">
+          <button
+            type="button"
+            onClick={() => setActiveModelTab('contractor')}
+            className={`px-3.5 py-1.5 rounded-lg font-extrabold text-xs transition flex items-center gap-1.5 cursor-pointer ${
+              activeModelTab === 'contractor'
+                ? 'bg-amber-500 text-slate-950 shadow-2xs'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700/50'
+            }`}
+          >
+            <Award className="w-3.5 h-3.5" />
+            <span>🏗️ Project Contractor Model ({contractorWeights.fidic + contractorWeights.projectMgmt + contractorWeights.evm + contractorWeights.kpi + contractorWeights.linear + (contractorWeights.rfi ?? 10) + (contractorWeights.materialApproval ?? 10) + (contractorWeights.workInspection ?? 5) + (contractorWeights.resourceMobilization ?? 5) + (contractorWeights.customCriteria || []).reduce((acc, c) => acc + (c.weight || 0), 0)}%)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveModelTab('consultant')}
+            className={`px-3.5 py-1.5 rounded-lg font-extrabold text-xs transition flex items-center gap-1.5 cursor-pointer ${
+              activeModelTab === 'consultant'
+                ? 'bg-indigo-600 text-white shadow-2xs'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700/50'
+            }`}
+          >
+            <Award className="w-3.5 h-3.5" />
+            <span>👥 Supervision Consultant Model ({consultantWeights.sla + consultantWeights.staff + consultantWeights.ipc + consultantWeights.claims + consultantWeights.quality}%)</span>
+          </button>
+        </div>
+
+        {/* Display Current Active Model Dimensions */}
+        {activeModelTab === 'contractor' ? (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between text-2xs uppercase tracking-wider text-slate-400 font-extrabold">
+              <span>PROJECT CONTRACTOR COMPLIANCE DIMENSIONS</span>
+              <span>CONFIGURED WEIGHTAGE (% OF 100)</span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-3">
+              <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/60 p-3.5 rounded-xl space-y-1.5">
+                <span className="text-[10px] uppercase font-black text-slate-400 block">Dimension 1</span>
+                <span className="font-bold text-xs text-slate-800 dark:text-slate-100 block">1. FIDIC Contract Compliance</span>
+                <p className="text-[10px] text-slate-500 leading-tight">Performance/Mobilization Guarantees & Risk notices</p>
+                <div className="pt-2 flex items-baseline justify-between border-t border-slate-200/60 dark:border-slate-800">
+                  <span className="text-xs font-semibold text-slate-500">Weightage</span>
+                  <span className="font-mono text-base font-black text-indigo-600 dark:text-indigo-400">{contractorWeights.fidic}%</span>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/60 p-3.5 rounded-xl space-y-1.5">
+                <span className="text-[10px] uppercase font-black text-slate-400 block">Dimension 2</span>
+                <span className="font-bold text-xs text-slate-800 dark:text-slate-100 block">2. Project Management (Time)</span>
+                <p className="text-[10px] text-slate-500 leading-tight">Time Overrun & Schedule Slippage deductions</p>
+                <div className="pt-2 flex items-baseline justify-between border-t border-slate-200/60 dark:border-slate-800">
+                  <span className="text-xs font-semibold text-slate-500">Weightage</span>
+                  <span className="font-mono text-base font-black text-indigo-600 dark:text-indigo-400">{contractorWeights.projectMgmt}%</span>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/60 p-3.5 rounded-xl space-y-1.5">
+                <span className="text-[10px] uppercase font-black text-slate-400 block">Dimension 3</span>
+                <span className="font-bold text-xs text-slate-800 dark:text-slate-100 block">3. EVM Metrics (CPI & SPI)</span>
+                <p className="text-[10px] text-slate-500 leading-tight">Cost (CPI) & Schedule (SPI) performance ratio</p>
+                <div className="pt-2 flex items-baseline justify-between border-t border-slate-200/60 dark:border-slate-800">
+                  <span className="text-xs font-semibold text-slate-500">Weightage</span>
+                  <span className="font-mono text-base font-black text-indigo-600 dark:text-indigo-400">{contractorWeights.evm}%</span>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/60 p-3.5 rounded-xl space-y-1.5">
+                <span className="text-[10px] uppercase font-black text-slate-400 block">Dimension 4</span>
+                <span className="font-bold text-xs text-slate-800 dark:text-slate-100 block">4. KPIs & Quality Milestones</span>
+                <p className="text-[10px] text-slate-500 leading-tight">Expired guarantee penalties & critical risk mitigations</p>
+                <div className="pt-2 flex items-baseline justify-between border-t border-slate-200/60 dark:border-slate-800">
+                  <span className="text-xs font-semibold text-slate-500">Weightage</span>
+                  <span className="font-mono text-base font-black text-indigo-600 dark:text-indigo-400">{contractorWeights.kpi}%</span>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/60 p-3.5 rounded-xl space-y-1.5">
+                <span className="text-[10px] uppercase font-black text-slate-400 block">Dimension 5</span>
+                <span className="font-bold text-xs text-slate-800 dark:text-slate-100 block">5. Linear Layer Physical Progress</span>
+                <p className="text-[10px] text-slate-500 leading-tight">Earthwork, Subgrade, Subbase, Basecourse, & Asphalt</p>
+                <div className="pt-2 flex items-baseline justify-between border-t border-slate-200/60 dark:border-slate-800">
+                  <span className="text-xs font-semibold text-slate-500">Weightage</span>
+                  <span className="font-mono text-base font-black text-indigo-600 dark:text-indigo-400">{contractorWeights.linear}%</span>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/60 p-3.5 rounded-xl space-y-1.5">
+                <span className="text-[10px] uppercase font-black text-slate-400 block">Dimension 6</span>
+                <span className="font-bold text-xs text-slate-800 dark:text-slate-100 block">6. Technical RFIs Performance</span>
+                <p className="text-[10px] text-slate-500 leading-tight">RFI turnaround & resolution ratio</p>
+                <div className="pt-2 flex items-baseline justify-between border-t border-slate-200/60 dark:border-slate-800">
+                  <span className="text-xs font-semibold text-slate-500">Weightage</span>
+                  <span className="font-mono text-base font-black text-indigo-600 dark:text-indigo-400">{contractorWeights.rfi ?? 10}%</span>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/60 p-3.5 rounded-xl space-y-1.5">
+                <span className="text-[10px] uppercase font-black text-slate-400 block">Dimension 7</span>
+                <span className="font-bold text-xs text-slate-800 dark:text-slate-100 block">7. Material Approval Submittals</span>
+                <p className="text-[10px] text-slate-500 leading-tight">Material sample approvals ratio</p>
+                <div className="pt-2 flex items-baseline justify-between border-t border-slate-200/60 dark:border-slate-800">
+                  <span className="text-xs font-semibold text-slate-500">Weightage</span>
+                  <span className="font-mono text-base font-black text-indigo-600 dark:text-indigo-400">{contractorWeights.materialApproval ?? 10}%</span>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/60 p-3.5 rounded-xl space-y-1.5">
+                <span className="text-[10px] uppercase font-black text-slate-400 block">Dimension 8</span>
+                <span className="font-bold text-xs text-slate-800 dark:text-slate-100 block">8. Work Inspections (WIR)</span>
+                <p className="text-[10px] text-slate-500 leading-tight">First-time pass rate for WIR</p>
+                <div className="pt-2 flex items-baseline justify-between border-t border-slate-200/60 dark:border-slate-800">
+                  <span className="text-xs font-semibold text-slate-500">Weightage</span>
+                  <span className="font-mono text-base font-black text-indigo-600 dark:text-indigo-400">{contractorWeights.workInspection ?? 5}%</span>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/60 p-3.5 rounded-xl space-y-1.5">
+                <span className="text-[10px] uppercase font-black text-slate-400 block">Dimension 9</span>
+                <span className="font-bold text-xs text-slate-800 dark:text-slate-100 block">9. Resource Mobilization</span>
+                <p className="text-[10px] text-slate-500 leading-tight">Personnel & equipment mobilization</p>
+                <div className="pt-2 flex items-baseline justify-between border-t border-slate-200/60 dark:border-slate-800">
+                  <span className="text-xs font-semibold text-slate-500">Weightage</span>
+                  <span className="font-mono text-base font-black text-indigo-600 dark:text-indigo-400">{contractorWeights.resourceMobilization ?? 5}%</span>
+                </div>
+              </div>
+
+              {(contractorWeights.customCriteria || []).map((c, i) => (
+                <div key={c.id} className="bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 p-3.5 rounded-xl space-y-1.5">
+                  <span className="text-[10px] uppercase font-black text-indigo-500 block">Custom {i + 1}</span>
+                  <span className="font-bold text-xs text-slate-800 dark:text-slate-100 block truncate">{c.label}</span>
+                  <p className="text-[10px] text-slate-500 leading-tight">Master Admin custom criteria</p>
+                  <div className="pt-2 flex items-baseline justify-between border-t border-indigo-200 dark:border-indigo-800">
+                    <span className="text-xs font-semibold text-slate-500">Weightage</span>
+                    <span className="font-mono text-base font-black text-indigo-600 dark:text-indigo-400">{c.weight}%</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between text-2xs uppercase tracking-wider text-slate-400 font-extrabold">
+              <span>SUPERVISION CONSULTANT COMPLIANCE DIMENSIONS</span>
+              <span>CONFIGURED WEIGHTAGE (% OF 100)</span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+              <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/60 p-3.5 rounded-xl space-y-1.5">
+                <span className="text-[10px] uppercase font-black text-slate-400 block">Dimension 1</span>
+                <span className="font-bold text-xs text-slate-800 dark:text-slate-100 block">1. Submittal SLA & RFI</span>
+                <div className="pt-2 flex items-baseline justify-between border-t border-slate-200/60 dark:border-slate-800">
+                  <span className="text-xs font-semibold text-slate-500">Weightage</span>
+                  <span className="font-mono text-base font-black text-indigo-600 dark:text-indigo-400">{consultantWeights.sla}%</span>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/60 p-3.5 rounded-xl space-y-1.5">
+                <span className="text-[10px] uppercase font-black text-slate-400 block">Dimension 2</span>
+                <span className="font-bold text-xs text-slate-800 dark:text-slate-100 block">2. Key Staff Mobilization</span>
+                <div className="pt-2 flex items-baseline justify-between border-t border-slate-200/60 dark:border-slate-800">
+                  <span className="text-xs font-semibold text-slate-500">Weightage</span>
+                  <span className="font-mono text-base font-black text-indigo-600 dark:text-indigo-400">{consultantWeights.staff}%</span>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/60 p-3.5 rounded-xl space-y-1.5">
+                <span className="text-[10px] uppercase font-black text-slate-400 block">Dimension 3</span>
+                <span className="font-bold text-xs text-slate-800 dark:text-slate-100 block">3. IPC Verification</span>
+                <div className="pt-2 flex items-baseline justify-between border-t border-slate-200/60 dark:border-slate-800">
+                  <span className="text-xs font-semibold text-slate-500">Weightage</span>
+                  <span className="font-mono text-base font-black text-indigo-600 dark:text-indigo-400">{consultantWeights.ipc}%</span>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/60 p-3.5 rounded-xl space-y-1.5">
+                <span className="text-[10px] uppercase font-black text-slate-400 block">Dimension 4</span>
+                <span className="font-bold text-xs text-slate-800 dark:text-slate-100 block">4. Claims & Determinations</span>
+                <div className="pt-2 flex items-baseline justify-between border-t border-slate-200/60 dark:border-slate-800">
+                  <span className="text-xs font-semibold text-slate-500">Weightage</span>
+                  <span className="font-mono text-base font-black text-indigo-600 dark:text-indigo-400">{consultantWeights.claims}%</span>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/60 p-3.5 rounded-xl space-y-1.5">
+                <span className="text-[10px] uppercase font-black text-slate-400 block">Dimension 5</span>
+                <span className="font-bold text-xs text-slate-800 dark:text-slate-100 block">5. Quality Assurance & WIR</span>
+                <div className="pt-2 flex items-baseline justify-between border-t border-slate-200/60 dark:border-slate-800">
+                  <span className="text-xs font-semibold text-slate-500">Weightage</span>
+                  <span className="font-mono text-base font-black text-indigo-600 dark:text-indigo-400">{consultantWeights.quality}%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -208,7 +536,7 @@ export default function SettingsView({
               <button
                 type="button"
                 onClick={onResetCustomColors}
-                className="text-[10px] bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 px-2.5 py-1 rounded-lg font-bold transition"
+                className="text-[10px] bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 px-2.5 py-1 rounded-lg font-bold transition cursor-pointer"
               >
                 Reset Colors
               </button>
@@ -265,7 +593,7 @@ export default function SettingsView({
             <div className="border-t border-slate-100 dark:border-slate-750 pt-3 flex justify-end">
               <button
                 onClick={onResetVanta}
-                className="flex items-center gap-1 text-2xs bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 px-3 py-1.5 rounded-lg font-bold transition"
+                className="flex items-center gap-1 text-2xs bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 px-3 py-1.5 rounded-lg font-bold transition cursor-pointer"
               >
                 <RefreshCcw className="w-3.5 h-3.5" />
                 Reset Defaults
@@ -276,8 +604,613 @@ export default function SettingsView({
 
       </div>
 
+      {/* MASTER ADMIN MODAL: Edit Scoring Weights & Save to Configuration Database */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[90vh]"
+          >
+            {/* Modal Header */}
+            <div className="bg-slate-900 text-white p-5 flex items-center justify-between border-b border-slate-800 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-amber-500/20 text-amber-400 rounded-xl border border-amber-500/30">
+                  <Sliders className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-black tracking-tight">Master Admin: Scoring Model Weightages</h3>
+                    <span className="text-[9px] font-black uppercase px-2 py-0.5 bg-amber-500 text-slate-950 rounded font-mono">
+                      Database Sync
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Configure percentage weight distribution. Saved to Firestore database (`config/scoring_weights`).
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsModalOpen(false)}
+                className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto space-y-6 text-slate-800 dark:text-zinc-100 text-xs">
+
+              {/* Model Switcher Buttons */}
+              <div className="flex items-center justify-between bg-slate-100 dark:bg-slate-800/60 p-1.5 rounded-xl border border-slate-200 dark:border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => setActiveModelTab('contractor')}
+                  className={`flex-1 py-2 rounded-lg font-bold text-xs transition flex items-center justify-center gap-2 cursor-pointer ${
+                    activeModelTab === 'contractor'
+                      ? 'bg-amber-500 text-slate-950 shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  <span>🏗️ Project Contractor Model</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveModelTab('consultant')}
+                  className={`flex-1 py-2 rounded-lg font-bold text-xs transition flex items-center justify-center gap-2 cursor-pointer ${
+                    activeModelTab === 'consultant'
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  <span>👥 Supervision Consultant Model</span>
+                </button>
+              </div>
+
+              {/* Model Total Balance Validation Bar */}
+              {(() => {
+                const calcContractorSum = (w: ContractorScoringWeights) => {
+                  const fidic = Number(w.fidic) || 0;
+                  const pm = Number(w.projectMgmt) || 0;
+                  const evm = Number(w.evm) || 0;
+                  const kpi = Number(w.kpi) || 0;
+                  const linear = Number(w.linear) || 0;
+                  const rfi = Number(w.rfi ?? 10);
+                  const mat = Number(w.materialApproval ?? 10);
+                  const wir = Number(w.workInspection ?? 5);
+                  const mob = Number(w.resourceMobilization ?? 5);
+                  const custom = (w.customCriteria || []).reduce((acc, c) => acc + (Number(c.weight) || 0), 0);
+                  return fidic + pm + evm + kpi + linear + rfi + mat + wir + mob + custom;
+                };
+
+                const currentSum = activeModelTab === 'contractor'
+                  ? calcContractorSum(tempContractorWeights)
+                  : tempConsultantWeights.sla + tempConsultantWeights.staff + tempConsultantWeights.ipc + tempConsultantWeights.claims + tempConsultantWeights.quality;
+                const isBalanced = currentSum === 100;
+
+                const handleAutoBalance = () => {
+                  if (activeModelTab === 'contractor') {
+                    const total = calcContractorSum(tempContractorWeights);
+                    if (total <= 0) return;
+                    const factor = 100 / total;
+                    let fidic = Math.round((tempContractorWeights.fidic || 0) * factor);
+                    let projectMgmt = Math.round((tempContractorWeights.projectMgmt || 0) * factor);
+                    let evm = Math.round((tempContractorWeights.evm || 0) * factor);
+                    let kpi = Math.round((tempContractorWeights.kpi || 0) * factor);
+                    let linear = Math.round((tempContractorWeights.linear || 0) * factor);
+                    let rfi = Math.round((tempContractorWeights.rfi ?? 10) * factor);
+                    let materialApproval = Math.round((tempContractorWeights.materialApproval ?? 10) * factor);
+                    let workInspection = Math.round((tempContractorWeights.workInspection ?? 5) * factor);
+                    let resourceMobilization = Math.round((tempContractorWeights.resourceMobilization ?? 5) * factor);
+
+                    const customCriteria = (tempContractorWeights.customCriteria || []).map(c => ({
+                      ...c,
+                      weight: Math.round((c.weight || 0) * factor)
+                    }));
+
+                    const customSum = customCriteria.reduce((acc, c) => acc + c.weight, 0);
+                    const newTotal = fidic + projectMgmt + evm + kpi + linear + rfi + materialApproval + workInspection + resourceMobilization + customSum;
+                    const diff = 100 - newTotal;
+                    if (diff !== 0) projectMgmt = Math.max(0, projectMgmt + diff);
+
+                    setTempContractorWeights({
+                      ...tempContractorWeights,
+                      fidic,
+                      projectMgmt,
+                      evm,
+                      kpi,
+                      linear,
+                      rfi,
+                      materialApproval,
+                      workInspection,
+                      resourceMobilization,
+                      customCriteria
+                    });
+                  } else {
+                    const total = tempConsultantWeights.sla + tempConsultantWeights.staff + tempConsultantWeights.ipc + tempConsultantWeights.claims + tempConsultantWeights.quality;
+                    if (total <= 0) return;
+                    const factor = 100 / total;
+                    let sla = Math.round(tempConsultantWeights.sla * factor);
+                    let staff = Math.round(tempConsultantWeights.staff * factor);
+                    let ipc = Math.round(tempConsultantWeights.ipc * factor);
+                    let claims = Math.round(tempConsultantWeights.claims * factor);
+                    let quality = Math.round(tempConsultantWeights.quality * factor);
+                    const diff = 100 - (sla + staff + ipc + claims + quality);
+                    if (diff !== 0) sla = Math.max(0, sla + diff);
+                    setTempConsultantWeights({ sla, staff, ipc, claims, quality });
+                  }
+                };
+
+                return (
+                  <div className={`p-4 rounded-xl border transition-all ${
+                    isBalanced
+                      ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800/60 text-emerald-900 dark:text-emerald-200'
+                      : 'bg-rose-50 dark:bg-rose-950/30 border-rose-300 dark:border-rose-800/60 text-rose-900 dark:text-rose-200'
+                  }`}>
+                    <div className="flex items-center justify-between font-extrabold text-xs mb-2">
+                      <span className="flex items-center gap-1.5">
+                        {isBalanced ? (
+                          <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                        ) : (
+                          <AlertTriangle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 animate-bounce" />
+                        )}
+                        <span>Total Model Weight Distribution Balance</span>
+                      </span>
+                      <div className="flex items-center gap-2">
+                        {!isBalanced && (
+                          <button
+                            type="button"
+                            onClick={handleAutoBalance}
+                            className="px-2.5 py-1 text-[11px] font-black bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition shadow-2xs flex items-center gap-1 cursor-pointer"
+                          >
+                            <Sliders className="w-3 h-3" />
+                            <span>⚡ Auto-Balance to 100%</span>
+                          </button>
+                        )}
+                        <span className={`font-mono text-sm px-2.5 py-0.5 rounded-lg border font-black ${
+                          isBalanced 
+                            ? 'bg-emerald-500 text-white border-emerald-600' 
+                            : 'bg-rose-600 text-white border-rose-700'
+                        }`}>
+                          {currentSum}% / 100%
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="w-full bg-slate-200 dark:bg-slate-700 h-2.5 rounded-full overflow-hidden my-2">
+                      <div
+                        className={`h-full transition-all duration-300 ${
+                          isBalanced ? 'bg-emerald-500' : 'bg-rose-500'
+                        }`}
+                        style={{ width: `${Math.min(100, currentSum)}%` }}
+                      />
+                    </div>
+
+                    <p className="text-[11px] font-medium leading-relaxed">
+                      {isBalanced ? (
+                        <span>✅ Perfect model balance. The weightages sum to 100%. Ready to save to configuration database.</span>
+                      ) : (
+                        <span>
+                          ⚠️ Model weights sum to <strong>{currentSum}%</strong>. Total must equal exactly 100%.{' '}
+                          {currentSum < 100 ? `Add ${100 - currentSum}% across dimensions.` : `Reduce ${currentSum - 100}% across dimensions.`}
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                );
+              })()}
+
+              {/* Editable Fields Grid */}
+              {activeModelTab === 'contractor' ? (
+                <div className="space-y-3.5">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <h4 className="font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 text-[10px]">
+                      PROJECT CONTRACTOR EVALUATION DIMENSIONS
+                    </h4>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const newCriterion = {
+                            id: 'crit_' + Date.now(),
+                            label: 'Custom Evaluation Criterion ' + ((tempContractorWeights.customCriteria?.length || 0) + 1),
+                            weight: 5
+                          };
+                          setTempContractorWeights({
+                            ...tempContractorWeights,
+                            customCriteria: [...(tempContractorWeights.customCriteria || []), newCriterion]
+                          });
+                        }}
+                        className="text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 px-2.5 py-1 border border-indigo-200 dark:border-indigo-800 rounded-lg flex items-center gap-1 font-extrabold text-[10px] cursor-pointer"
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>+ Add Custom Criteria</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTempContractorWeights(DEFAULT_CONTRACTOR_SCORING_WEIGHTS)}
+                        className="text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1 font-bold text-[10px] cursor-pointer"
+                      >
+                        <RefreshCcw className="w-3 h-3" />
+                        <span>Reset Standard Defaults</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    {/* Dimension 1: FIDIC */}
+                    <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2">
+                      <div className="flex justify-between items-center">
+                        <label className="font-bold text-slate-800 dark:text-slate-200">1. FIDIC Contract Compliance</label>
+                        <span className="font-mono font-extrabold text-indigo-600 dark:text-indigo-400 text-xs">{tempContractorWeights.fidic}%</span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400">Performance/Mobilization Guarantees & Risk notices</p>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={tempContractorWeights.fidic}
+                        onChange={(e) => setTempContractorWeights({ ...tempContractorWeights, fidic: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) })}
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5 font-mono font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500"
+                      />
+                    </div>
+
+                    {/* Dimension 2: Project Management */}
+                    <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2">
+                      <div className="flex justify-between items-center">
+                        <label className="font-bold text-slate-800 dark:text-slate-200">2. Project Management (Time)</label>
+                        <span className="font-mono font-extrabold text-indigo-600 dark:text-indigo-400 text-xs">{tempContractorWeights.projectMgmt}%</span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400">Schedule overrun & EOT extension compliance</p>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={tempContractorWeights.projectMgmt}
+                        onChange={(e) => setTempContractorWeights({ ...tempContractorWeights, projectMgmt: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) })}
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5 font-mono font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500"
+                      />
+                    </div>
+
+                    {/* Dimension 3: EVM */}
+                    <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2">
+                      <div className="flex justify-between items-center">
+                        <label className="font-bold text-slate-800 dark:text-slate-200">3. EVM Metrics (CPI & SPI)</label>
+                        <span className="font-mono font-extrabold text-indigo-600 dark:text-indigo-400 text-xs">{tempContractorWeights.evm}%</span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400">Cost Efficiency Index (CPI) & Schedule Performance (SPI)</p>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={tempContractorWeights.evm}
+                        onChange={(e) => setTempContractorWeights({ ...tempContractorWeights, evm: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) })}
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5 font-mono font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500"
+                      />
+                    </div>
+
+                    {/* Dimension 4: KPIs */}
+                    <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2">
+                      <div className="flex justify-between items-center">
+                        <label className="font-bold text-slate-800 dark:text-slate-200">4. KPIs & Quality Milestones</label>
+                        <span className="font-mono font-extrabold text-indigo-600 dark:text-indigo-400 text-xs">{tempContractorWeights.kpi}%</span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400">Key milestone completions & critical risk mitigations</p>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={tempContractorWeights.kpi}
+                        onChange={(e) => setTempContractorWeights({ ...tempContractorWeights, kpi: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) })}
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5 font-mono font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500"
+                      />
+                    </div>
+
+                    {/* Dimension 5: Linear Layer */}
+                    <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2">
+                      <div className="flex justify-between items-center">
+                        <label className="font-bold text-slate-800 dark:text-slate-200">5. Linear Layer Physical Progress</label>
+                        <span className="font-mono font-extrabold text-indigo-600 dark:text-indigo-400 text-xs">{tempContractorWeights.linear}%</span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400">Earthwork, Subgrade, Subbase, Basecourse, & Asphalt</p>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={tempContractorWeights.linear}
+                        onChange={(e) => setTempContractorWeights({ ...tempContractorWeights, linear: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) })}
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5 font-mono font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500"
+                      />
+                    </div>
+
+                    {/* Dimension 6: Technical RFIs */}
+                    <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2">
+                      <div className="flex justify-between items-center">
+                        <label className="font-bold text-slate-800 dark:text-slate-200">6. Technical RFIs Performance</label>
+                        <span className="font-mono font-extrabold text-indigo-600 dark:text-indigo-400 text-xs">{tempContractorWeights.rfi ?? 10}%</span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400">RFI response, quality & resolution compliance ratio</p>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={tempContractorWeights.rfi ?? 10}
+                        onChange={(e) => setTempContractorWeights({ ...tempContractorWeights, rfi: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) })}
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5 font-mono font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500"
+                      />
+                    </div>
+
+                    {/* Dimension 7: Material Approvals */}
+                    <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2">
+                      <div className="flex justify-between items-center">
+                        <label className="font-bold text-slate-800 dark:text-slate-200">7. Material Approval Submittals</label>
+                        <span className="font-mono font-extrabold text-indigo-600 dark:text-indigo-400 text-xs">{tempContractorWeights.materialApproval ?? 10}%</span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400">Timeliness & specification compliance of material samples</p>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={tempContractorWeights.materialApproval ?? 10}
+                        onChange={(e) => setTempContractorWeights({ ...tempContractorWeights, materialApproval: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) })}
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5 font-mono font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500"
+                      />
+                    </div>
+
+                    {/* Dimension 8: Work Inspection Requests */}
+                    <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2">
+                      <div className="flex justify-between items-center">
+                        <label className="font-bold text-slate-800 dark:text-slate-200">8. Work Inspections (WIR)</label>
+                        <span className="font-mono font-extrabold text-indigo-600 dark:text-indigo-400 text-xs">{tempContractorWeights.workInspection ?? 5}%</span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400">First-time pass rate and quality inspection submittals</p>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={tempContractorWeights.workInspection ?? 5}
+                        onChange={(e) => setTempContractorWeights({ ...tempContractorWeights, workInspection: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) })}
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5 font-mono font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500"
+                      />
+                    </div>
+
+                    {/* Dimension 9: Mobilization of Resources */}
+                    <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2">
+                      <div className="flex justify-between items-center">
+                        <label className="font-bold text-slate-800 dark:text-slate-200">9. Resource Mobilization</label>
+                        <span className="font-mono font-extrabold text-indigo-600 dark:text-indigo-400 text-xs">{tempContractorWeights.resourceMobilization ?? 5}%</span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400">Equipment, machinery & key personnel site presence</p>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={tempContractorWeights.resourceMobilization ?? 5}
+                        onChange={(e) => setTempContractorWeights({ ...tempContractorWeights, resourceMobilization: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) })}
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5 font-mono font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500"
+                      />
+                    </div>
+
+                    {/* Custom Added Criteria */}
+                    {(tempContractorWeights.customCriteria || []).map((criterion, idx) => (
+                      <div key={criterion.id} className="bg-indigo-50/50 dark:bg-indigo-950/20 p-3 rounded-xl border border-indigo-200 dark:border-indigo-800/60 space-y-2">
+                        <div className="flex justify-between items-center gap-2">
+                          <input
+                            type="text"
+                            value={criterion.label}
+                            onChange={(e) => {
+                              const updated = (tempContractorWeights.customCriteria || []).map(c => c.id === criterion.id ? { ...c, label: e.target.value } : c);
+                              setTempContractorWeights({ ...tempContractorWeights, customCriteria: updated });
+                            }}
+                            className="font-bold text-xs text-slate-800 dark:text-slate-200 bg-transparent border-b border-indigo-300 dark:border-indigo-700 focus:outline-none w-full"
+                          />
+                          <div className="flex items-center gap-1">
+                            <span className="font-mono font-extrabold text-indigo-600 dark:text-indigo-400 text-xs">{criterion.weight}%</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = (tempContractorWeights.customCriteria || []).filter(c => c.id !== criterion.id);
+                                setTempContractorWeights({ ...tempContractorWeights, customCriteria: updated });
+                              }}
+                              className="text-rose-500 hover:text-rose-700 p-1 cursor-pointer"
+                              title="Delete custom criterion"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={criterion.weight}
+                          onChange={(e) => {
+                            const updated = (tempContractorWeights.customCriteria || []).map(c => c.id === criterion.id ? { ...c, weight: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) } : c);
+                            setTempContractorWeights({ ...tempContractorWeights, customCriteria: updated });
+                          }}
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5 font-mono font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3.5">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 text-[10px]">
+                      SUPERVISION CONSULTANT EVALUATION DIMENSIONS (5 CATEGORIES)
+                    </h4>
+                    <button
+                      type="button"
+                      onClick={() => setTempConsultantWeights(DEFAULT_CONSULTANT_SCORING_WEIGHTS)}
+                      className="text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 font-bold text-[10px] cursor-pointer"
+                    >
+                      <RefreshCcw className="w-3 h-3" />
+                      <span>Reset Standard Defaults (25/20/20/20/15)</span>
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2">
+                      <div className="flex justify-between items-center">
+                        <label className="font-bold text-slate-800 dark:text-slate-200">1. Submittal SLA & RFI</label>
+                        <span className="font-mono font-extrabold text-indigo-600 dark:text-indigo-400 text-xs">{tempConsultantWeights.sla}%</span>
+                      </div>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={tempConsultantWeights.sla}
+                        onChange={(e) => setTempConsultantWeights({ ...tempConsultantWeights, sla: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) })}
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5 font-mono font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500"
+                      />
+                    </div>
+
+                    <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2">
+                      <div className="flex justify-between items-center">
+                        <label className="font-bold text-slate-800 dark:text-slate-200">2. Key Staff Mobilization</label>
+                        <span className="font-mono font-extrabold text-indigo-600 dark:text-indigo-400 text-xs">{tempConsultantWeights.staff}%</span>
+                      </div>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={tempConsultantWeights.staff}
+                        onChange={(e) => setTempConsultantWeights({ ...tempConsultantWeights, staff: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) })}
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5 font-mono font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500"
+                      />
+                    </div>
+
+                    <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2">
+                      <div className="flex justify-between items-center">
+                        <label className="font-bold text-slate-800 dark:text-slate-200">3. IPC Verification</label>
+                        <span className="font-mono font-extrabold text-indigo-600 dark:text-indigo-400 text-xs">{tempConsultantWeights.ipc}%</span>
+                      </div>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={tempConsultantWeights.ipc}
+                        onChange={(e) => setTempConsultantWeights({ ...tempConsultantWeights, ipc: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) })}
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5 font-mono font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500"
+                      />
+                    </div>
+
+                    <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2">
+                      <div className="flex justify-between items-center">
+                        <label className="font-bold text-slate-800 dark:text-slate-200">4. Claims & Determinations</label>
+                        <span className="font-mono font-extrabold text-indigo-600 dark:text-indigo-400 text-xs">{tempConsultantWeights.claims}%</span>
+                      </div>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={tempConsultantWeights.claims}
+                        onChange={(e) => setTempConsultantWeights({ ...tempConsultantWeights, claims: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) })}
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5 font-mono font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500"
+                      />
+                    </div>
+
+                    <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2 sm:col-span-2">
+                      <div className="flex justify-between items-center">
+                        <label className="font-bold text-slate-800 dark:text-slate-200">5. Quality Assurance & WIR</label>
+                        <span className="font-mono font-extrabold text-indigo-600 dark:text-indigo-400 text-xs">{tempConsultantWeights.quality}%</span>
+                      </div>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={tempConsultantWeights.quality}
+                        onChange={(e) => setTempConsultantWeights({ ...tempConsultantWeights, quality: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) })}
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5 font-mono font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+            </div>
+
+            {/* Modal Actions Footer */}
+            <div className="p-4 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between gap-3 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  if (activeModelTab === 'contractor') {
+                    setTempContractorWeights(DEFAULT_CONTRACTOR_SCORING_WEIGHTS);
+                  } else {
+                    setTempConsultantWeights(DEFAULT_CONSULTANT_SCORING_WEIGHTS);
+                  }
+                }}
+                className="px-3.5 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-slate-200/80 dark:bg-slate-700/80 rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+              >
+                <RefreshCcw className="w-3.5 h-3.5" />
+                <span>Reset Defaults</span>
+              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+
+                {(() => {
+                  const calcContractorSum = (w: ContractorScoringWeights) => {
+                    const fidic = Number(w.fidic) || 0;
+                    const pm = Number(w.projectMgmt) || 0;
+                    const evm = Number(w.evm) || 0;
+                    const kpi = Number(w.kpi) || 0;
+                    const linear = Number(w.linear) || 0;
+                    const rfi = Number(w.rfi ?? 10);
+                    const mat = Number(w.materialApproval ?? 10);
+                    const wir = Number(w.workInspection ?? 5);
+                    const mob = Number(w.resourceMobilization ?? 5);
+                    const custom = (w.customCriteria || []).reduce((acc, c) => acc + (Number(c.weight) || 0), 0);
+                    return fidic + pm + evm + kpi + linear + rfi + mat + wir + mob + custom;
+                  };
+
+                  const currentSum = activeModelTab === 'contractor'
+                    ? calcContractorSum(tempContractorWeights)
+                    : tempConsultantWeights.sla + tempConsultantWeights.staff + tempConsultantWeights.ipc + tempConsultantWeights.claims + tempConsultantWeights.quality;
+                  const isValid = currentSum === 100;
+
+                  return (
+                    <button
+                      type="button"
+                      disabled={!isValid || isSaving}
+                      onClick={handleSaveWeights}
+                      className={`px-5 py-2 text-xs font-black rounded-xl transition flex items-center gap-2 cursor-pointer shadow-sm ${
+                        isValid && !isSaving
+                          ? 'bg-amber-500 hover:bg-amber-600 text-slate-950 active:scale-98'
+                          : 'bg-slate-300 dark:bg-slate-700 text-slate-500 dark:text-slate-400 cursor-not-allowed opacity-60'
+                      }`}
+                    >
+                      {isSaving ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          <span>Saving to Database...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Save className="w-4 h-4" />
+                          <span>Save & Sync to Configuration Database</span>
+                        </>
+                      )}
+                    </button>
+                  );
+                })()}
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
 
     </div>
   );
 }
+
