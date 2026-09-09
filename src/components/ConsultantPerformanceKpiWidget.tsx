@@ -104,7 +104,12 @@ export const DEFAULT_SUBMITTAL_KPIS: ConsultantSubmittalKpi[] = [
     status: 'Approved / Closed',
     priority: 'High',
     assignedEngineer: 'Eng. Birhanu Kebede (Structural)',
-    notes: 'Clarification provided in 4 days. Structural drawing detail confirmed with standard ERA culvert manual.'
+    notes: 'Clarification provided in 4 days. Structural drawing detail confirmed with standard ERA culvert manual.',
+    attachmentsCount: 2,
+    attachments: [
+      { id: 'a1_1', name: 'Culvert_KM18_Detail_Drawing.pdf', size: '2.4 MB' },
+      { id: 'a1_2', name: 'Rebar_Schedule_Revision_A.pdf', size: '1.1 MB' }
+    ]
   },
   {
     id: 'sub_2',
@@ -118,7 +123,13 @@ export const DEFAULT_SUBMITTAL_KPIS: ConsultantSubmittalKpi[] = [
     status: 'Approved / Closed',
     priority: 'Critical',
     assignedEngineer: 'Ato Solomon Mengistu (Materials)',
-    notes: 'Approved 300mm rock-fill capping replacement after soil swell index validation.'
+    notes: 'Approved 300mm rock-fill capping replacement after soil swell index validation.',
+    attachmentsCount: 3,
+    attachments: [
+      { id: 'a2_1', name: 'Geotechnical_Soil_Test_Report.pdf', size: '4.8 MB' },
+      { id: 'a2_2', name: 'Free_Swell_Index_Analysis.xlsx', size: '520 KB' },
+      { id: 'a2_3', name: 'Rockfill_Capping_CrossSection.pdf', size: '1.9 MB' }
+    ]
   },
   {
     id: 'sub_3',
@@ -132,7 +143,11 @@ export const DEFAULT_SUBMITTAL_KPIS: ConsultantSubmittalKpi[] = [
     status: 'Approved / Closed',
     priority: 'High',
     assignedEngineer: 'Eng. Birhanu Kebede (Structural)',
-    notes: 'Bearing capacity verified at 350 kPa on basalt bedrock.'
+    notes: 'Bearing capacity verified at 350 kPa on basalt bedrock.',
+    attachmentsCount: 1,
+    attachments: [
+      { id: 'a3_1', name: 'Borehole_Log_BH02_Stratigraphy.pdf', size: '3.1 MB' }
+    ]
   },
   {
     id: 'sub_4',
@@ -160,7 +175,11 @@ export const DEFAULT_SUBMITTAL_KPIS: ConsultantSubmittalKpi[] = [
     status: 'Approved / Closed',
     priority: 'Medium',
     assignedEngineer: 'Ato Solomon Mengistu (Materials)',
-    notes: 'Slight 1-day delay due to manufacturer lab test verification. Approved.'
+    notes: 'Slight 1-day delay due to manufacturer lab test verification. Approved.',
+    attachmentsCount: 1,
+    attachments: [
+      { id: 'a5_1', name: 'Geotextile_Tensile_Test_Cert.pdf', size: '850 KB' }
+    ]
   },
   {
     id: 'sub_6',
@@ -188,7 +207,14 @@ export const DEFAULT_SUBMITTAL_KPIS: ConsultantSubmittalKpi[] = [
     status: 'Approved / Closed',
     priority: 'Critical',
     assignedEngineer: 'Ato Solomon Mengistu (Materials)',
-    notes: 'Optimum bitumen content 4.8% verified with Marshall Stability tests.'
+    notes: 'Optimum bitumen content 4.8% verified with Marshall Stability tests.',
+    attachmentsCount: 4,
+    attachments: [
+      { id: 'a7_1', name: 'JMF_Marshall_Stability_Results.pdf', size: '5.2 MB' },
+      { id: 'a7_2', name: 'Aggregate_Gradation_Curves.xlsx', size: '780 KB' },
+      { id: 'a7_3', name: 'Bitumen_60_70_Test_Cert.pdf', size: '1.2 MB' },
+      { id: 'a7_4', name: 'Lab_Mix_Design_Photos.png', size: '3.4 MB' }
+    ]
   },
   {
     id: 'sub_8',
@@ -1013,9 +1039,9 @@ export default function ConsultantPerformanceKpiWidget({
           </div>
 
           {/* Detailed Performance Metric Table with editable target SLAs & weighted evaluation marks */}
-          <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
+          <div className="overflow-x-auto max-h-[550px] overflow-y-auto rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs scroll-smooth">
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-100/80 dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 font-bold border-b border-slate-200 dark:border-slate-800">
+              <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold border-b border-slate-200 dark:border-slate-800 shadow-2xs">
                 <tr>
                   <th className="py-2.5 px-3.5">Submittal Criteria</th>
                   <th className="py-2.5 px-3 text-center">

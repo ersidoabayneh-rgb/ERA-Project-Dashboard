@@ -436,10 +436,10 @@ export default function MonthlyPaymentIpcSummaryTable({
       </div>
 
       {/* Main Table */}
-      <div className="overflow-x-auto border border-slate-200/80 dark:border-slate-700/60 rounded-xl">
+      <div className="overflow-x-auto max-h-[600px] overflow-y-auto border border-slate-200/80 dark:border-slate-700/60 rounded-xl scroll-smooth">
         <table className="w-full text-left border-collapse text-xs">
-          <thead>
-            <tr className="bg-slate-100/70 dark:bg-slate-900/60 text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200 dark:border-slate-700">
+          <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-900 shadow-2xs">
+            <tr className="bg-slate-100/90 dark:bg-slate-900/90 text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200 dark:border-slate-700">
               <th className="py-3 px-3 w-32">IPC / Certificate</th>
               <th className="py-3 px-2 w-32" title="Contractor Submission Date and Elapsed Days">Contractor Submission & Age</th>
               <th className="py-3 px-2 w-36 text-center">56-Day Maturation</th>

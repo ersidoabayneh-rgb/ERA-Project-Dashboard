@@ -35,10 +35,11 @@ import {
   EyeOff,
   Zap,
   BookOpen,
-  Archive
+  Archive,
+  Sparkles
 } from 'lucide-react';
 
-import { Project, User, ApprovalRequest, KpiAllocatedItem, SeriesItem, MonthlyProgress, LinearData, RowMetric, ProgressPlan, PaymentItem, AnnualItem, WorkProgramActivity, BondGuarantee, formatAccounting, ProjectDocument, ALL_EDITABLE_PAGES, EditablePageOption, ProjectLifecycleStatus, isProjectClosed, isCpmOrMasterAdmin } from './types';
+import { Project, User, ApprovalRequest, KpiAllocatedItem, SeriesItem, MonthlyProgress, LinearData, RowMetric, ProgressPlan, PaymentItem, AnnualItem, WorkProgramActivity, BondGuarantee, formatAccounting, ProjectDocument, ALL_EDITABLE_PAGES, EditablePageOption, ProjectLifecycleStatus, isProjectClosed, isCpmOrMasterAdmin, isRecentlyUpdated, formatRelativeTime } from './types';
 
 export function hasApprovalCredentials(user: User | null): boolean {
   if (!user) return false;
@@ -3000,6 +3001,15 @@ let isBatchSyncRunning = false;
                             ✏️
                           </button>
                         )}
+                        {isRecentlyUpdated(currentProject.lastModifiedAt) && (
+                          <span 
+                            className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md border bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-400/50 flex items-center gap-1 shadow-2xs animate-pulse shrink-0"
+                            title={`Project updated within the last 24 hours (${currentProject.lastModifiedAt ? new Date(currentProject.lastModifiedAt).toLocaleString() : ''})`}
+                          >
+                            <Sparkles className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                            <span>Updated {formatRelativeTime(currentProject.lastModifiedAt)}</span>
+                          </span>
+                        )}
                       </div>
                     </div>
                   )}
@@ -3944,8 +3954,6 @@ let isBatchSyncRunning = false;
               {activeTab === 'submittalLog' && (
                 <SubmittalLogView
                   project={currentProject}
-                  projects={projects}
-                  onSelectProject={setCurrentProject}
                   onProjectUpdate={handleProjectUpdate}
                   isReadonly={currentUserObj?.role === 'viewer' && currentUserObj?.username !== 'proj_1781786415663'}
                   currentUserObj={currentUserObj}

@@ -3457,10 +3457,10 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
         </div>
 
         {/* Structured Table Container */}
-        <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700/80 shadow-2xs">
+        <div className="overflow-x-auto max-h-[600px] overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-700/80 shadow-2xs scroll-smooth">
           <table className="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr className="bg-slate-100/80 dark:bg-slate-900/80 border-b border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 font-bold uppercase tracking-wider text-[11px]">
+            <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-900 shadow-2xs">
+              <tr className="bg-slate-100/90 dark:bg-slate-900/90 border-b border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 font-bold uppercase tracking-wider text-[11px]">
                 {renderSortableHeader('Date Submitted', 'submittedDate', 'w-32')}
                 {renderSortableHeader('Priority', 'priority', 'w-28 text-center')}
                 {renderSortableHeader('Required Days (Contract)', 'requiredDaysContract', 'w-28 text-center')}

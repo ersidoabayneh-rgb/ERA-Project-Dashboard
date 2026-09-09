@@ -301,9 +301,9 @@ export default function ResourceMobilizationView({
               </div>
             </div>
 
-            <div className="overflow-x-auto border border-slate-100 dark:border-slate-700 rounded-xl">
+            <div className="overflow-x-auto max-h-[500px] overflow-y-auto border border-slate-100 dark:border-slate-700 rounded-xl scroll-smooth">
               <table className="w-full text-xs text-left border-collapse">
-                <thead>
+                <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-900 shadow-2xs">
                   <tr className="bg-slate-50 dark:bg-slate-900/60 text-slate-400 font-mono text-[10px] uppercase tracking-wider border-b border-slate-100 dark:border-slate-700">
                     <th className="p-3">Resource Description</th>
                     <th className="p-3 text-center w-24">Original Plan</th>
@@ -425,9 +425,9 @@ export default function ResourceMobilizationView({
               </div>
             </div>
 
-            <div className="overflow-x-auto border border-slate-100 dark:border-slate-700 rounded-xl">
+            <div className="overflow-x-auto max-h-[500px] overflow-y-auto border border-slate-100 dark:border-slate-700 rounded-xl scroll-smooth">
               <table className="w-full text-xs text-left border-collapse">
-                <thead>
+                <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-900 shadow-2xs">
                   <tr className="bg-slate-50 dark:bg-slate-900/60 text-slate-400 font-mono text-[10px] uppercase tracking-wider border-b border-slate-100 dark:border-slate-700">
                     <th className="p-3">Personnel / Designation</th>
                     <th className="p-3 text-center w-24">Original Plan</th>
@@ -553,9 +553,9 @@ export default function ResourceMobilizationView({
               </div>
             </div>
 
-            <div className="overflow-x-auto border border-slate-100 dark:border-slate-700 rounded-xl">
+            <div className="overflow-x-auto max-h-[500px] overflow-y-auto border border-slate-100 dark:border-slate-700 rounded-xl scroll-smooth">
               <table className="w-full text-xs text-left border-collapse">
-                <thead>
+                <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-900 shadow-2xs">
                   <tr className="bg-slate-50 dark:bg-slate-900/60 text-slate-400 font-mono text-[10px] uppercase tracking-wider border-b border-slate-100 dark:border-slate-700">
                     <th className="p-3">Material Description</th>
                     <th className="p-3 w-40">Contract Scope / Metric</th>
@@ -697,9 +697,9 @@ export default function ResourceMobilizationView({
               </div>
             </div>
 
-            <div className="overflow-x-auto border border-slate-100 dark:border-slate-700 rounded-xl">
+            <div className="overflow-x-auto max-h-[500px] overflow-y-auto border border-slate-100 dark:border-slate-700 rounded-xl scroll-smooth">
               <table className="w-full text-xs text-left border-collapse">
-                <thead>
+                <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-900 shadow-2xs">
                   <tr className="bg-slate-50 dark:bg-slate-900/60 text-slate-400 font-mono text-[10px] uppercase tracking-wider border-b border-slate-100 dark:border-slate-700">
                     <th className="p-3">Material Description</th>
                     <th className="p-3 w-40">Contract Scope / Metric</th>

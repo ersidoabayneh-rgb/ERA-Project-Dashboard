@@ -343,9 +343,9 @@ export default function WorkProgramView({ project, onUpdateActivities }: WorkPro
       <CPMChart project={project} activities={activities} />
 
       <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 rounded-2xl overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto max-h-[600px] overflow-y-auto scroll-smooth">
           <table className="w-full text-left border-collapse text-xs text-slate-700 dark:text-slate-200">
-            <thead>
+            <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-900 shadow-2xs">
               <tr className="bg-slate-50 dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700/60 text-slate-400 dark:text-slate-500 font-bold">
                 <th className="p-3 w-16 text-center">ID</th>
                 <th className="p-3">Activity Description</th>

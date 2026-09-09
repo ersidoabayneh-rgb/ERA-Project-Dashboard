@@ -32,7 +32,7 @@ import {
   UserPlus
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
-import { Project, User, ApprovalRequest, ProjectLifecycleStatus, isProjectClosed, isCpmOrMasterAdmin } from '../types';
+import { Project, User, ApprovalRequest, ProjectLifecycleStatus, isProjectClosed, isCpmOrMasterAdmin, isRecentlyUpdated, formatRelativeTime } from '../types';
 import { canUserApproveRequest, hasApprovalCredentials } from '../App';
 import eraLogo from '../assets/logo.png';
 import GroupReportGenerator from './GroupReportGenerator';
@@ -924,6 +924,15 @@ export default function ProjectsPage({
                   Showing <strong className="text-slate-800 dark:text-slate-100 font-extrabold">{sortedProjects.length}</strong> of{' '}
                   <strong className="text-slate-800 dark:text-slate-100">{projects.filter(isAccessible).length}</strong> contracts
                 </span>
+                {sortedProjects.filter(p => isRecentlyUpdated(p.lastModifiedAt)).length > 0 && (
+                  <span 
+                    className="bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 px-2 py-0.5 rounded-md font-extrabold text-[11px] flex items-center gap-1.5 shadow-2xs"
+                    title={`${sortedProjects.filter(p => isRecentlyUpdated(p.lastModifiedAt)).length} contract(s) updated in the last 24 hours`}
+                  >
+                    <Sparkles className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0 animate-pulse" />
+                    <span>{sortedProjects.filter(p => isRecentlyUpdated(p.lastModifiedAt)).length} Updated (&lt;24h)</span>
+                  </span>
+                )}
                 {searchQuery && (
                   <span className="bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/50 px-2 py-0.5 rounded-md font-semibold text-[11px] flex items-center gap-1">
                     Search: "{searchQuery}"
@@ -1109,6 +1118,15 @@ export default function ProjectsPage({
                           <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-md border bg-purple-50 dark:bg-purple-950/30 text-purple-600 dark:text-purple-400 border-purple-100 dark:border-purple-900/30">
                             📦 {p.pmo || 'PMO 1'}
                           </span>
+                          {isRecentlyUpdated(p.lastModifiedAt) && (
+                            <span 
+                              className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md border bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-400/50 flex items-center gap-1 shadow-2xs animate-pulse"
+                              title={`Updated within the last 24 hours (${p.lastModifiedAt ? new Date(p.lastModifiedAt).toLocaleString() : ''})`}
+                            >
+                              <Sparkles className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                              <span>Updated {formatRelativeTime(p.lastModifiedAt)}</span>
+                            </span>
+                          )}
                           <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">
                             ID: {p.id.substring(0, 10)}
                           </span>
@@ -1139,6 +1157,18 @@ export default function ProjectsPage({
                           {mySubmittedPendingDraft && !hasPendingChangesForApprover && (
                             <span className="text-[9px] font-bold uppercase text-blue-600 dark:text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded tracking-wider border border-blue-500/20 leading-none">
                               Draft Submitted
+                            </span>
+                          )}
+                          {isRecentlyUpdated(p.lastModifiedAt) && (
+                            <span 
+                              className="text-[9px] font-black uppercase text-emerald-700 dark:text-emerald-300 bg-emerald-500/15 dark:bg-emerald-500/20 px-1.5 py-0.5 rounded tracking-wider border border-emerald-500/30 leading-none flex items-center gap-1 shrink-0"
+                              title={`Updated in the last 24 hours (${p.lastModifiedAt ? new Date(p.lastModifiedAt).toLocaleString() : ''})`}
+                            >
+                              <span className="relative flex h-1.5 w-1.5 shrink-0">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+                              </span>
+                              <span>Updated</span>
                             </span>
                           )}
                         </h3>
@@ -1314,6 +1344,24 @@ export default function ProjectsPage({
                           <p className="text-[9px] text-slate-500 dark:text-slate-400 leading-normal">
                             Bonds are fully valid, physical progress is compliant, and no matured overdue IPC claims are pending.
                           </p>
+                        </div>
+                      )}
+
+                      {/* Last Modified Audit Footer */}
+                      {p.lastModifiedAt && (
+                        <div className="flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500 pt-2 border-t border-slate-100 dark:border-slate-700/40 mt-2">
+                          <span className="flex items-center gap-1">
+                            <span className="font-semibold text-slate-400">Last Modified:</span>
+                            <span className={`font-bold ${isRecentlyUpdated(p.lastModifiedAt) ? 'text-emerald-600 dark:text-emerald-400 font-extrabold' : 'text-slate-500 dark:text-slate-400'}`}>
+                              {formatRelativeTime(p.lastModifiedAt)}
+                            </span>
+                            <span className="text-[9px] text-slate-400">({new Date(p.lastModifiedAt).toLocaleDateString()})</span>
+                          </span>
+                          {p.lastModifiedBy && (
+                            <span className="text-[9px] text-slate-400 truncate max-w-[120px]" title={`Modified by ${p.lastModifiedBy}`}>
+                              By: {p.lastModifiedBy}
+                            </span>
+                          )}
                         </div>
                       )}
 

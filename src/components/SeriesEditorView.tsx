@@ -808,9 +808,9 @@ export default function SeriesEditorView({ project, onUpdateSeries, onProjectUpd
               </button>
             </div>
 
-            <div className="overflow-auto min-h-56">
+            <div className="overflow-auto max-h-[350px] overflow-y-auto scroll-smooth min-h-56 border border-slate-100 dark:border-slate-700/60 rounded-xl">
               <table className="w-full text-left border-collapse text-xs text-slate-700 dark:text-slate-200">
-                <thead>
+                <thead className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900 shadow-2xs">
                   <tr className="bg-slate-50 dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700 text-slate-400 font-bold">
                     <th className="p-2">Item Description</th>
                     <th className="p-2 text-right">Certified Paid (Birr)</th>
@@ -905,9 +905,9 @@ export default function SeriesEditorView({ project, onUpdateSeries, onProjectUpd
               </div>
             </div>
 
-            <div className="overflow-auto min-h-36">
+            <div className="overflow-auto max-h-[350px] overflow-y-auto scroll-smooth min-h-36 border border-slate-100 dark:border-slate-700/60 rounded-xl">
               <table className="w-full text-left border-collapse text-xs text-slate-700 dark:text-slate-200">
-                <thead>
+                <thead className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900 shadow-2xs">
                   <tr className="bg-slate-50 dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700 text-slate-400 font-bold">
                     <th className="p-2 w-20 text-center">EFY Year</th>
                     <th className="p-2 text-right">Accomplished Length (Km)</th>

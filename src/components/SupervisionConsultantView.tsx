@@ -1919,9 +1919,9 @@ export default function SupervisionConsultantView({
 
           {/* Personnel Table View */}
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm">
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto max-h-[500px] overflow-y-auto scroll-smooth">
               <table className="w-full text-left border-collapse text-xs">
-                <thead>
+                <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-800 shadow-2xs">
                   <tr className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 text-slate-500 font-bold uppercase tracking-wider text-[11px]">
                     <th className="py-3 px-4 w-12 text-center">#</th>
                     <th className="py-3 px-4">Assigned Personnel Name</th>
@@ -2236,9 +2236,9 @@ export default function SupervisionConsultantView({
 
           {/* Invoice Table */}
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm">
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto max-h-[500px] overflow-y-auto scroll-smooth">
               <table className="w-full text-left border-collapse text-xs">
-                <thead>
+                <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-800 shadow-2xs">
                   <tr className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 text-slate-500 font-bold uppercase tracking-wider text-[11px]">
                     <th className="py-3 px-4">Invoice #</th>
                     <th className="py-3 px-4">Billing Period</th>
@@ -2960,9 +2960,9 @@ export default function SupervisionConsultantView({
                 </p>
               </div>
             ) : (
-              <div className="overflow-x-auto mt-4">
+              <div className="overflow-x-auto max-h-[500px] overflow-y-auto mt-4 rounded-xl border border-slate-200 dark:border-slate-800 scroll-smooth">
                 <table className="w-full text-left text-xs">
-                  <thead>
+                  <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-800 shadow-2xs">
                     <tr className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 uppercase font-bold text-[10px] tracking-wider border-b border-slate-200 dark:border-slate-700">
                       <th className="py-3 px-4">Timestamp</th>
                       <th className="py-3 px-4">Action Type</th>

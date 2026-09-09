@@ -389,6 +389,36 @@ export function isCpmOrMasterAdmin(user?: User | null): boolean {
   return false;
 }
 
+/**
+ * Checks whether a project's 'lastModifiedAt' timestamp was updated within the last 24 hours.
+ */
+export function isRecentlyUpdated(lastModifiedAt?: string | null): boolean {
+  if (!lastModifiedAt) return false;
+  const modTime = new Date(lastModifiedAt).getTime();
+  if (isNaN(modTime)) return false;
+  const now = Date.now();
+  const diffMs = now - modTime;
+  // Within last 24 hours (24 * 60 * 60 * 1000 = 86,400,000 ms)
+  return diffMs >= -300000 && diffMs <= 24 * 60 * 60 * 1000;
+}
+
+/**
+ * Formats lastModifiedAt timestamp into a human-readable relative time string (e.g. "2h ago", "Just now").
+ */
+export function formatRelativeTime(lastModifiedAt?: string | null): string {
+  if (!lastModifiedAt) return '';
+  const date = new Date(lastModifiedAt);
+  if (isNaN(date.getTime())) return '';
+  const now = new Date();
+  const diffSec = Math.floor((now.getTime() - date.getTime()) / 1000);
+  if (diffSec < 60) return 'Just now';
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHours = Math.floor(diffMin / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  return date.toLocaleDateString();
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -620,6 +650,14 @@ export interface ConsultantSubmittalKpi {
   priority: 'High' | 'Medium' | 'Low' | 'Critical';
   assignedEngineer?: string;
   notes?: string;
+  attachmentsCount?: number;
+  attachments?: Array<{
+    id: string;
+    name: string;
+    size?: string;
+    url?: string;
+    uploadedAt?: string;
+  }>;
 }
 
 export interface ProjectDocument {

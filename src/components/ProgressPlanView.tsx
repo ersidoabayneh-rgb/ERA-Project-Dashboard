@@ -973,9 +973,9 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
             </span>
           </div>
 
-          <div className="overflow-x-auto border border-slate-100 dark:border-slate-700/50 rounded-xl">
+          <div className="overflow-x-auto max-h-[500px] overflow-y-auto border border-slate-100 dark:border-slate-700/50 rounded-xl scroll-smooth">
             <table className="w-full text-left border-collapse text-xs text-slate-700 dark:text-slate-300">
-              <thead>
+              <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-900 shadow-2xs">
                 <tr className="bg-slate-50 dark:bg-slate-900 text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-extrabold border-b border-slate-100 dark:border-slate-700/60">
                   <th className="p-3">
                     <div className="flex items-center gap-1">
