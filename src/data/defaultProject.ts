@@ -1439,17 +1439,95 @@ export function defaultProjectTemplate(): Project {
       { sno: 3, type: 'Retention Money Guarantee', bank: 'Nib International Bank', amount: 50000000, amountUsd: 435000, issueDate: '2021-01-15', expireDate: '2027-01-15', status: 'Valid' }
     ],
     resourceMobilization: [
-      { id: 'res_1', desc: 'Asphalt Paver (No.)', originalPlan: 3, revisedPlan: 3, available: 2, deficiency: 1, breakdown: '1 in good condition, 1 undergoing minor repair' },
-      { id: 'res_2', desc: 'Motor Grader (No.)', originalPlan: 8, revisedPlan: 10, available: 9, deficiency: 1, breakdown: '9 active on sub-grade and base construction' },
-      { id: 'res_3', desc: 'Excavator (No.)', originalPlan: 6, revisedPlan: 7, available: 7, deficiency: 0, breakdown: '7 active on rock cutting sections' },
-      { id: 'res_4', desc: 'Dump Trucks (No.)', originalPlan: 45, revisedPlan: 50, available: 42, deficiency: 8, breakdown: '42 active, 8 pending arrival' },
-      { id: 'res_5', desc: 'Aggregate Crusher (Set)', originalPlan: 2, revisedPlan: 2, available: 2, deficiency: 0, breakdown: '2 fully operational at quarry sites' }
+      { id: 'res_1', desc: 'Asphalt Paver (No.)', category: 'equipment', originalPlan: 3, revisedPlan: 3, available: 2, deficiency: 1, breakdown: '1 in good condition, 1 undergoing minor repair' },
+      { id: 'res_2', desc: 'Motor Grader (No.)', category: 'equipment', originalPlan: 8, revisedPlan: 10, available: 9, deficiency: 1, breakdown: '9 active on sub-grade and base construction' },
+      { id: 'res_3', desc: 'Excavator (No.)', category: 'equipment', originalPlan: 6, revisedPlan: 7, available: 7, deficiency: 0, breakdown: '7 active on rock cutting sections' },
+      { id: 'res_4', desc: 'Dump Trucks (No.)', category: 'equipment', originalPlan: 45, revisedPlan: 50, available: 42, deficiency: 8, breakdown: '42 active, 8 pending arrival' },
+      { id: 'res_5', desc: 'Aggregate Crusher (Set)', category: 'equipment', originalPlan: 2, revisedPlan: 2, available: 2, deficiency: 0, breakdown: '2 fully operational at quarry sites' },
+      { id: 'res_6', desc: 'Vibratory Soil Compactors (No.)', category: 'equipment', originalPlan: 6, revisedPlan: 6, available: 6, deficiency: 0, breakdown: 'All 6 active on embankment layers' },
+      { id: 'res_7', desc: 'Heavy Bulldozer (CAT D8) (No.)', category: 'equipment', originalPlan: 4, revisedPlan: 4, available: 4, deficiency: 0, breakdown: 'Working at rock borrowing pit' },
+      { id: 'res_p1', desc: 'Project Manager (Key Staff)', category: 'personnel', originalPlan: 1, revisedPlan: 1, available: 1, deficiency: 0, breakdown: 'Full-time resident site representation' },
+      { id: 'res_p2', desc: 'Senior Highway Engineer (Key Staff)', category: 'personnel', originalPlan: 2, revisedPlan: 2, available: 2, deficiency: 0, breakdown: 'Stationed at section Km 15+000 - 45+000' },
+      { id: 'res_p3', desc: 'Chief Materials Engineer (Key Staff)', category: 'personnel', originalPlan: 1, revisedPlan: 1, available: 1, deficiency: 0, breakdown: 'Supervising central laboratory & plant QA' },
+      { id: 'res_p4', desc: 'Chief Surveyor & Geodetic Specialist', category: 'personnel', originalPlan: 2, revisedPlan: 2, available: 2, deficiency: 0, breakdown: 'Active on centerline re-establishment' },
+      { id: 'res_p5', desc: 'Environmental & Social Specialist', category: 'personnel', originalPlan: 1, revisedPlan: 1, available: 1, deficiency: 0, breakdown: 'Monitoring borrow pit rehabilitation' }
     ],
     materialProduction: [
-      { id: 'mat_1', desc: 'Sub-base material production', scope: '250,000 M3', thisMonth: 12500, totalToDate: 185000, used: 120000, availableStock: 15400, remainingBalance: 65000 },
-      { id: 'mat_2', desc: 'Aggregate Base Course (0-40mm)', scope: '160,000 M3', thisMonth: 8200, totalToDate: 95000, used: 30000, availableStock: 12000, remainingBalance: 65000 },
-      { id: 'mat_3', desc: 'Asphalt Concrete (AC) production', scope: '90,000 Ton', thisMonth: 4500, totalToDate: 48000, used: 6000, availableStock: 1500, remainingBalance: 42000 },
-      { id: 'mat_4', desc: 'Portland Cement / Structural concrete', scope: '35,000 M3', thisMonth: 1100, totalToDate: 23000, used: 11000, availableStock: 2500, remainingBalance: 12000 }
+      { id: 'mat_1', desc: 'Sub-base material production', category: 'Production', scope: '250,000 M3', monthlyTarget: 14000, previousMonthTotal: 172500, thisMonth: 12500, totalToDate: 185000, used: 120000, availableStock: 15400, remainingBalance: 65000 },
+      { id: 'mat_2', desc: 'Aggregate Base Course (0-40mm)', category: 'Production', scope: '160,000 M3', monthlyTarget: 8500, previousMonthTotal: 86800, thisMonth: 8200, totalToDate: 95000, used: 30000, availableStock: 12000, remainingBalance: 65000 },
+      { id: 'mat_3', desc: 'Asphalt Concrete (AC) production', category: 'Production', scope: '90,000 Ton', monthlyTarget: 4500, previousMonthTotal: 43500, thisMonth: 4500, totalToDate: 48000, used: 6000, availableStock: 1500, remainingBalance: 42000 },
+      { id: 'mat_4', desc: 'Structural concrete batching', category: 'Production', scope: '35,000 M3', monthlyTarget: 1200, previousMonthTotal: 21900, thisMonth: 1100, totalToDate: 23000, used: 11000, availableStock: 2500, remainingBalance: 12000 },
+      { id: 'sup_1', desc: 'Reinforcement Steel Bars (Grade 60)', category: 'Steel & Reinforcement', scope: '6,500 Ton', monthlyTarget: 450, previousMonthTotal: 3790, thisMonth: 410, totalToDate: 4200, used: 3550, availableStock: 650, remainingBalance: 2300 },
+      { id: 'sup_2', desc: 'Portland Pozzolana Cement (PPC 42.5N)', category: 'Cement & Binders', scope: '120,000 Bags', monthlyTarget: 8500, previousMonthTotal: 73800, thisMonth: 8200, totalToDate: 82000, used: 74600, availableStock: 7400, remainingBalance: 38000 },
+      { id: 'sup_3', desc: 'Bitumen 60/70 Penetration Grade', category: 'Bitumen & Asphalt Logistics', scope: '4,200 Ton', monthlyTarget: 350, previousMonthTotal: 2485, thisMonth: 365, totalToDate: 2850, used: 2430, availableStock: 420, remainingBalance: 1350 },
+      { id: 'sup_4', desc: 'Diesel Fuel for Heavy Fleet & Plant', category: 'Fuel & Energy Logistics', scope: '2,500,000 Liters', monthlyTarget: 180000, previousMonthTotal: 1452000, thisMonth: 168000, totalToDate: 1620000, used: 1575000, availableStock: 45000, remainingBalance: 880000 },
+      { id: 'sup_5', desc: 'Corrugated Metal Pipes (CMP) & Culverts', category: 'Pipes & Drainage Structures', scope: '8,500 Meters', monthlyTarget: 600, previousMonthTotal: 5520, thisMonth: 580, totalToDate: 6100, used: 5350, availableStock: 750, remainingBalance: 2400 },
+      { id: 'sup_6', desc: 'Geotextile & Sub-surface Filter Fabric', category: 'Geosynthetics & Filters', scope: '150,000 M2', monthlyTarget: 12000, previousMonthTotal: 96800, thisMonth: 13200, totalToDate: 110000, used: 96000, availableStock: 14000, remainingBalance: 40000 }
+    ],
+    monthlyResourceRecords: [
+      {
+        id: 'mrec_2026_09',
+        month: '2026-09',
+        monthName: 'September 2026',
+        recordedDate: '2026-09-12',
+        recordedBy: 'ErsidoAbayneh@gmail.com',
+        status: 'Approved',
+        notes: 'Dry weather facilitated steady quarry operations and bitumen supply dispatch to site.',
+        resourceMobilization: [
+          { id: 'res_1', desc: 'Asphalt Paver (No.)', category: 'equipment', originalPlan: 3, revisedPlan: 3, available: 2, deficiency: 1, breakdown: '1 in good condition, 1 undergoing minor repair' },
+          { id: 'res_2', desc: 'Motor Grader (No.)', category: 'equipment', originalPlan: 8, revisedPlan: 10, available: 9, deficiency: 1, breakdown: '9 active on sub-grade and base construction' },
+          { id: 'res_3', desc: 'Excavator (No.)', category: 'equipment', originalPlan: 6, revisedPlan: 7, available: 7, deficiency: 0, breakdown: '7 active on rock cutting sections' },
+          { id: 'res_4', desc: 'Dump Trucks (No.)', category: 'equipment', originalPlan: 45, revisedPlan: 50, available: 42, deficiency: 8, breakdown: '42 active, 8 pending arrival' },
+          { id: 'res_5', desc: 'Aggregate Crusher (Set)', category: 'equipment', originalPlan: 2, revisedPlan: 2, available: 2, deficiency: 0, breakdown: '2 fully operational at quarry sites' },
+          { id: 'res_6', desc: 'Vibratory Soil Compactors (No.)', category: 'equipment', originalPlan: 6, revisedPlan: 6, available: 6, deficiency: 0, breakdown: 'All 6 active on embankment layers' },
+          { id: 'res_7', desc: 'Heavy Bulldozer (CAT D8) (No.)', category: 'equipment', originalPlan: 4, revisedPlan: 4, available: 4, deficiency: 0, breakdown: 'Working at rock borrowing pit' },
+          { id: 'res_p1', desc: 'Project Manager (Key Staff)', category: 'personnel', originalPlan: 1, revisedPlan: 1, available: 1, deficiency: 0, breakdown: 'Full-time resident site representation' },
+          { id: 'res_p2', desc: 'Senior Highway Engineer (Key Staff)', category: 'personnel', originalPlan: 2, revisedPlan: 2, available: 2, deficiency: 0, breakdown: 'Stationed at section Km 15+000 - 45+000' },
+          { id: 'res_p3', desc: 'Chief Materials Engineer (Key Staff)', category: 'personnel', originalPlan: 1, revisedPlan: 1, available: 1, deficiency: 0, breakdown: 'Supervising central laboratory & plant QA' },
+          { id: 'res_p4', desc: 'Chief Surveyor & Geodetic Specialist', category: 'personnel', originalPlan: 2, revisedPlan: 2, available: 2, deficiency: 0, breakdown: 'Active on centerline re-establishment' },
+          { id: 'res_p5', desc: 'Environmental & Social Specialist', category: 'personnel', originalPlan: 1, revisedPlan: 1, available: 1, deficiency: 0, breakdown: 'Monitoring borrow pit rehabilitation' }
+        ],
+        materialProduction: [
+          { id: 'mat_1', desc: 'Sub-base material production', category: 'Production', scope: '250,000 M3', monthlyTarget: 14000, previousMonthTotal: 172500, thisMonth: 12500, totalToDate: 185000, used: 120000, availableStock: 15400, remainingBalance: 65000 },
+          { id: 'mat_2', desc: 'Aggregate Base Course (0-40mm)', category: 'Production', scope: '160,000 M3', monthlyTarget: 8500, previousMonthTotal: 86800, thisMonth: 8200, totalToDate: 95000, used: 30000, availableStock: 12000, remainingBalance: 65000 },
+          { id: 'mat_3', desc: 'Asphalt Concrete (AC) production', category: 'Production', scope: '90,000 Ton', monthlyTarget: 4500, previousMonthTotal: 43500, thisMonth: 4500, totalToDate: 48000, used: 6000, availableStock: 1500, remainingBalance: 42000 },
+          { id: 'mat_4', desc: 'Structural concrete batching', category: 'Production', scope: '35,000 M3', monthlyTarget: 1200, previousMonthTotal: 21900, thisMonth: 1100, totalToDate: 23000, used: 11000, availableStock: 2500, remainingBalance: 12000 },
+          { id: 'sup_1', desc: 'Reinforcement Steel Bars (Grade 60)', category: 'Steel & Reinforcement', scope: '6,500 Ton', monthlyTarget: 450, previousMonthTotal: 3790, thisMonth: 410, totalToDate: 4200, used: 3550, availableStock: 650, remainingBalance: 2300 },
+          { id: 'sup_2', desc: 'Portland Pozzolana Cement (PPC 42.5N)', category: 'Cement & Binders', scope: '120,000 Bags', monthlyTarget: 8500, previousMonthTotal: 73800, thisMonth: 8200, totalToDate: 82000, used: 74600, availableStock: 7400, remainingBalance: 38000 },
+          { id: 'sup_3', desc: 'Bitumen 60/70 Penetration Grade', category: 'Bitumen & Asphalt Logistics', scope: '4,200 Ton', monthlyTarget: 350, previousMonthTotal: 2485, thisMonth: 365, totalToDate: 2850, used: 2430, availableStock: 420, remainingBalance: 1350 },
+          { id: 'sup_4', desc: 'Diesel Fuel for Heavy Fleet & Plant', category: 'Fuel & Energy Logistics', scope: '2,500,000 Liters', monthlyTarget: 180000, previousMonthTotal: 1452000, thisMonth: 168000, totalToDate: 1620000, used: 1575000, availableStock: 45000, remainingBalance: 880000 },
+          { id: 'sup_5', desc: 'Corrugated Metal Pipes (CMP) & Culverts', category: 'Pipes & Drainage Structures', scope: '8,500 Meters', monthlyTarget: 600, previousMonthTotal: 5520, thisMonth: 580, totalToDate: 6100, used: 5350, availableStock: 750, remainingBalance: 2400 },
+          { id: 'sup_6', desc: 'Geotextile & Sub-surface Filter Fabric', category: 'Geosynthetics & Filters', scope: '150,000 M2', monthlyTarget: 12000, previousMonthTotal: 96800, thisMonth: 13200, totalToDate: 110000, used: 96000, availableStock: 14000, remainingBalance: 40000 }
+        ]
+      },
+      {
+        id: 'mrec_2026_08',
+        month: '2026-08',
+        monthName: 'August 2026',
+        recordedDate: '2026-08-31',
+        recordedBy: 'ErsidoAbayneh@gmail.com',
+        status: 'Finalized',
+        notes: 'Intermittent rainfall caused minor disruption in quarry hauling; fuel reserves maintained above safety threshold.',
+        resourceMobilization: [
+          { id: 'res_1', desc: 'Asphalt Paver (No.)', category: 'equipment', originalPlan: 3, revisedPlan: 3, available: 2, deficiency: 1, breakdown: '1 in good condition, 1 undergoing minor repair' },
+          { id: 'res_2', desc: 'Motor Grader (No.)', category: 'equipment', originalPlan: 8, revisedPlan: 10, available: 8, deficiency: 2, breakdown: '8 active on sub-grade construction' },
+          { id: 'res_3', desc: 'Excavator (No.)', category: 'equipment', originalPlan: 6, revisedPlan: 7, available: 7, deficiency: 0, breakdown: '7 active on rock cutting sections' },
+          { id: 'res_4', desc: 'Dump Trucks (No.)', category: 'equipment', originalPlan: 45, revisedPlan: 50, available: 40, deficiency: 10, breakdown: '40 active trucks on aggregate haulage' },
+          { id: 'res_5', desc: 'Aggregate Crusher (Set)', category: 'equipment', originalPlan: 2, revisedPlan: 2, available: 2, deficiency: 0, breakdown: '2 fully operational at quarry sites' }
+        ],
+        materialProduction: [
+          { id: 'mat_1', desc: 'Sub-base material production', category: 'Production', scope: '250,000 M3', monthlyTarget: 14000, previousMonthTotal: 160700, thisMonth: 11800, totalToDate: 172500, used: 110000, availableStock: 14000, remainingBalance: 77500 },
+          { id: 'mat_2', desc: 'Aggregate Base Course (0-40mm)', category: 'Production', scope: '160,000 M3', monthlyTarget: 8500, previousMonthTotal: 79000, thisMonth: 7800, totalToDate: 86800, used: 26000, availableStock: 10500, remainingBalance: 73200 },
+          { id: 'mat_3', desc: 'Asphalt Concrete (AC) production', category: 'Production', scope: '90,000 Ton', monthlyTarget: 4500, previousMonthTotal: 39400, thisMonth: 4100, totalToDate: 43500, used: 5200, availableStock: 1200, remainingBalance: 46500 },
+          { id: 'mat_4', desc: 'Structural concrete batching', category: 'Production', scope: '35,000 M3', monthlyTarget: 1200, previousMonthTotal: 20950, thisMonth: 950, totalToDate: 21900, used: 10200, availableStock: 2100, remainingBalance: 13100 },
+          { id: 'sup_1', desc: 'Reinforcement Steel Bars (Grade 60)', category: 'Steel & Reinforcement', scope: '6,500 Ton', monthlyTarget: 450, previousMonthTotal: 3400, thisMonth: 390, totalToDate: 3790, used: 3100, availableStock: 690, remainingBalance: 2710 },
+          { id: 'sup_2', desc: 'Portland Pozzolana Cement (PPC 42.5N)', category: 'Cement & Binders', scope: '120,000 Bags', monthlyTarget: 8500, previousMonthTotal: 65900, thisMonth: 7900, totalToDate: 73800, used: 67200, availableStock: 6600, remainingBalance: 46200 },
+          { id: 'sup_3', desc: 'Bitumen 60/70 Penetration Grade', category: 'Bitumen & Asphalt Logistics', scope: '4,200 Ton', monthlyTarget: 350, previousMonthTotal: 2165, thisMonth: 320, totalToDate: 2485, used: 2150, availableStock: 335, remainingBalance: 1715 },
+          { id: 'sup_4', desc: 'Diesel Fuel for Heavy Fleet & Plant', category: 'Fuel & Energy Logistics', scope: '2,500,000 Liters', monthlyTarget: 180000, previousMonthTotal: 1297000, thisMonth: 155000, totalToDate: 1452000, used: 1410000, availableStock: 42000, remainingBalance: 1048000 },
+          { id: 'sup_5', desc: 'Corrugated Metal Pipes (CMP) & Culverts', category: 'Pipes & Drainage Structures', scope: '8,500 Meters', monthlyTarget: 600, previousMonthTotal: 4980, thisMonth: 540, totalToDate: 5520, used: 4800, availableStock: 720, remainingBalance: 2980 },
+          { id: 'sup_6', desc: 'Geotextile & Sub-surface Filter Fabric', category: 'Geosynthetics & Filters', scope: '150,000 M2', monthlyTarget: 12000, previousMonthTotal: 84500, thisMonth: 12300, totalToDate: 96800, used: 84000, availableStock: 12800, remainingBalance: 53200 }
+        ]
+      }
     ],
     ipcTracker: [
       {
@@ -1593,6 +1671,7 @@ export function blankProjectTemplate(): Project {
   d.workProgram = [];
   d.resourceMobilization = [];
   d.materialProduction = [];
+  d.monthlyResourceRecords = [];
   d.ipcTracker = [];
   d.images = [];
   d.history = [];

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { initAuth, User } from '../lib/auth';
 import { safeSyncProject } from '../lib/apiSync';
+import { safeDispatchCustomEvent } from '../lib/storage';
 import { 
   CheckCircle2, 
   Database, 
@@ -135,7 +136,7 @@ export default function WorkspaceView({ projects = [], onRestoreProjects }: Work
       setOfflineQueue(remaining);
       
       // Dispatch storage event so other components know the queue changed
-      window.dispatchEvent(new Event('storage'));
+      safeDispatchCustomEvent('storage');
 
       if (remaining.length === 0) {
         setFirestoreLogs(prev => [

@@ -2431,6 +2431,156 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory }:
                 </div>
               </div>
 
+              {/* 4c. Supervision Consultant Compliance & Performance Audit Evaluation */}
+              <div className="space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <h3 className="text-xs font-black uppercase text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <span className="w-1.5 h-3 bg-indigo-600 rounded-xs" />
+                    4c. Supervision Consultant Compliance & Performance Audit Evaluation
+                  </h3>
+                  <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500">
+                    Dual-Pillar Matrix (50% Submittal SLA + 50% 5-Dimension Technical Audit)
+                  </span>
+                </div>
+
+                <div className="border border-slate-200/80 dark:border-slate-800 rounded-2xl bg-white dark:bg-slate-900/60 p-4 space-y-4 shadow-2xs">
+                  {/* Top Consultant Info & Grade Summary Bar */}
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 p-3.5 rounded-xl bg-slate-50 dark:bg-slate-850/60 border border-slate-200/60 dark:border-slate-800">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded-md border border-indigo-200/60 dark:border-indigo-800/60">
+                          {consultantEval.associationType}
+                        </span>
+                        <h4 className="text-sm font-black text-slate-900 dark:text-white">
+                          {consultantEval.firmName}
+                        </h4>
+                      </div>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                        Resident Engineer: <strong className="text-slate-700 dark:text-slate-200">{consultantEval.residentEngineer}</strong>
+                        {consultantEval.commencementDate && <span> • Assigned: {consultantEval.commencementDate}</span>}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-3 shrink-0">
+                      <div className="text-right">
+                        <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
+                          Combined Audit Score
+                        </span>
+                        <span className="text-2xl font-black font-mono text-indigo-600 dark:text-indigo-400">
+                          {consultantEval.overallScore.toFixed(1)}%
+                        </span>
+                      </div>
+                      <div className={`px-3 py-1.5 rounded-xl font-black text-xs text-center border shadow-xs ${
+                        consultantEval.officialGrade === 'A' ? 'bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800' :
+                        consultantEval.officialGrade === 'B' ? 'bg-teal-50 text-teal-700 border-teal-300 dark:bg-teal-950/60 dark:text-teal-300 dark:border-teal-800' :
+                        consultantEval.officialGrade === 'C' ? 'bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800' :
+                        consultantEval.officialGrade === 'D' ? 'bg-orange-50 text-orange-700 border-orange-300 dark:bg-orange-950/60 dark:text-orange-300 dark:border-orange-800' :
+                        'bg-rose-50 text-rose-700 border-rose-300 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800'
+                      }`}>
+                        <span className="block text-sm leading-tight">Grade {consultantEval.officialGrade}</span>
+                        <span className="text-[9px] font-medium opacity-90 block">{consultantEval.officialStanding.split('—')[0].trim()}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Dual Pillar Scorecards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="p-3 rounded-xl bg-indigo-50/40 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/40 flex items-center justify-between">
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 block">
+                          Pillar I: Submittal & RFI SLA Turnaround
+                        </span>
+                        <span className="text-lg font-black font-mono text-slate-900 dark:text-white">
+                          {consultantEval.slaTurnaroundScore.toFixed(1)}%
+                        </span>
+                        <span className="text-[10px] text-slate-500 block">
+                          On-time response across RFI, WIR, Material, IPC & Designs
+                        </span>
+                      </div>
+                      <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300">
+                        50% Weight
+                      </span>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-emerald-50/40 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/40 flex items-center justify-between">
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 block">
+                          Pillar II: 5-Dimension Technical Audit
+                        </span>
+                        <span className="text-lg font-black font-mono text-slate-900 dark:text-white">
+                          {consultantEval.fiveDimScore.toFixed(1)}%
+                        </span>
+                        <span className="text-[10px] text-slate-500 block">
+                          Evaluated against 105 FIDIC/ERA contractual performance criteria
+                        </span>
+                      </div>
+                      <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300">
+                        50% Weight
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 5-Dimension Score Breakdown */}
+                  <div className="space-y-2">
+                    <span className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-wider block">
+                      5-Dimension Audit Scorecard Breakdown
+                    </span>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
+                      {[
+                        { id: 'A', name: 'Technical Skills', max: 35, data: consultantEval.dimensionBreakdown.A },
+                        { id: 'B', name: 'Soft Skills / Team', max: 20, data: consultantEval.dimensionBreakdown.B },
+                        { id: 'C', name: 'Site Supervision', max: 20, data: consultantEval.dimensionBreakdown.C },
+                        { id: 'D', name: 'Contract Admin', max: 15, data: consultantEval.dimensionBreakdown.D },
+                        { id: 'E', name: 'Corporate Ethics', max: 10, data: consultantEval.dimensionBreakdown.E }
+                      ].map((dim) => (
+                        <div key={`dim-${dim.id}`} className="p-2.5 rounded-xl border border-slate-200/60 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-850/40 flex flex-col justify-between gap-1.5">
+                          <div>
+                            <span className="text-[9px] font-black font-mono text-slate-400 dark:text-slate-500">DIM {dim.id} ({dim.max} pts)</span>
+                            <p className="text-[10px] font-bold text-slate-800 dark:text-slate-200 truncate">{dim.name}</p>
+                          </div>
+                          <div className="flex items-baseline justify-between pt-1 border-t border-slate-200/40 dark:border-slate-800">
+                            <span className="text-xs font-black font-mono text-slate-900 dark:text-white">
+                              {dim.data.earned}/{dim.max}
+                            </span>
+                            <span className={`text-[10px] font-black font-mono ${dim.data.percentage >= 80 ? 'text-emerald-600 dark:text-emerald-400' : dim.data.percentage >= 60 ? 'text-amber-600 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                              {dim.data.percentage}%
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Submittal SLA Velocity Key Metrics */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 border-t border-slate-100 dark:border-slate-800/80 text-[10px]">
+                    <div className="p-2 rounded-lg bg-slate-50/80 dark:bg-slate-800/40">
+                      <span className="text-slate-400 block font-medium">Submittals Evaluated</span>
+                      <span className="font-bold text-slate-800 dark:text-slate-200 font-mono text-xs">
+                        {consultantEval.metrics.overallSubmittalsCount} Submittals
+                      </span>
+                    </div>
+                    <div className="p-2 rounded-lg bg-slate-50/80 dark:bg-slate-800/40">
+                      <span className="text-slate-400 block font-medium">SLA On-Time Rate</span>
+                      <span className="font-bold text-emerald-600 dark:text-emerald-400 font-mono text-xs">
+                        {consultantEval.metrics.overallOnTimeRate}% On-Time
+                      </span>
+                    </div>
+                    <div className="p-2 rounded-lg bg-slate-50/80 dark:bg-slate-800/40">
+                      <span className="text-slate-400 block font-medium">Avg RFI Turnaround</span>
+                      <span className="font-bold text-indigo-600 dark:text-indigo-400 font-mono text-xs">
+                        {consultantEval.metrics.rfis.avgDays} days (target: 7d)
+                      </span>
+                    </div>
+                    <div className="p-2 rounded-lg bg-slate-50/80 dark:bg-slate-800/40">
+                      <span className="text-slate-400 block font-medium">Key Staff Mobilization</span>
+                      <span className="font-bold text-blue-600 dark:text-blue-400 font-mono text-xs">
+                        {consultantEval.metrics.personnel.mobilizationRate}% Mobilized
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* 5. Securities, Escrow and Bonds Audit */}
               <div className="space-y-2">
                 <h3 className="text-xs font-black uppercase text-slate-900 dark:text-white flex items-center gap-1.5">

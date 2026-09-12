@@ -33,7 +33,26 @@ import {
   Project
 } from '../types';
 import ComprehensiveConsultantEvaluationMatrixView from './ComprehensiveConsultantEvaluationMatrixView';
-import { getProjectConsultantEvaluation } from '../data/consultantEvaluationMatrix';
+import { 
+  getProjectConsultantEvaluation, 
+  evaluateQualitativeGrade, 
+  DEFAULT_GRADE_THRESHOLDS,
+  DEFAULT_SLA_TARGETS,
+  DEFAULT_EVALUATION_CRITERIA,
+  DEFAULT_SUBMITTAL_KPIS,
+  calculateElapsedDays,
+  checkSubmittalDelay,
+  resolveProjectSubmittals
+} from '../data/consultantEvaluationMatrix';
+
+export {
+  DEFAULT_SLA_TARGETS,
+  DEFAULT_EVALUATION_CRITERIA,
+  DEFAULT_SUBMITTAL_KPIS,
+  calculateElapsedDays,
+  checkSubmittalDelay,
+  resolveProjectSubmittals
+};
 
 export interface ConsultantPerformanceKpiWidgetProps {
   project: Project;
@@ -43,362 +62,6 @@ export interface ConsultantPerformanceKpiWidgetProps {
   compact?: boolean;
   isAdmin?: boolean;
 }
-
-// Standard baseline Ethiopian Roads Administration (ERA) FIDIC SLA targets (in calendar days)
-export const DEFAULT_SLA_TARGETS: Record<string, number> = {
-  'RFI': 7,
-  'Material Approval': 14,
-  'IPC Review': 7,
-  'Work Inspection (WIR)': 2,
-  'Variation Order': 21,
-  'Design Review': 14,
-  'Claim / Notice': 28
-};
-
-export const DEFAULT_EVALUATION_CRITERIA: EvaluationCriteriaItem[] = [
-  { id: 'crit_1', name: 'RFI', targetDays: 7, weightPct: 20, pmbokDomain: 'Scope & Technical Clarification' },
-  { id: 'crit_2', name: 'Material Approval', targetDays: 14, weightPct: 20, pmbokDomain: 'Quality Management' },
-  { id: 'crit_3', name: 'IPC Review', targetDays: 7, weightPct: 20, pmbokDomain: 'Cost & Financial Control' },
-  { id: 'crit_4', name: 'Work Inspection (WIR)', targetDays: 2, weightPct: 15, pmbokDomain: 'Site Supervision & Quality' },
-  { id: 'crit_5', name: 'Variation Order', targetDays: 21, weightPct: 10, pmbokDomain: 'Change & Value Engineering' },
-  { id: 'crit_6', name: 'Design Review', targetDays: 14, weightPct: 10, pmbokDomain: 'Technical Design & Method' },
-  { id: 'crit_7', name: 'Claim / Notice', targetDays: 28, weightPct: 5, pmbokDomain: 'Risk & Contract Claims' }
-];
-
-// Calculate elapsed calendar days from submitted date to current date or response date
-export const calculateElapsedDays = (submittedDate?: string, respondedDate?: string): number => {
-  if (!submittedDate) return 0;
-  const start = new Date(submittedDate);
-  if (isNaN(start.getTime())) return 0;
-  const end = respondedDate ? new Date(respondedDate) : new Date();
-  const diffTime = end.getTime() - start.getTime();
-  return Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
-};
-
-// Check if a submittal is overdue or delayed past its target SLA (handles both resolved & pending)
-export const checkSubmittalDelay = (item: ConsultantSubmittalKpi, targetDays: number) => {
-  const isResolved = item.actualDays !== undefined && item.actualDays !== null;
-  const elapsedDays = isResolved ? (item.actualDays || 0) : calculateElapsedDays(item.submittedDate, item.respondedDate);
-  const isPending = !isResolved || item.status === 'Under Review';
-  const isOverdue = item.status === 'Overdue' || elapsedDays > targetDays;
-  const delayDays = Math.max(0, elapsedDays - targetDays);
-  
-  return {
-    isResolved,
-    isPending,
-    isOverdue,
-    elapsedDays,
-    delayDays,
-    isDelayed: isOverdue
-  };
-};
-
-export const DEFAULT_SUBMITTAL_KPIS: ConsultantSubmittalKpi[] = [
-  {
-    id: 'sub_1',
-    submittalNo: 'RFI-014',
-    type: 'RFI',
-    title: 'Box Culvert at KM 18+450 Wingwall Rebar Spacing & Cover Clarification',
-    submittedDate: '2025-11-04',
-    respondedDate: '2025-11-08',
-    targetDays: 7,
-    actualDays: 4,
-    status: 'Approved / Closed',
-    priority: 'High',
-    assignedEngineer: 'Eng. Birhanu Kebede (Structural)',
-    notes: 'Clarification provided in 4 days. Structural drawing detail confirmed with standard ERA culvert manual.',
-    attachmentsCount: 2,
-    attachments: [
-      { id: 'a1_1', name: 'Culvert_KM18_Detail_Drawing.pdf', size: '2.4 MB' },
-      { id: 'a1_2', name: 'Rebar_Schedule_Revision_A.pdf', size: '1.1 MB' }
-    ]
-  },
-  {
-    id: 'sub_2',
-    submittalNo: 'RFI-015',
-    type: 'RFI',
-    title: 'Black Cotton Soil Subgrade Treatment & Capping Thickness (KM 24+100 to 25+300)',
-    submittedDate: '2025-11-12',
-    respondedDate: '2025-11-17',
-    targetDays: 7,
-    actualDays: 5,
-    status: 'Approved / Closed',
-    priority: 'Critical',
-    assignedEngineer: 'Ato Solomon Mengistu (Materials)',
-    notes: 'Approved 300mm rock-fill capping replacement after soil swell index validation.',
-    attachmentsCount: 3,
-    attachments: [
-      { id: 'a2_1', name: 'Geotechnical_Soil_Test_Report.pdf', size: '4.8 MB' },
-      { id: 'a2_2', name: 'Free_Swell_Index_Analysis.xlsx', size: '520 KB' },
-      { id: 'a2_3', name: 'Rockfill_Capping_CrossSection.pdf', size: '1.9 MB' }
-    ]
-  },
-  {
-    id: 'sub_3',
-    submittalNo: 'RFI-016',
-    type: 'RFI',
-    title: 'Bridge Pier #2 Foundation Bearing Depth & Borehole Stratigraphy Inquiry',
-    submittedDate: '2025-12-02',
-    respondedDate: '2025-12-07',
-    targetDays: 7,
-    actualDays: 5,
-    status: 'Approved / Closed',
-    priority: 'High',
-    assignedEngineer: 'Eng. Birhanu Kebede (Structural)',
-    notes: 'Bearing capacity verified at 350 kPa on basalt bedrock.',
-    attachmentsCount: 1,
-    attachments: [
-      { id: 'a3_1', name: 'Borehole_Log_BH02_Stratigraphy.pdf', size: '3.1 MB' }
-    ]
-  },
-  {
-    id: 'sub_4',
-    submittalNo: 'RFI-017',
-    type: 'RFI',
-    title: 'Drainage Ditch Outfall Detail near Daye Town Urban Market Section',
-    submittedDate: '2025-12-15',
-    respondedDate: '2025-12-18',
-    targetDays: 7,
-    actualDays: 3,
-    status: 'Approved / Closed',
-    priority: 'Medium',
-    assignedEngineer: 'Eng. Yohannes Tadesse (Highway)',
-    notes: 'Standard stone masonry trapezoidal lined ditch approved.'
-  },
-  {
-    id: 'sub_5',
-    submittalNo: 'RFI-018',
-    type: 'RFI',
-    title: 'High Embankment Slope Protection Non-Woven Geotextile Spec Clarification',
-    submittedDate: '2026-01-08',
-    respondedDate: '2026-01-16',
-    targetDays: 7,
-    actualDays: 8,
-    status: 'Approved / Closed',
-    priority: 'Medium',
-    assignedEngineer: 'Ato Solomon Mengistu (Materials)',
-    notes: 'Slight 1-day delay due to manufacturer lab test verification. Approved.',
-    attachmentsCount: 1,
-    attachments: [
-      { id: 'a5_1', name: 'Geotextile_Tensile_Test_Cert.pdf', size: '850 KB' }
-    ]
-  },
-  {
-    id: 'sub_6',
-    submittalNo: 'RFI-019',
-    type: 'RFI',
-    title: 'Subbase Granular Quarry Source Approval (Girja River Borrow Pit #3)',
-    submittedDate: '2026-01-20',
-    respondedDate: '2026-01-24',
-    targetDays: 7,
-    actualDays: 4,
-    status: 'Approved / Closed',
-    priority: 'High',
-    assignedEngineer: 'Ato Tesfaye Assefa (Lab Tech)',
-    notes: 'CBR value of 45% meets ERA standard specifications.'
-  },
-  {
-    id: 'sub_7',
-    submittalNo: 'MAT-008',
-    type: 'Material Approval',
-    title: 'Asphalt Concrete AC-20 Wearing Course Job Mix Formula (JMF) Submission',
-    submittedDate: '2025-11-05',
-    respondedDate: '2025-11-16',
-    targetDays: 14,
-    actualDays: 11,
-    status: 'Approved / Closed',
-    priority: 'Critical',
-    assignedEngineer: 'Ato Solomon Mengistu (Materials)',
-    notes: 'Optimum bitumen content 4.8% verified with Marshall Stability tests.',
-    attachmentsCount: 4,
-    attachments: [
-      { id: 'a7_1', name: 'JMF_Marshall_Stability_Results.pdf', size: '5.2 MB' },
-      { id: 'a7_2', name: 'Aggregate_Gradation_Curves.xlsx', size: '780 KB' },
-      { id: 'a7_3', name: 'Bitumen_60_70_Test_Cert.pdf', size: '1.2 MB' },
-      { id: 'a7_4', name: 'Lab_Mix_Design_Photos.png', size: '3.4 MB' }
-    ]
-  },
-  {
-    id: 'sub_8',
-    submittalNo: 'MAT-009',
-    type: 'Material Approval',
-    title: 'Bridge Expansion Joint Rubber Seal & Anchor Bolt Mill Test Certificates',
-    submittedDate: '2025-12-05',
-    respondedDate: '2025-12-16',
-    targetDays: 14,
-    actualDays: 11,
-    status: 'Approved / Closed',
-    priority: 'High',
-    assignedEngineer: 'Eng. Birhanu Kebede (Structural)',
-    notes: 'Tensile strength and elongation certificates validated.'
-  },
-  {
-    id: 'sub_9',
-    submittalNo: 'MAT-010',
-    type: 'Material Approval',
-    title: 'High Tensile Pre-Stressing Tendons (15.2mm 7-Wire Strands) Test Certs',
-    submittedDate: '2026-01-10',
-    respondedDate: '2026-01-22',
-    targetDays: 14,
-    actualDays: 12,
-    status: 'Approved / Closed',
-    priority: 'Critical',
-    assignedEngineer: 'Eng. Birhanu Kebede (Structural)',
-    notes: 'Strand relaxation tests approved according to ASTM A416 standards.'
-  },
-  {
-    id: 'sub_10',
-    submittalNo: 'MAT-011',
-    type: 'Material Approval',
-    title: 'Crushed Rock Aggregate Base Course Los Angeles Abrasion & Soundness Tests',
-    submittedDate: '2026-02-01',
-    respondedDate: '2026-02-16',
-    targetDays: 14,
-    actualDays: 15,
-    status: 'Approved with Comments',
-    priority: 'Medium',
-    assignedEngineer: 'Ato Solomon Mengistu (Materials)',
-    notes: 'Approved conditionally with requirement for continuous stockpile moisture checks.'
-  },
-  {
-    id: 'sub_11',
-    submittalNo: 'IPC-014',
-    type: 'IPC Review',
-    title: 'Monthly Interim Payment Certificate (IPC) No. 14 Verification & Audit',
-    submittedDate: '2025-12-01',
-    respondedDate: '2025-12-06',
-    targetDays: 7,
-    actualDays: 5,
-    status: 'Approved / Closed',
-    priority: 'High',
-    assignedEngineer: 'W/ro Selamawit Alemu (Quantity Surveyor)',
-    notes: 'Certified ETB 94.2M after joint measurement and retention deduction.'
-  },
-  {
-    id: 'sub_12',
-    submittalNo: 'IPC-015',
-    type: 'IPC Review',
-    title: 'Monthly Interim Payment Certificate (IPC) No. 15 Price Escalation Audit',
-    submittedDate: '2026-01-05',
-    respondedDate: '2026-01-11',
-    targetDays: 7,
-    actualDays: 6,
-    status: 'Approved / Closed',
-    priority: 'High',
-    assignedEngineer: 'W/ro Selamawit Alemu (Quantity Surveyor)',
-    notes: 'Diesel and bitumen price index adjustments verified under contractual price adjustment provisions.'
-  },
-  {
-    id: 'sub_13',
-    submittalNo: 'IPC-016',
-    type: 'IPC Review',
-    title: 'Monthly Interim Payment Certificate (IPC) No. 16 Earthwork Measurement Audit',
-    submittedDate: '2026-02-02',
-    respondedDate: '2026-02-07',
-    targetDays: 7,
-    actualDays: 5,
-    status: 'Approved / Closed',
-    priority: 'High',
-    assignedEngineer: 'W/ro Selamawit Alemu (Quantity Surveyor)',
-    notes: 'Certified in 5 days, well within 7-day contractual deadline.'
-  },
-  {
-    id: 'sub_14',
-    submittalNo: 'WIR-088',
-    type: 'Work Inspection (WIR)',
-    title: 'Subgrade Compaction Density Testing (KM 12+200 - 13+000) 95% MDD Inspection',
-    submittedDate: '2025-11-20',
-    respondedDate: '2025-11-21',
-    targetDays: 2,
-    actualDays: 1,
-    status: 'Approved / Closed',
-    priority: 'Critical',
-    assignedEngineer: 'Ato Fikadu Worku (Inspector of Works)',
-    notes: 'Field density test passed. Clearance issued for subbase laying.'
-  },
-  {
-    id: 'sub_15',
-    submittalNo: 'WIR-089',
-    type: 'Work Inspection (WIR)',
-    title: 'Bridge No. 1 Abutment A C-30 Concrete Pre-Pour Rebar & Formwork Hold Point',
-    submittedDate: '2025-12-10',
-    respondedDate: '2025-12-11',
-    targetDays: 2,
-    actualDays: 1,
-    status: 'Approved / Closed',
-    priority: 'Critical',
-    assignedEngineer: 'Eng. Birhanu Kebede (Structural)',
-    notes: 'Hold point inspected same day; concrete casting authorized.'
-  },
-  {
-    id: 'sub_16',
-    submittalNo: 'WIR-090',
-    type: 'Work Inspection (WIR)',
-    title: 'Crushed Stone Base Course Prime Coat Application Surface Cleanliness',
-    submittedDate: '2026-01-15',
-    respondedDate: '2026-01-17',
-    targetDays: 2,
-    actualDays: 2,
-    status: 'Approved / Closed',
-    priority: 'Medium',
-    assignedEngineer: 'Ato Fikadu Worku (Inspector of Works)',
-    notes: 'Dust blowing and moisture check passed. Prime coat authorized.'
-  },
-  {
-    id: 'sub_17',
-    submittalNo: 'VAR-003',
-    type: 'Variation Order',
-    title: 'Variation Proposal: Meleya Spur Road Realignment & Additional Pipe Culverts',
-    submittedDate: '2025-11-25',
-    respondedDate: '2025-12-13',
-    targetDays: 21,
-    actualDays: 18,
-    status: 'Approved with Comments',
-    priority: 'High',
-    assignedEngineer: 'Eng. Girma Bekele (Resident Engineer)',
-    notes: 'Cost rate analysis finalized and submitted to ERA PMO with positive recommendation.'
-  },
-  {
-    id: 'sub_18',
-    submittalNo: 'DES-004',
-    type: 'Design Review',
-    title: 'Geometric Horizontal Curve Radius Modification (KM 41+200 Mountainous Ridge)',
-    submittedDate: '2025-12-18',
-    respondedDate: '2025-12-30',
-    targetDays: 14,
-    actualDays: 12,
-    status: 'Approved / Closed',
-    priority: 'High',
-    assignedEngineer: 'Eng. Yohannes Tadesse (Highway)',
-    notes: 'Revised sight distance and superelevation design finalized.'
-  },
-  {
-    id: 'sub_19',
-    submittalNo: 'RFI-020',
-    type: 'RFI',
-    title: 'Girja Woreda Utility Clearance Dispute Resolution Alignment Confirmation',
-    submittedDate: '2026-02-10',
-    respondedDate: '2026-02-14',
-    targetDays: 7,
-    actualDays: 4,
-    status: 'Approved / Closed',
-    priority: 'High',
-    assignedEngineer: 'Ato Daniel Haile (Senior Surveyor)',
-    notes: 'Joint survey demarcation drawing issued.'
-  },
-  {
-    id: 'sub_20',
-    submittalNo: 'RFI-021',
-    type: 'RFI',
-    title: 'Guardrail Steel Post Embedment Depth on Deep Rock Cut Berms',
-    submittedDate: '2026-02-22',
-    targetDays: 7,
-    status: 'Under Review',
-    priority: 'Medium',
-    assignedEngineer: 'Eng. Birhanu Kebede (Structural)',
-    notes: 'Currently under laboratory anchor pull-out test evaluation.'
-  }
-];
 
 export default function ConsultantPerformanceKpiWidget({
   project,
@@ -746,10 +409,14 @@ export default function ConsultantPerformanceKpiWidget({
 
   const combinedGradeInfo = useMemo(() => {
     const score = combinedAvgScoreValue;
-    if (score >= 85) return { grade: 'A', standing: 'Excellent', style: 'bg-indigo-600 text-white' };
-    if (score >= 70) return { grade: 'B', standing: 'Satisfactory', style: 'bg-amber-600 text-white' };
-    return { grade: 'C', standing: 'Needs Review', style: 'bg-rose-600 text-white' };
-  }, [combinedAvgScoreValue]);
+    const thresholds = consultant.customGradeThresholds || DEFAULT_GRADE_THRESHOLDS;
+    const matched = evaluateQualitativeGrade(score, thresholds);
+    return {
+      grade: matched.grade.replace('Grade ', '').trim(),
+      standing: matched.standing,
+      style: 'bg-indigo-600 text-white'
+    };
+  }, [combinedAvgScoreValue, consultant.customGradeThresholds]);
 
   return (
     <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-6">

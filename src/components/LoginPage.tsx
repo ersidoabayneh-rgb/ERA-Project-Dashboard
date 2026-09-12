@@ -4,6 +4,7 @@ import { HardHat, Lock, User, UserPlus, LogIn, Eye, EyeOff, Mail, Phone, Buildin
 import { User as UserType } from '../types';
 import eraLogo from '../assets/logo.png';
 import { safeSaveSingleUser } from '../lib/apiSync';
+import { safeDispatchCustomEvent } from '../lib/storage';
 
 interface LoginPageProps {
   onLoginSuccess: (username: string, userObj: UserType) => void;
@@ -130,9 +131,7 @@ export default function LoginPage({ onLoginSuccess, getUsers, saveUsers }: Login
     safeSaveSingleUser(newUser).catch(() => {});
     
     // Broadcast immediate notification event
-    try {
-      window.dispatchEvent(new CustomEvent('new_user_registered', { detail: newUser }));
-    } catch {}
+    safeDispatchCustomEvent('new_user_registered', newUser);
 
     setLastRegisteredUser(newUser);
     setRegSuccess(true);

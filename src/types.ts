@@ -172,17 +172,37 @@ export interface ResourceMobilizationItem {
   available: number;
   deficiency: number;
   breakdown: string;
+  category?: 'equipment' | 'personnel' | string;
+  unit?: string;
 }
 
 export interface MaterialProductionItem {
   id: string;
   desc: string;
   scope: string;
+  previousMonthTotal?: number;
   thisMonth: number;
   totalToDate: number;
   used?: number;
   availableStock: number;
   remainingBalance: number;
+  monthlyTarget?: number;
+  category?: string;
+  unit?: string;
+}
+
+export interface MonthlyResourceRecord {
+  id: string;
+  month: string; // e.g. "2026-09" or "Sep 2026"
+  monthName: string; // e.g. "September 2026"
+  recordedDate: string; // e.g. "2026-09-12"
+  recordedBy?: string;
+  status: 'Draft' | 'Submitted' | 'Approved' | 'Finalized';
+  resourceMobilization: ResourceMobilizationItem[];
+  materialProduction: MaterialProductionItem[];
+  notes?: string;
+  supplyTargetCompletionPct?: number;
+  productionTargetCompletionPct?: number;
 }
 
 export interface IpcItem {
@@ -478,6 +498,7 @@ export interface Project {
   bonds: BondGuarantee[];
   resourceMobilization?: ResourceMobilizationItem[];
   materialProduction?: MaterialProductionItem[];
+  monthlyResourceRecords?: MonthlyResourceRecord[];
   ipcTracker?: IpcItem[];
   usdExchangeRate?: number;
   annualInterestRate?: number;

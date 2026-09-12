@@ -1,9 +1,33 @@
+export function safeDispatchCustomEvent(name: string, detail?: any): void {
+  if (typeof window === 'undefined') return;
+  try {
+    let event: Event;
+    try {
+      event = new CustomEvent(name, detail !== undefined ? { detail } : undefined);
+    } catch {
+      try {
+        event = document.createEvent('CustomEvent');
+        (event as any).initCustomEvent(name, true, true, detail);
+      } catch {
+        try {
+          event = new Event(name);
+        } catch {
+          event = { type: name, detail } as any;
+        }
+      }
+    }
+    window.dispatchEvent(event);
+  } catch (err) {
+    console.warn(`Failed to dispatch custom event "${name}":`, err);
+  }
+}
+
 export function safeSetItem(key: string, value: string): void {
   try {
     localStorage.setItem(key, value);
     if (typeof window !== 'undefined') {
       setTimeout(() => {
-        window.dispatchEvent(new CustomEvent('local_project_mutated', { detail: { key } }));
+        safeDispatchCustomEvent('local_project_mutated', { key });
         if ('BroadcastChannel' in window) {
           try {
             const bc = new BroadcastChannel('era_frontend_sync');
@@ -46,7 +70,7 @@ export function safeSetItem(key: string, value: string): void {
           try {
             localStorage.setItem(key, value);
             if (typeof window !== 'undefined') {
-              window.dispatchEvent(new CustomEvent('local_project_mutated', { detail: { key } }));
+              safeDispatchCustomEvent('local_project_mutated', { key });
             }
             return;
           } catch (retryError) {

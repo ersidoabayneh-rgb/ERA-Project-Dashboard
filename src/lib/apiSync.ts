@@ -2,6 +2,7 @@ import { Project, User as AppUser, ApprovalRequest, ContractorScoringWeights, Co
 import { db } from './firebase';
 import { doc, setDoc, deleteDoc, getDocs, getDoc, collection } from 'firebase/firestore';
 import { defaultProjectTemplate, defaultZeroRowMetrics } from '../data/defaultProject';
+import { safeDispatchCustomEvent } from './storage';
 
 export enum OperationType {
   CREATE = 'create',
@@ -68,9 +69,7 @@ export function recordSyncLog(entry: {
     currentLogs = [newLog, ...currentLogs].slice(0, 100);
     localStorage.setItem(SYNC_LOGS_STORAGE_KEY, JSON.stringify(currentLogs));
 
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('sync_log_recorded', { detail: newLog }));
-    }
+    safeDispatchCustomEvent('sync_log_recorded', newLog);
   } catch (e) {
     // Silently ignore storage failures
   }
@@ -115,9 +114,7 @@ export async function safeFetchSyncLogs(): Promise<SyncLogEntry[]> {
 export function clearSyncLogs(): void {
   try {
     localStorage.removeItem(SYNC_LOGS_STORAGE_KEY);
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('sync_log_recorded'));
-    }
+    safeDispatchCustomEvent('sync_log_recorded');
   } catch {}
 }
 
@@ -264,9 +261,7 @@ export async function safeSyncProject(proj: Project, isBackgroundQueueSync = fal
   }
 
   // Emit event for Local Mutation Listener to pick up
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('local_project_mutated'));
-  }
+  safeDispatchCustomEvent('local_project_mutated');
 
   const normalized = normalizeProject(proj);
 
@@ -406,9 +401,9 @@ export async function safeDeleteProject(id: string, projectName?: string, delete
   }
 
   // 2. Broadcast multi-tab and local window events
+  safeDispatchCustomEvent('local_project_mutated');
+  safeDispatchCustomEvent('project_globally_deleted', { id, projectName });
   if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('local_project_mutated'));
-    window.dispatchEvent(new CustomEvent('project_globally_deleted', { detail: { id, projectName } }));
     try {
       if ('BroadcastChannel' in window) {
         const bc = new BroadcastChannel('era_broadcast_channel');
