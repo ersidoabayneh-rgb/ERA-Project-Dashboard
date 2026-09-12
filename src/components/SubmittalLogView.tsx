@@ -42,6 +42,11 @@ import {
   User
 } from '../types';
 import { DEFAULT_SUBMITTAL_KPIS, DEFAULT_SLA_TARGETS, calculateElapsedDays, checkSubmittalDelay } from './ConsultantPerformanceKpiWidget';
+import {
+  autoEvaluateAllCriteria,
+  calculateComprehensiveEvaluationScore
+} from '../data/consultantEvaluationMatrix';
+import { Activity, Zap } from 'lucide-react';
 
 interface SubmittalLogViewProps {
   project: Project;
@@ -217,13 +222,34 @@ export default function SubmittalLogView({
 
   const commitSubmittals = (updatedList: ConsultantSubmittalKpi[], actionDesc: string) => {
     if (!onProjectUpdate) return;
-    const updatedConsultant: SupervisionConsultantInfo = {
+    const tempConsultant: SupervisionConsultantInfo = {
       ...consultant,
       submittalKpis: updatedList
     };
+    const autoEvaluations = autoEvaluateAllCriteria(project, tempConsultant, updatedList);
+    const res = calculateComprehensiveEvaluationScore(autoEvaluations);
+    const dimensionScores = {
+      A: { earnedScore: res.dimensionBreakdown.A.earned, maxScore: res.dimensionBreakdown.A.maxWeight, scorePct: res.dimensionBreakdown.A.percentage },
+      B: { earnedScore: res.dimensionBreakdown.B.earned, maxScore: res.dimensionBreakdown.B.maxWeight, scorePct: res.dimensionBreakdown.B.percentage },
+      C: { earnedScore: res.dimensionBreakdown.C.earned, maxScore: res.dimensionBreakdown.C.maxWeight, scorePct: res.dimensionBreakdown.C.percentage },
+      D: { earnedScore: res.dimensionBreakdown.D.earned, maxScore: res.dimensionBreakdown.D.maxWeight, scorePct: res.dimensionBreakdown.D.percentage },
+      E: { earnedScore: res.dimensionBreakdown.E.earned, maxScore: res.dimensionBreakdown.E.maxWeight, scorePct: res.dimensionBreakdown.E.percentage },
+    };
+
+    const performanceRatingLabel = res.overallScore >= 90 ? 'Outstanding' : res.overallScore >= 75 ? 'Satisfactory' : res.overallScore >= 60 ? 'Needs Improvement' : 'Critical';
+
+    const updatedConsultant: SupervisionConsultantInfo = {
+      ...tempConsultant,
+      submittalKpis: updatedList,
+      detailedEvaluations: autoEvaluations,
+      dimensionScores: dimensionScores,
+      overallEvaluationScore: res.overallScore,
+      officialEvaluationGrade: res.officialGrade as any,
+      performanceRating: performanceRatingLabel
+    };
     onProjectUpdate({
       supervisionConsultant: updatedConsultant
-    }, `Submittal Log: ${actionDesc}`);
+    }, `Submittal Log: ${actionDesc} (5-Dimension Score: ${res.overallScore.toFixed(1)}% ${res.officialGrade})`);
   };
 
   const handleSaveNewSubmittal = () => {
@@ -896,7 +922,7 @@ export default function SubmittalLogView({
                         {item.submittalNo}
                       </td>
                       <td className="p-3.5">
-                        <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px] font-bold">
+                        <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px] font-bold block w-max">
                           {item.type}
                         </span>
                       </td>
@@ -1475,6 +1501,7 @@ export default function SubmittalLogView({
           </div>
         )}
       </AnimatePresence>
+
     </div>
   );
 }

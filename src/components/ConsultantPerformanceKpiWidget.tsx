@@ -32,6 +32,8 @@ import {
   EvaluationCriteriaItem,
   Project
 } from '../types';
+import ComprehensiveConsultantEvaluationMatrixView from './ComprehensiveConsultantEvaluationMatrixView';
+import { getProjectConsultantEvaluation } from '../data/consultantEvaluationMatrix';
 
 export interface ConsultantPerformanceKpiWidgetProps {
   project: Project;
@@ -54,13 +56,13 @@ export const DEFAULT_SLA_TARGETS: Record<string, number> = {
 };
 
 export const DEFAULT_EVALUATION_CRITERIA: EvaluationCriteriaItem[] = [
-  { id: 'crit_1', name: 'RFI', targetDays: 7, weightPct: 20 },
-  { id: 'crit_2', name: 'Material Approval', targetDays: 14, weightPct: 20 },
-  { id: 'crit_3', name: 'IPC Review', targetDays: 7, weightPct: 20 },
-  { id: 'crit_4', name: 'Work Inspection (WIR)', targetDays: 2, weightPct: 15 },
-  { id: 'crit_5', name: 'Variation Order', targetDays: 21, weightPct: 10 },
-  { id: 'crit_6', name: 'Design Review', targetDays: 14, weightPct: 10 },
-  { id: 'crit_7', name: 'Claim / Notice', targetDays: 28, weightPct: 5 }
+  { id: 'crit_1', name: 'RFI', targetDays: 7, weightPct: 20, pmbokDomain: 'Scope & Technical Clarification' },
+  { id: 'crit_2', name: 'Material Approval', targetDays: 14, weightPct: 20, pmbokDomain: 'Quality Management' },
+  { id: 'crit_3', name: 'IPC Review', targetDays: 7, weightPct: 20, pmbokDomain: 'Cost & Financial Control' },
+  { id: 'crit_4', name: 'Work Inspection (WIR)', targetDays: 2, weightPct: 15, pmbokDomain: 'Site Supervision & Quality' },
+  { id: 'crit_5', name: 'Variation Order', targetDays: 21, weightPct: 10, pmbokDomain: 'Change & Value Engineering' },
+  { id: 'crit_6', name: 'Design Review', targetDays: 14, weightPct: 10, pmbokDomain: 'Technical Design & Method' },
+  { id: 'crit_7', name: 'Claim / Notice', targetDays: 28, weightPct: 5, pmbokDomain: 'Risk & Contract Claims' }
 ];
 
 // Calculate elapsed calendar days from submitted date to current date or response date
@@ -284,7 +286,7 @@ export const DEFAULT_SUBMITTAL_KPIS: ConsultantSubmittalKpi[] = [
     status: 'Approved / Closed',
     priority: 'High',
     assignedEngineer: 'W/ro Selamawit Alemu (Quantity Surveyor)',
-    notes: 'Diesel and bitumen price index adjustments verified under FIDIC Sub-clause 13.8.'
+    notes: 'Diesel and bitumen price index adjustments verified under contractual price adjustment provisions.'
   },
   {
     id: 'sub_13',
@@ -408,6 +410,11 @@ export default function ConsultantPerformanceKpiWidget({
 }: ConsultantPerformanceKpiWidgetProps) {
   // Consultant Tenure & Succession selection state ('current' or historical consultant id)
   const [selectedTenureConsultantId, setSelectedTenureConsultantId] = useState<string>('current');
+  const [livePillar2Score, setLivePillar2Score] = useState<number | null>(null);
+
+  const calculatedEvaluation = useMemo(() => {
+    return getProjectConsultantEvaluation(project, consultant);
+  }, [project, consultant]);
 
   const isViewingHistorical = selectedTenureConsultantId !== 'current';
   const historicalConsultant = useMemo(() => {
@@ -593,6 +600,8 @@ export default function ConsultantPerformanceKpiWidget({
         onTimePct,
         deduction,
         earnedScore,
+        fidicClause: crit.fidicClause,
+        pmbokDomain: crit.pmbokDomain,
         minDays: resolvedCount > 0 ? Math.min(...resolvedItems.map(s => s.actualDays || 0)) : 0,
         maxDays: resolvedCount > 0 ? Math.max(...resolvedItems.map(s => s.actualDays || 0)) : 0,
         status: totalSubmittals === 0 ? 'No Data' : isComplying ? 'Excellent' : (pendingDelayedCount > 0 ? 'Penalized (Pending Overdue)' : 'Needs Review')
@@ -711,7 +720,7 @@ export default function ConsultantPerformanceKpiWidget({
   }, [submittalsList, targetOverrides, categoryKpiStats, evaluationCriteria]);
 
   const handleResetToDefaults = () => {
-    if (window.confirm('Reset all submittal evaluation criteria and targets to standard ERA FIDIC baseline benchmarks?')) {
+    if (window.confirm('Reset all submittal evaluation criteria and targets to standard contract baseline benchmarks?')) {
       const updatedConsultant: SupervisionConsultantInfo = {
         ...consultant,
         evaluationCriteria: DEFAULT_EVALUATION_CRITERIA,
@@ -722,6 +731,25 @@ export default function ConsultantPerformanceKpiWidget({
       }
     }
   };
+
+  const pillar1ScoreValue = useMemo(() => {
+    return (overallMetrics.totalEarnedScore / (overallMetrics.totalWeight || 100)) * 100;
+  }, [overallMetrics.totalEarnedScore, overallMetrics.totalWeight]);
+
+  const pillar2ScoreValue = useMemo(() => {
+    return livePillar2Score !== null ? livePillar2Score : calculatedEvaluation.fiveDimScore;
+  }, [livePillar2Score, calculatedEvaluation.fiveDimScore]);
+
+  const combinedAvgScoreValue = useMemo(() => {
+    return (pillar1ScoreValue + pillar2ScoreValue) / 2;
+  }, [pillar1ScoreValue, pillar2ScoreValue]);
+
+  const combinedGradeInfo = useMemo(() => {
+    const score = combinedAvgScoreValue;
+    if (score >= 85) return { grade: 'A', standing: 'Excellent', style: 'bg-indigo-600 text-white' };
+    if (score >= 70) return { grade: 'B', standing: 'Satisfactory', style: 'bg-amber-600 text-white' };
+    return { grade: 'C', standing: 'Needs Review', style: 'bg-rose-600 text-white' };
+  }, [combinedAvgScoreValue]);
 
   return (
     <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-6">
@@ -745,7 +773,7 @@ export default function ConsultantPerformanceKpiWidget({
             Consultant SLA Response Performance & Weighted Evaluation Matrix
           </h3>
           <p className="text-xs text-slate-500 dark:text-slate-400 max-w-3xl">
-            Real-time benchmarking of technical RFIs, material approvals, IPC verification, and design turnaround times against FIDIC & Ethiopian Roads Administration contract targets. Performance marks and deductions are dynamically calculated from the evaluated Submittal Log.
+            Real-time benchmarking of technical RFIs, material approvals, IPC verification, and design turnaround times against contract and Ethiopian Roads Administration targets. Performance marks and deductions are dynamically calculated from the evaluated Submittal Log.
           </p>
         </div>
 
@@ -768,7 +796,7 @@ export default function ConsultantPerformanceKpiWidget({
           {!isReadonly && (
             <button
               onClick={handleResetToDefaults}
-              title="Reset to ERA FIDIC standard benchmarks"
+              title="Reset to standard contract benchmarks"
               className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 transition text-xs font-bold"
             >
               <RotateCcw className="w-4 h-4" />
@@ -842,8 +870,100 @@ export default function ConsultantPerformanceKpiWidget({
         </div>
       )}
 
-      {/* Summary Highlight Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="space-y-8">
+        {/* Dynamic Dual-Pillar Composite Scorecard Banner */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-5 rounded-2xl bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/80 shadow-2xs">
+          {/* Pillar I Score Card */}
+          <div className="bg-white dark:bg-slate-950 p-4 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center justify-between">
+            <div className="space-y-1">
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
+                Pillar I: Submittal SLA
+              </span>
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-2xl font-black text-slate-800 dark:text-zinc-100 font-mono">
+                  {pillar1ScoreValue.toFixed(1)}%
+                </span>
+                <span className="text-xs font-bold text-slate-400">score</span>
+              </div>
+            </div>
+            <div className="p-2.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400">
+              <Clock className="w-5 h-5" />
+            </div>
+          </div>
+
+          {/* Pillar II Score Card */}
+          <div className="bg-white dark:bg-slate-950 p-4 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center justify-between">
+            <div className="space-y-1">
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
+                Pillar II: Technical Audit
+              </span>
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-2xl font-black text-slate-800 dark:text-zinc-100 font-mono">
+                  {pillar2ScoreValue.toFixed(1)}%
+                </span>
+                <span className="text-xs font-bold text-slate-400">score</span>
+              </div>
+            </div>
+            <div className="p-2.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400">
+              <Award className="w-5 h-5" />
+            </div>
+          </div>
+
+          {/* Combined Composite Overall Score */}
+          <div className="bg-indigo-950/30 dark:bg-indigo-950/60 p-4 rounded-xl border border-indigo-200/50 dark:border-indigo-900/60 flex items-center justify-between">
+            <div className="space-y-1">
+              <span className="text-[10px] font-black uppercase tracking-wider text-indigo-700 dark:text-indigo-300 block">
+                Combined Overall Score (Avg)
+              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-3xl font-black text-indigo-900 dark:text-indigo-100 font-mono">
+                  {combinedAvgScoreValue.toFixed(1)}%
+                </span>
+                <div className="flex flex-col">
+                  <span className="text-[10px] px-1.5 py-0.5 rounded font-black bg-indigo-600 text-white leading-tight">
+                    Grade {combinedGradeInfo.grade}
+                  </span>
+                  <span className="text-[9px] font-bold text-indigo-700 dark:text-indigo-300 leading-none mt-1">
+                    {combinedGradeInfo.standing}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="p-2.5 rounded-lg bg-indigo-600 text-white shadow-xs">
+              <TrendingUp className="w-5 h-5" />
+            </div>
+          </div>
+        </div>
+
+        {/* Section 1: Submittal Log & Operational SLA Turnaround (19 Categories - Pillar I) */}
+        <div className="space-y-6 pb-8 border-b border-slate-100 dark:border-slate-800">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-2">
+            <div className="flex items-center gap-2">
+              <Clock className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+              <h4 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">
+                ⚡ I. Submittal Log & Operational SLA Turnaround ({submittalsList.length} items - Pillar I)
+              </h4>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsExpanded(!isExpanded)}
+              className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-black transition flex items-center gap-1.5 cursor-pointer border border-slate-200 dark:border-slate-700 shadow-3xs"
+            >
+              {isExpanded ? (
+                <>
+                  <ChevronUp className="w-4 h-4 text-indigo-600" /> Hide SLA Turnaround Table
+                </>
+              ) : (
+                <>
+                  <ChevronDown className="w-4 h-4 text-indigo-600" /> Show SLA Turnaround Table
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Summary Highlight Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {/* Avg RFI Response Time Card */}
         <div className="p-3.5 rounded-2xl bg-gradient-to-br from-indigo-50 to-blue-50/50 dark:from-indigo-950/40 dark:to-slate-900 border border-indigo-100 dark:border-indigo-900/60 space-y-2">
           <div className="flex items-center justify-between">
@@ -995,48 +1115,7 @@ export default function ConsultantPerformanceKpiWidget({
       {/* Expanded Interactive Body */}
       {isExpanded && (
         <div className="space-y-4 pt-2">
-          {/* Formula & Rule Guidance Banner */}
-          <div className="p-3.5 rounded-2xl bg-gradient-to-r from-slate-50 via-indigo-50/40 to-slate-50 dark:from-slate-800/80 dark:via-indigo-950/30 dark:to-slate-800/80 border border-indigo-100/80 dark:border-indigo-900/50 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                  <ShieldCheck className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                  FIDIC & ERA Consultant SLA Compliance & Evaluation Mark Matrix
-                </span>
-                <span className="px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300 font-mono font-bold text-[10px]">
-                  Formula Active
-                </span>
-              </div>
-              <p className="text-slate-600 dark:text-slate-300 text-[11px] leading-relaxed">
-                • <strong>Compliance Rule:</strong> Actual Avg Response Time ≤ Target SLA = <span className="text-emerald-600 dark:text-emerald-400 font-bold">Complying</span>; Exceeding Target SLA = <span className="text-rose-600 dark:text-rose-400 font-bold">Not Complying</span>.
-                <br />
-                • <strong>Evaluation Mark:</strong> Within target date receives <strong>Full Mark</strong>. For items delayed past target SLA: 
-                <code className="mx-1 px-1.5 py-0.5 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono text-indigo-600 dark:text-indigo-400 font-bold">
-                  Deduction = (Delayed ÷ Submitted) × Weightage
-                </code>
-                → 
-                <code className="ml-1 px-1.5 py-0.5 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono text-emerald-600 dark:text-emerald-400 font-bold">
-                  Net Mark = Weightage − Deduction
-                </code>
-              </p>
-            </div>
-
-            <div className="flex items-center gap-3 bg-white dark:bg-slate-900/80 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 shrink-0">
-              <div className="text-right">
-                <div className="text-[10px] uppercase font-bold text-slate-400">Total Net Score</div>
-                <div className="text-base font-black font-mono text-emerald-600 dark:text-emerald-400">
-                  {overallMetrics.totalEarnedScore.toFixed(2)} / {overallMetrics.totalWeight} pts
-                </div>
-              </div>
-              <div className="h-8 w-px bg-slate-200 dark:bg-slate-700" />
-              <div className="text-right">
-                <div className="text-[10px] uppercase font-bold text-slate-400">Total Deductions</div>
-                <div className="text-base font-black font-mono text-rose-600 dark:text-rose-400">
-                  -{overallMetrics.totalDeductions.toFixed(2)} pts
-                </div>
-              </div>
-            </div>
-          </div>
+          {/* Formula & Rule Guidance Banner - Hidden by user request */}
 
           {/* Detailed Performance Metric Table with editable target SLAs & weighted evaluation marks */}
           <div className="overflow-x-auto max-h-[550px] overflow-y-auto rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs scroll-smooth">
@@ -1062,13 +1141,22 @@ export default function ConsultantPerformanceKpiWidget({
                   <tr key={`stat-cat-${stat.category}-${sIdx}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
                     {/* Submittal Criteria Name */}
                     <td className="py-2.5 px-3.5 font-bold">
-                      <div className="flex items-center gap-2">
-                        <span className={`w-2 h-2 rounded-full ${
-                          stat.isComplying ? 'bg-indigo-600' : 'bg-rose-500'
-                        }`}></span>
-                        <span className="text-slate-900 dark:text-white font-semibold">
-                          {stat.category}
-                        </span>
+                      <div className="flex flex-col gap-0.5">
+                        <div className="flex items-center gap-2">
+                          <span className={`w-2 h-2 rounded-full shrink-0 ${
+                            stat.isComplying ? 'bg-indigo-600' : 'bg-rose-500'
+                          }`}></span>
+                          <span className="text-slate-900 dark:text-white font-semibold">
+                            {stat.category}
+                          </span>
+                        </div>
+                        {stat.pmbokDomain && (
+                          <div className="flex flex-wrap items-center gap-1.5 pl-4 text-[10px] font-normal text-slate-500 dark:text-slate-400">
+                            <span className="bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 px-1.5 py-0.2 rounded border border-emerald-100 dark:border-emerald-900/50 font-medium">
+                              {stat.pmbokDomain}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </td>
 
@@ -1227,6 +1315,27 @@ export default function ConsultantPerformanceKpiWidget({
           </div>
         </div>
       )}
+        </div>
+
+        {/* Section 2: Technical & Supervisory Performance Audit (105 Criteria Framework - Pillar II) */}
+        <div className="space-y-4 pt-8">
+          <div className="flex items-center gap-2 mb-2">
+            <Award className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+            <h4 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">
+              🏆 II. Technical & Supervisory Performance Audit (105 Criteria Framework - Pillar II)
+            </h4>
+          </div>
+          <ComprehensiveConsultantEvaluationMatrixView
+            project={project}
+            consultant={isViewingHistorical && historicalConsultant ? historicalConsultant : consultant}
+            onUpdateConsultant={onUpdateConsultant}
+            isReadonly={isReadonly}
+            isAdmin={isAdmin}
+            submittalsList={submittalsList}
+            onScoreChange={setLivePillar2Score}
+          />
+        </div>
+      </div>
 
       {/* Target Settings & Weightages Modal */}
       <AnimatePresence>

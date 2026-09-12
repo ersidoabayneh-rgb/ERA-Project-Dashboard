@@ -705,7 +705,7 @@ export default function SupervisionConsultantView({
       targetOverrides: consultant.targetOverrides ? { ...consultant.targetOverrides } : undefined,
       evaluationCriteria: consultant.evaluationCriteria ? [...consultant.evaluationCriteria] : undefined,
       evaluationSummary: {
-        slaScore: Math.round((slaRate / 100) * 25),
+        slaScore: slaRate, // Submittal log SLA score = evaluation score of Submittal log & operational SLA turnaround
         staffingScore: 16,
         ipcScore: 18,
         contractAdminScore: 18,
@@ -1740,17 +1740,6 @@ export default function SupervisionConsultantView({
             </span>
           </div>
         </div>
-
-        {/* Mini Performance KPI & RFI Turnaround SLA Visualizer Component - Admins Only */}
-        {isAdmin && (
-          <div className="mt-5">
-            <ConsultantPerformanceMiniChart
-              project={project}
-              consultant={consultant}
-              onOpenFullKpis={() => setActiveTab('kpis')}
-            />
-          </div>
-        )}
       </div>
 
       {/* Internal Navigation Subtabs */}

@@ -28,9 +28,30 @@ import {
   ContractorScoringWeights, 
   ConsultantScoringWeights, 
   DEFAULT_CONTRACTOR_SCORING_WEIGHTS, 
-  DEFAULT_CONSULTANT_SCORING_WEIGHTS 
+  DEFAULT_CONSULTANT_SCORING_WEIGHTS,
+  CustomScoringCriterion
 } from '../types';
 import { safeSyncScoringWeights } from '../lib/apiSync';
+
+const CONTRACTOR_CRITERIA_META: Array<{ key: string; defaultLabel: string; defaultDesc: string; defaultWeight: number }> = [
+  { key: 'fidic', defaultLabel: '1. FIDIC Contract Compliance', defaultDesc: 'Performance/Mobilization Guarantees & Risk notices', defaultWeight: 15 },
+  { key: 'projectMgmt', defaultLabel: '2. Project Management (Time)', defaultDesc: 'Schedule overrun & EOT extension compliance', defaultWeight: 15 },
+  { key: 'evm', defaultLabel: '3. EVM Metrics (CPI & SPI)', defaultDesc: 'Cost Efficiency Index (CPI) & Schedule Performance (SPI)', defaultWeight: 15 },
+  { key: 'kpi', defaultLabel: '4. KPIs & Quality Milestones', defaultDesc: 'Key milestone completions & critical risk mitigations', defaultWeight: 15 },
+  { key: 'linear', defaultLabel: '5. Linear Layer Physical Progress', defaultDesc: 'Earthwork, Subgrade, Subbase, Basecourse, & Asphalt pavement layers', defaultWeight: 15 },
+  { key: 'rfi', defaultLabel: '6. Technical RFIs Performance', defaultDesc: 'RFI response, quality & resolution compliance ratio', defaultWeight: 10 },
+  { key: 'materialApproval', defaultLabel: '7. Material Approval Submittals', defaultDesc: 'Timeliness & specification compliance of material samples', defaultWeight: 10 },
+  { key: 'workInspection', defaultLabel: '8. Work Inspections (WIR)', defaultDesc: 'First-time pass rate and quality inspection submittals', defaultWeight: 5 },
+  { key: 'resourceMobilization', defaultLabel: '9. Resource Mobilization', defaultDesc: 'Equipment, machinery & key personnel site presence', defaultWeight: 5 },
+];
+
+const CONSULTANT_CRITERIA_META: Array<{ key: string; defaultLabel: string; defaultDesc: string; defaultWeight: number }> = [
+  { key: 'sla', defaultLabel: '1. Submittal SLA & RFI Turnaround', defaultDesc: 'Response time on contractor submittals and technical RFIs against SLA targets', defaultWeight: 25 },
+  { key: 'staff', defaultLabel: '2. Key Staff Mobilization', defaultDesc: 'Presence, deployment ratio, and qualifications of resident supervision team', defaultWeight: 20 },
+  { key: 'ipc', defaultLabel: '3. IPC Verification Timeliness', defaultDesc: 'Interim Payment Certificate certification speed within FIDIC Clause 14.6/14.7', defaultWeight: 20 },
+  { key: 'claims', defaultLabel: '4. Claims & Determinations', defaultDesc: 'Objective handling of EOT claims, rate fixing, variation orders, and disputes', defaultWeight: 20 },
+  { key: 'quality', defaultLabel: '5. Quality Assurance & WIR', defaultDesc: 'Work inspection requests turnaround and material lab testing oversight', defaultWeight: 15 },
+];
 
 interface SettingsViewProps {
   darkMode: boolean;
@@ -175,7 +196,7 @@ export default function SettingsView({
                 )}
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Defines the 5-dimension weighted evaluation scoring matrix applied across executive group reports and project audits. Saved to the configuration database.
+                Defines the Supervision Service Performance Evaluation scoring matrix applied across executive group reports and project audits. Saved to the configuration database.
               </p>
             </div>
           </div>
@@ -217,7 +238,9 @@ export default function SettingsView({
             }`}
           >
             <Award className="w-3.5 h-3.5" />
-            <span>👥 Supervision Consultant Model ({consultantWeights.sla + consultantWeights.staff + consultantWeights.ipc + consultantWeights.claims + consultantWeights.quality}%)</span>
+            <span>👥 Supervision Consultant Model ({
+              (consultantWeights.sla || 0) + (consultantWeights.staff || 0) + (consultantWeights.ipc || 0) + (consultantWeights.claims || 0) + (consultantWeights.quality || 0) + ((consultantWeights.customCriteria || []).reduce((s, c) => s + (c.weight || 0), 0))
+            }%)</span>
           </button>
         </div>
 
@@ -230,101 +253,28 @@ export default function SettingsView({
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-3">
-              <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/60 p-3.5 rounded-xl space-y-1.5">
-                <span className="text-[10px] uppercase font-black text-slate-400 block">Dimension 1</span>
-                <span className="font-bold text-xs text-slate-800 dark:text-slate-100 block">1. FIDIC Contract Compliance</span>
-                <p className="text-[10px] text-slate-500 leading-tight">Performance/Mobilization Guarantees & Risk notices</p>
-                <div className="pt-2 flex items-baseline justify-between border-t border-slate-200/60 dark:border-slate-800">
-                  <span className="text-xs font-semibold text-slate-500">Weightage</span>
-                  <span className="font-mono text-base font-black text-indigo-600 dark:text-indigo-400">{contractorWeights.fidic}%</span>
-                </div>
-              </div>
-
-              <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/60 p-3.5 rounded-xl space-y-1.5">
-                <span className="text-[10px] uppercase font-black text-slate-400 block">Dimension 2</span>
-                <span className="font-bold text-xs text-slate-800 dark:text-slate-100 block">2. Project Management (Time)</span>
-                <p className="text-[10px] text-slate-500 leading-tight">Time Overrun & Schedule Slippage deductions</p>
-                <div className="pt-2 flex items-baseline justify-between border-t border-slate-200/60 dark:border-slate-800">
-                  <span className="text-xs font-semibold text-slate-500">Weightage</span>
-                  <span className="font-mono text-base font-black text-indigo-600 dark:text-indigo-400">{contractorWeights.projectMgmt}%</span>
-                </div>
-              </div>
-
-              <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/60 p-3.5 rounded-xl space-y-1.5">
-                <span className="text-[10px] uppercase font-black text-slate-400 block">Dimension 3</span>
-                <span className="font-bold text-xs text-slate-800 dark:text-slate-100 block">3. EVM Metrics (CPI & SPI)</span>
-                <p className="text-[10px] text-slate-500 leading-tight">Cost (CPI) & Schedule (SPI) performance ratio</p>
-                <div className="pt-2 flex items-baseline justify-between border-t border-slate-200/60 dark:border-slate-800">
-                  <span className="text-xs font-semibold text-slate-500">Weightage</span>
-                  <span className="font-mono text-base font-black text-indigo-600 dark:text-indigo-400">{contractorWeights.evm}%</span>
-                </div>
-              </div>
-
-              <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/60 p-3.5 rounded-xl space-y-1.5">
-                <span className="text-[10px] uppercase font-black text-slate-400 block">Dimension 4</span>
-                <span className="font-bold text-xs text-slate-800 dark:text-slate-100 block">4. KPIs & Quality Milestones</span>
-                <p className="text-[10px] text-slate-500 leading-tight">Expired guarantee penalties & critical risk mitigations</p>
-                <div className="pt-2 flex items-baseline justify-between border-t border-slate-200/60 dark:border-slate-800">
-                  <span className="text-xs font-semibold text-slate-500">Weightage</span>
-                  <span className="font-mono text-base font-black text-indigo-600 dark:text-indigo-400">{contractorWeights.kpi}%</span>
-                </div>
-              </div>
-
-              <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/60 p-3.5 rounded-xl space-y-1.5">
-                <span className="text-[10px] uppercase font-black text-slate-400 block">Dimension 5</span>
-                <span className="font-bold text-xs text-slate-800 dark:text-slate-100 block">5. Linear Layer Physical Progress</span>
-                <p className="text-[10px] text-slate-500 leading-tight">Earthwork, Subgrade, Subbase, Basecourse, & Asphalt</p>
-                <div className="pt-2 flex items-baseline justify-between border-t border-slate-200/60 dark:border-slate-800">
-                  <span className="text-xs font-semibold text-slate-500">Weightage</span>
-                  <span className="font-mono text-base font-black text-indigo-600 dark:text-indigo-400">{contractorWeights.linear}%</span>
-                </div>
-              </div>
-
-              <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/60 p-3.5 rounded-xl space-y-1.5">
-                <span className="text-[10px] uppercase font-black text-slate-400 block">Dimension 6</span>
-                <span className="font-bold text-xs text-slate-800 dark:text-slate-100 block">6. Technical RFIs Performance</span>
-                <p className="text-[10px] text-slate-500 leading-tight">RFI turnaround & resolution ratio</p>
-                <div className="pt-2 flex items-baseline justify-between border-t border-slate-200/60 dark:border-slate-800">
-                  <span className="text-xs font-semibold text-slate-500">Weightage</span>
-                  <span className="font-mono text-base font-black text-indigo-600 dark:text-indigo-400">{contractorWeights.rfi ?? 10}%</span>
-                </div>
-              </div>
-
-              <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/60 p-3.5 rounded-xl space-y-1.5">
-                <span className="text-[10px] uppercase font-black text-slate-400 block">Dimension 7</span>
-                <span className="font-bold text-xs text-slate-800 dark:text-slate-100 block">7. Material Approval Submittals</span>
-                <p className="text-[10px] text-slate-500 leading-tight">Material sample approvals ratio</p>
-                <div className="pt-2 flex items-baseline justify-between border-t border-slate-200/60 dark:border-slate-800">
-                  <span className="text-xs font-semibold text-slate-500">Weightage</span>
-                  <span className="font-mono text-base font-black text-indigo-600 dark:text-indigo-400">{contractorWeights.materialApproval ?? 10}%</span>
-                </div>
-              </div>
-
-              <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/60 p-3.5 rounded-xl space-y-1.5">
-                <span className="text-[10px] uppercase font-black text-slate-400 block">Dimension 8</span>
-                <span className="font-bold text-xs text-slate-800 dark:text-slate-100 block">8. Work Inspections (WIR)</span>
-                <p className="text-[10px] text-slate-500 leading-tight">First-time pass rate for WIR</p>
-                <div className="pt-2 flex items-baseline justify-between border-t border-slate-200/60 dark:border-slate-800">
-                  <span className="text-xs font-semibold text-slate-500">Weightage</span>
-                  <span className="font-mono text-base font-black text-indigo-600 dark:text-indigo-400">{contractorWeights.workInspection ?? 5}%</span>
-                </div>
-              </div>
-
-              <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/60 p-3.5 rounded-xl space-y-1.5">
-                <span className="text-[10px] uppercase font-black text-slate-400 block">Dimension 9</span>
-                <span className="font-bold text-xs text-slate-800 dark:text-slate-100 block">9. Resource Mobilization</span>
-                <p className="text-[10px] text-slate-500 leading-tight">Personnel & equipment mobilization</p>
-                <div className="pt-2 flex items-baseline justify-between border-t border-slate-200/60 dark:border-slate-800">
-                  <span className="text-xs font-semibold text-slate-500">Weightage</span>
-                  <span className="font-mono text-base font-black text-indigo-600 dark:text-indigo-400">{contractorWeights.resourceMobilization ?? 5}%</span>
-                </div>
-              </div>
+              {CONTRACTOR_CRITERIA_META.map((item, idx) => {
+                const label = contractorWeights.labels?.[item.key] ?? item.defaultLabel;
+                const desc = contractorWeights.descriptions?.[item.key] ?? item.defaultDesc;
+                const weight = contractorWeights[item.key] ?? item.defaultWeight;
+                return (
+                  <div key={item.key} className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/60 p-3.5 rounded-xl space-y-1.5">
+                    <span className="text-[10px] uppercase font-black text-slate-400 block">Dimension {idx + 1}</span>
+                    <span className="font-bold text-xs text-slate-800 dark:text-slate-100 block">{label}</span>
+                    <p className="text-[10px] text-slate-500 leading-tight">{desc}</p>
+                    <div className="pt-2 flex items-baseline justify-between border-t border-slate-200/60 dark:border-slate-800">
+                      <span className="text-xs font-semibold text-slate-500">Weightage</span>
+                      <span className="font-mono text-base font-black text-indigo-600 dark:text-indigo-400">{weight}%</span>
+                    </div>
+                  </div>
+                );
+              })}
 
               {(contractorWeights.customCriteria || []).map((c, i) => (
-                <div key={c.id} className="bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 p-3.5 rounded-xl space-y-1.5">
+                <div key={c.id || i} className="bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 p-3.5 rounded-xl space-y-1.5">
                   <span className="text-[10px] uppercase font-black text-indigo-500 block">Custom {i + 1}</span>
                   <span className="font-bold text-xs text-slate-800 dark:text-slate-100 block truncate">{c.label}</span>
-                  <p className="text-[10px] text-slate-500 leading-tight">Master Admin custom criteria</p>
+                  <p className="text-[10px] text-slate-500 leading-tight">{c.description || 'Master Admin custom criteria'}</p>
                   <div className="pt-2 flex items-baseline justify-between border-t border-indigo-200 dark:border-indigo-800">
                     <span className="text-xs font-semibold text-slate-500">Weightage</span>
                     <span className="font-mono text-base font-black text-indigo-600 dark:text-indigo-400">{c.weight}%</span>
@@ -340,51 +290,35 @@ export default function SettingsView({
               <span>CONFIGURED WEIGHTAGE (% OF 100)</span>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-              <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/60 p-3.5 rounded-xl space-y-1.5">
-                <span className="text-[10px] uppercase font-black text-slate-400 block">Dimension 1</span>
-                <span className="font-bold text-xs text-slate-800 dark:text-slate-100 block">1. Submittal SLA & RFI</span>
-                <div className="pt-2 flex items-baseline justify-between border-t border-slate-200/60 dark:border-slate-800">
-                  <span className="text-xs font-semibold text-slate-500">Weightage</span>
-                  <span className="font-mono text-base font-black text-indigo-600 dark:text-indigo-400">{consultantWeights.sla}%</span>
-                </div>
-              </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-3">
+              {CONSULTANT_CRITERIA_META.map((item, idx) => {
+                const label = consultantWeights.labels?.[item.key] ?? item.defaultLabel;
+                const desc = consultantWeights.descriptions?.[item.key] ?? item.defaultDesc;
+                const weight = consultantWeights[item.key] ?? item.defaultWeight;
+                return (
+                  <div key={item.key} className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/60 p-3.5 rounded-xl space-y-1.5">
+                    <span className="text-[10px] uppercase font-black text-slate-400 block">Dimension {idx + 1}</span>
+                    <span className="font-bold text-xs text-slate-800 dark:text-slate-100 block">{label}</span>
+                    <p className="text-[10px] text-slate-500 leading-tight">{desc}</p>
+                    <div className="pt-2 flex items-baseline justify-between border-t border-slate-200/60 dark:border-slate-800">
+                      <span className="text-xs font-semibold text-slate-500">Weightage</span>
+                      <span className="font-mono text-base font-black text-indigo-600 dark:text-indigo-400">{weight}%</span>
+                    </div>
+                  </div>
+                );
+              })}
 
-              <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/60 p-3.5 rounded-xl space-y-1.5">
-                <span className="text-[10px] uppercase font-black text-slate-400 block">Dimension 2</span>
-                <span className="font-bold text-xs text-slate-800 dark:text-slate-100 block">2. Key Staff Mobilization</span>
-                <div className="pt-2 flex items-baseline justify-between border-t border-slate-200/60 dark:border-slate-800">
-                  <span className="text-xs font-semibold text-slate-500">Weightage</span>
-                  <span className="font-mono text-base font-black text-indigo-600 dark:text-indigo-400">{consultantWeights.staff}%</span>
+              {(consultantWeights.customCriteria || []).map((c, i) => (
+                <div key={c.id || i} className="bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 p-3.5 rounded-xl space-y-1.5">
+                  <span className="text-[10px] uppercase font-black text-indigo-500 block">Custom {i + 1}</span>
+                  <span className="font-bold text-xs text-slate-800 dark:text-slate-100 block truncate">{c.label}</span>
+                  <p className="text-[10px] text-slate-500 leading-tight">{c.description || 'Master Admin custom criteria'}</p>
+                  <div className="pt-2 flex items-baseline justify-between border-t border-indigo-200 dark:border-indigo-800">
+                    <span className="text-xs font-semibold text-slate-500">Weightage</span>
+                    <span className="font-mono text-base font-black text-indigo-600 dark:text-indigo-400">{c.weight}%</span>
+                  </div>
                 </div>
-              </div>
-
-              <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/60 p-3.5 rounded-xl space-y-1.5">
-                <span className="text-[10px] uppercase font-black text-slate-400 block">Dimension 3</span>
-                <span className="font-bold text-xs text-slate-800 dark:text-slate-100 block">3. IPC Verification</span>
-                <div className="pt-2 flex items-baseline justify-between border-t border-slate-200/60 dark:border-slate-800">
-                  <span className="text-xs font-semibold text-slate-500">Weightage</span>
-                  <span className="font-mono text-base font-black text-indigo-600 dark:text-indigo-400">{consultantWeights.ipc}%</span>
-                </div>
-              </div>
-
-              <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/60 p-3.5 rounded-xl space-y-1.5">
-                <span className="text-[10px] uppercase font-black text-slate-400 block">Dimension 4</span>
-                <span className="font-bold text-xs text-slate-800 dark:text-slate-100 block">4. Claims & Determinations</span>
-                <div className="pt-2 flex items-baseline justify-between border-t border-slate-200/60 dark:border-slate-800">
-                  <span className="text-xs font-semibold text-slate-500">Weightage</span>
-                  <span className="font-mono text-base font-black text-indigo-600 dark:text-indigo-400">{consultantWeights.claims}%</span>
-                </div>
-              </div>
-
-              <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/60 p-3.5 rounded-xl space-y-1.5">
-                <span className="text-[10px] uppercase font-black text-slate-400 block">Dimension 5</span>
-                <span className="font-bold text-xs text-slate-800 dark:text-slate-100 block">5. Quality Assurance & WIR</span>
-                <div className="pt-2 flex items-baseline justify-between border-t border-slate-200/60 dark:border-slate-800">
-                  <span className="text-xs font-semibold text-slate-500">Weightage</span>
-                  <span className="font-mono text-base font-black text-indigo-600 dark:text-indigo-400">{consultantWeights.quality}%</span>
-                </div>
-              </div>
+              ))}
             </div>
           </div>
         )}
@@ -729,17 +663,33 @@ export default function SettingsView({
                       customCriteria
                     });
                   } else {
-                    const total = tempConsultantWeights.sla + tempConsultantWeights.staff + tempConsultantWeights.ipc + tempConsultantWeights.claims + tempConsultantWeights.quality;
+                    const customWeight = (tempConsultantWeights.customCriteria || []).reduce((acc, c) => acc + (c.weight || 0), 0);
+                    const total = (tempConsultantWeights.sla || 0) + (tempConsultantWeights.staff || 0) + (tempConsultantWeights.ipc || 0) + (tempConsultantWeights.claims || 0) + (tempConsultantWeights.quality || 0) + customWeight;
                     if (total <= 0) return;
                     const factor = 100 / total;
-                    let sla = Math.round(tempConsultantWeights.sla * factor);
-                    let staff = Math.round(tempConsultantWeights.staff * factor);
-                    let ipc = Math.round(tempConsultantWeights.ipc * factor);
-                    let claims = Math.round(tempConsultantWeights.claims * factor);
-                    let quality = Math.round(tempConsultantWeights.quality * factor);
-                    const diff = 100 - (sla + staff + ipc + claims + quality);
+                    let sla = Math.round((tempConsultantWeights.sla || 0) * factor);
+                    let staff = Math.round((tempConsultantWeights.staff || 0) * factor);
+                    let ipc = Math.round((tempConsultantWeights.ipc || 0) * factor);
+                    let claims = Math.round((tempConsultantWeights.claims || 0) * factor);
+                    let quality = Math.round((tempConsultantWeights.quality || 0) * factor);
+
+                    const customCriteria = (tempConsultantWeights.customCriteria || []).map(c => ({
+                      ...c,
+                      weight: Math.round((c.weight || 0) * factor)
+                    }));
+                    const customSum = customCriteria.reduce((acc, c) => acc + c.weight, 0);
+
+                    const diff = 100 - (sla + staff + ipc + claims + quality + customSum);
                     if (diff !== 0) sla = Math.max(0, sla + diff);
-                    setTempConsultantWeights({ sla, staff, ipc, claims, quality });
+                    setTempConsultantWeights({
+                      ...tempConsultantWeights,
+                      sla,
+                      staff,
+                      ipc,
+                      claims,
+                      quality,
+                      customCriteria
+                    });
                   }
                 };
 
@@ -804,194 +754,110 @@ export default function SettingsView({
 
               {/* Editable Fields Grid */}
               {activeModelTab === 'contractor' ? (
-                <div className="space-y-3.5">
+                <div className="space-y-4">
                   <div className="flex items-center justify-between flex-wrap gap-2">
-                    <h4 className="font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 text-[10px]">
-                      PROJECT CONTRACTOR EVALUATION DIMENSIONS
-                    </h4>
+                    <div>
+                      <h4 className="font-extrabold uppercase tracking-wider text-slate-700 dark:text-slate-300 text-xs">
+                        PROJECT CONTRACTOR EVALUATION DIMENSIONS & CRITERIA
+                      </h4>
+                      <p className="text-[11px] text-slate-500">Edit dimension names, criteria guidelines, and configure baseline weightages (% of 100).</p>
+                    </div>
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
                         onClick={() => {
-                          const newCriterion = {
+                          const newCriterion: CustomScoringCriterion = {
                             id: 'crit_' + Date.now(),
                             label: 'Custom Evaluation Criterion ' + ((tempContractorWeights.customCriteria?.length || 0) + 1),
-                            weight: 5
+                            weight: 5,
+                            description: 'Custom evaluation dimension defined by Master Admin'
                           };
                           setTempContractorWeights({
                             ...tempContractorWeights,
                             customCriteria: [...(tempContractorWeights.customCriteria || []), newCriterion]
                           });
                         }}
-                        className="text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 px-2.5 py-1 border border-indigo-200 dark:border-indigo-800 rounded-lg flex items-center gap-1 font-extrabold text-[10px] cursor-pointer"
+                        className="text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 px-2.5 py-1.5 border border-indigo-200 dark:border-indigo-800 rounded-lg flex items-center gap-1 font-extrabold text-xs cursor-pointer transition"
                       >
-                        <Plus className="w-3 h-3" />
+                        <Plus className="w-3.5 h-3.5" />
                         <span>+ Add Custom Criteria</span>
                       </button>
                       <button
                         type="button"
                         onClick={() => setTempContractorWeights(DEFAULT_CONTRACTOR_SCORING_WEIGHTS)}
-                        className="text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1 font-bold text-[10px] cursor-pointer"
+                        className="text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1 font-bold text-xs cursor-pointer transition"
                       >
-                        <RefreshCcw className="w-3 h-3" />
-                        <span>Reset Standard Defaults</span>
+                        <RefreshCcw className="w-3.5 h-3.5" />
+                        <span>Reset Defaults</span>
                       </button>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                    {/* Dimension 1: FIDIC */}
-                    <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2">
-                      <div className="flex justify-between items-center">
-                        <label className="font-bold text-slate-800 dark:text-slate-200">1. FIDIC Contract Compliance</label>
-                        <span className="font-mono font-extrabold text-indigo-600 dark:text-indigo-400 text-xs">{tempContractorWeights.fidic}%</span>
-                      </div>
-                      <p className="text-[10px] text-slate-500 dark:text-slate-400">Performance/Mobilization Guarantees & Risk notices</p>
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        value={tempContractorWeights.fidic}
-                        onChange={(e) => setTempContractorWeights({ ...tempContractorWeights, fidic: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) })}
-                        className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5 font-mono font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500"
-                      />
-                    </div>
+                    {CONTRACTOR_CRITERIA_META.map((item, idx) => {
+                      const currentLabel = tempContractorWeights.labels?.[item.key] ?? item.defaultLabel;
+                      const currentDesc = tempContractorWeights.descriptions?.[item.key] ?? item.defaultDesc;
+                      const currentWeight = tempContractorWeights[item.key] ?? item.defaultWeight;
 
-                    {/* Dimension 2: Project Management */}
-                    <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2">
-                      <div className="flex justify-between items-center">
-                        <label className="font-bold text-slate-800 dark:text-slate-200">2. Project Management (Time)</label>
-                        <span className="font-mono font-extrabold text-indigo-600 dark:text-indigo-400 text-xs">{tempContractorWeights.projectMgmt}%</span>
-                      </div>
-                      <p className="text-[10px] text-slate-500 dark:text-slate-400">Schedule overrun & EOT extension compliance</p>
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        value={tempContractorWeights.projectMgmt}
-                        onChange={(e) => setTempContractorWeights({ ...tempContractorWeights, projectMgmt: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) })}
-                        className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5 font-mono font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500"
-                      />
-                    </div>
+                      return (
+                        <div key={item.key} className="bg-slate-50 dark:bg-slate-800/50 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2.5 shadow-2xs">
+                          <div className="flex justify-between items-center gap-2">
+                            <div className="flex-1">
+                              <span className="text-[10px] uppercase font-black text-slate-400 block">Dimension {idx + 1}</span>
+                              <input
+                                type="text"
+                                value={currentLabel}
+                                onChange={(e) => setTempContractorWeights({
+                                  ...tempContractorWeights,
+                                  labels: {
+                                    ...(tempContractorWeights.labels || {}),
+                                    [item.key]: e.target.value
+                                  }
+                                })}
+                                className="font-bold text-slate-800 dark:text-slate-100 bg-transparent border-b border-dashed border-slate-300 dark:border-slate-600 hover:border-indigo-500 focus:border-indigo-500 outline-none w-full text-xs py-0.5"
+                                title="Click to edit dimension title"
+                                placeholder="Dimension Title"
+                              />
+                            </div>
+                            <div className="text-right shrink-0">
+                              <span className="font-mono font-extrabold text-indigo-600 dark:text-indigo-400 text-sm">{currentWeight}%</span>
+                            </div>
+                          </div>
 
-                    {/* Dimension 3: EVM */}
-                    <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2">
-                      <div className="flex justify-between items-center">
-                        <label className="font-bold text-slate-800 dark:text-slate-200">3. EVM Metrics (CPI & SPI)</label>
-                        <span className="font-mono font-extrabold text-indigo-600 dark:text-indigo-400 text-xs">{tempContractorWeights.evm}%</span>
-                      </div>
-                      <p className="text-[10px] text-slate-500 dark:text-slate-400">Cost Efficiency Index (CPI) & Schedule Performance (SPI)</p>
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        value={tempContractorWeights.evm}
-                        onChange={(e) => setTempContractorWeights({ ...tempContractorWeights, evm: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) })}
-                        className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5 font-mono font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500"
-                      />
-                    </div>
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">Criteria & Description</label>
+                            <input
+                              type="text"
+                              value={currentDesc}
+                              onChange={(e) => setTempContractorWeights({
+                                ...tempContractorWeights,
+                                descriptions: {
+                                  ...(tempContractorWeights.descriptions || {}),
+                                  [item.key]: e.target.value
+                                }
+                              })}
+                              className="text-[11px] text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1 w-full outline-none focus:border-indigo-500"
+                              placeholder="Description / notes..."
+                            />
+                          </div>
 
-                    {/* Dimension 4: KPIs */}
-                    <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2">
-                      <div className="flex justify-between items-center">
-                        <label className="font-bold text-slate-800 dark:text-slate-200">4. KPIs & Quality Milestones</label>
-                        <span className="font-mono font-extrabold text-indigo-600 dark:text-indigo-400 text-xs">{tempContractorWeights.kpi}%</span>
-                      </div>
-                      <p className="text-[10px] text-slate-500 dark:text-slate-400">Key milestone completions & critical risk mitigations</p>
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        value={tempContractorWeights.kpi}
-                        onChange={(e) => setTempContractorWeights({ ...tempContractorWeights, kpi: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) })}
-                        className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5 font-mono font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500"
-                      />
-                    </div>
-
-                    {/* Dimension 5: Linear Layer */}
-                    <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2">
-                      <div className="flex justify-between items-center">
-                        <label className="font-bold text-slate-800 dark:text-slate-200">5. Linear Layer Physical Progress</label>
-                        <span className="font-mono font-extrabold text-indigo-600 dark:text-indigo-400 text-xs">{tempContractorWeights.linear}%</span>
-                      </div>
-                      <p className="text-[10px] text-slate-500 dark:text-slate-400">Earthwork, Subgrade, Subbase, Basecourse, & Asphalt</p>
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        value={tempContractorWeights.linear}
-                        onChange={(e) => setTempContractorWeights({ ...tempContractorWeights, linear: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) })}
-                        className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5 font-mono font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500"
-                      />
-                    </div>
-
-                    {/* Dimension 6: Technical RFIs */}
-                    <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2">
-                      <div className="flex justify-between items-center">
-                        <label className="font-bold text-slate-800 dark:text-slate-200">6. Technical RFIs Performance</label>
-                        <span className="font-mono font-extrabold text-indigo-600 dark:text-indigo-400 text-xs">{tempContractorWeights.rfi ?? 10}%</span>
-                      </div>
-                      <p className="text-[10px] text-slate-500 dark:text-slate-400">RFI response, quality & resolution compliance ratio</p>
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        value={tempContractorWeights.rfi ?? 10}
-                        onChange={(e) => setTempContractorWeights({ ...tempContractorWeights, rfi: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) })}
-                        className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5 font-mono font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500"
-                      />
-                    </div>
-
-                    {/* Dimension 7: Material Approvals */}
-                    <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2">
-                      <div className="flex justify-between items-center">
-                        <label className="font-bold text-slate-800 dark:text-slate-200">7. Material Approval Submittals</label>
-                        <span className="font-mono font-extrabold text-indigo-600 dark:text-indigo-400 text-xs">{tempContractorWeights.materialApproval ?? 10}%</span>
-                      </div>
-                      <p className="text-[10px] text-slate-500 dark:text-slate-400">Timeliness & specification compliance of material samples</p>
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        value={tempContractorWeights.materialApproval ?? 10}
-                        onChange={(e) => setTempContractorWeights({ ...tempContractorWeights, materialApproval: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) })}
-                        className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5 font-mono font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500"
-                      />
-                    </div>
-
-                    {/* Dimension 8: Work Inspection Requests */}
-                    <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2">
-                      <div className="flex justify-between items-center">
-                        <label className="font-bold text-slate-800 dark:text-slate-200">8. Work Inspections (WIR)</label>
-                        <span className="font-mono font-extrabold text-indigo-600 dark:text-indigo-400 text-xs">{tempContractorWeights.workInspection ?? 5}%</span>
-                      </div>
-                      <p className="text-[10px] text-slate-500 dark:text-slate-400">First-time pass rate and quality inspection submittals</p>
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        value={tempContractorWeights.workInspection ?? 5}
-                        onChange={(e) => setTempContractorWeights({ ...tempContractorWeights, workInspection: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) })}
-                        className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5 font-mono font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500"
-                      />
-                    </div>
-
-                    {/* Dimension 9: Mobilization of Resources */}
-                    <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2">
-                      <div className="flex justify-between items-center">
-                        <label className="font-bold text-slate-800 dark:text-slate-200">9. Resource Mobilization</label>
-                        <span className="font-mono font-extrabold text-indigo-600 dark:text-indigo-400 text-xs">{tempContractorWeights.resourceMobilization ?? 5}%</span>
-                      </div>
-                      <p className="text-[10px] text-slate-500 dark:text-slate-400">Equipment, machinery & key personnel site presence</p>
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        value={tempContractorWeights.resourceMobilization ?? 5}
-                        onChange={(e) => setTempContractorWeights({ ...tempContractorWeights, resourceMobilization: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) })}
-                        className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5 font-mono font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500"
-                      />
-                    </div>
+                          <div className="flex items-center gap-2 pt-1">
+                            <label className="text-2xs font-bold uppercase text-slate-400">Weightage (%):</label>
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              value={currentWeight}
+                              onChange={(e) => setTempContractorWeights({
+                                ...tempContractorWeights,
+                                [item.key]: Math.max(0, Math.min(100, parseInt(e.target.value) || 0))
+                              })}
+                              className="w-24 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-2.5 py-1 font-mono font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500 text-xs text-right"
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
 
                     {/* Custom Added Criteria */}
                     {(tempContractorWeights.customCriteria || []).map((criterion, idx) => (
@@ -1037,96 +903,171 @@ export default function SettingsView({
                   </div>
                 </div>
               ) : (
-                <div className="space-y-3.5">
-                  <div className="flex items-center justify-between">
-                    <h4 className="font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 text-[10px]">
-                      SUPERVISION CONSULTANT EVALUATION DIMENSIONS (5 CATEGORIES)
-                    </h4>
-                    <button
-                      type="button"
-                      onClick={() => setTempConsultantWeights(DEFAULT_CONSULTANT_SCORING_WEIGHTS)}
-                      className="text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 font-bold text-[10px] cursor-pointer"
-                    >
-                      <RefreshCcw className="w-3 h-3" />
-                      <span>Reset Standard Defaults (25/20/20/20/15)</span>
-                    </button>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div>
+                      <h4 className="font-extrabold uppercase tracking-wider text-slate-700 dark:text-slate-300 text-xs">
+                        SUPERVISION CONSULTANT EVALUATION DIMENSIONS & CRITERIA
+                      </h4>
+                      <p className="text-[11px] text-slate-500">Edit dimension names, criteria guidelines, and configure baseline weightages (% of 100).</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const newCriterion: CustomScoringCriterion = {
+                            id: 'crit_' + Date.now(),
+                            label: 'Custom Consultant Criterion ' + ((tempConsultantWeights.customCriteria?.length || 0) + 1),
+                            weight: 5,
+                            description: 'Custom supervision consultant evaluation dimension'
+                          };
+                          setTempConsultantWeights({
+                            ...tempConsultantWeights,
+                            customCriteria: [...(tempConsultantWeights.customCriteria || []), newCriterion]
+                          });
+                        }}
+                        className="text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 px-2.5 py-1.5 border border-indigo-200 dark:border-indigo-800 rounded-lg flex items-center gap-1 font-extrabold text-xs cursor-pointer transition"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>+ Add Custom Criteria</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTempConsultantWeights(DEFAULT_CONSULTANT_SCORING_WEIGHTS)}
+                        className="text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1 font-bold text-xs cursor-pointer transition"
+                      >
+                        <RefreshCcw className="w-3.5 h-3.5" />
+                        <span>Reset Defaults (25/20/20/20/15)</span>
+                      </button>
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                    <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2">
-                      <div className="flex justify-between items-center">
-                        <label className="font-bold text-slate-800 dark:text-slate-200">1. Submittal SLA & RFI</label>
-                        <span className="font-mono font-extrabold text-indigo-600 dark:text-indigo-400 text-xs">{tempConsultantWeights.sla}%</span>
-                      </div>
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        value={tempConsultantWeights.sla}
-                        onChange={(e) => setTempConsultantWeights({ ...tempConsultantWeights, sla: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) })}
-                        className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5 font-mono font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500"
-                      />
-                    </div>
+                    {CONSULTANT_CRITERIA_META.map((item, idx) => {
+                      const currentLabel = tempConsultantWeights.labels?.[item.key] ?? item.defaultLabel;
+                      const currentDesc = tempConsultantWeights.descriptions?.[item.key] ?? item.defaultDesc;
+                      const currentWeight = tempConsultantWeights[item.key] ?? item.defaultWeight;
 
-                    <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2">
-                      <div className="flex justify-between items-center">
-                        <label className="font-bold text-slate-800 dark:text-slate-200">2. Key Staff Mobilization</label>
-                        <span className="font-mono font-extrabold text-indigo-600 dark:text-indigo-400 text-xs">{tempConsultantWeights.staff}%</span>
-                      </div>
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        value={tempConsultantWeights.staff}
-                        onChange={(e) => setTempConsultantWeights({ ...tempConsultantWeights, staff: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) })}
-                        className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5 font-mono font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500"
-                      />
-                    </div>
+                      return (
+                        <div key={item.key} className="bg-slate-50 dark:bg-slate-800/50 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2.5 shadow-2xs">
+                          <div className="flex justify-between items-center gap-2">
+                            <div className="flex-1">
+                              <span className="text-[10px] uppercase font-black text-slate-400 block">Dimension {idx + 1}</span>
+                              <input
+                                type="text"
+                                value={currentLabel}
+                                onChange={(e) => setTempConsultantWeights({
+                                  ...tempConsultantWeights,
+                                  labels: {
+                                    ...(tempConsultantWeights.labels || {}),
+                                    [item.key]: e.target.value
+                                  }
+                                })}
+                                className="font-bold text-slate-800 dark:text-slate-100 bg-transparent border-b border-dashed border-slate-300 dark:border-slate-600 hover:border-indigo-500 focus:border-indigo-500 outline-none w-full text-xs py-0.5"
+                                title="Click to edit dimension title"
+                                placeholder="Dimension Title"
+                              />
+                            </div>
+                            <div className="text-right shrink-0">
+                              <span className="font-mono font-extrabold text-indigo-600 dark:text-indigo-400 text-sm">{currentWeight}%</span>
+                            </div>
+                          </div>
 
-                    <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2">
-                      <div className="flex justify-between items-center">
-                        <label className="font-bold text-slate-800 dark:text-slate-200">3. IPC Verification</label>
-                        <span className="font-mono font-extrabold text-indigo-600 dark:text-indigo-400 text-xs">{tempConsultantWeights.ipc}%</span>
-                      </div>
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        value={tempConsultantWeights.ipc}
-                        onChange={(e) => setTempConsultantWeights({ ...tempConsultantWeights, ipc: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) })}
-                        className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5 font-mono font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500"
-                      />
-                    </div>
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">Criteria & Description</label>
+                            <input
+                              type="text"
+                              value={currentDesc}
+                              onChange={(e) => setTempConsultantWeights({
+                                ...tempConsultantWeights,
+                                descriptions: {
+                                  ...(tempConsultantWeights.descriptions || {}),
+                                  [item.key]: e.target.value
+                                }
+                              })}
+                              className="text-[11px] text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1 w-full outline-none focus:border-indigo-500"
+                              placeholder="Description / notes..."
+                            />
+                          </div>
 
-                    <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2">
-                      <div className="flex justify-between items-center">
-                        <label className="font-bold text-slate-800 dark:text-slate-200">4. Claims & Determinations</label>
-                        <span className="font-mono font-extrabold text-indigo-600 dark:text-indigo-400 text-xs">{tempConsultantWeights.claims}%</span>
-                      </div>
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        value={tempConsultantWeights.claims}
-                        onChange={(e) => setTempConsultantWeights({ ...tempConsultantWeights, claims: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) })}
-                        className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5 font-mono font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500"
-                      />
-                    </div>
+                          <div className="flex items-center gap-2 pt-1">
+                            <label className="text-2xs font-bold uppercase text-slate-400">Weightage (%):</label>
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              value={currentWeight}
+                              onChange={(e) => setTempConsultantWeights({
+                                ...tempConsultantWeights,
+                                [item.key]: Math.max(0, Math.min(100, parseInt(e.target.value) || 0))
+                              })}
+                              className="w-24 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-2.5 py-1 font-mono font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500 text-xs text-right"
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
 
-                    <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2 sm:col-span-2">
-                      <div className="flex justify-between items-center">
-                        <label className="font-bold text-slate-800 dark:text-slate-200">5. Quality Assurance & WIR</label>
-                        <span className="font-mono font-extrabold text-indigo-600 dark:text-indigo-400 text-xs">{tempConsultantWeights.quality}%</span>
+                    {/* Custom Added Criteria for Consultant */}
+                    {(tempConsultantWeights.customCriteria || []).map((criterion, idx) => (
+                      <div key={criterion.id} className="bg-indigo-50/50 dark:bg-indigo-950/20 p-3.5 rounded-xl border border-indigo-200 dark:border-indigo-800/60 space-y-2.5 shadow-2xs">
+                        <div className="flex justify-between items-center gap-2">
+                          <div className="flex-1">
+                            <span className="text-[10px] uppercase font-black text-indigo-500 block">Custom Dimension {idx + 1}</span>
+                            <input
+                              type="text"
+                              value={criterion.label}
+                              onChange={(e) => {
+                                const updated = (tempConsultantWeights.customCriteria || []).map(c => c.id === criterion.id ? { ...c, label: e.target.value } : c);
+                                setTempConsultantWeights({ ...tempConsultantWeights, customCriteria: updated });
+                              }}
+                              className="font-bold text-slate-800 dark:text-slate-100 bg-transparent border-b border-dashed border-indigo-300 dark:border-indigo-600 hover:border-indigo-500 focus:border-indigo-500 outline-none w-full text-xs py-0.5"
+                              placeholder="Custom Dimension Title"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updated = (tempConsultantWeights.customCriteria || []).filter(c => c.id !== criterion.id);
+                              setTempConsultantWeights({ ...tempConsultantWeights, customCriteria: updated });
+                            }}
+                            className="p-1 text-rose-500 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded transition cursor-pointer"
+                            title="Delete custom criterion"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">Criteria & Description</label>
+                          <input
+                            type="text"
+                            value={criterion.description || ''}
+                            onChange={(e) => {
+                              const updated = (tempConsultantWeights.customCriteria || []).map(c => c.id === criterion.id ? { ...c, description: e.target.value } : c);
+                              setTempConsultantWeights({ ...tempConsultantWeights, customCriteria: updated });
+                            }}
+                            className="text-[11px] text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1 w-full outline-none focus:border-indigo-500"
+                            placeholder="Description / notes..."
+                          />
+                        </div>
+
+                        <div className="flex items-center gap-2 pt-1">
+                          <label className="text-2xs font-bold uppercase text-slate-400">Weightage (%):</label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            value={criterion.weight}
+                            onChange={(e) => {
+                              const updated = (tempConsultantWeights.customCriteria || []).map(c => c.id === criterion.id ? { ...c, weight: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) } : c);
+                              setTempConsultantWeights({ ...tempConsultantWeights, customCriteria: updated });
+                            }}
+                            className="w-24 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-2.5 py-1 font-mono font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500 text-xs text-right"
+                          />
+                        </div>
                       </div>
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        value={tempConsultantWeights.quality}
-                        onChange={(e) => setTempConsultantWeights({ ...tempConsultantWeights, quality: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) })}
-                        className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5 font-mono font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500"
-                      />
-                    </div>
+                    ))}
                   </div>
                 </div>
               )}

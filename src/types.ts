@@ -595,11 +595,24 @@ export interface HistoricalSupervisionConsultant {
   };
 }
 
+export interface QualitativeGradeThreshold {
+  id: string;
+  grade: string;
+  minScore: number;
+  maxScore?: number;
+  label: string;
+  standing: string;
+  badgeStyle?: string;
+  color?: string;
+}
+
 export interface EvaluationCriteriaItem {
   id: string;
   name: string;
   targetDays: number;
   weightPct: number;
+  fidicClause?: string;
+  pmbokDomain?: string;
 }
 
 export interface SupervisionConsultantInfo {
@@ -630,6 +643,14 @@ export interface SupervisionConsultantInfo {
   submittalKpis?: ConsultantSubmittalKpi[];
   targetOverrides?: Record<string, number>;
   evaluationCriteria?: EvaluationCriteriaItem[];
+  // Comprehensive 5-Dimension FIDIC & ERA Performance Evaluation records
+  customCriterionWeights?: Record<string, number>;
+  customGradeThresholds?: QualitativeGradeThreshold[];
+  detailedEvaluations?: Record<string, { score: number; actualValue?: string | number; evaluatedAt?: string; evaluator?: string; notes?: string }>;
+  dimensionScores?: Record<'A' | 'B' | 'C' | 'D' | 'E' | string, { earnedScore: number; maxScore: number; scorePct: number }>;
+  overallEvaluationScore?: number;
+  officialEvaluationGrade?: 'A' | 'B' | 'C' | 'D' | 'F';
+  evaluationMethodology?: 'comprehensive_5dim' | 'sla_operational' | 'hybrid';
   personnel: ConsultantPersonnel[];
   personnelHistory?: ConsultantPersonnel[]; // Permanent history log of all assigned/inserted personnel records
   personnelAuditLog?: PersonnelAuditLogEntry[]; // Action audit log tracking timestamps and admin user identifiers
@@ -859,3 +880,29 @@ export const DEFAULT_CONSULTANT_SCORING_WEIGHTS: ConsultantScoringWeights = {
   },
   customCriteria: []
 };
+
+export type DimensionId = 'A' | 'B' | 'C' | 'D' | 'E';
+
+export interface ConsultantEvaluationCriterion {
+  dim: DimensionId;
+  dimName: string;
+  dimWeight: number;
+  ref: string;
+  parentName: string;
+  parentWeight: number;
+  code: string;
+  name: string;
+  detailWeight: number;
+  effectiveWeight: number;
+  metric: string;
+  formula: string;
+  dataSource: string;
+  direction: 'H' | 'L'; // H = Higher is better, L = Lower is better
+  benchmarks: {
+    score5: string;
+    score4: string;
+    score3: string;
+    score2: string;
+    score1: string;
+  };
+}

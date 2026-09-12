@@ -42,7 +42,7 @@ import {
   RefreshCcw
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
-import { Project, User, formatAccounting, isProjectClosed, ContractorScoringWeights, DEFAULT_CONTRACTOR_SCORING_WEIGHTS, ConsultantScoringWeights, DEFAULT_CONSULTANT_SCORING_WEIGHTS, CustomScoringCriterion } from '../types';
+import { Project, User, formatAccounting, isProjectClosed, ContractorScoringWeights, DEFAULT_CONTRACTOR_SCORING_WEIGHTS, ConsultantScoringWeights, DEFAULT_CONSULTANT_SCORING_WEIGHTS, CustomScoringCriterion, SupervisionConsultantInfo } from '../types';
 import { buildKpiHierarchy, getIntegratedKpiAllocated } from '../data/defaultProject';
 import { QtyItem } from '../types';
 import { calculateIpcMaturation } from '../lib/ipcCalculations';
@@ -50,6 +50,11 @@ import { calculateProjectEvm } from '../lib/evmCalculations';
 import { printWorkloadReportDocument } from '../lib/workloadReportPrinter';
 import WorkloadReportModal from './WorkloadReportModal';
 import { DEFAULT_SUBMITTAL_KPIS, DEFAULT_SLA_TARGETS } from './ConsultantPerformanceKpiWidget';
+import { 
+  getProjectConsultantEvaluation, 
+  evaluateQualitativeGrade, 
+  DEFAULT_GRADE_THRESHOLDS 
+} from '../data/consultantEvaluationMatrix';
 
 interface CriticalQtyAnalysis {
   name: string;
@@ -813,12 +818,6 @@ export default function GroupReportGenerator({
       submittalStatus = 'Overdue Backlog';
     }
 
-    // SLA Score (Max 25 pts)
-    let slaScore = Math.round((slaComplianceRatePct / 100) * 25);
-    if (overdueSubmittalsCount > 0) {
-      slaScore = Math.max(5, slaScore - overdueSubmittalsCount * 2);
-    }
-
     // Submittal type breakdowns for deep-dive
     const submittalTypes = ['RFI', 'Material Approval', 'IPC Review', 'Work Inspection (WIR)', 'Variation Order', 'Design Review'];
     const submittalBreakdown = submittalTypes.map(st => {
@@ -909,68 +908,59 @@ export default function GroupReportGenerator({
     qualityScoreVal = Math.min(15, Math.max(4, qualityScoreVal));
     const qualitySupervisionScore = qualityScoreVal;
 
-    // Total Weighted Score (0 to 100)
-    let totalWeightedScore = Math.min(100, Math.max(0, Math.round(
-      slaScore + staffingScore + ipcScore + contractAdminScoreVal + qualityScoreVal
-    )));
+    // Connect with 5-Dimension Performance Evaluation Matrix (105 FIDIC/ERA Criteria)
+    const currentSc = isHistorical ? undefined : (sc as SupervisionConsultantInfo || undefined);
+    const fiveDimEval = getProjectConsultantEvaluation(p, currentSc);
+
+    // The Submittal Log SLA score is the evaluation score of the Submittal log & operational SLA turnaround (0-100%)
+    const slaScore = fiveDimEval.slaTurnaroundScore;
+
+    const scRecord = sc as any;
+    // Total Weighted Score (0 to 100) — Composite score from 50% 5-Dim Matrix + 50% SLA turnaround score
+    let totalWeightedScore = fiveDimEval.overallScore;
 
     if (isHistorical && selectedHist?.evaluationScore) {
       totalWeightedScore = selectedHist.evaluationScore;
     }
 
-    // Official Performance Rating Grade & Standing Assignment
-    let officialGrade: 'A' | 'B' | 'C' | 'D' | 'F' = 'B';
-    let officialRatingTitle = '';
-    let officialStanding = '';
-    let officialRecommendation = '';
-    let badgeTextColor = '';
-    let badgeBgColor = '';
-    let hexColor = '';
+    const matchedThreshold = evaluateQualitativeGrade(totalWeightedScore, scRecord?.customGradeThresholds || DEFAULT_GRADE_THRESHOLDS);
+    let gradeStr = (isHistorical && selectedHist?.officialGrade)
+      ? selectedHist.officialGrade.replace('Grade ', '').trim()
+      : matchedThreshold.grade.replace('Grade ', '').trim();
+    const officialGrade: 'A' | 'B' | 'C' | 'D' | 'F' = (['A', 'B', 'C', 'D', 'F'].includes(gradeStr) ? gradeStr : 'F') as any;
 
-    if (totalWeightedScore >= 90) {
-      officialGrade = 'A';
-      officialRatingTitle = 'Grade A: Exceptional Performance / Superior Supervision';
-      officialStanding = 'Top-Tier Consultant — Approved for Retender & Pre-qualification Fast-track';
+    const officialRatingTitle = `Grade ${officialGrade}: ${matchedThreshold.label}`;
+    const officialStanding = matchedThreshold.standing;
+    let officialRecommendation = '';
+    let badgeTextColor = 'text-emerald-700 dark:text-emerald-300';
+    let badgeBgColor = 'bg-emerald-50 border-emerald-200 dark:bg-emerald-950/40 dark:border-emerald-800';
+    let hexColor = '#16a34a';
+
+    if (officialGrade === 'A') {
       officialRecommendation = 'Exemplary supervisory performance across all technical, administrative, and contractual domains. The Supervision Consultant maintains outstanding submittal turnaround SLA, full resident expert mobilization, and rigorous FIDIC quality oversight.';
       badgeTextColor = 'text-emerald-700 dark:text-emerald-300';
       badgeBgColor = 'bg-emerald-50 border-emerald-200 dark:bg-emerald-950/40 dark:border-emerald-800';
       hexColor = '#16a34a';
-    } else if (totalWeightedScore >= 75) {
-      officialGrade = 'B';
-      officialRatingTitle = 'Grade B: Satisfactory / Fully Compliant Supervision';
-      officialStanding = 'Standard Performance — Fully Meets ERA Contractual Benchmarks';
+    } else if (officialGrade === 'B') {
       officialRecommendation = 'The Consultant maintains consistent site administration, satisfactory submittal turnaround, and diligent IPC certifications. Recommended for regular contract administration renewal with continued monitoring of key personnel timesheets.';
       badgeTextColor = 'text-teal-700 dark:text-teal-300';
       badgeBgColor = 'bg-teal-50 border-teal-200 dark:bg-teal-950/40 dark:border-teal-800';
       hexColor = '#0d9488';
-    } else if (totalWeightedScore >= 60) {
-      officialGrade = 'C';
-      officialRatingTitle = 'Grade C: Marginal / Needs Corrective Intervention';
-      officialStanding = 'Conditional Supervision — 60-Day Remedial Performance Notice Required';
+    } else if (officialGrade === 'C') {
       officialRecommendation = 'Marginal supervisory performance identified in technical submittal response delays or key expert staffing gaps. The Directorate requires submission of a formal 60-day corrective action plan to clear backlogs and mobilize missing specialists.';
       badgeTextColor = 'text-amber-700 dark:text-amber-300';
       badgeBgColor = 'bg-amber-50 border-amber-200 dark:bg-amber-950/40 dark:border-amber-800';
       hexColor = '#d97706';
-    } else if (totalWeightedScore >= 45) {
-      officialGrade = 'D';
-      officialRatingTitle = 'Grade D: Unsatisfactory / High Risk Underperformance';
-      officialStanding = 'Performance Warning Issued — Pre-qualification Rating Downgraded';
+    } else if (officialGrade === 'D') {
       officialRecommendation = 'Unsatisfactory supervision performance resulting in contractor claims, delayed IPC verifications, or severe RFI response bottlenecks. Directorate intervention and contract penalty review required under ERA consultant guidelines.';
       badgeTextColor = 'text-orange-700 dark:text-orange-300';
       badgeBgColor = 'bg-orange-50 border-orange-200 dark:bg-orange-950/40 dark:border-orange-800';
       hexColor = '#ea580c';
     } else {
-      officialGrade = 'F';
-      officialRatingTitle = 'Grade F: Critical Breach / Non-Compliant';
-      officialStanding = 'Sanction Review — Key Personnel Replacement & Debarment Inquiry';
       officialRecommendation = 'Critical supervisory failure and non-compliance with FIDIC / ERA conditions of contract. Immediate replacement of Resident Engineer / Key Experts and formal referral to the ERA Consultant Debarment & Sanctions Committee.';
       badgeTextColor = 'text-rose-700 dark:text-rose-300';
       badgeBgColor = 'bg-rose-50 border-rose-200 dark:bg-rose-950/40 dark:border-rose-800';
       hexColor = '#dc2626';
-    }
-
-    if (isHistorical && selectedHist?.officialGrade) {
-      officialGrade = selectedHist.officialGrade;
     }
 
     // Consultant FIDIC Clauses Evaluation
@@ -1075,7 +1065,9 @@ export default function GroupReportGenerator({
       badgeBgColor,
       hexColor,
       clauses,
-      submittalBreakdown
+      submittalBreakdown,
+      dimensionBreakdown: fiveDimEval.dimensionBreakdown,
+      fiveDimEval
     };
   };
 
@@ -1598,6 +1590,8 @@ export default function GroupReportGenerator({
     if (totalCount === 0) {
       return {
         avgScore: 0,
+        avgFiveDimScore: 0,
+        groupGradeThreshold: DEFAULT_GRADE_THRESHOLDS[0],
         gradeACount: 0,
         gradeBCount: 0,
         gradeCCount: 0,
@@ -1616,6 +1610,7 @@ export default function GroupReportGenerator({
     }
 
     let sumScore = 0;
+    let sumFiveDimScore = 0;
     let gradeACount = 0;
     let gradeBCount = 0;
     let gradeCCount = 0;
@@ -1633,6 +1628,7 @@ export default function GroupReportGenerator({
     rawGroupProjects.forEach(p => {
       const c = getConsultantAuditMetrics(p);
       sumScore += c.totalWeightedScore;
+      sumFiveDimScore += (c.fiveDimEval?.fiveDimScore !== undefined ? c.fiveDimEval.fiveDimScore : c.totalWeightedScore);
       sumSlaRate += c.slaComplianceRatePct;
       sumTurnaround += c.avgTurnaroundDays;
       totalOverdueSubmittals += c.overdueSubmittalsCount;
@@ -1653,9 +1649,14 @@ export default function GroupReportGenerator({
     });
 
     const mobilizationRatePct = totalKeyStaff > 0 ? Math.round((activeKeyStaff / totalKeyStaff) * 100) : 85;
+    const avgScore = Math.round((sumScore / totalCount) * 10) / 10;
+    const avgFiveDimScore = Math.round((sumFiveDimScore / totalCount) * 10) / 10;
+    const groupGradeThreshold = evaluateQualitativeGrade(avgScore);
 
     return {
-      avgScore: Math.round((sumScore / totalCount) * 10) / 10,
+      avgScore,
+      avgFiveDimScore,
+      groupGradeThreshold,
       gradeACount,
       gradeBCount,
       gradeCCount,
@@ -2849,7 +2850,8 @@ export default function GroupReportGenerator({
       } else {
         doc.setTextColor(220, 38, 38); // red
       }
-      doc.text(`${consultantAuditStats.avgScore.toFixed(1)}% (Grade ${consultantAuditStats.avgScore >= 85 ? 'A' : consultantAuditStats.avgScore >= 75 ? 'B' : consultantAuditStats.avgScore >= 65 ? 'C' : consultantAuditStats.avgScore >= 50 ? 'D' : 'F'})`, 40 + cardWidth + 18, cardY + 38);
+      const pdfGradeStr = consultantAuditStats.groupGradeThreshold.grade.replace('Grade ', '').trim();
+      doc.text(`${consultantAuditStats.avgScore.toFixed(1)}% (Grade ${pdfGradeStr})`, 40 + cardWidth + 18, cardY + 38);
 
       // Consultant KPI Card 3: Submittal SLA Compliance
       doc.setFillColor(248, 250, 252);
@@ -5396,26 +5398,18 @@ export default function GroupReportGenerator({
                       <span className="text-[9px] font-extrabold text-indigo-600 dark:text-indigo-400 block uppercase tracking-wider">
                         CONSULTANT PERFORMANCE AUDIT
                       </span>
-                      <span className={`text-[8.5px] font-black uppercase px-1.5 py-0.5 rounded-full ${
-                        consultantAuditStats.avgScore >= 85 ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300' :
-                        consultantAuditStats.avgScore >= 75 ? 'bg-teal-100 text-teal-800 dark:bg-teal-950/50 dark:text-teal-300' :
-                        consultantAuditStats.avgScore >= 65 ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300' :
-                        'bg-red-100 text-red-800 dark:bg-rose-950/50 dark:text-rose-300'
-                      }`}>
-                        Grade {consultantAuditStats.avgScore >= 85 ? 'A' : consultantAuditStats.avgScore >= 75 ? 'B' : consultantAuditStats.avgScore >= 65 ? 'C' : consultantAuditStats.avgScore >= 50 ? 'D' : 'F'}
+                      <span className={`text-[8.5px] font-black uppercase px-2 py-0.5 rounded-full ${consultantAuditStats.groupGradeThreshold.badgeStyle}`}>
+                        Grade {consultantAuditStats.groupGradeThreshold.grade.replace('Grade ', '')} — {consultantAuditStats.groupGradeThreshold.label}
                       </span>
                     </div>
                     <div className="flex items-baseline gap-1.5">
-                      <span className={`text-lg font-black ${
-                        consultantAuditStats.avgScore >= 80 ? 'text-emerald-600 dark:text-emerald-400' :
-                        consultantAuditStats.avgScore >= 65 ? 'text-amber-500' : 'text-red-500 dark:text-rose-400'
-                      }`}>
+                      <span className="text-lg font-black text-indigo-700 dark:text-indigo-300">
                         {consultantAuditStats.avgScore.toFixed(1)}%
                       </span>
-                      <span className="text-2xs text-slate-400 font-bold">official rating</span>
+                      <span className="text-2xs text-slate-400 font-bold">overall composite score</span>
                     </div>
-                    <div className="text-[9px] text-slate-450 dark:text-slate-400">
-                      {consultantAuditStats.compliantCount} of {processedProjects.length} contracts compliant (&ge;70%)
+                    <div className="text-[9px] text-slate-500 dark:text-slate-400 font-mono">
+                      [ 5-Dim Matrix: {consultantAuditStats.avgFiveDimScore.toFixed(1)}% (50%) + SLA On-Time: {consultantAuditStats.avgSlaRate.toFixed(1)}% (50%) ]
                     </div>
                   </div>
 
@@ -6132,59 +6126,87 @@ export default function GroupReportGenerator({
                                       )}
 
                                       {/* 5-Dimension Performance Audit Scorecard */}
-                                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-                                        <div className="bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-200/70 dark:border-slate-800 shadow-2xs space-y-1">
-                                          <span className="text-[8.5px] font-bold text-slate-400 block uppercase">Submittal SLA (25%)</span>
-                                          <div className="flex items-baseline justify-between">
-                                            <span className={`text-sm font-black ${cAudit.slaScore >= 20 ? 'text-emerald-600' : 'text-amber-600'}`}>{cAudit.slaScore}/25 pts</span>
-                                            <span className="text-[8.5px] text-slate-400 font-bold">{cAudit.avgTurnaroundDays}d avg</span>
+                                      <div className="space-y-2">
+                                        {/* Primary Composite Pillars */}
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                          <div className="bg-indigo-50/70 dark:bg-indigo-950/40 p-2.5 rounded-xl border border-indigo-200/80 dark:border-indigo-800/60 flex items-center justify-between">
+                                            <div>
+                                              <span className="text-[9px] font-black text-indigo-700 dark:text-indigo-300 uppercase block tracking-wider">Submittal SLA Turnaround (50% Pillar)</span>
+                                              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">Submittal log & operational SLA turnaround</span>
+                                            </div>
+                                            <div className="text-right">
+                                              <span className={`text-base font-black ${cAudit.slaScore >= 80 ? 'text-emerald-600' : cAudit.slaScore >= 65 ? 'text-amber-600' : 'text-rose-600'}`}>{cAudit.slaScore.toFixed(1)}%</span>
+                                              <span className="text-[9px] text-slate-400 font-bold block">{cAudit.avgTurnaroundDays}d avg turnaround</span>
+                                            </div>
                                           </div>
-                                          <div className="w-full bg-slate-100 dark:bg-slate-800 h-1 rounded overflow-hidden">
-                                            <div className="bg-indigo-500 h-full" style={{ width: `${(cAudit.slaScore / 25) * 100}%` }} />
+
+                                          <div className="bg-emerald-50/70 dark:bg-emerald-950/40 p-2.5 rounded-xl border border-emerald-200/80 dark:border-emerald-800/60 flex items-center justify-between">
+                                            <div>
+                                              <span className="text-[9px] font-black text-emerald-700 dark:text-emerald-300 uppercase block tracking-wider">5-Dimension Matrix Score (50% Pillar)</span>
+                                              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">Reflects all 5 supervision criteria dimensions</span>
+                                            </div>
+                                            <div className="text-right">
+                                              <span className={`text-base font-black ${cAudit.fiveDimEval.fiveDimScore >= 80 ? 'text-emerald-600' : cAudit.fiveDimEval.fiveDimScore >= 65 ? 'text-amber-600' : 'text-rose-600'}`}>{cAudit.fiveDimEval.fiveDimScore.toFixed(1)}%</span>
+                                              <span className="text-[9px] text-slate-400 font-bold block">105 Criteria Audit</span>
+                                            </div>
                                           </div>
                                         </div>
 
-                                        <div className="bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-200/70 dark:border-slate-800 shadow-2xs space-y-1">
-                                          <span className="text-[8.5px] font-bold text-slate-400 block uppercase">Staff Mobilization (20%)</span>
-                                          <div className="flex items-baseline justify-between">
-                                            <span className={`text-sm font-black ${cAudit.staffingScore >= 16 ? 'text-emerald-600' : 'text-amber-600'}`}>{cAudit.staffingScore}/20 pts</span>
-                                            <span className="text-[8.5px] text-slate-400 font-bold">{cAudit.activeKeyStaffCount}/{cAudit.keyStaffCount} Staff</span>
+                                        {/* All 5 Dimensions Breakdown */}
+                                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                                          <div className="bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-200/70 dark:border-slate-800 space-y-1">
+                                            <span className="text-[8px] font-bold text-slate-400 block uppercase truncate" title="Dimension A: Quality Control Supervision">Dim A: Quality Control</span>
+                                            <div className="flex items-baseline justify-between">
+                                              <span className="text-xs font-black text-slate-800 dark:text-zinc-200">{cAudit.dimensionBreakdown?.A?.percentage || 0}%</span>
+                                              <span className="text-[8px] text-slate-400 font-bold">{cAudit.dimensionBreakdown?.A?.earned || 0}/35</span>
+                                            </div>
+                                            <div className="w-full bg-slate-100 dark:bg-slate-800 h-1 rounded overflow-hidden">
+                                              <div className="bg-emerald-500 h-full" style={{ width: `${cAudit.dimensionBreakdown?.A?.percentage || 0}%` }} />
+                                            </div>
                                           </div>
-                                          <div className="w-full bg-slate-100 dark:bg-slate-800 h-1 rounded overflow-hidden">
-                                            <div className="bg-teal-500 h-full" style={{ width: `${(cAudit.staffingScore / 20) * 100}%` }} />
-                                          </div>
-                                        </div>
 
-                                        <div className="bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-200/70 dark:border-slate-800 shadow-2xs space-y-1">
-                                          <span className="text-[8.5px] font-bold text-slate-400 block uppercase">IPC Verification (20%)</span>
-                                          <div className="flex items-baseline justify-between">
-                                            <span className={`text-sm font-black ${cAudit.ipcScore >= 16 ? 'text-emerald-600' : 'text-amber-600'}`}>{cAudit.ipcScore}/20 pts</span>
-                                            <span className="text-[8.5px] text-slate-400 font-bold">Timely Cert.</span>
+                                          <div className="bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-200/70 dark:border-slate-800 space-y-1">
+                                            <span className="text-[8px] font-bold text-slate-400 block uppercase truncate" title="Dimension B: Progress Monitoring & Workmanship">Dim B: Progress & Work</span>
+                                            <div className="flex items-baseline justify-between">
+                                              <span className="text-xs font-black text-slate-800 dark:text-zinc-200">{cAudit.dimensionBreakdown?.B?.percentage || 0}%</span>
+                                              <span className="text-[8px] text-slate-400 font-bold">{cAudit.dimensionBreakdown?.B?.earned || 0}/20</span>
+                                            </div>
+                                            <div className="w-full bg-slate-100 dark:bg-slate-800 h-1 rounded overflow-hidden">
+                                              <div className="bg-indigo-500 h-full" style={{ width: `${cAudit.dimensionBreakdown?.B?.percentage || 0}%` }} />
+                                            </div>
                                           </div>
-                                          <div className="w-full bg-slate-100 dark:bg-slate-800 h-1 rounded overflow-hidden">
-                                            <div className="bg-blue-500 h-full" style={{ width: `${(cAudit.ipcScore / 20) * 100}%` }} />
-                                          </div>
-                                        </div>
 
-                                        <div className="bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-200/70 dark:border-slate-800 shadow-2xs space-y-1">
-                                          <span className="text-[8.5px] font-bold text-slate-400 block uppercase">Contract Admin (20%)</span>
-                                          <div className="flex items-baseline justify-between">
-                                            <span className={`text-sm font-black ${cAudit.contractAdminScore >= 16 ? 'text-emerald-600' : 'text-amber-600'}`}>{cAudit.contractAdminScore}/20 pts</span>
-                                            <span className="text-[8.5px] text-slate-400 font-bold">Cl. 3 Admin</span>
+                                          <div className="bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-200/70 dark:border-slate-800 space-y-1">
+                                            <span className="text-[8px] font-bold text-slate-400 block uppercase truncate" title="Dimension C: Contract Admin & Claims">Dim C: Contract Admin</span>
+                                            <div className="flex items-baseline justify-between">
+                                              <span className="text-xs font-black text-slate-800 dark:text-zinc-200">{cAudit.dimensionBreakdown?.C?.percentage || 0}%</span>
+                                              <span className="text-[8px] text-slate-400 font-bold">{cAudit.dimensionBreakdown?.C?.earned || 0}/20</span>
+                                            </div>
+                                            <div className="w-full bg-slate-100 dark:bg-slate-800 h-1 rounded overflow-hidden">
+                                              <div className="bg-purple-500 h-full" style={{ width: `${cAudit.dimensionBreakdown?.C?.percentage || 0}%` }} />
+                                            </div>
                                           </div>
-                                          <div className="w-full bg-slate-100 dark:bg-slate-800 h-1 rounded overflow-hidden">
-                                            <div className="bg-purple-500 h-full" style={{ width: `${(cAudit.contractAdminScore / 20) * 100}%` }} />
-                                          </div>
-                                        </div>
 
-                                        <div className="bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-200/70 dark:border-slate-800 shadow-2xs space-y-1">
-                                          <span className="text-[8.5px] font-bold text-slate-400 block uppercase">Quality Assurance (15%)</span>
-                                          <div className="flex items-baseline justify-between">
-                                            <span className={`text-sm font-black ${cAudit.qualitySupervisionScore >= 12 ? 'text-emerald-600' : 'text-amber-600'}`}>{cAudit.qualitySupervisionScore}/15 pts</span>
-                                            <span className="text-[8.5px] text-slate-400 font-bold">WIR / Tests</span>
+                                          <div className="bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-200/70 dark:border-slate-800 space-y-1">
+                                            <span className="text-[8px] font-bold text-slate-400 block uppercase truncate" title="Dimension D: Key Personnel Staffing">Dim D: Key Staffing</span>
+                                            <div className="flex items-baseline justify-between">
+                                              <span className="text-xs font-black text-slate-800 dark:text-zinc-200">{cAudit.dimensionBreakdown?.D?.percentage || 0}%</span>
+                                              <span className="text-[8px] text-slate-400 font-bold">{cAudit.dimensionBreakdown?.D?.earned || 0}/15</span>
+                                            </div>
+                                            <div className="w-full bg-slate-100 dark:bg-slate-800 h-1 rounded overflow-hidden">
+                                              <div className="bg-teal-500 h-full" style={{ width: `${cAudit.dimensionBreakdown?.D?.percentage || 0}%` }} />
+                                            </div>
                                           </div>
-                                          <div className="w-full bg-slate-100 dark:bg-slate-800 h-1 rounded overflow-hidden">
-                                            <div className="bg-emerald-500 h-full" style={{ width: `${(cAudit.qualitySupervisionScore / 15) * 100}%` }} />
+
+                                          <div className="bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-200/70 dark:border-slate-800 space-y-1">
+                                            <span className="text-[8px] font-bold text-slate-400 block uppercase truncate" title="Dimension E: Financial Control & IPC Reporting">Dim E: Financial & IPC</span>
+                                            <div className="flex items-baseline justify-between">
+                                              <span className="text-xs font-black text-slate-800 dark:text-zinc-200">{cAudit.dimensionBreakdown?.E?.percentage || 0}%</span>
+                                              <span className="text-[8px] text-slate-400 font-bold">{cAudit.dimensionBreakdown?.E?.earned || 0}/10</span>
+                                            </div>
+                                            <div className="w-full bg-slate-100 dark:bg-slate-800 h-1 rounded overflow-hidden">
+                                              <div className="bg-blue-500 h-full" style={{ width: `${cAudit.dimensionBreakdown?.E?.percentage || 0}%` }} />
+                                            </div>
                                           </div>
                                         </div>
                                       </div>

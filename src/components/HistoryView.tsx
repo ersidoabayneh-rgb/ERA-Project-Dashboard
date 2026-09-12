@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { History, Save, Sparkles, Trash2, Printer, CheckCircle, AlertTriangle, ShieldCheck, FileText, FileBadge, ShieldAlert, CheckCircle2, AlertCircle, Download, Activity, ChevronDown, Scale, FileSpreadsheet, RefreshCw } from 'lucide-react';
+import { History, Save, Sparkles, Trash2, Printer, CheckCircle, AlertTriangle, ShieldCheck, FileText, FileBadge, ShieldAlert, CheckCircle2, AlertCircle, Download, Activity, ChevronDown, Scale, FileSpreadsheet, RefreshCw, Award, Users, Clock } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { Project, HistoryItem, formatAccounting, isProjectClosed } from '../types';
 import { buildKpiHierarchy, getIntegratedKpiAllocated } from '../data/defaultProject';
 import { calculateProjectEvm } from '../lib/evmCalculations';
+import { getProjectConsultantEvaluation } from '../data/consultantEvaluationMatrix';
 import eraLogo from '../assets/logo.png';
 
 export interface InconsistencyAlert {
@@ -62,6 +63,9 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory }:
   const te = p.series.reduce((sum, item) => sum + (item.execAmt || 0), 0);
   const totalOrigExec = te * 1.15;
   const pa = ((p.payment || []).find(x => x.item === 'Price Adjustment') || { amount: 0 }).amount; 
+
+  // Supervision Consultant Evaluation Matrix & Quantitative Performance Grade
+  const consultantEval = useMemo(() => getProjectConsultantEvaluation(p), [p]);
 
   // Right-of-Way metrics
   const rowClearMetric = (p.rowMetrics || []).find(m => m.name === 'ROW Obstruction free Section')?.value || 0;
@@ -744,7 +748,8 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory }:
     doc.text("DESIGN CONSULTANT", 310, curY + 48);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(15, 23, 42);
-    doc.text(p.consultant || 'N/A', 310, curY + 58);
+    const consultantDisplay = `${consultantEval.firmName} (Grade ${consultantEval.officialGrade} • ${consultantEval.overallScore.toFixed(1)}%)`;
+    doc.text(consultantDisplay.length > 38 ? consultantDisplay.substring(0, 36) + '...' : consultantDisplay, 310, curY + 58);
 
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(100, 116, 139);
@@ -1171,6 +1176,110 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory }:
 
     curY += (6 * 20) + 14;
 
+    // Section 4c: Supervision Consultant Performance & Compliance Audit Rating
+    drawSectionHeader("4c. Supervision Consultant Compliance & Performance Audit Evaluation");
+    checkSpace(115);
+
+    // Main Card Container
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(40, curY, pageWidth - 80, 105, 4, 4, 'DF');
+
+    // Header strip inside container
+    doc.setFillColor(30, 41, 59); // slate-800
+    doc.roundedRect(40, curY, pageWidth - 80, 24, 4, 4, 'F');
+    doc.rect(40, curY + 16, pageWidth - 80, 8, 'F'); // square bottom corners
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(255, 255, 255);
+    const firmHeader = `CONSULTANT: ${consultantEval.firmName.toUpperCase()}`;
+    doc.text(firmHeader.length > 55 ? firmHeader.substring(0, 52) + '...' : firmHeader, 52, curY + 11);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(203, 213, 225);
+    doc.text(`Resident Engineer: ${consultantEval.residentEngineer}  •  ${consultantEval.associationType}`, 52, curY + 20);
+
+    // Grade Badge on top right of strip
+    let badgeFill = [16, 185, 129]; // emerald
+    if (consultantEval.officialGrade === 'A') badgeFill = [16, 185, 129];
+    else if (consultantEval.officialGrade === 'B') badgeFill = [13, 148, 136];
+    else if (consultantEval.officialGrade === 'C') badgeFill = [217, 119, 6];
+    else if (consultantEval.officialGrade === 'D') badgeFill = [234, 88, 12];
+    else badgeFill = [220, 38, 38];
+
+    doc.setFillColor(badgeFill[0], badgeFill[1], badgeFill[2]);
+    doc.roundedRect(pageWidth - 150, curY + 4, 100, 16, 3, 3, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(255, 255, 255);
+    doc.text(`GRADE ${consultantEval.officialGrade}  •  ${consultantEval.overallScore.toFixed(1)}%`, pageWidth - 100, curY + 15, { align: 'center' });
+
+    // 5 Dimension Breakdown Boxes
+    const dimWidth = (pageWidth - 102) / 5;
+    const dims = [
+      { id: 'A', name: 'Technical Skills', max: 35, ...consultantEval.dimensionBreakdown.A },
+      { id: 'B', name: 'Soft Skills / Team', max: 20, ...consultantEval.dimensionBreakdown.B },
+      { id: 'C', name: 'Site Supervision', max: 20, ...consultantEval.dimensionBreakdown.C },
+      { id: 'D', name: 'Contract Admin', max: 15, ...consultantEval.dimensionBreakdown.D },
+      { id: 'E', name: 'Corporate Ethics', max: 10, ...consultantEval.dimensionBreakdown.E }
+    ];
+
+    dims.forEach((d, dIdx) => {
+      const boxX = 46 + (dIdx * (dimWidth + 2));
+      const boxY = curY + 30;
+      doc.setFillColor(255, 255, 255);
+      doc.setDrawColor(226, 232, 240);
+      doc.roundedRect(boxX, boxY, dimWidth, 34, 2, 2, 'DF');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`DIMENSION ${d.id}: ${d.name.toUpperCase()}`, boxX + 4, boxY + 8);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(15, 23, 42);
+      doc.text(`${d.earned}/${d.max} pts`, boxX + 4, boxY + 18);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.5);
+      doc.setTextColor(d.percentage >= 80 ? 5 : 217, d.percentage >= 80 ? 150 : 119, d.percentage >= 80 ? 105 : 6);
+      doc.text(`${d.percentage}% score`, boxX + 4, boxY + 26);
+
+      // Mini progress track
+      doc.setFillColor(226, 232, 240);
+      doc.rect(boxX + 4, boxY + 29, dimWidth - 8, 2, 'F');
+      doc.setFillColor(badgeFill[0], badgeFill[1], badgeFill[2]);
+      doc.rect(boxX + 4, boxY + 29, Math.max(0, Math.min(dimWidth - 8, (dimWidth - 8) * (d.percentage / 100))), 2, 'F');
+    });
+
+    // Submittal quantitative metrics & standing bar at bottom
+    doc.setFillColor(255, 255, 255);
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(46, curY + 68, pageWidth - 92, 31, 2, 2, 'DF');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(51, 65, 85);
+    doc.text(`QUANTITATIVE AUDIT EVIDENCE & SUBMITTAL SLA LOG SUMMARY:`, 52, curY + 77);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(71, 85, 105);
+    const metricText1 = `• Submittals Evaluated: ${consultantEval.metrics.totalSubmittals} logged (${consultantEval.metrics.onTimeCount} on-time, ${consultantEval.metrics.overdueCount} overdue)  •  SLA On-Time Rate: ${consultantEval.metrics.slaOnTimeRate.toFixed(1)}%`;
+    const metricText2 = `• Response Velocity: Avg RFI ${consultantEval.metrics.avgRfiDays}d (target: 7d)  •  Avg WIR ${consultantEval.metrics.avgWirDays}d (target: 2d)  •  Key Staff Deployed: ${consultantEval.metrics.activeKeyStaff}/${consultantEval.metrics.totalKeyStaff} (${consultantEval.metrics.mobilizationRate}%)`;
+    const metricText3 = `• Official Audit Standing: ${consultantEval.officialStanding}`;
+    doc.text(metricText1, 52, curY + 85);
+    doc.text(metricText2, 52, curY + 91);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(badgeFill[0], badgeFill[1], badgeFill[2]);
+    doc.text(metricText3, 52, curY + 96);
+
+    curY += 114;
+
     // Section 5: Bank Securities & Guarantee Conformity
     drawSectionHeader("5. Bank Securities & Guarantee Conformity");
     checkSpace(55);
@@ -1206,17 +1315,22 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory }:
 
     // Section 6: Recommended Audit Interventions & Directives
     drawSectionHeader("6. Recommended Audit Interventions & Directives");
-    checkSpace(66);
-
-    doc.setFillColor(255, 255, 255);
-    doc.setDrawColor(226, 232, 240);
-    doc.rect(40, curY, pageWidth - 80, 58, 'DF');
-
     const actionDirects = [
       { step: "01", body: `Issue formal Warning Directive under FIDIC Clause 8.6 regarding the delays evaluated in ${lagging.length > 0 ? lagging.map(l => `Series ${l.code}`).join(', ') : 'Series A (Earthworks)'}.` },
       { step: "02", body: "Instruct the Supervising Engineer and Lead QS to audit price adjustments indexes and current IPC valuation backlogs to align cash outlay velocity with real progress." },
-      { step: "03", body: "Instruct Contractor to submit a comprehensive recovery program reflecting real equipment plant and workforce enhancements on the critical paths." }
+      { step: "03", body: "Instruct Contractor to submit a comprehensive recovery program reflecting real equipment plant and workforce enhancements on the critical paths." },
+      ...(consultantEval.overallScore < 75 || consultantEval.metrics.overdueCount > 0 ? [{
+        step: "04",
+        body: `Direct Supervision Consultant (${consultantEval.firmName} - Grade ${consultantEval.officialGrade} • ${consultantEval.overallScore.toFixed(1)}%) to resolve ${consultantEval.metrics.overdueCount} overdue technical submittals and rectify key staffing gaps within 14 days under FIDIC Cl. 3 / ERA Guidelines.`
+      }] : [])
     ];
+
+    const boxHeight = Math.max(58, actionDirects.length * 17 + 8);
+    checkSpace(boxHeight + 8);
+
+    doc.setFillColor(255, 255, 255);
+    doc.setDrawColor(226, 232, 240);
+    doc.rect(40, curY, pageWidth - 80, boxHeight, 'DF');
 
     doc.setFontSize(7.5);
     actionDirects.forEach((act, actI) => {
@@ -1233,7 +1347,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory }:
       doc.text(textLines, 74, curY + 13 + (actI * 17));
     });
 
-    curY += 68;
+    curY += boxHeight + 10;
 
     // Section 7: Endorsement & Sign-Off Block
     drawSectionHeader("7. Endorsement & Sign-Off Block");
