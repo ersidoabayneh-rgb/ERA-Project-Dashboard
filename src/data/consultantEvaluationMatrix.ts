@@ -1129,10 +1129,10 @@ export function autoEvaluateProjectCriterion(
       formulaEv = `100 - ${m.wirs.reworkRate}% rework = ${numVal.toFixed(1)}%`;
       break;
     }
-    case 'A2.6': { // Rework rate (Lower is better)
+    case 'A2.6': { // Rework rate
       numVal = m.wirs.reworkRate;
       actualStr = `${numVal.toFixed(1)}% rework / resubmission rate`;
-      noteStr = `Resubmission or rejection rate among site inspection requests (lower is better).`;
+      noteStr = `Resubmission or rejection rate among site inspection requests.`;
       formulaEv = `Rework rate: ${numVal.toFixed(1)}%`;
       break;
     }
@@ -1206,10 +1206,10 @@ export function autoEvaluateProjectCriterion(
       formulaEv = `(${m.personnel.active} active ÷ ${m.personnel.total || 1} staff) × 100 = ${numVal.toFixed(1)}%`;
       break;
     }
-    case 'B2.2': { // Key Expert turnover rate (Lower is better)
+    case 'B2.2': { // Key Expert turnover rate
       numVal = m.personnel.turnoverRate;
       actualStr = `${numVal.toFixed(1)}% (${m.personnel.total - m.personnel.active} replacements)`;
-      noteStr = `Staff turnover and replacement index among Resident Engineer team (lower is better).`;
+      noteStr = `Staff turnover and replacement index among Resident Engineer team.`;
       formulaEv = `Turnover rate: ${numVal.toFixed(1)}%`;
       break;
     }
@@ -1221,10 +1221,10 @@ export function autoEvaluateProjectCriterion(
       break;
     }
     case 'B3.4':
-    case 'B3.5': { // Dispute escalation rate (Lower is better)
+    case 'B3.5': { // Dispute escalation rate
       numVal = m.risks.disputeRate;
       actualStr = `${numVal.toFixed(1)}% (${m.risks.disputesCount} active disputes / claims)`;
-      noteStr = `Dispute avoidance and amicable settlement efficacy (lower is better).`;
+      noteStr = `Dispute avoidance and amicable settlement efficacy.`;
       formulaEv = `Dispute index: ${numVal.toFixed(1)}%`;
       break;
     }
@@ -1567,39 +1567,7 @@ export function calculateComprehensiveEvaluationScore(
     const itemPoints = (scoreVal / 5) * effWeight;
     dimensionBreakdown[crit.dim].earned += itemPoints;
     dimensionBreakdown[crit.dim].maxWeight += effWeight;
-
-    // Zero-Tolerance Negative Condition Checks (ratings of 1 on critical zero-tolerance items)
-    if (scoreVal === 1) {
-      if (crit.code === 'E3.2' || crit.code === 'E3.1') {
-        if (!zeroToleranceReasons.includes(`Code ${crit.code}: Anti-Corruption Breach / Conflict of Interest Violation`)) {
-          zeroToleranceReasons.push(`Code ${crit.code}: Anti-Corruption Breach / Conflict of Interest Violation`);
-        }
-      } else if (crit.code === 'A4.1' || crit.code === 'A4.2') {
-        if (!zeroToleranceReasons.includes(`Code ${crit.code}: Severe Safety Fatality Breach / Major HSE Failure`)) {
-          zeroToleranceReasons.push(`Code ${crit.code}: Severe Safety Fatality Breach / Major HSE Failure`);
-        }
-      } else if (crit.code === 'C1.1' || crit.code === 'D2.1') {
-        if (!zeroToleranceReasons.includes(`Code ${crit.code}: Resident Engineer / Key Expert Unapproved Absence`)) {
-          zeroToleranceReasons.push(`Code ${crit.code}: Resident Engineer / Key Expert Unapproved Absence`);
-        }
-      } else if (crit.code === 'B2.1' || crit.code === 'E1.1' || crit.code === 'C2.2') {
-        if (!zeroToleranceReasons.includes(`Code ${crit.code}: Unapproved Major Contract Variation / IPC Certification Malpractice`)) {
-          zeroToleranceReasons.push(`Code ${crit.code}: Unapproved Major Contract Variation / IPC Certification Malpractice`);
-        }
-      } else if (crit.code === 'A3.1' || crit.code === 'A3.2') {
-        if (!zeroToleranceReasons.includes(`Code ${crit.code}: Critical Structural Quality Defect / Fraudulent Testing Certification Allowed`)) {
-          zeroToleranceReasons.push(`Code ${crit.code}: Critical Structural Quality Defect / Fraudulent Testing Certification Allowed`);
-        }
-      }
-    }
   });
-
-  // Explicit Zero Tolerance Flag check
-  if (evaluations['ZERO_TOLERANCE_BREACH']?.score === 1 || evaluations['ZERO_TOLERANCE_FLAG']?.score === 1 || evaluations['_zeroToleranceFlag']?.score === 1) {
-    if (!zeroToleranceReasons.includes('Explicit Evaluator Zero-Tolerance Flag Triggered')) {
-      zeroToleranceReasons.push('Explicit Evaluator Zero-Tolerance Flag Triggered');
-    }
-  }
 
   // Calculate dimension percentages and 1-5 scale scores
   (Object.keys(dimensionBreakdown) as DimensionId[]).forEach(dim => {
@@ -1623,14 +1591,13 @@ export function calculateComprehensiveEvaluationScore(
   const rawScorePct = (0.30 * scoreA) + (0.25 * scoreB) + (0.20 * scoreC) + (0.15 * scoreD) + (0.10 * scoreE);
   const rawScore1To5 = (rawScorePct / 100) * 5.0;
 
-  const isZeroToleranceTriggered = zeroToleranceReasons.length > 0;
+  const isZeroToleranceTriggered = false;
   
-  // Zero-tolerance auto-cap to 2.00 (equivalent to 40.0% / Grade F)
   const autoCapValue1To5 = 2.00;
   const autoCapValuePct = 40.0;
 
-  const finalScore1To5 = isZeroToleranceTriggered ? Math.min(autoCapValue1To5, rawScore1To5) : rawScore1To5;
-  const finalScorePct = isZeroToleranceTriggered ? Math.min(autoCapValuePct, rawScorePct) : rawScorePct;
+  const finalScore1To5 = rawScore1To5;
+  const finalScorePct = rawScorePct;
 
   const overallScore = Number(finalScorePct.toFixed(1));
   const overallScore1To5 = Number(finalScore1To5.toFixed(2));
@@ -1639,18 +1606,7 @@ export function calculateComprehensiveEvaluationScore(
   const formulaCalculationString = `S = (0.30×${scoreA.toFixed(1)}%) + (0.25×${scoreB.toFixed(1)}%) + (0.20×${scoreC.toFixed(1)}%) + (0.15×${scoreD.toFixed(1)}%) + (0.10×${scoreE.toFixed(1)}%) = ${rawScorePct.toFixed(1)}%`;
 
   const activeThresholds = customThresholds && customThresholds.length > 0 ? customThresholds : DEFAULT_GRADE_THRESHOLDS;
-  let matchedThreshold = evaluateQualitativeGrade(overallScore, activeThresholds);
-
-  if (isZeroToleranceTriggered) {
-    matchedThreshold = {
-      ...matchedThreshold,
-      grade: 'Grade F',
-      label: 'Unacceptable / Zero-Tolerance Non-Compliance',
-      standing: `CRITICAL PENALTY: Zero-Tolerance Auto-Cap Applied (Capped to 2.00 / 40.0%). Triggered Reasons: ${zeroToleranceReasons.join('; ')}`,
-      badgeStyle: 'bg-rose-500/20 text-rose-300 border-rose-400/40',
-      color: 'rose'
-    };
-  }
+  const matchedThreshold = evaluateQualitativeGrade(overallScore, activeThresholds);
 
   const officialGrade = matchedThreshold.grade;
   const officialTitle = `${matchedThreshold.grade}: ${matchedThreshold.label}`;

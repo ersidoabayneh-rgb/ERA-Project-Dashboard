@@ -593,15 +593,9 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-indigo-500/20 text-indigo-300 border border-indigo-400/30 uppercase tracking-wider font-mono">
                 Master Evaluation Formula
               </span>
-              {evaluationResult.isZeroToleranceTriggered ? (
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-rose-500/30 text-rose-200 border border-rose-400/50 uppercase tracking-wider font-mono animate-pulse flex items-center gap-1">
-                  <AlertTriangle className="w-3 h-3 text-rose-400" /> Zero-Tolerance Auto-Cap Triggered (2.00 / 40.0%)
-                </span>
-              ) : (
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 uppercase tracking-wider font-mono flex items-center gap-1">
-                  <CheckCircle2 className="w-3 h-3 text-emerald-400" /> Normal Formula Active
-                </span>
-              )}
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 uppercase tracking-wider font-mono flex items-center gap-1">
+                <CheckCircle2 className="w-3 h-3 text-emerald-400" /> Formula Active
+              </span>
             </div>
             <h2 className="text-lg md:text-xl font-black tracking-tight text-white flex items-center gap-2">
               <ShieldCheck className="w-6 h-6 text-indigo-400 shrink-0" />
@@ -626,9 +620,7 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
             <div className="h-10 w-px bg-white/10" />
             <div className="text-left">
               <span className="text-[9px] uppercase font-bold text-indigo-300 block">Official Grade</span>
-              <span className={`inline-block mt-1 px-3 py-1 rounded-xl text-xs font-black border ${
-                evaluationResult.isZeroToleranceTriggered ? 'bg-rose-500/30 text-rose-200 border-rose-400/50' : evaluationResult.gradeBadgeStyle
-              }`}>
+              <span className={`inline-block mt-1 px-3 py-1 rounded-xl text-xs font-black border ${evaluationResult.gradeBadgeStyle}`}>
                 {evaluationResult.officialGrade}
               </span>
             </div>
@@ -665,27 +657,6 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
             })}
           </div>
         </div>
-
-        {/* Zero-Tolerance Auto-Cap Banner */}
-        {evaluationResult.isZeroToleranceTriggered && (
-          <div className="p-4 rounded-2xl bg-rose-950/80 border border-rose-500/60 text-rose-200 space-y-2">
-            <div className="flex items-center gap-2 text-rose-300 font-black text-xs uppercase tracking-wider">
-              <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 animate-bounce" />
-              Zero-Tolerance Penalty Triggered — Auto-Capped to 2.00 (40.0% / Grade F)
-            </div>
-            <p className="text-xs leading-relaxed text-rose-200/90">
-              A zero-tolerance negative condition was met during the evaluation audit. The final score is auto-capped at <span className="font-mono font-bold text-white underline">2.00 / 5.00 (40.0%)</span>.
-            </p>
-            <div className="text-[11px] font-mono space-y-1 pt-1 bg-black/40 p-3 rounded-xl border border-rose-800/40">
-              <span className="font-bold text-rose-400 block">Triggered Zero-Tolerance Reasons:</span>
-              <ul className="list-disc list-inside space-y-0.5 text-rose-300">
-                {evaluationResult.zeroToleranceReasons.map((reason, rIdx) => (
-                  <li key={`zt-reason-${rIdx}`}>{reason}</li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* TOP: Multi-Tab Performance Segment Controller (5 Options) */}
@@ -1356,18 +1327,7 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
                                     <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 font-mono">
                                       Code {criterion.code}
                                     </span>
-                                    {['E3.2','E3.1','A4.1','A4.2','C1.1','D2.1','B2.1','E1.1','C2.2','A3.1','A3.2'].includes(criterion.code) && (
-                                      <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 border border-rose-300 flex items-center gap-1" title="Zero-Tolerance Critical Criterion: Rating 1 triggers overall score auto-cap to 2.00">
-                                        <AlertTriangle className="w-2.5 h-2.5 text-rose-500" /> Zero-Tolerance Item
-                                      </span>
-                                    )}
-                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                                      criterion.direction === 'H'
-                                        ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
-                                        : 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border-amber-200 dark:border-amber-800'
-                                    }`}>
-                                      {criterion.direction === 'H' ? '▲ Higher Better' : '▼ Lower Better'}
-                                    </span>
+
 
                                     {isMasterAdminUser && !isReadonly && (
                                       <div className="flex items-center gap-1 ml-auto">
@@ -1541,28 +1501,15 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
             </div>
             
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Criterion Code</label>
-                  <input
-                    type="text"
-                    value={criterionForm.code || ''}
-                    onChange={(e) => setCriterionForm({ ...criterionForm, code: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs focus:ring-1 focus:ring-indigo-500"
-                    placeholder="e.g. A2.1"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Direction (Optimization)</label>
-                  <select
-                    value={criterionForm.direction || 'H'}
-                    onChange={(e) => setCriterionForm({ ...criterionForm, direction: e.target.value as 'H' | 'L' })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs focus:ring-1 focus:ring-indigo-500"
-                  >
-                    <option value="H">High is Better</option>
-                    <option value="L">Low is Better</option>
-                  </select>
-                </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Criterion Code</label>
+                <input
+                  type="text"
+                  value={criterionForm.code || ''}
+                  onChange={(e) => setCriterionForm({ ...criterionForm, code: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs focus:ring-1 focus:ring-indigo-500"
+                  placeholder="e.g. A2.1"
+                />
               </div>
 
               <div>
