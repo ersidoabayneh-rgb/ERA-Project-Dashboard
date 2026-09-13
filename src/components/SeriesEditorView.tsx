@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Database, Plus, Trash2, ArrowUpRight, Calculator, Coins, Milestone, Shield, BarChart2, DollarSign, Save, RotateCcw, Check, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Database, Plus, Trash2, ArrowUpRight, Calculator, Coins, Milestone, Shield, BarChart2, DollarSign, Save, RotateCcw, Check, AlertCircle, CheckCircle2, Send } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { Project, SeriesItem, IpcItem, PaymentItem, AnnualItem, formatAccounting } from '../types';
 import { MILLION } from '../data/defaultProject';
@@ -129,9 +129,10 @@ interface SeriesEditorViewProps {
   onUpdateSeries: (series: SeriesItem[], provisionalSum?: number) => void;
   onProjectUpdate?: (updates: Partial<Project>, desc: string) => void;
   onUpdateFinance?: (payment: PaymentItem[], annual: AnnualItem[], ipcTracker?: IpcItem[], usdExchangeRate?: number) => void;
+  isApprover?: boolean;
 }
 
-export default function SeriesEditorView({ project, onUpdateSeries, onProjectUpdate, onUpdateFinance }: SeriesEditorViewProps) {
+export default function SeriesEditorView({ project, onUpdateSeries, onProjectUpdate, onUpdateFinance, isApprover = true }: SeriesEditorViewProps) {
   const isDB = project.contractType === 'DB';
 
   // Draft local state for unhindered user editing before saving to database
@@ -554,7 +555,7 @@ export default function SeriesEditorView({ project, onUpdateSeries, onProjectUpd
             Division Work Quantities & Financial Data
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Edit contract codes, descriptions, sums, executed amounts, and provisional sums freely. Click <strong className="text-blue-600 dark:text-blue-400">Save to Database</strong> to commit changes.
+            Edit contract codes, descriptions, sums, executed amounts, and provisional sums freely. Click {isApprover ? <strong className="text-blue-600 dark:text-blue-400">Save to Database</strong> : <strong className="text-emerald-600 dark:text-emerald-400">Submit for Approval</strong>} to save changes.
           </p>
         </div>
 
@@ -588,13 +589,24 @@ export default function SeriesEditorView({ project, onUpdateSeries, onProjectUpd
           <button
             onClick={handleSaveToDatabase}
             className={`text-xs font-bold py-1.5 px-4 rounded-xl flex items-center gap-1.5 transition shadow-sm ${
-              isDirty
+              !isApprover
+                ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                : isDirty
                 ? 'bg-blue-600 hover:bg-blue-700 text-white ring-2 ring-blue-500/30'
                 : 'bg-emerald-600 hover:bg-emerald-700 text-white'
             }`}
           >
-            <Save className="w-3.5 h-3.5" />
-            Save to Database
+            {!isApprover ? (
+              <>
+                <Send className="w-3.5 h-3.5" />
+                Submit for Approval
+              </>
+            ) : (
+              <>
+                <Save className="w-3.5 h-3.5" />
+                Save to Database
+              </>
+            )}
           </button>
         </div>
       </div>

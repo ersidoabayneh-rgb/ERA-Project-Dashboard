@@ -36,7 +36,8 @@ import {
   Zap,
   BookOpen,
   Archive,
-  Sparkles
+  Sparkles,
+  Send
 } from 'lucide-react';
 
 import { Project, User, ApprovalRequest, PrivateDraft, WorkflowAuditLogEntry, KpiAllocatedItem, SeriesItem, MonthlyProgress, LinearData, RowMetric, ProgressPlan, PaymentItem, AnnualItem, WorkProgramActivity, BondGuarantee, formatAccounting, ProjectDocument, ALL_EDITABLE_PAGES, EditablePageOption, ProjectLifecycleStatus, isProjectClosed, isCpmOrMasterAdmin, isRecentlyUpdated, formatRelativeTime, ContractorScoringWeights, ConsultantScoringWeights, DEFAULT_CONTRACTOR_SCORING_WEIGHTS, DEFAULT_CONSULTANT_SCORING_WEIGHTS } from './types';
@@ -3155,27 +3156,66 @@ let isBatchSyncRunning = false;
                       }
                     } else {
                       try {
+                        const draftId = `draft_${currentProject.id}_${activeTab}`;
+                        const existingDraftIndex = privateDrafts.findIndex(d => d.id === draftId);
+                        const nowIso = new Date().toISOString();
+
+                        const draftSnapshot = existingDraftIndex >= 0 ? privateDrafts[existingDraftIndex].snapshotData : currentProject;
+
                         const newReq: ApprovalRequest = {
-                          id: `req_${Date.now()}`,
+                          id: draftId,
                           projectId: currentProject.id,
                           projectName: currentProject.name,
-                          requestedBy: currentUserObj?.username || 'unregistered_user',
-                          requestedAt: new Date().toISOString(),
-                          section: 'Routine updates and parameter modifications',
+                          requestedBy: currentUserObj?.username || 'editor',
+                          requestedAt: nowIso,
+                          section: activeTab,
                           pageId: activeTab,
-                          status: 'pending',
-                          snapshotData: currentProject,
+                          status: 'submitted',
+                          snapshotData: draftSnapshot,
+                          baselineData: currentProject,
+                          author: currentUserObj?.username || 'editor',
+                          authorFullName: currentUserObj?.fullName || currentUserObj?.username || 'editor'
                         };
                         
-                        const updatedList = [...pendingApprovals, newReq];
-                        setPendingApprovals(updatedList);
-                        safeSetItem('era_appr_v28', JSON.stringify(updatedList));
-                        await safeSyncApprovals(updatedList);
+                        const updatedApprovals = [newReq, ...pendingApprovals.filter(a => a.id !== newReq.id)];
+                        setPendingApprovals(updatedApprovals);
+                        safeSetItem('era_appr_v28', JSON.stringify(updatedApprovals));
+                        await safeSyncApprovals(updatedApprovals);
+
+                        if (existingDraftIndex >= 0) {
+                          const updatedDraftsList = [...privateDrafts];
+                          updatedDraftsList[existingDraftIndex] = {
+                            ...updatedDraftsList[existingDraftIndex],
+                            status: 'submitted',
+                            updatedAt: nowIso
+                          };
+                          setPrivateDrafts(updatedDraftsList);
+                          safeSetItem('era_private_drafts_v1', JSON.stringify(updatedDraftsList));
+                        }
+
+                        const newAuditLog: WorkflowAuditLogEntry = {
+                          id: `log_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+                          timestamp: nowIso,
+                          action: 'SUBMITTED_FOR_APPROVAL',
+                          draftId: draftId,
+                          projectId: currentProject.id,
+                          projectName: currentProject.name,
+                          section: activeTab,
+                          actor: currentUserObj?.username || 'editor',
+                          actorRole: currentUserObj?.role || 'editor',
+                          details: `Editor ${currentUserObj?.username} submitted dataset '${currentProject.name}' for approver review.`
+                        };
+
+                        const updatedAuditLogs = [newAuditLog, ...workflowAuditLogs];
+                        setWorkflowAuditLogs(updatedAuditLogs);
+                        safeSetItem('era_workflow_audit_logs_v1', JSON.stringify(updatedAuditLogs));
 
                         alert(
-                          '🚀 DATA SUBMITTED FOR APPROVAL!\n\n' +
-                          'Your modified dataset has been submitted to the designated Project Approver.\n' +
-                          'Once certified by the project approver, the master dataset will be updated.'
+                          '🚀 SUBMITTED FOR APPROVAL!\n\n' +
+                          'Your modified dataset for "' + currentProject.name + '" has been submitted to the designated Project Approver.\n\n' +
+                          '• Role: Editor Credentials\n' +
+                          '• Status: Sent to Approver Review Queue\n' +
+                          '• Live Database: Unchanged (Pending Approver Certification)'
                         );
                       } catch (err) {
                         console.error('Failed to submit approval request:', err);
@@ -3183,11 +3223,28 @@ let isBatchSyncRunning = false;
                       }
                     }
                   }}
-                  className="bg-blue-600 hover:bg-blue-700 p-2 rounded-full border border-blue-700 flex items-center gap-1 text-[11px] font-extrabold text-white px-3 py-1.5 transition shadow-sm"
-                  title="Save to Database"
+                  className={`p-2 rounded-full border flex items-center gap-1.5 text-[11px] font-extrabold text-white px-3 py-1.5 transition shadow-sm ${
+                    currentUserObj && isProjectApprover(currentUserObj, currentProject.id, currentProject)
+                      ? 'bg-blue-600 hover:bg-blue-700 border-blue-700'
+                      : 'bg-emerald-600 hover:bg-emerald-700 border-emerald-700'
+                  }`}
+                  title={
+                    currentUserObj && isProjectApprover(currentUserObj, currentProject.id, currentProject)
+                      ? 'Save to Database'
+                      : 'Submit for Approval'
+                  }
                 >
-                  <CheckCircle className="w-3.5 h-3.5" />
-                  Save to Database
+                  {currentUserObj && isProjectApprover(currentUserObj, currentProject.id, currentProject) ? (
+                    <>
+                      <CheckCircle className="w-3.5 h-3.5" />
+                      <span>Save to Database</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-3.5 h-3.5" />
+                      <span>Submit for Approval</span>
+                    </>
+                  )}
                 </button>
                 {isMasterAdmin && usersListState.some(u => u && u.isPendingApproval) && (
                   <button
@@ -3978,6 +4035,7 @@ let isBatchSyncRunning = false;
               {activeTab === 'seriesEditor' && (
                 <SeriesEditorView
                   project={currentProject}
+                  isApprover={Boolean(currentUserObj && isProjectApprover(currentUserObj, currentProject.id, currentProject))}
                   onUpdateSeries={(series, provisionalSum) => {
                     const updateObj: Partial<Project> = { series };
                     if (provisionalSum !== undefined) updateObj.provisionalSum = provisionalSum;
