@@ -1,9 +1,15 @@
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { History, Save, Sparkles, Trash2, Printer, CheckCircle, AlertTriangle, ShieldCheck, FileText, FileBadge, ShieldAlert, CheckCircle2, AlertCircle, Download, Activity, ChevronDown, Scale, FileSpreadsheet, RefreshCw, Award, Users, Clock } from 'lucide-react';
+import { 
+  History, Save, Sparkles, Trash2, Printer, CheckCircle, AlertTriangle, ShieldCheck, 
+  FileText, FileBadge, ShieldAlert, CheckCircle2, AlertCircle, Download, Activity, 
+  ChevronDown, Scale, FileSpreadsheet, RefreshCw, Award, Users, Clock,
+  Building2, Calendar, Plus, Edit3, X, ExternalLink, ArrowUpRight, ArrowDownRight, Eye, Check,
+  HardHat, Briefcase, Layers
+} from 'lucide-react';
 import { jsPDF } from 'jspdf';
-import { Project, HistoryItem, formatAccounting, isProjectClosed } from '../types';
-import { buildKpiHierarchy, getIntegratedKpiAllocated } from '../data/defaultProject';
+import { Project, HistoryItem, MonthlyGradingRecord, formatAccounting, isProjectClosed } from '../types';
+import { buildKpiHierarchy, getIntegratedKpiAllocated, resolveProjectMonthlyGrading } from '../data/defaultProject';
 import { calculateProjectEvm } from '../lib/evmCalculations';
 import { getProjectConsultantEvaluation } from '../data/consultantEvaluationMatrix';
 import eraLogo from '../assets/logo.png';
@@ -24,15 +30,23 @@ interface HistoryViewProps {
   project: Project;
   onTakeSnapshot: (section: string) => void;
   onClearHistory: () => void;
+  onProjectUpdate?: (part: Partial<Project>, logReason?: string) => void;
+  currentUserObj?: any;
 }
 
-export default function HistoryView({ project, onTakeSnapshot, onClearHistory }: HistoryViewProps) {
+export default function HistoryView({ project, onTakeSnapshot, onClearHistory, onProjectUpdate, currentUserObj }: HistoryViewProps) {
   const history = project.history || [];
   const [analyzing, setGenerating] = useState(false);
   const [logoError, setLogoError] = useState(false);
   const [isKpiHistoryOpen, setIsKpiHistoryOpen] = useState(true);
   const [isDataInconsistencyOpen, setIsDataInconsistencyOpen] = useState(true);
+  const [isMonthlyGradingOpen, setIsMonthlyGradingOpen] = useState(true);
+  const [gradingActiveTab, setGradingActiveTab] = useState<'contractor' | 'consultant' | 'both'>('contractor');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('All');
+  const [selectedGradingMonthFilter, setSelectedGradingMonthFilter] = useState<string>('All');
+  const [selectedGradingDetailModal, setSelectedGradingDetailModal] = useState<MonthlyGradingRecord | null>(null);
+  const [isRecordGradingModalOpen, setIsRecordGradingModalOpen] = useState(false);
+  const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
 
   // Calculate high-fidelity compliance metrics
   const p = project;
@@ -66,6 +80,177 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory }:
 
   // Supervision Consultant Evaluation Matrix & Quantitative Performance Grade
   const consultantEval = useMemo(() => getProjectConsultantEvaluation(p), [p]);
+
+  // Form state for creating/editing monthly grading
+  const [gradingForm, setGradingForm] = useState<Partial<MonthlyGradingRecord>>({
+    month: new Date().toISOString().slice(0, 7),
+    monthName: new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+    recordedDate: new Date().toISOString().slice(0, 10),
+    status: 'Finalized',
+    contractorName: p.contractor || '',
+    contractorPlanMonthly: 0,
+    contractorActualMonthly: 0,
+    contractorPlanCumulative: 0,
+    contractorActualCumulative: 0,
+    contractorVariance: 0,
+    contractorSpi: 1.0,
+    contractorScore: 80,
+    contractorGrade: 'B',
+    contractorStanding: 'Satisfactory / Standard Standing',
+    contractorRemarks: '',
+    consultantName: consultantEval.firmName || '',
+    residentEngineer: consultantEval.residentEngineer || '',
+    consultantSlaTurnaroundScore: consultantEval.metrics?.overallOnTimeRate || 85,
+    consultantFiveDimScore: consultantEval.overallTechnicalScore || 80,
+    consultantOverallScore: consultantEval.overallScore || 82.5,
+    consultantGrade: consultantEval.officialGrade || 'B',
+    consultantStanding: consultantEval.officialStanding || 'Satisfactory / Standard Standing',
+    consultantOnTimeRate: consultantEval.metrics?.overallOnTimeRate || 85,
+    consultantAvgRfiDays: consultantEval.metrics?.rfis?.avgDays || 6,
+    consultantRemarks: '',
+    notes: ''
+  });
+
+  const monthlyGradingRecords = useMemo(() => {
+    return resolveProjectMonthlyGrading(p);
+  }, [p.monthlyGradingRecords, p.monthly, p.progressPlan, p.progressPlanHistory, p.contractor, p.consultant, consultantEval]);
+
+  const filteredMonthlyGradingRecords = useMemo(() => {
+    if (selectedGradingMonthFilter === 'All') return monthlyGradingRecords;
+    return monthlyGradingRecords.filter(r => r.month === selectedGradingMonthFilter || r.monthName === selectedGradingMonthFilter);
+  }, [monthlyGradingRecords, selectedGradingMonthFilter]);
+
+  // Auto-calculate grading values for form
+  const handleAutoCalculateForm = (targetMonth: string) => {
+    const mMatch = (p.monthly || []).find(m => 
+      (m.month || '').toLowerCase().includes(targetMonth.toLowerCase()) || 
+      targetMonth.toLowerCase().includes((m.month || '').toLowerCase())
+    );
+    const planM = mMatch && typeof mMatch.originalPlan === 'number' ? mMatch.originalPlan : 2.5;
+    const actM = mMatch && typeof mMatch.actual === 'number' ? mMatch.actual : 2.1;
+    const planCum = mMatch && typeof mMatch.originalPlan === 'number' ? mMatch.originalPlan : 65.0;
+    const actCum = mMatch && typeof mMatch.actual === 'number' ? mMatch.actual : physicalProgress;
+    const variance = actM - planM;
+    const spiVal = planM > 0 ? Number((actM / planM).toFixed(2)) : 1.0;
+    
+    let cScore = Math.min(100, Math.max(0, 80 + (variance * 10)));
+    let cGrade: 'A' | 'B' | 'C' | 'D' | 'F' = 'B';
+    let cStanding = 'Satisfactory / Standard Standing';
+    if (cScore >= 90) { cGrade = 'A'; cStanding = 'Superior / Accelerated Progress'; }
+    else if (cScore >= 80) { cGrade = 'B'; cStanding = 'Satisfactory / Minor Tolerable Lag'; }
+    else if (cScore >= 70) { cGrade = 'C'; cStanding = 'Fair / Marginal Progress'; }
+    else if (cScore >= 60) { cGrade = 'D'; cStanding = 'Poor / Critical Variance Notice'; }
+    else { cGrade = 'F'; cStanding = 'Unacceptable / Severe Contractual Default'; }
+
+    const consSla = consultantEval.metrics?.overallOnTimeRate || 85.0;
+    const consDim = consultantEval.overallTechnicalScore || 80.0;
+    const consOverall = Number(((consSla + consDim) / 2).toFixed(1));
+    const consGrade = consultantEval.officialGrade || 'B';
+    const consStanding = consultantEval.officialStanding || 'Satisfactory / Standard Standing';
+
+    let monthNameStr = targetMonth;
+    try {
+      const [y, m] = targetMonth.split('-');
+      if (y && m) {
+        const d = new Date(parseInt(y), parseInt(m) - 1, 1);
+        monthNameStr = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+      }
+    } catch {}
+
+    setGradingForm(prev => ({
+      ...prev,
+      month: targetMonth,
+      monthName: monthNameStr,
+      contractorName: p.contractor || prev.contractorName,
+      contractorPlanMonthly: planM,
+      contractorActualMonthly: actM,
+      contractorPlanCumulative: planCum,
+      contractorActualCumulative: actCum,
+      contractorVariance: Number(variance.toFixed(2)),
+      contractorSpi: spiVal,
+      contractorScore: Number(cScore.toFixed(1)),
+      contractorGrade: cGrade,
+      contractorStanding: cStanding,
+      consultantName: consultantEval.firmName || prev.consultantName,
+      residentEngineer: consultantEval.residentEngineer || prev.residentEngineer,
+      consultantSlaTurnaroundScore: consSla,
+      consultantFiveDimScore: consDim,
+      consultantOverallScore: consOverall,
+      consultantGrade: consGrade,
+      consultantStanding: consStanding,
+      consultantOnTimeRate: consultantEval.metrics?.overallOnTimeRate,
+      consultantAvgRfiDays: consultantEval.metrics?.rfis?.avgDays,
+    }));
+  };
+
+  const handleSaveGradingRecord = () => {
+    if (!gradingForm.month) return;
+    const newRec: MonthlyGradingRecord = {
+      id: editingRecordId || `mgrad_${gradingForm.month.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}`,
+      month: gradingForm.month,
+      monthName: gradingForm.monthName || gradingForm.month,
+      recordedDate: gradingForm.recordedDate || new Date().toISOString().slice(0, 10),
+      recordedBy: currentUserObj?.username || 'Audit Officer',
+      status: (gradingForm.status as any) || 'Finalized',
+      contractorName: gradingForm.contractorName || p.contractor || 'Contractor',
+      contractorPlanMonthly: Number(gradingForm.contractorPlanMonthly) || 0,
+      contractorActualMonthly: Number(gradingForm.contractorActualMonthly) || 0,
+      contractorPlanCumulative: Number(gradingForm.contractorPlanCumulative) || 0,
+      contractorActualCumulative: Number(gradingForm.contractorActualCumulative) || 0,
+      contractorVariance: Number(gradingForm.contractorVariance) || 0,
+      contractorSpi: Number(gradingForm.contractorSpi) || 1.0,
+      contractorScore: Number(gradingForm.contractorScore) || 80,
+      contractorGrade: (gradingForm.contractorGrade as any) || 'B',
+      contractorStanding: gradingForm.contractorStanding || 'Satisfactory / Standard Standing',
+      contractorRemarks: gradingForm.contractorRemarks || '',
+      consultantName: gradingForm.consultantName || consultantEval.firmName || 'Consultant',
+      residentEngineer: gradingForm.residentEngineer || consultantEval.residentEngineer || '',
+      consultantSlaTurnaroundScore: Number(gradingForm.consultantSlaTurnaroundScore) || 85,
+      consultantFiveDimScore: Number(gradingForm.consultantFiveDimScore) || 80,
+      consultantOverallScore: Number(gradingForm.consultantOverallScore) || 82.5,
+      consultantGrade: (gradingForm.consultantGrade as any) || 'B',
+      consultantStanding: gradingForm.consultantStanding || 'Satisfactory / Standard Standing',
+      consultantOnTimeRate: Number(gradingForm.consultantOnTimeRate) || 85,
+      consultantAvgRfiDays: Number(gradingForm.consultantAvgRfiDays) || 6,
+      consultantRemarks: gradingForm.consultantRemarks || '',
+      notes: gradingForm.notes || ''
+    };
+
+    let updatedList = [...monthlyGradingRecords];
+    const existingIdx = updatedList.findIndex(r => r.id === newRec.id || r.month === newRec.month);
+    if (existingIdx >= 0) {
+      updatedList[existingIdx] = newRec;
+    } else {
+      updatedList = [newRec, ...updatedList];
+    }
+
+    if (onProjectUpdate) {
+      onProjectUpdate({ monthlyGradingRecords: updatedList }, `Updated monthly grading audit records for ${newRec.monthName}`);
+    }
+    setIsRecordGradingModalOpen(false);
+    setEditingRecordId(null);
+  };
+
+  const handleDeleteGradingRecord = (id: string) => {
+    if (!window.confirm("Are you sure you want to delete this monthly grading record?")) return;
+    const updatedList = monthlyGradingRecords.filter(r => r.id !== id);
+    if (onProjectUpdate) {
+      onProjectUpdate({ monthlyGradingRecords: updatedList }, `Removed monthly grading audit record`);
+    }
+  };
+
+  const openEditGradingModal = (record: MonthlyGradingRecord) => {
+    setEditingRecordId(record.id);
+    setGradingForm({ ...record });
+    setIsRecordGradingModalOpen(true);
+  };
+
+  const openCreateGradingModal = () => {
+    setEditingRecordId(null);
+    const currMonth = new Date().toISOString().slice(0, 7);
+    handleAutoCalculateForm(currMonth);
+    setIsRecordGradingModalOpen(true);
+  };
 
   // Right-of-Way metrics
   const rowClearMetric = (p.rowMetrics || []).find(m => m.name === 'ROW Obstruction free Section')?.value || 0;
@@ -1374,6 +1559,756 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory }:
     doc.save(`ERA_Compliance_Report_${p.name ? p.name.replace(/\s+/g, '_') : 'Untitled'}.pdf`);
   };
 
+  // Dedicated PDF Exporter: Contractor Monthly Grading Ledger
+  const handleExportContractorGradingPDF = () => {
+    const doc = new jsPDF('p', 'pt', 'a4');
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 36;
+    const usableWidth = pageWidth - (margin * 2); // 523.28 pt
+    let curY = 36;
+
+    const checkSpace = (needed: number) => {
+      if (curY + needed > pageHeight - 45) {
+        doc.addPage();
+        curY = 36;
+        return true;
+      }
+      return false;
+    };
+
+    // Header Banner
+    doc.setFillColor(15, 23, 42); // slate-900
+    doc.roundedRect(margin, curY, usableWidth, 54, 4, 4, 'F');
+    
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.setTextColor(255, 255, 255);
+    doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA)", margin + 12, curY + 20);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(203, 213, 225);
+    doc.text("CONTRACTOR MONTHLY PERFORMANCE & SCHEDULE EXECUTION LEDGER", margin + 12, curY + 34);
+    doc.text(`AUDIT DATE: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`, margin + 12, curY + 45);
+
+    curY += 62;
+
+    // Project & Contractor Metadata Box
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(margin, curY, usableWidth, 48, 3, 3, 'DF');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(51, 65, 85);
+    const projectName = `PROJECT: ${p.name || 'Untitled Project'} (${p.id || 'N/A'})`;
+    const projLines = doc.splitTextToSize(projectName, 300);
+    doc.text(projLines[0] || projectName, margin + 10, curY + 15);
+    
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(71, 85, 105);
+    doc.text(`Contractor: ${p.contractor || 'N/A'}`, margin + 10, curY + 28);
+    doc.text(`Contract Delivery: ${p.contractType === 'DB' ? 'Design-Build (DB)' : 'Design-Bid-Build (DBB)'}  •  Length: ${p.lengthKm || 0} KM`, margin + 10, curY + 40);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(51, 65, 85);
+    doc.text(`CUMULATIVE PROGRESS: ${physicalProgress.toFixed(2)}%`, margin + 310, curY + 15);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(71, 85, 105);
+    doc.text(`Target Plan: ${plannedPct.toFixed(2)}%  •  Slippage: ${(plannedPct - physicalProgress).toFixed(2)}%`, margin + 310, curY + 28);
+    doc.text(`Audited Periods: ${monthlyGradingRecords.length} Month(s)`, margin + 310, curY + 40);
+
+    curY += 56;
+
+    // Contractor Highlights Summary Cards
+    const latestRec = monthlyGradingRecords[0];
+    const avgContScore = monthlyGradingRecords.reduce((a, b) => a + b.contractorScore, 0) / (monthlyGradingRecords.length || 1);
+    const cardW = (usableWidth - 12) / 3;
+
+    doc.setFillColor(241, 245, 249);
+    doc.roundedRect(margin, curY, cardW, 38, 3, 3, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6);
+    doc.setTextColor(100, 116, 139);
+    doc.text("LATEST MONTH AUDIT SCORE", margin + 8, curY + 12);
+    doc.setFontSize(8.5);
+    doc.setTextColor(15, 23, 42);
+    doc.text(`Grade ${latestRec?.contractorGrade || 'B'} • ${(latestRec?.contractorScore || 80).toFixed(1)}%`, margin + 8, curY + 24);
+    doc.setFontSize(5.5);
+    doc.setTextColor(71, 85, 105);
+    doc.text(`Standing: ${latestRec?.contractorStanding || 'Good'}`, margin + 8, curY + 33);
+
+    doc.setFillColor(241, 245, 249);
+    doc.roundedRect(margin + cardW + 6, curY, cardW, 38, 3, 3, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6);
+    doc.setTextColor(100, 116, 139);
+    doc.text("SCHEDULE PERFORMANCE (SPI)", margin + cardW + 14, curY + 12);
+    doc.setFontSize(8.5);
+    const spiVal = latestRec?.contractorSpi || 1.0;
+    doc.setTextColor(spiVal >= 1.0 ? 5 : 220, spiVal >= 1.0 ? 150 : 38, spiVal >= 1.0 ? 105 : 38);
+    doc.text(`SPI ${spiVal.toFixed(2)} (${spiVal >= 1.0 ? 'Ahead/On Schedule' : 'Lagging'})`, margin + cardW + 14, curY + 24);
+    doc.setFontSize(5.5);
+    doc.setTextColor(71, 85, 105);
+    doc.text(`Period: ${latestRec?.monthName || 'Latest'}`, margin + cardW + 14, curY + 33);
+
+    doc.setFillColor(241, 245, 249);
+    doc.roundedRect(margin + (cardW * 2) + 12, curY, cardW, 38, 3, 3, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6);
+    doc.setTextColor(100, 116, 139);
+    doc.text("HISTORICAL CONTRACTOR AVERAGE", margin + (cardW * 2) + 20, curY + 12);
+    doc.setFontSize(8.5);
+    doc.setTextColor(15, 23, 42);
+    doc.text(`${avgContScore.toFixed(1)}% Average Score`, margin + (cardW * 2) + 20, curY + 24);
+    doc.setFontSize(5.5);
+    doc.setTextColor(71, 85, 105);
+    doc.text(`Based on ${monthlyGradingRecords.length} recorded cycles`, margin + (cardW * 2) + 20, curY + 33);
+
+    curY += 46;
+
+    // Table Header
+    checkSpace(35);
+    doc.setFillColor(30, 41, 59); // slate-800
+    doc.roundedRect(margin, curY, usableWidth, 18, 2, 2, 'F');
+    
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.5);
+    doc.setTextColor(255, 255, 255);
+    doc.text("MONTH / PERIOD", margin + 6, curY + 12);
+    doc.text("MONTHLY PLAN / ACT", margin + 78, curY + 12);
+    doc.text("VARIANCE", margin + 165, curY + 12);
+    doc.text("CUM ACT (SPI)", margin + 222, curY + 12);
+    doc.text("GRADE / SCORE", margin + 288, curY + 12);
+    doc.text("STATUS", margin + 352, curY + 12);
+    doc.text("CONTRACTOR REMARKS & AUDIT EXCEPTIONS", margin + 398, curY + 12);
+
+    curY += 18;
+
+    // Table Rows with dynamic text wrapping
+    const colWRemarks = usableWidth - 392; // 131.28 pt
+
+    monthlyGradingRecords.forEach((mg, mgIdx) => {
+      const remarksText = mg.contractorRemarks || mg.notes || 'No specific contractor audit exceptions logged for this cycle.';
+      const remarkLines = doc.splitTextToSize(remarksText, colWRemarks - 8);
+      const dynamicRowHeight = Math.max(22, (remarkLines.length * 8) + 12);
+
+      checkSpace(dynamicRowHeight + 4);
+
+      const isEven = mgIdx % 2 === 0;
+      doc.setFillColor(isEven ? 255 : 248, isEven ? 255 : 250, isEven ? 255 : 252);
+      doc.setDrawColor(226, 232, 240);
+      doc.rect(margin, curY, usableWidth, dynamicRowHeight, 'DF');
+
+      // Month name
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.8);
+      doc.setTextColor(15, 23, 42);
+      doc.text(mg.monthName || mg.month, margin + 6, curY + 10);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(5);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`Rec: ${mg.recordedDate || 'N/A'}`, margin + 6, curY + 18);
+
+      // Monthly Plan vs Actual
+      const planM = typeof mg.contractorPlanMonthly === 'number' ? mg.contractorPlanMonthly : 0;
+      const actM = typeof mg.contractorActualMonthly === 'number' ? mg.contractorActualMonthly : 0;
+      const varM = typeof mg.contractorVariance === 'number' ? mg.contractorVariance : (actM - planM);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.5);
+      doc.setTextColor(51, 65, 85);
+      doc.text(`Pln: ${planM.toFixed(2)}% | Act: ${actM.toFixed(2)}%`, margin + 78, curY + 12);
+
+      // Variance
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.5);
+      doc.setTextColor(varM >= 0 ? 5 : 220, varM >= 0 ? 150 : 38, varM >= 0 ? 105 : 38);
+      doc.text(`${varM >= 0 ? '+' : ''}${varM.toFixed(2)}%`, margin + 165, curY + 12);
+
+      // Cumulative & SPI
+      const cumAct = typeof mg.contractorActualCumulative === 'number' ? mg.contractorActualCumulative : 0;
+      const spi = typeof mg.contractorSpi === 'number' ? mg.contractorSpi : 1.0;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6);
+      doc.setTextColor(51, 65, 85);
+      doc.text(`Cum: ${cumAct.toFixed(2)}%`, margin + 222, curY + 9);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(spi >= 1.0 ? 5 : 217, spi >= 1.0 ? 150 : 119, spi >= 1.0 ? 105 : 6);
+      doc.text(`SPI: ${spi.toFixed(2)}`, margin + 222, curY + 17);
+
+      // Grade Badge
+      let cGradeColor = [16, 185, 129];
+      if (mg.contractorGrade === 'B') cGradeColor = [13, 148, 136];
+      else if (mg.contractorGrade === 'C') cGradeColor = [217, 119, 6];
+      else if (mg.contractorGrade === 'D') cGradeColor = [234, 88, 12];
+      else if (mg.contractorGrade === 'F') cGradeColor = [220, 38, 38];
+
+      doc.setFillColor(cGradeColor[0], cGradeColor[1], cGradeColor[2]);
+      doc.roundedRect(margin + 288, curY + 3, 52, 14, 2, 2, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6);
+      doc.setTextColor(255, 255, 255);
+      doc.text(`GR ${mg.contractorGrade || 'B'} • ${(mg.contractorScore || 80).toFixed(1)}%`, margin + 314, curY + 12.5, { align: 'center' });
+
+      // Status
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(5.5);
+      doc.setTextColor(mg.status === 'Approved' ? 5 : 71, mg.status === 'Approved' ? 150 : 85, mg.status === 'Approved' ? 105 : 105);
+      doc.text((mg.status || 'Finalized').toUpperCase(), margin + 352, curY + 12);
+
+      // Wrapped Remarks Line by Line
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(5.8);
+      doc.setTextColor(71, 85, 105);
+      remarkLines.forEach((line: string, lIdx: number) => {
+        doc.text(line, margin + 398, curY + 9 + (lIdx * 7.5));
+      });
+
+      curY += dynamicRowHeight;
+    });
+
+    curY += 16;
+
+    // Sign-Off Block
+    checkSpace(65);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(100, 116, 139);
+    doc.text("VERIFIED BY LEAD RESIDENT ENGINEER / PMO", margin + 15, curY + 12);
+    doc.text("ENDORSED BY CPMP DIRECTOR / ERA AUDIT", margin + 285, curY + 12);
+
+    doc.setDrawColor(203, 213, 225);
+    doc.line(margin + 15, curY + 34, margin + 210, curY + 34);
+    doc.line(margin + 285, curY + 34, margin + 480, curY + 34);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(148, 163, 184);
+    doc.text("SIGNATURE & OFFICIAL SEAL", margin + 15, curY + 43);
+    doc.text("SIGNATURE & OFFICIAL CPMP STAMP", margin + 285, curY + 43);
+
+    doc.save(`ERA_Contractor_Monthly_Grading_${p.name ? p.name.replace(/\s+/g, '_') : 'Project'}.pdf`);
+  };
+
+  // Dedicated PDF Exporter: Supervision Consultant Monthly Grading Ledger
+  const handleExportConsultantGradingPDF = () => {
+    const doc = new jsPDF('p', 'pt', 'a4');
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 36;
+    const usableWidth = pageWidth - (margin * 2); // 523.28 pt
+    let curY = 36;
+
+    const checkSpace = (needed: number) => {
+      if (curY + needed > pageHeight - 45) {
+        doc.addPage();
+        curY = 36;
+        return true;
+      }
+      return false;
+    };
+
+    // Header Banner
+    doc.setFillColor(30, 41, 59); // slate-800
+    doc.roundedRect(margin, curY, usableWidth, 54, 4, 4, 'F');
+    
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.setTextColor(255, 255, 255);
+    doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA)", margin + 12, curY + 20);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(203, 213, 225);
+    doc.text("SUPERVISION CONSULTANT MONTHLY DUAL-PILLAR GRADING & SLA AUDIT LEDGER", margin + 12, curY + 34);
+    doc.text(`AUDIT DATE: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`, margin + 12, curY + 45);
+
+    curY += 62;
+
+    // Project & Consultant Metadata Box
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(margin, curY, usableWidth, 48, 3, 3, 'DF');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(51, 65, 85);
+    const consultantTitle = `SUPERVISION CONSULTANT: ${(consultantEval.firmName || p.consultant || 'N/A').toUpperCase()}`;
+    const firmLines = doc.splitTextToSize(consultantTitle, 300);
+    doc.text(firmLines[0] || consultantTitle, margin + 10, curY + 15);
+    
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(71, 85, 105);
+    doc.text(`Resident Engineer: ${consultantEval.residentEngineer || 'Eng. Assigned'}  •  ${consultantEval.associationType}`, margin + 10, curY + 28);
+    doc.text(`Project: ${p.name || 'Untitled Project'} (${p.id || 'N/A'})`, margin + 10, curY + 40);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(51, 65, 85);
+    doc.text(`CONSULTANT GRADE: ${consultantEval.officialGrade} (${consultantEval.overallScore.toFixed(1)}%)`, margin + 310, curY + 15);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(71, 85, 105);
+    doc.text(`SLA On-Time Rate: ${consultantEval.metrics.slaOnTimeRate.toFixed(1)}%  •  Standing: ${consultantEval.officialStanding}`, margin + 310, curY + 28);
+    doc.text(`Submittals Audited: ${consultantEval.metrics.totalSubmittals} logged (${consultantEval.metrics.overdueCount} overdue)`, margin + 310, curY + 40);
+
+    curY += 56;
+
+    // Consultant Highlights Summary Cards
+    const latestRec = monthlyGradingRecords[0];
+    const avgConsScore = monthlyGradingRecords.reduce((a, b) => a + b.consultantOverallScore, 0) / (monthlyGradingRecords.length || 1);
+    const cardW = (usableWidth - 12) / 3;
+
+    doc.setFillColor(241, 245, 249);
+    doc.roundedRect(margin, curY, cardW, 38, 3, 3, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6);
+    doc.setTextColor(100, 116, 139);
+    doc.text("LATEST COMBINED SCORE", margin + 8, curY + 12);
+    doc.setFontSize(8.5);
+    doc.setTextColor(15, 23, 42);
+    doc.text(`Grade ${latestRec?.consultantGrade || 'B'} • ${(latestRec?.consultantOverallScore || 82.5).toFixed(1)}%`, margin + 8, curY + 24);
+    doc.setFontSize(5.5);
+    doc.setTextColor(71, 85, 105);
+    doc.text(`Standing: ${latestRec?.consultantStanding || 'Standard'}`, margin + 8, curY + 33);
+
+    doc.setFillColor(241, 245, 249);
+    doc.roundedRect(margin + cardW + 6, curY, cardW, 38, 3, 3, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6);
+    doc.setTextColor(100, 116, 139);
+    doc.text("PILLAR 1: SUBMITTAL SLA RATE", margin + cardW + 14, curY + 12);
+    doc.setFontSize(8.5);
+    const slaTurnaround = latestRec?.consultantSlaTurnaroundScore || 85;
+    doc.setTextColor(slaTurnaround >= 80 ? 5 : 220, slaTurnaround >= 80 ? 150 : 38, slaTurnaround >= 80 ? 105 : 38);
+    doc.text(`${slaTurnaround.toFixed(1)}% On-Time Turnaround`, margin + cardW + 14, curY + 24);
+    doc.setFontSize(5.5);
+    doc.setTextColor(71, 85, 105);
+    doc.text(`Avg RFI: ${latestRec?.consultantAvgRfiDays || 6}d • Target: 7d`, margin + cardW + 14, curY + 33);
+
+    doc.setFillColor(241, 245, 249);
+    doc.roundedRect(margin + (cardW * 2) + 12, curY, cardW, 38, 3, 3, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6);
+    doc.setTextColor(100, 116, 139);
+    doc.text("PILLAR 2: 5-DIM TECH AUDIT", margin + (cardW * 2) + 20, curY + 12);
+    doc.setFontSize(8.5);
+    doc.setTextColor(15, 23, 42);
+    doc.text(`${(latestRec?.consultantFiveDimScore || 80).toFixed(1)}% Technical Rating`, margin + (cardW * 2) + 20, curY + 24);
+    doc.setFontSize(5.5);
+    doc.setTextColor(71, 85, 105);
+    doc.text(`Avg Over ${monthlyGradingRecords.length} Cycles: ${avgConsScore.toFixed(1)}%`, margin + (cardW * 2) + 20, curY + 33);
+
+    curY += 46;
+
+    // Table Header
+    checkSpace(35);
+    doc.setFillColor(79, 70, 229); // indigo-600
+    doc.roundedRect(margin, curY, usableWidth, 18, 2, 2, 'F');
+    
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.5);
+    doc.setTextColor(255, 255, 255);
+    doc.text("MONTH / PERIOD", margin + 6, curY + 12);
+    doc.text("PILLAR 1: SLA TURNAROUND %", margin + 80, curY + 12);
+    doc.text("PILLAR 2: 5-DIM TECH %", margin + 175, curY + 12);
+    doc.text("COMBINED RATING", margin + 265, curY + 12);
+    doc.text("CONS. GRADE", margin + 335, curY + 12);
+    doc.text("STATUS", margin + 388, curY + 12);
+    doc.text("SUPERVISORY FINDINGS & DIRECTIVES", margin + 428, curY + 12);
+
+    curY += 18;
+
+    // Table Rows with dynamic text wrapping
+    const colWFindings = usableWidth - 422; // 101.28 pt
+
+    monthlyGradingRecords.forEach((mg, mgIdx) => {
+      const findingsText = mg.consultantRemarks || mg.notes || 'Standard supervisory inspection and submittal compliance logged.';
+      const findingLines = doc.splitTextToSize(findingsText, colWFindings - 8);
+      const dynamicRowHeight = Math.max(22, (findingLines.length * 8) + 12);
+
+      checkSpace(dynamicRowHeight + 4);
+
+      const isEven = mgIdx % 2 === 0;
+      doc.setFillColor(isEven ? 255 : 248, isEven ? 255 : 250, isEven ? 255 : 252);
+      doc.setDrawColor(226, 232, 240);
+      doc.rect(margin, curY, usableWidth, dynamicRowHeight, 'DF');
+
+      // Month name
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.8);
+      doc.setTextColor(15, 23, 42);
+      doc.text(mg.monthName || mg.month, margin + 6, curY + 10);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(5);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`Rec: ${mg.recordedDate || 'N/A'}`, margin + 6, curY + 18);
+
+      // Pillar 1 SLA Score
+      const slaScore = typeof mg.consultantSlaTurnaroundScore === 'number' ? mg.consultantSlaTurnaroundScore : 85;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.5);
+      doc.setTextColor(51, 65, 85);
+      doc.text(`${slaScore.toFixed(1)}% On-Time`, margin + 80, curY + 10);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(5);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`Avg RFI: ${mg.consultantAvgRfiDays || 6}d`, margin + 80, curY + 18);
+
+      // Pillar 2 5-Dim Score
+      const dimScore = typeof mg.consultantFiveDimScore === 'number' ? mg.consultantFiveDimScore : 80;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.5);
+      doc.setTextColor(51, 65, 85);
+      doc.text(`${dimScore.toFixed(1)}% Technical`, margin + 175, curY + 10);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(5);
+      doc.setTextColor(100, 116, 139);
+      doc.text("5 Matrix Dims", margin + 175, curY + 18);
+
+      // Combined Rating
+      const combinedScore = typeof mg.consultantOverallScore === 'number' ? mg.consultantOverallScore : ((slaScore + dimScore) / 2);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7);
+      doc.setTextColor(79, 70, 229);
+      doc.text(`${combinedScore.toFixed(1)}%`, margin + 265, curY + 12);
+
+      // Consultant Grade Badge
+      let consGradeColor = [16, 185, 129];
+      if (mg.consultantGrade === 'B') consGradeColor = [13, 148, 136];
+      else if (mg.consultantGrade === 'C') consGradeColor = [217, 119, 6];
+      else if (mg.consultantGrade === 'D') consGradeColor = [234, 88, 12];
+      else if (mg.consultantGrade === 'F') consGradeColor = [220, 38, 38];
+
+      doc.setFillColor(consGradeColor[0], consGradeColor[1], consGradeColor[2]);
+      doc.roundedRect(margin + 335, curY + 3, 46, 14, 2, 2, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6);
+      doc.setTextColor(255, 255, 255);
+      doc.text(`GR ${mg.consultantGrade || 'B'}`, margin + 358, curY + 12.5, { align: 'center' });
+
+      // Status
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(5.5);
+      doc.setTextColor(mg.status === 'Approved' ? 5 : 71, mg.status === 'Approved' ? 150 : 85, mg.status === 'Approved' ? 105 : 105);
+      doc.text((mg.status || 'Finalized').toUpperCase(), margin + 388, curY + 12);
+
+      // Wrapped Findings Line by Line
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(5.8);
+      doc.setTextColor(71, 85, 105);
+      findingLines.forEach((line: string, lIdx: number) => {
+        doc.text(line, margin + 428, curY + 9 + (lIdx * 7.5));
+      });
+
+      curY += dynamicRowHeight;
+    });
+
+    curY += 16;
+
+    // Sign-Off Block
+    checkSpace(65);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(100, 116, 139);
+    doc.text("VERIFIED BY LEAD RESIDENT ENGINEER / PMO", margin + 15, curY + 12);
+    doc.text("ENDORSED BY CPMP DIRECTOR / ERA AUDIT", margin + 285, curY + 12);
+
+    doc.setDrawColor(203, 213, 225);
+    doc.line(margin + 15, curY + 34, margin + 210, curY + 34);
+    doc.line(margin + 285, curY + 34, margin + 480, curY + 34);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(148, 163, 184);
+    doc.text("SIGNATURE & OFFICIAL SEAL", margin + 15, curY + 43);
+    doc.text("SIGNATURE & OFFICIAL CPMP STAMP", margin + 285, curY + 43);
+
+    doc.save(`ERA_Supervision_Consultant_Grading_${p.name ? p.name.replace(/\s+/g, '_') : 'Project'}.pdf`);
+  };
+
+  // Dedicated Official Consolidated PDF Exporter for Both Contractor & Supervision Consultant (Separated into distinct sections)
+  const handleExportMonthlyGradingPDF = () => {
+    const doc = new jsPDF('p', 'pt', 'a4');
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 36;
+    const usableWidth = pageWidth - (margin * 2); // 523.28 pt
+    let curY = 36;
+
+    const checkSpace = (needed: number) => {
+      if (curY + needed > pageHeight - 45) {
+        doc.addPage();
+        curY = 36;
+        return true;
+      }
+      return false;
+    };
+
+    // Header Banner
+    doc.setFillColor(15, 23, 42); // slate-900
+    doc.roundedRect(margin, curY, usableWidth, 54, 4, 4, 'F');
+    
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.setTextColor(255, 255, 255);
+    doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA)", margin + 12, curY + 20);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(203, 213, 225);
+    doc.text("CONSOLIDATED MONTHLY CONTRACTOR & SUPERVISION CONSULTANT GRADING LEDGER", margin + 12, curY + 34);
+    doc.text(`AUDIT DATE: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`, margin + 12, curY + 45);
+
+    curY += 62;
+
+    // Project Metadata Box
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(margin, curY, usableWidth, 48, 3, 3, 'DF');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(51, 65, 85);
+    const projectName = `PROJECT: ${p.name || 'Untitled Project'} (${p.id || 'N/A'})`;
+    const projLines = doc.splitTextToSize(projectName, 300);
+    doc.text(projLines[0] || projectName, margin + 10, curY + 15);
+    doc.text(`Contractor: ${p.contractor || 'N/A'}`, margin + 10, curY + 28);
+    doc.text(`Consultant: ${consultantEval.firmName || p.consultant || 'N/A'}`, margin + 10, curY + 40);
+
+    doc.text(`TOTAL LENGTH: ${p.lengthKm || 0} KM`, margin + 310, curY + 15);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(71, 85, 105);
+    doc.text(`Contract Type: ${p.contractType === 'DB' ? 'Design-Build (DB)' : 'Design-Bid-Build (DBB)'}`, margin + 310, curY + 28);
+    doc.text(`Physical Progress: ${physicalProgress.toFixed(2)}% (Plan: ${plannedPct.toFixed(2)}%)`, margin + 310, curY + 40);
+
+    curY += 56;
+
+    // SECTION 1: CONTRACTOR MONTHLY PERFORMANCE & SPI LEDGER
+    checkSpace(50);
+    doc.setFillColor(15, 23, 42);
+    doc.roundedRect(margin, curY, usableWidth, 18, 2, 2, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(255, 255, 255);
+    doc.text("PART A: CONTRACTOR MONTHLY PHYSICAL PROGRESS & SCHEDULE EXECUTION LEDGER", margin + 8, curY + 12);
+    curY += 22;
+
+    // Contractor Table Header
+    doc.setFillColor(241, 245, 249);
+    doc.rect(margin, curY, usableWidth, 16, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6);
+    doc.setTextColor(71, 85, 105);
+    doc.text("MONTH / PERIOD", margin + 6, curY + 11);
+    doc.text("PLAN / ACTUAL %", margin + 80, curY + 11);
+    doc.text("VARIANCE", margin + 160, curY + 11);
+    doc.text("CUM ACT (SPI)", margin + 215, curY + 11);
+    doc.text("CONT. GRADE", margin + 278, curY + 11);
+    doc.text("STATUS", margin + 338, curY + 11);
+    doc.text("CONTRACTOR AUDIT REMARKS", margin + 382, curY + 11);
+
+    curY += 16;
+
+    const colWContRemarks = usableWidth - 376; // 147.28 pt
+    monthlyGradingRecords.forEach((mg, mgIdx) => {
+      const remarksText = mg.contractorRemarks || mg.notes || 'No specific contractor audit exceptions logged.';
+      const remarkLines = doc.splitTextToSize(remarksText, colWContRemarks - 8);
+      const dynamicRowHeight = Math.max(20, (remarkLines.length * 7.5) + 10);
+
+      checkSpace(dynamicRowHeight + 4);
+
+      const isEven = mgIdx % 2 === 0;
+      doc.setFillColor(isEven ? 255 : 248, isEven ? 255 : 250, isEven ? 255 : 252);
+      doc.setDrawColor(226, 232, 240);
+      doc.rect(margin, curY, usableWidth, dynamicRowHeight, 'DF');
+
+      // Month name
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.5);
+      doc.setTextColor(15, 23, 42);
+      doc.text(mg.monthName || mg.month, margin + 6, curY + 9);
+
+      // Monthly Plan vs Actual
+      const planM = typeof mg.contractorPlanMonthly === 'number' ? mg.contractorPlanMonthly : 0;
+      const actM = typeof mg.contractorActualMonthly === 'number' ? mg.contractorActualMonthly : 0;
+      const varM = typeof mg.contractorVariance === 'number' ? mg.contractorVariance : (actM - planM);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6);
+      doc.setTextColor(51, 65, 85);
+      doc.text(`P: ${planM.toFixed(2)}% | A: ${actM.toFixed(2)}%`, margin + 80, curY + 9);
+
+      // Variance
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6);
+      doc.setTextColor(varM >= 0 ? 5 : 220, varM >= 0 ? 150 : 38, varM >= 0 ? 105 : 38);
+      doc.text(`${varM >= 0 ? '+' : ''}${varM.toFixed(2)}%`, margin + 160, curY + 9);
+
+      // Cumulative & SPI
+      const cumAct = typeof mg.contractorActualCumulative === 'number' ? mg.contractorActualCumulative : 0;
+      const spi = typeof mg.contractorSpi === 'number' ? mg.contractorSpi : 1.0;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6);
+      doc.setTextColor(51, 65, 85);
+      doc.text(`${cumAct.toFixed(2)}% (SPI: ${spi.toFixed(2)})`, margin + 215, curY + 9);
+
+      // Grade Badge
+      let cGradeColor = [16, 185, 129];
+      if (mg.contractorGrade === 'B') cGradeColor = [13, 148, 136];
+      else if (mg.contractorGrade === 'C') cGradeColor = [217, 119, 6];
+      else if (mg.contractorGrade === 'D') cGradeColor = [234, 88, 12];
+      else if (mg.contractorGrade === 'F') cGradeColor = [220, 38, 38];
+
+      doc.setFillColor(cGradeColor[0], cGradeColor[1], cGradeColor[2]);
+      doc.roundedRect(margin + 278, curY + 2, 48, 12, 2, 2, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(5.5);
+      doc.setTextColor(255, 255, 255);
+      doc.text(`GR ${mg.contractorGrade || 'B'} • ${(mg.contractorScore || 80).toFixed(1)}%`, margin + 302, curY + 10, { align: 'center' });
+
+      // Status
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(5.5);
+      doc.setTextColor(mg.status === 'Approved' ? 5 : 71, mg.status === 'Approved' ? 150 : 85, mg.status === 'Approved' ? 105 : 105);
+      doc.text((mg.status || 'Finalized').toUpperCase(), margin + 338, curY + 9);
+
+      // Remarks
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(5.5);
+      doc.setTextColor(71, 85, 105);
+      remarkLines.forEach((line: string, lIdx: number) => {
+        doc.text(line, margin + 382, curY + 8 + (lIdx * 7));
+      });
+
+      curY += dynamicRowHeight;
+    });
+
+    curY += 16;
+
+    // SECTION 2: SUPERVISION CONSULTANT DUAL-PILLAR AUDIT LEDGER
+    checkSpace(50);
+    doc.setFillColor(79, 70, 229); // indigo-600
+    doc.roundedRect(margin, curY, usableWidth, 18, 2, 2, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(255, 255, 255);
+    doc.text("PART B: SUPERVISION CONSULTANT DUAL-PILLAR COMPLIANCE & SLA LEDGER", margin + 8, curY + 12);
+    curY += 22;
+
+    // Consultant Table Header
+    doc.setFillColor(241, 245, 249);
+    doc.rect(margin, curY, usableWidth, 16, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6);
+    doc.setTextColor(71, 85, 105);
+    doc.text("MONTH / PERIOD", margin + 6, curY + 11);
+    doc.text("PILLAR 1: SLA ON-TIME %", margin + 80, curY + 11);
+    doc.text("PILLAR 2: 5-DIM TECH %", margin + 175, curY + 11);
+    doc.text("COMBINED RATING", margin + 265, curY + 11);
+    doc.text("CONS. GRADE", margin + 335, curY + 11);
+    doc.text("STATUS", margin + 388, curY + 11);
+    doc.text("SUPERVISORY FINDINGS & OBSERVATIONS", margin + 428, curY + 11);
+
+    curY += 16;
+
+    const colWConsRemarks = usableWidth - 422; // 101.28 pt
+    monthlyGradingRecords.forEach((mg, mgIdx) => {
+      const findingsText = mg.consultantRemarks || mg.notes || 'Standard supervisory inspection and submittal compliance logged.';
+      const findingLines = doc.splitTextToSize(findingsText, colWConsRemarks - 8);
+      const dynamicRowHeight = Math.max(20, (findingLines.length * 7.5) + 10);
+
+      checkSpace(dynamicRowHeight + 4);
+
+      const isEven = mgIdx % 2 === 0;
+      doc.setFillColor(isEven ? 255 : 248, isEven ? 255 : 250, isEven ? 255 : 252);
+      doc.setDrawColor(226, 232, 240);
+      doc.rect(margin, curY, usableWidth, dynamicRowHeight, 'DF');
+
+      // Month name
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.5);
+      doc.setTextColor(15, 23, 42);
+      doc.text(mg.monthName || mg.month, margin + 6, curY + 9);
+
+      // SLA Turnaround
+      const slaScore = typeof mg.consultantSlaTurnaroundScore === 'number' ? mg.consultantSlaTurnaroundScore : 85;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6);
+      doc.setTextColor(51, 65, 85);
+      doc.text(`${slaScore.toFixed(1)}% (Avg RFI ${mg.consultantAvgRfiDays || 6}d)`, margin + 80, curY + 9);
+
+      // 5-Dim Tech
+      const dimScore = typeof mg.consultantFiveDimScore === 'number' ? mg.consultantFiveDimScore : 80;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6);
+      doc.setTextColor(51, 65, 85);
+      doc.text(`${dimScore.toFixed(1)}% Technical`, margin + 175, curY + 9);
+
+      // Combined Rating
+      const combinedScore = typeof mg.consultantOverallScore === 'number' ? mg.consultantOverallScore : ((slaScore + dimScore) / 2);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.5);
+      doc.setTextColor(79, 70, 229);
+      doc.text(`${combinedScore.toFixed(1)}%`, margin + 265, curY + 9);
+
+      // Grade Badge
+      let consGradeColor = [16, 185, 129];
+      if (mg.consultantGrade === 'B') consGradeColor = [13, 148, 136];
+      else if (mg.consultantGrade === 'C') consGradeColor = [217, 119, 6];
+      else if (mg.consultantGrade === 'D') consGradeColor = [234, 88, 12];
+      else if (mg.consultantGrade === 'F') consGradeColor = [220, 38, 38];
+
+      doc.setFillColor(consGradeColor[0], consGradeColor[1], consGradeColor[2]);
+      doc.roundedRect(margin + 335, curY + 2, 44, 12, 2, 2, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(5.5);
+      doc.setTextColor(255, 255, 255);
+      doc.text(`GR ${mg.consultantGrade || 'B'}`, margin + 357, curY + 10, { align: 'center' });
+
+      // Status
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(5.5);
+      doc.setTextColor(mg.status === 'Approved' ? 5 : 71, mg.status === 'Approved' ? 150 : 85, mg.status === 'Approved' ? 105 : 105);
+      doc.text((mg.status || 'Finalized').toUpperCase(), margin + 388, curY + 9);
+
+      // Findings
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(5.5);
+      doc.setTextColor(71, 85, 105);
+      findingLines.forEach((line: string, lIdx: number) => {
+        doc.text(line, margin + 428, curY + 8 + (lIdx * 7));
+      });
+
+      curY += dynamicRowHeight;
+    });
+
+    curY += 16;
+
+    // Sign-Off Block
+    checkSpace(65);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(100, 116, 139);
+    doc.text("VERIFIED BY LEAD RESIDENT ENGINEER / PMO", margin + 15, curY + 12);
+    doc.text("ENDORSED BY CPMP DIRECTOR / ERA AUDIT", margin + 285, curY + 12);
+
+    doc.setDrawColor(203, 213, 225);
+    doc.line(margin + 15, curY + 34, margin + 210, curY + 34);
+    doc.line(margin + 285, curY + 34, margin + 480, curY + 34);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(148, 163, 184);
+    doc.text("SIGNATURE & OFFICIAL SEAL", margin + 15, curY + 43);
+    doc.text("SIGNATURE & OFFICIAL CPMP STAMP", margin + 285, curY + 43);
+
+    doc.save(`ERA_Consolidated_Monthly_Grading_Ledger_${p.name ? p.name.replace(/\s+/g, '_') : 'Project'}.pdf`);
+  };
+
   return (
     <div className="space-y-4">
       {/* Dynamic Printing Style CSS Injection safely inside React */}
@@ -1666,6 +2601,858 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory }:
                     })}
                   </tbody>
                 </table>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </section>
+
+        {/* Collapsible Monthly Contractor & Supervision Consultant Grading Ledger */}
+        <section className="bg-white dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/60 rounded-xl shadow-xs overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setIsMonthlyGradingOpen(!isMonthlyGradingOpen)}
+            className="w-full flex items-center justify-between p-3.5 bg-slate-50/80 dark:bg-slate-800 hover:bg-slate-100/80 dark:hover:bg-slate-750 transition duration-150 text-left cursor-pointer"
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="p-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-900/50">
+                <Award className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-xs font-bold text-slate-800 dark:text-zinc-150 uppercase tracking-wider flex items-center gap-2">
+                  Monthly Contractor & Supervision Consultant Grading Ledger
+                  <span className="text-[10px] font-semibold tracking-normal text-amber-700 dark:text-amber-300 normal-case bg-amber-100/70 dark:bg-amber-950/50 px-2 py-0.5 rounded-full border border-amber-200/50 dark:border-amber-800/40">
+                    {monthlyGradingRecords.length} Audited Months
+                  </span>
+                </h3>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                  Multi-month performance ledger tracking contractor physical SPI execution vs. consultant dual-pillar technical ratings.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
+              <span>{isMonthlyGradingOpen ? 'Hide Grading Ledger' : 'Show Grading Ledger'}</span>
+              <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isMonthlyGradingOpen ? 'rotate-180' : ''}`} />
+            </div>
+          </button>
+
+          <AnimatePresence>
+            {isMonthlyGradingOpen && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="border-t border-slate-200/70 dark:border-slate-700/60 p-4 space-y-4"
+              >
+                {/* Mode Selector Tabs (Contractor Records vs Supervision Consultant Records vs Comparative View) */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-750">
+                  <div className="inline-flex p-1 bg-slate-100 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => setGradingActiveTab('contractor')}
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        gradingActiveTab === 'contractor'
+                          ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-xs'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                      }`}
+                    >
+                      <HardHat className="w-3.5 h-3.5 text-amber-500" />
+                      <span>Contractor Records</span>
+                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-slate-200/70 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                        {monthlyGradingRecords.length}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setGradingActiveTab('consultant')}
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        gradingActiveTab === 'consultant'
+                          ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                      }`}
+                    >
+                      <Briefcase className="w-3.5 h-3.5 text-indigo-500" />
+                      <span>Supervision Consultant Records</span>
+                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-slate-200/70 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                        {monthlyGradingRecords.length}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setGradingActiveTab('both')}
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        gradingActiveTab === 'both'
+                          ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-xs'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                      }`}
+                    >
+                      <Layers className="w-3.5 h-3.5 text-slate-500" />
+                      <span>Joint / Comparative</span>
+                    </button>
+                  </div>
+
+                  {/* Filter Period & Actions */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Period:</span>
+                      <select
+                        value={selectedGradingMonthFilter}
+                        onChange={(e) => setSelectedGradingMonthFilter(e.target.value)}
+                        className="text-xs font-semibold py-1.5 px-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-200 cursor-pointer shadow-xs focus:ring-1 focus:ring-amber-500"
+                      >
+                        <option value="All">All Months ({monthlyGradingRecords.length})</option>
+                        {monthlyGradingRecords.map((r) => (
+                          <option key={r.id} value={r.month}>
+                            {r.monthName || r.month}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* PDF Export Action Buttons */}
+                    {gradingActiveTab === 'contractor' && (
+                      <button
+                        type="button"
+                        onClick={handleExportContractorGradingPDF}
+                        className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/60 text-amber-800 dark:text-amber-200 rounded-lg transition-colors border border-amber-200 dark:border-amber-800/60 cursor-pointer"
+                        title="Export Contractor Monthly Performance PDF Report"
+                      >
+                        <Download className="w-3.5 h-3.5 text-amber-600" />
+                        <span>Export Contractor PDF</span>
+                      </button>
+                    )}
+
+                    {gradingActiveTab === 'consultant' && (
+                      <button
+                        type="button"
+                        onClick={handleExportConsultantGradingPDF}
+                        className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/60 text-indigo-800 dark:text-indigo-200 rounded-lg transition-colors border border-indigo-200 dark:border-indigo-800/60 cursor-pointer"
+                        title="Export Supervision Consultant SLA & Technical PDF Report"
+                      >
+                        <Download className="w-3.5 h-3.5 text-indigo-600" />
+                        <span>Export Consultant PDF</span>
+                      </button>
+                    )}
+
+                    {gradingActiveTab === 'both' && (
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={handleExportMonthlyGradingPDF}
+                          className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-650 text-slate-700 dark:text-slate-200 rounded-lg transition-colors border border-slate-200 dark:border-slate-600 cursor-pointer"
+                          title="Export Consolidated Dual-Ledger PDF"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          <span>Export Joint PDF</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleExportContractorGradingPDF}
+                          className="p-1.5 text-slate-600 dark:text-slate-300 hover:text-amber-600 dark:hover:text-amber-400 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg"
+                          title="Export Contractor Only PDF"
+                        >
+                          <HardHat className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleExportConsultantGradingPDF}
+                          className="p-1.5 text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg"
+                          title="Export Consultant Only PDF"
+                        >
+                          <Briefcase className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={openCreateGradingModal}
+                      className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg transition-colors shadow-xs cursor-pointer dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Record Month</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* TAB 1: CONTRACTOR PERFORMANCE LEDGER VIEW */}
+                {gradingActiveTab === 'contractor' && (
+                  <div className="space-y-4">
+                    {/* Contractor Metrics Ribbon */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      {(() => {
+                        const latest = monthlyGradingRecords[0];
+                        if (!latest) return null;
+                        let badgeBg = "bg-emerald-500 text-white";
+                        if (latest.contractorGrade === 'C') badgeBg = "bg-amber-500 text-white";
+                        else if (latest.contractorGrade === 'D' || latest.contractorGrade === 'F') badgeBg = "bg-rose-500 text-white";
+                        
+                        return (
+                          <div className="p-3 bg-amber-50/40 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-900/40 rounded-xl space-y-1.5 flex flex-col justify-between">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[9px] font-black text-amber-700 dark:text-amber-400 uppercase tracking-wider font-mono">LATEST CONTRACTOR AUDIT</span>
+                              <span className={`text-[10px] font-black px-2 py-0.5 rounded-md ${badgeBg}`}>
+                                GRADE {latest.contractorGrade} • {latest.contractorScore.toFixed(1)}%
+                              </span>
+                            </div>
+                            <div className="flex items-baseline justify-between">
+                              <div>
+                                <span className="text-xs font-black text-slate-800 dark:text-slate-200 block">{latest.monthName}</span>
+                                <span className="text-[10px] text-slate-500">{latest.contractorStanding}</span>
+                              </div>
+                              <div className="text-right font-mono">
+                                <span className="text-[10px] text-slate-400 block">SPI Index</span>
+                                <span className={`text-xs font-extrabold ${latest.contractorSpi >= 1 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>{latest.contractorSpi.toFixed(2)}</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      <div className="p-3 bg-slate-50/70 dark:bg-slate-900/50 border border-slate-200/70 dark:border-slate-800 rounded-xl space-y-1.5 flex flex-col justify-between">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider font-mono">SCHEDULE HEALTH</span>
+                          <span className="text-[9px] font-black text-slate-600 dark:text-slate-300 bg-slate-200/60 dark:bg-slate-800 px-2 py-0.5 rounded-md font-mono">
+                            PHYSICAL PROGRESS
+                          </span>
+                        </div>
+                        <div className="flex items-baseline justify-between">
+                          <div>
+                            <span className="text-xs font-black text-slate-800 dark:text-slate-200 block">Actual: {physicalProgress.toFixed(2)}%</span>
+                            <span className="text-[10px] text-slate-500">Planned Target: {plannedPct.toFixed(2)}%</span>
+                          </div>
+                          <div className="text-right font-mono">
+                            <span className="text-[10px] text-slate-400 block">Net Slippage</span>
+                            <span className={`text-xs font-extrabold ${(plannedPct - physicalProgress) <= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                              {((plannedPct - physicalProgress) * -1).toFixed(2)}%
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="p-3 bg-slate-50/70 dark:bg-slate-900/50 border border-slate-200/70 dark:border-slate-800 rounded-xl space-y-1.5 flex flex-col justify-between">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider font-mono">HISTORICAL AVERAGE</span>
+                          <span className="text-[9px] font-black text-slate-600 dark:text-slate-300 bg-slate-200/60 dark:bg-slate-800 px-2 py-0.5 rounded-md font-mono">
+                            {monthlyGradingRecords.length} MONTHS
+                          </span>
+                        </div>
+                        <div className="flex items-baseline justify-between">
+                          <div>
+                            <span className="text-xs font-black text-slate-800 dark:text-slate-200 block">
+                              {(monthlyGradingRecords.reduce((acc, r) => acc + r.contractorScore, 0) / (monthlyGradingRecords.length || 1)).toFixed(1)}% Avg Score
+                            </span>
+                            <span className="text-[10px] text-slate-500">{p.contractor || 'Assigned Contractor'}</span>
+                          </div>
+                          <div className="text-right font-mono">
+                            <span className="text-[10px] text-slate-400 block">Audited Cycles</span>
+                            <span className="text-xs font-bold text-slate-700 dark:text-slate-300">{monthlyGradingRecords.length} Cycles</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Dedicated Contractor Table */}
+                    <div className="border border-slate-200/80 dark:border-slate-700/60 rounded-xl bg-white dark:bg-slate-900 overflow-hidden shadow-xs">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse text-xs">
+                          <thead>
+                            <tr className="bg-amber-50/70 dark:bg-amber-950/30 text-slate-700 dark:text-slate-300 border-b border-amber-200/70 dark:border-amber-900/50 font-extrabold text-[10px] uppercase tracking-wide">
+                              <th className="py-2.5 px-3.5 text-left">Month / Audit Period</th>
+                              <th className="py-2.5 px-3.5 text-left">Monthly Plan vs Actual %</th>
+                              <th className="py-2.5 px-3 text-center">Variance %</th>
+                              <th className="py-2.5 px-3.5 text-left">Cumulative Actual % (SPI)</th>
+                              <th className="py-2.5 px-3 text-center">Contractor Grade</th>
+                              <th className="py-2.5 px-3.5 text-left">Contractor Remarks & Delay Exceptions</th>
+                              <th className="py-2.5 px-3 text-center w-24 no-print">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 font-normal font-sans">
+                            {filteredMonthlyGradingRecords.map((rec, rIdx) => {
+                              const varM = typeof rec.contractorVariance === 'number' ? rec.contractorVariance : (rec.contractorActualMonthly - rec.contractorPlanMonthly);
+                              
+                              let contGradeBadge = "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800";
+                              if (rec.contractorGrade === 'B') contGradeBadge = "bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300 border-teal-200 dark:border-teal-800";
+                              else if (rec.contractorGrade === 'C') contGradeBadge = "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border-amber-200 dark:border-amber-800";
+                              else if (rec.contractorGrade === 'D' || rec.contractorGrade === 'F') contGradeBadge = "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border-rose-200 dark:border-rose-800";
+
+                              return (
+                                <tr key={rec.id || `mgrad-cont-${rIdx}`} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
+                                  {/* Month & Period */}
+                                  <td className="py-2.5 px-3.5">
+                                    <div className="font-extrabold text-slate-850 dark:text-white">
+                                      {rec.monthName || rec.month}
+                                    </div>
+                                    <div className="flex items-center gap-1.5 mt-0.5">
+                                      <span className="text-[9px] text-slate-400 font-mono">Rec: {rec.recordedDate}</span>
+                                      <span className={`text-[8px] font-bold px-1.5 py-0.2 rounded uppercase ${
+                                        rec.status === 'Approved' 
+                                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200' 
+                                          : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                                      }`}>
+                                        {rec.status || 'Finalized'}
+                                      </span>
+                                    </div>
+                                  </td>
+
+                                  {/* Monthly Plan vs Actual */}
+                                  <td className="py-2.5 px-3.5">
+                                    <div className="flex items-center gap-2 font-mono text-[10px]">
+                                      <span className="text-slate-500">Plan: <strong className="text-slate-700 dark:text-slate-300">{rec.contractorPlanMonthly.toFixed(2)}%</strong></span>
+                                      <span className="text-slate-500">Act: <strong className="text-slate-900 dark:text-white">{rec.contractorActualMonthly.toFixed(2)}%</strong></span>
+                                    </div>
+                                  </td>
+
+                                  {/* Variance */}
+                                  <td className="py-2.5 px-3 text-center font-mono">
+                                    <span className={`inline-block px-2 py-0.5 rounded font-bold text-[9.5px] ${
+                                      varM >= 0 ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400' : 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400'
+                                    }`}>
+                                      {varM >= 0 ? '+' : ''}{varM.toFixed(2)}%
+                                    </span>
+                                  </td>
+
+                                  {/* Cumulative Actual & SPI */}
+                                  <td className="py-2.5 px-3.5 font-mono text-[10px]">
+                                    <div className="text-slate-800 dark:text-slate-200 font-bold">
+                                      {rec.contractorActualCumulative.toFixed(2)}% Cumulative
+                                    </div>
+                                    <div className="flex items-center gap-1 mt-0.5">
+                                      <span className="text-[9px] text-slate-400">SPI:</span>
+                                      <span className={`text-[9.5px] font-bold ${rec.contractorSpi >= 1 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
+                                        {rec.contractorSpi.toFixed(2)} ({rec.contractorSpi >= 1 ? 'On-track' : 'Delayed'})
+                                      </span>
+                                    </div>
+                                  </td>
+
+                                  {/* Contractor Grade */}
+                                  <td className="py-2.5 px-3 text-center">
+                                    <div className={`inline-flex flex-col items-center px-2.5 py-1 rounded-xl border ${contGradeBadge}`}>
+                                      <span className="text-xs font-black">Grade {rec.contractorGrade}</span>
+                                      <span className="text-[9px] font-mono font-extrabold">{rec.contractorScore.toFixed(1)}%</span>
+                                    </div>
+                                    <span className="block text-[8.5px] text-slate-400 mt-1 max-w-[110px] mx-auto truncate" title={rec.contractorStanding}>
+                                      {rec.contractorStanding}
+                                    </span>
+                                  </td>
+
+                                  {/* Remarks & Audit Notes */}
+                                  <td className="py-2.5 px-3.5">
+                                    <p className="text-[10px] text-slate-600 dark:text-slate-300 leading-normal break-words max-w-md">
+                                      {rec.contractorRemarks || rec.notes || 'No specific contractor delay exceptions logged for this audit cycle.'}
+                                    </p>
+                                  </td>
+
+                                  {/* Actions */}
+                                  <td className="py-2.5 px-3 text-center no-print">
+                                    <div className="flex items-center justify-center gap-1.5">
+                                      <button
+                                        type="button"
+                                        onClick={() => setSelectedGradingDetailModal(rec)}
+                                        className="p-1 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer"
+                                        title="View Detailed Monthly Audit Breakdown"
+                                      >
+                                        <Eye className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => openEditGradingModal(rec)}
+                                        className="p-1 text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer"
+                                        title="Edit Month Grading"
+                                      >
+                                        <Edit3 className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteGradingRecord(rec.id)}
+                                        className="p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors cursor-pointer"
+                                        title="Delete Record"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+
+                            {filteredMonthlyGradingRecords.length === 0 && (
+                              <tr>
+                                <td colSpan={7} className="p-8 text-center text-slate-400 text-xs font-medium">
+                                  No monthly contractor grading records found.
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* TAB 2: SUPERVISION CONSULTANT LEDGER VIEW */}
+                {gradingActiveTab === 'consultant' && (
+                  <div className="space-y-4">
+                    {/* Consultant Metrics Ribbon */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      {(() => {
+                        const latest = monthlyGradingRecords[0];
+                        if (!latest) return null;
+                        let badgeBg = "bg-indigo-600 text-white";
+                        if (latest.consultantGrade === 'C') badgeBg = "bg-amber-500 text-white";
+                        else if (latest.consultantGrade === 'D' || latest.consultantGrade === 'F') badgeBg = "bg-rose-500 text-white";
+
+                        return (
+                          <div className="p-3 bg-indigo-50/40 dark:bg-indigo-950/20 border border-indigo-200/60 dark:border-indigo-900/40 rounded-xl space-y-1.5 flex flex-col justify-between">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[9px] font-black text-indigo-700 dark:text-indigo-400 uppercase tracking-wider font-mono">LATEST CONSULTANT AUDIT</span>
+                              <span className={`text-[10px] font-black px-2 py-0.5 rounded-md ${badgeBg}`}>
+                                GRADE {latest.consultantGrade} • {latest.consultantOverallScore.toFixed(1)}%
+                              </span>
+                            </div>
+                            <div className="flex items-baseline justify-between">
+                              <div>
+                                <span className="text-xs font-black text-slate-800 dark:text-slate-200 block">{latest.monthName}</span>
+                                <span className="text-[10px] text-slate-500">{latest.consultantStanding}</span>
+                              </div>
+                              <div className="text-right font-mono">
+                                <span className="text-[10px] text-slate-400 block">SLA Rate</span>
+                                <span className="text-xs font-extrabold text-emerald-600 dark:text-emerald-400">{latest.consultantSlaTurnaroundScore.toFixed(1)}%</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      <div className="p-3 bg-slate-50/70 dark:bg-slate-900/50 border border-slate-200/70 dark:border-slate-800 rounded-xl space-y-1.5 flex flex-col justify-between">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider font-mono">DUAL-PILLAR BREAKDOWN</span>
+                          <span className="text-[9px] font-black text-slate-600 dark:text-slate-300 bg-slate-200/60 dark:bg-slate-800 px-2 py-0.5 rounded-md font-mono">
+                            WEIGHTED SLA + TECH
+                          </span>
+                        </div>
+                        <div className="space-y-1 text-[10px]">
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">Pillar 1 (SLA Turnaround):</span>
+                            <span className="font-bold font-mono text-slate-800 dark:text-slate-200">
+                              {consultantEval.metrics.slaOnTimeRate.toFixed(1)}% On-Time
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">Pillar 2 (5-Dim Matrix):</span>
+                            <span className="font-bold font-mono text-slate-800 dark:text-slate-200">
+                              {consultantEval.metrics.fiveDimScore.toFixed(1)}% Technical
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="p-3 bg-slate-50/70 dark:bg-slate-900/50 border border-slate-200/70 dark:border-slate-800 rounded-xl space-y-1.5 flex flex-col justify-between">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider font-mono">CONSULTANT FIRM</span>
+                          <span className="text-[9px] font-black text-slate-600 dark:text-slate-300 bg-slate-200/60 dark:bg-slate-800 px-2 py-0.5 rounded-md font-mono">
+                            {monthlyGradingRecords.length} MONTHS
+                          </span>
+                        </div>
+                        <div className="flex items-baseline justify-between">
+                          <div>
+                            <span className="text-xs font-black text-slate-800 dark:text-slate-200 block truncate max-w-[160px]">
+                              {consultantEval.firmName || p.consultant || 'Assigned Consultant'}
+                            </span>
+                            <span className="text-[10px] text-slate-500">
+                              Avg: {(monthlyGradingRecords.reduce((acc, r) => acc + r.consultantOverallScore, 0) / (monthlyGradingRecords.length || 1)).toFixed(1)}%
+                            </span>
+                          </div>
+                          <div className="text-right font-mono">
+                            <span className="text-[10px] text-slate-400 block">Official Grade</span>
+                            <span className="text-xs font-extrabold text-indigo-600 dark:text-indigo-400">Grade {consultantEval.officialGrade}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Dedicated Supervision Consultant Table */}
+                    <div className="border border-slate-200/80 dark:border-slate-700/60 rounded-xl bg-white dark:bg-slate-900 overflow-hidden shadow-xs">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse text-xs">
+                          <thead>
+                            <tr className="bg-indigo-50/70 dark:bg-indigo-950/30 text-slate-700 dark:text-slate-300 border-b border-indigo-200/70 dark:border-indigo-900/50 font-extrabold text-[10px] uppercase tracking-wide">
+                              <th className="py-2.5 px-3.5 text-left">Month / Audit Period</th>
+                              <th className="py-2.5 px-3.5 text-left">Pillar 1: SLA On-Time %</th>
+                              <th className="py-2.5 px-3.5 text-left">Pillar 2: 5-Dim Tech %</th>
+                              <th className="py-2.5 px-3 text-center">Combined Rating %</th>
+                              <th className="py-2.5 px-3 text-center">Consultant Grade</th>
+                              <th className="py-2.5 px-3.5 text-left">Supervisory Directives & Observations</th>
+                              <th className="py-2.5 px-3 text-center w-24 no-print">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 font-normal font-sans">
+                            {filteredMonthlyGradingRecords.map((rec, rIdx) => {
+                              let consGradeBadge = "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800";
+                              if (rec.consultantGrade === 'A') consGradeBadge = "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800";
+                              else if (rec.consultantGrade === 'C') consGradeBadge = "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border-amber-200 dark:border-amber-800";
+                              else if (rec.consultantGrade === 'D' || rec.consultantGrade === 'F') consGradeBadge = "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border-rose-200 dark:border-rose-800";
+
+                              return (
+                                <tr key={rec.id || `mgrad-cons-${rIdx}`} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
+                                  {/* Month & Period */}
+                                  <td className="py-2.5 px-3.5">
+                                    <div className="font-extrabold text-slate-850 dark:text-white">
+                                      {rec.monthName || rec.month}
+                                    </div>
+                                    <div className="flex items-center gap-1.5 mt-0.5">
+                                      <span className="text-[9px] text-slate-400 font-mono">Rec: {rec.recordedDate}</span>
+                                      <span className={`text-[8px] font-bold px-1.5 py-0.2 rounded uppercase ${
+                                        rec.status === 'Approved' 
+                                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200' 
+                                          : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                                      }`}>
+                                        {rec.status || 'Finalized'}
+                                      </span>
+                                    </div>
+                                  </td>
+
+                                  {/* Pillar 1 SLA */}
+                                  <td className="py-2.5 px-3.5">
+                                    <div className="font-mono text-[10px] font-bold text-slate-800 dark:text-slate-200">
+                                      {rec.consultantSlaTurnaroundScore.toFixed(1)}% On-Time
+                                    </div>
+                                    <div className="text-[9px] text-slate-400 font-mono mt-0.5">
+                                      Avg RFI: {rec.consultantAvgRfiDays || 6} days
+                                    </div>
+                                  </td>
+
+                                  {/* Pillar 2 5-Dim Tech */}
+                                  <td className="py-2.5 px-3.5">
+                                    <div className="font-mono text-[10px] font-bold text-slate-800 dark:text-slate-200">
+                                      {rec.consultantFiveDimScore.toFixed(1)}% Technical
+                                    </div>
+                                    <div className="text-[9px] text-slate-400 font-mono mt-0.5">
+                                      5 Evaluation Dimensions
+                                    </div>
+                                  </td>
+
+                                  {/* Combined Rating */}
+                                  <td className="py-2.5 px-3 text-center font-mono">
+                                    <span className="inline-block px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 font-extrabold text-[10px] border border-indigo-100 dark:border-indigo-900/50">
+                                      {rec.consultantOverallScore.toFixed(1)}%
+                                    </span>
+                                  </td>
+
+                                  {/* Consultant Grade */}
+                                  <td className="py-2.5 px-3 text-center">
+                                    <div className={`inline-flex flex-col items-center px-2.5 py-1 rounded-xl border ${consGradeBadge}`}>
+                                      <span className="text-xs font-black">Grade {rec.consultantGrade}</span>
+                                      <span className="text-[9px] font-mono font-extrabold">{rec.consultantOverallScore.toFixed(1)}%</span>
+                                    </div>
+                                    <span className="block text-[8.5px] text-slate-400 mt-1 max-w-[110px] mx-auto truncate" title={rec.consultantStanding}>
+                                      {rec.consultantStanding}
+                                    </span>
+                                  </td>
+
+                                  {/* Remarks & Audit Notes */}
+                                  <td className="py-2.5 px-3.5">
+                                    <p className="text-[10px] text-slate-600 dark:text-slate-300 leading-normal break-words max-w-md">
+                                      {rec.consultantRemarks || rec.notes || 'Standard supervisory inspection and submittal compliance logged.'}
+                                    </p>
+                                  </td>
+
+                                  {/* Actions */}
+                                  <td className="py-2.5 px-3 text-center no-print">
+                                    <div className="flex items-center justify-center gap-1.5">
+                                      <button
+                                        type="button"
+                                        onClick={() => setSelectedGradingDetailModal(rec)}
+                                        className="p-1 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer"
+                                        title="View Detailed Monthly Audit Breakdown"
+                                      >
+                                        <Eye className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => openEditGradingModal(rec)}
+                                        className="p-1 text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer"
+                                        title="Edit Month Grading"
+                                      >
+                                        <Edit3 className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteGradingRecord(rec.id)}
+                                        className="p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors cursor-pointer"
+                                        title="Delete Record"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+
+                            {filteredMonthlyGradingRecords.length === 0 && (
+                              <tr>
+                                <td colSpan={7} className="p-8 text-center text-slate-400 text-xs font-medium">
+                                  No monthly consultant grading records found.
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* TAB 3: JOINT / COMPARATIVE DUAL VIEW */}
+                {gradingActiveTab === 'both' && (
+                  <div className="space-y-4">
+                    {/* Top Summary Cards Ribbon */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      {/* Card 1: Latest Month Contractor Standing */}
+                      {(() => {
+                        const latest = monthlyGradingRecords[0];
+                        if (!latest) return null;
+                        let badgeBg = "bg-emerald-500 text-white";
+                        if (latest.contractorGrade === 'C') badgeBg = "bg-amber-500 text-white";
+                        else if (latest.contractorGrade === 'D' || latest.contractorGrade === 'F') badgeBg = "bg-rose-500 text-white";
+                        
+                        return (
+                          <div className="p-3 bg-slate-50/70 dark:bg-slate-900/50 border border-slate-200/70 dark:border-slate-800 rounded-xl space-y-1.5 flex flex-col justify-between">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider font-mono">LATEST CONTRACTOR AUDIT</span>
+                              <span className={`text-[10px] font-black px-2 py-0.5 rounded-md ${badgeBg}`}>
+                                GRADE {latest.contractorGrade} • {latest.contractorScore.toFixed(1)}%
+                              </span>
+                            </div>
+                            <div className="flex items-baseline justify-between">
+                              <div>
+                                <span className="text-xs font-black text-slate-800 dark:text-slate-200 block">{latest.monthName}</span>
+                                <span className="text-[10px] text-slate-500">{latest.contractorStanding}</span>
+                              </div>
+                              <div className="text-right font-mono">
+                                <span className="text-[10px] text-slate-400 block">SPI Index</span>
+                                <span className={`text-xs font-extrabold ${latest.contractorSpi >= 1 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>{latest.contractorSpi.toFixed(2)}</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      {/* Card 2: Latest Month Consultant Standing */}
+                      {(() => {
+                        const latest = monthlyGradingRecords[0];
+                        if (!latest) return null;
+                        let badgeBg = "bg-indigo-600 text-white";
+                        if (latest.consultantGrade === 'C') badgeBg = "bg-amber-500 text-white";
+                        else if (latest.consultantGrade === 'D' || latest.consultantGrade === 'F') badgeBg = "bg-rose-500 text-white";
+
+                        return (
+                          <div className="p-3 bg-slate-50/70 dark:bg-slate-900/50 border border-slate-200/70 dark:border-slate-800 rounded-xl space-y-1.5 flex flex-col justify-between">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider font-mono">LATEST CONSULTANT AUDIT</span>
+                              <span className={`text-[10px] font-black px-2 py-0.5 rounded-md ${badgeBg}`}>
+                                GRADE {latest.consultantGrade} • {latest.consultantOverallScore.toFixed(1)}%
+                              </span>
+                            </div>
+                            <div className="flex items-baseline justify-between">
+                              <div>
+                                <span className="text-xs font-black text-slate-800 dark:text-slate-200 block">{latest.monthName}</span>
+                                <span className="text-[10px] text-slate-500">{latest.consultantStanding}</span>
+                              </div>
+                              <div className="text-right font-mono">
+                                <span className="text-[10px] text-slate-400 block">SLA Rate</span>
+                                <span className="text-xs font-extrabold text-emerald-600 dark:text-emerald-400">{latest.consultantSlaTurnaroundScore.toFixed(1)}%</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      {/* Card 3: Historical Audit Overview */}
+                      <div className="p-3 bg-slate-50/70 dark:bg-slate-900/50 border border-slate-200/70 dark:border-slate-800 rounded-xl space-y-1.5 flex flex-col justify-between">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider font-mono">HISTORICAL REPOSITORY</span>
+                          <span className="text-[9px] font-black text-slate-600 dark:text-slate-300 bg-slate-200/60 dark:bg-slate-800 px-2 py-0.5 rounded-md font-mono">
+                            {monthlyGradingRecords.length} MONTHS
+                          </span>
+                        </div>
+                        <div className="space-y-1 text-[10px]">
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">Contractor Avg Score:</span>
+                            <span className="font-bold font-mono text-slate-800 dark:text-slate-200">
+                              {(monthlyGradingRecords.reduce((acc, r) => acc + r.contractorScore, 0) / (monthlyGradingRecords.length || 1)).toFixed(1)}%
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">Consultant Avg Score:</span>
+                            <span className="font-bold font-mono text-slate-800 dark:text-slate-200">
+                              {(monthlyGradingRecords.reduce((acc, r) => acc + r.consultantOverallScore, 0) / (monthlyGradingRecords.length || 1)).toFixed(1)}%
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Joint Table */}
+                    <div className="border border-slate-200/80 dark:border-slate-700/60 rounded-xl bg-white dark:bg-slate-900 overflow-hidden shadow-xs">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse text-xs">
+                          <thead>
+                            <tr className="bg-slate-100/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-b border-slate-200/80 dark:border-slate-700 font-extrabold text-[10px] uppercase tracking-wide">
+                              <th className="py-2.5 px-3.5 text-left">Month / Audit Period</th>
+                              <th className="py-2.5 px-3.5 text-left">Contractor Monthly Execution</th>
+                              <th className="py-2.5 px-3 text-center">Contractor Grade</th>
+                              <th className="py-2.5 px-3.5 text-left">Consultant Dual-Pillar Evaluation</th>
+                              <th className="py-2.5 px-3 text-center">Consultant Grade</th>
+                              <th className="py-2.5 px-3.5 text-left">Audit Remarks & Exceptions</th>
+                              <th className="py-2.5 px-3 text-center w-24 no-print">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 font-normal font-sans">
+                            {filteredMonthlyGradingRecords.map((rec, rIdx) => {
+                              const varM = typeof rec.contractorVariance === 'number' ? rec.contractorVariance : (rec.contractorActualMonthly - rec.contractorPlanMonthly);
+                              
+                              let contGradeBadge = "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800";
+                              if (rec.contractorGrade === 'B') contGradeBadge = "bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300 border-teal-200 dark:border-teal-800";
+                              else if (rec.contractorGrade === 'C') contGradeBadge = "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border-amber-200 dark:border-amber-800";
+                              else if (rec.contractorGrade === 'D' || rec.contractorGrade === 'F') contGradeBadge = "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border-rose-200 dark:border-rose-800";
+
+                              let consGradeBadge = "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800";
+                              if (rec.consultantGrade === 'A') consGradeBadge = "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800";
+                              else if (rec.consultantGrade === 'C') consGradeBadge = "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border-amber-200 dark:border-amber-800";
+                              else if (rec.consultantGrade === 'D' || rec.consultantGrade === 'F') consGradeBadge = "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border-rose-200 dark:border-rose-800";
+
+                              return (
+                                <tr key={rec.id || `mgrad-${rIdx}`} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
+                                  {/* Month & Period */}
+                                  <td className="py-2.5 px-3.5">
+                                    <div className="font-extrabold text-slate-850 dark:text-white">
+                                      {rec.monthName || rec.month}
+                                    </div>
+                                    <div className="flex items-center gap-1.5 mt-0.5">
+                                      <span className="text-[9px] text-slate-400 font-mono">Rec: {rec.recordedDate}</span>
+                                      <span className={`text-[8px] font-bold px-1.5 py-0.2 rounded uppercase ${
+                                        rec.status === 'Approved' 
+                                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200' 
+                                          : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                                      }`}>
+                                        {rec.status || 'Finalized'}
+                                      </span>
+                                    </div>
+                                  </td>
+
+                                  {/* Contractor Monthly Progress */}
+                                  <td className="py-2.5 px-3.5">
+                                    <div className="flex items-center gap-2 font-mono text-[10px]">
+                                      <span className="text-slate-500">Plan: <strong className="text-slate-700 dark:text-slate-300">{rec.contractorPlanMonthly.toFixed(2)}%</strong></span>
+                                      <span className="text-slate-500">Act: <strong className="text-slate-900 dark:text-white">{rec.contractorActualMonthly.toFixed(2)}%</strong></span>
+                                      <span className={`px-1.5 py-0.2 rounded font-bold text-[9px] ${
+                                        varM >= 0 ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400' : 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400'
+                                      }`}>
+                                        {varM >= 0 ? '+' : ''}{varM.toFixed(2)}%
+                                      </span>
+                                    </div>
+                                    <div className="text-[9.5px] text-slate-400 font-mono mt-0.5">
+                                      Cum Actual: {rec.contractorActualCumulative.toFixed(2)}%  •  SPI: <strong className={rec.contractorSpi >= 1 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>{rec.contractorSpi.toFixed(2)}</strong>
+                                    </div>
+                                  </td>
+
+                                  {/* Contractor Grade */}
+                                  <td className="py-2.5 px-3 text-center">
+                                    <div className={`inline-flex flex-col items-center px-2.5 py-1 rounded-xl border ${contGradeBadge}`}>
+                                      <span className="text-xs font-black">Grade {rec.contractorGrade}</span>
+                                      <span className="text-[9px] font-mono font-extrabold">{rec.contractorScore.toFixed(1)}%</span>
+                                    </div>
+                                    <span className="block text-[8.5px] text-slate-400 mt-1 max-w-[110px] mx-auto truncate" title={rec.contractorStanding}>
+                                      {rec.contractorStanding}
+                                    </span>
+                                  </td>
+
+                                  {/* Consultant Dual-Pillar Scores */}
+                                  <td className="py-2.5 px-3.5">
+                                    <div className="space-y-0.5 text-[10px]">
+                                      <div className="flex items-center justify-between gap-2">
+                                        <span className="text-slate-500">Pillar 1 (SLA On-Time):</span>
+                                        <span className="font-mono font-bold text-slate-700 dark:text-slate-300">{rec.consultantSlaTurnaroundScore.toFixed(1)}%</span>
+                                      </div>
+                                      <div className="flex items-center justify-between gap-2">
+                                        <span className="text-slate-500">Pillar 2 (5-Dim Tech):</span>
+                                        <span className="font-mono font-bold text-slate-700 dark:text-slate-300">{rec.consultantFiveDimScore.toFixed(1)}%</span>
+                                      </div>
+                                      <div className="flex items-center justify-between gap-2 pt-0.5 border-t border-slate-100 dark:border-slate-800">
+                                        <span className="text-slate-400 font-bold">Combined Score:</span>
+                                        <span className="font-mono font-black text-indigo-600 dark:text-indigo-400">{rec.consultantOverallScore.toFixed(1)}%</span>
+                                      </div>
+                                    </div>
+                                  </td>
+
+                                  {/* Consultant Grade */}
+                                  <td className="py-2.5 px-3 text-center">
+                                    <div className={`inline-flex flex-col items-center px-2.5 py-1 rounded-xl border ${consGradeBadge}`}>
+                                      <span className="text-xs font-black">Grade {rec.consultantGrade}</span>
+                                      <span className="text-[9px] font-mono font-extrabold">{rec.consultantOverallScore.toFixed(1)}%</span>
+                                    </div>
+                                    <span className="block text-[8.5px] text-slate-400 mt-1 max-w-[110px] mx-auto truncate" title={rec.consultantStanding}>
+                                      {rec.consultantStanding}
+                                    </span>
+                                  </td>
+
+                                  {/* Remarks & Audit Notes */}
+                                  <td className="py-2.5 px-3.5">
+                                    <p className="text-[10px] text-slate-600 dark:text-slate-300 line-clamp-2 leading-tight">
+                                      {rec.contractorRemarks || rec.consultantRemarks || rec.notes || 'No specific audit exceptions logged for this cycle.'}
+                                    </p>
+                                  </td>
+
+                                  {/* Actions */}
+                                  <td className="py-2.5 px-3 text-center no-print">
+                                    <div className="flex items-center justify-center gap-1.5">
+                                      <button
+                                        type="button"
+                                        onClick={() => setSelectedGradingDetailModal(rec)}
+                                        className="p-1 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer"
+                                        title="View Detailed Monthly Audit Breakdown"
+                                      >
+                                        <Eye className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => openEditGradingModal(rec)}
+                                        className="p-1 text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer"
+                                        title="Edit Month Grading"
+                                      >
+                                        <Edit3 className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteGradingRecord(rec.id)}
+                                        className="p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors cursor-pointer"
+                                        title="Delete Record"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+
+                            {filteredMonthlyGradingRecords.length === 0 && (
+                              <tr>
+                                <td colSpan={7} className="p-8 text-center text-slate-400 text-xs font-medium">
+                                  No monthly grading records found for the selected filter.
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </motion.div>
             )}
           </AnimatePresence>
@@ -2670,6 +4457,435 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory }:
 
         </div>
       </div>
+
+      {/* Modal 1: Detailed Monthly Grading Inspection View */}
+      <AnimatePresence>
+        {selectedGradingDetailModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs no-print"
+            onClick={() => setSelectedGradingDetailModal(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white dark:bg-slate-900 rounded-2xl max-w-2xl w-full border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+            >
+              {/* Modal Header */}
+              <div className="p-4 bg-slate-900 text-white flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Award className="w-5 h-5 text-amber-400" />
+                  <div>
+                    <h3 className="text-sm font-black uppercase tracking-wide">
+                      Monthly Performance Audit Grading Breakdown
+                    </h3>
+                    <p className="text-[10px] text-slate-400 font-mono">
+                      {selectedGradingDetailModal.monthName || selectedGradingDetailModal.month} • Recorded: {selectedGradingDetailModal.recordedDate}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setSelectedGradingDetailModal(null)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="p-5 overflow-y-auto space-y-4 text-xs">
+                {/* Dual Summary Badges */}
+                <div className="grid grid-cols-2 gap-3">
+                  {/* Contractor Card */}
+                  <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-black text-slate-400 uppercase font-mono">CONTRACTOR GRADING</span>
+                      <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-emerald-600 text-white">
+                        GRADE {selectedGradingDetailModal.contractorGrade}
+                      </span>
+                    </div>
+                    <div className="flex items-baseline justify-between">
+                      <span className="text-xl font-black text-slate-800 dark:text-slate-100 font-mono">
+                        {selectedGradingDetailModal.contractorScore.toFixed(1)}%
+                      </span>
+                      <span className="text-[10px] font-bold text-slate-500">
+                        SPI: {selectedGradingDetailModal.contractorSpi.toFixed(2)}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 font-medium">
+                      {selectedGradingDetailModal.contractorStanding}
+                    </p>
+                    <div className="pt-2 border-t border-slate-200 dark:border-slate-700 space-y-1 text-[10px] font-mono">
+                      <div className="flex justify-between text-slate-500">
+                        <span>Plan Monthly:</span>
+                        <strong className="text-slate-800 dark:text-slate-200">{selectedGradingDetailModal.contractorPlanMonthly.toFixed(2)}%</strong>
+                      </div>
+                      <div className="flex justify-between text-slate-500">
+                        <span>Actual Monthly:</span>
+                        <strong className="text-slate-800 dark:text-slate-200">{selectedGradingDetailModal.contractorActualMonthly.toFixed(2)}%</strong>
+                      </div>
+                      <div className="flex justify-between text-slate-500">
+                        <span>Monthly Variance:</span>
+                        <strong className={selectedGradingDetailModal.contractorVariance >= 0 ? "text-emerald-600" : "text-rose-600"}>
+                          {selectedGradingDetailModal.contractorVariance >= 0 ? '+' : ''}{selectedGradingDetailModal.contractorVariance.toFixed(2)}%
+                        </strong>
+                      </div>
+                      <div className="flex justify-between text-slate-500">
+                        <span>Cumulative Actual:</span>
+                        <strong className="text-slate-800 dark:text-slate-200">{selectedGradingDetailModal.contractorActualCumulative.toFixed(2)}%</strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Consultant Card */}
+                  <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-black text-slate-400 uppercase font-mono">CONSULTANT GRADING</span>
+                      <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-indigo-600 text-white">
+                        GRADE {selectedGradingDetailModal.consultantGrade}
+                      </span>
+                    </div>
+                    <div className="flex items-baseline justify-between">
+                      <span className="text-xl font-black text-indigo-600 dark:text-indigo-400 font-mono">
+                        {selectedGradingDetailModal.consultantOverallScore.toFixed(1)}%
+                      </span>
+                      <span className="text-[10px] font-bold text-slate-500">
+                        SLA: {selectedGradingDetailModal.consultantSlaTurnaroundScore.toFixed(1)}%
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 font-medium">
+                      {selectedGradingDetailModal.consultantStanding}
+                    </p>
+                    <div className="pt-2 border-t border-slate-200 dark:border-slate-700 space-y-1 text-[10px] font-mono">
+                      <div className="flex justify-between text-slate-500">
+                        <span>Pillar 1 (SLA Turnaround):</span>
+                        <strong className="text-slate-800 dark:text-slate-200">{selectedGradingDetailModal.consultantSlaTurnaroundScore.toFixed(1)}%</strong>
+                      </div>
+                      <div className="flex justify-between text-slate-500">
+                        <span>Pillar 2 (5-Dim Audit):</span>
+                        <strong className="text-slate-800 dark:text-slate-200">{selectedGradingDetailModal.consultantFiveDimScore.toFixed(1)}%</strong>
+                      </div>
+                      <div className="flex justify-between text-slate-500">
+                        <span>Avg RFI Response:</span>
+                        <strong className="text-slate-800 dark:text-slate-200">{selectedGradingDetailModal.consultantAvgRfiDays || 6} days</strong>
+                      </div>
+                      <div className="flex justify-between text-slate-500">
+                        <span>Submittal SLA Rate:</span>
+                        <strong className="text-slate-800 dark:text-slate-200">{selectedGradingDetailModal.consultantOnTimeRate || 85}%</strong>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Audit Narrative / Findings */}
+                <div className="space-y-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/20 border border-slate-200 dark:border-slate-800 text-[11px]">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block font-mono">
+                    Auditor Findings & Operational Remarks
+                  </span>
+                  <div className="space-y-1 text-slate-700 dark:text-slate-300">
+                    <p>
+                      <strong>Contractor Remarks:</strong> {selectedGradingDetailModal.contractorRemarks || 'Physical output tracked within contractual tolerance without active non-conformity notices.'}
+                    </p>
+                    <p>
+                      <strong>Consultant Remarks:</strong> {selectedGradingDetailModal.consultantRemarks || 'Supervisory team responded to RFI submittals and site work inspection requests within prescribed SLA limits.'}
+                    </p>
+                    {selectedGradingDetailModal.notes && (
+                      <p>
+                        <strong>Audit Notes:</strong> {selectedGradingDetailModal.notes}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-3 bg-slate-50 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-800 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setSelectedGradingDetailModal(null)}
+                  className="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold rounded-lg transition-colors cursor-pointer text-xs"
+                >
+                  Close
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal 2: Create / Edit Monthly Grading Record */}
+      <AnimatePresence>
+        {isRecordGradingModalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs no-print"
+            onClick={() => setIsRecordGradingModalOpen(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white dark:bg-slate-900 rounded-2xl max-w-2xl w-full border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
+            >
+              {/* Modal Header */}
+              <div className="p-4 bg-slate-900 text-white flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Award className="w-5 h-5 text-amber-400" />
+                  <div>
+                    <h3 className="text-sm font-black uppercase tracking-wide">
+                      {editingRecordId ? 'Edit Monthly Grading Record' : 'Record Monthly Grading & Audit Score'}
+                    </h3>
+                    <p className="text-[10px] text-slate-400">
+                      Input or auto-calculate performance metrics for both Contractor and Supervision Consultant.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsRecordGradingModalOpen(false)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Modal Form Body */}
+              <div className="p-5 overflow-y-auto space-y-4 text-xs">
+                {/* Month & Auto Calculation Bar */}
+                <div className="p-3 bg-amber-50/70 dark:bg-amber-950/20 border border-amber-200/80 dark:border-amber-900/60 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <label className="text-[10px] font-black uppercase text-slate-700 dark:text-slate-300 font-mono">
+                      Audit Month:
+                    </label>
+                    <input
+                      type="month"
+                      value={gradingForm.month || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setGradingForm(prev => ({ ...prev, month: val }));
+                        handleAutoCalculateForm(val);
+                      }}
+                      className="py-1 px-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-bold"
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleAutoCalculateForm(gradingForm.month || new Date().toISOString().slice(0, 7))}
+                    className="flex items-center justify-center gap-1.5 py-1 px-3 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-lg text-[10px] transition-colors cursor-pointer"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>Auto-Calculate from Live Project Data</span>
+                  </button>
+                </div>
+
+                {/* Section A: Contractor Metrics */}
+                <div className="space-y-2">
+                  <h4 className="text-[10px] font-black uppercase text-slate-800 dark:text-slate-200 flex items-center gap-1.5 font-mono">
+                    <span className="w-1.5 h-2.5 bg-emerald-500 rounded-xs" />
+                    Contractor Monthly Grading Parameters
+                  </h4>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                    <div>
+                      <label className="block text-[9.5px] font-bold text-slate-500 mb-1">Plan Monthly (%)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={gradingForm.contractorPlanMonthly || 0}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0;
+                          const act = gradingForm.contractorActualMonthly || 0;
+                          const diff = act - val;
+                          setGradingForm(prev => ({ 
+                            ...prev, 
+                            contractorPlanMonthly: val,
+                            contractorVariance: Number(diff.toFixed(2)),
+                            contractorSpi: val > 0 ? Number((act / val).toFixed(2)) : 1.0
+                          }));
+                        }}
+                        className="w-full p-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9.5px] font-bold text-slate-500 mb-1">Actual Monthly (%)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={gradingForm.contractorActualMonthly || 0}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0;
+                          const plan = gradingForm.contractorPlanMonthly || 0;
+                          const diff = val - plan;
+                          setGradingForm(prev => ({ 
+                            ...prev, 
+                            contractorActualMonthly: val,
+                            contractorVariance: Number(diff.toFixed(2)),
+                            contractorSpi: plan > 0 ? Number((val / plan).toFixed(2)) : 1.0
+                          }));
+                        }}
+                        className="w-full p-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono font-bold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9.5px] font-bold text-slate-500 mb-1">Audit Score (%)</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        max="100"
+                        min="0"
+                        value={gradingForm.contractorScore || 80}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0;
+                          let gr: 'A' | 'B' | 'C' | 'D' | 'F' = 'B';
+                          if (val >= 90) gr = 'A';
+                          else if (val >= 80) gr = 'B';
+                          else if (val >= 70) gr = 'C';
+                          else if (val >= 60) gr = 'D';
+                          else gr = 'F';
+                          setGradingForm(prev => ({ ...prev, contractorScore: val, contractorGrade: gr }));
+                        }}
+                        className="w-full p-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono font-bold text-emerald-600"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9.5px] font-bold text-slate-500 mb-1">Contractor Grade</label>
+                      <select
+                        value={gradingForm.contractorGrade || 'B'}
+                        onChange={(e) => setGradingForm(prev => ({ ...prev, contractorGrade: e.target.value as any }))}
+                        className="w-full p-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-bold"
+                      >
+                        <option value="A">Grade A (≥90%)</option>
+                        <option value="B">Grade B (80-89%)</option>
+                        <option value="C">Grade C (70-79%)</option>
+                        <option value="D">Grade D (60-69%)</option>
+                        <option value="F">Grade F (&lt;60%)</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[9.5px] font-bold text-slate-500 mb-1">Contractor Audit Remarks</label>
+                    <input
+                      type="text"
+                      value={gradingForm.contractorRemarks || ''}
+                      onChange={(e) => setGradingForm(prev => ({ ...prev, contractorRemarks: e.target.value }))}
+                      placeholder="e.g. Earthworks accelerated on Section 2; asphalt paving on track."
+                      className="w-full p-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs"
+                    />
+                  </div>
+                </div>
+
+                {/* Section B: Supervision Consultant Metrics */}
+                <div className="space-y-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+                  <h4 className="text-[10px] font-black uppercase text-slate-800 dark:text-slate-200 flex items-center gap-1.5 font-mono">
+                    <span className="w-1.5 h-2.5 bg-indigo-600 rounded-xs" />
+                    Supervision Consultant Dual-Pillar Evaluation
+                  </h4>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                    <div>
+                      <label className="block text-[9.5px] font-bold text-slate-500 mb-1">Pillar 1 (SLA %)</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={gradingForm.consultantSlaTurnaroundScore || 85}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0;
+                          const dim = gradingForm.consultantFiveDimScore || 80;
+                          const overall = Number(((val + dim) / 2).toFixed(1));
+                          setGradingForm(prev => ({ ...prev, consultantSlaTurnaroundScore: val, consultantOverallScore: overall }));
+                        }}
+                        className="w-full p-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9.5px] font-bold text-slate-500 mb-1">Pillar 2 (5-Dim %)</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={gradingForm.consultantFiveDimScore || 80}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0;
+                          const sla = gradingForm.consultantSlaTurnaroundScore || 85;
+                          const overall = Number(((sla + val) / 2).toFixed(1));
+                          setGradingForm(prev => ({ ...prev, consultantFiveDimScore: val, consultantOverallScore: overall }));
+                        }}
+                        className="w-full p-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9.5px] font-bold text-slate-500 mb-1">Combined Score (%)</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={gradingForm.consultantOverallScore || 82.5}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0;
+                          let gr: 'A' | 'B' | 'C' | 'D' | 'F' = 'B';
+                          if (val >= 90) gr = 'A';
+                          else if (val >= 80) gr = 'B';
+                          else if (val >= 70) gr = 'C';
+                          else if (val >= 60) gr = 'D';
+                          else gr = 'F';
+                          setGradingForm(prev => ({ ...prev, consultantOverallScore: val, consultantGrade: gr }));
+                        }}
+                        className="w-full p-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono font-bold text-indigo-600"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9.5px] font-bold text-slate-500 mb-1">Consultant Grade</label>
+                      <select
+                        value={gradingForm.consultantGrade || 'B'}
+                        onChange={(e) => setGradingForm(prev => ({ ...prev, consultantGrade: e.target.value as any }))}
+                        className="w-full p-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-bold"
+                      >
+                        <option value="A">Grade A (≥90%)</option>
+                        <option value="B">Grade B (80-89%)</option>
+                        <option value="C">Grade C (70-79%)</option>
+                        <option value="D">Grade D (60-69%)</option>
+                        <option value="F">Grade F (&lt;60%)</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[9.5px] font-bold text-slate-500 mb-1">Consultant Supervisory Remarks</label>
+                    <input
+                      type="text"
+                      value={gradingForm.consultantRemarks || ''}
+                      onChange={(e) => setGradingForm(prev => ({ ...prev, consultantRemarks: e.target.value }))}
+                      placeholder="e.g. Submittal turnaround maintained under 6 days; resident engineer present on site."
+                      className="w-full p-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-3 bg-slate-50 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsRecordGradingModalOpen(false)}
+                  className="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold rounded-lg transition-colors cursor-pointer text-xs"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveGradingRecord}
+                  className="px-4 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-lg transition-colors cursor-pointer text-xs flex items-center gap-1.5 shadow-2xs"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Save Monthly Grading Record</span>
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
     </div>
   );

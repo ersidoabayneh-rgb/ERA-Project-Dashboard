@@ -205,6 +205,42 @@ export interface MonthlyResourceRecord {
   productionTargetCompletionPct?: number;
 }
 
+export interface MonthlyGradingRecord {
+  id: string;
+  month: string; // e.g. "2026-09" or "Sep 2026"
+  monthName: string; // e.g. "September 2026"
+  recordedDate: string; // YYYY-MM-DD
+  recordedBy?: string;
+  status?: 'Approved' | 'Finalized' | 'Draft' | 'Audited';
+  
+  // Contractor Performance & Grading
+  contractorName?: string;
+  contractorPlanMonthly?: number; // %
+  contractorActualMonthly?: number; // %
+  contractorPlanCumulative?: number; // %
+  contractorActualCumulative?: number; // %
+  contractorVariance?: number; // % (+ ahead, - lag)
+  contractorSpi?: number; // Schedule Performance Index
+  contractorScore: number; // 0 - 100%
+  contractorGrade: 'A' | 'B' | 'C' | 'D' | 'F' | string;
+  contractorStanding?: string;
+  contractorRemarks?: string;
+  
+  // Supervision Consultant Performance & Grading
+  consultantName?: string;
+  residentEngineer?: string;
+  consultantSlaTurnaroundScore: number; // % (Pillar 1)
+  consultantFiveDimScore: number; // % (Pillar 2)
+  consultantOverallScore: number; // % Combined 50/50
+  consultantGrade: 'A' | 'B' | 'C' | 'D' | 'F' | string;
+  consultantStanding?: string;
+  consultantOnTimeRate?: number; // %
+  consultantAvgRfiDays?: number; // days
+  consultantRemarks?: string;
+  
+  notes?: string;
+}
+
 export interface IpcItem {
   id: string;
   paymentNo: string;
@@ -499,6 +535,7 @@ export interface Project {
   resourceMobilization?: ResourceMobilizationItem[];
   materialProduction?: MaterialProductionItem[];
   monthlyResourceRecords?: MonthlyResourceRecord[];
+  monthlyGradingRecords?: MonthlyGradingRecord[];
   ipcTracker?: IpcItem[];
   usdExchangeRate?: number;
   annualInterestRate?: number;
@@ -671,6 +708,7 @@ export interface SupervisionConsultantInfo {
   dimensionScores?: Record<'A' | 'B' | 'C' | 'D' | 'E' | string, { earnedScore: number; maxScore: number; scorePct: number }>;
   overallEvaluationScore?: number;
   officialEvaluationGrade?: 'A' | 'B' | 'C' | 'D' | 'F';
+  customConsultantEvaluationCriteria?: ConsultantEvaluationCriterion[];
   evaluationMethodology?: 'comprehensive_5dim' | 'sla_operational' | 'hybrid';
   personnel: ConsultantPersonnel[];
   personnelHistory?: ConsultantPersonnel[]; // Permanent history log of all assigned/inserted personnel records
@@ -771,8 +809,67 @@ export const ALL_EDITABLE_PAGES: EditablePageOption[] = [
   { id: 'documentation', name: '📁 Project Documentation', description: 'Dossier files, monthly reports, contract upload library' },
   { id: 'consultant', name: '👔 Supervision Consultant', description: 'Consultant contract, fee invoices, and assigned personnel directory' },
   { id: 'submittalLog', name: '📋 Submittal Log & RFI Tracking', description: 'Supervision consultant submittal review log, design approvals, and RFI tracking' },
+  { id: 'approvalWorkflow', name: '🛡️ Approval Workflow & Drafts', description: 'Editor private drafts, approval queue, and workflow governance audit log' },
   { id: 'workspace', name: '☁️ Workspace Notes', description: 'Interactive collaborative scratchpad & design notes' }
 ];
+
+export type WorkflowStatus = 'draft' | 'pending' | 'submitted' | 'approved' | 'rejected' | 'changes_requested';
+
+export interface WorkflowFeedback {
+  id: string;
+  author: string;
+  authorRole?: string;
+  timestamp: string;
+  type: 'rejected' | 'changes_requested' | 'submitted' | 'approved' | 'comment';
+  message: string;
+}
+
+export interface PrivateDraft {
+  id: string;
+  projectId: string;
+  projectName: string;
+  section: string;
+  pageId?: string;
+  author: string; // Editor username
+  authorFullName?: string;
+  createdAt: string;
+  updatedAt: string;
+  status: WorkflowStatus;
+  snapshotData: any; // The edited/created payload
+  baselineData?: any; // The original baseline payload
+  grantedAccessUsernames?: string[]; // Specific usernames explicitly granted permission to view this private draft
+  feedbackHistory?: WorkflowFeedback[];
+  approvedBy?: string;
+  approvedAt?: string;
+  rejectedBy?: string;
+  rejectedAt?: string;
+  mfaVerifiedByApprover?: boolean;
+}
+
+export interface WorkflowAuditLogEntry {
+  id: string;
+  timestamp: string;
+  action: 
+    | 'DRAFT_CREATED'
+    | 'DRAFT_UPDATED'
+    | 'ACCESS_GRANTED'
+    | 'SUBMITTED_FOR_APPROVAL'
+    | 'SELF_APPROVAL_PREVENTED'
+    | 'MFA_CHALLENGE_VERIFIED'
+    | 'APPROVED'
+    | 'REJECTED'
+    | 'CHANGES_REQUESTED'
+    | 'DRAFT_DELETED';
+  draftId: string;
+  projectId?: string;
+  projectName?: string;
+  section?: string;
+  actor: string;
+  actorRole: string;
+  targetUser?: string;
+  details: string;
+  mfaUsed?: boolean;
+}
 
 export interface ApprovalRequest {
   id: string;
@@ -782,11 +879,18 @@ export interface ApprovalRequest {
   requestedAt: string;
   section: string;
   pageId?: string;
-  status: 'pending' | 'approved' | 'rejected';
+  status: WorkflowStatus;
   approvedBy?: string;
   approvedAt?: string;
   rejectedBy?: string;
+  rejectedAt?: string;
   snapshotData: any; // Full Project payload at request time
+  baselineData?: any;
+  author?: string;
+  authorFullName?: string;
+  grantedAccessUsernames?: string[];
+  feedbackHistory?: WorkflowFeedback[];
+  mfaVerifiedByApprover?: boolean;
 }
 
 export interface ProgressPlanHistoryItem {
@@ -926,4 +1030,5 @@ export interface ConsultantEvaluationCriterion {
     score2: string;
     score1: string;
   };
+  eraFidicRef?: string;
 }

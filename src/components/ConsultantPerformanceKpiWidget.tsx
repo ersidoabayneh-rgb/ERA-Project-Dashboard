@@ -61,6 +61,7 @@ export interface ConsultantPerformanceKpiWidgetProps {
   isReadonly?: boolean;
   compact?: boolean;
   isAdmin?: boolean;
+  currentUser?: any;
 }
 
 export default function ConsultantPerformanceKpiWidget({
@@ -69,7 +70,8 @@ export default function ConsultantPerformanceKpiWidget({
   onUpdateConsultant,
   isReadonly = false,
   compact = false,
-  isAdmin = true
+  isAdmin = true,
+  currentUser
 }: ConsultantPerformanceKpiWidgetProps) {
   // Consultant Tenure & Succession selection state ('current' or historical consultant id)
   const [selectedTenureConsultantId, setSelectedTenureConsultantId] = useState<string>('current');
@@ -984,12 +986,12 @@ export default function ConsultantPerformanceKpiWidget({
       )}
         </div>
 
-        {/* Section 2: Technical & Supervisory Performance Audit (105 Criteria Framework - Pillar II) */}
+        {/* Section 2 Supervision Consultant Performance Evaluation Criteria */}
         <div className="space-y-4 pt-8">
           <div className="flex items-center gap-2 mb-2">
             <Award className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
             <h4 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">
-              🏆 II. Technical & Supervisory Performance Audit (105 Criteria Framework - Pillar II)
+              🏆 Section 2 Supervision Consultant Performance Evaluation Criteria
             </h4>
           </div>
           <ComprehensiveConsultantEvaluationMatrixView
@@ -998,6 +1000,8 @@ export default function ConsultantPerformanceKpiWidget({
             onUpdateConsultant={onUpdateConsultant}
             isReadonly={isReadonly}
             isAdmin={isAdmin}
+            isMasterAdmin={isAdmin}
+            currentUser={currentUser}
             submittalsList={submittalsList}
             onScoreChange={setLivePillar2Score}
           />

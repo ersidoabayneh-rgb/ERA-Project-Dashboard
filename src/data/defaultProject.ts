@@ -8,6 +8,8 @@ import {
   LinearData,
   RiskItem,
   SupervisionConsultantInfo,
+  MonthlyResourceRecord,
+  MonthlyGradingRecord,
   isProjectClosed
 } from '../types';
 import { calculateProjectEvm } from '../lib/evmCalculations';
@@ -1297,6 +1299,196 @@ export const defaultSupervisionConsultant = (): SupervisionConsultantInfo => ({
   ]
 });
 
+export const getDefaultMonthlyGradingRecords = (): MonthlyGradingRecord[] => [
+  {
+    id: 'mgrad_2026_09',
+    month: '2026-09',
+    monthName: 'September 2026',
+    recordedDate: '2026-09-12',
+    recordedBy: 'ErsidoAbayneh@gmail.com',
+    status: 'Approved',
+    contractorName: 'China Tisiju Civil Engineering Group',
+    contractorPlanMonthly: 2.75,
+    contractorActualMonthly: 2.28,
+    contractorPlanCumulative: 65.00,
+    contractorActualCumulative: 27.29,
+    contractorVariance: -0.47,
+    contractorSpi: 0.83,
+    contractorScore: 78.4,
+    contractorGrade: 'C',
+    contractorStanding: 'Fair / Marginal Progress — Earthworks & Subbase Acceleration Required',
+    contractorRemarks: 'Quarry production steady; subgrade compaction lagging along Km 15-22 due to utility clearance delays.',
+    consultantName: 'LEA Associates South Asia JV',
+    residentEngineer: 'Eng. Dawit Hailu',
+    consultantSlaTurnaroundScore: 85.0,
+    consultantFiveDimScore: 81.5,
+    consultantOverallScore: 83.3,
+    consultantGrade: 'B',
+    consultantStanding: 'Satisfactory / Standard Standing',
+    consultantOnTimeRate: 88.5,
+    consultantAvgRfiDays: 5.8,
+    consultantRemarks: '32 submittals reviewed on-time; RFI turnaround maintained within 6 days.',
+    notes: 'Joint audit finalized during monthly site coordination meeting with ERA PMO.'
+  },
+  {
+    id: 'mgrad_2026_08',
+    month: '2026-08',
+    monthName: 'August 2026',
+    recordedDate: '2026-08-31',
+    recordedBy: 'ErsidoAbayneh@gmail.com',
+    status: 'Finalized',
+    contractorName: 'China Tisiju Civil Engineering Group',
+    contractorPlanMonthly: 2.50,
+    contractorActualMonthly: 2.15,
+    contractorPlanCumulative: 62.25,
+    contractorActualCumulative: 25.01,
+    contractorVariance: -0.35,
+    contractorSpi: 0.86,
+    contractorScore: 81.2,
+    contractorGrade: 'B',
+    contractorStanding: 'Satisfactory / Compliant with Minor Delays',
+    contractorRemarks: 'Intermittent rains impacted earthworks haulage; concrete culverts advanced according to revised schedule.',
+    consultantName: 'LEA Associates South Asia JV',
+    residentEngineer: 'Eng. Dawit Hailu',
+    consultantSlaTurnaroundScore: 83.5,
+    consultantFiveDimScore: 80.0,
+    consultantOverallScore: 81.8,
+    consultantGrade: 'B',
+    consultantStanding: 'Satisfactory / Standard Standing',
+    consultantOnTimeRate: 85.0,
+    consultantAvgRfiDays: 6.2,
+    consultantRemarks: 'Material approval logs cleared with minor backlog in price adjustment verification.',
+    notes: 'Regular monthly performance audit endorsed by ERA PMO.'
+  },
+  {
+    id: 'mgrad_2026_07',
+    month: '2026-07',
+    monthName: 'July 2026',
+    recordedDate: '2026-07-31',
+    recordedBy: 'ErsidoAbayneh@gmail.com',
+    status: 'Finalized',
+    contractorName: 'China Tisiju Civil Engineering Group',
+    contractorPlanMonthly: 2.40,
+    contractorActualMonthly: 1.95,
+    contractorPlanCumulative: 59.75,
+    contractorActualCumulative: 22.86,
+    contractorVariance: -0.45,
+    contractorSpi: 0.81,
+    contractorScore: 76.5,
+    contractorGrade: 'C',
+    contractorStanding: 'Fair / Marginal Progress — Peak Rainfall Disruption',
+    contractorRemarks: 'Heavy seasonal rain halted open cut excavation; workforce shifted to drainage structures and precast fabrication.',
+    consultantName: 'LEA Associates South Asia JV',
+    residentEngineer: 'Eng. Dawit Hailu',
+    consultantSlaTurnaroundScore: 80.0,
+    consultantFiveDimScore: 79.2,
+    consultantOverallScore: 79.6,
+    consultantGrade: 'C',
+    consultantStanding: 'Needs Improvement / Formal Notice',
+    consultantOnTimeRate: 82.0,
+    consultantAvgRfiDays: 7.5,
+    consultantRemarks: 'Delays noted in design review comment closure for major bridge pier foundations.',
+    notes: 'Interim remediation directive issued to consultant under Clause 3.1.'
+  },
+  {
+    id: 'mgrad_2026_06',
+    month: '2026-06',
+    monthName: 'June 2026',
+    recordedDate: '2026-06-30',
+    recordedBy: 'ErsidoAbayneh@gmail.com',
+    status: 'Finalized',
+    contractorName: 'China Tisiju Civil Engineering Group',
+    contractorPlanMonthly: 2.30,
+    contractorActualMonthly: 2.10,
+    contractorPlanCumulative: 57.35,
+    contractorActualCumulative: 20.91,
+    contractorVariance: -0.20,
+    contractorSpi: 0.91,
+    contractorScore: 84.8,
+    contractorGrade: 'B',
+    contractorStanding: 'Satisfactory / Strong Aggregate Production',
+    contractorRemarks: 'Second crusher plant commissioned; aggregate base course stockpile exceeded monthly milestone.',
+    consultantName: 'LEA Associates South Asia JV',
+    residentEngineer: 'Eng. Dawit Hailu',
+    consultantSlaTurnaroundScore: 86.2,
+    consultantFiveDimScore: 82.4,
+    consultantOverallScore: 84.3,
+    consultantGrade: 'B',
+    consultantStanding: 'Satisfactory / Standard Standing',
+    consultantOnTimeRate: 89.0,
+    consultantAvgRfiDays: 5.4,
+    consultantRemarks: 'Independent lab quality verification and batching plant calibrations certified.',
+    notes: 'Satisfactory score verified by CPMP Directorate.'
+  },
+  {
+    id: 'mgrad_2026_05',
+    month: '2026-05',
+    monthName: 'May 2026',
+    recordedDate: '2026-05-31',
+    recordedBy: 'ErsidoAbayneh@gmail.com',
+    status: 'Finalized',
+    contractorName: 'China Tisiju Civil Engineering Group',
+    contractorPlanMonthly: 2.20,
+    contractorActualMonthly: 1.80,
+    contractorPlanCumulative: 55.05,
+    contractorActualCumulative: 18.81,
+    contractorVariance: -0.40,
+    contractorSpi: 0.82,
+    contractorScore: 77.0,
+    contractorGrade: 'C',
+    contractorStanding: 'Fair / Marginal Progress',
+    contractorRemarks: 'Bitumen delivery delayed at port customs; earthworks prioritized.',
+    consultantName: 'LEA Associates South Asia JV',
+    residentEngineer: 'Eng. Dawit Hailu',
+    consultantSlaTurnaroundScore: 82.0,
+    consultantFiveDimScore: 78.5,
+    consultantOverallScore: 80.3,
+    consultantGrade: 'B',
+    consultantStanding: 'Satisfactory / Standard Standing',
+    consultantOnTimeRate: 84.5,
+    consultantAvgRfiDays: 6.5,
+    consultantRemarks: 'IPC No. 4 draft certification conducted with minor deductions.',
+    notes: 'Certified by Resident Engineer.'
+  },
+  {
+    id: 'mgrad_2026_04',
+    month: '2026-04',
+    monthName: 'April 2026',
+    recordedDate: '2026-04-30',
+    recordedBy: 'ErsidoAbayneh@gmail.com',
+    status: 'Finalized',
+    contractorName: 'China Tisiju Civil Engineering Group',
+    contractorPlanMonthly: 2.00,
+    contractorActualMonthly: 1.90,
+    contractorPlanCumulative: 52.85,
+    contractorActualCumulative: 17.01,
+    contractorVariance: -0.10,
+    contractorSpi: 0.95,
+    contractorScore: 88.5,
+    contractorGrade: 'B',
+    contractorStanding: 'Satisfactory / Mobilization Complete',
+    contractorRemarks: 'Key plant mobilized and full workforce deployed across 3 active work fronts.',
+    consultantName: 'LEA Associates South Asia JV',
+    residentEngineer: 'Eng. Dawit Hailu',
+    consultantSlaTurnaroundScore: 88.0,
+    consultantFiveDimScore: 84.0,
+    consultantOverallScore: 86.0,
+    consultantGrade: 'B',
+    consultantStanding: 'Satisfactory / Standard Standing',
+    consultantOnTimeRate: 91.0,
+    consultantAvgRfiDays: 5.0,
+    consultantRemarks: 'Prompt review of contractor method statements and baseline quarry permits.',
+    notes: 'Full quarterly review report submitted to ERA Headquarters.'
+  }
+];
+
+export function resolveProjectMonthlyGrading(project: Project): MonthlyGradingRecord[] {
+  if (project.monthlyGradingRecords && project.monthlyGradingRecords.length > 0) {
+    return project.monthlyGradingRecords;
+  }
+  return getDefaultMonthlyGradingRecords();
+}
+
 export function defaultProjectTemplate(): Project {
   return {
     id: 'proj_default',
@@ -1529,6 +1721,7 @@ export function defaultProjectTemplate(): Project {
         ]
       }
     ],
+    monthlyGradingRecords: getDefaultMonthlyGradingRecords(),
     ipcTracker: [
       {
         id: 'ipc_1',
@@ -1672,6 +1865,7 @@ export function blankProjectTemplate(): Project {
   d.resourceMobilization = [];
   d.materialProduction = [];
   d.monthlyResourceRecords = [];
+  d.monthlyGradingRecords = [];
   d.ipcTracker = [];
   d.images = [];
   d.history = [];
