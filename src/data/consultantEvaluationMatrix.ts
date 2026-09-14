@@ -78,17 +78,33 @@ export function parseBenchmarkNumber(bmString: string): number | null {
 }
 
 // Helper: Evaluate Likert score (1-5) against benchmark brackets
+// Highest Likert rating (5 = Superior/Excellent) is uniformly the better value on the score.
 export function evaluateLikertScore(
   val: number,
-  direction: 'H' | 'L',
-  benchmarks: { score5: string; score4: string; score3: string; score2: string; score1: string }
+  direction?: 'H' | 'L',
+  benchmarks?: { score5: string; score4: string; score3: string; score2: string; score1: string }
 ): number {
+  if (!benchmarks) return 5;
   const s5 = parseBenchmarkNumber(benchmarks.score5);
   const s4 = parseBenchmarkNumber(benchmarks.score4);
   const s3 = parseBenchmarkNumber(benchmarks.score3);
   const s2 = parseBenchmarkNumber(benchmarks.score2);
 
-  if (direction === 'H') {
+  // Highest Likert rating (5) is always the superior performance score value.
+  // Evaluate based on benchmark thresholds where Score 5 is the target excellence benchmark.
+  if (s5 !== null && s2 !== null && s5 < s2) {
+    // For metrics where lower values achieve top performance (e.g., <=3 turnaround days or 0 incidents = Score 5)
+    const t5 = s5;
+    const t4 = s4 ?? (t5 + 2);
+    const t3 = s3 ?? (t4 + 3);
+    const t2 = s2;
+    if (val <= t5) return 5;
+    if (val <= t4) return 4;
+    if (val <= t3) return 3;
+    if (val <= t2) return 2;
+    return 1;
+  } else {
+    // For metrics where higher values achieve top performance (e.g., >=95% turnaround or compliance = Score 5)
     const t5 = s5 ?? 95;
     const t4 = s4 ?? 85;
     const t3 = s3 ?? 70;
@@ -97,16 +113,6 @@ export function evaluateLikertScore(
     if (val >= t4) return 4;
     if (val >= t3) return 3;
     if (val >= t2) return 2;
-    return 1;
-  } else {
-    const t5 = s5 ?? 1;
-    const t4 = s4 ?? 3;
-    const t3 = s3 ?? 6;
-    const t2 = s2 ?? 10;
-    if (val <= t5) return 5;
-    if (val <= t4) return 4;
-    if (val <= t3) return 3;
-    if (val <= t2) return 2;
     return 1;
   }
 }
@@ -1591,10 +1597,10 @@ export function calculateComprehensiveEvaluationScore(
   const rawScorePct = (0.30 * scoreA) + (0.25 * scoreB) + (0.20 * scoreC) + (0.15 * scoreD) + (0.10 * scoreE);
   const rawScore1To5 = (rawScorePct / 100) * 5.0;
 
+  // Zero-tolerance auto-caps to 2.00 removed: overall score is solely determined by highest Likert ratings across evaluated criteria
   const isZeroToleranceTriggered = false;
-  
-  const autoCapValue1To5 = 2.00;
-  const autoCapValuePct = 40.0;
+  const autoCapValue1To5 = 0;
+  const autoCapValuePct = 0;
 
   const finalScore1To5 = rawScore1To5;
   const finalScorePct = rawScorePct;

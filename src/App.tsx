@@ -431,20 +431,128 @@ export default function App() {
     }
   }, [currentProject?.id, currentProject?.lastModifiedAt]);
 
-  const [pendingApprovals, setPendingApprovals] = useState<ApprovalRequest[]>([]);
+  const initialSampleDrafts: PrivateDraft[] = [
+    {
+      id: 'draft_demo_submitted_1',
+      projectId: '1',
+      projectName: 'Modjo - Hawassa Expressway Section 2 (Lot 2: Tikur Wuha - Batu)',
+      section: 'Supervision Consultant Evaluation',
+      pageId: 'consultant',
+      author: 'editor',
+      authorFullName: 'Abebe Bikila (Civil Works Specialist)',
+      createdAt: new Date(Date.now() - 3600000 * 3).toISOString(),
+      updatedAt: new Date(Date.now() - 1800000).toISOString(),
+      status: 'submitted',
+      snapshotData: {
+        id: '1',
+        name: 'Modjo - Hawassa Expressway Section 2 (Lot 2: Tikur Wuha - Batu)',
+        route: 'Modjo - Hawassa Lot 2',
+        contractor: 'SBI International Holdings AG',
+        consultant: 'LEA Associates South Asia in JV with Metaferia Consulting',
+        physicalProgress: 78.4,
+        financialProgress: 74.2,
+        plannedPhysicalProgress: 82.0,
+        revisedCompletionDate: '2026-11-30',
+        scheduleStatus: 'Behind',
+        status: 'Delayed',
+        supervisionConsultant: {
+          totalLikertScore: 88.5,
+          performanceGrade: 'Satisfactory',
+          evaluationNotes: 'Updated Section 2 Likert ratings: highest likert rating gives superior performance value without artificial auto-caps.'
+        }
+      },
+      baselineData: {
+        id: '1',
+        name: 'Modjo - Hawassa Expressway Section 2 (Lot 2: Tikur Wuha - Batu)',
+        route: 'Modjo - Hawassa Lot 2',
+        contractor: 'SBI International Holdings AG',
+        consultant: 'LEA Associates South Asia in JV with Metaferia Consulting',
+        physicalProgress: 72.1,
+        financialProgress: 69.5,
+        plannedPhysicalProgress: 80.0,
+        revisedCompletionDate: '2026-08-31',
+        scheduleStatus: 'Behind',
+        status: 'Delayed'
+      },
+      grantedAccessUsernames: ['ersido', 'admin', 'cpm_admin', 'approver'],
+      feedbackHistory: [
+        {
+          id: 'fb_sample_1',
+          author: 'Abebe Bikila',
+          authorRole: 'editor',
+          timestamp: new Date(Date.now() - 1800000).toISOString(),
+          type: 'submitted',
+          message: 'Submitted draft: Updated Supervision Consultant Likert Assessment scores and Q3 progress data for approver review and live database commit.'
+        }
+      ]
+    }
+  ];
+
+  const initialSampleApprovals: ApprovalRequest[] = [
+    {
+      id: 'draft_demo_submitted_1',
+      projectId: '1',
+      projectName: 'Modjo - Hawassa Expressway Section 2 (Lot 2: Tikur Wuha - Batu)',
+      requestedBy: 'editor',
+      requestedAt: new Date(Date.now() - 1800000).toISOString(),
+      section: 'Supervision Consultant Evaluation',
+      pageId: 'consultant',
+      status: 'submitted',
+      snapshotData: initialSampleDrafts[0].snapshotData,
+      baselineData: initialSampleDrafts[0].baselineData,
+      author: 'editor',
+      authorFullName: 'Abebe Bikila (Civil Works Specialist)',
+      grantedAccessUsernames: ['ersido', 'admin', 'cpm_admin', 'approver'],
+      feedbackHistory: initialSampleDrafts[0].feedbackHistory
+    }
+  ];
+
+  const initialSampleAuditLogs: WorkflowAuditLogEntry[] = [
+    {
+      id: 'log_init_submitted_1',
+      timestamp: new Date(Date.now() - 1800000).toISOString(),
+      action: 'SUBMITTED_FOR_APPROVAL',
+      draftId: 'draft_demo_submitted_1',
+      projectId: '1',
+      projectName: 'Modjo - Hawassa Expressway Section 2 (Lot 2: Tikur Wuha - Batu)',
+      section: 'Supervision Consultant Evaluation',
+      actor: 'editor',
+      actorRole: 'editor',
+      details: 'Editor Abebe Bikila submitted supervision consultant assessment and progress updates for approver review.'
+    }
+  ];
+
+  const [pendingApprovals, setPendingApprovals] = useState<ApprovalRequest[]>(() => {
+    try {
+      const stored = localStorage.getItem('era_appr_v28');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return initialSampleApprovals;
+  });
+
   const [privateDrafts, setPrivateDrafts] = useState<PrivateDraft[]>(() => {
     try {
       const stored = localStorage.getItem('era_private_drafts_v1');
-      if (stored) return JSON.parse(stored);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
     } catch {}
-    return [];
+    return initialSampleDrafts;
   });
+
   const [workflowAuditLogs, setWorkflowAuditLogs] = useState<WorkflowAuditLogEntry[]>(() => {
     try {
       const stored = localStorage.getItem('era_workflow_audit_logs_v1');
-      if (stored) return JSON.parse(stored);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
     } catch {}
-    return [];
+    return initialSampleAuditLogs;
   });
   const [expandedApprovalId, setExpandedApprovalId] = useState<string | null>(null);
   const [approvalViewMode, setApprovalViewMode] = useState<'sideBySide' | 'summary'>('sideBySide');
@@ -3182,16 +3290,39 @@ let isBatchSyncRunning = false;
                         safeSetItem('era_appr_v28', JSON.stringify(updatedApprovals));
                         await safeSyncApprovals(updatedApprovals);
 
-                        if (existingDraftIndex >= 0) {
-                          const updatedDraftsList = [...privateDrafts];
-                          updatedDraftsList[existingDraftIndex] = {
-                            ...updatedDraftsList[existingDraftIndex],
-                            status: 'submitted',
-                            updatedAt: nowIso
-                          };
-                          setPrivateDrafts(updatedDraftsList);
-                          safeSetItem('era_private_drafts_v1', JSON.stringify(updatedDraftsList));
-                        }
+                        const newDraft: PrivateDraft = {
+                          id: draftId,
+                          projectId: currentProject.id,
+                          projectName: currentProject.name,
+                          section: activeTab,
+                          pageId: activeTab,
+                          author: currentUserObj?.username || 'editor',
+                          authorFullName: currentUserObj?.fullName || currentUserObj?.username || 'editor',
+                          createdAt: existingDraftIndex >= 0 ? privateDrafts[existingDraftIndex].createdAt : nowIso,
+                          updatedAt: nowIso,
+                          status: 'submitted',
+                          snapshotData: draftSnapshot,
+                          baselineData: currentProject,
+                          grantedAccessUsernames: existingDraftIndex >= 0 ? (privateDrafts[existingDraftIndex].grantedAccessUsernames || []) : [],
+                          feedbackHistory: [
+                            ...(existingDraftIndex >= 0 ? (privateDrafts[existingDraftIndex].feedbackHistory || []) : []),
+                            {
+                              id: `fb_${Date.now()}`,
+                              author: currentUserObj?.fullName || currentUserObj?.username || 'Editor',
+                              authorRole: currentUserObj?.role || 'editor',
+                              timestamp: nowIso,
+                              type: 'submitted',
+                              message: `Submitted dataset for approver review and database incorporation.`
+                            }
+                          ]
+                        };
+
+                        const updatedDraftsList = existingDraftIndex >= 0
+                          ? privateDrafts.map((d, i) => i === existingDraftIndex ? newDraft : d)
+                          : [newDraft, ...privateDrafts];
+
+                        setPrivateDrafts(updatedDraftsList);
+                        safeSetItem('era_private_drafts_v1', JSON.stringify(updatedDraftsList));
 
                         const newAuditLog: WorkflowAuditLogEntry = {
                           id: `log_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,

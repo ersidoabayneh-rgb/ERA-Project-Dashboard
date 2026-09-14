@@ -136,7 +136,6 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
       dim: 'A',
       dimName: 'Technical Skills & Engineering Competence',
       dimWeight: 35,
-      direction: 'H',
       ref: 'A1',
       parentName: 'Technical Specification Comprehension',
       parentWeight: 25,
@@ -184,7 +183,6 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
       dim: criterionForm.dim || 'A',
       dimName: criterionForm.dimName || 'Technical Skills & Engineering Competence',
       dimWeight: Number(criterionForm.dimWeight) || 35,
-      direction: criterionForm.direction || 'H',
       ref: criterionForm.ref || 'A1',
       parentName: criterionForm.parentName || 'Technical Specification Comprehension',
       parentWeight: Number(criterionForm.parentWeight) || 25,
@@ -585,7 +583,7 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
         )}
       </AnimatePresence>
 
-      {/* TOP: Master Overall Formula & Zero-Tolerance Executive Scorecard */}
+      {/* TOP: Master Overall Formula Executive Scorecard */}
       <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 border border-indigo-500/30 rounded-3xl p-6 text-white shadow-lg space-y-5 relative overflow-hidden">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 border-b border-indigo-800/50 pb-5">
           <div className="space-y-1.5">
@@ -596,13 +594,16 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 uppercase tracking-wider font-mono flex items-center gap-1">
                 <CheckCircle2 className="w-3 h-3 text-emerald-400" /> Formula Active
               </span>
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-indigo-500/20 text-indigo-300 border border-indigo-400/30 uppercase tracking-wider font-mono">
+                Likert Scale: 5 (Superior) to 1 (Poor)
+              </span>
             </div>
             <h2 className="text-lg md:text-xl font-black tracking-tight text-white flex items-center gap-2">
               <ShieldCheck className="w-6 h-6 text-indigo-400 shrink-0" />
               Supervision Consultant Performance Evaluation
             </h2>
             <p className="text-xs text-indigo-200/80 max-w-3xl leading-relaxed">
-              Overall Scoring Formula: <span className="font-mono font-bold text-amber-300">S = (0.30×A) + (0.25×B) + (0.20×C) + (0.15×D) + (0.10×E)</span>
+              Overall Scoring Formula: <span className="font-mono font-bold text-amber-300">S = (0.30×A) + (0.25×B) + (0.20×C) + (0.15×D) + (0.10×E)</span>. Scoring standard: Highest Likert rating (5.00) delivers the superior performance score value. Artificial auto-caps to 2.00 disabled.
             </p>
           </div>
 
@@ -1414,7 +1415,7 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
                                 {/* Right: Likert scale 1 to 5 selector */}
                                 <div className="flex flex-col items-start lg:items-end gap-1.5 shrink-0">
                                   <div className="flex items-center gap-1.5">
-                                    <span className="text-[10px] font-bold text-slate-400">Likert Rating:</span>
+                                    <span className="text-[10px] font-bold text-slate-400">Likert Rating (5 is Best):</span>
                                     <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
                                       {[1, 2, 3, 4, 5].map((val) => {
                                         const isActive = currentScore === val;

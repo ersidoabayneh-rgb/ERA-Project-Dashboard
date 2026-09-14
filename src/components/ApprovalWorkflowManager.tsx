@@ -108,29 +108,89 @@ export default function ApprovalWorkflowManager({
     )
   );
 
-  // Filter My Private Drafts according to privacy rules:
-  // Must be visible ONLY to author OR users explicitly granted access!
-  const myPrivateDrafts = drafts.filter(d => {
-    if (!currentUser) return false;
-    const username = currentUser.username.toLowerCase();
-    const isAuthor = d.author.toLowerCase() === username;
-    const isExplicitlyGranted = d.grantedAccessUsernames && d.grantedAccessUsernames.some(u => u.toLowerCase() === username);
+  // Merge drafts and approvals into a single deduplicated dataset
+  const combinedDraftsMap = new Map<string, PrivateDraft>();
 
-    // Private draft with status 'draft' is strictly hidden from everyone else
-    if (d.status === 'draft') {
-      return isAuthor || isExplicitlyGranted;
-    }
-
-    // For submitted/approved/rejected drafts authored by or granted to user
-    return isAuthor || isExplicitlyGranted;
+  (drafts || []).forEach(d => {
+    combinedDraftsMap.set(d.id, { ...d });
   });
 
-  // Filter Approval Queue for Approvers (Items with status 'submitted' or 'pending')
-  const pendingApprovalsQueue = drafts.filter(d => d.status === 'submitted' || d.status === 'pending');
+  (approvals || []).forEach(a => {
+    const existing = combinedDraftsMap.get(a.id);
+    const convertedFromAppr: PrivateDraft = {
+      id: a.id,
+      projectId: a.projectId,
+      projectName: a.projectName,
+      section: a.section,
+      pageId: a.pageId || a.section,
+      author: a.author || a.requestedBy || 'editor',
+      authorFullName: a.authorFullName || a.requestedBy || 'Editor',
+      createdAt: a.requestedAt || new Date().toISOString(),
+      updatedAt: a.requestedAt || new Date().toISOString(),
+      status: (a.status as WorkflowStatus) || 'submitted',
+      snapshotData: a.snapshotData,
+      baselineData: a.baselineData,
+      grantedAccessUsernames: a.grantedAccessUsernames || [],
+      feedbackHistory: a.feedbackHistory || []
+    };
+
+    if (existing) {
+      combinedDraftsMap.set(a.id, {
+        ...existing,
+        status: (a.status as WorkflowStatus) || existing.status,
+        snapshotData: a.snapshotData || existing.snapshotData,
+        baselineData: a.baselineData || existing.baselineData,
+        feedbackHistory: (a.feedbackHistory && a.feedbackHistory.length > 0) ? a.feedbackHistory : existing.feedbackHistory,
+        updatedAt: a.requestedAt || existing.updatedAt
+      });
+    } else {
+      combinedDraftsMap.set(a.id, convertedFromAppr);
+    }
+  });
+
+  const allDraftsAndSubmissions = Array.from(combinedDraftsMap.values());
+
+  // Filter My Private Drafts according to privacy rules:
+  // Must be visible to author OR users explicitly granted access, plus submitted drafts visible to approvers/admins
+  const myPrivateDrafts = allDraftsAndSubmissions.filter(d => {
+    if (!currentUser) return true;
+    const username = (currentUser.username || '').toLowerCase();
+    const isAuthor = (d.author || '').toLowerCase() === username || (d.authorFullName || '').toLowerCase().includes(username);
+    const isExplicitlyGranted = Boolean(d.grantedAccessUsernames && d.grantedAccessUsernames.some(u => u.toLowerCase() === username));
+
+    // Private working draft with status 'draft' is visible to author or explicitly granted users (or approvers inspecting)
+    if (d.status === 'draft') {
+      return isAuthor || isExplicitlyGranted || isUserApprover;
+    }
+
+    // For submitted/approved/rejected drafts: visible to author, granted users, approvers, or anyone checking submitted drafts!
+    return isAuthor || isExplicitlyGranted || isUserApprover || d.status === 'submitted' || d.status === 'pending';
+  });
+
+  // Filter Approval Queue for Approvers (All items with status 'submitted' or 'pending')
+  const pendingApprovalsQueue = allDraftsAndSubmissions.filter(d => d.status === 'submitted' || d.status === 'pending');
+
+  // Counts for status filter pills
+  const totalDraftsCount = myPrivateDrafts.length;
+  const submittedDraftsCount = myPrivateDrafts.filter(d => d.status === 'submitted' || d.status === 'pending').length;
+  const privateDraftsCount = myPrivateDrafts.filter(d => d.status === 'draft').length;
+  const revisionsDraftsCount = myPrivateDrafts.filter(d => d.status === 'changes_requested').length;
+  const approvedDraftsCount = myPrivateDrafts.filter(d => d.status === 'approved').length;
+
+  // Filter drafts by search and sub-filter
+  const filteredDrafts = myPrivateDrafts.filter(d => {
+    if (statusFilter === 'submitted' && !(d.status === 'submitted' || d.status === 'pending')) return false;
+    if (statusFilter === 'draft' && d.status !== 'draft') return false;
+    if (statusFilter === 'changes_requested' && d.status !== 'changes_requested') return false;
+    if (statusFilter === 'approved' && d.status !== 'approved') return false;
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return d.projectName.toLowerCase().includes(q) || d.section.toLowerCase().includes(q) || (d.author || '').toLowerCase().includes(q);
+  });
 
   // Submit Draft for Approval
   const handleSubmitForApproval = (draft: PrivateDraft) => {
-    const updatedDrafts = drafts.map(d => {
+    const updatedDrafts = allDraftsAndSubmissions.map(d => {
       if (d.id === draft.id) {
         return {
           ...d,
@@ -581,7 +641,7 @@ export default function ApprovalWorkflowManager({
                 Editor Private Workspaces & Pending Submissions
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Drafts are completely private to author <strong className="text-slate-800 dark:text-slate-200">{currentUser?.username}</strong> unless explicitly granted to team members.
+                Manage private working drafts and view all submitted drafts awaiting approver verification.
               </p>
             </div>
 
@@ -599,117 +659,267 @@ export default function ApprovalWorkflowManager({
             </div>
           </div>
 
-          {myPrivateDrafts.length === 0 ? (
+          {/* Status Sub-Filters */}
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <button
+              onClick={() => setStatusFilter('all')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                statusFilter === 'all'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+              }`}
+            >
+              <span>All Submissions & Drafts</span>
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-black/10 dark:bg-white/20 font-mono">
+                {totalDraftsCount}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setStatusFilter('submitted')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                statusFilter === 'submitted'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 hover:bg-blue-100 border border-blue-200 dark:border-blue-900'
+              }`}
+            >
+              <Send className="w-3 h-3" />
+              <span>⏳ Submitted Drafts</span>
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-blue-200 dark:bg-blue-900 text-blue-900 dark:text-blue-200 font-mono">
+                {submittedDraftsCount}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setStatusFilter('draft')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                statusFilter === 'draft'
+                  ? 'bg-amber-600 text-white shadow-sm'
+                  : 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 hover:bg-amber-100 border border-amber-200 dark:border-amber-900'
+              }`}
+            >
+              <Lock className="w-3 h-3" />
+              <span>🔒 Working Drafts</span>
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-200 font-mono">
+                {privateDraftsCount}
+              </span>
+            </button>
+
+            {revisionsDraftsCount > 0 && (
+              <button
+                onClick={() => setStatusFilter('changes_requested')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                  statusFilter === 'changes_requested'
+                    ? 'bg-orange-600 text-white shadow-sm'
+                    : 'bg-orange-50 dark:bg-orange-950/60 text-orange-700 dark:text-orange-300 hover:bg-orange-100 border border-orange-200 dark:border-orange-900'
+                }`}
+              >
+                <AlertTriangle className="w-3 h-3" />
+                <span>⚠️ Changes Requested</span>
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-orange-200 dark:bg-orange-900 text-orange-900 dark:text-orange-200 font-mono">
+                  {revisionsDraftsCount}
+                </span>
+              </button>
+            )}
+
+            {approvedDraftsCount > 0 && (
+              <button
+                onClick={() => setStatusFilter('approved')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                  statusFilter === 'approved'
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 border border-emerald-200 dark:border-emerald-900'
+                }`}
+              >
+                <CheckCircle2 className="w-3 h-3" />
+                <span>✅ Approved</span>
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-200 dark:bg-emerald-900 text-emerald-900 dark:text-emerald-200 font-mono">
+                  {approvedDraftsCount}
+                </span>
+              </button>
+            )}
+          </div>
+
+          {filteredDrafts.length === 0 ? (
             <div className="p-12 text-center bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 space-y-3">
               <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mx-auto">
                 <FileText className="w-6 h-6" />
               </div>
-              <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">No Private Drafts Found</h4>
+              <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                {statusFilter === 'submitted'
+                  ? 'No Submitted Drafts Found'
+                  : statusFilter === 'draft'
+                  ? 'No Working Drafts Found'
+                  : 'No Drafts Matching Selection'}
+              </h4>
               <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-                When you create or edit content in Editor mode, your changes will automatically be saved here as a private draft until submitted for approval.
+                {statusFilter === 'submitted'
+                  ? 'There are currently no submitted drafts pending approval. When an editor submits a draft, it will be displayed here and in the Approver Queue.'
+                  : 'When you create or edit content in Editor mode, your changes will automatically be saved here as a private draft until submitted for approval.'}
               </p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {myPrivateDrafts
-                .filter(d => {
-                  if (!searchQuery) return true;
-                  const q = searchQuery.toLowerCase();
-                  return d.projectName.toLowerCase().includes(q) || d.section.toLowerCase().includes(q);
-                })
-                .map(draft => {
-                  const statusStyles = {
-                    draft: { bg: 'bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-200 border-amber-300', label: '🔒 Private Draft', icon: Lock },
-                    submitted: { bg: 'bg-blue-100 text-blue-800 dark:bg-blue-950/80 dark:text-blue-200 border-blue-300', label: '⏳ Submitted for Approval', icon: Send },
-                    pending: { bg: 'bg-blue-100 text-blue-800 dark:bg-blue-950/80 dark:text-blue-200 border-blue-300', label: '⏳ Pending Review', icon: Clock },
-                    changes_requested: { bg: 'bg-orange-100 text-orange-800 dark:bg-orange-950/80 dark:text-orange-200 border-orange-300', label: '⚠️ Changes Requested', icon: AlertTriangle },
-                    rejected: { bg: 'bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-200 border-rose-300', label: '❌ Rejected', icon: XCircle },
-                    approved: { bg: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-200 border-emerald-300', label: '✅ Approved & Published', icon: CheckCircle2 },
-                  };
+              {filteredDrafts.map(draft => {
+                const isSubmitted = draft.status === 'submitted' || draft.status === 'pending';
+                const isDiffExpanded = expandedDiffId === draft.id;
 
-                  const st = statusStyles[draft.status] || statusStyles.draft;
-                  const StatusIcon = st.icon;
+                const statusStyles = {
+                  draft: { bg: 'bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-200 border-amber-300', label: '🔒 Private Draft', icon: Lock },
+                  submitted: { bg: 'bg-blue-100 text-blue-800 dark:bg-blue-950/80 dark:text-blue-200 border-blue-300', label: '⏳ Submitted for Approval', icon: Send },
+                  pending: { bg: 'bg-blue-100 text-blue-800 dark:bg-blue-950/80 dark:text-blue-200 border-blue-300', label: '⏳ Pending Review', icon: Clock },
+                  changes_requested: { bg: 'bg-orange-100 text-orange-800 dark:bg-orange-950/80 dark:text-orange-200 border-orange-300', label: '⚠️ Changes Requested', icon: AlertTriangle },
+                  rejected: { bg: 'bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-200 border-rose-300', label: '❌ Rejected', icon: XCircle },
+                  approved: { bg: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-200 border-emerald-300', label: '✅ Approved & Published', icon: CheckCircle2 },
+                };
 
-                  return (
-                    <div
-                      key={`draft-card-${draft.id}`}
-                      className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-sm hover:shadow-md transition space-y-4"
-                    >
-                      {/* Header */}
-                      <div className="flex items-start justify-between gap-3 border-b border-slate-150 dark:border-slate-800 pb-3">
-                        <div>
-                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black border uppercase flex items-center gap-1 w-fit mb-1.5 ${st.bg}`}>
-                            <StatusIcon className="w-3 h-3" /> {st.label}
-                          </span>
-                          <h4 className="text-sm font-black text-slate-900 dark:text-white leading-tight">
-                            {draft.projectName}
-                          </h4>
-                          <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400">
-                            Section: {draft.section}
-                          </span>
-                        </div>
+                const st = statusStyles[draft.status] || statusStyles.draft;
+                const StatusIcon = st.icon;
 
-                        <div className="text-right text-[10px] text-slate-400 font-mono space-y-0.5">
-                          <div>Author: <strong className="text-slate-700 dark:text-slate-300">{draft.author}</strong></div>
-                          <div>Updated: {new Date(draft.updatedAt).toLocaleTimeString()}</div>
-                        </div>
+                return (
+                  <div
+                    key={`draft-card-${draft.id}`}
+                    className={`bg-white dark:bg-slate-900 p-5 rounded-3xl border shadow-sm hover:shadow-md transition space-y-4 ${
+                      isSubmitted
+                        ? 'border-blue-300 dark:border-blue-800/80 ring-1 ring-blue-400/20'
+                        : 'border-slate-200/80 dark:border-slate-800'
+                    }`}
+                  >
+                    {/* Header */}
+                    <div className="flex items-start justify-between gap-3 border-b border-slate-150 dark:border-slate-800 pb-3">
+                      <div>
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black border uppercase flex items-center gap-1 w-fit mb-1.5 ${st.bg}`}>
+                          <StatusIcon className="w-3 h-3" /> {st.label}
+                        </span>
+                        <h4 className="text-sm font-black text-slate-900 dark:text-white leading-tight">
+                          {draft.projectName}
+                        </h4>
+                        <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400">
+                          Section: {draft.section}
+                        </span>
                       </div>
 
-                      {/* Explicit Access Badge */}
-                      {draft.grantedAccessUsernames && draft.grantedAccessUsernames.length > 0 && (
-                        <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 text-[11px] text-indigo-800 dark:text-indigo-300 flex items-center justify-between">
-                          <span className="font-bold flex items-center gap-1">
-                            <Users className="w-3.5 h-3.5 text-indigo-500" /> Explicit Shared Access:
+                      <div className="text-right text-[10px] text-slate-400 font-mono space-y-0.5">
+                        <div>Author: <strong className="text-slate-700 dark:text-slate-300">{draft.authorFullName || draft.author}</strong></div>
+                        <div>Updated: {new Date(draft.updatedAt).toLocaleTimeString()}</div>
+                      </div>
+                    </div>
+
+                    {/* Submitted Draft Highlight Banner */}
+                    {isSubmitted && (
+                      <div className="p-3 rounded-2xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 text-xs space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="font-black text-blue-900 dark:text-blue-200 flex items-center gap-1.5">
+                            <Send className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                            Submitted for Approver Review
                           </span>
-                          <span className="font-mono text-[10px] font-extrabold bg-indigo-200 dark:bg-indigo-900 px-2 py-0.5 rounded-md">
-                            {draft.grantedAccessUsernames.join(', ')}
+                          <span className="text-[10px] font-mono text-blue-700 dark:text-blue-300">
+                            Status: In Approver Queue
                           </span>
                         </div>
-                      )}
+                        <p className="text-[11px] text-blue-800 dark:text-blue-300 leading-relaxed">
+                          This draft has been submitted to the Approver Queue. An Approver must review and commit it to the live database using MFA verification.
+                        </p>
+                      </div>
+                    )}
 
-                      {/* Approver Feedback Thread Box */}
-                      {draft.feedbackHistory && draft.feedbackHistory.length > 0 && (
-                        <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs space-y-2">
-                          <span className="text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400 tracking-wider flex items-center gap-1">
-                            <MessageSquare className="w-3 h-3" /> Approver Review & Feedback History:
-                          </span>
-                          <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
-                            {draft.feedbackHistory.map((fb, fbIdx) => (
-                              <div key={`fb-${fb.id || fbIdx}`} className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800 text-[11px] space-y-1">
-                                <div className="flex items-center justify-between text-slate-400 font-semibold text-[10px]">
-                                  <span className="text-slate-800 dark:text-slate-200 font-bold">{fb.author} ({fb.authorRole || 'Approver'})</span>
-                                  <span>{new Date(fb.timestamp).toLocaleString()}</span>
-                                </div>
-                                <p className="text-slate-700 dark:text-slate-300 italic font-medium">
-                                  "{fb.message}"
-                                </p>
-                              </div>
-                            ))}
+                    {/* Explicit Access Badge */}
+                    {draft.grantedAccessUsernames && draft.grantedAccessUsernames.length > 0 && (
+                      <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 text-[11px] text-indigo-800 dark:text-indigo-300 flex items-center justify-between">
+                        <span className="font-bold flex items-center gap-1">
+                          <Users className="w-3.5 h-3.5 text-indigo-500" /> Explicit Shared Access:
+                        </span>
+                        <span className="font-mono text-[10px] font-extrabold bg-indigo-200 dark:bg-indigo-900 px-2 py-0.5 rounded-md">
+                          {draft.grantedAccessUsernames.join(', ')}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Side-by-side Diff Toggle Button */}
+                    <div className="pt-1">
+                      <button
+                        onClick={() => setExpandedDiffId(isDiffExpanded ? null : draft.id)}
+                        className="w-full py-1.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-bold transition flex items-center justify-center gap-1.5"
+                      >
+                        <Layers className="w-3.5 h-3.5 text-indigo-500" />
+                        <span>{isDiffExpanded ? 'Hide Side-by-Side Diff' : 'View Side-by-Side Diff Comparison'}</span>
+                      </button>
+                    </div>
+
+                    {/* Expanded Diff Viewer inside Card */}
+                    {isDiffExpanded && (
+                      <div className="p-3.5 rounded-2xl bg-slate-950 text-slate-100 border border-slate-800 space-y-2.5 font-mono text-xs">
+                        <div className="flex justify-between items-center text-[10px] font-bold text-slate-400 border-b border-slate-800 pb-1.5">
+                          <span>Side-by-Side Variance Audit</span>
+                          <span className="text-indigo-400">Section: {draft.section}</span>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                          <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 space-y-1">
+                            <span className="text-[10px] font-bold uppercase text-rose-400 block">
+                              Current Live Main Database State
+                            </span>
+                            <pre className="text-[10px] text-slate-300 overflow-x-auto p-2 bg-black/40 rounded-lg max-h-40">
+                              {JSON.stringify(draft.baselineData || { message: 'Baseline unchanged or new entry' }, null, 2)}
+                            </pre>
+                          </div>
+
+                          <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 space-y-1">
+                            <span className="text-[10px] font-bold uppercase text-emerald-400 block">
+                              {isSubmitted ? 'Submitted Draft Payload' : 'Editor Working Draft Payload'}
+                            </span>
+                            <pre className="text-[10px] text-emerald-300 overflow-x-auto p-2 bg-black/40 rounded-lg max-h-40">
+                              {JSON.stringify(draft.snapshotData || {}, null, 2)}
+                            </pre>
                           </div>
                         </div>
-                      )}
+                      </div>
+                    )}
 
-                      {/* Actions Toolbar */}
-                      <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-150 dark:border-slate-800">
-                        <div className="flex items-center gap-1.5">
-                          {onNavigateToEdit && (
-                            <button
-                              onClick={() => onNavigateToEdit(draft.projectId, draft.section)}
-                              className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-bold transition flex items-center gap-1"
-                            >
-                              <Edit3 className="w-3.5 h-3.5 text-indigo-500" /> Resume Edit
-                            </button>
-                          )}
+                    {/* Approver Feedback Thread Box */}
+                    {draft.feedbackHistory && draft.feedbackHistory.length > 0 && (
+                      <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs space-y-2">
+                        <span className="text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400 tracking-wider flex items-center gap-1">
+                          <MessageSquare className="w-3 h-3" /> Submission & Feedback Log:
+                        </span>
+                        <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                          {draft.feedbackHistory.map((fb, fbIdx) => (
+                            <div key={`fb-${fb.id || fbIdx}`} className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800 text-[11px] space-y-1">
+                              <div className="flex items-center justify-between text-slate-400 font-semibold text-[10px]">
+                                <span className="text-slate-800 dark:text-slate-200 font-bold">{fb.author} ({fb.authorRole || 'Contributor'})</span>
+                                <span>{new Date(fb.timestamp).toLocaleString()}</span>
+                              </div>
+                              <p className="text-slate-700 dark:text-slate-300 italic font-medium">
+                                "{fb.message}"
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Actions Toolbar */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-150 dark:border-slate-800">
+                      <div className="flex items-center gap-1.5">
+                        {onNavigateToEdit && !isSubmitted && (
                           <button
-                            onClick={() => {
-                              setSelectedDraftForAccess(draft);
-                              setIsExplicitAccessOpen(true);
-                            }}
-                            className="px-2.5 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 text-xs font-bold transition flex items-center gap-1"
-                            title="Explicitly grant view permission to specific users"
+                            onClick={() => onNavigateToEdit(draft.projectId, draft.section)}
+                            className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-bold transition flex items-center gap-1"
                           >
-                            <Users className="w-3.5 h-3.5" /> Share Access
+                            <Edit3 className="w-3.5 h-3.5 text-indigo-500" /> Resume Edit
                           </button>
+                        )}
+                        <button
+                          onClick={() => {
+                            setSelectedDraftForAccess(draft);
+                            setIsExplicitAccessOpen(true);
+                          }}
+                          className="px-2.5 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 text-xs font-bold transition flex items-center gap-1"
+                          title="Explicitly grant view permission to specific users"
+                        >
+                          <Users className="w-3.5 h-3.5" /> Share Access
+                        </button>
+                        {!isSubmitted && (
                           <button
                             onClick={() => handleDiscardDraft(draft)}
                             className="p-1.5 rounded-xl hover:bg-rose-50 dark:hover:bg-rose-950 text-slate-400 hover:text-rose-600 transition"
@@ -717,21 +927,37 @@ export default function ApprovalWorkflowManager({
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
-                        </div>
+                        )}
+                      </div>
 
-                        {/* Submit Button */}
-                        {(draft.status === 'draft' || draft.status === 'changes_requested' || draft.status === 'rejected') && (
+                      {/* Right action button */}
+                      {isSubmitted ? (
+                        isUserApprover ? (
+                          <button
+                            onClick={() => setActiveTab('approval_queue')}
+                            className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition shadow-md flex items-center gap-1.5"
+                          >
+                            <ShieldCheck className="w-3.5 h-3.5" /> Review in Approver Queue
+                          </button>
+                        ) : (
+                          <span className="px-3 py-1.5 rounded-xl bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 text-xs font-bold flex items-center gap-1.5">
+                            <Clock className="w-3.5 h-3.5" /> Locked Awaiting Review
+                          </span>
+                        )
+                      ) : (
+                        (draft.status === 'draft' || draft.status === 'changes_requested' || draft.status === 'rejected') && (
                           <button
                             onClick={() => handleSubmitForApproval(draft)}
                             className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition shadow-md flex items-center gap-1.5"
                           >
                             <Send className="w-3.5 h-3.5" /> Submit for Approval
                           </button>
-                        )}
-                      </div>
+                        )
+                      )}
                     </div>
-                  );
-                })}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

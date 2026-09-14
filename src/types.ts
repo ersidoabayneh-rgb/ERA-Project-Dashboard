@@ -1022,7 +1022,7 @@ export interface ConsultantEvaluationCriterion {
   metric: string;
   formula: string;
   dataSource: string;
-  direction: 'H' | 'L'; // H = Higher is better, L = Lower is better
+  direction?: 'H' | 'L'; // Uniform scoring: highest Likert rating (5) is always the superior score value
   benchmarks: {
     score5: string;
     score4: string;
