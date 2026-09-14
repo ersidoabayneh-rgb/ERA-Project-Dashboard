@@ -41,7 +41,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
   const [isKpiHistoryOpen, setIsKpiHistoryOpen] = useState(true);
   const [isDataInconsistencyOpen, setIsDataInconsistencyOpen] = useState(true);
   const [isMonthlyGradingOpen, setIsMonthlyGradingOpen] = useState(true);
-  const [gradingActiveTab, setGradingActiveTab] = useState<'contractor' | 'consultant' | 'both'>('contractor');
+  const [gradingActiveTab, setGradingActiveTab] = useState<'contractor' | 'consultant' | 'both'>('both');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('All');
   const [selectedGradingMonthFilter, setSelectedGradingMonthFilter] = useState<string>('All');
   const [selectedGradingDetailModal, setSelectedGradingDetailModal] = useState<MonthlyGradingRecord | null>(null);
@@ -1361,110 +1361,6 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
 
     curY += (6 * 20) + 14;
 
-    // Section 4c: Supervision Consultant Performance & Compliance Audit Rating
-    drawSectionHeader("4c. Supervision Consultant Compliance & Performance Audit Evaluation");
-    checkSpace(115);
-
-    // Main Card Container
-    doc.setFillColor(248, 250, 252);
-    doc.setDrawColor(226, 232, 240);
-    doc.roundedRect(40, curY, pageWidth - 80, 105, 4, 4, 'DF');
-
-    // Header strip inside container
-    doc.setFillColor(30, 41, 59); // slate-800
-    doc.roundedRect(40, curY, pageWidth - 80, 24, 4, 4, 'F');
-    doc.rect(40, curY + 16, pageWidth - 80, 8, 'F'); // square bottom corners
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8.5);
-    doc.setTextColor(255, 255, 255);
-    const firmHeader = `CONSULTANT: ${consultantEval.firmName.toUpperCase()}`;
-    doc.text(firmHeader.length > 55 ? firmHeader.substring(0, 52) + '...' : firmHeader, 52, curY + 11);
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7);
-    doc.setTextColor(203, 213, 225);
-    doc.text(`Resident Engineer: ${consultantEval.residentEngineer}  •  ${consultantEval.associationType}`, 52, curY + 20);
-
-    // Grade Badge on top right of strip
-    let badgeFill = [16, 185, 129]; // emerald
-    if (consultantEval.officialGrade === 'A') badgeFill = [16, 185, 129];
-    else if (consultantEval.officialGrade === 'B') badgeFill = [13, 148, 136];
-    else if (consultantEval.officialGrade === 'C') badgeFill = [217, 119, 6];
-    else if (consultantEval.officialGrade === 'D') badgeFill = [234, 88, 12];
-    else badgeFill = [220, 38, 38];
-
-    doc.setFillColor(badgeFill[0], badgeFill[1], badgeFill[2]);
-    doc.roundedRect(pageWidth - 150, curY + 4, 100, 16, 3, 3, 'F');
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    doc.setTextColor(255, 255, 255);
-    doc.text(`GRADE ${consultantEval.officialGrade}  •  ${consultantEval.overallScore.toFixed(1)}%`, pageWidth - 100, curY + 15, { align: 'center' });
-
-    // 5 Dimension Breakdown Boxes
-    const dimWidth = (pageWidth - 102) / 5;
-    const dims = [
-      { id: 'A', name: 'Technical Skills', max: 35, ...consultantEval.dimensionBreakdown.A },
-      { id: 'B', name: 'Soft Skills / Team', max: 20, ...consultantEval.dimensionBreakdown.B },
-      { id: 'C', name: 'Site Supervision', max: 20, ...consultantEval.dimensionBreakdown.C },
-      { id: 'D', name: 'Contract Admin', max: 15, ...consultantEval.dimensionBreakdown.D },
-      { id: 'E', name: 'Corporate Ethics', max: 10, ...consultantEval.dimensionBreakdown.E }
-    ];
-
-    dims.forEach((d, dIdx) => {
-      const boxX = 46 + (dIdx * (dimWidth + 2));
-      const boxY = curY + 30;
-      doc.setFillColor(255, 255, 255);
-      doc.setDrawColor(226, 232, 240);
-      doc.roundedRect(boxX, boxY, dimWidth, 34, 2, 2, 'DF');
-
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(6);
-      doc.setTextColor(100, 116, 139);
-      doc.text(`DIMENSION ${d.id}: ${d.name.toUpperCase()}`, boxX + 4, boxY + 8);
-
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8);
-      doc.setTextColor(15, 23, 42);
-      doc.text(`${d.earned}/${d.max} pts`, boxX + 4, boxY + 18);
-
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(6.5);
-      doc.setTextColor(d.percentage >= 80 ? 5 : 217, d.percentage >= 80 ? 150 : 119, d.percentage >= 80 ? 105 : 6);
-      doc.text(`${d.percentage}% score`, boxX + 4, boxY + 26);
-
-      // Mini progress track
-      doc.setFillColor(226, 232, 240);
-      doc.rect(boxX + 4, boxY + 29, dimWidth - 8, 2, 'F');
-      doc.setFillColor(badgeFill[0], badgeFill[1], badgeFill[2]);
-      doc.rect(boxX + 4, boxY + 29, Math.max(0, Math.min(dimWidth - 8, (dimWidth - 8) * (d.percentage / 100))), 2, 'F');
-    });
-
-    // Submittal quantitative metrics & standing bar at bottom
-    doc.setFillColor(255, 255, 255);
-    doc.setDrawColor(226, 232, 240);
-    doc.roundedRect(46, curY + 68, pageWidth - 92, 31, 2, 2, 'DF');
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7);
-    doc.setTextColor(51, 65, 85);
-    doc.text(`QUANTITATIVE AUDIT EVIDENCE & SUBMITTAL SLA LOG SUMMARY:`, 52, curY + 77);
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(6.5);
-    doc.setTextColor(71, 85, 105);
-    const metricText1 = `• Submittals Evaluated: ${consultantEval.metrics.totalSubmittals} logged (${consultantEval.metrics.onTimeCount} on-time, ${consultantEval.metrics.overdueCount} overdue)  •  SLA On-Time Rate: ${consultantEval.metrics.slaOnTimeRate.toFixed(1)}%`;
-    const metricText2 = `• Response Velocity: Avg RFI ${consultantEval.metrics.avgRfiDays}d (target: 7d)  •  Avg WIR ${consultantEval.metrics.avgWirDays}d (target: 2d)  •  Key Staff Deployed: ${consultantEval.metrics.activeKeyStaff}/${consultantEval.metrics.totalKeyStaff} (${consultantEval.metrics.mobilizationRate}%)`;
-    const metricText3 = `• Official Audit Standing: ${consultantEval.officialStanding}`;
-    doc.text(metricText1, 52, curY + 85);
-    doc.text(metricText2, 52, curY + 91);
-
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(badgeFill[0], badgeFill[1], badgeFill[2]);
-    doc.text(metricText3, 52, curY + 96);
-
-    curY += 114;
-
     // Section 5: Bank Securities & Guarantee Conformity
     drawSectionHeader("5. Bank Securities & Guarantee Conformity");
     checkSpace(55);
@@ -1500,13 +1396,14 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
 
     // Section 6: Recommended Audit Interventions & Directives
     drawSectionHeader("6. Recommended Audit Interventions & Directives");
+    const overdueCount = consultantEval.metrics?.rfis?.overdue ?? 0;
     const actionDirects = [
       { step: "01", body: `Issue formal Warning Directive under FIDIC Clause 8.6 regarding the delays evaluated in ${lagging.length > 0 ? lagging.map(l => `Series ${l.code}`).join(', ') : 'Series A (Earthworks)'}.` },
       { step: "02", body: "Instruct the Supervising Engineer and Lead QS to audit price adjustments indexes and current IPC valuation backlogs to align cash outlay velocity with real progress." },
       { step: "03", body: "Instruct Contractor to submit a comprehensive recovery program reflecting real equipment plant and workforce enhancements on the critical paths." },
-      ...(consultantEval.overallScore < 75 || consultantEval.metrics.overdueCount > 0 ? [{
+      ...(((consultantEval.overallScore ?? 80) < 75 || overdueCount > 0) ? [{
         step: "04",
-        body: `Direct Supervision Consultant (${consultantEval.firmName} - Grade ${consultantEval.officialGrade} • ${consultantEval.overallScore.toFixed(1)}%) to resolve ${consultantEval.metrics.overdueCount} overdue technical submittals and rectify key staffing gaps within 14 days under FIDIC Cl. 3 / ERA Guidelines.`
+        body: `Direct Supervision Consultant (${consultantEval.firmName} - Grade ${consultantEval.officialGrade} • ${(consultantEval.overallScore ?? 80).toFixed(1)}%) to resolve ${overdueCount} overdue technical submittals and rectify key staffing gaps within 14 days under FIDIC Cl. 3 / ERA Guidelines.`
       }] : [])
     ];
 
@@ -1850,11 +1747,14 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7);
     doc.setTextColor(51, 65, 85);
-    doc.text(`CONSULTANT GRADE: ${consultantEval.officialGrade} (${consultantEval.overallScore.toFixed(1)}%)`, margin + 310, curY + 15);
+    doc.text(`CONSULTANT GRADE: ${consultantEval.officialGrade} (${(consultantEval.overallScore ?? 80).toFixed(1)}%)`, margin + 310, curY + 15);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(71, 85, 105);
-    doc.text(`SLA On-Time Rate: ${consultantEval.metrics.slaOnTimeRate.toFixed(1)}%  •  Standing: ${consultantEval.officialStanding}`, margin + 310, curY + 28);
-    doc.text(`Submittals Audited: ${consultantEval.metrics.totalSubmittals} logged (${consultantEval.metrics.overdueCount} overdue)`, margin + 310, curY + 40);
+    const slaRate = consultantEval.slaTurnaroundScore ?? consultantEval.metrics?.overallOnTimeRate ?? 85;
+    const totalSubs = consultantEval.metrics?.totalCount ?? 0;
+    const pendingSubs = consultantEval.metrics?.totalPending ?? 0;
+    doc.text(`SLA On-Time Rate: ${slaRate.toFixed(1)}%  •  Standing: ${consultantEval.officialStanding}`, margin + 310, curY + 28);
+    doc.text(`Submittals Audited: ${totalSubs} logged (${pendingSubs} pending)`, margin + 310, curY + 40);
 
     curY += 56;
 
@@ -2649,16 +2549,32 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                   <div className="inline-flex p-1 bg-slate-100 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800">
                     <button
                       type="button"
+                      onClick={() => setGradingActiveTab('both')}
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        gradingActiveTab === 'both'
+                          ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-xs'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                      }`}
+                    >
+                      <Layers className="w-3.5 h-3.5 text-slate-500" />
+                      <span>Joint Dual Ledger</span>
+                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-slate-200/70 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                        {monthlyGradingRecords.length}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
                       onClick={() => setGradingActiveTab('contractor')}
                       className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                         gradingActiveTab === 'contractor'
-                          ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-xs'
+                          ? 'bg-white dark:bg-slate-800 text-amber-700 dark:text-amber-400 shadow-xs'
                           : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                       }`}
                     >
                       <HardHat className="w-3.5 h-3.5 text-amber-500" />
                       <span>Contractor Records</span>
-                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-slate-200/70 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-amber-100/70 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300">
                         {monthlyGradingRecords.length}
                       </span>
                     </button>
@@ -2674,22 +2590,9 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                     >
                       <Briefcase className="w-3.5 h-3.5 text-indigo-500" />
                       <span>Supervision Consultant Records</span>
-                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-slate-200/70 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-indigo-100/70 dark:bg-indigo-950/50 text-indigo-800 dark:text-indigo-300">
                         {monthlyGradingRecords.length}
                       </span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setGradingActiveTab('both')}
-                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                        gradingActiveTab === 'both'
-                          ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-xs'
-                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                      }`}
-                    >
-                      <Layers className="w-3.5 h-3.5 text-slate-500" />
-                      <span>Joint / Comparative</span>
                     </button>
                   </div>
 
@@ -2794,7 +2697,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                             <div className="flex items-center justify-between">
                               <span className="text-[9px] font-black text-amber-700 dark:text-amber-400 uppercase tracking-wider font-mono">LATEST CONTRACTOR AUDIT</span>
                               <span className={`text-[10px] font-black px-2 py-0.5 rounded-md ${badgeBg}`}>
-                                GRADE {latest.contractorGrade} • {latest.contractorScore.toFixed(1)}%
+                                GRADE {latest.contractorGrade || 'B'} • {(latest.contractorScore ?? 80).toFixed(1)}%
                               </span>
                             </div>
                             <div className="flex items-baseline justify-between">
@@ -2804,7 +2707,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                               </div>
                               <div className="text-right font-mono">
                                 <span className="text-[10px] text-slate-400 block">SPI Index</span>
-                                <span className={`text-xs font-extrabold ${latest.contractorSpi >= 1 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>{latest.contractorSpi.toFixed(2)}</span>
+                                <span className={`text-xs font-extrabold ${(latest.contractorSpi ?? 1) >= 1 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>{(latest.contractorSpi ?? 1).toFixed(2)}</span>
                               </div>
                             </div>
                           </div>
@@ -2842,7 +2745,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                         <div className="flex items-baseline justify-between">
                           <div>
                             <span className="text-xs font-black text-slate-800 dark:text-slate-200 block">
-                              {(monthlyGradingRecords.reduce((acc, r) => acc + r.contractorScore, 0) / (monthlyGradingRecords.length || 1)).toFixed(1)}% Avg Score
+                              {(monthlyGradingRecords.reduce((acc, r) => acc + (r.contractorScore ?? 80), 0) / (monthlyGradingRecords.length || 1)).toFixed(1)}% Avg Score
                             </span>
                             <span className="text-[10px] text-slate-500">{p.contractor || 'Assigned Contractor'}</span>
                           </div>
@@ -2895,13 +2798,19 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                                         {rec.status || 'Finalized'}
                                       </span>
                                     </div>
+                                    <div className="mt-1 flex items-center gap-1">
+                                      <span className="inline-flex items-center gap-1 text-[9px] font-bold text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.5 rounded border border-amber-200/60 dark:border-amber-800/40">
+                                        <HardHat className="w-2.5 h-2.5 text-amber-500" />
+                                        <span className="truncate max-w-[140px]">{rec.contractorName || p.contractor || 'Contractor'}</span>
+                                      </span>
+                                    </div>
                                   </td>
 
                                   {/* Monthly Plan vs Actual */}
                                   <td className="py-2.5 px-3.5">
                                     <div className="flex items-center gap-2 font-mono text-[10px]">
-                                      <span className="text-slate-500">Plan: <strong className="text-slate-700 dark:text-slate-300">{rec.contractorPlanMonthly.toFixed(2)}%</strong></span>
-                                      <span className="text-slate-500">Act: <strong className="text-slate-900 dark:text-white">{rec.contractorActualMonthly.toFixed(2)}%</strong></span>
+                                      <span className="text-slate-500">Plan: <strong className="text-slate-700 dark:text-slate-300">{(rec.contractorPlanMonthly ?? 0).toFixed(2)}%</strong></span>
+                                      <span className="text-slate-500">Act: <strong className="text-slate-900 dark:text-white">{(rec.contractorActualMonthly ?? 0).toFixed(2)}%</strong></span>
                                     </div>
                                   </td>
 
@@ -2917,12 +2826,12 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                                   {/* Cumulative Actual & SPI */}
                                   <td className="py-2.5 px-3.5 font-mono text-[10px]">
                                     <div className="text-slate-800 dark:text-slate-200 font-bold">
-                                      {rec.contractorActualCumulative.toFixed(2)}% Cumulative
+                                      {(rec.contractorActualCumulative ?? 0).toFixed(2)}% Cumulative
                                     </div>
                                     <div className="flex items-center gap-1 mt-0.5">
                                       <span className="text-[9px] text-slate-400">SPI:</span>
-                                      <span className={`text-[9.5px] font-bold ${rec.contractorSpi >= 1 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
-                                        {rec.contractorSpi.toFixed(2)} ({rec.contractorSpi >= 1 ? 'On-track' : 'Delayed'})
+                                      <span className={`text-[9.5px] font-bold ${(rec.contractorSpi ?? 1) >= 1 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
+                                        {(rec.contractorSpi ?? 1).toFixed(2)} ({(rec.contractorSpi ?? 1) >= 1 ? 'On-track' : 'Delayed'})
                                       </span>
                                     </div>
                                   </td>
@@ -2930,8 +2839,8 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                                   {/* Contractor Grade */}
                                   <td className="py-2.5 px-3 text-center">
                                     <div className={`inline-flex flex-col items-center px-2.5 py-1 rounded-xl border ${contGradeBadge}`}>
-                                      <span className="text-xs font-black">Grade {rec.contractorGrade}</span>
-                                      <span className="text-[9px] font-mono font-extrabold">{rec.contractorScore.toFixed(1)}%</span>
+                                      <span className="text-xs font-black">Grade {rec.contractorGrade || 'B'}</span>
+                                      <span className="text-[9px] font-mono font-extrabold">{(rec.contractorScore ?? 80).toFixed(1)}%</span>
                                     </div>
                                     <span className="block text-[8.5px] text-slate-400 mt-1 max-w-[110px] mx-auto truncate" title={rec.contractorStanding}>
                                       {rec.contractorStanding}
@@ -3009,7 +2918,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                             <div className="flex items-center justify-between">
                               <span className="text-[9px] font-black text-indigo-700 dark:text-indigo-400 uppercase tracking-wider font-mono">LATEST CONSULTANT AUDIT</span>
                               <span className={`text-[10px] font-black px-2 py-0.5 rounded-md ${badgeBg}`}>
-                                GRADE {latest.consultantGrade} • {latest.consultantOverallScore.toFixed(1)}%
+                                GRADE {latest.consultantGrade || 'B'} • {(latest.consultantOverallScore ?? 82.5).toFixed(1)}%
                               </span>
                             </div>
                             <div className="flex items-baseline justify-between">
@@ -3019,7 +2928,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                               </div>
                               <div className="text-right font-mono">
                                 <span className="text-[10px] text-slate-400 block">SLA Rate</span>
-                                <span className="text-xs font-extrabold text-emerald-600 dark:text-emerald-400">{latest.consultantSlaTurnaroundScore.toFixed(1)}%</span>
+                                <span className="text-xs font-extrabold text-emerald-600 dark:text-emerald-400">{(latest.consultantSlaTurnaroundScore ?? 85).toFixed(1)}%</span>
                               </div>
                             </div>
                           </div>
@@ -3037,13 +2946,13 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                           <div className="flex justify-between">
                             <span className="text-slate-500">Pillar 1 (SLA Turnaround):</span>
                             <span className="font-bold font-mono text-slate-800 dark:text-slate-200">
-                              {consultantEval.metrics.slaOnTimeRate.toFixed(1)}% On-Time
+                              {(consultantEval.slaTurnaroundScore ?? consultantEval.metrics?.overallOnTimeRate ?? 85).toFixed(1)}% On-Time
                             </span>
                           </div>
                           <div className="flex justify-between">
                             <span className="text-slate-500">Pillar 2 (5-Dim Matrix):</span>
                             <span className="font-bold font-mono text-slate-800 dark:text-slate-200">
-                              {consultantEval.metrics.fiveDimScore.toFixed(1)}% Technical
+                              {(consultantEval.fiveDimScore ?? 80).toFixed(1)}% Technical
                             </span>
                           </div>
                         </div>
@@ -3062,7 +2971,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                               {consultantEval.firmName || p.consultant || 'Assigned Consultant'}
                             </span>
                             <span className="text-[10px] text-slate-500">
-                              Avg: {(monthlyGradingRecords.reduce((acc, r) => acc + r.consultantOverallScore, 0) / (monthlyGradingRecords.length || 1)).toFixed(1)}%
+                              Avg: {(monthlyGradingRecords.reduce((acc, r) => acc + (r.consultantOverallScore ?? 82.5), 0) / (monthlyGradingRecords.length || 1)).toFixed(1)}%
                             </span>
                           </div>
                           <div className="text-right font-mono">
@@ -3112,12 +3021,23 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                                         {rec.status || 'Finalized'}
                                       </span>
                                     </div>
+                                    <div className="mt-1 flex items-center gap-1 flex-wrap">
+                                      <span className="inline-flex items-center gap-1 text-[9px] font-bold text-indigo-800 dark:text-indigo-200 bg-indigo-50 dark:bg-indigo-950/40 px-1.5 py-0.5 rounded border border-indigo-200/60 dark:border-indigo-800/40">
+                                        <Briefcase className="w-2.5 h-2.5 text-indigo-500" />
+                                        <span className="truncate max-w-[140px]">{rec.consultantName || consultantEval.firmName || p.consultant || 'Supervision Consultant'}</span>
+                                      </span>
+                                      {(rec.residentEngineer || consultantEval.residentEngineer) && (
+                                        <span className="text-[9px] text-slate-400 dark:text-slate-500 font-mono">
+                                          RE: {rec.residentEngineer || consultantEval.residentEngineer}
+                                        </span>
+                                      )}
+                                    </div>
                                   </td>
 
                                   {/* Pillar 1 SLA */}
                                   <td className="py-2.5 px-3.5">
                                     <div className="font-mono text-[10px] font-bold text-slate-800 dark:text-slate-200">
-                                      {rec.consultantSlaTurnaroundScore.toFixed(1)}% On-Time
+                                      {(rec.consultantSlaTurnaroundScore ?? 85).toFixed(1)}% On-Time
                                     </div>
                                     <div className="text-[9px] text-slate-400 font-mono mt-0.5">
                                       Avg RFI: {rec.consultantAvgRfiDays || 6} days
@@ -3127,7 +3047,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                                   {/* Pillar 2 5-Dim Tech */}
                                   <td className="py-2.5 px-3.5">
                                     <div className="font-mono text-[10px] font-bold text-slate-800 dark:text-slate-200">
-                                      {rec.consultantFiveDimScore.toFixed(1)}% Technical
+                                      {(rec.consultantFiveDimScore ?? 80).toFixed(1)}% Technical
                                     </div>
                                     <div className="text-[9px] text-slate-400 font-mono mt-0.5">
                                       5 Evaluation Dimensions
@@ -3137,15 +3057,15 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                                   {/* Combined Rating */}
                                   <td className="py-2.5 px-3 text-center font-mono">
                                     <span className="inline-block px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 font-extrabold text-[10px] border border-indigo-100 dark:border-indigo-900/50">
-                                      {rec.consultantOverallScore.toFixed(1)}%
+                                      {(rec.consultantOverallScore ?? 82.5).toFixed(1)}%
                                     </span>
                                   </td>
 
                                   {/* Consultant Grade */}
                                   <td className="py-2.5 px-3 text-center">
                                     <div className={`inline-flex flex-col items-center px-2.5 py-1 rounded-xl border ${consGradeBadge}`}>
-                                      <span className="text-xs font-black">Grade {rec.consultantGrade}</span>
-                                      <span className="text-[9px] font-mono font-extrabold">{rec.consultantOverallScore.toFixed(1)}%</span>
+                                      <span className="text-xs font-black">Grade {rec.consultantGrade || 'B'}</span>
+                                      <span className="text-[9px] font-mono font-extrabold">{(rec.consultantOverallScore ?? 82.5).toFixed(1)}%</span>
                                     </div>
                                     <span className="block text-[8.5px] text-slate-400 mt-1 max-w-[110px] mx-auto truncate" title={rec.consultantStanding}>
                                       {rec.consultantStanding}
@@ -3224,7 +3144,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                             <div className="flex items-center justify-between">
                               <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider font-mono">LATEST CONTRACTOR AUDIT</span>
                               <span className={`text-[10px] font-black px-2 py-0.5 rounded-md ${badgeBg}`}>
-                                GRADE {latest.contractorGrade} • {latest.contractorScore.toFixed(1)}%
+                                GRADE {latest.contractorGrade || 'B'} • {(latest.contractorScore ?? 80).toFixed(1)}%
                               </span>
                             </div>
                             <div className="flex items-baseline justify-between">
@@ -3234,7 +3154,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                               </div>
                               <div className="text-right font-mono">
                                 <span className="text-[10px] text-slate-400 block">SPI Index</span>
-                                <span className={`text-xs font-extrabold ${latest.contractorSpi >= 1 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>{latest.contractorSpi.toFixed(2)}</span>
+                                <span className={`text-xs font-extrabold ${(latest.contractorSpi ?? 1) >= 1 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>{(latest.contractorSpi ?? 1).toFixed(2)}</span>
                               </div>
                             </div>
                           </div>
@@ -3254,7 +3174,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                             <div className="flex items-center justify-between">
                               <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider font-mono">LATEST CONSULTANT AUDIT</span>
                               <span className={`text-[10px] font-black px-2 py-0.5 rounded-md ${badgeBg}`}>
-                                GRADE {latest.consultantGrade} • {latest.consultantOverallScore.toFixed(1)}%
+                                GRADE {latest.consultantGrade || 'B'} • {(latest.consultantOverallScore ?? 82.5).toFixed(1)}%
                               </span>
                             </div>
                             <div className="flex items-baseline justify-between">
@@ -3264,7 +3184,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                               </div>
                               <div className="text-right font-mono">
                                 <span className="text-[10px] text-slate-400 block">SLA Rate</span>
-                                <span className="text-xs font-extrabold text-emerald-600 dark:text-emerald-400">{latest.consultantSlaTurnaroundScore.toFixed(1)}%</span>
+                                <span className="text-xs font-extrabold text-emerald-600 dark:text-emerald-400">{(latest.consultantSlaTurnaroundScore ?? 85).toFixed(1)}%</span>
                               </div>
                             </div>
                           </div>
@@ -3283,13 +3203,13 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                           <div className="flex justify-between">
                             <span className="text-slate-500">Contractor Avg Score:</span>
                             <span className="font-bold font-mono text-slate-800 dark:text-slate-200">
-                              {(monthlyGradingRecords.reduce((acc, r) => acc + r.contractorScore, 0) / (monthlyGradingRecords.length || 1)).toFixed(1)}%
+                              {(monthlyGradingRecords.reduce((acc, r) => acc + (r.contractorScore ?? 80), 0) / (monthlyGradingRecords.length || 1)).toFixed(1)}%
                             </span>
                           </div>
                           <div className="flex justify-between">
                             <span className="text-slate-500">Consultant Avg Score:</span>
                             <span className="font-bold font-mono text-slate-800 dark:text-slate-200">
-                              {(monthlyGradingRecords.reduce((acc, r) => acc + r.consultantOverallScore, 0) / (monthlyGradingRecords.length || 1)).toFixed(1)}%
+                              {(monthlyGradingRecords.reduce((acc, r) => acc + (r.consultantOverallScore ?? 82.5), 0) / (monthlyGradingRecords.length || 1)).toFixed(1)}%
                             </span>
                           </div>
                         </div>
@@ -3345,10 +3265,16 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                                   </td>
 
                                   {/* Contractor Monthly Progress */}
-                                  <td className="py-2.5 px-3.5">
+                                  <td className="py-2.5 px-3.5 min-w-[210px]">
+                                    <div className="flex items-center gap-1.5 mb-1.5">
+                                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950/50 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800/60 font-semibold text-[9.5px]">
+                                        <HardHat className="w-2.5 h-2.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                                        <span className="truncate max-w-[140px]">{rec.contractorName || p.contractor || 'Contractor'}</span>
+                                      </span>
+                                    </div>
                                     <div className="flex items-center gap-2 font-mono text-[10px]">
-                                      <span className="text-slate-500">Plan: <strong className="text-slate-700 dark:text-slate-300">{rec.contractorPlanMonthly.toFixed(2)}%</strong></span>
-                                      <span className="text-slate-500">Act: <strong className="text-slate-900 dark:text-white">{rec.contractorActualMonthly.toFixed(2)}%</strong></span>
+                                      <span className="text-slate-500">Plan: <strong className="text-slate-700 dark:text-slate-300">{(rec.contractorPlanMonthly ?? 0).toFixed(2)}%</strong></span>
+                                      <span className="text-slate-500">Act: <strong className="text-slate-900 dark:text-white">{(rec.contractorActualMonthly ?? 0).toFixed(2)}%</strong></span>
                                       <span className={`px-1.5 py-0.2 rounded font-bold text-[9px] ${
                                         varM >= 0 ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400' : 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400'
                                       }`}>
@@ -3356,15 +3282,15 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                                       </span>
                                     </div>
                                     <div className="text-[9.5px] text-slate-400 font-mono mt-0.5">
-                                      Cum Actual: {rec.contractorActualCumulative.toFixed(2)}%  •  SPI: <strong className={rec.contractorSpi >= 1 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>{rec.contractorSpi.toFixed(2)}</strong>
+                                      Cum Actual: {(rec.contractorActualCumulative ?? 0).toFixed(2)}%  •  SPI: <strong className={(rec.contractorSpi ?? 1) >= 1 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>{(rec.contractorSpi ?? 1).toFixed(2)}</strong>
                                     </div>
                                   </td>
 
                                   {/* Contractor Grade */}
                                   <td className="py-2.5 px-3 text-center">
                                     <div className={`inline-flex flex-col items-center px-2.5 py-1 rounded-xl border ${contGradeBadge}`}>
-                                      <span className="text-xs font-black">Grade {rec.contractorGrade}</span>
-                                      <span className="text-[9px] font-mono font-extrabold">{rec.contractorScore.toFixed(1)}%</span>
+                                      <span className="text-xs font-black">Grade {rec.contractorGrade || 'B'}</span>
+                                      <span className="text-[9px] font-mono font-extrabold">{(rec.contractorScore ?? 80).toFixed(1)}%</span>
                                     </div>
                                     <span className="block text-[8.5px] text-slate-400 mt-1 max-w-[110px] mx-auto truncate" title={rec.contractorStanding}>
                                       {rec.contractorStanding}
@@ -3372,19 +3298,30 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                                   </td>
 
                                   {/* Consultant Dual-Pillar Scores */}
-                                  <td className="py-2.5 px-3.5">
+                                  <td className="py-2.5 px-3.5 min-w-[210px]">
+                                    <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+                                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/50 text-indigo-800 dark:text-indigo-200 border border-indigo-200 dark:border-indigo-800/60 font-semibold text-[9.5px]">
+                                        <Briefcase className="w-2.5 h-2.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                                        <span className="truncate max-w-[130px]">{rec.consultantName || consultantEval.firmName || p.consultant || 'Supervision Consultant'}</span>
+                                      </span>
+                                      {(rec.residentEngineer || consultantEval.residentEngineer) && (
+                                        <span className="text-[8.5px] text-slate-400 font-mono">
+                                          RE: {rec.residentEngineer || consultantEval.residentEngineer}
+                                        </span>
+                                      )}
+                                    </div>
                                     <div className="space-y-0.5 text-[10px]">
                                       <div className="flex items-center justify-between gap-2">
                                         <span className="text-slate-500">Pillar 1 (SLA On-Time):</span>
-                                        <span className="font-mono font-bold text-slate-700 dark:text-slate-300">{rec.consultantSlaTurnaroundScore.toFixed(1)}%</span>
+                                        <span className="font-mono font-bold text-slate-700 dark:text-slate-300">{(rec.consultantSlaTurnaroundScore ?? 85).toFixed(1)}%</span>
                                       </div>
                                       <div className="flex items-center justify-between gap-2">
                                         <span className="text-slate-500">Pillar 2 (5-Dim Tech):</span>
-                                        <span className="font-mono font-bold text-slate-700 dark:text-slate-300">{rec.consultantFiveDimScore.toFixed(1)}%</span>
+                                        <span className="font-mono font-bold text-slate-700 dark:text-slate-300">{(rec.consultantFiveDimScore ?? 80).toFixed(1)}%</span>
                                       </div>
                                       <div className="flex items-center justify-between gap-2 pt-0.5 border-t border-slate-100 dark:border-slate-800">
                                         <span className="text-slate-400 font-bold">Combined Score:</span>
-                                        <span className="font-mono font-black text-indigo-600 dark:text-indigo-400">{rec.consultantOverallScore.toFixed(1)}%</span>
+                                        <span className="font-mono font-black text-indigo-600 dark:text-indigo-400">{(rec.consultantOverallScore ?? 82.5).toFixed(1)}%</span>
                                       </div>
                                     </div>
                                   </td>
@@ -3392,8 +3329,8 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                                   {/* Consultant Grade */}
                                   <td className="py-2.5 px-3 text-center">
                                     <div className={`inline-flex flex-col items-center px-2.5 py-1 rounded-xl border ${consGradeBadge}`}>
-                                      <span className="text-xs font-black">Grade {rec.consultantGrade}</span>
-                                      <span className="text-[9px] font-mono font-extrabold">{rec.consultantOverallScore.toFixed(1)}%</span>
+                                      <span className="text-xs font-black">Grade {rec.consultantGrade || 'B'}</span>
+                                      <span className="text-[9px] font-mono font-extrabold">{(rec.consultantOverallScore ?? 82.5).toFixed(1)}%</span>
                                     </div>
                                     <span className="block text-[8.5px] text-slate-400 mt-1 max-w-[110px] mx-auto truncate" title={rec.consultantStanding}>
                                       {rec.consultantStanding}
@@ -3401,10 +3338,36 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                                   </td>
 
                                   {/* Remarks & Audit Notes */}
-                                  <td className="py-2.5 px-3.5">
-                                    <p className="text-[10px] text-slate-600 dark:text-slate-300 line-clamp-2 leading-tight">
-                                      {rec.contractorRemarks || rec.consultantRemarks || rec.notes || 'No specific audit exceptions logged for this cycle.'}
-                                    </p>
+                                  <td className="py-2.5 px-3.5 min-w-[260px]">
+                                    <div className="space-y-1.5">
+                                      {/* Contractor Record */}
+                                      <div className="p-1.5 rounded-lg bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/50 dark:border-amber-900/30 text-[9.5px]">
+                                        <div className="flex items-center gap-1 font-bold text-amber-800 dark:text-amber-300 font-mono text-[8.5px] uppercase">
+                                          <HardHat className="w-2.5 h-2.5 text-amber-500 shrink-0" />
+                                          <span>Contractor Output:</span>
+                                        </div>
+                                        <p className="text-slate-700 dark:text-slate-300 mt-0.5 leading-snug">
+                                          {rec.contractorRemarks || 'Physical progress and site output tracked within contractual schedule tolerance.'}
+                                        </p>
+                                      </div>
+
+                                      {/* Supervision Consultant Record */}
+                                      <div className="p-1.5 rounded-lg bg-indigo-50/60 dark:bg-indigo-950/20 border border-indigo-200/50 dark:border-indigo-900/30 text-[9.5px]">
+                                        <div className="flex items-center gap-1 font-bold text-indigo-800 dark:text-indigo-300 font-mono text-[8.5px] uppercase">
+                                          <Briefcase className="w-2.5 h-2.5 text-indigo-500 shrink-0" />
+                                          <span>Consultant Oversight:</span>
+                                        </div>
+                                        <p className="text-slate-700 dark:text-slate-300 mt-0.5 leading-snug">
+                                          {rec.consultantRemarks || 'Supervisory response, RFI turnaround, and site inspections maintained within SLA target.'}
+                                        </p>
+                                      </div>
+
+                                      {rec.notes && (
+                                        <div className="text-[8.5px] text-slate-400 italic">
+                                          Note: {rec.notes}
+                                        </div>
+                                      )}
+                                    </div>
                                   </td>
 
                                   {/* Actions */}
@@ -4218,156 +4181,6 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                 </div>
               </div>
 
-              {/* 4c. Supervision Consultant Compliance & Performance Audit Evaluation */}
-              <div className="space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <h3 className="text-xs font-black uppercase text-slate-900 dark:text-white flex items-center gap-1.5">
-                    <span className="w-1.5 h-3 bg-indigo-600 rounded-xs" />
-                    4c. Supervision Consultant Compliance & Performance Audit Evaluation
-                  </h3>
-                  <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500">
-                    Dual-Pillar Matrix (50% Submittal SLA + 50% 5-Dimension Technical Audit)
-                  </span>
-                </div>
-
-                <div className="border border-slate-200/80 dark:border-slate-800 rounded-2xl bg-white dark:bg-slate-900/60 p-4 space-y-4 shadow-2xs">
-                  {/* Top Consultant Info & Grade Summary Bar */}
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 p-3.5 rounded-xl bg-slate-50 dark:bg-slate-850/60 border border-slate-200/60 dark:border-slate-800">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded-md border border-indigo-200/60 dark:border-indigo-800/60">
-                          {consultantEval.associationType}
-                        </span>
-                        <h4 className="text-sm font-black text-slate-900 dark:text-white">
-                          {consultantEval.firmName}
-                        </h4>
-                      </div>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                        Resident Engineer: <strong className="text-slate-700 dark:text-slate-200">{consultantEval.residentEngineer}</strong>
-                        {consultantEval.commencementDate && <span> • Assigned: {consultantEval.commencementDate}</span>}
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-3 shrink-0">
-                      <div className="text-right">
-                        <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
-                          Combined Audit Score
-                        </span>
-                        <span className="text-2xl font-black font-mono text-indigo-600 dark:text-indigo-400">
-                          {consultantEval.overallScore.toFixed(1)}%
-                        </span>
-                      </div>
-                      <div className={`px-3 py-1.5 rounded-xl font-black text-xs text-center border shadow-xs ${
-                        consultantEval.officialGrade === 'A' ? 'bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800' :
-                        consultantEval.officialGrade === 'B' ? 'bg-teal-50 text-teal-700 border-teal-300 dark:bg-teal-950/60 dark:text-teal-300 dark:border-teal-800' :
-                        consultantEval.officialGrade === 'C' ? 'bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800' :
-                        consultantEval.officialGrade === 'D' ? 'bg-orange-50 text-orange-700 border-orange-300 dark:bg-orange-950/60 dark:text-orange-300 dark:border-orange-800' :
-                        'bg-rose-50 text-rose-700 border-rose-300 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800'
-                      }`}>
-                        <span className="block text-sm leading-tight">Grade {consultantEval.officialGrade}</span>
-                        <span className="text-[9px] font-medium opacity-90 block">{consultantEval.officialStanding.split('—')[0].trim()}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Dual Pillar Scorecards */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="p-3 rounded-xl bg-indigo-50/40 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/40 flex items-center justify-between">
-                      <div>
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 block">
-                          Pillar I: Submittal & RFI SLA Turnaround
-                        </span>
-                        <span className="text-lg font-black font-mono text-slate-900 dark:text-white">
-                          {consultantEval.slaTurnaroundScore.toFixed(1)}%
-                        </span>
-                        <span className="text-[10px] text-slate-500 block">
-                          On-time response across RFI, WIR, Material, IPC & Designs
-                        </span>
-                      </div>
-                      <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300">
-                        50% Weight
-                      </span>
-                    </div>
-
-                    <div className="p-3 rounded-xl bg-emerald-50/40 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/40 flex items-center justify-between">
-                      <div>
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 block">
-                          Pillar II: 5-Dimension Technical Audit
-                        </span>
-                        <span className="text-lg font-black font-mono text-slate-900 dark:text-white">
-                          {consultantEval.fiveDimScore.toFixed(1)}%
-                        </span>
-                        <span className="text-[10px] text-slate-500 block">
-                          Evaluated against 105 FIDIC/ERA contractual performance criteria
-                        </span>
-                      </div>
-                      <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300">
-                        50% Weight
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* 5-Dimension Score Breakdown */}
-                  <div className="space-y-2">
-                    <span className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-wider block">
-                      5-Dimension Audit Scorecard Breakdown
-                    </span>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
-                      {[
-                        { id: 'A', name: 'Technical Skills', max: 35, data: consultantEval.dimensionBreakdown.A },
-                        { id: 'B', name: 'Soft Skills / Team', max: 20, data: consultantEval.dimensionBreakdown.B },
-                        { id: 'C', name: 'Site Supervision', max: 20, data: consultantEval.dimensionBreakdown.C },
-                        { id: 'D', name: 'Contract Admin', max: 15, data: consultantEval.dimensionBreakdown.D },
-                        { id: 'E', name: 'Corporate Ethics', max: 10, data: consultantEval.dimensionBreakdown.E }
-                      ].map((dim) => (
-                        <div key={`dim-${dim.id}`} className="p-2.5 rounded-xl border border-slate-200/60 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-850/40 flex flex-col justify-between gap-1.5">
-                          <div>
-                            <span className="text-[9px] font-black font-mono text-slate-400 dark:text-slate-500">DIM {dim.id} ({dim.max} pts)</span>
-                            <p className="text-[10px] font-bold text-slate-800 dark:text-slate-200 truncate">{dim.name}</p>
-                          </div>
-                          <div className="flex items-baseline justify-between pt-1 border-t border-slate-200/40 dark:border-slate-800">
-                            <span className="text-xs font-black font-mono text-slate-900 dark:text-white">
-                              {dim.data.earned}/{dim.max}
-                            </span>
-                            <span className={`text-[10px] font-black font-mono ${dim.data.percentage >= 80 ? 'text-emerald-600 dark:text-emerald-400' : dim.data.percentage >= 60 ? 'text-amber-600 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                              {dim.data.percentage}%
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Submittal SLA Velocity Key Metrics */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 border-t border-slate-100 dark:border-slate-800/80 text-[10px]">
-                    <div className="p-2 rounded-lg bg-slate-50/80 dark:bg-slate-800/40">
-                      <span className="text-slate-400 block font-medium">Submittals Evaluated</span>
-                      <span className="font-bold text-slate-800 dark:text-slate-200 font-mono text-xs">
-                        {consultantEval.metrics.overallSubmittalsCount} Submittals
-                      </span>
-                    </div>
-                    <div className="p-2 rounded-lg bg-slate-50/80 dark:bg-slate-800/40">
-                      <span className="text-slate-400 block font-medium">SLA On-Time Rate</span>
-                      <span className="font-bold text-emerald-600 dark:text-emerald-400 font-mono text-xs">
-                        {consultantEval.metrics.overallOnTimeRate}% On-Time
-                      </span>
-                    </div>
-                    <div className="p-2 rounded-lg bg-slate-50/80 dark:bg-slate-800/40">
-                      <span className="text-slate-400 block font-medium">Avg RFI Turnaround</span>
-                      <span className="font-bold text-indigo-600 dark:text-indigo-400 font-mono text-xs">
-                        {consultantEval.metrics.rfis.avgDays} days (target: 7d)
-                      </span>
-                    </div>
-                    <div className="p-2 rounded-lg bg-slate-50/80 dark:bg-slate-800/40">
-                      <span className="text-slate-400 block font-medium">Key Staff Mobilization</span>
-                      <span className="font-bold text-blue-600 dark:text-blue-400 font-mono text-xs">
-                        {consultantEval.metrics.personnel.mobilizationRate}% Mobilized
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
               {/* 5. Securities, Escrow and Bonds Audit */}
               <div className="space-y-2">
                 <h3 className="text-xs font-black uppercase text-slate-900 dark:text-white flex items-center gap-1.5">
@@ -4510,10 +4323,10 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                     </div>
                     <div className="flex items-baseline justify-between">
                       <span className="text-xl font-black text-slate-800 dark:text-slate-100 font-mono">
-                        {selectedGradingDetailModal.contractorScore.toFixed(1)}%
+                        {(selectedGradingDetailModal.contractorScore ?? 80).toFixed(1)}%
                       </span>
                       <span className="text-[10px] font-bold text-slate-500">
-                        SPI: {selectedGradingDetailModal.contractorSpi.toFixed(2)}
+                        SPI: {(selectedGradingDetailModal.contractorSpi ?? 1).toFixed(2)}
                       </span>
                     </div>
                     <p className="text-[10px] text-slate-500 font-medium">
@@ -4522,21 +4335,21 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                     <div className="pt-2 border-t border-slate-200 dark:border-slate-700 space-y-1 text-[10px] font-mono">
                       <div className="flex justify-between text-slate-500">
                         <span>Plan Monthly:</span>
-                        <strong className="text-slate-800 dark:text-slate-200">{selectedGradingDetailModal.contractorPlanMonthly.toFixed(2)}%</strong>
+                        <strong className="text-slate-800 dark:text-slate-200">{(selectedGradingDetailModal.contractorPlanMonthly ?? 0).toFixed(2)}%</strong>
                       </div>
                       <div className="flex justify-between text-slate-500">
                         <span>Actual Monthly:</span>
-                        <strong className="text-slate-800 dark:text-slate-200">{selectedGradingDetailModal.contractorActualMonthly.toFixed(2)}%</strong>
+                        <strong className="text-slate-800 dark:text-slate-200">{(selectedGradingDetailModal.contractorActualMonthly ?? 0).toFixed(2)}%</strong>
                       </div>
                       <div className="flex justify-between text-slate-500">
                         <span>Monthly Variance:</span>
-                        <strong className={selectedGradingDetailModal.contractorVariance >= 0 ? "text-emerald-600" : "text-rose-600"}>
-                          {selectedGradingDetailModal.contractorVariance >= 0 ? '+' : ''}{selectedGradingDetailModal.contractorVariance.toFixed(2)}%
+                        <strong className={(selectedGradingDetailModal.contractorVariance ?? 0) >= 0 ? "text-emerald-600" : "text-rose-600"}>
+                          {(selectedGradingDetailModal.contractorVariance ?? 0) >= 0 ? '+' : ''}{(selectedGradingDetailModal.contractorVariance ?? 0).toFixed(2)}%
                         </strong>
                       </div>
                       <div className="flex justify-between text-slate-500">
                         <span>Cumulative Actual:</span>
-                        <strong className="text-slate-800 dark:text-slate-200">{selectedGradingDetailModal.contractorActualCumulative.toFixed(2)}%</strong>
+                        <strong className="text-slate-800 dark:text-slate-200">{(selectedGradingDetailModal.contractorActualCumulative ?? 0).toFixed(2)}%</strong>
                       </div>
                     </div>
                   </div>
@@ -4546,15 +4359,15 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] font-black text-slate-400 uppercase font-mono">CONSULTANT GRADING</span>
                       <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-indigo-600 text-white">
-                        GRADE {selectedGradingDetailModal.consultantGrade}
+                        GRADE {selectedGradingDetailModal.consultantGrade || 'B'}
                       </span>
                     </div>
                     <div className="flex items-baseline justify-between">
                       <span className="text-xl font-black text-indigo-600 dark:text-indigo-400 font-mono">
-                        {selectedGradingDetailModal.consultantOverallScore.toFixed(1)}%
+                        {(selectedGradingDetailModal.consultantOverallScore ?? 82.5).toFixed(1)}%
                       </span>
                       <span className="text-[10px] font-bold text-slate-500">
-                        SLA: {selectedGradingDetailModal.consultantSlaTurnaroundScore.toFixed(1)}%
+                        SLA: {(selectedGradingDetailModal.consultantSlaTurnaroundScore ?? 85).toFixed(1)}%
                       </span>
                     </div>
                     <p className="text-[10px] text-slate-500 font-medium">
@@ -4563,11 +4376,11 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                     <div className="pt-2 border-t border-slate-200 dark:border-slate-700 space-y-1 text-[10px] font-mono">
                       <div className="flex justify-between text-slate-500">
                         <span>Pillar 1 (SLA Turnaround):</span>
-                        <strong className="text-slate-800 dark:text-slate-200">{selectedGradingDetailModal.consultantSlaTurnaroundScore.toFixed(1)}%</strong>
+                        <strong className="text-slate-800 dark:text-slate-200">{(selectedGradingDetailModal.consultantSlaTurnaroundScore ?? 85).toFixed(1)}%</strong>
                       </div>
                       <div className="flex justify-between text-slate-500">
                         <span>Pillar 2 (5-Dim Audit):</span>
-                        <strong className="text-slate-800 dark:text-slate-200">{selectedGradingDetailModal.consultantFiveDimScore.toFixed(1)}%</strong>
+                        <strong className="text-slate-800 dark:text-slate-200">{(selectedGradingDetailModal.consultantFiveDimScore ?? 80).toFixed(1)}%</strong>
                       </div>
                       <div className="flex justify-between text-slate-500">
                         <span>Avg RFI Response:</span>

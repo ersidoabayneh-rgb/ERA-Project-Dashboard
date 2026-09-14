@@ -1483,10 +1483,45 @@ export const getDefaultMonthlyGradingRecords = (): MonthlyGradingRecord[] => [
 ];
 
 export function resolveProjectMonthlyGrading(project: Project): MonthlyGradingRecord[] {
-  if (project.monthlyGradingRecords && project.monthlyGradingRecords.length > 0) {
-    return project.monthlyGradingRecords;
-  }
-  return getDefaultMonthlyGradingRecords();
+  const records = (project.monthlyGradingRecords && project.monthlyGradingRecords.length > 0)
+    ? project.monthlyGradingRecords
+    : getDefaultMonthlyGradingRecords();
+
+  return records.map(r => {
+    const contractorPlanMonthly = typeof r.contractorPlanMonthly === 'number' ? r.contractorPlanMonthly : 0;
+    const contractorActualMonthly = typeof r.contractorActualMonthly === 'number' ? r.contractorActualMonthly : 0;
+    const contractorPlanCumulative = typeof r.contractorPlanCumulative === 'number' ? r.contractorPlanCumulative : contractorPlanMonthly;
+    const contractorActualCumulative = typeof r.contractorActualCumulative === 'number' ? r.contractorActualCumulative : contractorActualMonthly;
+    const contractorVariance = typeof r.contractorVariance === 'number' ? r.contractorVariance : Number((contractorActualMonthly - contractorPlanMonthly).toFixed(2));
+    const contractorSpi = typeof r.contractorSpi === 'number' ? r.contractorSpi : (contractorPlanMonthly > 0 ? Number((contractorActualMonthly / contractorPlanMonthly).toFixed(2)) : 1.0);
+    const contractorScore = typeof r.contractorScore === 'number' ? r.contractorScore : 80;
+    const consultantSlaTurnaroundScore = typeof r.consultantSlaTurnaroundScore === 'number' ? r.consultantSlaTurnaroundScore : 85;
+    const consultantFiveDimScore = typeof r.consultantFiveDimScore === 'number' ? r.consultantFiveDimScore : 80;
+    const consultantOverallScore = typeof r.consultantOverallScore === 'number' ? r.consultantOverallScore : Number(((consultantSlaTurnaroundScore + consultantFiveDimScore) / 2).toFixed(1));
+
+    return {
+      ...r,
+      contractorName: r.contractorName || project.contractor || 'China Tisiju Civil Engineering Group',
+      consultantName: r.consultantName || project.consultant || 'LEA Associates South Asia JV',
+      residentEngineer: r.residentEngineer || 'Eng. Dawit Hailu',
+      contractorPlanMonthly,
+      contractorActualMonthly,
+      contractorPlanCumulative,
+      contractorActualCumulative,
+      contractorVariance,
+      contractorSpi,
+      contractorScore,
+      contractorGrade: r.contractorGrade || 'B',
+      contractorStanding: r.contractorStanding || (contractorScore >= 80 ? 'Satisfactory / Standard Standing' : 'Caution / Needs Improvement'),
+      consultantSlaTurnaroundScore,
+      consultantFiveDimScore,
+      consultantOverallScore,
+      consultantGrade: r.consultantGrade || 'B',
+      consultantStanding: r.consultantStanding || (consultantOverallScore >= 80 ? 'Satisfactory / Standard Standing' : 'Caution / Needs Improvement'),
+      consultantOnTimeRate: typeof r.consultantOnTimeRate === 'number' ? r.consultantOnTimeRate : consultantSlaTurnaroundScore,
+      consultantAvgRfiDays: typeof r.consultantAvgRfiDays === 'number' ? r.consultantAvgRfiDays : 6,
+    };
+  });
 }
 
 export function defaultProjectTemplate(): Project {
