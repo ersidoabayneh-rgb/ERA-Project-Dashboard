@@ -584,6 +584,7 @@ export default function ProjectsPage({
               <button 
                 onClick={onOpenApprovals}
                 className="flex items-center gap-1 bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-xl text-xs font-bold transition relative"
+                title="Review and approve submitted workflow change requests"
               >
                 <CheckSquare className="w-3.5 h-3.5" />
                 Approvals
@@ -592,6 +593,17 @@ export default function ProjectsPage({
                     {pendingCount}
                   </span>
                 )}
+              </button>
+            )}
+
+            {!hasNoProjects && currentUserObj?.role === 'editor' && (
+              <button 
+                onClick={onOpenApprovals}
+                className="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-xl text-xs font-bold transition relative shadow-sm"
+                title="Manage isolated private drafts and submit for approval"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                Private Drafts
               </button>
             )}
 

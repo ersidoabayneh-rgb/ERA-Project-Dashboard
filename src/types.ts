@@ -809,7 +809,6 @@ export const ALL_EDITABLE_PAGES: EditablePageOption[] = [
   { id: 'documentation', name: '📁 Project Documentation', description: 'Dossier files, monthly reports, contract upload library' },
   { id: 'consultant', name: '👔 Supervision Consultant', description: 'Consultant contract, fee invoices, and assigned personnel directory' },
   { id: 'submittalLog', name: '📋 Submittal Log & RFI Tracking', description: 'Supervision consultant submittal review log, design approvals, and RFI tracking' },
-  { id: 'approvalWorkflow', name: '🛡️ Approval Workflow & Drafts', description: 'Editor private drafts, approval queue, and workflow governance audit log' },
   { id: 'workspace', name: '☁️ Workspace Notes', description: 'Interactive collaborative scratchpad & design notes' }
 ];
 
@@ -853,13 +852,16 @@ export interface WorkflowAuditLogEntry {
     | 'DRAFT_CREATED'
     | 'DRAFT_UPDATED'
     | 'ACCESS_GRANTED'
+    | 'ACCESS_REVOKED'
     | 'SUBMITTED_FOR_APPROVAL'
     | 'SELF_APPROVAL_PREVENTED'
     | 'MFA_CHALLENGE_VERIFIED'
+    | 'MFA_CHALLENGE_FAILED'
     | 'APPROVED'
     | 'REJECTED'
     | 'CHANGES_REQUESTED'
-    | 'DRAFT_DELETED';
+    | 'DRAFT_DELETED'
+    | 'COMMITTED_TO_MAIN_DB';
   draftId: string;
   projectId?: string;
   projectName?: string;
@@ -869,6 +871,11 @@ export interface WorkflowAuditLogEntry {
   targetUser?: string;
   details: string;
   mfaUsed?: boolean;
+  decision?: 'approved' | 'rejected' | 'changes_requested' | 'submitted' | 'access_granted' | 'access_revoked';
+  comments?: string;
+  scopeUsed?: string;
+  ipAddress?: string;
+  deviceInfo?: string;
 }
 
 export interface ApprovalRequest {

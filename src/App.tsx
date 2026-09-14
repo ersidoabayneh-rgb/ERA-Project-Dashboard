@@ -18,6 +18,7 @@ import {
   TrendingUp,
   Coins,
   Shield,
+  ShieldCheck,
   Activity,
   Calendar,
   Briefcase,
@@ -102,7 +103,6 @@ export function isProjectApprover(user: User | null, projectId: string, project?
 
 export function canUserViewPage(user: User | null, pageId: string): boolean {
   if (!user) return false;
-  if (pageId === 'approvalWorkflow') return true;
   if (user.role === 'master_admin' || user.role === 'cpm_admin' || user.role === 'admin' || user.username === 'proj_1781786415663') {
     return true;
   }
@@ -117,7 +117,6 @@ export function canUserViewPage(user: User | null, pageId: string): boolean {
 
 export function canUserEditPage(user: User | null, pageId: string): boolean {
   if (!user) return false;
-  if (pageId === 'approvalWorkflow') return true;
   if (user.role === 'master_admin' || user.role === 'cpm_admin' || user.role === 'admin' || user.username === 'proj_1781786415663') {
     return true;
   }
@@ -2673,73 +2672,87 @@ let isBatchSyncRunning = false;
 
     updatedProject.history = newHistory;
 
-    // Intercept modifications made by Editor users or users without direct live approval authority and save as Private Draft
-    if (currentUserObj.role === 'editor' || !isProjectApprover(currentUserObj, currentProject.id, currentProject)) {
-      const draftId = `draft_${currentProject.id}_${activeTab}`;
-      const existingDraftIndex = privateDrafts.findIndex(d => d.id === draftId);
+    // ISOLATED PRIVATE DRAFT FOR EDITORS:
+    // Editors work strictly inside an isolated private draft environment. No Editor change may affect
+    // the main live database or become visible to other users until explicitly submitted and approved.
+    if (currentUserObj.role === 'editor') {
       const nowIso = new Date().toISOString();
-
-      const newDraft: PrivateDraft = {
-        id: draftId,
-        projectId: currentProject.id,
-        projectName: currentProject.name,
-        section: sectionName || activeTab,
-        pageId: activeTab,
-        author: currentUserObj.username,
-        authorFullName: currentUserObj.fullName || currentUserObj.username,
-        createdAt: existingDraftIndex >= 0 ? privateDrafts[existingDraftIndex].createdAt : nowIso,
-        updatedAt: nowIso,
-        status: 'draft',
-        snapshotData: updatedProject,
-        baselineData: currentProject,
-        grantedAccessUsernames: existingDraftIndex >= 0 ? privateDrafts[existingDraftIndex].grantedAccessUsernames : [],
-        feedbackHistory: existingDraftIndex >= 0 ? privateDrafts[existingDraftIndex].feedbackHistory : []
-      };
-
-      let updatedDraftsList: PrivateDraft[] = [];
-      if (existingDraftIndex >= 0) {
-        updatedDraftsList = [...privateDrafts];
-        updatedDraftsList[existingDraftIndex] = newDraft;
-      } else {
-        updatedDraftsList = [newDraft, ...privateDrafts];
-      }
-
-      setPrivateDrafts(updatedDraftsList);
-      safeSetItem('era_private_drafts_v1', JSON.stringify(updatedDraftsList));
-
-      // Audit Log entry
-      const newAuditLog: WorkflowAuditLogEntry = {
-        id: `log_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-        timestamp: nowIso,
-        action: existingDraftIndex >= 0 ? 'DRAFT_UPDATED' : 'DRAFT_CREATED',
-        draftId: draftId,
-        projectId: currentProject.id,
-        projectName: currentProject.name,
-        section: sectionName || activeTab,
-        actor: currentUserObj.username,
-        actorRole: currentUserObj.role,
-        details: `Editor ${currentUserObj.username} saved changes to section '${sectionName || activeTab}' as a private draft.`
-      };
-
-      const updatedAuditLogs = [newAuditLog, ...workflowAuditLogs];
-      setWorkflowAuditLogs(updatedAuditLogs);
-      safeSetItem('era_workflow_audit_logs_v1', JSON.stringify(updatedAuditLogs));
-
-      const choice = window.confirm(
-        '🔒 SAVED AS PRIVATE DRAFT!\n\n' +
-        `Your edits for "${sectionName || activeTab}" have been saved as a Private Draft.\n\n` +
-        '• Under governance rules, this draft is visible ONLY to you until you submit it for approval.\n' +
-        '• The main live database remains unchanged.\n\n' +
-        'Click OK to open your Dedicated Private Drafts & Submissions page.'
+      const draftSection = sectionName || activeTab;
+      
+      const existingDraftIndex = privateDrafts.findIndex(
+        d => d.projectId === currentProject.id && d.section === draftSection && d.author === currentUserObj.username && d.status !== 'approved'
       );
 
-      if (choice) {
-        setActiveTab('approvalWorkflow');
+      let updatedDrafts: PrivateDraft[];
+      let targetDraftId: string;
+
+      if (existingDraftIndex >= 0) {
+        targetDraftId = privateDrafts[existingDraftIndex].id;
+        const updatedDraft: PrivateDraft = {
+          ...privateDrafts[existingDraftIndex],
+          updatedAt: nowIso,
+          snapshotData: {
+            ...privateDrafts[existingDraftIndex].snapshotData,
+            ...fields
+          },
+          baselineData: currentProject,
+          status: 'draft'
+        };
+        updatedDrafts = [...privateDrafts];
+        updatedDrafts[existingDraftIndex] = updatedDraft;
+      } else {
+        targetDraftId = `draft_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+        const newDraft: PrivateDraft = {
+          id: targetDraftId,
+          projectId: currentProject.id,
+          projectName: currentProject.name,
+          section: draftSection,
+          pageId: activeTab,
+          author: currentUserObj.username,
+          authorFullName: currentUserObj.fullName || currentUserObj.username,
+          createdAt: nowIso,
+          updatedAt: nowIso,
+          status: 'draft',
+          snapshotData: { ...fields },
+          baselineData: currentProject,
+          grantedAccessUsernames: []
+        };
+        updatedDrafts = [newDraft, ...privateDrafts];
       }
-      return; // Do NOT persist into the main live database!
+
+      setPrivateDrafts(updatedDrafts);
+      safeSetItem('era_private_drafts_v1', JSON.stringify(updatedDrafts));
+
+      // Reflect in the editor's current local session view
+      setCurrentProject(updatedProject);
+
+      // Record in governance workflow audit log
+      const logEntry: WorkflowAuditLogEntry = {
+        id: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        timestamp: nowIso,
+        action: existingDraftIndex >= 0 ? 'DRAFT_UPDATED' : 'DRAFT_CREATED',
+        draftId: targetDraftId,
+        projectId: currentProject.id,
+        projectName: currentProject.name,
+        section: draftSection,
+        actor: currentUserObj.username,
+        actorRole: 'editor',
+        details: `Editor '${currentUserObj.username}' modified isolated private draft for section '${draftSection}'. Live database remains untouched.`
+      };
+      const nextAuditLogs = [logEntry, ...workflowAuditLogs];
+      setWorkflowAuditLogs(nextAuditLogs);
+      safeSetItem('era_workflow_audit_logs_v1', JSON.stringify(nextAuditLogs));
+
+      alert(
+        '🔒 ISOLATED PRIVATE DRAFT RECORDED\n\n' +
+        `Your updates to "${draftSection}" have been securely recorded in your private draft workspace.\n\n` +
+        'In accordance with ERA governance rules, no Editor change affects the live database or becomes visible to other users until you explicitly submit it and an authorized Approver, PMO, or Directorate Admin certifies it.\n\n' +
+        'Go to "🛡️ Approval Workflow" to review or submit this draft.'
+      );
+      return;
     }
 
-    // Persist into projects database
+    // Persist into projects database (authorized non-editor roles)
     const updatedProjects = projects.map(p => p.id === currentProject.id ? updatedProject : p);
     setProjects(updatedProjects);
     setCurrentProject(updatedProject);
@@ -3237,145 +3250,73 @@ let isBatchSyncRunning = false;
               <div className="flex items-center gap-1.5 self-start md:self-auto flex-wrap">
                 <button
                   onClick={async () => {
-                    if (!currentProject) return;
-                    const isAuthorized = currentUserObj && isProjectApprover(currentUserObj, currentProject.id, currentProject);
-                    
-                    if (isAuthorized) {
-                      try {
-                        const weightedProject = {
-                          ...currentProject,
-                          lastModifiedBy: currentUserObj.username,
-                          lastModifiedAt: new Date().toISOString(),
-                          lastModifiedSection: 'Certified directly by authorized project approver',
-                          approvedBy: currentUserObj.username,
-                          approvedAt: new Date().toISOString(),
-                          approverRole: currentUserObj.role
-                        };
-                        await safeSyncProject(weightedProject);
-                        
-                        setCurrentProject(weightedProject);
-                        const updatedProjs = projects.map(p => p.id === weightedProject.id ? weightedProject : p);
-                        setProjects(updatedProjs);
-                        safeSetItem('era_proj_v28', JSON.stringify(updatedProjs));
-                        alert('💾 DATA RECORDED & SAVED TO DATABASE!\n\nAll modified project parameters have been synchronized and recorded into the unified database. The saved state is locked in the database until your next project modification and database save.');
-                      } catch (err) {
-                        console.error('Failed to sync to database:', err);
-                        alert('Failed to sync to the database. Please try again.');
-                      }
-                    } else {
-                      try {
-                        const draftId = `draft_${currentProject.id}_${activeTab}`;
-                        const existingDraftIndex = privateDrafts.findIndex(d => d.id === draftId);
-                        const nowIso = new Date().toISOString();
+                    if (!currentProject || !currentUserObj) return;
 
-                        const draftSnapshot = existingDraftIndex >= 0 ? privateDrafts[existingDraftIndex].snapshotData : currentProject;
+                    if (currentUserObj.role === 'editor') {
+                      alert(
+                        '🔒 ISOLATED PRIVATE DRAFT WORKSPACE\n\n' +
+                        'As an Editor, you operate in an isolated private draft environment. Direct live database commits are restricted to maintain data governance.\n\n' +
+                        'Your changes are safely preserved in your private draft. To commit these changes to the live project, navigate to "🛡️ Approval Workflow" and submit your draft for review by an authorized Approver, PMO, or Directorate Admin.'
+                      );
+                      setActiveTab('approvalWorkflow');
+                      return;
+                    }
 
-                        const newReq: ApprovalRequest = {
-                          id: draftId,
-                          projectId: currentProject.id,
-                          projectName: currentProject.name,
-                          requestedBy: currentUserObj?.username || 'editor',
-                          requestedAt: nowIso,
-                          section: activeTab,
-                          pageId: activeTab,
-                          status: 'submitted',
-                          snapshotData: draftSnapshot,
-                          baselineData: currentProject,
-                          author: currentUserObj?.username || 'editor',
-                          authorFullName: currentUserObj?.fullName || currentUserObj?.username || 'editor'
-                        };
-                        
-                        const updatedApprovals = [newReq, ...pendingApprovals.filter(a => a.id !== newReq.id)];
-                        setPendingApprovals(updatedApprovals);
-                        safeSetItem('era_appr_v28', JSON.stringify(updatedApprovals));
-                        await safeSyncApprovals(updatedApprovals);
-
-                        const newDraft: PrivateDraft = {
-                          id: draftId,
-                          projectId: currentProject.id,
-                          projectName: currentProject.name,
-                          section: activeTab,
-                          pageId: activeTab,
-                          author: currentUserObj?.username || 'editor',
-                          authorFullName: currentUserObj?.fullName || currentUserObj?.username || 'editor',
-                          createdAt: existingDraftIndex >= 0 ? privateDrafts[existingDraftIndex].createdAt : nowIso,
-                          updatedAt: nowIso,
-                          status: 'submitted',
-                          snapshotData: draftSnapshot,
-                          baselineData: currentProject,
-                          grantedAccessUsernames: existingDraftIndex >= 0 ? (privateDrafts[existingDraftIndex].grantedAccessUsernames || []) : [],
-                          feedbackHistory: [
-                            ...(existingDraftIndex >= 0 ? (privateDrafts[existingDraftIndex].feedbackHistory || []) : []),
-                            {
-                              id: `fb_${Date.now()}`,
-                              author: currentUserObj?.fullName || currentUserObj?.username || 'Editor',
-                              authorRole: currentUserObj?.role || 'editor',
-                              timestamp: nowIso,
-                              type: 'submitted',
-                              message: `Submitted dataset for approver review and database incorporation.`
-                            }
-                          ]
-                        };
-
-                        const updatedDraftsList = existingDraftIndex >= 0
-                          ? privateDrafts.map((d, i) => i === existingDraftIndex ? newDraft : d)
-                          : [newDraft, ...privateDrafts];
-
-                        setPrivateDrafts(updatedDraftsList);
-                        safeSetItem('era_private_drafts_v1', JSON.stringify(updatedDraftsList));
-
-                        const newAuditLog: WorkflowAuditLogEntry = {
-                          id: `log_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-                          timestamp: nowIso,
-                          action: 'SUBMITTED_FOR_APPROVAL',
-                          draftId: draftId,
-                          projectId: currentProject.id,
-                          projectName: currentProject.name,
-                          section: activeTab,
-                          actor: currentUserObj?.username || 'editor',
-                          actorRole: currentUserObj?.role || 'editor',
-                          details: `Editor ${currentUserObj?.username} submitted dataset '${currentProject.name}' for approver review.`
-                        };
-
-                        const updatedAuditLogs = [newAuditLog, ...workflowAuditLogs];
-                        setWorkflowAuditLogs(updatedAuditLogs);
-                        safeSetItem('era_workflow_audit_logs_v1', JSON.stringify(updatedAuditLogs));
-
-                        alert(
-                          '🚀 SUBMITTED FOR APPROVAL!\n\n' +
-                          'Your modified dataset for "' + currentProject.name + '" has been submitted to the designated Project Approver.\n\n' +
-                          '• Role: Editor Credentials\n' +
-                          '• Status: Sent to Approver Review Queue\n' +
-                          '• Live Database: Unchanged (Pending Approver Certification)'
-                        );
-                      } catch (err) {
-                        console.error('Failed to submit approval request:', err);
-                        alert('Failed to submit approval request. Please try again.');
-                      }
+                    try {
+                      const weightedProject = {
+                        ...currentProject,
+                        lastModifiedBy: currentUserObj.username,
+                        lastModifiedAt: new Date().toISOString(),
+                        lastModifiedSection: 'Direct project database save',
+                        approvedBy: currentUserObj.username,
+                        approvedAt: new Date().toISOString(),
+                        approverRole: currentUserObj.role
+                      };
+                      await safeSyncProject(weightedProject);
+                      
+                      setCurrentProject(weightedProject);
+                      const updatedProjs = projects.map(p => p.id === weightedProject.id ? weightedProject : p);
+                      setProjects(updatedProjs);
+                      safeSetItem('era_proj_v28', JSON.stringify(updatedProjs));
+                      alert('💾 DATA RECORDED & SAVED TO DATABASE!\n\nAll modified project parameters have been synchronized and recorded into the unified database.');
+                    } catch (err) {
+                      console.error('Failed to sync to database:', err);
+                      alert('Failed to sync to the database. Please try again.');
                     }
                   }}
                   className={`p-2 rounded-full border flex items-center gap-1.5 text-[11px] font-extrabold text-white px-3 py-1.5 transition shadow-sm ${
-                    currentUserObj && isProjectApprover(currentUserObj, currentProject.id, currentProject)
-                      ? 'bg-blue-600 hover:bg-blue-700 border-blue-700'
-                      : 'bg-emerald-600 hover:bg-emerald-700 border-emerald-700'
+                    currentUserObj?.role === 'editor' 
+                      ? 'bg-indigo-600 hover:bg-indigo-700 border-indigo-700' 
+                      : 'bg-blue-600 hover:bg-blue-700 border-blue-700'
                   }`}
-                  title={
-                    currentUserObj && isProjectApprover(currentUserObj, currentProject.id, currentProject)
-                      ? 'Save to Database'
-                      : 'Submit for Approval'
-                  }
+                  title={currentUserObj?.role === 'editor' ? 'Save Private Draft' : 'Save to Database'}
                 >
-                  {currentUserObj && isProjectApprover(currentUserObj, currentProject.id, currentProject) ? (
-                    <>
-                      <CheckCircle className="w-3.5 h-3.5" />
-                      <span>Save to Database</span>
-                    </>
-                  ) : (
-                    <>
-                      <Send className="w-3.5 h-3.5" />
-                      <span>Submit for Approval</span>
-                    </>
-                  )}
+                  <CheckCircle className="w-3.5 h-3.5" />
+                  <span>{currentUserObj?.role === 'editor' ? 'Private Draft Workspace' : 'Save to Database'}</span>
+                </button>
+                {/* Workflow & Approvals Shortcut */}
+                <button
+                  onClick={() => setShowApprovals(true)}
+                  className={`p-2 rounded-full border flex items-center gap-1.5 text-[11px] font-extrabold px-3 py-1.5 transition shadow-sm ${
+                    hasApprovalCredentials(currentUserObj)
+                      ? pendingApprovals.filter(a => a.status === 'pending').length > 0
+                        ? 'bg-amber-500 hover:bg-amber-600 text-white border-amber-600 animate-pulse'
+                        : 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-700'
+                      : currentUserObj?.role === 'editor'
+                      ? 'bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-700'
+                      : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-700'
+                  }`}
+                  title={currentUserObj?.role === 'editor' ? 'Manage Private Drafts' : 'Review & Certify Workflow Approvals'}
+                >
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span>
+                    {currentUserObj?.role === 'editor' ? 'Private Drafts' : 'Approvals'}
+                    {hasApprovalCredentials(currentUserObj) && pendingApprovals.filter(a => a.status === 'pending').length > 0 && (
+                      <span className="ml-1 px-1.5 py-0.2 bg-white text-amber-700 rounded-full text-[9px] font-black">
+                        {pendingApprovals.filter(a => a.status === 'pending').length}
+                      </span>
+                    )}
+                  </span>
                 </button>
                 {isMasterAdmin && usersListState.some(u => u && u.isPendingApproval) && (
                   <button
@@ -3971,7 +3912,6 @@ let isBatchSyncRunning = false;
                 { id: 'risks', label: '⚠️ Project Risks' },
                 { id: 'consultant', label: '👔 Supervision Consultant' },
                 { id: 'submittalLog', label: '📋 Submittal Log' },
-                { id: 'approvalWorkflow', label: '🛡️ Approval Workflow & Private Drafts' },
                 /* { id: 'workspace', label: '☁️ Workspace' }, */
                 { id: 'analysis', label: '📊 Comprehensive analysis' },
                 { id: 'documentation', label: '📁 Documentation' },
@@ -4076,24 +4016,16 @@ let isBatchSyncRunning = false;
                     );
                   })()}
 
-                  {/* Governance & Page Editing Permission Status Banner (Only shown when page is read-only or requires approval) */}
-                  {currentUserObj && (!canUserEditPage(currentUserObj, activeTab) || !isProjectApprover(currentUserObj, currentProject.id, currentProject)) && (
+                  {/* Governance & Page Editing Permission Status Banner (Only shown when page is read-only) */}
+                  {currentUserObj && !canUserEditPage(currentUserObj, activeTab) && (
                     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 px-4 py-2 bg-white dark:bg-slate-850 border border-slate-150 dark:border-slate-800 rounded-2xl text-[11px] font-semibold">
                       <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
-                        <span className="text-xs">
-                          {!canUserEditPage(currentUserObj, activeTab) ? '🔒' : '✏️'}
-                        </span>
+                        <span className="text-xs">🔒</span>
                         <span>
                           <strong>Page Scope:</strong>{' '}
-                          {!canUserEditPage(currentUserObj, activeTab) ? (
-                            <span className="text-rose-600 dark:text-rose-400 font-extrabold">
-                              Read-Only Mode (Admin has not assigned page editing permission)
-                            </span>
-                          ) : (
-                            <span className="text-blue-600 dark:text-blue-400 font-extrabold">
-                              Page Editing Authorized — Edits routed to designated Project Approver for review
-                            </span>
-                          )}
+                          <span className="text-rose-600 dark:text-rose-400 font-extrabold">
+                            Read-Only Mode (Admin has not assigned page editing permission)
+                          </span>
                         </span>
                       </div>
 
@@ -4109,30 +4041,6 @@ let isBatchSyncRunning = false;
                       </div>
                     </div>
                   )}
-
-                  {/* Submitted Pending Approval Alert Banner (Visible exclusively to the author/editor who submitted the changes) */}
-                  {(() => {
-                    const myPendingReq = pendingApprovals.find(
-                      a => a.projectId === currentProject.id && a.status === 'pending' && a.requestedBy === currentUserObj.username
-                    );
-                    if (!myPendingReq) return null;
-                    return (
-                      <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-900/60 rounded-2xl text-xs font-semibold text-amber-900 dark:text-amber-200 shadow-xs">
-                        <div className="flex items-center gap-2.5">
-                          <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping"></span>
-                          <div>
-                            <span className="font-extrabold">Submitted Changes Pending Approver Review:</span>{' '}
-                            <span className="font-medium text-amber-800 dark:text-amber-300 text-2xs">
-                              Variance submitted for "{myPendingReq.section}" on {new Date(myPendingReq.requestedAt).toLocaleTimeString()}. The live master database will incorporate these updates once certified by the assigned project approver.
-                            </span>
-                          </div>
-                        </div>
-                        <span className="text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-lg bg-amber-200/70 dark:bg-amber-900/80 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-800 shrink-0">
-                          Draft Submitted
-                        </span>
-                      </div>
-                    );
-                  })()}
               {activeTab === 'dash' && (
                 <DashboardView
                   project={currentProject}
@@ -4288,59 +4196,6 @@ let isBatchSyncRunning = false;
                 <ComprehensiveAnalysisView project={currentProject} />
               )}
 
-              {activeTab === 'approvalWorkflow' && (
-                <ApprovalWorkflowManager
-                  currentUser={currentUserObj}
-                  projects={projects}
-                  drafts={privateDrafts}
-                  approvals={pendingApprovals}
-                  auditLogs={workflowAuditLogs}
-                  onSaveDrafts={(updatedDrafts) => {
-                    setPrivateDrafts(updatedDrafts);
-                    safeSetItem('era_private_drafts_v1', JSON.stringify(updatedDrafts));
-                  }}
-                  onSaveApprovals={(updatedApprovals) => {
-                    setPendingApprovals(updatedApprovals);
-                    safeSetItem('era_appr_v28', JSON.stringify(updatedApprovals));
-                  }}
-                  onSaveProjects={(updatedProjects) => {
-                    setProjects(updatedProjects);
-                    safeSetItem('era_proj_v28', JSON.stringify(updatedProjects));
-                    if (currentProject) {
-                      const foundCurr = updatedProjects.find(p => p.id === currentProject.id);
-                      if (foundCurr) setCurrentProject(foundCurr);
-                    }
-                  }}
-                  onLogAuditAction={(logData) => {
-                    const newLog: WorkflowAuditLogEntry = {
-                      ...logData,
-                      id: `log_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-                      timestamp: new Date().toISOString()
-                    };
-                    const updatedLogs = [newLog, ...workflowAuditLogs];
-                    setWorkflowAuditLogs(updatedLogs);
-                    safeSetItem('era_workflow_audit_logs_v1', JSON.stringify(updatedLogs));
-                  }}
-                  onNavigateToEdit={(projId, sec) => {
-                    if (sec) {
-                      const matchingTab = ALL_EDITABLE_PAGES.find(p => p.id === sec || p.name.includes(sec));
-                      if (matchingTab) {
-                        setActiveTab(matchingTab.id);
-                        return;
-                      }
-                    }
-                    setActiveTab('dash');
-                  }}
-                  onSelectUserRoleTest={(role) => {
-                    if (currentUserObj) {
-                      const updatedUser = { ...currentUserObj, role };
-                      setCurrentUserObj(updatedUser);
-                      safeSaveSingleUser(updatedUser);
-                    }
-                  }}
-                />
-              )}
-
               {activeTab === 'documentation' && (
                 <DocumentationView 
                   project={currentProject}
@@ -4366,6 +4221,59 @@ let isBatchSyncRunning = false;
                     }
                   }}
                 />
+              )}
+
+              {activeTab === 'approvalWorkflow' && (
+                <div className="bg-white dark:bg-slate-850 p-4 sm:p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                  <ApprovalWorkflowManager
+                    currentUser={currentUserObj}
+                    projects={projects}
+                    drafts={privateDrafts}
+                    approvals={pendingApprovals}
+                    auditLogs={workflowAuditLogs}
+                    users={usersListState}
+                    onSaveDrafts={(updatedDrafts) => {
+                      setPrivateDrafts(updatedDrafts);
+                      safeSetItem('era_private_drafts_v1', JSON.stringify(updatedDrafts));
+                    }}
+                    onSaveApprovals={(updatedApprovals) => {
+                      setPendingApprovals(updatedApprovals);
+                      safeSetItem('era_appr_v28', JSON.stringify(updatedApprovals));
+                      safeSyncApprovals(updatedApprovals).catch(err => {
+                        console.warn('Approvals cloud sync failed:', err);
+                      });
+                    }}
+                    onSaveProjects={(updatedProjects) => {
+                      setProjects(updatedProjects);
+                      safeSetItem('era_proj_v28', JSON.stringify(updatedProjects));
+                      if (currentProjectId) {
+                        const curr = updatedProjects.find(p => p.id === currentProjectId);
+                        if (curr) setCurrentProject(curr);
+                      }
+                      updatedProjects.forEach(p => {
+                        safeSyncProject(p).catch(err => console.warn('Project sync failed:', err));
+                      });
+                    }}
+                    onLogAuditAction={(newLog) => {
+                      const fullEntry: WorkflowAuditLogEntry = {
+                        ...newLog,
+                        id: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+                        timestamp: new Date().toISOString()
+                      };
+                      const updated = [fullEntry, ...workflowAuditLogs];
+                      setWorkflowAuditLogs(updated);
+                      safeSetItem('era_workflow_audit_logs_v1', JSON.stringify(updated));
+                    }}
+                    onNavigateToEdit={(projectId, sectionId) => {
+                      if (projectId && projectId !== currentProjectId) {
+                        handleSelectProject(projectId);
+                      }
+                      if (sectionId) {
+                        setActiveTab(sectionId);
+                      }
+                    }}
+                  />
+                </div>
               )}
 
               {activeTab === 'history' && (

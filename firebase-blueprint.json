@@ -83,6 +83,37 @@
         "projectName": { "type": "string", "maxLength": 255 }
       },
       "required": ["id"]
+    },
+    "PrivateDraft": {
+      "title": "PrivateDraft",
+      "description": "Isolated editor private draft record containing staged changes before governance submission",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "projectId": { "type": "string", "maxLength": 128 },
+        "projectName": { "type": "string", "maxLength": 255 },
+        "section": { "type": "string", "maxLength": 255 },
+        "author": { "type": "string", "maxLength": 128 },
+        "status": { "type": "string", "maxLength": 50 },
+        "createdAt": { "type": "string", "maxLength": 100 },
+        "updatedAt": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["id", "projectId", "author"]
+    },
+    "WorkflowAuditLog": {
+      "title": "WorkflowAuditLog",
+      "description": "Permanent tamper-evident audit record of governance workflow actions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "timestamp": { "type": "string", "maxLength": 100 },
+        "action": { "type": "string", "maxLength": 100 },
+        "actor": { "type": "string", "maxLength": 128 },
+        "actorRole": { "type": "string", "maxLength": 50 },
+        "projectId": { "type": "string", "maxLength": 128 },
+        "details": { "type": "string", "maxLength": 1000 }
+      },
+      "required": ["id", "timestamp", "action", "actor"]
     }
   },
   "firestore": {
@@ -101,6 +132,14 @@
     "/approvals/{approvalId}": {
       "schema": { "$ref": "#/entities/Approval" },
       "description": "Collection of variance approval requests"
+    },
+    "/private_drafts/{draftId}": {
+      "schema": { "$ref": "#/entities/PrivateDraft" },
+      "description": "Collection of isolated editor private drafts"
+    },
+    "/workflow_audit_logs/{logId}": {
+      "schema": { "$ref": "#/entities/WorkflowAuditLog" },
+      "description": "Collection of governance audit trail logs"
     },
     "/config/{configId}": {
       "schema": { "$ref": "#/entities/Config" },

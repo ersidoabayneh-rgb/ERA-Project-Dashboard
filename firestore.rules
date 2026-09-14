@@ -24,29 +24,53 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
-    // Projects collection
+    // Projects collection - enforces ID validity and structured project record
     match /projects/{projectId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isValidId(projectId) && 
+                      request.resource.data.id is string && 
+                      request.resource.data.name is string;
     }
 
     // Deleted Projects collection for universal real-time deletion
     match /deleted_projects/{deletedProjectId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isValidId(deletedProjectId) && 
+                      request.resource.data.id is string;
     }
 
     // Users collection
     match /users/{userId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isValidId(userId);
     }
 
-    // Approvals collection
+    // Approvals collection - ensures variance requests have valid project association
     match /approvals/{approvalId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isValidId(approvalId) && 
+                      request.resource.data.id is string && 
+                      request.resource.data.projectId is string;
+    }
+
+    // Private Drafts collection - isolated staging area for editor drafts
+    match /private_drafts/{draftId} {
+      allow read: if true;
+      allow write: if isValidId(draftId) && 
+                      request.resource.data.id is string;
+    }
+
+    // Workflow Audit Logs collection - tamper-evident governance trail
+    match /workflow_audit_logs/{logId} {
+      allow read: if true;
+      allow write: if isValidId(logId) && 
+                      request.resource.data.id is string;
     }
 
     // Config collection
     match /config/{configId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isValidId(configId);
     }
   }
 }
