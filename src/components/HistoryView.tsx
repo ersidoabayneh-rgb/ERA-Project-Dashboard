@@ -50,7 +50,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
   const history = project.history || [];
   const [analyzing, setGenerating] = useState(false);
   const [logoError, setLogoError] = useState(false);
-  const [isKpiHistoryOpen, setIsKpiHistoryOpen] = useState(true);
+  const [isKpiHistoryOpen, setIsKpiHistoryOpen] = useState(false);
   const [isDataInconsistencyOpen, setIsDataInconsistencyOpen] = useState(true);
   const [isMonthlyGradingOpen, setIsMonthlyGradingOpen] = useState(false);
   const [gradingActiveTab, setGradingActiveTab] = useState<'contractor' | 'consultant' | 'both'>('both');
@@ -4181,24 +4181,24 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
             </p>
           </div>
 
-          {/* Card 3: Schedule Variance */}
+          {/* Card 3: Schedule Performance Index (SPI) */}
           <div className="bg-slate-950/60 p-4 rounded-2xl border border-slate-800/80 space-y-2 flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between gap-1 mb-1">
-                <span className="text-[10px] text-slate-550 font-mono uppercase">Sched. Variance (SV)</span>
-                <span className={`text-[9px] font-black flex items-center gap-0.5 font-mono ${SV_Mil >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                  {SV_Mil >= 0 ? '▲ Ahead' : '▼ Delay'}
+                <span className="text-[10px] text-slate-550 font-mono uppercase">Schedule Index (SPI)</span>
+                <span className={`text-[9px] font-black flex items-center gap-0.5 font-mono ${SPI >= 1 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {SPI >= 1 ? '▲ On-Schedule' : '▼ Delayed'}
                 </span>
               </div>
               <div className="flex items-baseline gap-1">
-                <span className={`text-base font-black tracking-tight ${SV_Mil >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                  {SV_Mil >= 0 ? '+' : ''}{SV_Mil.toFixed(2)} M
+                <span className={`text-base font-black tracking-tight ${SPI >= 1 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {SPI.toFixed(3)}
                 </span>
-                <span className="text-[9px] text-slate-500 font-bold font-mono">Birr</span>
+                <span className="text-[9px] text-slate-500 font-semibold font-mono">index</span>
               </div>
             </div>
             <p className="text-[9.5px] leading-snug text-slate-400">
-              Contract value schedule ratio represents {SV_pct.toFixed(2)}% {SV_Mil >= 0 ? 'acceleration.' : 'slippage.'}
+              {SPI >= 1 ? 'Construction velocity meets or exceeds planned schedule.' : 'Project progress is trailing the baseline schedule.'}
             </p>
           </div>
 
@@ -4249,49 +4249,8 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Left Column: History list */}
-        <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-4 rounded-2xl shadow-sm space-y-3 lg:col-span-1 no-print">
-          <h3 className="font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500">
-            Changelog Audit History
-          </h3>
-          
-          <div className="space-y-1.5 max-h-96 overflow-y-auto pr-1">
-            {history.map((h, i) => {
-              const hProg = typeof h?.physicalProgress === 'number'
-                ? h.physicalProgress
-                : (parseFloat(String(h?.physicalProgress || 0)) || 0);
-              return (
-                <div 
-                  key={i} 
-                  className="p-3 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-xl space-y-1 text-2xs"
-                >
-                  <div className="flex justify-between font-bold text-slate-500">
-                    <span>{h.timestamp}</span>
-                    <span className="text-blue-500">{hProg.toFixed(2)}%</span>
-                  </div>
-                  <p className="text-slate-705 dark:text-slate-350">
-                    Modified by <strong>{h.user}</strong> during updates on <strong>{h.section || 'General'}</strong>
-                  </p>
-                  {h.details && (
-                    <p className="text-[11px] text-slate-600 dark:text-slate-400 italic mt-1 pt-1 border-t border-slate-200/60 dark:border-slate-800">
-                      {h.details}
-                    </p>
-                  )}
-                </div>
-              );
-            })}
-
-            {history.length === 0 && (
-              <div className="text-center py-10 text-slate-400 font-medium text-xs">
-                No history snapshots tracked yet.
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Right Column: Dynamic AI Compliance Report */}
-        <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-5 rounded-2xl shadow-sm space-y-4 lg:col-span-2">
+      {/* Dynamic AI Compliance Report (Full Width) */}
+      <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-5 rounded-2xl shadow-sm space-y-4">
           
           {/* Action Header */}
           <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-705 pb-3 flex-wrap gap-2 no-print">
@@ -4868,6 +4827,45 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
             </div>
           )}
 
+        </div>
+
+      {/* Changelog Audit History */}
+      <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-5 rounded-2xl shadow-sm space-y-4 no-print">
+        <h3 className="font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500">
+          Changelog Audit History
+        </h3>
+        
+        <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+          {history.map((h, i) => {
+            const hProg = typeof h?.physicalProgress === 'number'
+              ? h.physicalProgress
+              : (parseFloat(String(h?.physicalProgress || 0)) || 0);
+            return (
+              <div 
+                key={i} 
+                className="p-3 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-xl space-y-1 text-2xs"
+              >
+                <div className="flex justify-between font-bold text-slate-500">
+                  <span>{h.timestamp}</span>
+                  <span className="text-blue-500">{hProg.toFixed(2)}%</span>
+                </div>
+                <p className="text-slate-705 dark:text-slate-350">
+                  Modified by <strong>{h.user}</strong> during updates on <strong>{h.section || 'General'}</strong>
+                </p>
+                {h.details && (
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400 italic mt-1 pt-1 border-t border-slate-200/60 dark:border-slate-800">
+                    {h.details}
+                  </p>
+                )}
+              </div>
+            );
+          })}
+
+          {history.length === 0 && (
+            <div className="text-center py-10 text-slate-400 font-medium text-xs">
+              No history snapshots tracked yet.
+            </div>
+          )}
         </div>
       </div>
 
