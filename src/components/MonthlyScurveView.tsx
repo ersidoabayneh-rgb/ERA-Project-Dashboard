@@ -249,48 +249,57 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
   };
 
   const handleAddRow = () => {
-    // Determine the reference row to calculate the next month name
-    const liveIdx = months.findIndex(m => isSameMonth(m.month, currentMonthKey));
-    let refRow: MonthlyProgress | null = null;
+    // Determine the highest month in the list to generate the next unique month
+    let maxYear = 2020;
+    let maxMIdx = 0;
+    let foundValid = false;
 
-    if (liveIdx !== -1) {
-      if (liveIdx > 0) {
-        // Use the row directly before the live row as the reference
-        refRow = months[liveIdx - 1];
-      } else {
-        refRow = months[liveIdx];
+    months.forEach(m => {
+      const p = parseMonthKey(m.month);
+      if (p) {
+        foundValid = true;
+        if (p.year * 12 + p.monthIndex > maxYear * 12 + maxMIdx) {
+          maxYear = p.year;
+          maxMIdx = p.monthIndex;
+        }
       }
-    } else if (months.length > 0) {
-      refRow = months[months.length - 1];
-    }
+    });
 
     let nextName = 'New Month';
-    if (refRow && refRow.month) {
-      const parsed = parseMonthKey(refRow.month);
-      if (parsed) {
-        const nextMIdx = (parsed.monthIndex + 1) % 12;
-        const nextYear = nextMIdx === 0 ? parsed.year + 1 : parsed.year;
-        nextName = `${MONTH_NAMES[nextMIdx]}-${(nextYear % 100).toString().padStart(2, '0')}`;
-      }
+    if (foundValid) {
+      const nextMIdx = (maxMIdx + 1) % 12;
+      const nextYear = nextMIdx === 0 ? maxYear + 1 : maxYear;
+      nextName = `${MONTH_NAMES[nextMIdx]}-${(nextYear % 100).toString().padStart(2, '0')}`;
     }
 
     const newRow: MonthlyProgress = { month: nextName, originalPlan: '', revisedPlan: '', actual: '' };
-    // Insert new row directly above the live row
     const updated = insertMonthAboveLiveRow(months, currentMonthKey, newRow);
     setMonths(updated);
     onUpdateMonthly(updated);
   };
 
   const handleAddFuturePlanRow = () => {
-    // Add a future month row at the very end of the schedule (for Original/Revised Plan %)
-    let nextName = 'New Month';
-    if (months.length > 0 && months[months.length - 1]?.month) {
-      const parsed = parseMonthKey(months[months.length - 1].month);
-      if (parsed) {
-        const nextMIdx = (parsed.monthIndex + 1) % 12;
-        const nextYear = nextMIdx === 0 ? parsed.year + 1 : parsed.year;
-        nextName = `${MONTH_NAMES[nextMIdx]}-${(nextYear % 100).toString().padStart(2, '0')}`;
+    // Add a future month row at the end of the schedule
+    let maxYear = 2020;
+    let maxMIdx = 0;
+    let foundValid = false;
+
+    months.forEach(m => {
+      const p = parseMonthKey(m.month);
+      if (p) {
+        foundValid = true;
+        if (p.year * 12 + p.monthIndex > maxYear * 12 + maxMIdx) {
+          maxYear = p.year;
+          maxMIdx = p.monthIndex;
+        }
       }
+    });
+
+    let nextName = 'New Month';
+    if (foundValid) {
+      const nextMIdx = (maxMIdx + 1) % 12;
+      const nextYear = nextMIdx === 0 ? maxYear + 1 : maxYear;
+      nextName = `${MONTH_NAMES[nextMIdx]}-${(nextYear % 100).toString().padStart(2, '0')}`;
     }
 
     const newRow: MonthlyProgress = { month: nextName, originalPlan: '', revisedPlan: '', actual: '' };

@@ -2519,3 +2519,146 @@ export function blankProjectTemplate(): Project {
   d.kpiAllocated = Array.from(combinedMap.values());
   return d;
 }
+
+export interface SixMonthSemesterGrading {
+  semesterKey: string;
+  fiscalYearLabel: string;
+  semesterLabel: string;
+  semesterType: 'H1' | 'H2';
+  fyStartYear: number;
+  fyEndYear: number;
+  monthsCount: number;
+  monthsList: string[];
+  records: MonthlyGradingRecord[];
+
+  contractorAvgScore: number;
+  contractorGrade: 'A' | 'B' | 'C' | 'D' | 'F';
+  contractorStanding: string;
+  contractorTotalPlanMonthly: number;
+  contractorTotalActualMonthly: number;
+  contractorAvgSpi: number;
+
+  consultantAvgSlaScore: number;
+  consultantAvgFiveDimScore: number;
+  consultantAvgCombinedScore: number;
+  consultantGrade: 'A' | 'B' | 'C' | 'D' | 'F';
+  consultantStanding: string;
+}
+
+export function getSixMonthCumulativeGrading(records: MonthlyGradingRecord[]): SixMonthSemesterGrading[] {
+  if (!records || records.length === 0) return [];
+
+  const semesterMap = new Map<string, {
+    semesterKey: string;
+    fiscalYearLabel: string;
+    semesterLabel: string;
+    semesterType: 'H1' | 'H2';
+    fyStartYear: number;
+    fyEndYear: number;
+    records: MonthlyGradingRecord[];
+  }>();
+
+  records.forEach(r => {
+    const ym = parseMonthToYyyyMm(r.month || r.recordedDate);
+    if (!ym || !/^\d{4}-\d{2}$/.test(ym)) return;
+
+    const yyyy = parseInt(ym.substring(0, 4), 10);
+    const mm = parseInt(ym.substring(5, 7), 10);
+
+    let fyStartYear: number;
+    let fyEndYear: number;
+    let semesterType: 'H1' | 'H2';
+    let semesterLabel: string;
+
+    if (mm >= 7) {
+      fyStartYear = yyyy;
+      fyEndYear = yyyy + 1;
+      semesterType = 'H1';
+      semesterLabel = 'Semester 1 (Jul - Dec)';
+    } else {
+      fyStartYear = yyyy - 1;
+      fyEndYear = yyyy;
+      semesterType = 'H2';
+      semesterLabel = 'Semester 2 (Jan - Jun)';
+    }
+
+    const fyShort = `${fyStartYear}/${String(fyEndYear).slice(-2)}`;
+    const semesterKey = `${fyShort}-${semesterType}`;
+    const fiscalYearLabel = `FY ${fyShort}`;
+
+    if (!semesterMap.has(semesterKey)) {
+      semesterMap.set(semesterKey, {
+        semesterKey,
+        fiscalYearLabel,
+        semesterLabel,
+        semesterType,
+        fyStartYear,
+        fyEndYear,
+        records: []
+      });
+    }
+
+    semesterMap.get(semesterKey)!.records.push(r);
+  });
+
+  const results: SixMonthSemesterGrading[] = [];
+
+  semesterMap.forEach((group) => {
+    const sortedRecs = [...group.records].sort((a, b) => compareMonthsDesc(b.month, a.month, b.recordedDate, a.recordedDate));
+    const count = sortedRecs.length;
+    if (count === 0) return;
+
+    const monthsList = sortedRecs.map(r => r.monthName || r.month);
+
+    const sumContractorScore = sortedRecs.reduce((acc, r) => acc + (typeof r.contractorScore === 'number' ? r.contractorScore : 80), 0);
+    const contractorAvgScore = Number((sumContractorScore / count).toFixed(1));
+    const contractorGrade: 'A' | 'B' | 'C' | 'D' | 'F' = contractorAvgScore >= 90 ? 'A' : contractorAvgScore >= 80 ? 'B' : contractorAvgScore >= 65 ? 'C' : 'D';
+    const contractorStanding = contractorAvgScore >= 80 ? 'Satisfactory / Standard Standing' : 'Caution / Needs Improvement';
+
+    const contractorTotalPlanMonthly = Number(sortedRecs.reduce((acc, r) => acc + (r.contractorPlanMonthly ?? 0), 0).toFixed(2));
+    const contractorTotalActualMonthly = Number(sortedRecs.reduce((acc, r) => acc + (r.contractorActualMonthly ?? 0), 0).toFixed(2));
+    const contractorAvgSpi = contractorTotalPlanMonthly > 0 ? Number((contractorTotalActualMonthly / contractorTotalPlanMonthly).toFixed(2)) : 1.0;
+
+    const sumSlaScore = sortedRecs.reduce((acc, r) => acc + (typeof r.consultantSlaTurnaroundScore === 'number' ? r.consultantSlaTurnaroundScore : 85), 0);
+    const consultantAvgSlaScore = Number((sumSlaScore / count).toFixed(1));
+
+    const sumFiveDimScore = sortedRecs.reduce((acc, r) => acc + (typeof r.consultantFiveDimScore === 'number' ? r.consultantFiveDimScore : 80), 0);
+    const consultantAvgFiveDimScore = Number((sumFiveDimScore / count).toFixed(1));
+
+    const sumCombinedScore = sortedRecs.reduce((acc, r) => acc + (typeof r.consultantOverallScore === 'number' ? r.consultantOverallScore : 82.5), 0);
+    const consultantAvgCombinedScore = Number((sumCombinedScore / count).toFixed(1));
+
+    const consultantGrade: 'A' | 'B' | 'C' | 'D' | 'F' = consultantAvgCombinedScore >= 90 ? 'A' : consultantAvgCombinedScore >= 80 ? 'B' : consultantAvgCombinedScore >= 65 ? 'C' : 'D';
+    const consultantStanding = consultantAvgCombinedScore >= 80 ? 'Satisfactory / Standard Standing' : 'Caution / Below SLA Standard';
+
+    results.push({
+      semesterKey: group.semesterKey,
+      fiscalYearLabel: group.fiscalYearLabel,
+      semesterLabel: group.semesterLabel,
+      semesterType: group.semesterType,
+      fyStartYear: group.fyStartYear,
+      fyEndYear: group.fyEndYear,
+      monthsCount: count,
+      monthsList,
+      records: sortedRecs,
+
+      contractorAvgScore,
+      contractorGrade,
+      contractorStanding,
+      contractorTotalPlanMonthly,
+      contractorTotalActualMonthly,
+      contractorAvgSpi,
+
+      consultantAvgSlaScore,
+      consultantAvgFiveDimScore,
+      consultantAvgCombinedScore,
+      consultantGrade,
+      consultantStanding
+    });
+  });
+
+  return results.sort((a, b) => {
+    if (a.fyStartYear !== b.fyStartYear) return b.fyStartYear - a.fyStartYear;
+    return a.semesterType === 'H2' ? -1 : 1;
+  });
+}

@@ -18,7 +18,9 @@ import {
   compareMonthsDesc,
   isMonthAboveCurrentMonth,
   isCurrentMonth,
-  matchCanonicalKpiPeriod
+  matchCanonicalKpiPeriod,
+  getSixMonthCumulativeGrading,
+  SixMonthSemesterGrading
 } from '../data/defaultProject';
 import { calculateProjectEvm } from '../lib/evmCalculations';
 import { getProjectConsultantEvaluation } from '../data/consultantEvaluationMatrix';
@@ -55,6 +57,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('All');
   const [selectedGradingMonthFilter, setSelectedGradingMonthFilter] = useState<string>('All');
   const [selectedConsultantTenureFilter, setSelectedConsultantTenureFilter] = useState<string>('All');
+  const [selectedSemesterFilter, setSelectedSemesterFilter] = useState<string>('All');
   const [selectedGradingDetailModal, setSelectedGradingDetailModal] = useState<MonthlyGradingRecord | null>(null);
   const [selectedHistoricalConsultantModal, setSelectedHistoricalConsultantModal] = useState<HistoricalSupervisionConsultant | null>(null);
   const [isRecordGradingModalOpen, setIsRecordGradingModalOpen] = useState(false);
@@ -150,6 +153,10 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
   const activeConsultantAssignmentDate = p.supervisionConsultant?.commencementDate || p.startDate || '2020-12-29';
   const activeConsultantFirmName = p.supervisionConsultant?.firmName || p.consultant || 'Supervision Consultant';
 
+  const sixMonthGradingList = useMemo(() => {
+    return getSixMonthCumulativeGrading(monthlyGradingRecords);
+  }, [monthlyGradingRecords]);
+
   const filteredMonthlyGradingRecords = useMemo(() => {
     const filtered = monthlyGradingRecords.filter(r => {
       if (isMonthAboveCurrentMonth(r.month, r.recordedDate)) return false;
@@ -157,10 +164,19 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
       const matchTenure = selectedConsultantTenureFilter === 'All' || 
         (selectedConsultantTenureFilter === 'current' && (!r.consultantTenureId || r.consultantTenureId === 'current' || !r.isHistoricalConsultant)) ||
         (selectedConsultantTenureFilter === r.consultantTenureId);
-      return matchMonth && matchTenure;
+
+      let matchSemester = true;
+      if (selectedSemesterFilter !== 'All') {
+        const semObj = sixMonthGradingList.find(s => s.semesterKey === selectedSemesterFilter);
+        if (semObj) {
+          matchSemester = semObj.records.some(sr => sr.id === r.id || sr.month === r.month);
+        }
+      }
+
+      return matchMonth && matchTenure && matchSemester;
     });
     return [...filtered].sort((a, b) => compareMonthsDesc(a.month, b.month, a.recordedDate, b.recordedDate));
-  }, [monthlyGradingRecords, selectedGradingMonthFilter, selectedConsultantTenureFilter]);
+  }, [monthlyGradingRecords, selectedGradingMonthFilter, selectedConsultantTenureFilter, selectedSemesterFilter, sixMonthGradingList]);
 
   // Auto-calculate grading values for form
   const handleAutoCalculateForm = (targetMonth: string) => {
@@ -2744,6 +2760,24 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                       </select>
                     </div>
 
+                    {/* 6-Month Fiscal Semester Filter (July - June) */}
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] font-bold text-amber-700 dark:text-amber-400">6-Mo Cycle:</span>
+                      <select
+                        value={selectedSemesterFilter}
+                        onChange={(e) => setSelectedSemesterFilter(e.target.value)}
+                        className="text-xs font-semibold py-1.5 px-2.5 bg-amber-50/90 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 rounded-lg text-amber-900 dark:text-amber-200 cursor-pointer shadow-xs focus:ring-1 focus:ring-amber-500"
+                        title="6-Month Cumulative Fiscal Cycle Filter (July - June Fiscal Calendar)"
+                      >
+                        <option value="All">All 6-Mo Cycles ({sixMonthGradingList.length})</option>
+                        {sixMonthGradingList.map((sem) => (
+                          <option key={sem.semesterKey} value={sem.semesterKey}>
+                            {sem.fiscalYearLabel} {sem.semesterLabel} ({sem.monthsCount} Mos)
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
                     {/* PDF Export Action Buttons */}
                     {gradingActiveTab === 'contractor' && (
                       <button
@@ -2809,6 +2843,126 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                     </button>
                   </div>
                 </div>
+
+                {/* 6-Month Cumulative Fiscal Year Grading Summary Widget (July - June) */}
+                {sixMonthGradingList.length > 0 && (
+                  <div className="p-3.5 bg-gradient-to-r from-amber-50/70 via-slate-50 to-indigo-50/70 dark:from-amber-950/30 dark:via-slate-900/40 dark:to-indigo-950/30 border border-amber-200/80 dark:border-amber-900/60 rounded-2xl space-y-3 shadow-xs">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-200/60 dark:border-amber-900/40 pb-2.5">
+                      <div className="flex items-center gap-2.5">
+                        <div className="p-1.5 rounded-lg bg-amber-500 text-white shadow-xs">
+                          <Award className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-black text-slate-850 dark:text-white uppercase tracking-wide flex items-center gap-2 flex-wrap">
+                            6-Month Cumulative Grading Ledger Summary
+                            <span className="text-[9.5px] font-bold text-amber-800 dark:text-amber-200 bg-amber-100 dark:bg-amber-950/60 px-2 py-0.5 rounded-full border border-amber-200/80 dark:border-amber-800/60">
+                              Fiscal Calendar: July (Start) – June (End)
+                            </span>
+                          </h4>
+                          <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                            Cumulative 6-month semester evaluation cycles (H1: Jul – Dec | H2: Jan – Jun) aggregating contractor execution & supervision consultant grades.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 font-mono text-[10px]">
+                        <span className="text-slate-500">Cycles Tracked: <strong className="text-slate-800 dark:text-slate-200 font-extrabold">{sixMonthGradingList.length} Semesters</strong></span>
+                      </div>
+                    </div>
+
+                    {/* Cards Grid for Each 6-Month Semester */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {sixMonthGradingList.map((sem) => {
+                        const isSelected = selectedSemesterFilter === sem.semesterKey;
+                        
+                        let contBadge = "bg-emerald-500 text-white";
+                        if (sem.contractorGrade === 'C') contBadge = "bg-amber-500 text-white";
+                        else if (sem.contractorGrade === 'D' || sem.contractorGrade === 'F') contBadge = "bg-rose-500 text-white";
+
+                        let consBadge = "bg-indigo-600 text-white";
+                        if (sem.consultantGrade === 'C') consBadge = "bg-amber-600 text-white";
+                        else if (sem.consultantGrade === 'D' || sem.consultantGrade === 'F') consBadge = "bg-rose-600 text-white";
+
+                        return (
+                          <div
+                            key={sem.semesterKey}
+                            onClick={() => setSelectedSemesterFilter(isSelected ? 'All' : sem.semesterKey)}
+                            className={`p-3 rounded-xl border transition-all cursor-pointer space-y-2.5 ${
+                              isSelected
+                                ? 'bg-white dark:bg-slate-800 border-amber-500 shadow-md ring-2 ring-amber-400/30'
+                                : 'bg-white/90 dark:bg-slate-800/90 border-slate-200/80 dark:border-slate-700/80 hover:border-amber-400 dark:hover:border-amber-600 shadow-xs'
+                            }`}
+                          >
+                            {/* Semester Header */}
+                            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700/60 pb-1.5">
+                              <div className="flex items-center gap-1.5">
+                                <Calendar className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                                <span className="text-xs font-black text-slate-900 dark:text-white">{sem.fiscalYearLabel} {sem.semesterLabel}</span>
+                              </div>
+                              <span className="text-[9.5px] font-mono font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                                {sem.monthsCount} {sem.monthsCount === 1 ? 'Month' : 'Months'}
+                              </span>
+                            </div>
+
+                            {/* Month List Pills */}
+                            <div className="text-[9px] text-slate-500 font-mono flex items-center gap-1 flex-wrap">
+                              <span className="font-bold text-slate-400">Audited:</span>
+                              {sem.monthsList.map((mName, mIdx) => (
+                                <span key={`m-${mIdx}`} className="bg-slate-100 dark:bg-slate-700/60 text-slate-700 dark:text-slate-300 px-1.5 py-0.2 rounded text-[8.5px]">
+                                  {mName}
+                                </span>
+                              ))}
+                            </div>
+
+                            {/* Contractor & Consultant Dual 6-Month Cumulative Grades */}
+                            <div className="grid grid-cols-2 gap-2 pt-1">
+                              {/* Contractor 6-Month Card */}
+                              <div className="p-2 rounded-lg bg-amber-50/60 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-900/40 space-y-1">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[9px] font-extrabold text-amber-800 dark:text-amber-300 uppercase flex items-center gap-1">
+                                    <HardHat className="w-2.5 h-2.5 text-amber-500" /> Contractor
+                                  </span>
+                                  <span className={`text-[9px] font-black px-1.5 py-0.2 rounded ${contBadge}`}>
+                                    Grade {sem.contractorGrade}
+                                  </span>
+                                </div>
+                                <div className="text-xs font-black text-slate-900 dark:text-white font-mono">
+                                  {sem.contractorAvgScore}% <span className="text-[8.5px] font-normal text-slate-500">6-Mo Avg</span>
+                                </div>
+                                <div className="text-[8.5px] font-mono text-slate-500 dark:text-slate-400">
+                                  Plan: {sem.contractorTotalPlanMonthly}% • Act: {sem.contractorTotalActualMonthly}%
+                                </div>
+                                <div className="text-[8.5px] font-mono font-bold text-slate-700 dark:text-slate-300">
+                                  6-Mo SPI: <span className={sem.contractorAvgSpi >= 1 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>{sem.contractorAvgSpi}</span>
+                                </div>
+                              </div>
+
+                              {/* Supervision Consultant 6-Month Card */}
+                              <div className="p-2 rounded-lg bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-200/60 dark:border-indigo-900/40 space-y-1">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[9px] font-extrabold text-indigo-800 dark:text-indigo-300 uppercase flex items-center gap-1">
+                                    <Briefcase className="w-2.5 h-2.5 text-indigo-500" /> Consultant
+                                  </span>
+                                  <span className={`text-[9px] font-black px-1.5 py-0.2 rounded ${consBadge}`}>
+                                    Grade {sem.consultantGrade}
+                                  </span>
+                                </div>
+                                <div className="text-xs font-black text-slate-900 dark:text-white font-mono">
+                                  {sem.consultantAvgCombinedScore}% <span className="text-[8.5px] font-normal text-slate-500">Combined</span>
+                                </div>
+                                <div className="text-[8.5px] font-mono text-slate-500 dark:text-slate-400">
+                                  SLA: {sem.consultantAvgSlaScore}% • Tech: {sem.consultantAvgFiveDimScore}%
+                                </div>
+                                <div className="text-[8.5px] font-mono font-bold text-indigo-700 dark:text-indigo-300 truncate" title={sem.consultantStanding}>
+                                  {sem.consultantStanding}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 {/* TAB 1: CONTRACTOR PERFORMANCE LEDGER VIEW */}
                 {gradingActiveTab === 'contractor' && (

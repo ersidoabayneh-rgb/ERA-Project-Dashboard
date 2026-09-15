@@ -391,7 +391,7 @@ export function getLiveActualValue(
 }
 
 /**
- * Sorts monthly progress array in chronological order based on parsed month and year.
+ * Sorts monthly progress array in chronological order based on parsed month and year (ascending order).
  */
 export function sortMonthlyChronologically(monthlyList: MonthlyProgress[]): MonthlyProgress[] {
   return [...monthlyList].sort((a, b) => {
@@ -407,10 +407,82 @@ export function sortMonthlyChronologically(monthlyList: MonthlyProgress[]): Mont
 }
 
 /**
+ * Deduplicates monthly progress records by month key and sorts them strictly in ascending chronological order.
+ */
+export function deduplicateAndSortMonthly(monthlyList: MonthlyProgress[] | undefined): MonthlyProgress[] {
+  if (!monthlyList || monthlyList.length === 0) return [];
+
+  const map = new Map<string, MonthlyProgress>();
+  const unparsedList: MonthlyProgress[] = [];
+
+  for (const item of monthlyList) {
+    if (!item || !item.month) continue;
+    const parsed = parseMonthKey(item.month);
+    if (parsed) {
+      const key = parsed.key; // e.g. "Dec-20"
+      if (map.has(key)) {
+        const existing = map.get(key)!;
+        const mergedOrig = (existing.originalPlan !== '' && existing.originalPlan !== null && existing.originalPlan !== undefined)
+          ? existing.originalPlan
+          : (item.originalPlan ?? '');
+        const mergedRev = (existing.revisedPlan !== '' && existing.revisedPlan !== null && existing.revisedPlan !== undefined)
+          ? existing.revisedPlan
+          : (item.revisedPlan ?? '');
+        const mergedAct = (existing.actual !== '' && existing.actual !== null && existing.actual !== undefined)
+          ? existing.actual
+          : (item.actual ?? '');
+
+        map.set(key, {
+          ...existing,
+          month: key,
+          originalPlan: mergedOrig,
+          revisedPlan: mergedRev,
+          actual: mergedAct
+        });
+      } else {
+        map.set(key, {
+          ...item,
+          month: key
+        });
+      }
+    } else {
+      const cleanStr = item.month.trim().toLowerCase();
+      const existingIdx = unparsedList.findIndex(u => u.month.trim().toLowerCase() === cleanStr);
+      if (existingIdx !== -1) {
+        const existing = unparsedList[existingIdx];
+        const mergedOrig = (existing.originalPlan !== '' && existing.originalPlan !== null && existing.originalPlan !== undefined)
+          ? existing.originalPlan
+          : (item.originalPlan ?? '');
+        const mergedRev = (existing.revisedPlan !== '' && existing.revisedPlan !== null && existing.revisedPlan !== undefined)
+          ? existing.revisedPlan
+          : (item.revisedPlan ?? '');
+        const mergedAct = (existing.actual !== '' && existing.actual !== null && existing.actual !== undefined)
+          ? existing.actual
+          : (item.actual ?? '');
+
+        unparsedList[existingIdx] = {
+          ...existing,
+          originalPlan: mergedOrig,
+          revisedPlan: mergedRev,
+          actual: mergedAct
+        };
+      } else {
+        unparsedList.push({ ...item });
+      }
+    }
+  }
+
+  const parsedArray = Array.from(map.values());
+  const sortedParsed = sortMonthlyChronologically(parsedArray);
+
+  return [...sortedParsed, ...unparsedList];
+}
+
+/**
  * Ensures that the live tracking month row is ALWAYS the last row for the Actual column ONLY.
  * - Other columns (Month, Original Plan %, Revised Plan %) can extend beyond the live row into future months.
  * - For the Actual % column, values are only allowed up to the live row; all rows after the live row have actual = ''.
- * - If the live row does not exist in the list, it is inserted into its proper chronological position.
+ * - Ensures rows are strictly deduplicated and sorted in ascending chronological order.
  * - CRITICAL: The live row actual is ALWAYS guaranteed to be >= the previous row's actual value until updated by the user.
  */
 export function ensureLiveRowForActual(
@@ -418,7 +490,9 @@ export function ensureLiveRowForActual(
   currentMonthKey: string,
   liveActualValue?: number
 ): MonthlyProgress[] {
-  if (!monthlyList || monthlyList.length === 0) {
+  let list = deduplicateAndSortMonthly(monthlyList);
+
+  if (list.length === 0) {
     if (liveActualValue !== undefined) {
       return [{
         month: currentMonthKey,
@@ -427,41 +501,27 @@ export function ensureLiveRowForActual(
         actual: liveActualValue
       }];
     }
-    return [];
-  }
-
-  let list = [...monthlyList];
-  let liveIdx = list.findIndex(m => isSameMonth(m.month, currentMonthKey));
-
-  if (liveIdx === -1) {
-    // Live row doesn't exist yet: create it and insert it in chronological order
-    const parsedTarget = parseMonthKey(currentMonthKey);
-    const newLiveRow: MonthlyProgress = {
+    return [{
       month: currentMonthKey,
       originalPlan: '',
       revisedPlan: '',
       actual: ''
+    }];
+  }
+
+  let liveIdx = list.findIndex(m => isSameMonth(m.month, currentMonthKey));
+
+  if (liveIdx === -1) {
+    // Live row doesn't exist yet: create it and insert it into ascending list
+    const newLiveRow: MonthlyProgress = {
+      month: currentMonthKey,
+      originalPlan: '',
+      revisedPlan: '',
+      actual: liveActualValue !== undefined ? liveActualValue : ''
     };
-
-    if (parsedTarget) {
-      const targetTime = parsedTarget.year * 12 + parsedTarget.monthIndex;
-      const insertIdx = list.findIndex(m => {
-        const p = parseMonthKey(m.month);
-        if (!p) return false;
-        return (p.year * 12 + p.monthIndex) > targetTime;
-      });
-
-      if (insertIdx !== -1) {
-        list.splice(insertIdx, 0, newLiveRow);
-        liveIdx = insertIdx;
-      } else {
-        list.push(newLiveRow);
-        liveIdx = list.length - 1;
-      }
-    } else {
-      list.push(newLiveRow);
-      liveIdx = list.length - 1;
-    }
+    list.push(newLiveRow);
+    list = deduplicateAndSortMonthly(list);
+    liveIdx = list.findIndex(m => isSameMonth(m.month, currentMonthKey));
   }
 
   // Find the previous actual value before liveIdx
@@ -527,16 +587,14 @@ export function insertMonthAboveLiveRow(
       revisedPlan: '',
       actual: liveActualValue !== undefined ? liveActualValue : ''
     };
-    return [newRow, liveRow];
+    return deduplicateAndSortMonthly([newRow, liveRow]);
   }
 
   const liveIdx = currentList.findIndex(m => isSameMonth(m.month, currentMonthKey));
   
   if (liveIdx !== -1) {
-    // Insert newRow before the live row
     currentList.splice(liveIdx, 0, newRow);
   } else {
-    // If live row not found, add newRow and let ensureLiveRowForActual position the live row
     currentList.push(newRow);
   }
 
