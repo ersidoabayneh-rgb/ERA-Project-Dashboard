@@ -1150,6 +1150,11 @@ export default function App() {
       safeDeleteUser(targetUsername).catch(() => {});
       alert(`User "${targetUsername}" deleted from the database.`);
     } else if (isDirAdmin) {
+      if (targetUser.assignedDirectorate !== currentUserObj?.assignedDirectorate) {
+        alert(`🔒 PERMISSION RESTRICTED\n\nYou can only remove users belonging to your assigned Directorate: "${currentUserObj?.assignedDirectorate}".`);
+        return;
+      }
+
       const conf = window.confirm(`Are you sure you want to REMOVE user "${targetUsername}" from your Directorate?`);
       if (!conf) return;
       
@@ -1170,6 +1175,11 @@ export default function App() {
       safeSyncUsers(updatedUsers).catch(() => {});
       alert(`User "${targetUsername}" has been removed from your Directorate.`);
     } else if (isPmoAdmin) {
+      if (targetUser.assignedPmo !== currentUserObj?.assignedPmo) {
+        alert(`🔒 PERMISSION RESTRICTED\n\nYou can only remove users belonging to your assigned PMO: "${currentUserObj?.assignedPmo}".`);
+        return;
+      }
+
       const conf = window.confirm(`Are you sure you want to REMOVE user "${targetUsername}" from your PMO?`);
       if (!conf) return;
       
@@ -5730,7 +5740,13 @@ let isBatchSyncRunning = false;
                                   onClick={() => handleRemoveOrDeleteUser(u.username)}
                                   className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-black rounded-lg text-2xs uppercase transition shadow-xs flex items-center gap-1 cursor-pointer"
                                 >
-                                  {currentUserObj?.role === 'admin' || currentUserObj?.role === 'master_admin' || currentUserObj?.username === 'proj_1781786415663' ? '🗑️ Permanently Delete User' : '🚫 Remove User'}
+                                  {currentUserObj?.role === 'admin' || currentUserObj?.role === 'master_admin' || currentUserObj?.username === 'proj_1781786415663' 
+                                    ? '🗑️ Permanently Delete User' 
+                                    : currentUserObj?.role === 'directorate_admin' 
+                                      ? '🚫 Remove from Directorate' 
+                                      : currentUserObj?.role === 'pmo_admin' 
+                                        ? '🚫 Remove from PMO' 
+                                        : '🚫 Remove User'}
                                 </button>
                               </div>
                             )}

@@ -1167,9 +1167,11 @@ export default function DashboardView({
     });
   }
 
-  const handleExportDashboardPDF = () => {};
-  if (false) {
-    const doc = new (window as any).jsPDF('p', 'pt', 'a4'); // portrait, point, A4 (595.28 x 841.89 pt)
+  const handleExportDashboardPDF = () => {
+    setIsExporting(true);
+    setTimeout(() => {
+      try {
+        const doc = new jsPDF('p', 'pt', 'a4'); // portrait, point, A4 (595.28 x 841.89 pt)
     
     // Redirect helvetica to times for Times New Roman font support
     const originalSetFont = doc.setFont;
@@ -1650,9 +1652,16 @@ export default function DashboardView({
     doc.setTextColor(148, 163, 184);
     doc.text("Page 4 of 4 - ERA Management & Performance Indicators Portal Core Engine", pageWidth / 2, 805, { align: 'center' });
 
-    // Save PDF
-    doc.save(`ERA_Dashboard_Executive_Report_${p.name ? p.name.replace(/\s+/g, '_') : 'Untitled'}.pdf`);
-  }
+        // Save PDF
+        doc.save(`ERA_Dashboard_Executive_Report_${p.name ? p.name.replace(/\s+/g, '_') : 'Untitled'}.pdf`);
+      } catch (err) {
+        console.error("PDF generation failed:", err);
+        alert("An error occurred during PDF generation. Please try again.");
+      } finally {
+        setIsExporting(false);
+      }
+    }, 100);
+  };
 
   return (
     <div className="space-y-6">

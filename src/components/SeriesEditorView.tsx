@@ -243,6 +243,47 @@ export default function SeriesEditorView({ project, onUpdateSeries, onProjectUpd
     }, 4000);
   };
 
+  const hasChangesRef = useRef(false);
+
+  useEffect(() => {
+    const isDifferent = JSON.stringify(draftSeries) !== JSON.stringify(project.series || []) ||
+                        draftProvisionalSum !== (project.provisionalSum || 0);
+    if (isDifferent) {
+      hasChangesRef.current = true;
+    }
+  }, [draftSeries, draftProvisionalSum, project.series, project.provisionalSum]);
+
+  useEffect(() => {
+    if (!hasChangesRef.current) return;
+
+    const timer = setTimeout(() => {
+      const cleanedSeries = draftSeries.map(item => {
+        const ca = Number(item.contractAmt) || 0;
+        const ea = Number(item.execAmt) || 0;
+        const prog = ca > 0 ? (ea / ca) * 100 : 0;
+        return {
+          ...item,
+          code: String(item.code || '').trim(),
+          desc: String(item.desc || '').trim(),
+          contractAmt: ca,
+          execAmt: ea,
+          progress: prog,
+          contractPct: item.contractPct !== undefined ? Number(item.contractPct) || 0 : undefined
+        };
+      });
+      const cleanedPs = Number(draftProvisionalSum) || 0;
+      
+      onUpdateSeries(cleanedSeries, cleanedPs);
+      hasChangesRef.current = false;
+      setSaveSuccessMessage('Financial draft auto-saved successfully!');
+      setTimeout(() => {
+        setSaveSuccessMessage(null);
+      }, 2500);
+    }, 5000);
+
+    return () => clearTimeout(timer);
+  }, [draftSeries, draftProvisionalSum, onUpdateSeries]);
+
   const formatMoney = (v: number) => 
     formatAccounting(v, '');
 

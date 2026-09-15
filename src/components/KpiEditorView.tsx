@@ -15,7 +15,44 @@ interface KpiEditorViewProps {
 
 export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, onProjectUpdate }: KpiEditorViewProps) {
   const [selectedGroupId, setSelectedGroupId] = React.useState<string>('all');
-  const kpis = getIntegratedKpiAllocated(project);
+  const [draftKpis, setDraftKpis] = React.useState<KpiAllocatedItem[]>(() => getIntegratedKpiAllocated(project));
+  const kpis = draftKpis;
+
+  const prevProjectKpiIdRef = React.useRef(project.id);
+  const prevKpiAllocatedLengthRef = React.useRef(project.kpiAllocated?.length || 0);
+
+  React.useEffect(() => {
+    if (prevProjectKpiIdRef.current !== project.id || prevKpiAllocatedLengthRef.current !== (project.kpiAllocated?.length || 0)) {
+      prevProjectKpiIdRef.current = project.id;
+      prevKpiAllocatedLengthRef.current = project.kpiAllocated?.length || 0;
+      setDraftKpis(getIntegratedKpiAllocated(project));
+    }
+  }, [project.id, project.kpiAllocated]);
+
+  const hasKpiChangesRef = React.useRef(false);
+
+  React.useEffect(() => {
+    const currentSaved = getIntegratedKpiAllocated(project);
+    if (JSON.stringify(draftKpis) !== JSON.stringify(currentSaved)) {
+      hasKpiChangesRef.current = true;
+    }
+  }, [draftKpis, project]);
+
+  const [saveMessage, setSaveMessage] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!hasKpiChangesRef.current) return;
+
+    const timer = setTimeout(() => {
+      onUpdateKpi(draftKpis);
+      hasKpiChangesRef.current = false;
+      setSaveMessage('KPI scorecard drafting changes auto-saved successfully!');
+      setTimeout(() => setSaveMessage(null), 2500);
+    }, 5000); // 5 seconds debounce
+
+    return () => clearTimeout(timer);
+  }, [draftKpis, onUpdateKpi]);
+
   const hierarchy = React.useMemo(() => {
     return buildKpiHierarchy(project.contractType || 'DBB', project);
   }, [project.contractType, project.id, project.kpiAllocated?.length]);
@@ -366,7 +403,7 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
       }
       return k;
     });
-    onUpdateKpi(updated);
+    setDraftKpis(updated);
   };
 
   const handleResetToAuto = (itemId: string) => {
@@ -379,7 +416,7 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
       }
       return k;
     });
-    onUpdateKpi(updated);
+    setDraftKpis(updated);
   };
 
   // Autocalculate sub-scores for visual display inside the headers
@@ -420,6 +457,17 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
 
   return (
     <div className="space-y-4">
+      {saveMessage && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-250 dark:border-emerald-900/40 text-emerald-850 dark:text-emerald-450 p-3.5 rounded-2xl flex items-center gap-2.5 text-xs font-bold shadow-xs"
+        >
+          <CheckCircle className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+          <span>{saveMessage}</span>
+        </motion.div>
+      )}
+
       {/* 1. Admin/Non-Admin mode banners */}
       {!isAdmin ? (
         <div className="bg-amber-50/50 dark:bg-amber-950/15 border border-amber-200/60 dark:border-amber-900/45 p-4 rounded-2xl flex items-center justify-between gap-3 shadow-2xs">

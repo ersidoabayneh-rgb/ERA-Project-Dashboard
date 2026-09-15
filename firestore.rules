@@ -14,6 +14,10 @@ service cloud.firestore {
       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
+    function isValidUserId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-\\.\\s@#%+]+$');
+    }
+
     // Default deny all
     match /{document=**} {
       allow read, write: if false;
@@ -42,7 +46,7 @@ service cloud.firestore {
     // Users collection
     match /users/{userId} {
       allow read: if true;
-      allow write: if isValidId(userId);
+      allow write: if isValidUserId(userId);
     }
 
     // Approvals collection - ensures variance requests have valid project association
