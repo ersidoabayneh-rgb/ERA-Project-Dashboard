@@ -5715,240 +5715,71 @@ export default function GroupReportGenerator({
                   </div>
                 </div>
 
-                <div className="bg-slate-50 dark:bg-slate-900/30 border border-slate-200 dark:border-slate-800 p-3.5 rounded-xl text-2xs space-y-2.5 text-slate-600 dark:text-slate-400">
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <div className="flex items-center gap-2 font-black uppercase text-slate-700 dark:text-zinc-200 tracking-wider text-[10px]">
-                      <span>📋 {auditPerspective === 'consultant' ? 'SUPERVISION CONSULTANT' : 'PROJECT CONTRACTOR'} COMPLIANCE & GRADE SCORING MODEL WEIGHT DISTRIBUTION</span>
+                {auditPerspective === 'contractor' && (
+                  <div className="bg-slate-50 dark:bg-slate-900/30 border border-slate-200 dark:border-slate-800 p-3.5 rounded-xl text-2xs space-y-2.5 text-slate-600 dark:text-slate-400">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-2 font-black uppercase text-slate-700 dark:text-zinc-200 tracking-wider text-[10px]">
+                        <span>📋 PROJECT CONTRACTOR COMPLIANCE & GRADE SCORING MODEL WEIGHT DISTRIBUTION</span>
+                      </div>
+                      {isMasterAdmin && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTempContractorWeights(contractorWeights);
+                            setTempConsultantWeights(consultantWeights);
+                            setIsEditingWeightsModalOpen(true);
+                          }}
+                          className="px-2.5 py-1 text-[10px] font-extrabold text-amber-800 dark:text-amber-300 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs group"
+                          title="Master Admin Permission: Edit and update weightages for scoring model"
+                        >
+                          <Sliders className="w-3 h-3 text-amber-600 dark:text-amber-400 group-hover:rotate-45 transition-transform" />
+                          <span>⚙️ Edit Weightages (Master Admin)</span>
+                        </button>
+                      )}
                     </div>
-                    {isMasterAdmin && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setTempContractorWeights(contractorWeights);
-                          setTempConsultantWeights(consultantWeights);
-                          setIsEditingWeightsModalOpen(true);
-                        }}
-                        className="px-2.5 py-1 text-[10px] font-extrabold text-amber-800 dark:text-amber-300 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs group"
-                        title="Master Admin Permission: Edit and update weightages for scoring model"
-                      >
-                        <Sliders className="w-3 h-3 text-amber-600 dark:text-amber-400 group-hover:rotate-45 transition-transform" />
-                        <span>⚙️ Edit Weightages (Master Admin)</span>
-                      </button>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 text-center text-[10px]">
-                    {auditPerspective === 'consultant' ? (
-                      <>
-                        <div className="bg-white dark:bg-slate-900/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
-                          <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{consultantWeights.sla}% WEIGHT</span>
-                          <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block">{consultantWeights.labels?.sla || '1. Submittal SLA & RFI Turnaround'}</span>
-                        </div>
-                        <div className="bg-white dark:bg-slate-900/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
-                          <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{consultantWeights.staff}% WEIGHT</span>
-                          <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block">{consultantWeights.labels?.staff || '2. Key Staff Mobilization'}</span>
-                        </div>
-                        <div className="bg-white dark:bg-slate-900/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
-                          <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{consultantWeights.ipc}% WEIGHT</span>
-                          <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block">{consultantWeights.labels?.ipc || '3. IPC Verification Timeliness'}</span>
-                        </div>
-                        <div className="bg-white dark:bg-slate-900/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
-                          <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{consultantWeights.claims}% WEIGHT</span>
-                          <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block">{consultantWeights.labels?.claims || '4. Claims & Determinations'}</span>
-                        </div>
-                        <div className="bg-white dark:bg-slate-900/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
-                          <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{consultantWeights.quality}% WEIGHT</span>
-                          <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block">{consultantWeights.labels?.quality || '5. Quality Assurance & WIR'}</span>
-                        </div>
-                        {(consultantWeights.customCriteria || []).map((c) => (
-                          <div key={c.id} className="bg-indigo-50/50 dark:bg-indigo-950/30 p-2 rounded-xl border border-indigo-200 dark:border-indigo-800 shadow-2xs">
-                            <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{c.weight}% WEIGHT</span>
-                            <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block truncate">{c.label}</span>
-                          </div>
-                        ))}
-                      </>
-                    ) : (
-                      <>
-                        <div className="bg-white dark:bg-slate-900/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
-                          <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{contractorWeights.fidic}% WEIGHT</span>
-                          <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.fidic || '1. FIDIC Compliance'}</span>
-                        </div>
-                        <div className="bg-white dark:bg-slate-900/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
-                          <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{contractorWeights.projectMgmt}% WEIGHT</span>
-                          <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.projectMgmt || '2. Project Mgmt (Time)'}</span>
-                        </div>
-                        <div className="bg-white dark:bg-slate-900/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
-                          <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{contractorWeights.evm}% WEIGHT</span>
-                          <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.evm || '3. EVM (CPI & SPI)'}</span>
-                        </div>
-                        <div className="bg-white dark:bg-slate-900/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
-                          <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{contractorWeights.kpi}% WEIGHT</span>
-                          <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.kpi || '4. KPIs & Quality'}</span>
-                        </div>
-                        <div className="bg-white dark:bg-slate-900/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
-                          <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{contractorWeights.linear}% WEIGHT</span>
-                          <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.linear || '5. Linear Layer Progress'}</span>
-                        </div>
-                        <div className="bg-white dark:bg-slate-900/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
-                          <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{contractorWeights.rfi ?? 10}% WEIGHT</span>
-                          <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.rfi || '6. Technical RFIs'}</span>
-                        </div>
-                        <div className="bg-white dark:bg-slate-900/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
-                          <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{contractorWeights.materialApproval ?? 10}% WEIGHT</span>
-                          <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.materialApproval || '7. Material Approval'}</span>
-                        </div>
-                        <div className="bg-white dark:bg-slate-900/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
-                          <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{contractorWeights.workInspection ?? 5}% WEIGHT</span>
-                          <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.workInspection || '8. Work Inspection (WIR)'}</span>
-                        </div>
-                        <div className="bg-white dark:bg-slate-900/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
-                          <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{contractorWeights.resourceMobilization ?? 5}% WEIGHT</span>
-                          <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.resourceMobilization || '9. Resource Mobilization'}</span>
-                        </div>
-                        {(contractorWeights.customCriteria || []).map((c) => (
-                          <div key={c.id} className="bg-indigo-50/50 dark:bg-indigo-950/30 p-2 rounded-xl border border-indigo-200 dark:border-indigo-800 shadow-2xs">
-                            <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{c.weight}% WEIGHT</span>
-                            <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block truncate">{c.label}</span>
-                          </div>
-                        ))}
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                {/* Supervision Consultant Evaluation Criteria & Grading System Reference Block */}
-                {auditPerspective === 'consultant' && (
-                  <div className="bg-gradient-to-br from-indigo-50/40 to-slate-50/40 dark:from-indigo-950/10 dark:to-slate-900/10 border border-indigo-150/80 dark:border-indigo-900/40 rounded-2xl p-4 space-y-4 shadow-3xs">
-                    <div className="flex items-center gap-2 pb-2 border-b border-indigo-100/60 dark:border-indigo-900/30">
-                      <div className="w-7 h-7 rounded-lg bg-indigo-600/10 dark:bg-indigo-400/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-sm">
-                        ℹ️
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 text-center text-[10px]">
+                      <div className="bg-white dark:bg-slate-900/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+                        <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{contractorWeights.fidic}% WEIGHT</span>
+                        <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.fidic || '1. FIDIC Compliance'}</span>
                       </div>
-                      <div>
-                        <h4 className="text-[11px] font-black text-slate-800 dark:text-zinc-200 uppercase tracking-wider">
-                          Evaluation Framework & Grading Criteria
-                        </h4>
-                        <p className="text-[10px] text-slate-500 dark:text-slate-400">
-                          Comprehensive methodology considered during active supervision performance audit
-                        </p>
+                      <div className="bg-white dark:bg-slate-900/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+                        <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{contractorWeights.projectMgmt}% WEIGHT</span>
+                        <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.projectMgmt || '2. Project Mgmt (Time)'}</span>
                       </div>
-                    </div>
-
-                    {/* Dual Columns: Evaluation Dimensions & Rating Scales */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                      {/* Left Column: Dimensions */}
-                      <div className="space-y-2.5">
-                        <span className="text-[9px] font-black text-indigo-700 dark:text-indigo-400 uppercase tracking-widest block">
-                          ⚖️ The Five Dimensions Evaluated (105 Contractual Criteria)
-                        </span>
-                        
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px]">
-                          <div className="bg-white/80 dark:bg-slate-900/40 p-2.5 rounded-xl border border-slate-150 dark:border-slate-800 space-y-1">
-                            <div className="flex items-center gap-1.5 font-bold text-indigo-700 dark:text-indigo-400">
-                              <span className="bg-indigo-100/60 dark:bg-indigo-950 px-1.5 py-0.2 rounded text-[8px] font-black">DIM A</span>
-                              <span>Doc & Review Oversight</span>
-                            </div>
-                            <p className="text-[9px] text-slate-500 dark:text-slate-400 leading-relaxed">
-                              Verification of submittals, design validation, methodologies, and shop drawings approvals against contract conditions.
-                            </p>
-                          </div>
-
-                          <div className="bg-white/80 dark:bg-slate-900/40 p-2.5 rounded-xl border border-slate-150 dark:border-slate-800 space-y-1">
-                            <div className="flex items-center gap-1.5 font-bold text-indigo-700 dark:text-indigo-400">
-                              <span className="bg-indigo-100/60 dark:bg-indigo-950 px-1.5 py-0.2 rounded text-[8px] font-black">DIM B</span>
-                              <span>Schedule & Time Mgmt</span>
-                            </div>
-                            <p className="text-[9px] text-slate-500 dark:text-slate-400 leading-relaxed">
-                              Clause 8.3 program updates, contractor resources evaluation, physical progress tracking, and extension of time (EOT) audits.
-                            </p>
-                          </div>
-
-                          <div className="bg-white/80 dark:bg-slate-900/40 p-2.5 rounded-xl border border-slate-150 dark:border-slate-800 space-y-1">
-                            <div className="flex items-center gap-1.5 font-bold text-indigo-700 dark:text-indigo-400">
-                              <span className="bg-indigo-100/60 dark:bg-indigo-950 px-1.5 py-0.2 rounded text-[8px] font-black">DIM C</span>
-                              <span>Site Quality Assurance</span>
-                            </div>
-                            <p className="text-[9px] text-slate-500 dark:text-slate-400 leading-relaxed">
-                              In-situ materials testing, quality sign-offs (WIRs), trial mix approvals, and contractor compliance checks.
-                            </p>
-                          </div>
-
-                          <div className="bg-white/80 dark:bg-slate-900/40 p-2.5 rounded-xl border border-slate-150 dark:border-slate-800 space-y-1">
-                            <div className="flex items-center gap-1.5 font-bold text-indigo-700 dark:text-indigo-400">
-                              <span className="bg-indigo-100/60 dark:bg-indigo-950 px-1.5 py-0.2 rounded text-[8px] font-black">DIM D</span>
-                              <span>Expert Mobilization</span>
-                            </div>
-                            <p className="text-[9px] text-slate-500 dark:text-slate-400 leading-relaxed">
-                              Resident Engineer & key engineering experts field attendance, qualification checks, and team mobilization rates.
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="bg-white/80 dark:bg-slate-900/40 p-2.5 rounded-xl border border-slate-150 dark:border-slate-800 space-y-1 text-[10px]">
-                          <div className="flex items-center gap-1.5 font-bold text-indigo-700 dark:text-indigo-400">
-                            <span className="bg-indigo-100/60 dark:bg-indigo-950 px-1.5 py-0.2 rounded text-[8px] font-black">DIM E</span>
-                            <span>Financial Control & IPC Verification</span>
-                          </div>
-                          <p className="text-[9px] text-slate-500 dark:text-slate-400 leading-relaxed">
-                            Audit of Interim Payment Certificate processing durations, variations oversight, claims determinations, and project financial tracking.
-                          </p>
-                        </div>
+                      <div className="bg-white dark:bg-slate-900/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+                        <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{contractorWeights.evm}% WEIGHT</span>
+                        <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.evm || '3. EVM (CPI & SPI)'}</span>
                       </div>
-
-                      {/* Right Column: Grading System */}
-                      <div className="space-y-2.5">
-                        <span className="text-[9px] font-black text-indigo-700 dark:text-indigo-400 uppercase tracking-widest block">
-                          🎯 Official Qualitative Grading & Performance Scale
-                        </span>
-
-                        <div className="space-y-2 text-[10px]">
-                          <div className="bg-white/80 dark:bg-slate-900/40 p-2.5 rounded-xl border border-slate-150 dark:border-slate-800 flex items-center justify-between gap-3">
-                            <div className="space-y-0.5">
-                              <div className="flex items-center gap-1.5 font-bold text-emerald-700 dark:text-emerald-450">
-                                <span className="bg-emerald-100/60 dark:bg-emerald-950 px-1.5 py-0.5 rounded text-[8px] font-black">A</span>
-                                <span>Excellent Performance (≥85%)</span>
-                              </div>
-                              <p className="text-[9px] text-slate-500 dark:text-slate-400 leading-relaxed">
-                                Complete contractual diligence, flawless record-keeping, swift SLA turnarounds, and full expert field presence.
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="bg-white/80 dark:bg-slate-900/40 p-2.5 rounded-xl border border-slate-150 dark:border-slate-800 flex items-center justify-between gap-3">
-                            <div className="space-y-0.5">
-                              <div className="flex items-center gap-1.5 font-bold text-indigo-700 dark:text-indigo-400">
-                                <span className="bg-indigo-100/60 dark:bg-indigo-950 px-1.5 py-0.5 rounded text-[8px] font-black">B</span>
-                                <span>Satisfactory Performance (70% - 84.9%)</span>
-                              </div>
-                              <p className="text-[9px] text-slate-500 dark:text-slate-400 leading-relaxed">
-                                Fully compliant with major supervisory duties, standard turnaround speeds, and acceptable quality control practices.
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="bg-white/80 dark:bg-slate-900/40 p-2.5 rounded-xl border border-slate-150 dark:border-slate-800 flex items-center justify-between gap-3">
-                            <div className="space-y-0.5">
-                              <div className="flex items-center gap-1.5 font-bold text-amber-700 dark:text-amber-500">
-                                <span className="bg-amber-100/60 dark:bg-amber-950 px-1.5 py-0.5 rounded text-[8px] font-black">C / D</span>
-                                <span>Deficiencies Identified (50% - 69.9%)</span>
-                              </div>
-                              <p className="text-[9px] text-slate-500 dark:text-slate-400 leading-relaxed">
-                                Noticeable response lags, incomplete documentation, or key staff mobilization gaps requiring corrective action.
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="bg-white/80 dark:bg-slate-900/40 p-2.5 rounded-xl border border-slate-150 dark:border-slate-800 flex items-center justify-between gap-3">
-                            <div className="space-y-0.5">
-                              <div className="flex items-center gap-1.5 font-bold text-rose-700 dark:text-rose-500">
-                                <span className="bg-rose-100/60 dark:bg-rose-950 px-1.5 py-0.5 rounded text-[8px] font-black">F</span>
-                                <span>Critical Supervisory Failure (&lt;50%)</span>
-                              </div>
-                              <p className="text-[9px] text-slate-500 dark:text-slate-400 leading-relaxed">
-                                Persistent contractual breach, major SLA delay backlogs, or unapproved absence of Resident Engineer. Immediate replacement required.
-                              </p>
-                            </div>
-                          </div>
-                        </div>
+                      <div className="bg-white dark:bg-slate-900/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+                        <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{contractorWeights.kpi}% WEIGHT</span>
+                        <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.kpi || '4. KPIs & Quality'}</span>
                       </div>
+                      <div className="bg-white dark:bg-slate-900/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+                        <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{contractorWeights.linear}% WEIGHT</span>
+                        <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.linear || '5. Linear Layer Progress'}</span>
+                      </div>
+                      <div className="bg-white dark:bg-slate-900/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+                        <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{contractorWeights.rfi ?? 10}% WEIGHT</span>
+                        <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.rfi || '6. Technical RFIs'}</span>
+                      </div>
+                      <div className="bg-white dark:bg-slate-900/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+                        <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{contractorWeights.materialApproval ?? 10}% WEIGHT</span>
+                        <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.materialApproval || '7. Material Approval'}</span>
+                      </div>
+                      <div className="bg-white dark:bg-slate-900/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+                        <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{contractorWeights.workInspection ?? 5}% WEIGHT</span>
+                        <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.workInspection || '8. Work Inspection (WIR)'}</span>
+                      </div>
+                      <div className="bg-white dark:bg-slate-900/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+                        <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{contractorWeights.resourceMobilization ?? 5}% WEIGHT</span>
+                        <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.resourceMobilization || '9. Resource Mobilization'}</span>
+                      </div>
+                      {(contractorWeights.customCriteria || []).map((c) => (
+                        <div key={c.id} className="bg-indigo-50/50 dark:bg-indigo-950/30 p-2 rounded-xl border border-indigo-200 dark:border-indigo-800 shadow-2xs">
+                          <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{c.weight}% WEIGHT</span>
+                          <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block truncate">{c.label}</span>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 )}
