@@ -2280,7 +2280,10 @@ let isBatchSyncRunning = false;
                           (currentUserObj?.username && currentUserObj.username.toLowerCase().includes('ersido'));
     const isDirAdmin = currentUserObj?.role === 'directorate_admin';
     const isPmoAdmin = currentUserObj?.role === 'pmo_admin';
-    const isEditor = currentUserObj?.role === 'editor';
+    const isEditor = currentUserObj?.role === 'editor' || 
+                     currentUserObj?.role === 'era_editor' || 
+                     currentUserObj?.role === 'consultant_editor' || 
+                     currentUserObj?.role === 'contractor_editor';
 
     if (!isMasterAdmin && !isDirAdmin && !isPmoAdmin && !isEditor) return;
     
@@ -2798,7 +2801,12 @@ let isBatchSyncRunning = false;
     // ISOLATED PRIVATE DRAFT FOR EDITORS:
     // Editors work strictly inside an isolated private draft environment. No Editor change may affect
     // the main live database or become visible to other users until explicitly submitted and approved.
-    if (currentUserObj.role === 'editor') {
+    if (
+      currentUserObj.role === 'editor' ||
+      currentUserObj.role === 'era_editor' ||
+      currentUserObj.role === 'consultant_editor' ||
+      currentUserObj.role === 'contractor_editor'
+    ) {
       const nowIso = new Date().toISOString();
       const draftSection = sectionName || activeTab;
       
@@ -2866,8 +2874,8 @@ let isBatchSyncRunning = false;
         projectName: currentProject.name,
         section: draftSection,
         actor: currentUserObj.username,
-        actorRole: 'editor',
-        details: `Editor '${currentUserObj.username}' modified isolated private draft for section '${draftSection}'. Live database remains untouched.`
+        actorRole: currentUserObj.role,
+        details: `${currentUserObj.fullName || currentUserObj.username} (${currentUserObj.role.toUpperCase().replace('_', ' ')}) modified isolated private draft for section '${draftSection}'. Live database remains untouched.`
       };
       const nextAuditLogs = [logEntry, ...workflowAuditLogs];
       setWorkflowAuditLogs(nextAuditLogs);
@@ -3388,10 +3396,15 @@ let isBatchSyncRunning = false;
                   onClick={async () => {
                     if (!currentProject || !currentUserObj) return;
 
-                    if (currentUserObj.role === 'editor') {
+                    if (
+                      currentUserObj.role === 'editor' ||
+                      currentUserObj.role === 'era_editor' ||
+                      currentUserObj.role === 'consultant_editor' ||
+                      currentUserObj.role === 'contractor_editor'
+                    ) {
                       alert(
                         '🔒 ISOLATED PRIVATE DRAFT WORKSPACE\n\n' +
-                        'As an Editor, you operate in an isolated private draft environment. Direct live database commits are restricted to maintain data governance.\n\n' +
+                        `As a ${currentUserObj.role.toUpperCase().replace('_', ' ')}, you operate in an isolated private draft environment. Direct live database commits are restricted to maintain data governance.\n\n` +
                         'Your changes are safely preserved in your private draft. To commit these changes to the live project, navigate to "🛡️ Approval Workflow" and submit your draft for review by an authorized Approver, PMO, or Directorate Admin.'
                       );
                       setActiveTab('approvalWorkflow');
@@ -3421,14 +3434,14 @@ let isBatchSyncRunning = false;
                     }
                   }}
                   className={`p-2 rounded-full border flex items-center gap-1.5 text-[11px] font-extrabold text-white px-3 py-1.5 transition shadow-sm ${
-                    currentUserObj?.role === 'editor' 
+                    (currentUserObj?.role === 'editor' || currentUserObj?.role === 'era_editor' || currentUserObj?.role === 'consultant_editor' || currentUserObj?.role === 'contractor_editor') 
                       ? 'bg-indigo-600 hover:bg-indigo-700 border-indigo-700' 
                       : 'bg-blue-600 hover:bg-blue-700 border-blue-700'
                   }`}
-                  title={currentUserObj?.role === 'editor' ? 'Save Private Draft' : 'Save to Database'}
+                  title={(currentUserObj?.role === 'editor' || currentUserObj?.role === 'era_editor' || currentUserObj?.role === 'consultant_editor' || currentUserObj?.role === 'contractor_editor') ? 'Save Private Draft' : 'Save to Database'}
                 >
                   <CheckCircle className="w-3.5 h-3.5" />
-                  <span>{currentUserObj?.role === 'editor' ? 'Private Draft Workspace' : 'Save to Database'}</span>
+                  <span>{(currentUserObj?.role === 'editor' || currentUserObj?.role === 'era_editor' || currentUserObj?.role === 'consultant_editor' || currentUserObj?.role === 'contractor_editor') ? 'Private Draft Workspace' : 'Save to Database'}</span>
                 </button>
                 {/* Workflow & Approvals Shortcut (Scoped strictly to currently opened project) */}
                 <button
@@ -3438,15 +3451,15 @@ let isBatchSyncRunning = false;
                       ? currentProjectPendingApprovals.length > 0
                         ? 'bg-amber-500 hover:bg-amber-600 text-white border-amber-600 animate-pulse'
                         : 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-700'
-                      : currentUserObj?.role === 'editor'
+                      : (currentUserObj?.role === 'editor' || currentUserObj?.role === 'era_editor' || currentUserObj?.role === 'consultant_editor' || currentUserObj?.role === 'contractor_editor')
                       ? 'bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-700'
                       : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-700'
                   }`}
-                  title={currentUserObj?.role === 'editor' ? `Manage Private Drafts for ${currentProject?.name}` : `Review & Certify Approvals for ${currentProject?.name}`}
+                  title={(currentUserObj?.role === 'editor' || currentUserObj?.role === 'era_editor' || currentUserObj?.role === 'consultant_editor' || currentUserObj?.role === 'contractor_editor') ? `Manage Private Drafts for ${currentProject?.name}` : `Review & Certify Approvals for ${currentProject?.name}`}
                 >
                   <ShieldCheck className="w-3.5 h-3.5" />
                   <span>
-                    {currentUserObj?.role === 'editor' ? 'Private Drafts' : 'Project Approvals'}
+                    {(currentUserObj?.role === 'editor' || currentUserObj?.role === 'era_editor' || currentUserObj?.role === 'consultant_editor' || currentUserObj?.role === 'contractor_editor') ? 'Private Drafts' : 'Project Approvals'}
                     {hasApprovalCredentials(currentUserObj) && currentProjectPendingApprovals.length > 0 && (
                       <span className="ml-1 px-1.5 py-0.2 bg-white text-amber-700 rounded-full text-[9px] font-black">
                         {currentProjectPendingApprovals.length}

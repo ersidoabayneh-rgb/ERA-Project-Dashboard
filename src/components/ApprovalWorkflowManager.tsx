@@ -83,6 +83,8 @@ export default function ApprovalWorkflowManager({
     currentUser?.role === 'directorate_admin' ||
     currentUser?.role === 'pmo_admin' ||
     currentUser?.role === 'approver' ||
+    currentUser?.role === 'era_approver' ||
+    currentUser?.role === 'consultant_approver' ||
     currentUser?.hasApprovalCredential === true ||
     currentUser?.username === 'proj_1781786415663' ||
     (currentUser?.username && currentUser.username.toLowerCase().includes('ersido'))
@@ -123,7 +125,12 @@ export default function ApprovalWorkflowManager({
     }
 
     // Existing Approver credentials
-    if (currentUser.role === 'approver' || currentUser.hasApprovalCredential === true) {
+    if (
+      currentUser.role === 'approver' ||
+      currentUser.role === 'era_approver' ||
+      currentUser.role === 'consultant_approver' ||
+      currentUser.hasApprovalCredential === true
+    ) {
       if (currentUser.accessibleProjects && currentUser.accessibleProjects.length > 0) {
         return currentUser.accessibleProjects.includes(projId);
       }
@@ -140,7 +147,12 @@ export default function ApprovalWorkflowManager({
     if (currentUser.role === 'directorate_admin') return `Directorate Scope: ${currentUser.assignedDirectorate || 'All Directorates'}`;
     if (currentUser.role === 'pmo_admin') return `PMO Scope: ${currentUser.assignedPmo || 'All PMO Groups'}`;
     if (currentUser.role === 'approver') return `Project Approver Scope (${currentUser.accessibleProjects?.length || 0} projects)`;
+    if (currentUser.role === 'era_approver') return `ERA Approver Scope (${currentUser.accessibleProjects?.length || 0} projects)`;
+    if (currentUser.role === 'consultant_approver') return `Consultant Approver Scope (${currentUser.accessibleProjects?.length || 0} projects)`;
     if (currentUser.role === 'editor') return `Editor Isolated Sandbox`;
+    if (currentUser.role === 'era_editor') return `ERA Editor Isolated Sandbox`;
+    if (currentUser.role === 'consultant_editor') return `Consultant Editor Isolated Sandbox`;
+    if (currentUser.role === 'contractor_editor') return `Contractor Editor Isolated Sandbox`;
     return 'Viewer Scope';
   };
 
@@ -685,7 +697,67 @@ export default function ApprovalWorkflowManager({
               }`}
             >
               <span>✏️</span>
-              <span>Editor (Isolated Drafts)</span>
+              <span>Editor</span>
+            </button>
+
+            <button
+              onClick={() => onSelectUserRoleTest('era_editor', 'era_editor')}
+              className={`px-3 py-1.5 rounded-xl font-extrabold transition flex items-center gap-1.5 cursor-pointer text-xs ${
+                currentRole === 'era_editor'
+                  ? 'bg-amber-600 text-white shadow-xs'
+                  : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200'
+              }`}
+            >
+              <span>✏️🇪🇹</span>
+              <span>ERA Editor</span>
+            </button>
+
+            <button
+              onClick={() => onSelectUserRoleTest('era_approver', 'era_approver')}
+              className={`px-3 py-1.5 rounded-xl font-extrabold transition flex items-center gap-1.5 cursor-pointer text-xs ${
+                currentRole === 'era_approver'
+                  ? 'bg-emerald-700 text-white shadow-xs'
+                  : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200'
+              }`}
+            >
+              <span>🛡️🇪🇹</span>
+              <span>ERA Approver</span>
+            </button>
+
+            <button
+              onClick={() => onSelectUserRoleTest('consultant_editor', 'consultant_editor')}
+              className={`px-3 py-1.5 rounded-xl font-extrabold transition flex items-center gap-1.5 cursor-pointer text-xs ${
+                currentRole === 'consultant_editor'
+                  ? 'bg-amber-700 text-white shadow-xs'
+                  : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200'
+              }`}
+            >
+              <span>✏️📋</span>
+              <span>Consultant Editor</span>
+            </button>
+
+            <button
+              onClick={() => onSelectUserRoleTest('consultant_approver', 'consultant_approver')}
+              className={`px-3 py-1.5 rounded-xl font-extrabold transition flex items-center gap-1.5 cursor-pointer text-xs ${
+                currentRole === 'consultant_approver'
+                  ? 'bg-emerald-800 text-white shadow-xs'
+                  : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200'
+              }`}
+            >
+              <span>🛡️📋</span>
+              <span>Consultant Approver</span>
+            </button>
+
+            <button
+              onClick={() => onSelectUserRoleTest('contractor_editor', 'contractor_editor')}
+              className={`px-3 py-1.5 rounded-xl font-extrabold transition flex items-center gap-1.5 cursor-pointer text-xs ${
+                currentRole === 'contractor_editor'
+                  ? 'bg-orange-600 text-white shadow-xs'
+                  : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200'
+              }`}
+            >
+              <span>✏️🏗️</span>
+              <span>Contractor Editor</span>
             </button>
 
             <button
@@ -697,7 +769,7 @@ export default function ApprovalWorkflowManager({
               }`}
             >
               <span>🛡️</span>
-              <span>Approver (Project Scope)</span>
+              <span>Approver</span>
             </button>
 
             <button

@@ -138,7 +138,11 @@ export default function ProjectsPage({
     return isMasterAdmin;
   };
 
-  const canCreateProject = isMasterAdmin || isDirAdmin || isPmoAdmin || currentUserObj?.role === 'editor';
+  const canCreateProject = isMasterAdmin || isDirAdmin || isPmoAdmin || 
+                           currentUserObj?.role === 'editor' || 
+                           currentUserObj?.role === 'era_editor' || 
+                           currentUserObj?.role === 'consultant_editor' || 
+                           currentUserObj?.role === 'contractor_editor';
 
   const canAccessUserAdmin = Boolean(
     isMasterAdmin || 
@@ -605,7 +609,12 @@ export default function ProjectsPage({
               </button>
             )}
 
-            {!hasNoProjects && currentUserObj?.role === 'editor' && (
+            {!hasNoProjects && (
+              currentUserObj?.role === 'editor' || 
+              currentUserObj?.role === 'era_editor' || 
+              currentUserObj?.role === 'consultant_editor' || 
+              currentUserObj?.role === 'contractor_editor'
+            ) && (
               <button 
                 onClick={onOpenApprovals}
                 className="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-xl text-xs font-bold transition relative shadow-sm"
