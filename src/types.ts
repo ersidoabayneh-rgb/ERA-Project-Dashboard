@@ -773,7 +773,7 @@ export interface User {
   email?: string;
   phone?: string;
   password?: string;
-  role: 'master_admin' | 'cpm_admin' | 'directorate_admin' | 'pmo_admin' | 'admin' | 'editor' | 'viewer' | 'approver';
+  role: 'master_admin' | 'cpm_admin' | 'directorate_admin' | 'pmo_admin' | 'admin' | 'editor' | 'viewer' | 'approver' | 'era_approver' | 'era_editor' | 'consultant_approver' | 'consultant_editor' | 'contractor_editor';
   accessibleProjects: string[]; // Project IDs
   assignedPages?: string[]; // Tab/Page IDs this user is authorized to edit
   hasApprovalCredential?: boolean; // Whether user has approval authority before data incorporation
@@ -1042,4 +1042,5 @@ export interface ConsultantEvaluationCriterion {
     score1: string;
   };
   eraFidicRef?: string;
+  contractType?: 'DB' | 'DBB' | 'ALL';
 }

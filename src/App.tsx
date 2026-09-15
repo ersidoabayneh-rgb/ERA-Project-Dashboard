@@ -54,6 +54,8 @@ export function hasApprovalCredentials(user: User | null): boolean {
     user.role === 'directorate_admin' ||
     user.role === 'pmo_admin' ||
     user.role === 'approver' ||
+    user.role === 'era_approver' ||
+    user.role === 'consultant_approver' ||
     user.hasApprovalCredential === true ||
     user.username === 'proj_1781786415663' ||
     Boolean(user.username && user.username.toLowerCase().includes('ersido'))
@@ -93,7 +95,7 @@ export function isProjectApprover(user: User | null, projectId: string, project?
   }
 
   // Approver role or user with hasApprovalCredential === true
-  if (user.role === 'approver' || user.hasApprovalCredential === true) {
+  if (user.role === 'approver' || user.role === 'era_approver' || user.role === 'consultant_approver' || user.hasApprovalCredential === true) {
     if (user.accessibleProjects && Array.isArray(user.accessibleProjects) && user.accessibleProjects.length > 0) {
       return user.accessibleProjects.includes(projectId);
     }
@@ -108,6 +110,19 @@ export function canUserViewPage(user: User | null, pageId: string): boolean {
   if (user.role === 'master_admin' || user.role === 'cpm_admin' || user.role === 'admin' || user.username === 'proj_1781786415663') {
     return true;
   }
+
+  // Contractor Editor is allowed to edit and view the Submittal log page ONLY
+  if (user.role === 'contractor_editor') {
+    return pageId === 'submittalLog';
+  }
+
+  // Consultant Approver or Editor are NOT allowed to view or access Performance KPIs & RFI SLA Evaluation, history page, setting page, KPIs page, progress comparison page and Issue log page
+  if (user.role === 'consultant_approver' || user.role === 'consultant_editor') {
+    if (pageId === 'history' || pageId === 'settings' || pageId === 'kpiEditor' || pageId === 'progressPlanEditor' || pageId === 'issueLog') {
+      return false;
+    }
+  }
+
   if (pageId === 'history' || pageId === 'settings') {
     return false;
   }
@@ -125,6 +140,19 @@ export function canUserEditPage(user: User | null, pageId: string): boolean {
   if (user.role === 'viewer') {
     return false;
   }
+
+  // Contractor Editor is allowed to edit and view the Submittal log page ONLY
+  if (user.role === 'contractor_editor') {
+    return pageId === 'submittalLog';
+  }
+
+  // Consultant Approver or Editor are NOT allowed to view or access forbidden pages
+  if (user.role === 'consultant_approver' || user.role === 'consultant_editor') {
+    if (pageId === 'history' || pageId === 'settings' || pageId === 'kpiEditor' || pageId === 'progressPlanEditor' || pageId === 'issueLog') {
+      return false;
+    }
+  }
+
   if (user.assignedPages && Array.isArray(user.assignedPages) && user.assignedPages.length > 0) {
     return user.assignedPages.includes(pageId);
   }
@@ -641,6 +669,20 @@ export default function App() {
       rawList[ersidoIdx] = { ...rawList[ersidoIdx], username: 'Ersido Abayneh', password: 'Helikina@#045536', role: 'admin' };
     } else {
       rawList.push({ username: 'Ersido Abayneh', password: 'Helikina@#045536', role: 'admin', accessibleProjects: [] });
+    }
+
+    const defaultRoleUsers: User[] = [
+      { username: 'era_approver', password: 'password123', role: 'era_approver', fullName: 'ERA Approver', hasApprovalCredential: true, accessibleProjects: [] },
+      { username: 'era_editor', password: 'password123', role: 'era_editor', fullName: 'ERA Editor', accessibleProjects: [] },
+      { username: 'consultant_approver', password: 'password123', role: 'consultant_approver', fullName: 'Consultant Approver', hasApprovalCredential: true, accessibleProjects: [] },
+      { username: 'consultant_editor', password: 'password123', role: 'consultant_editor', fullName: 'Consultant Editor', accessibleProjects: [] },
+      { username: 'contractor_editor', password: 'password123', role: 'contractor_editor', fullName: 'Contractor Editor', accessibleProjects: [], assignedPages: ['submittalLog'] }
+    ];
+
+    for (const dru of defaultRoleUsers) {
+      if (!rawList.some((x: any) => x?.username?.toLowerCase() === dru.username.toLowerCase())) {
+        rawList.push(dru);
+      }
     }
 
     return deduplicateUsers(rawList);
@@ -4573,9 +4615,14 @@ let isBatchSyncRunning = false;
                   </div>
                 </div>
                 <select name="rl" value={newUserRole} onChange={(e) => setNewUserRole(e.target.value as User['role'])} className="bg-white dark:bg-slate-800 text-[10px] py-1 border rounded-lg font-bold">
+                  <option value="era_approver">🏛️ ERA Approver</option>
+                  <option value="era_editor">✏️ ERA Editor</option>
+                  <option value="consultant_approver">👔 Consultant Approver</option>
+                  <option value="consultant_editor">📝 Consultant Editor</option>
+                  <option value="contractor_editor">🚜 Contractor Editor (Submittal Log Only)</option>
+                  <option value="editor">Standard Editor</option>
                   <option value="viewer">Viewer only</option>
-                  <option value="editor">Editor (BOQ edits)</option>
-                  <option value="approver">Approver</option>
+                  <option value="approver">Standard Approver</option>
                   {(currentUserObj?.role === 'master_admin' || currentUserObj?.role === 'admin' || currentUserObj?.username === 'proj_1781786415663') && (
                     <>
                       <option value="admin">Admin</option>
@@ -5103,9 +5150,14 @@ let isBatchSyncRunning = false;
                                           uDraft.role !== u.role ? 'border-amber-400 ring-1 ring-amber-300 dark:ring-amber-900' : 'border-slate-200 dark:border-slate-700'
                                         }`}
                                       >
+                                        <option value="era_approver">🏛️ ERA Approver</option>
+                                        <option value="era_editor">✏️ ERA Editor</option>
+                                        <option value="consultant_approver">👔 Consultant Approver</option>
+                                        <option value="consultant_editor">📝 Consultant Editor</option>
+                                        <option value="contractor_editor">🚜 Contractor Editor (Submittal Log Only)</option>
+                                        <option value="editor">Standard Editor</option>
                                         <option value="viewer">Viewer</option>
-                                        <option value="editor">Editor</option>
-                                        <option value="approver">Approver</option>
+                                        <option value="approver">Standard Approver</option>
                                         {(currentUserObj?.role === 'master_admin' || currentUserObj?.role === 'admin' || currentUserObj?.username === 'proj_1781786415663') && (
                                           <>
                                             <option value="admin">Admin</option>
@@ -6459,9 +6511,14 @@ let isBatchSyncRunning = false;
                           defaultValue={activePending.role || 'editor'}
                           className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-amber-500"
                         >
-                          <option value="editor">✏️ Editor</option>
+                          <option value="era_approver">🏛️ ERA Approver</option>
+                          <option value="era_editor">✏️ ERA Editor</option>
+                          <option value="consultant_approver">👔 Consultant Approver</option>
+                          <option value="consultant_editor">📝 Consultant Editor</option>
+                          <option value="contractor_editor">🚜 Contractor Editor (Submittal Log Only)</option>
+                          <option value="editor">✏️ Standard Editor</option>
                           <option value="viewer">👁️ Viewer</option>
-                          <option value="approver">🛡️ Approver</option>
+                          <option value="approver">🛡️ Standard Approver</option>
                           {isDir && (
                             <option value="pmo_admin">PMO Admin</option>
                           )}

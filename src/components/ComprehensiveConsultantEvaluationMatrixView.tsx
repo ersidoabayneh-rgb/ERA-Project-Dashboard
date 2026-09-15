@@ -312,6 +312,7 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
   }, [dynamicCriteriaList, evaluations]);
 
   // UI Filter states
+  const [contractTypeFilter, setContractTypeFilter] = useState<'ALL' | 'DB' | 'DBB'>(() => project.contractType || 'DBB');
   const [selectedDimension, setSelectedDimension] = useState<DimensionId | 'ALL'>('A');
   const [selectedParentId, setSelectedParentId] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
@@ -324,6 +325,22 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
   });
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
   const [autoEvaluatedCount, setAutoEvaluatedCount] = useState<number | null>(null);
+
+  // Sync contractTypeFilter if project.contractType updates
+  useEffect(() => {
+    if (project.contractType) {
+      setContractTypeFilter(project.contractType);
+    }
+  }, [project.contractType]);
+
+  // Criteria active under current Contract Type Selection (DB / DBB / ALL)
+  const activeContractTypeCriteria = useMemo(() => {
+    return dynamicCriteriaList.filter(c => {
+      if (contractTypeFilter === 'ALL') return true;
+      if (!c.contractType || c.contractType === 'ALL') return true;
+      return c.contractType === contractTypeFilter;
+    });
+  }, [dynamicCriteriaList, contractTypeFilter]);
 
   // Update custom weightage handler (Master Admin only)
   const handleUpdateCriterionWeight = (code: string, newWeight: number) => {
@@ -394,10 +411,10 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
 
   // Calculate comprehensive evaluation metrics combining Submittal SLA Turnaround and 5-Dimension Matrix
   const evaluationResult = useMemo(() => {
-    const result = calculateComprehensiveEvaluationScore(evaluations, dynamicCriteriaList, customCriterionWeights, customThresholds);
+    const result = calculateComprehensiveEvaluationScore(evaluations, activeContractTypeCriteria, customCriterionWeights, customThresholds);
     let totalEvaluated = 0;
     let likertSum = 0;
-    dynamicCriteriaList.forEach(c => {
+    activeContractTypeCriteria.forEach(c => {
       const ev = evaluations[c.code];
       if (ev?.score !== undefined) {
         totalEvaluated++;
@@ -408,7 +425,7 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
     
     // Submittal Log & Operational SLA Turnaround score (on-time rate)
     const slaTurnaroundScore = Number((quantitativeMetrics.overallOnTimeRate || 0).toFixed(1));
-    // 5-Dimension Performance Evaluation score (105 criteria matrix)
+    // 5-Dimension Performance Evaluation score (matrix)
     const fiveDimScore = Number((result.overallScore || 0).toFixed(1));
     // Composite combined score (50% SLA turnaround + 50% 5-dimension matrix)
     const compositeScore = Number(((fiveDimScore * 0.5) + (slaTurnaroundScore * 0.5)).toFixed(1));
@@ -444,10 +461,10 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
       },
       gradeLabel,
       gradeBadgeStyle,
-      totalCriteriaEvaluated: totalEvaluated || dynamicCriteriaList.length,
+      totalCriteriaEvaluated: totalEvaluated || activeContractTypeCriteria.length,
       averageLikert
     };
-  }, [evaluations, customCriterionWeights, quantitativeMetrics, customThresholds]);
+  }, [evaluations, activeContractTypeCriteria, customCriterionWeights, quantitativeMetrics, customThresholds]);
 
   // Synchronize live Section 2 evaluation score to the parent component in real-time
   useEffect(() => {
@@ -458,16 +475,16 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
 
   // Real-time total weightage sum calculation
   const totalCustomWeightSum = useMemo(() => {
-    return dynamicCriteriaList.reduce((sum, c) => {
+    return activeContractTypeCriteria.reduce((sum, c) => {
       const w = customCriterionWeights[c.code] !== undefined ? customCriterionWeights[c.code] : c.effectiveWeight;
       return sum + w;
     }, 0);
-  }, [customCriterionWeights, dynamicCriteriaList]);
+  }, [customCriterionWeights, activeContractTypeCriteria]);
 
   // List of all unique parent sub-criteria for filtering and grouping
   const parentCriteriaList = useMemo(() => {
     const map = new Map<string, { id: string; name: string; dimensionId: DimensionId; weightInDimension: number }>();
-    dynamicCriteriaList.forEach(c => {
+    activeContractTypeCriteria.forEach(c => {
       const parentKey = `${c.dim}_${c.ref}`;
       if (!map.has(parentKey)) {
         map.set(parentKey, {
@@ -479,11 +496,11 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
       }
     });
     return Array.from(map.values());
-  }, [dynamicCriteriaList]);
+  }, [activeContractTypeCriteria]);
 
   // Filtered criteria based on active dimension, category, source, and search filters
   const filteredCriteria = useMemo(() => {
-    return dynamicCriteriaList.filter(c => {
+    return activeContractTypeCriteria.filter(c => {
       if (selectedDimension !== 'ALL' && c.dim !== selectedDimension) return false;
       if (selectedParentId !== 'ALL' && c.ref !== selectedParentId) return false;
       
@@ -511,7 +528,7 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
       }
       return true;
     });
-  }, [selectedDimension, selectedParentId, sourceFilter, searchQuery, dynamicCriteriaList, manualOverrides]);
+  }, [selectedDimension, selectedParentId, sourceFilter, searchQuery, activeContractTypeCriteria, manualOverrides]);
 
   interface CriteriaGroup {
     parentInfo: {
@@ -1274,6 +1291,85 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
                   </div>
                 );
               })}
+            </div>
+          </div>
+
+          {/* Contract Type Evaluation Criteria Mode Banner (DB vs DBB) */}
+          <div className="bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-900/50 rounded-2xl p-5 shadow-3xs space-y-3">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 text-[10px] font-black uppercase tracking-wider border border-indigo-200 dark:border-indigo-800">
+                    Contract Type Alignment
+                  </span>
+                  <span className="text-xs text-slate-400 font-medium">
+                    Project Type: <strong className="text-slate-800 dark:text-slate-200 font-bold">{project.contractType || 'DBB'}</strong>
+                  </span>
+                </div>
+                <h4 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-indigo-500" />
+                  Section 2 Supervision Consultant Evaluation Criteria by Contract Type
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Select a contract type mode below to filter performance evaluation criteria tailored specifically for Design-Build (DB) or Design-Bid-Build (DBB) supervision contracts.
+                </p>
+              </div>
+
+              {/* Interactive Pills for Contract Type Filter */}
+              <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 p-1.5 rounded-xl border border-slate-200 dark:border-slate-700 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setContractTypeFilter('DBB')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                    contractTypeFilter === 'DBB'
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  <Building2 className="w-3.5 h-3.5" />
+                  DBB Criteria
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setContractTypeFilter('DB')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                    contractTypeFilter === 'DB'
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  <Wrench className="w-3.5 h-3.5" />
+                  DB Criteria
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setContractTypeFilter('ALL')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                    contractTypeFilter === 'ALL'
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  <Sliders className="w-3.5 h-3.5" />
+                  All Criteria
+                </button>
+              </div>
+            </div>
+
+            {/* Contract Mode Description */}
+            <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/80 text-xs text-slate-600 dark:text-slate-300 flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
+              <div>
+                {contractTypeFilter === 'DB' && (
+                  <span><strong>DB Mode Active:</strong> Evaluating Detailed Design Submittals (DDS), Contractor design calculations, Value Engineering (VE) reviews, and Employer&apos;s Requirements compliance.</span>
+                )}
+                {contractTypeFilter === 'DBB' && (
+                  <span><strong>DBB Mode Active:</strong> Evaluating provision of Employer/Consultant construction drawings, Draft &amp; Final Design Review Report submissions, and Design modification controls.</span>
+                )}
+                {contractTypeFilter === 'ALL' && (
+                  <span><strong>All Criteria Mode Active:</strong> Showing all general, DB, and DBB supervision consultant evaluation criteria simultaneously.</span>
+                )}
+              </div>
             </div>
           </div>
 

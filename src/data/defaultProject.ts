@@ -1794,6 +1794,39 @@ export function resolveConsultantForPeriod(project: Project, periodStr?: string)
   };
 }
 
+function ensureUniqueGradingRecords(records: MonthlyGradingRecord[]): MonthlyGradingRecord[] {
+  const seenMonths = new Set<string>();
+  const seenIds = new Set<string>();
+  const result: MonthlyGradingRecord[] = [];
+
+  for (const r of records) {
+    if (!r) continue;
+    const mKey = (r.month || r.monthName || '').trim().toLowerCase();
+    if (mKey && seenMonths.has(mKey)) {
+      continue;
+    }
+    if (mKey) {
+      seenMonths.add(mKey);
+    }
+
+    let baseId = r.id || `mgrad_${(r.month || 'm').replace(/[^a-zA-Z0-9]/g, '_')}`;
+    let uniqueId = baseId;
+    let counter = 1;
+    while (seenIds.has(uniqueId)) {
+      uniqueId = `${baseId}_${counter}`;
+      counter++;
+    }
+    seenIds.add(uniqueId);
+
+    result.push({
+      ...r,
+      id: uniqueId
+    });
+  }
+
+  return result.sort((a, b) => compareMonthsDesc(a.month, b.month, a.recordedDate, b.recordedDate));
+}
+
 export function resolveProjectMonthlyGrading(project: Project): MonthlyGradingRecord[] {
   if (!project) return [];
 
@@ -1872,8 +1905,7 @@ export function resolveProjectMonthlyGrading(project: Project): MonthlyGradingRe
     });
 
     if (formatted.length > 0) {
-      // Ensure order is strictly from latest month to oldest
-      return formatted.sort((a, b) => compareMonthsDesc(a.month, b.month, a.recordedDate, b.recordedDate));
+      return ensureUniqueGradingRecords(formatted);
     }
   }
 
@@ -1944,7 +1976,7 @@ export function resolveProjectMonthlyGrading(project: Project): MonthlyGradingRe
         };
       });
 
-      return generated.sort((a, b) => compareMonthsDesc(a.month, b.month, a.recordedDate, b.recordedDate));
+      return ensureUniqueGradingRecords(generated);
     }
   }
 
@@ -2026,8 +2058,7 @@ export function resolveProjectMonthlyGrading(project: Project): MonthlyGradingRe
       });
     });
 
-    // Return strictly in reverse chronological order (newest month first)
-    return generated.sort((a, b) => compareMonthsDesc(a.month, b.month, a.recordedDate, b.recordedDate));
+    return ensureUniqueGradingRecords(generated);
   }
 
   // 4. If no explicit monthly history records exist yet, generate baseline cycles tailored specifically to this project
@@ -2092,7 +2123,7 @@ export function resolveProjectMonthlyGrading(project: Project): MonthlyGradingRe
     };
   });
 
-  return baselineList.sort((a, b) => compareMonthsDesc(a.month, b.month, a.recordedDate, b.recordedDate));
+  return ensureUniqueGradingRecords(baselineList);
 }
 
 export function defaultProjectTemplate(): Project {

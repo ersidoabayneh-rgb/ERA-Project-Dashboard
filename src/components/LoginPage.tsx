@@ -502,9 +502,14 @@ export default function LoginPage({ onLoginSuccess, getUsers, saveUsers }: Login
                       onChange={(e) => setRequestedRole(e.target.value as any)}
                       className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 rounded-xl py-2 pl-9 pr-3 text-xs text-slate-800 dark:text-slate-100 outline-none focus:border-blue-500 dark:focus:border-blue-400 font-semibold"
                     >
-                      <option value="editor">✏️ Editor — Submit Physical Progress, IPC & Contract Updates</option>
-                      <option value="viewer">👁️ Viewer — Read-only Executive Oversight & Analytics</option>
-                      <option value="approver">⚖️ Approver — Review & Certify Draft Changes & Variances</option>
+                      <option value="era_approver">🏛️ ERA Approver — Full ERA Project Approval & Governance</option>
+                      <option value="era_editor">✏️ ERA Editor — Full ERA Data Entry & BOQ Management</option>
+                      <option value="consultant_approver">👔 Consultant Approver — Consultant Review & Submittal Certification</option>
+                      <option value="consultant_editor">📝 Consultant Editor — Consultant Staffing & Progress Entry</option>
+                      <option value="contractor_editor">🚜 Contractor Editor — Submittal Log & RFI Tracking Only</option>
+                      <option value="editor">✏️ Standard Editor — Physical Progress & IPC Updates</option>
+                      <option value="viewer">👁️ Executive Viewer — Read-only Oversight & Analytics</option>
+                      <option value="approver">⚖️ Standard Approver — General Draft Review</option>
                     </select>
                   </div>
                 </div>
@@ -644,6 +649,51 @@ export default function LoginPage({ onLoginSuccess, getUsers, saveUsers }: Login
               {isSignUp ? 'Register & Submit Credentials for Approval' : 'Sign In'}
             </button>
           </form>
+
+          {!isSignUp && (
+            <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 text-center">
+                ⚡ Quick Role Demo Credentials
+              </p>
+              <div className="grid grid-cols-2 gap-1.5 text-[10px] font-bold">
+                <button
+                  type="button"
+                  onClick={() => { setUsername('era_approver'); setPassword('password123'); }}
+                  className="px-2 py-1.5 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 rounded-lg text-left border border-blue-200/50 dark:border-blue-800/50 transition cursor-pointer"
+                >
+                  🏛️ ERA Approver
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setUsername('era_editor'); setPassword('password123'); }}
+                  className="px-2 py-1.5 bg-sky-50 dark:bg-sky-950/40 hover:bg-sky-100 dark:hover:bg-sky-900/60 text-sky-700 dark:text-sky-300 rounded-lg text-left border border-sky-200/50 dark:border-sky-800/50 transition cursor-pointer"
+                >
+                  ✏️ ERA Editor
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setUsername('consultant_approver'); setPassword('password123'); }}
+                  className="px-2 py-1.5 bg-purple-50 dark:bg-purple-950/40 hover:bg-purple-100 dark:hover:bg-purple-900/60 text-purple-700 dark:text-purple-300 rounded-lg text-left border border-purple-200/50 dark:border-purple-800/50 transition cursor-pointer"
+                >
+                  👔 Consultant Approver
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setUsername('consultant_editor'); setPassword('password123'); }}
+                  className="px-2 py-1.5 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 rounded-lg text-left border border-indigo-200/50 dark:border-indigo-800/50 transition cursor-pointer"
+                >
+                  📝 Consultant Editor
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setUsername('contractor_editor'); setPassword('password123'); }}
+                  className="px-2 py-1.5 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/60 text-amber-700 dark:text-amber-300 rounded-lg text-left border border-amber-200/50 dark:border-amber-800/50 transition cursor-pointer col-span-2"
+                >
+                  🚜 Contractor Editor (Submittal Log Only)
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="mt-5 border-t border-slate-150 dark:border-slate-750 pt-3 text-center">
             <button

@@ -52,12 +52,14 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
   const [logoError, setLogoError] = useState(false);
   const [isKpiHistoryOpen, setIsKpiHistoryOpen] = useState(true);
   const [isDataInconsistencyOpen, setIsDataInconsistencyOpen] = useState(true);
-  const [isMonthlyGradingOpen, setIsMonthlyGradingOpen] = useState(true);
+  const [isMonthlyGradingOpen, setIsMonthlyGradingOpen] = useState(false);
   const [gradingActiveTab, setGradingActiveTab] = useState<'contractor' | 'consultant' | 'both'>('both');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('All');
   const [selectedGradingMonthFilter, setSelectedGradingMonthFilter] = useState<string>('All');
   const [selectedConsultantTenureFilter, setSelectedConsultantTenureFilter] = useState<string>('All');
   const [selectedSemesterFilter, setSelectedSemesterFilter] = useState<string>('All');
+  const [selectedStartMonthFilter, setSelectedStartMonthFilter] = useState<string>('All');
+  const [selectedEndMonthFilter, setSelectedEndMonthFilter] = useState<string>('All');
   const [selectedGradingDetailModal, setSelectedGradingDetailModal] = useState<MonthlyGradingRecord | null>(null);
   const [selectedHistoricalConsultantModal, setSelectedHistoricalConsultantModal] = useState<HistoricalSupervisionConsultant | null>(null);
   const [isRecordGradingModalOpen, setIsRecordGradingModalOpen] = useState(false);
@@ -153,6 +155,19 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
   const activeConsultantAssignmentDate = p.supervisionConsultant?.commencementDate || p.startDate || '2020-12-29';
   const activeConsultantFirmName = p.supervisionConsultant?.firmName || p.consultant || 'Supervision Consultant';
 
+  const availableGradingMonths = useMemo(() => {
+    const map = new Map<string, string>();
+    (monthlyGradingRecords || []).forEach(r => {
+      const ym = parseMonthToYyyyMm(r.month || r.recordedDate);
+      if (ym && !map.has(ym)) {
+        map.set(ym, r.monthName || r.month || ym);
+      }
+    });
+    return Array.from(map.entries())
+      .map(([ym, label]) => ({ ym, label }))
+      .sort((a, b) => a.ym.localeCompare(b.ym)); // Chronological order (earliest to latest)
+  }, [monthlyGradingRecords]);
+
   const sixMonthGradingList = useMemo(() => {
     return getSixMonthCumulativeGrading(monthlyGradingRecords);
   }, [monthlyGradingRecords]);
@@ -160,7 +175,9 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
   const filteredMonthlyGradingRecords = useMemo(() => {
     const filtered = monthlyGradingRecords.filter(r => {
       if (isMonthAboveCurrentMonth(r.month, r.recordedDate)) return false;
-      const matchMonth = selectedGradingMonthFilter === 'All' || r.month === selectedGradingMonthFilter || r.monthName === selectedGradingMonthFilter;
+      const rYm = parseMonthToYyyyMm(r.month || r.recordedDate);
+
+      const matchMonth = selectedGradingMonthFilter === 'All' || r.month === selectedGradingMonthFilter || r.monthName === selectedGradingMonthFilter || rYm === selectedGradingMonthFilter;
       const matchTenure = selectedConsultantTenureFilter === 'All' || 
         (selectedConsultantTenureFilter === 'current' && (!r.consultantTenureId || r.consultantTenureId === 'current' || !r.isHistoricalConsultant)) ||
         (selectedConsultantTenureFilter === r.consultantTenureId);
@@ -173,10 +190,22 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
         }
       }
 
-      return matchMonth && matchTenure && matchSemester;
+      let matchDateRange = true;
+      if (rYm) {
+        if (selectedStartMonthFilter !== 'All') {
+          const startYm = parseMonthToYyyyMm(selectedStartMonthFilter) || selectedStartMonthFilter;
+          if (rYm < startYm) matchDateRange = false;
+        }
+        if (selectedEndMonthFilter !== 'All') {
+          const endYm = parseMonthToYyyyMm(selectedEndMonthFilter) || selectedEndMonthFilter;
+          if (rYm > endYm) matchDateRange = false;
+        }
+      }
+
+      return matchMonth && matchTenure && matchSemester && matchDateRange;
     });
     return [...filtered].sort((a, b) => compareMonthsDesc(a.month, b.month, a.recordedDate, b.recordedDate));
-  }, [monthlyGradingRecords, selectedGradingMonthFilter, selectedConsultantTenureFilter, selectedSemesterFilter, sixMonthGradingList]);
+  }, [monthlyGradingRecords, selectedGradingMonthFilter, selectedConsultantTenureFilter, selectedSemesterFilter, sixMonthGradingList, selectedStartMonthFilter, selectedEndMonthFilter]);
 
   // Auto-calculate grading values for form
   const handleAutoCalculateForm = (targetMonth: string) => {
@@ -1578,8 +1607,12 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     doc.save(`ERA_Compliance_Report_${p.name ? p.name.replace(/\s+/g, '_') : 'Untitled'}.pdf`);
   };
 
-  // Dedicated PDF Exporter: Contractor Monthly Grading Ledger
-  const handleExportContractorGradingPDF = () => {
+  // Dedicated PDF Exporter: Contractor Monthly Grading Ledger (Supports full project or specific 6-month semester)
+  const handleExportContractorGradingPDF = (recordsToExport?: MonthlyGradingRecord[], customSemesterTitle?: string) => {
+    const isFiltered = selectedSemesterFilter !== 'All' || selectedStartMonthFilter !== 'All' || selectedEndMonthFilter !== 'All' || selectedGradingMonthFilter !== 'All' || selectedConsultantTenureFilter !== 'All';
+    const records = (Array.isArray(recordsToExport) ? recordsToExport : null) || (isFiltered ? filteredMonthlyGradingRecords : monthlyGradingRecords);
+    if (!Array.isArray(records) || records.length === 0) return;
+
     const doc = new jsPDF('p', 'pt', 'a4');
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
@@ -1608,7 +1641,14 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7.5);
     doc.setTextColor(203, 213, 225);
-    doc.text("CONTRACTOR MONTHLY PERFORMANCE & SCHEDULE EXECUTION LEDGER", margin + 12, curY + 34);
+    const headerTitleText = customSemesterTitle 
+      ? `CONTRACTOR 6-MONTH CUMULATIVE PERFORMANCE REPORT (${customSemesterTitle.toUpperCase()})`
+      : (selectedSemesterFilter !== 'All' 
+          ? `CONTRACTOR 6-MONTH CUMULATIVE PERFORMANCE REPORT (${selectedSemesterFilter.toUpperCase()})`
+          : (selectedStartMonthFilter !== 'All' || selectedEndMonthFilter !== 'All'
+              ? `CONTRACTOR PERFORMANCE REPORT (DATE RANGE: ${selectedStartMonthFilter !== 'All' ? selectedStartMonthFilter : 'START'} TO ${selectedEndMonthFilter !== 'All' ? selectedEndMonthFilter : 'LATEST'})`
+              : "CONTRACTOR MONTHLY PERFORMANCE & SCHEDULE EXECUTION LEDGER"));
+    doc.text(headerTitleText, margin + 12, curY + 34);
     doc.text(`AUDIT DATE: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`, margin + 12, curY + 45);
 
     curY += 62;
@@ -1638,13 +1678,13 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(71, 85, 105);
     doc.text(`Target Plan: ${plannedPct.toFixed(2)}%  •  Slippage: ${(plannedPct - physicalProgress).toFixed(2)}%`, margin + 310, curY + 28);
-    doc.text(`Audited Periods: ${monthlyGradingRecords.length} Month(s)`, margin + 310, curY + 40);
+    doc.text(`Audited Periods: ${records.length} Month(s)`, margin + 310, curY + 40);
 
     curY += 56;
 
     // Contractor Highlights Summary Cards
-    const latestRec = monthlyGradingRecords[0];
-    const avgContScore = monthlyGradingRecords.reduce((a, b) => a + b.contractorScore, 0) / (monthlyGradingRecords.length || 1);
+    const latestRec = records[0];
+    const avgContScore = records.reduce((a, b) => a + (b.contractorScore ?? 80), 0) / (records.length || 1);
     const cardW = (usableWidth - 12) / 3;
 
     doc.setFillColor(241, 245, 249);
@@ -1652,7 +1692,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(6);
     doc.setTextColor(100, 116, 139);
-    doc.text("LATEST MONTH AUDIT SCORE", margin + 8, curY + 12);
+    doc.text("LATEST PERIOD AUDIT SCORE", margin + 8, curY + 12);
     doc.setFontSize(8.5);
     doc.setTextColor(15, 23, 42);
     doc.text(`Grade ${latestRec?.contractorGrade || 'B'} • ${(latestRec?.contractorScore || 80).toFixed(1)}%`, margin + 8, curY + 24);
@@ -1679,13 +1719,13 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(6);
     doc.setTextColor(100, 116, 139);
-    doc.text("HISTORICAL CONTRACTOR AVERAGE", margin + (cardW * 2) + 20, curY + 12);
+    doc.text(customSemesterTitle ? "6-MONTH CUMULATIVE AVERAGE" : "PERIOD CONTRACTOR AVERAGE", margin + (cardW * 2) + 14, curY + 12);
     doc.setFontSize(8.5);
     doc.setTextColor(15, 23, 42);
-    doc.text(`${avgContScore.toFixed(1)}% Average Score`, margin + (cardW * 2) + 20, curY + 24);
+    doc.text(`${avgContScore.toFixed(1)}% Average Score`, margin + (cardW * 2) + 14, curY + 24);
     doc.setFontSize(5.5);
     doc.setTextColor(71, 85, 105);
-    doc.text(`Based on ${monthlyGradingRecords.length} recorded cycles`, margin + (cardW * 2) + 20, curY + 33);
+    doc.text(`Based on ${records.length} recorded cycle(s)`, margin + (cardW * 2) + 14, curY + 33);
 
     curY += 46;
 
@@ -1710,7 +1750,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     // Table Rows with dynamic text wrapping
     const colWRemarks = usableWidth - 392; // 131.28 pt
 
-    monthlyGradingRecords.forEach((mg, mgIdx) => {
+    records.forEach((mg, mgIdx) => {
       const remarksText = mg.contractorRemarks || mg.notes || 'No specific contractor audit exceptions logged for this cycle.';
       const remarkLines = doc.splitTextToSize(remarksText, colWRemarks - 8);
       const dynamicRowHeight = Math.max(22, (remarkLines.length * 8) + 12);
@@ -1810,11 +1850,16 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     doc.text("SIGNATURE & OFFICIAL SEAL", margin + 15, curY + 43);
     doc.text("SIGNATURE & OFFICIAL CPMP STAMP", margin + 285, curY + 43);
 
-    doc.save(`ERA_Contractor_Monthly_Grading_${p.name ? p.name.replace(/\s+/g, '_') : 'Project'}.pdf`);
+    const titleClean = customSemesterTitle ? customSemesterTitle.replace(/[^a-zA-Z0-9]/g, '_') : (p.name ? p.name.replace(/\s+/g, '_') : 'Project');
+    doc.save(`ERA_Contractor_Grading_${titleClean}.pdf`);
   };
 
-  // Dedicated PDF Exporter: Supervision Consultant Monthly Grading Ledger
-  const handleExportConsultantGradingPDF = () => {
+  // Dedicated PDF Exporter: Supervision Consultant Monthly Grading Ledger (Supports full project or specific 6-month semester)
+  const handleExportConsultantGradingPDF = (recordsToExport?: MonthlyGradingRecord[], customSemesterTitle?: string) => {
+    const isFiltered = selectedSemesterFilter !== 'All' || selectedStartMonthFilter !== 'All' || selectedEndMonthFilter !== 'All' || selectedGradingMonthFilter !== 'All' || selectedConsultantTenureFilter !== 'All';
+    const records = (Array.isArray(recordsToExport) ? recordsToExport : null) || (isFiltered ? filteredMonthlyGradingRecords : monthlyGradingRecords);
+    if (!Array.isArray(records) || records.length === 0) return;
+
     const doc = new jsPDF('p', 'pt', 'a4');
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
@@ -1843,7 +1888,14 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7.5);
     doc.setTextColor(203, 213, 225);
-    doc.text("SUPERVISION CONSULTANT MONTHLY DUAL-PILLAR GRADING & SLA AUDIT LEDGER", margin + 12, curY + 34);
+    const headerTitleText = customSemesterTitle 
+      ? `SUPERVISION CONSULTANT 6-MONTH CUMULATIVE PERFORMANCE REPORT (${customSemesterTitle.toUpperCase()})`
+      : (selectedSemesterFilter !== 'All' 
+          ? `SUPERVISION CONSULTANT 6-MONTH CUMULATIVE PERFORMANCE REPORT (${selectedSemesterFilter.toUpperCase()})`
+          : (selectedStartMonthFilter !== 'All' || selectedEndMonthFilter !== 'All'
+              ? `SUPERVISION CONSULTANT PERFORMANCE REPORT (DATE RANGE: ${selectedStartMonthFilter !== 'All' ? selectedStartMonthFilter : 'START'} TO ${selectedEndMonthFilter !== 'All' ? selectedEndMonthFilter : 'LATEST'})`
+              : "SUPERVISION CONSULTANT MONTHLY DUAL-PILLAR GRADING & SLA AUDIT LEDGER"));
+    doc.text(headerTitleText, margin + 12, curY + 34);
     doc.text(`AUDIT DATE: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`, margin + 12, curY + 45);
 
     curY += 62;
@@ -1881,8 +1933,8 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     curY += 56;
 
     // Consultant Highlights Summary Cards
-    const latestRec = monthlyGradingRecords[0];
-    const avgConsScore = monthlyGradingRecords.reduce((a, b) => a + b.consultantOverallScore, 0) / (monthlyGradingRecords.length || 1);
+    const latestRec = records[0];
+    const avgConsScore = records.reduce((a, b) => a + (b.consultantOverallScore ?? 82.5), 0) / (records.length || 1);
     const cardW = (usableWidth - 12) / 3;
 
     doc.setFillColor(241, 245, 249);
@@ -1923,7 +1975,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     doc.text(`${(latestRec?.consultantFiveDimScore || 80).toFixed(1)}% Technical Rating`, margin + (cardW * 2) + 20, curY + 24);
     doc.setFontSize(5.5);
     doc.setTextColor(71, 85, 105);
-    doc.text(`Avg Over ${monthlyGradingRecords.length} Cycles: ${avgConsScore.toFixed(1)}%`, margin + (cardW * 2) + 20, curY + 33);
+    doc.text(`Avg Over ${records.length} Cycles: ${avgConsScore.toFixed(1)}%`, margin + (cardW * 2) + 20, curY + 33);
 
     curY += 46;
 
@@ -1948,7 +2000,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     // Table Rows with dynamic text wrapping
     const colWFindings = usableWidth - 422; // 101.28 pt
 
-    monthlyGradingRecords.forEach((mg, mgIdx) => {
+    records.forEach((mg, mgIdx) => {
       const findingsText = mg.consultantRemarks || mg.notes || 'Standard supervisory inspection and submittal compliance logged.';
       const findingLines = doc.splitTextToSize(findingsText, colWFindings - 8);
       const dynamicRowHeight = Math.max(22, (findingLines.length * 8) + 12);
@@ -2050,11 +2102,16 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     doc.text("SIGNATURE & OFFICIAL SEAL", margin + 15, curY + 43);
     doc.text("SIGNATURE & OFFICIAL CPMP STAMP", margin + 285, curY + 43);
 
-    doc.save(`ERA_Supervision_Consultant_Grading_${p.name ? p.name.replace(/\s+/g, '_') : 'Project'}.pdf`);
+    const titleClean = customSemesterTitle ? customSemesterTitle.replace(/[^a-zA-Z0-9]/g, '_') : (p.name ? p.name.replace(/\s+/g, '_') : 'Project');
+    doc.save(`ERA_Supervision_Consultant_Grading_${titleClean}.pdf`);
   };
 
   // Dedicated Official Consolidated PDF Exporter for Both Contractor & Supervision Consultant (Separated into distinct sections)
-  const handleExportMonthlyGradingPDF = () => {
+  const handleExportMonthlyGradingPDF = (recordsToExport?: MonthlyGradingRecord[], customSemesterTitle?: string) => {
+    const isFiltered = selectedSemesterFilter !== 'All' || selectedStartMonthFilter !== 'All' || selectedEndMonthFilter !== 'All' || selectedGradingMonthFilter !== 'All' || selectedConsultantTenureFilter !== 'All';
+    const records = (Array.isArray(recordsToExport) ? recordsToExport : null) || (isFiltered ? filteredMonthlyGradingRecords : monthlyGradingRecords);
+    if (!Array.isArray(records) || records.length === 0) return;
+
     const doc = new jsPDF('p', 'pt', 'a4');
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
@@ -2083,7 +2140,14 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7.5);
     doc.setTextColor(203, 213, 225);
-    doc.text("CONSOLIDATED MONTHLY CONTRACTOR & SUPERVISION CONSULTANT GRADING LEDGER", margin + 12, curY + 34);
+    const headerTitleText = customSemesterTitle
+      ? `CONSOLIDATED DUAL GRADING LEDGER (${customSemesterTitle.toUpperCase()})`
+      : (selectedSemesterFilter !== 'All'
+          ? `CONSOLIDATED DUAL GRADING LEDGER (${selectedSemesterFilter.toUpperCase()})`
+          : (selectedStartMonthFilter !== 'All' || selectedEndMonthFilter !== 'All'
+              ? `CONSOLIDATED GRADING LEDGER (DATE RANGE: ${selectedStartMonthFilter !== 'All' ? selectedStartMonthFilter : 'START'} TO ${selectedEndMonthFilter !== 'All' ? selectedEndMonthFilter : 'LATEST'})`
+              : "CONSOLIDATED MONTHLY CONTRACTOR & SUPERVISION CONSULTANT GRADING LEDGER"));
+    doc.text(headerTitleText, margin + 12, curY + 34);
     doc.text(`AUDIT DATE: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`, margin + 12, curY + 45);
 
     curY += 62;
@@ -2137,7 +2201,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     curY += 16;
 
     const colWContRemarks = usableWidth - 376; // 147.28 pt
-    monthlyGradingRecords.forEach((mg, mgIdx) => {
+    records.forEach((mg, mgIdx) => {
       const remarksText = mg.contractorRemarks || mg.notes || 'No specific contractor audit exceptions logged.';
       const remarkLines = doc.splitTextToSize(remarksText, colWContRemarks - 8);
       const dynamicRowHeight = Math.max(20, (remarkLines.length * 7.5) + 10);
@@ -2238,7 +2302,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     curY += 16;
 
     const colWConsRemarks = usableWidth - 422; // 101.28 pt
-    monthlyGradingRecords.forEach((mg, mgIdx) => {
+    records.forEach((mg, mgIdx) => {
       const findingsText = mg.consultantRemarks || mg.notes || 'Standard supervisory inspection and submittal compliance logged.';
       const findingLines = doc.splitTextToSize(findingsText, colWConsRemarks - 8);
       const dynamicRowHeight = Math.max(20, (findingLines.length * 7.5) + 10);
@@ -2731,8 +2795,8 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                         className="text-xs font-semibold py-1.5 px-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-200 cursor-pointer shadow-xs focus:ring-1 focus:ring-amber-500"
                       >
                         <option value="All">All Months ({monthlyGradingRecords.length})</option>
-                        {monthlyGradingRecords.map((r) => (
-                          <option key={r.id} value={r.month}>
+                        {monthlyGradingRecords.map((r, rIdx) => (
+                          <option key={r.id ? `opt-mgrad-${r.id}-${rIdx}` : `opt-mgrad-${rIdx}`} value={r.month}>
                             {r.monthName || r.month}
                           </option>
                         ))}
@@ -2778,11 +2842,59 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                       </select>
                     </div>
 
+                    {/* Date-Range Dropdown Selector: [Start Month, End Month] */}
+                    <div className="flex items-center gap-1.5 p-1 px-2.5 bg-slate-100/90 dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 rounded-lg shadow-2xs">
+                      <Calendar className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                      <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Date Range:</span>
+                      <div className="flex items-center gap-1">
+                        <select
+                          value={selectedStartMonthFilter}
+                          onChange={(e) => setSelectedStartMonthFilter(e.target.value)}
+                          className="text-xs font-semibold py-1 px-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-md text-slate-800 dark:text-slate-200 cursor-pointer focus:ring-1 focus:ring-amber-500"
+                          title="Select Start Month for Cumulative Ledger"
+                        >
+                          <option value="All">Start: Earliest</option>
+                          {availableGradingMonths.map((m) => (
+                            <option key={`start-m-${m.ym}`} value={m.ym}>
+                              {m.label}
+                            </option>
+                          ))}
+                        </select>
+                        <span className="text-[10px] font-bold text-slate-400">to</span>
+                        <select
+                          value={selectedEndMonthFilter}
+                          onChange={(e) => setSelectedEndMonthFilter(e.target.value)}
+                          className="text-xs font-semibold py-1 px-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-md text-slate-800 dark:text-slate-200 cursor-pointer focus:ring-1 focus:ring-amber-500"
+                          title="Select End Month for Cumulative Ledger"
+                        >
+                          <option value="All">End: Latest</option>
+                          {availableGradingMonths.map((m) => (
+                            <option key={`end-m-${m.ym}`} value={m.ym}>
+                              {m.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      {(selectedStartMonthFilter !== 'All' || selectedEndMonthFilter !== 'All') && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedStartMonthFilter('All');
+                            setSelectedEndMonthFilter('All');
+                          }}
+                          className="text-[10px] font-extrabold text-rose-600 dark:text-rose-400 hover:text-rose-700 px-1 py-0.5 rounded hover:bg-rose-50 dark:hover:bg-rose-950/50 cursor-pointer transition-colors"
+                          title="Reset date range selection"
+                        >
+                          Clear Range
+                        </button>
+                      )}
+                    </div>
+
                     {/* PDF Export Action Buttons */}
                     {gradingActiveTab === 'contractor' && (
                       <button
                         type="button"
-                        onClick={handleExportContractorGradingPDF}
+                        onClick={() => handleExportContractorGradingPDF()}
                         className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/60 text-amber-800 dark:text-amber-200 rounded-lg transition-colors border border-amber-200 dark:border-amber-800/60 cursor-pointer"
                         title="Export Contractor Monthly Performance PDF Report"
                       >
@@ -2794,7 +2906,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                     {gradingActiveTab === 'consultant' && (
                       <button
                         type="button"
-                        onClick={handleExportConsultantGradingPDF}
+                        onClick={() => handleExportConsultantGradingPDF()}
                         className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/60 text-indigo-800 dark:text-indigo-200 rounded-lg transition-colors border border-indigo-200 dark:border-indigo-800/60 cursor-pointer"
                         title="Export Supervision Consultant SLA & Technical PDF Report"
                       >
@@ -2807,7 +2919,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                       <div className="flex items-center gap-1.5">
                         <button
                           type="button"
-                          onClick={handleExportMonthlyGradingPDF}
+                          onClick={() => handleExportMonthlyGradingPDF()}
                           className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-650 text-slate-700 dark:text-slate-200 rounded-lg transition-colors border border-slate-200 dark:border-slate-600 cursor-pointer"
                           title="Export Consolidated Dual-Ledger PDF"
                         >
@@ -2816,7 +2928,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                         </button>
                         <button
                           type="button"
-                          onClick={handleExportContractorGradingPDF}
+                          onClick={() => handleExportContractorGradingPDF()}
                           className="p-1.5 text-slate-600 dark:text-slate-300 hover:text-amber-600 dark:hover:text-amber-400 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg"
                           title="Export Contractor Only PDF"
                         >
@@ -2824,7 +2936,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                         </button>
                         <button
                           type="button"
-                          onClick={handleExportConsultantGradingPDF}
+                          onClick={() => handleExportConsultantGradingPDF()}
                           className="p-1.5 text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg"
                           title="Export Consultant Only PDF"
                         >
@@ -2882,6 +2994,8 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                         if (sem.consultantGrade === 'C') consBadge = "bg-amber-600 text-white";
                         else if (sem.consultantGrade === 'D' || sem.consultantGrade === 'F') consBadge = "bg-rose-600 text-white";
 
+                        const titleLabel = `${sem.fiscalYearLabel} ${sem.semesterLabel}`;
+
                         return (
                           <div
                             key={sem.semesterKey}
@@ -2916,45 +3030,73 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                             {/* Contractor & Consultant Dual 6-Month Cumulative Grades */}
                             <div className="grid grid-cols-2 gap-2 pt-1">
                               {/* Contractor 6-Month Card */}
-                              <div className="p-2 rounded-lg bg-amber-50/60 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-900/40 space-y-1">
-                                <div className="flex items-center justify-between">
-                                  <span className="text-[9px] font-extrabold text-amber-800 dark:text-amber-300 uppercase flex items-center gap-1">
-                                    <HardHat className="w-2.5 h-2.5 text-amber-500" /> Contractor
-                                  </span>
-                                  <span className={`text-[9px] font-black px-1.5 py-0.2 rounded ${contBadge}`}>
-                                    Grade {sem.contractorGrade}
-                                  </span>
+                              <div className="p-2 rounded-lg bg-amber-50/60 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-900/40 space-y-1 flex flex-col justify-between">
+                                <div>
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[9px] font-extrabold text-amber-800 dark:text-amber-300 uppercase flex items-center gap-1">
+                                      <HardHat className="w-2.5 h-2.5 text-amber-500" /> Contractor
+                                    </span>
+                                    <span className={`text-[9px] font-black px-1.5 py-0.2 rounded ${contBadge}`}>
+                                      Grade {sem.contractorGrade}
+                                    </span>
+                                  </div>
+                                  <div className="text-xs font-black text-slate-900 dark:text-white font-mono mt-0.5">
+                                    {sem.contractorAvgScore}% <span className="text-[8.5px] font-normal text-slate-500">6-Mo Avg</span>
+                                  </div>
+                                  <div className="text-[8.5px] font-mono text-slate-500 dark:text-slate-400">
+                                    Plan: {sem.contractorTotalPlanMonthly}% • Act: {sem.contractorTotalActualMonthly}%
+                                  </div>
+                                  <div className="text-[8.5px] font-mono font-bold text-slate-700 dark:text-slate-300">
+                                    6-Mo SPI: <span className={sem.contractorAvgSpi >= 1 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>{sem.contractorAvgSpi}</span>
+                                  </div>
                                 </div>
-                                <div className="text-xs font-black text-slate-900 dark:text-white font-mono">
-                                  {sem.contractorAvgScore}% <span className="text-[8.5px] font-normal text-slate-500">6-Mo Avg</span>
-                                </div>
-                                <div className="text-[8.5px] font-mono text-slate-500 dark:text-slate-400">
-                                  Plan: {sem.contractorTotalPlanMonthly}% • Act: {sem.contractorTotalActualMonthly}%
-                                </div>
-                                <div className="text-[8.5px] font-mono font-bold text-slate-700 dark:text-slate-300">
-                                  6-Mo SPI: <span className={sem.contractorAvgSpi >= 1 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>{sem.contractorAvgSpi}</span>
-                                </div>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleExportContractorGradingPDF(sem.records, titleLabel);
+                                  }}
+                                  className="w-full mt-1.5 flex items-center justify-center gap-1 text-[9px] font-bold px-1.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded transition-colors shadow-2xs cursor-pointer"
+                                  title="Print 6-Month Contractor PDF Report"
+                                >
+                                  <Printer className="w-2.5 h-2.5" />
+                                  <span>Print Contractor PDF</span>
+                                </button>
                               </div>
 
                               {/* Supervision Consultant 6-Month Card */}
-                              <div className="p-2 rounded-lg bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-200/60 dark:border-indigo-900/40 space-y-1">
-                                <div className="flex items-center justify-between">
-                                  <span className="text-[9px] font-extrabold text-indigo-800 dark:text-indigo-300 uppercase flex items-center gap-1">
-                                    <Briefcase className="w-2.5 h-2.5 text-indigo-500" /> Consultant
-                                  </span>
-                                  <span className={`text-[9px] font-black px-1.5 py-0.2 rounded ${consBadge}`}>
-                                    Grade {sem.consultantGrade}
-                                  </span>
+                              <div className="p-2 rounded-lg bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-200/60 dark:border-indigo-900/40 space-y-1 flex flex-col justify-between">
+                                <div>
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[9px] font-extrabold text-indigo-800 dark:text-indigo-300 uppercase flex items-center gap-1">
+                                      <Briefcase className="w-2.5 h-2.5 text-indigo-500" /> Consultant
+                                    </span>
+                                    <span className={`text-[9px] font-black px-1.5 py-0.2 rounded ${consBadge}`}>
+                                      Grade {sem.consultantGrade}
+                                    </span>
+                                  </div>
+                                  <div className="text-xs font-black text-slate-900 dark:text-white font-mono mt-0.5">
+                                    {sem.consultantAvgCombinedScore}% <span className="text-[8.5px] font-normal text-slate-500">Combined</span>
+                                  </div>
+                                  <div className="text-[8.5px] font-mono text-slate-500 dark:text-slate-400">
+                                    SLA: {sem.consultantAvgSlaScore}% • Tech: {sem.consultantAvgFiveDimScore}%
+                                  </div>
+                                  <div className="text-[8.5px] font-mono font-bold text-indigo-700 dark:text-indigo-300 truncate" title={sem.consultantStanding}>
+                                    {sem.consultantStanding}
+                                  </div>
                                 </div>
-                                <div className="text-xs font-black text-slate-900 dark:text-white font-mono">
-                                  {sem.consultantAvgCombinedScore}% <span className="text-[8.5px] font-normal text-slate-500">Combined</span>
-                                </div>
-                                <div className="text-[8.5px] font-mono text-slate-500 dark:text-slate-400">
-                                  SLA: {sem.consultantAvgSlaScore}% • Tech: {sem.consultantAvgFiveDimScore}%
-                                </div>
-                                <div className="text-[8.5px] font-mono font-bold text-indigo-700 dark:text-indigo-300 truncate" title={sem.consultantStanding}>
-                                  {sem.consultantStanding}
-                                </div>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleExportConsultantGradingPDF(sem.records, titleLabel);
+                                  }}
+                                  className="w-full mt-1.5 flex items-center justify-center gap-1 text-[9px] font-bold px-1.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded transition-colors shadow-2xs cursor-pointer"
+                                  title="Print 6-Month Supervision Consultant PDF Report"
+                                >
+                                  <Printer className="w-2.5 h-2.5" />
+                                  <span>Print Consultant PDF</span>
+                                </button>
                               </div>
                             </div>
                           </div>
@@ -3064,7 +3206,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                               else if (rec.contractorGrade === 'D' || rec.contractorGrade === 'F') contGradeBadge = "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border-rose-200 dark:border-rose-800";
 
                               return (
-                                <tr key={rec.id || `mgrad-cont-${rIdx}`} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
+                                <tr key={rec.id ? `cont-${rec.id}-${rIdx}` : `mgrad-cont-${rIdx}`} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
                                   {/* Month & Period */}
                                   <td className="py-2.5 px-3.5">
                                     <div className="font-extrabold text-slate-850 dark:text-white">
@@ -3439,7 +3581,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                               else if (rec.consultantGrade === 'D' || rec.consultantGrade === 'F') consGradeBadge = "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border-rose-200 dark:border-rose-800";
 
                               return (
-                                <tr key={rec.id || `mgrad-cons-${rIdx}`} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
+                                <tr key={rec.id ? `cons-${rec.id}-${rIdx}` : `mgrad-cons-${rIdx}`} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
                                   {/* Month & Period */}
                                   <td className="py-2.5 px-3.5">
                                     <div className="font-extrabold text-slate-850 dark:text-white">
@@ -3692,7 +3834,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                               else if (rec.consultantGrade === 'D' || rec.consultantGrade === 'F') consGradeBadge = "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border-rose-200 dark:border-rose-800";
 
                               return (
-                                <tr key={rec.id || `mgrad-${rIdx}`} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
+                                <tr key={rec.id ? `all-${rec.id}-${rIdx}` : `mgrad-${rIdx}`} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
                                   {/* Month & Period */}
                                   <td className="py-2.5 px-3.5">
                                     <div className="font-extrabold text-slate-850 dark:text-white">
