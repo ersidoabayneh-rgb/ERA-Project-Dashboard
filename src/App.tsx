@@ -40,6 +40,8 @@ import {
   Archive,
   Sparkles,
   Send,
+  Clock,
+  Lock,
   X
 } from 'lucide-react';
 
@@ -260,6 +262,55 @@ function AnimatedCounter({ value, prefix = "" }: { value: number; prefix?: strin
   );
 }
 
+export function getIntegratedProjectWithDrafts(
+  baseProject: Project | null,
+  drafts: PrivateDraft[],
+  currentUser: User | null
+): Project | null {
+  if (!baseProject || !currentUser) return baseProject;
+  const isEditor = currentUser.role === 'editor' || 
+                   currentUser.role === 'era_editor' || 
+                   currentUser.role === 'consultant_editor' || 
+                   currentUser.role === 'contractor_editor';
+  if (!isEditor) return baseProject;
+
+  // Find all active unsubmitted drafts for this project by this author
+  const activeDrafts = drafts.filter(d => 
+    d.projectId === baseProject.id && 
+    d.author === currentUser.username &&
+    (d.status === 'draft' || d.status === 'changes_requested')
+  );
+
+  if (activeDrafts.length === 0) return baseProject;
+
+  // Check if there are non-expired active drafts (updated within 10 minutes)
+  const now = Date.now();
+  const nonExpiredDrafts = activeDrafts.filter(d => {
+    const elapsedMs = now - new Date(d.updatedAt).getTime();
+    return elapsedMs < 10 * 60 * 1000; // 10 minutes
+  });
+
+  if (nonExpiredDrafts.length === 0) return baseProject;
+
+  // Sort them by updatedAt ascending so that more recent changes overwrite older ones
+  const sortedDrafts = [...nonExpiredDrafts].sort((a, b) => 
+    new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime()
+  );
+
+  // Merge snapshotData into baseProject
+  let merged = { ...baseProject };
+  sortedDrafts.forEach(d => {
+    if (d.snapshotData) {
+      merged = {
+        ...merged,
+        ...d.snapshotData
+      };
+    }
+  });
+
+  return merged;
+}
+
 export default function App() {
   // Navigation states
   const [currentPage, setCurrentPage] = useState<'login' | 'projects' | 'dashboard'>(() => {
@@ -304,6 +355,14 @@ export default function App() {
   
   // Database States
   const [projects, setProjects] = useState<Project[]>([]);
+  const [nowTimer, setNowTimer] = useState(Date.now());
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setNowTimer(Date.now());
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(() => {
     return localStorage.getItem('era_current_project_id') || null;
   });
@@ -373,21 +432,6 @@ export default function App() {
       }
     }
   }, [currentUserObj?.username, currentUserObj?.role, activeTab, currentUserObj?.assignedPages?.join(',')]);
-
-  // Synchronize currentProject when projects array updates in real-time
-  useEffect(() => {
-    if (currentProjectId && projects.length > 0) {
-      const updated = projects.find(p => p.id === currentProjectId);
-      if (updated) {
-        setCurrentProject(prev => {
-          if (!prev || JSON.stringify(prev) !== JSON.stringify(updated)) {
-            return updated;
-          }
-          return prev;
-        });
-      }
-    }
-  }, [projects, currentProjectId]);
   
   // Project Name & Dossier Edit States
   const [isEditingProjectName, setIsEditingProjectName] = useState(false);
@@ -572,6 +616,24 @@ export default function App() {
     } catch {}
     return initialSampleDrafts;
   });
+
+  // Synchronize currentProject when projects array updates in real-time, and merge active, unsubmitted, unexpired editor drafts
+  useEffect(() => {
+    if (currentProjectId && projects.length > 0) {
+      const updated = projects.find(p => p.id === currentProjectId);
+      if (updated) {
+        // Automatically merge any active, unsubmitted private drafts that are under 10 minutes old
+        const integrated = getIntegratedProjectWithDrafts(updated, privateDrafts, currentUserObj);
+        
+        setCurrentProject(prev => {
+          if (!prev || JSON.stringify(prev) !== JSON.stringify(integrated)) {
+            return integrated;
+          }
+          return prev;
+        });
+      }
+    }
+  }, [projects, currentProjectId, privateDrafts, currentUserObj, nowTimer]);
 
   const [workflowAuditLogs, setWorkflowAuditLogs] = useState<WorkflowAuditLogEntry[]>(() => {
     try {
@@ -3577,6 +3639,79 @@ let isBatchSyncRunning = false;
                   </button>
                 </div>
               </motion.div>
+            )}
+
+            {/* Editor-Specific Private Draft Banner with ticking 10-minute session countdown */}
+            {currentUserObj && (
+              currentUserObj.role === 'editor' || 
+              currentUserObj.role === 'era_editor' || 
+              currentUserObj.role === 'consultant_editor' || 
+              currentUserObj.role === 'contractor_editor'
+            ) && currentProject && (
+              (() => {
+                const authorDrafts = privateDrafts.filter(d => 
+                  d.projectId === currentProject.id && 
+                  d.author === currentUserObj.username &&
+                  (d.status === 'draft' || d.status === 'changes_requested')
+                );
+                
+                const nowMs = Date.now();
+                const activeUnexpired = authorDrafts.filter(d => {
+                  const elapsedMs = nowMs - new Date(d.updatedAt).getTime();
+                  return elapsedMs < 10 * 60 * 1000;
+                });
+
+                if (activeUnexpired.length === 0) return null;
+
+                return (
+                  <motion.div
+                    initial={{ opacity: 0, y: -8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-gradient-to-r from-indigo-500/15 via-indigo-500/10 to-indigo-500/5 border border-indigo-500/30 dark:border-indigo-500/40 rounded-2xl p-3.5 mb-2 flex items-center justify-between flex-wrap gap-3 shadow-xs"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs animate-pulse">
+                        <Clock className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="font-black text-xs sm:text-sm text-slate-850 dark:text-white flex items-center gap-2">
+                          <span>📝 Active Private Draft Workspace ({activeUnexpired.length} section{activeUnexpired.length > 1 ? 's' : ''} modified)</span>
+                          <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-indigo-600 text-white shadow-2xs">
+                            Sandbox Mode
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5 flex flex-col gap-1">
+                          <div>
+                            You are viewing your local draft changes. These changes are isolated from other users.
+                          </div>
+                          <div className="flex items-center gap-2 flex-wrap mt-1">
+                            {activeUnexpired.map(d => {
+                              const elapsedMs = nowMs - new Date(d.updatedAt).getTime();
+                              const remainingMs = Math.max(0, 10 * 60 * 1000 - elapsedMs);
+                              const remMins = Math.floor(remainingMs / 60000);
+                              const remSecs = Math.floor((remainingMs % 60000) / 1000);
+                              return (
+                                <span key={d.id} className="inline-flex items-center gap-1.5 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900 px-2.5 py-0.7 rounded-lg text-[10px] font-bold text-indigo-700 dark:text-indigo-300 shadow-3xs">
+                                  <strong>{d.section}</strong>: expires in <span className="font-black text-amber-600 dark:text-amber-400 font-mono">{remMins}m {remSecs}s</span>
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setActiveTab('approvalWorkflow')}
+                        className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <ShieldCheck className="w-3.5 h-3.5" />
+                        <span>Submit Private Drafts ({activeUnexpired.length})</span>
+                      </button>
+                    </div>
+                  </motion.div>
+                );
+              })()
             )}
 
             {/* Contract Specifications Cards deck */}

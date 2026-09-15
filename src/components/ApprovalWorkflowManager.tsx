@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Shield, CheckCircle2, XCircle, AlertTriangle, Clock, Eye,
@@ -44,6 +44,15 @@ export default function ApprovalWorkflowManager({
 }: ApprovalWorkflowManagerProps) {
   // Navigation tabs inside workflow manager
   const [activeTab, setActiveTab] = useState<'drafts' | 'queue' | 'audit' | 'governance'>('drafts');
+  
+  // Local 1-second interval timer to update draft session countdowns
+  const [localTimer, setLocalTimer] = useState(Date.now());
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setLocalTimer(Date.now());
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
   
   // Selection and expansion states
   const [expandedDraftId, setExpandedDraftId] = useState<string | null>(null);
@@ -924,6 +933,13 @@ export default function ApprovalWorkflowManager({
                 const isAuthor = draft.author.toLowerCase() === currentUsername.toLowerCase();
                 const grantedCount = draft.grantedAccessUsernames?.length || 0;
 
+                const elapsedMs = Date.now() - new Date(draft.updatedAt).getTime();
+                const isDraftStatus = draft.status === 'draft' || draft.status === 'changes_requested';
+                const isExpired = isDraftStatus && elapsedMs >= 10 * 60 * 1000;
+                const remainingMs = Math.max(0, 10 * 60 * 1000 - elapsedMs);
+                const remMins = Math.floor(remainingMs / 60000);
+                const remSecs = Math.floor((remainingMs % 60000) / 1000);
+
                 return (
                   <div
                     key={draft.id}
@@ -936,9 +952,19 @@ export default function ApprovalWorkflowManager({
                           <span className="text-sm font-black text-slate-900 dark:text-white">
                             {draft.section}
                           </span>
-                          {draft.status === 'draft' && (
-                            <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 flex items-center gap-1">
-                              <Lock className="w-3 h-3" /> Private Draft
+                          {isExpired && (
+                            <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800 flex items-center gap-1 animate-pulse">
+                              <AlertTriangle className="w-3.5 h-3.5" /> Expired (Reverted to Live Approved Data)
+                            </span>
+                          )}
+                          {!isExpired && draft.status === 'draft' && (
+                            <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 flex items-center gap-1">
+                              <Clock className="w-3 h-3 text-indigo-500 animate-pulse" /> Active Draft ({remMins}m {remSecs}s remaining)
+                            </span>
+                          )}
+                          {!isExpired && draft.status === 'changes_requested' && (
+                            <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800 flex items-center gap-1">
+                              <AlertTriangle className="w-3 h-3" /> Revisions Requested ({remMins}m {remSecs}s remaining)
                             </span>
                           )}
                           {draft.status === 'submitted' && (
@@ -949,11 +975,6 @@ export default function ApprovalWorkflowManager({
                           {draft.status === 'approved' && (
                             <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 flex items-center gap-1">
                               <CheckCircle2 className="w-3 h-3" /> Approved & Committed
-                            </span>
-                          )}
-                          {draft.status === 'changes_requested' && (
-                            <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800 flex items-center gap-1">
-                              <AlertTriangle className="w-3 h-3" /> Revisions Requested
                             </span>
                           )}
                           {draft.status === 'rejected' && (
@@ -987,7 +1008,7 @@ export default function ApprovalWorkflowManager({
                         )}
 
                         {/* Submit for Approval Button */}
-                        {isAuthor && (draft.status === 'draft' || draft.status === 'changes_requested') && (
+                        {isAuthor && !isExpired && (draft.status === 'draft' || draft.status === 'changes_requested') && (
                           <button
                             onClick={() => handleSubmitForApproval(draft)}
                             className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
@@ -995,6 +1016,12 @@ export default function ApprovalWorkflowManager({
                             <Send className="w-3.5 h-3.5" />
                             <span>Submit for Approval</span>
                           </button>
+                        )}
+                        {isAuthor && isExpired && (
+                          <div className="text-[11px] font-black text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/20 px-3 py-1.5 rounded-xl border border-rose-200/50 dark:border-rose-900/30 flex items-center gap-1.5">
+                            <AlertTriangle className="w-3.5 h-3.5 text-rose-500" />
+                            <span>Session Expired (Please edit section again to reset)</span>
+                          </div>
                         )}
 
                         {/* Continue Editing Section */}
