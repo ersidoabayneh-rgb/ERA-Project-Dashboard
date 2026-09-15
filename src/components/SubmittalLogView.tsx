@@ -412,9 +412,19 @@ export default function SubmittalLogView({
 
   const handleDeleteRow = (id: string) => {
     const deletedItem = submittalsList.find(s => s.id === id);
-    if (!window.confirm(`Are you sure you want to delete submittal record ${deletedItem?.submittalNo || id}?`)) return;
+    if (!deletedItem) return;
+
+    const isApproved = deletedItem.status === 'Approved' || deletedItem.status === 'Approved / Closed' || deletedItem.status === 'Approved with Comment' || deletedItem.status === 'Approved with Comments' || deletedItem.status.toLowerCase().includes('approved');
+    const isAdminUser = currentUserObj?.role === 'admin' || currentUserObj?.role === 'master_admin' || currentUserObj?.role === 'cpm_admin' || currentUserObj?.username === 'proj_1781786415663';
+
+    if (isApproved && !isAdminUser) {
+      alert('Access Denied: Once a submittal is approved, only users with Administrator credentials can delete it.');
+      return;
+    }
+
+    if (!window.confirm(`Are you sure you want to delete submittal record ${deletedItem.submittalNo || id}?`)) return;
     const updatedList = submittalsList.filter(item => item.id !== id);
-    commitSubmittals(updatedList, `Deleted submittal ${deletedItem?.submittalNo || id}`);
+    commitSubmittals(updatedList, `Deleted submittal ${deletedItem.submittalNo || id}`);
   };
 
   const handleDuplicateRow = (item: ConsultantSubmittalKpi) => {
@@ -1050,15 +1060,26 @@ export default function SubmittalLogView({
                           >
                             <Copy className="w-3.5 h-3.5" />
                           </button>
-                          {!isReadonly && (
-                            <button
-                              onClick={() => handleDeleteRow(item.id)}
-                              title="Delete Submittal"
-                              className="p-1.5 rounded-lg hover:bg-rose-100 dark:hover:bg-rose-950/60 text-rose-600 dark:text-rose-400 transition"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
+                          {!isReadonly && (() => {
+                            const isApproved = item.status === 'Approved' || item.status === 'Approved / Closed' || item.status === 'Approved with Comment' || item.status === 'Approved with Comments' || item.status.toLowerCase().includes('approved');
+                            const isAdminUser = currentUserObj?.role === 'admin' || currentUserObj?.role === 'master_admin' || currentUserObj?.role === 'cpm_admin' || currentUserObj?.username === 'proj_1781786415663';
+                            if (isApproved && !isAdminUser) {
+                              return (
+                                <span title="Approved submittals can only be deleted by Administrators" className="p-1.5 text-slate-300 dark:text-slate-700 cursor-not-allowed">
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </span>
+                              );
+                            }
+                            return (
+                              <button
+                                onClick={() => handleDeleteRow(item.id)}
+                                title="Delete Submittal"
+                                className="p-1.5 rounded-lg hover:bg-rose-100 dark:hover:bg-rose-950/60 text-rose-600 dark:text-rose-400 transition"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            );
+                          })()}
                         </div>
                       </td>
                     </tr>

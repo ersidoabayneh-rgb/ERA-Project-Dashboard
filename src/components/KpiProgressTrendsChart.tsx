@@ -212,29 +212,25 @@ export default function KpiProgressTrendsChart({
       let targetInc = 0;
       let actualInc: number | null = null;
 
+      // Target plan is always 100% across all KPI groups and overall
+      targetVal = 100.0;
+      targetInc = 0;
+
       if (groupId === 'all') {
-        // Physical Progress & Overall Contract Timeline (Baseline Original S-Curve Plan)
-        const rawTarget = item.originalPlan ?? item.revisedPlan ?? 0;
-        targetVal = Number(rawTarget) || 0;
         const hasAct = item.actual !== null && item.actual !== undefined && item.actual !== '' && !isNaN(Number(item.actual));
         actualVal = hasAct ? Number(item.actual) : null;
 
-        let prevTarget = 0;
         let prevActual: number | null = 0;
         if (fullIdx > 0 && fullList[fullIdx - 1]) {
           const prevItem = fullList[fullIdx - 1];
-          prevTarget = Number(prevItem.originalPlan ?? prevItem.revisedPlan ?? 0) || 0;
           const prevHasAct = prevItem.actual !== null && prevItem.actual !== undefined && prevItem.actual !== '' && !isNaN(Number(prevItem.actual));
           prevActual = prevHasAct ? Number(prevItem.actual) : null;
         }
 
-        targetInc = Math.max(0, Number((targetVal - prevTarget).toFixed(2)));
         actualInc = actualVal !== null && prevActual !== null
           ? Math.max(0, Number((actualVal - prevActual).toFixed(2)))
           : actualVal;
       } else if (groupId === 'G2') {
-        // G2: Progress vs Elapsed Time / Schedule Efficiency Ratio
-        targetVal = 100.0;
         const rawActual = item.actual !== null && !isNaN(Number(item.actual)) ? Number(item.actual) : null;
         const rawTarget = Number(item.revisedPlan ?? item.originalPlan ?? 1) || 1;
         
@@ -244,16 +240,11 @@ export default function KpiProgressTrendsChart({
           actualVal = isLatest ? currentGoalScore : Math.max(0, currentGoalScore - stepFromLatest * 1.8);
         }
 
-        targetInc = 0;
         actualInc = idx > 0 && actualVal !== null ? Number((actualVal - (currentGoalScore - (stepFromLatest + 1) * 1.8)).toFixed(2)) : 0;
       } else {
-        // Group-specific KPI performance trajectory (G1, G3 to G14+)
-        targetVal = 100.0;
         const growthStep = 1.2 + (parseInt(groupId.replace(/\D/g, '') || '1', 10) % 3) * 0.4;
         const historicalActual = Math.max(0, Math.min(100, currentGoalScore - stepFromLatest * growthStep));
         actualVal = Number(historicalActual.toFixed(2));
-
-        targetInc = 0;
         actualInc = Number(growthStep.toFixed(2));
       }
 
