@@ -784,6 +784,10 @@ export default function App() {
 
     if (draft.username !== original.username) return true;
     if (draft.password !== original.password) return true;
+    if ((draft.fullName || '') !== (original.fullName || '')) return true;
+    if ((draft.email || '') !== (original.email || '')) return true;
+    if ((draft.phone || '') !== (original.phone || '')) return true;
+    if (!!draft.hasApprovalCredential !== !!original.hasApprovalCredential) return true;
 
     const draftStatus = draft.status || 'Active';
     const origStatus = original.status || 'Active';
@@ -4562,13 +4566,24 @@ let isBatchSyncRunning = false;
               const isDirAdmin = currentUserObj?.role === 'directorate_admin';
               const isPmoAdmin = currentUserObj?.role === 'pmo_admin';
 
+              const fnVal = frm.fn?.value?.trim() || undefined;
+              const emailVal = frm.email?.value?.trim() || undefined;
+              const phoneVal = frm.phone?.value?.trim() || undefined;
+
               const newUser: User = { 
                 username: un, 
+                fullName: fnVal,
+                email: emailVal,
+                phone: phoneVal,
                 password: pw, 
                 role: rl, 
                 status: (frm.st?.value as 'Active' | 'Inactive') || 'Active', 
                 accessibleProjects: [],
-                assignedBy: currentUserObj?.username
+                assignedBy: currentUserObj?.username,
+                registeredAt: new Date().toISOString(),
+                approvedBy: currentUserObj?.username,
+                approvedAt: new Date().toISOString(),
+                isPendingApproval: false
               };
               
               if (isPmoAdmin) {
@@ -4595,8 +4610,13 @@ let isBatchSyncRunning = false;
               alert(`User ${un} created successfully.`);
             }} className="bg-slate-50 dark:bg-slate-900/40 border p-3 rounded-2xl space-y-3">
               <h4 className="text-2xs font-extrabold text-slate-400 uppercase tracking-wider block">Add New User to Network</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <input name="fn" type="text" placeholder="Full Name (e.g. John Doe)" className="bg-white dark:bg-slate-800 text-xs px-2.5 py-1 border rounded-lg" />
+                <input name="email" type="email" placeholder="Email Address" className="bg-white dark:bg-slate-800 text-xs px-2.5 py-1 border rounded-lg" />
+                <input name="phone" type="text" placeholder="Phone Number" className="bg-white dark:bg-slate-800 text-xs px-2.5 py-1 border rounded-lg" />
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
-                <input required name="un" type="text" placeholder="Username" className="bg-white dark:bg-slate-800 text-xs px-2.5 py-1 border rounded-lg" />
+                <input required name="un" type="text" placeholder="Username *" className="bg-white dark:bg-slate-800 text-xs px-2.5 py-1 border rounded-lg" />
                 <div className="flex flex-col gap-1">
                   <div className="relative">
                     <input required name="pw" type={newPasswordVisible ? "text" : "password"} placeholder="Passcode" className="bg-white dark:bg-slate-800 text-xs pl-2.5 pr-7 py-1 border rounded-lg w-full" />
@@ -4848,39 +4868,80 @@ let isBatchSyncRunning = false;
                         return (
                           <div className="space-y-4 animate-fade-in">
                             {/* Selected User Header Card */}
-                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-slate-150 dark:border-slate-800 pb-3 gap-2">
-                              <div>
-                                <h4 className="text-sm font-black text-slate-800 dark:text-zinc-100 flex items-center gap-2">
-                                  <span>👤</span> {u.username}
-                                  {uDraft.username !== u.username && (
-                                    <span className="text-xs text-amber-600 dark:text-amber-400 font-extrabold flex items-center gap-1">
-                                      ➔ {uDraft.username} <span className="text-[8px] font-normal italic">(unsaved name change)</span>
-                                    </span>
-                                  )}
-                                </h4>
-                                <p className="text-[10px] text-slate-450 dark:text-slate-400 mt-0.5 leading-snug">
-                                  Set project scopes, configure credential variables, and run security operations.
-                                </p>
+                            <div className="bg-white dark:bg-slate-850 border border-slate-150 dark:border-slate-750 p-3.5 rounded-2xl space-y-2">
+                              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                                <div>
+                                  <h4 className="text-sm font-black text-slate-800 dark:text-zinc-100 flex items-center gap-2 flex-wrap">
+                                    <span>👤</span> {uDraft.fullName || u.fullName || u.username}
+                                    <span className="text-xs text-slate-400 font-mono">(@{u.username})</span>
+                                    {uDraft.username !== u.username && (
+                                      <span className="text-xs text-amber-600 dark:text-amber-400 font-extrabold flex items-center gap-1">
+                                        ➔ {uDraft.username} <span className="text-[8px] font-normal italic">(unsaved name change)</span>
+                                      </span>
+                                    )}
+                                  </h4>
+                                  <p className="text-[10px] text-slate-450 dark:text-slate-400 mt-0.5 leading-snug">
+                                    Configure identity credentials, privileges, approval authority, and contract scopes.
+                                  </p>
+                                </div>
+
+                                {u.username !== currentUserObj?.username && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (confirm(`Are you sure you want to permanently delete user "${u.username}"?`)) {
+                                        const updated = getUsers().filter(x => x.username !== u.username);
+                                        saveUsers(updated);
+                                        discardUserDraft(u.username);
+                                        setSelectedAdminUser(null);
+                                        setShowAdmin(false);
+                                        setTimeout(() => setShowAdmin(true), 30);
+                                      }
+                                    }}
+                                    className="text-[10px] font-bold text-rose-500 hover:text-rose-600 hover:underline cursor-pointer flex items-center gap-1 border border-rose-200 dark:border-rose-950/60 px-2 py-1 rounded-lg bg-rose-500/5 hover:bg-rose-500/10 transition"
+                                  >
+                                    🗑️ Delete Profile
+                                  </button>
+                                )}
                               </div>
 
-                              {u.username !== currentUserObj?.username && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (confirm(`Are you sure you want to permanently delete user "${u.username}"?`)) {
-                                      const updated = getUsers().filter(x => x.username !== u.username);
-                                      saveUsers(updated);
-                                      discardUserDraft(u.username);
-                                      setSelectedAdminUser(null);
-                                      setShowAdmin(false);
-                                      setTimeout(() => setShowAdmin(true), 30);
-                                    }
-                                  }}
-                                  className="text-[10px] font-bold text-rose-500 hover:text-rose-600 hover:underline cursor-pointer flex items-center gap-1 border border-rose-200 dark:border-rose-950/60 px-2 py-1 rounded-lg bg-rose-500/5 hover:bg-rose-500/10 transition"
-                                >
-                                  🗑️ Delete Profile
-                                </button>
-                              )}
+                              {/* Quick Credential Badges Row */}
+                              <div className="flex items-center gap-1.5 flex-wrap pt-1.5 border-t border-slate-100 dark:border-slate-800 text-[10px]">
+                                <span className="px-2 py-0.5 rounded-md font-extrabold text-[9px] uppercase border bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800/60">
+                                  Role: {uDraft.role}
+                                </span>
+                                <span className={`px-2 py-0.5 rounded-md font-extrabold text-[9px] uppercase border ${
+                                  (uDraft.status || 'Active') === 'Active'
+                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300'
+                                    : 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300'
+                                }`}>
+                                  Status: {uDraft.status || 'Active'}
+                                </span>
+                                {isPending ? (
+                                  <span className="px-2 py-0.5 bg-amber-500 text-white rounded-md font-extrabold text-[9px] uppercase animate-pulse">
+                                    ⏳ Pending Approval
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 bg-emerald-600 text-white rounded-md font-extrabold text-[9px] uppercase">
+                                    ✓ Approved & Active
+                                  </span>
+                                )}
+                                {(uDraft.hasApprovalCredential || u.hasApprovalCredential) && (
+                                  <span className="px-2 py-0.5 bg-purple-600 text-white rounded-md font-extrabold text-[9px] uppercase flex items-center gap-1">
+                                    🛡️ Approval Authority
+                                  </span>
+                                )}
+                                {uDraft.email && (
+                                  <span className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-md text-[9px]">
+                                    ✉️ {uDraft.email}
+                                  </span>
+                                )}
+                                {uDraft.phone && (
+                                  <span className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-md text-[9px]">
+                                    📞 {uDraft.phone}
+                                  </span>
+                                )}
+                              </div>
                             </div>
 
                             {/* Control Area Selector Tabs */}
@@ -5115,168 +5176,412 @@ let isBatchSyncRunning = false;
                             )}
 
                             {/* TAB 3: CREDENTIALS & PRIVILEGE STATUS */}
-                            {selectedAdminTab === 'credentials' && (
-                              <div className="space-y-3 animate-fade-in">
-                                <div className="bg-white dark:bg-slate-850 border border-slate-150 dark:border-slate-750 p-3.5 rounded-2xl space-y-3">
-                                  <span className="text-[10px] text-slate-450 dark:text-slate-400 block font-bold uppercase tracking-wider">
-                                    Account Privilege & Passcode variables
-                                  </span>
+                            {selectedAdminTab === 'credentials' && (() => {
+                              const getRoleMeta = (roleVal: User['role']) => {
+                                switch (roleVal) {
+                                  case 'era_approver':
+                                    return { title: '🏛️ ERA Approver', badgeClass: 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border-blue-200 dark:border-blue-800', desc: 'Full ERA governance power. Can approve/certify all project submissions, IPC variations, and BOQ changes.' };
+                                  case 'era_editor':
+                                    return { title: '✏️ ERA Editor', badgeClass: 'bg-sky-100 text-sky-800 dark:bg-sky-950/60 dark:text-sky-300 border-sky-200 dark:border-sky-800', desc: 'ERA data entry officer. Can edit BOQ, physical progress, and contract financial data.' };
+                                  case 'consultant_approver':
+                                    return { title: '👔 Consultant Approver', badgeClass: 'bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 border-purple-200 dark:border-purple-800', desc: 'Supervision consultant lead. Can review submittals and approve draft submissions. Excluded from Performance KPIs, History, Settings, and Issue Log.' };
+                                  case 'consultant_editor':
+                                    return { title: '📝 Consultant Editor', badgeClass: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800', desc: 'Consultant site staff. Enters daily logs and staffing records. Excluded from Performance KPIs, History, Settings, and Issue Log.' };
+                                  case 'contractor_editor':
+                                    return { title: '🚜 Contractor Editor', badgeClass: 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border-amber-200 dark:border-amber-800', desc: 'Contractor portal officer. Access restricted strictly to the Submittal Log page. All other system pages are hidden.' };
+                                  case 'admin':
+                                  case 'master_admin':
+                                    return { title: '👑 Master Admin', badgeClass: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800', desc: 'Full system administration authority across all contracts, directorates, users, and security settings.' };
+                                  case 'directorate_admin':
+                                    return { title: '🏢 Directorate Admin', badgeClass: 'bg-teal-100 text-teal-800 dark:bg-teal-950/60 dark:text-teal-300 border-teal-200 dark:border-teal-800', desc: 'Admin authority scoped to assigned Program Directorate contracts and user accounts.' };
+                                  case 'pmo_admin':
+                                    return { title: '📁 PMO Admin', badgeClass: 'bg-cyan-100 text-cyan-800 dark:bg-cyan-950/60 dark:text-cyan-300 border-cyan-200 dark:border-cyan-800', desc: 'Admin authority scoped to assigned PMO group projects and user accounts.' };
+                                  case 'approver':
+                                    return { title: '⚖️ Standard Approver', badgeClass: 'bg-violet-100 text-violet-800 dark:bg-violet-950/60 dark:text-violet-300 border-violet-200 dark:border-violet-800', desc: 'Reviewer role with approval credentials for certifying draft updates.' };
+                                  case 'editor':
+                                    return { title: '✏️ Standard Editor', badgeClass: 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border-blue-200 dark:border-blue-800', desc: 'Standard data entry user. Edits assigned pages and submits changes for approval.' };
+                                  default:
+                                    return { title: '👁️ Executive Viewer', badgeClass: 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700', desc: 'Read-only access for executive oversight, dashboards, and reporting.' };
+                                }
+                              };
 
-                                  <div className="grid grid-cols-2 gap-3 text-xs">
-                                    <div>
-                                      <label className="text-[10px] text-slate-400 block font-bold mb-1">Credential Status:</label>
-                                      <select
-                                        value={uDraft.status || 'Active'}
-                                        onChange={(e) => {
-                                          updateUserDraft(u.username, 'status', e.target.value);
-                                        }}
-                                        className={`bg-white dark:bg-slate-800 text-[10px] py-1.5 px-1.5 border rounded-lg font-bold w-full outline-none ${
-                                          (uDraft.status || 'Active') !== (u.status || 'Active') ? 'border-amber-400 ring-1 ring-amber-300 dark:ring-amber-900' : 'border-slate-200 dark:border-slate-700'
-                                        }`}
-                                      >
-                                        <option value="Active">🟢 Active</option>
-                                        <option value="Inactive">🔴 Inactive</option>
-                                      </select>
+                              const roleMeta = getRoleMeta(uDraft.role);
+                              const curPw = uDraft.password || '';
+                              const lenOk = curPw.length >= 8;
+                              const capOk = /[A-Z]/.test(curPw);
+                              const numOk = /[0-9]/.test(curPw);
+                              const isAdminExempt = uDraft.role === 'admin' || uDraft.role === 'master_admin';
+
+                              return (
+                                <div className="space-y-4 animate-fade-in">
+                                  {/* Card 1: Identity & Contact Credentials */}
+                                  <div className="bg-white dark:bg-slate-850 border border-slate-150 dark:border-slate-750 p-4 rounded-2xl space-y-3 shadow-xs">
+                                    <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-2">
+                                      <span className="text-[11px] font-black uppercase tracking-wider text-slate-700 dark:text-zinc-200 flex items-center gap-1.5">
+                                        <span>👤</span> User Identity & Contact Credentials
+                                      </span>
+                                      <span className="text-[9px] text-slate-400 font-medium">Editable Fields</span>
                                     </div>
 
-                                    <div>
-                                      <label className="text-[10px] text-slate-400 block font-bold mb-1">Privilege Role:</label>
-                                      <select
-                                        value={uDraft.role}
-                                        onChange={(e) => {
-                                          updateUserDraft(u.username, 'role', e.target.value as User['role']);
-                                        }}
-                                        className={`bg-white dark:bg-slate-800 text-[10px] py-1.5 px-1.5 border rounded-lg font-bold w-full outline-none ${
-                                          uDraft.role !== u.role ? 'border-amber-400 ring-1 ring-amber-300 dark:ring-amber-900' : 'border-slate-200 dark:border-slate-700'
-                                        }`}
-                                      >
-                                        <option value="era_approver">🏛️ ERA Approver</option>
-                                        <option value="era_editor">✏️ ERA Editor</option>
-                                        <option value="consultant_approver">👔 Consultant Approver</option>
-                                        <option value="consultant_editor">📝 Consultant Editor</option>
-                                        <option value="contractor_editor">🚜 Contractor Editor (Submittal Log Only)</option>
-                                        <option value="editor">Standard Editor</option>
-                                        <option value="viewer">Viewer</option>
-                                        <option value="approver">Standard Approver</option>
-                                        {(currentUserObj?.role === 'master_admin' || currentUserObj?.role === 'admin' || currentUserObj?.username === 'proj_1781786415663') && (
-                                          <>
-                                            <option value="admin">Admin</option>
-                                            <option value="master_admin">Master Admin</option>
-                                            <option value="cpm_admin">CPM Admin (All Projects)</option>
-                                            <option value="directorate_admin">Directorate Admin</option>
-                                          </>
-                                        )}
-                                        {(currentUserObj?.role === 'master_admin' || currentUserObj?.role === 'admin' || currentUserObj?.role === 'directorate_admin' || currentUserObj?.username === 'proj_1781786415663') && (
-                                          <option value="pmo_admin">PMO Admin</option>
-                                        )}
-                                      </select>
-                                    </div>
-
-                                    <div>
-                                      <label className="text-[10px] text-slate-400 block font-bold mb-1">Edit Username:</label>
-                                      <input
-                                        type="text"
-                                        value={uDraft.username}
-                                        onChange={(e) => {
-                                          updateUserDraft(u.username, 'username', e.target.value);
-                                        }}
-                                        className={`bg-white dark:bg-slate-800 text-[10px] py-1.5 px-2 border rounded-lg font-bold w-full outline-none ${
-                                          uDraft.username !== u.username ? 'border-amber-400 ring-1 ring-amber-300 dark:ring-amber-900 text-amber-600 dark:text-amber-400 font-extrabold' : 'border-slate-200 dark:border-slate-700 text-slate-800 dark:text-zinc-100'
-                                        }`}
-                                      />
-                                    </div>
-
-                                    <div>
-                                      <label className="text-[10px] text-slate-400 block font-bold mb-1">Edit Password:</label>
-                                      <div className="relative">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                                      <div>
+                                        <label className="text-[10px] text-slate-400 block font-bold mb-1">Full Legal Name:</label>
                                         <input
-                                          type={visiblePasswords[u.username] ? 'text' : 'password'}
-                                          value={uDraft.password || ''}
-                                          onChange={(e) => {
-                                            updateUserDraft(u.username, 'password', e.target.value);
-                                          }}
-                                          className={`bg-white dark:bg-slate-800 text-[10px] py-1.5 pl-2 pr-7 border rounded-lg font-bold w-full outline-none ${
-                                            uDraft.password !== u.password ? 'border-amber-400 ring-1 ring-amber-300 dark:ring-amber-900 text-amber-600 dark:text-amber-400 font-extrabold' : 'border-slate-200 dark:border-slate-700 text-slate-800 dark:text-zinc-100'
+                                          type="text"
+                                          value={uDraft.fullName || ''}
+                                          onChange={(e) => updateUserDraft(u.username, 'fullName', e.target.value)}
+                                          placeholder="e.g. Abebe Kebede"
+                                          className={`bg-white dark:bg-slate-800 text-xs py-1.5 px-2.5 border rounded-lg font-semibold w-full outline-none ${
+                                            (uDraft.fullName || '') !== (u.fullName || '') ? 'border-amber-400 ring-1 ring-amber-300 text-amber-600 dark:text-amber-400 font-extrabold' : 'border-slate-200 dark:border-slate-700'
                                           }`}
-                                          placeholder="Password"
                                         />
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            setVisiblePasswords(prev => ({
-                                              ...prev,
-                                              [u.username]: !prev[u.username]
-                                            }));
-                                          }}
-                                          className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-650 cursor-pointer p-0.5"
-                                          title={visiblePasswords[u.username] ? "Hide password" : "Show password"}
-                                        >
-                                          {visiblePasswords[u.username] ? (
-                                            <EyeOff className="w-3.5 h-3.5" />
-                                          ) : (
-                                            <Eye className="w-3.5 h-3.5" />
-                                          )}
-                                        </button>
+                                      </div>
+
+                                      <div>
+                                        <label className="text-[10px] text-slate-400 block font-bold mb-1">Username / System Handle:</label>
+                                        <input
+                                          type="text"
+                                          value={uDraft.username}
+                                          onChange={(e) => updateUserDraft(u.username, 'username', e.target.value)}
+                                          className={`bg-white dark:bg-slate-800 text-xs py-1.5 px-2.5 border rounded-lg font-bold w-full outline-none ${
+                                            uDraft.username !== u.username ? 'border-amber-400 ring-1 ring-amber-300 text-amber-600 dark:text-amber-400 font-extrabold' : 'border-slate-200 dark:border-slate-700'
+                                          }`}
+                                        />
+                                      </div>
+
+                                      <div>
+                                        <label className="text-[10px] text-slate-400 block font-bold mb-1">Email Address:</label>
+                                        <input
+                                          type="email"
+                                          value={uDraft.email || ''}
+                                          onChange={(e) => updateUserDraft(u.username, 'email', e.target.value)}
+                                          placeholder="user@era.gov.et"
+                                          className={`bg-white dark:bg-slate-800 text-xs py-1.5 px-2.5 border rounded-lg font-semibold w-full outline-none ${
+                                            (uDraft.email || '') !== (u.email || '') ? 'border-amber-400 ring-1 ring-amber-300 text-amber-600 dark:text-amber-400 font-extrabold' : 'border-slate-200 dark:border-slate-700'
+                                          }`}
+                                        />
+                                      </div>
+
+                                      <div>
+                                        <label className="text-[10px] text-slate-400 block font-bold mb-1">Phone Number:</label>
+                                        <input
+                                          type="text"
+                                          value={uDraft.phone || ''}
+                                          onChange={(e) => updateUserDraft(u.username, 'phone', e.target.value)}
+                                          placeholder="+251 91 123 4567"
+                                          className={`bg-white dark:bg-slate-800 text-xs py-1.5 px-2.5 border rounded-lg font-semibold w-full outline-none ${
+                                            (uDraft.phone || '') !== (u.phone || '') ? 'border-amber-400 ring-1 ring-amber-300 text-amber-600 dark:text-amber-400 font-extrabold' : 'border-slate-200 dark:border-slate-700'
+                                          }`}
+                                        />
                                       </div>
                                     </div>
                                   </div>
 
-                                  {uDraft.role !== 'master_admin' && uDraft.role !== 'admin' && (
-                                    <div className="grid grid-cols-2 gap-3 border-t border-slate-100 dark:border-slate-800 pt-2.5 mt-2.5">
-                                      {uDraft.role !== 'pmo_admin' && (
-                                        <div>
-                                          <label className="text-[10px] text-slate-400 block font-bold mb-1">Directorate Scope:</label>
-                                          {isDirAdmin || isPmoAdmin ? (
-                                            <input 
-                                              type="text" 
-                                              disabled 
-                                              value={currentUserObj?.assignedDirectorate || uDraft.assignedDirectorate || 'Southern'} 
-                                              className="bg-slate-100 dark:bg-slate-800/60 text-[10px] py-1.5 px-2 border border-slate-200 dark:border-slate-700 rounded-lg font-bold w-full text-slate-600 dark:text-slate-400 cursor-not-allowed"
-                                            />
-                                          ) : (
-                                            <select 
-                                              value={uDraft.assignedDirectorate || ''}
-                                              onChange={(e) => updateUserDraft(u.username, 'assignedDirectorate', e.target.value || undefined)}
-                                              className={`bg-white dark:bg-slate-800 text-[10px] py-1.5 px-2 border rounded-lg font-bold w-full outline-none ${
-                                                uDraft.assignedDirectorate !== u.assignedDirectorate ? 'border-amber-400 ring-1 ring-amber-300 dark:ring-amber-900 text-amber-600 dark:text-amber-400 font-extrabold' : 'border-slate-200 dark:border-slate-700 text-slate-800 dark:text-zinc-100'
-                                              }`}
+                                  {/* Card 2: Authentication Passcode & Access Status */}
+                                  <div className="bg-white dark:bg-slate-850 border border-slate-150 dark:border-slate-750 p-4 rounded-2xl space-y-3 shadow-xs">
+                                    <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-2">
+                                      <span className="text-[11px] font-black uppercase tracking-wider text-slate-700 dark:text-zinc-200 flex items-center gap-1.5">
+                                        <span>🔐</span> Authentication Security & Access Status
+                                      </span>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                                      <div>
+                                        <label className="text-[10px] text-slate-400 block font-bold mb-1">Credential Account Status:</label>
+                                        <select
+                                          value={uDraft.status || 'Active'}
+                                          onChange={(e) => updateUserDraft(u.username, 'status', e.target.value)}
+                                          className={`bg-white dark:bg-slate-800 text-xs py-1.5 px-2 border rounded-lg font-bold w-full outline-none ${
+                                            (uDraft.status || 'Active') !== (u.status || 'Active') ? 'border-amber-400 ring-1 ring-amber-300' : 'border-slate-200 dark:border-slate-700'
+                                          }`}
+                                        >
+                                          <option value="Active">🟢 Active (Access Granted)</option>
+                                          <option value="Inactive">🔴 Inactive (Account Suspended)</option>
+                                        </select>
+                                      </div>
+
+                                      <div>
+                                        <label className="text-[10px] text-slate-400 block font-bold mb-1">Account Approval State:</label>
+                                        {uDraft.isPendingApproval || u.isPendingApproval ? (
+                                          <div className="flex items-center justify-between bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-1.5 rounded-lg">
+                                            <span className="text-[10px] font-extrabold text-amber-700 dark:text-amber-300">⏳ Pending Admin Approval</span>
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                updateUserDraft(u.username, 'isPendingApproval', false as any);
+                                                updateUserDraft(u.username, 'status', 'Active');
+                                                updateUserDraft(u.username, 'approvedBy', currentUserObj?.username || 'Admin');
+                                                updateUserDraft(u.username, 'approvedAt', new Date().toISOString());
+                                              }}
+                                              className="text-[9px] font-extrabold bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-0.5 rounded cursor-pointer transition"
                                             >
-                                              <option value="">-- None / All --</option>
-                                              {programDirectorates.map((d, dIdx) => <option key={`udraft-dir-${d}-${dIdx}`} value={d}>{d}</option>)}
-                                            </select>
-                                          )}
+                                              ✓ Approve & Activate
+                                            </button>
+                                          </div>
+                                        ) : (
+                                          <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 p-1.5 rounded-lg text-[10px] font-extrabold text-emerald-700 dark:text-emerald-300 flex items-center gap-1">
+                                            <span>✓</span> Fully Approved & Certified
+                                          </div>
+                                        )}
+                                      </div>
+
+                                      <div>
+                                        <label className="text-[10px] text-slate-400 block font-bold mb-1">Passcode / Secret Key:</label>
+                                        <div className="relative">
+                                          <input
+                                            type={visiblePasswords[u.username] ? 'text' : 'password'}
+                                            value={uDraft.password || ''}
+                                            onChange={(e) => updateUserDraft(u.username, 'password', e.target.value)}
+                                            className={`bg-white dark:bg-slate-800 text-xs py-1.5 pl-2.5 pr-8 border rounded-lg font-bold w-full outline-none ${
+                                              uDraft.password !== u.password ? 'border-amber-400 ring-1 ring-amber-300 text-amber-600 dark:text-amber-400' : 'border-slate-200 dark:border-slate-700'
+                                            }`}
+                                            placeholder="Enter passcode"
+                                          />
+                                          <button
+                                            type="button"
+                                            onClick={() => setVisiblePasswords(prev => ({ ...prev, [u.username]: !prev[u.username] }))}
+                                            className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-650 p-0.5 cursor-pointer"
+                                            title={visiblePasswords[u.username] ? "Hide password" : "Show password"}
+                                          >
+                                            {visiblePasswords[u.username] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                          </button>
                                         </div>
-                                      )}
-                                      
-                                      {uDraft.role !== 'directorate_admin' && (
-                                        <div>
-                                          <label className="text-[10px] text-slate-400 block font-bold mb-1">PMO Group Scope:</label>
-                                          {isPmoAdmin ? (
-                                            <input 
-                                              type="text" 
-                                              disabled 
-                                              value={currentUserObj?.assignedPmo || uDraft.assignedPmo || 'PMO 1'} 
-                                              className="bg-slate-100 dark:bg-slate-800/60 text-[10px] py-1.5 px-2 border border-slate-200 dark:border-slate-700 rounded-lg font-bold w-full text-slate-600 dark:text-slate-400 cursor-not-allowed"
-                                            />
-                                          ) : (
-                                            <select 
-                                              value={uDraft.assignedPmo || ''}
-                                              onChange={(e) => updateUserDraft(u.username, 'assignedPmo', e.target.value || undefined)}
-                                              className={`bg-white dark:bg-slate-800 text-[10px] py-1.5 px-2 border rounded-lg font-bold w-full outline-none ${
-                                                uDraft.assignedPmo !== u.assignedPmo ? 'border-amber-400 ring-1 ring-amber-300 dark:ring-amber-900 text-amber-600 dark:text-amber-400 font-extrabold' : 'border-slate-200 dark:border-slate-700 text-slate-800 dark:text-zinc-100'
-                                              }`}
-                                            >
-                                              <option value="">-- None / All --</option>
-                                              {pmos.map((p, pIdx) => <option key={`udraft-pmo-${p}-${pIdx}`} value={p}>{p}</option>)}
-                                            </select>
-                                          )}
+                                      </div>
+                                    </div>
+
+                                    {/* Password Quality Checker Box */}
+                                    <div className="bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded-xl border border-slate-150 dark:border-slate-800 text-[10px] space-y-1">
+                                      <p className="font-extrabold text-slate-600 dark:text-slate-300 uppercase tracking-wide">
+                                        Password Security Requirement Checklist:
+                                      </p>
+                                      {isAdminExempt ? (
+                                        <span className="text-emerald-600 dark:text-emerald-400 font-bold">
+                                          ✓ Administrator roles are exempt from standard complexity constraints.
+                                        </span>
+                                      ) : (
+                                        <div className="flex items-center gap-3 flex-wrap">
+                                          <span className={`font-extrabold flex items-center gap-0.5 ${lenOk ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'}`}>
+                                            {lenOk ? '✓' : '✗'} Min 8 Characters
+                                          </span>
+                                          <span className={`font-extrabold flex items-center gap-0.5 ${capOk ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'}`}>
+                                            {capOk ? '✓' : '✗'} 1+ Uppercase Letter
+                                          </span>
+                                          <span className={`font-extrabold flex items-center gap-0.5 ${numOk ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'}`}>
+                                            {numOk ? '✓' : '✗'} 1+ Number
+                                          </span>
                                         </div>
                                       )}
                                     </div>
+                                  </div>
+
+                                  {/* Card 3: Privilege Role & Approval Authority Governance */}
+                                  <div className="bg-white dark:bg-slate-850 border border-slate-150 dark:border-slate-750 p-4 rounded-2xl space-y-3 shadow-xs">
+                                    <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-2">
+                                      <span className="text-[11px] font-black uppercase tracking-wider text-slate-700 dark:text-zinc-200 flex items-center gap-1.5">
+                                        <span>🛡️</span> Privilege Role & Approval Authority Governance
+                                      </span>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                                      <div>
+                                        <label className="text-[10px] text-slate-400 block font-bold mb-1">Assign Privilege Role:</label>
+                                        <select
+                                          value={uDraft.role}
+                                          onChange={(e) => updateUserDraft(u.username, 'role', e.target.value as User['role'])}
+                                          className={`bg-white dark:bg-slate-800 text-xs py-1.5 px-2 border rounded-lg font-bold w-full outline-none ${
+                                            uDraft.role !== u.role ? 'border-amber-400 ring-1 ring-amber-300' : 'border-slate-200 dark:border-slate-700'
+                                          }`}
+                                        >
+                                          <option value="era_approver">🏛️ ERA Approver</option>
+                                          <option value="era_editor">✏️ ERA Editor</option>
+                                          <option value="consultant_approver">👔 Consultant Approver</option>
+                                          <option value="consultant_editor">📝 Consultant Editor</option>
+                                          <option value="contractor_editor">🚜 Contractor Editor (Submittal Log Only)</option>
+                                          <option value="editor">Standard Editor</option>
+                                          <option value="viewer">Viewer</option>
+                                          <option value="approver">Standard Approver</option>
+                                          {(currentUserObj?.role === 'master_admin' || currentUserObj?.role === 'admin' || currentUserObj?.username === 'proj_1781786415663') && (
+                                            <>
+                                              <option value="admin">Admin</option>
+                                              <option value="master_admin">Master Admin</option>
+                                              <option value="cpm_admin">CPM Admin (All Projects)</option>
+                                              <option value="directorate_admin">Directorate Admin</option>
+                                            </>
+                                          )}
+                                          {(currentUserObj?.role === 'master_admin' || currentUserObj?.role === 'admin' || currentUserObj?.role === 'directorate_admin' || currentUserObj?.username === 'proj_1781786415663') && (
+                                            <option value="pmo_admin">PMO Admin</option>
+                                          )}
+                                        </select>
+                                      </div>
+
+                                      {/* Approval Credential Authority Switch */}
+                                      <div className="flex flex-col justify-center">
+                                        <label className="text-[10px] text-slate-400 block font-bold mb-1">Approval Authority Credential:</label>
+                                        <label className="flex items-center gap-2 cursor-pointer bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-700/60 p-2 rounded-xl">
+                                          <input
+                                            type="checkbox"
+                                            checked={!!uDraft.hasApprovalCredential}
+                                            onChange={(e) => updateUserDraft(u.username, 'hasApprovalCredential', e.target.checked as any)}
+                                            className="w-4 h-4 text-purple-600 rounded cursor-pointer"
+                                          />
+                                          <div>
+                                            <span className="text-xs font-bold text-slate-800 dark:text-zinc-100 flex items-center gap-1">
+                                              🛡️ Has Official Approval Credential
+                                            </span>
+                                            <p className="text-[9px] text-slate-450 dark:text-slate-400">
+                                              Authorizes user to sign off and approve submitted draft changes.
+                                            </p>
+                                          </div>
+                                        </label>
+                                      </div>
+                                    </div>
+
+                                    {/* Role Capabilities Explanation Banner */}
+                                    <div className={`p-3 rounded-xl border ${roleMeta.badgeClass} space-y-1`}>
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-xs font-extrabold uppercase tracking-wide">
+                                          Role Profile: {roleMeta.title}
+                                        </span>
+                                      </div>
+                                      <p className="text-[10px] leading-relaxed opacity-90">
+                                        {roleMeta.desc}
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  {/* Card 4: Hierarchy & Organizational Credentials */}
+                                  {uDraft.role !== 'master_admin' && uDraft.role !== 'admin' && (
+                                    <div className="bg-white dark:bg-slate-850 border border-slate-150 dark:border-slate-750 p-4 rounded-2xl space-y-3 shadow-xs">
+                                      <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-2">
+                                        <span className="text-[11px] font-black uppercase tracking-wider text-slate-700 dark:text-zinc-200 flex items-center gap-1.5">
+                                          <span>🏢</span> Organizational Scope & Hierarchy
+                                        </span>
+                                      </div>
+
+                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                                        {uDraft.role !== 'pmo_admin' && (
+                                          <div>
+                                            <label className="text-[10px] text-slate-400 block font-bold mb-1">Assigned Directorate:</label>
+                                            {isDirAdmin || isPmoAdmin ? (
+                                              <input 
+                                                type="text" 
+                                                disabled 
+                                                value={currentUserObj?.assignedDirectorate || uDraft.assignedDirectorate || 'Southern'} 
+                                                className="bg-slate-100 dark:bg-slate-800/60 text-xs py-1.5 px-2 border border-slate-200 dark:border-slate-700 rounded-lg font-bold w-full text-slate-600 dark:text-slate-400 cursor-not-allowed"
+                                              />
+                                            ) : (
+                                              <select 
+                                                value={uDraft.assignedDirectorate || ''}
+                                                onChange={(e) => updateUserDraft(u.username, 'assignedDirectorate', e.target.value || undefined)}
+                                                className={`bg-white dark:bg-slate-800 text-xs py-1.5 px-2 border rounded-lg font-bold w-full outline-none ${
+                                                  uDraft.assignedDirectorate !== u.assignedDirectorate ? 'border-amber-400 ring-1 ring-amber-300 text-amber-600 dark:text-amber-400' : 'border-slate-200 dark:border-slate-700 text-slate-800 dark:text-zinc-100'
+                                                }`}
+                                              >
+                                                <option value="">-- None / All --</option>
+                                                {programDirectorates.map((d, dIdx) => <option key={`udraft-dir-${d}-${dIdx}`} value={d}>{d}</option>)}
+                                              </select>
+                                            )}
+                                          </div>
+                                        )}
+
+                                        {uDraft.role !== 'directorate_admin' && (
+                                          <div>
+                                            <label className="text-[10px] text-slate-400 block font-bold mb-1">Assigned PMO Group:</label>
+                                            {isPmoAdmin ? (
+                                              <input 
+                                                type="text" 
+                                                disabled 
+                                                value={currentUserObj?.assignedPmo || uDraft.assignedPmo || 'PMO 1'} 
+                                                className="bg-slate-100 dark:bg-slate-800/60 text-xs py-1.5 px-2 border border-slate-200 dark:border-slate-700 rounded-lg font-bold w-full text-slate-600 dark:text-slate-400 cursor-not-allowed"
+                                              />
+                                            ) : (
+                                              <select 
+                                                value={uDraft.assignedPmo || ''}
+                                                onChange={(e) => updateUserDraft(u.username, 'assignedPmo', e.target.value || undefined)}
+                                                className={`bg-white dark:bg-slate-800 text-xs py-1.5 px-2 border rounded-lg font-bold w-full outline-none ${
+                                                  uDraft.assignedPmo !== u.assignedPmo ? 'border-amber-400 ring-1 ring-amber-300 text-amber-600 dark:text-amber-400' : 'border-slate-200 dark:border-slate-700 text-slate-800 dark:text-zinc-100'
+                                                }`}
+                                              >
+                                                <option value="">-- None / All --</option>
+                                                {pmos.map((p, pIdx) => <option key={`udraft-pmo-${p}-${pIdx}`} value={p}>{p}</option>)}
+                                              </select>
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
+
+                                      {/* Quick Navigation summary badges */}
+                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                                        <button
+                                          type="button"
+                                          onClick={() => setSelectedAdminTab('projects')}
+                                          className="p-2 bg-slate-50 hover:bg-slate-100 dark:bg-slate-900/40 dark:hover:bg-slate-900 border border-slate-200 dark:border-slate-700/60 rounded-xl text-left cursor-pointer transition flex items-center justify-between"
+                                        >
+                                          <div>
+                                            <span className="text-[10px] text-slate-400 font-bold block uppercase">Project Contracts</span>
+                                            <span className="text-xs font-black text-slate-800 dark:text-zinc-100">
+                                              {uDraft.accessibleProjects?.length || 0} Contracts Whitelisted
+                                            </span>
+                                          </div>
+                                          <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400">Configure ➔</span>
+                                        </button>
+
+                                        <button
+                                          type="button"
+                                          onClick={() => setSelectedAdminTab('pages')}
+                                          className="p-2 bg-slate-50 hover:bg-slate-100 dark:bg-slate-900/40 dark:hover:bg-slate-900 border border-slate-200 dark:border-slate-700/60 rounded-xl text-left cursor-pointer transition flex items-center justify-between"
+                                        >
+                                          <div>
+                                            <span className="text-[10px] text-slate-400 font-bold block uppercase">Authorized Pages</span>
+                                            <span className="text-xs font-black text-slate-800 dark:text-zinc-100">
+                                              {uDraft.assignedPages?.length || 0} Pages Authorized
+                                            </span>
+                                          </div>
+                                          <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400">Configure ➔</span>
+                                        </button>
+                                      </div>
+                                    </div>
                                   )}
+
+                                  {/* Card 5: Audit & Credential Issuance Provenance */}
+                                  <div className="bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 p-4 rounded-2xl space-y-2.5">
+                                    <span className="text-[11px] font-black uppercase tracking-wider text-slate-700 dark:text-zinc-200 flex items-center gap-1.5 border-b border-slate-200 dark:border-slate-800 pb-2 block">
+                                      <span>📜</span> Audit & Credential Issuance Provenance
+                                    </span>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-[10px]">
+                                      <div>
+                                        <span className="text-slate-400 block font-bold">Credential Issuer:</span>
+                                        <span className="font-mono font-bold text-slate-800 dark:text-zinc-200">
+                                          {u.assignedBy || 'System Administrator'}
+                                        </span>
+                                      </div>
+
+                                      <div>
+                                        <span className="text-slate-400 block font-bold">Registration Date:</span>
+                                        <span className="font-mono font-bold text-slate-800 dark:text-zinc-200">
+                                          {u.registeredAt ? new Date(u.registeredAt).toLocaleString() : 'Pre-configured System Seed'}
+                                        </span>
+                                      </div>
+
+                                      <div>
+                                        <span className="text-slate-400 block font-bold">Approved By & Timestamp:</span>
+                                        <span className="font-mono font-bold text-slate-800 dark:text-zinc-200">
+                                          {u.approvedBy ? `${u.approvedBy} (${new Date(u.approvedAt || '').toLocaleDateString()})` : (u.isPendingApproval ? '⏳ Awaiting Admin Approval' : 'System Default Approval')}
+                                        </span>
+                                      </div>
+
+                                      <div>
+                                        <span className="text-slate-400 block font-bold">Registered IP Address:</span>
+                                        <span className="font-mono font-bold text-slate-800 dark:text-zinc-200">
+                                          {u.ipAddress || '192.168.1.10 (Static)'}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
                                 </div>
-                              </div>
-                            )}
+                              );
+                            })()}
 
                             {/* TAB 4: SECURITY & ADMIN APPROVAL GOVERNANCE */}
                             {selectedAdminTab === 'activities' && (
