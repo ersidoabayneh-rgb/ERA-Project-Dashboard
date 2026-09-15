@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Building, 
@@ -182,6 +184,8 @@ export default function DashboardView({
   onDeleteProject,
   onUpdateProjectStatus
 }: DashboardViewProps) {
+  const dashboardRef = useRef<HTMLDivElement>(null);
+  const [isExporting, setIsExporting] = useState(false);
   const [selectedRowMetric, setSelectedRowMetric] = useState(
     (project.rowMetrics && project.rowMetrics[4] ? project.rowMetrics[4].name : null) || project.rowMetrics?.[0]?.name || 'ROW Obstruction free Section'
   );

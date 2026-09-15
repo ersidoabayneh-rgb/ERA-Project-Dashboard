@@ -589,6 +589,7 @@ export default function App() {
   // Overlays / Modals
   const [showProfile, setShowProfile] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
+  const [userSearchQuery, setUserSearchQuery] = useState('');
   const [selectedAdminUser, setSelectedAdminUser] = useState<string | null>(null);
   const [selectedAdminTab, setSelectedAdminTab] = useState<'projects' | 'credentials' | 'activities'>('projects');
   const [showApprovals, setShowApprovals] = useState(false);
@@ -829,6 +830,15 @@ export default function App() {
     } catch {
       // Audio might be blocked before first user gesture
     }
+  };
+
+  const handleApproveUserSetting = (username: string) => {
+    handleApproveUserImmediately(username);
+  };
+  
+  const handleRejectUserSetting = (username: string) => {
+    const userToReject = usersListState.find(x => x.username.toLowerCase() === username.toLowerCase());
+    if (userToReject) handleRejectUserPopup(userToReject);
   };
 
   const handleApproveUserImmediately = (username: string) => {
@@ -1111,6 +1121,77 @@ export default function App() {
 
   const discardAllUserDrafts = () => {
     setEditedUsers({});
+  };
+
+  const handleRemoveOrDeleteUser = (targetUsername: string) => {
+    const targetUser = usersListState.find(u => u.username === targetUsername);
+    if (!targetUser) return;
+    
+    const isMasterAdmin = currentUserObj?.role === 'admin' || currentUserObj?.role === 'master_admin' || currentUserObj?.username === 'proj_1781786415663';
+    const isDirAdmin = currentUserObj?.role === 'directorate_admin';
+    const isPmoAdmin = currentUserObj?.role === 'pmo_admin';
+
+    if (isMasterAdmin) {
+      const conf = window.confirm(`Are you sure you want to permanently DELETE user "${targetUsername}" from the database? This action cannot be undone.`);
+      if (!conf) return;
+
+      const updatedUsers = usersListState.filter(u => u.username !== targetUsername);
+      safeSetItem('era_users_v28', JSON.stringify(updatedUsers));
+      setUsersListState(updatedUsers);
+      
+      const newEdited = { ...editedUsers };
+      delete newEdited[targetUsername];
+      setEditedUsers(newEdited);
+      
+      if (selectedAdminUser === targetUsername) {
+         setSelectedAdminUser(null);
+      }
+      
+      safeDeleteUser(targetUsername).catch(() => {});
+      alert(`User "${targetUsername}" deleted from the database.`);
+    } else if (isDirAdmin) {
+      const conf = window.confirm(`Are you sure you want to REMOVE user "${targetUsername}" from your Directorate?`);
+      if (!conf) return;
+      
+      const updatedUsers = usersListState.map(u => 
+        u.username === targetUsername ? { ...u, assignedDirectorate: '', assignedPmo: '' } : u
+      );
+      safeSetItem('era_users_v28', JSON.stringify(updatedUsers));
+      setUsersListState(updatedUsers);
+      
+      const newEdited = { ...editedUsers };
+      delete newEdited[targetUsername];
+      setEditedUsers(newEdited);
+      
+      if (selectedAdminUser === targetUsername) {
+         setSelectedAdminUser(null);
+      }
+      
+      safeSyncUsers(updatedUsers).catch(() => {});
+      alert(`User "${targetUsername}" has been removed from your Directorate.`);
+    } else if (isPmoAdmin) {
+      const conf = window.confirm(`Are you sure you want to REMOVE user "${targetUsername}" from your PMO?`);
+      if (!conf) return;
+      
+      const updatedUsers = usersListState.map(u => 
+        u.username === targetUsername ? { ...u, assignedPmo: '' } : u
+      );
+      safeSetItem('era_users_v28', JSON.stringify(updatedUsers));
+      setUsersListState(updatedUsers);
+      
+      const newEdited = { ...editedUsers };
+      delete newEdited[targetUsername];
+      setEditedUsers(newEdited);
+      
+      if (selectedAdminUser === targetUsername) {
+         setSelectedAdminUser(null);
+      }
+      
+      safeSyncUsers(updatedUsers).catch(() => {});
+      alert(`User "${targetUsername}" has been removed from your PMO.`);
+    } else {
+      alert('You do not have permission to remove users.');
+    }
   };
 
   // Self User Profile & Credentials Update Handler
@@ -1679,56 +1760,9 @@ let isBatchSyncRunning = false;
     }
 
     const pollAllBackendData = () => {
+      // Polling is disabled to accommodate >4000 users and prevent quota exhaustion.
+      // Firestore onSnapshot listeners already provide real-time updates without heavy polling.
       if (!navigator.onLine) return;
-      safeFetchUsers().then(cloudUsers => {
-        if (cloudUsers) mergeAndApplyUsers(cloudUsers);
-      }).catch(() => {});
-
-      safeFetchApprovals().then(cloudApprovals => {
-        if (cloudApprovals) {
-          setPendingApprovals(cloudApprovals);
-          safeSetItem('era_appr_v28', JSON.stringify(cloudApprovals));
-        }
-      }).catch(() => {});
-
-      safeFetchProjects().then(cloudProjects => {
-        if (cloudProjects && cloudProjects.length > 0) {
-          const normalized = cloudProjects.map(syncProjectPayment);
-          setProjects(prev => {
-            let deletedIds: string[] = [];
-            try {
-              const delStr = localStorage.getItem('era_deleted_project_ids') || '[]';
-              deletedIds = JSON.parse(delStr);
-            } catch {}
-
-            const merged = [...prev];
-            normalized.forEach(inc => {
-              if (deletedIds.includes(inc.id)) return;
-              const idx = merged.findIndex(p => p.id === inc.id);
-              if (idx === -1) {
-                merged.push(inc);
-              } else {
-                const existing = merged[idx];
-                const existingTime = existing.lastModifiedAt ? new Date(existing.lastModifiedAt).getTime() : 0;
-                const incTime = inc.lastModifiedAt ? new Date(inc.lastModifiedAt).getTime() : 0;
-                if (incTime >= existingTime) {
-                  merged[idx] = inc;
-                }
-              }
-            });
-            const filtered = merged.filter(p => !deletedIds.includes(p.id));
-            safeSetItem('era_proj_v28', JSON.stringify(filtered));
-            return filtered;
-          });
-        }
-      }).catch(() => {});
-
-      safeFetchConfig().then(cloudConfig => {
-        if (cloudConfig) {
-          if (cloudConfig.pmos) setPmos(cloudConfig.pmos);
-          if (cloudConfig.directorates) setProgramDirectorates(cloudConfig.directorates);
-        }
-      }).catch(() => {});
     };
 
     // Cross-tab and local state synchronization listener
@@ -4455,6 +4489,9 @@ let isBatchSyncRunning = false;
                     setContractorWeights(cont);
                     setConsultantWeights(cons);
                   }}
+                  allUsers={usersListState}
+                  onApproveUser={handleApproveUserSetting}
+                  onRejectUser={handleRejectUserSetting}
                 />
               )}
             </>
@@ -4793,20 +4830,40 @@ let isBatchSyncRunning = false;
                   return u.assignedBy === currentUserObj?.username || u.username === currentUserObj?.username;
                 });
 
-                const adminUsersList = deduplicateUsers(filteredUsers);
+                let adminUsersList = deduplicateUsers(filteredUsers);
+                if (userSearchQuery.trim()) {
+                  const q = userSearchQuery.toLowerCase();
+                  adminUsersList = adminUsersList.filter(u => 
+                    u.username.toLowerCase().includes(q) || 
+                    (u.fullName && u.fullName.toLowerCase().includes(q))
+                  );
+                }
                 const currentSelectedUser = adminUsersList.find(u => u.username === selectedAdminUser) || adminUsersList[0] || null;
+
+                const displayedUsersList = adminUsersList.slice(0, 100);
 
                 return (
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-5 border border-slate-150 dark:border-slate-800 p-4 rounded-2xl bg-slate-50/30 dark:bg-slate-900/10 min-h-[420px]">
                     {/* Left Column: User Buttons list */}
                     <div className="md:col-span-1 space-y-1.5 max-h-[400px] overflow-y-auto pr-2 border-r border-slate-150 dark:border-slate-800/80">
+                      
+                      <div className="mb-3 sticky top-0 bg-slate-50/90 dark:bg-slate-900/90 backdrop-blur-sm pt-1 pb-2 z-10">
+                        <input
+                          type="text"
+                          placeholder="Search users..."
+                          value={userSearchQuery}
+                          onChange={(e) => setUserSearchQuery(e.target.value)}
+                          className="w-full bg-white dark:bg-slate-800 text-xs px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-zinc-200 focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+
                       <span className="text-[10px] text-slate-450 dark:text-slate-400 block font-extrabold mb-2 uppercase tracking-wider">
                         Click User Name to Select:
                       </span>
-                      {adminUsersList.length === 0 ? (
+                      {displayedUsersList.length === 0 ? (
                         <p className="text-3xs text-slate-400 text-center py-6 font-bold">No users found.</p>
                       ) : (
-                        adminUsersList.map((u, idx) => {
+                        displayedUsersList.map((u, idx) => {
                           const isSelected = currentSelectedUser?.username === u.username;
                           const uDraft = editedUsers[u.username] || u;
                           const hasChanges = hasUserChanges(u.username);
@@ -5659,6 +5716,22 @@ let isBatchSyncRunning = false;
                                     💾 Save User
                                   </button>
                                 </div>
+                              </div>
+                            )}
+
+                            {/* Danger Zone: Remove / Delete User */}
+                            {u.username !== currentUserObj?.username && u.username !== 'ersidoabay' && (
+                              <div className="flex justify-between items-center bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/50 p-2.5 rounded-2xl shadow-sm mt-3">
+                                <span className="text-[10px] text-rose-700 dark:text-rose-400 font-extrabold flex items-center gap-1">
+                                  🚨 Danger Zone
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveOrDeleteUser(u.username)}
+                                  className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-black rounded-lg text-2xs uppercase transition shadow-xs flex items-center gap-1 cursor-pointer"
+                                >
+                                  {currentUserObj?.role === 'admin' || currentUserObj?.role === 'master_admin' || currentUserObj?.username === 'proj_1781786415663' ? '🗑️ Permanently Delete User' : '🚫 Remove User'}
+                                </button>
                               </div>
                             )}
                           </div>

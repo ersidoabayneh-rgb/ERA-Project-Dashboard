@@ -1619,9 +1619,11 @@ export function downloadUserManual() {
     'PAGE 19 PURPOSE & UI FEATURE EXPLANATIONS',
     [
       { label: '1. Role-Based Access Control (RBAC):', detail: 'Defines 7 security tiers: Master Admin, CPM Admin, Directorate Admin, PMO, Editor, Viewer, Approver.' },
-      { label: '2. Granular Page Permission Checklists:', detail: 'Allows administrators to selectively grant or restrict editing access to specific pages and modules.' },
-      { label: '3. Approval Authority Workflow:', detail: 'Enforces two-tier approval governance before unapproved mutations take effect in production.' },
-      { label: '4. UI Display & Environment Personalization:', detail: 'Toggles between Dark and Light mode themes and configures ambient rendering speeds.' }
+      { label: '2. 4000+ Users Optimization & Search:', detail: 'Utilizes UI slicing / virtualized list rendering with a real-time query filter to manage over 4,000 accounts lag-free.' },
+      { label: '3. Hierarchical Removal / Deletion:', detail: 'PMO/Directorate Admins can unassign users from their scope, while Master Admins can delete users permanently.' },
+      { label: '4. Granular Page Permission Checklists:', detail: 'Allows administrators to selectively grant or restrict editing access to specific pages and modules.' },
+      { label: '5. Approval Authority Workflow:', detail: 'Enforces two-tier approval governance before unapproved mutations take effect in production.' },
+      { label: '6. UI Display & Environment Personalization:', detail: 'Toggles between Dark and Light mode themes and configures ambient rendering speeds.' }
     ]
   );
 

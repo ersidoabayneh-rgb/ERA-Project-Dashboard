@@ -1760,6 +1760,11 @@ export default function UserGuideSections({ onScrollToSection, onDownloadPdf }: 
                 <br />2) <strong>Select</strong> Role (<em>Master Admin</em>, <em>CPM Admin</em>, <em>Directorate Admin</em>, <em>PMO Admin</em>, <em>Editor</em>, <em>Viewer</em>, or <em>Approver</em>).
                 <br />3) <strong>Check</strong> <strong>Authorized Pages</strong> to restrict editors to specific modules (e.g. only Financials or only Logistics).
                 <br />4) <strong>Toggle</strong> <strong>Approval Authority</strong> to permit users to approve pending submissions.
+                <br />5) <strong>Search Filter & Slicing:</strong> Use the real-time search box above the user roster to instantly filter across 4,000+ registered enterprise users. Sliced virtualized listing ensures optimal performance with no UI lag.
+                <br />6) <strong>Hierarchical Account Removal & Deletion (Danger Zone):</strong>
+                <br />• <em>PMO Admin:</em> Can click <strong>🚫 Remove User</strong> to instantly unassign a user from their designated PMO (revoking PMO project visibility).
+                <br />• <em>Directorate Admin:</em> Can click <strong>🚫 Remove User</strong> to completely unassign a user from their Directorate and all nested PMOs.
+                <br />• <em>Master Admin (and CPM Admin):</em> Can click <strong>🗑️ Permanently Delete User</strong> to completely eradicate the account from the main Firestore database.
               </span>
             </li>
             <li className="flex items-start gap-2">

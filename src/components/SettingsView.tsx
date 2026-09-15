@@ -72,6 +72,9 @@ interface SettingsViewProps {
   contractorWeights?: ContractorScoringWeights;
   consultantWeights?: ConsultantScoringWeights;
   onUpdateScoringWeights?: (contractorWeights: ContractorScoringWeights, consultantWeights: ConsultantScoringWeights) => Promise<void> | void;
+  allUsers?: User[];
+  onApproveUser?: (username: string) => void;
+  onRejectUser?: (username: string) => void;
 }
 
 export default function SettingsView({
@@ -92,7 +95,10 @@ export default function SettingsView({
   currentUser,
   contractorWeights = DEFAULT_CONTRACTOR_SCORING_WEIGHTS,
   consultantWeights = DEFAULT_CONSULTANT_SCORING_WEIGHTS,
-  onUpdateScoringWeights
+  onUpdateScoringWeights,
+  allUsers = [],
+  onApproveUser,
+  onRejectUser
 }: SettingsViewProps) {
 
   const isMasterAdmin = Boolean(
@@ -537,6 +543,60 @@ export default function SettingsView({
         </div>
 
       </div>
+
+      {/* USER SIGN-UP APPROVALS (MASTER ADMIN ONLY) */}
+      {isMasterAdmin && (
+        <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/70 p-6 rounded-2xl shadow-sm space-y-5">
+           <div className="flex items-center gap-3 border-b border-slate-100 dark:border-slate-700/60 pb-4">
+              <Shield className="w-6 h-6 text-amber-500" />
+              <div>
+                <h3 className="font-extrabold text-sm text-slate-900 dark:text-zinc-100">
+                  User Registration Requests & Authentication
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Approve or reject new user sign-up requests.</p>
+              </div>
+           </div>
+           
+           <div className="space-y-3">
+             {allUsers.filter(u => u.isPendingApproval).length === 0 ? (
+               <div className="text-center py-6 text-slate-500 text-xs font-medium border border-dashed border-slate-200 dark:border-slate-700 rounded-xl">
+                 No pending sign-up requests at this time.
+               </div>
+             ) : (
+               allUsers.filter(u => u.isPendingApproval).map(user => (
+                 <div key={user.username} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-100 dark:border-slate-750">
+                   <div>
+                     <div className="flex items-center gap-2 mb-1">
+                       <span className="font-bold text-slate-800 dark:text-slate-200">{user.fullName || user.username}</span>
+                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300">@{user.username}</span>
+                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 capitalize">{user.role.replace('_', ' ')}</span>
+                     </div>
+                     <div className="text-[11px] text-slate-500 dark:text-slate-400 flex flex-wrap items-center gap-3">
+                       {user.email && <span>📧 {user.email}</span>}
+                       {user.phone && <span>📞 {user.phone}</span>}
+                       {user.assignedDirectorate && <span>🏢 {user.assignedDirectorate} Directorate</span>}
+                     </div>
+                   </div>
+                   <div className="flex items-center gap-2 mt-3 sm:mt-0">
+                     <button
+                       onClick={() => onApproveUser?.(user.username)}
+                       className="px-4 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded-xl transition-colors shadow-sm cursor-pointer"
+                     >
+                       Approve Access
+                     </button>
+                     <button
+                       onClick={() => onRejectUser?.(user.username)}
+                       className="px-4 py-2 text-xs font-bold text-slate-700 dark:text-slate-300 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 rounded-xl transition-colors cursor-pointer"
+                     >
+                       Reject
+                     </button>
+                   </div>
+                 </div>
+               ))
+             )}
+           </div>
+        </div>
+      )}
 
       {/* MASTER ADMIN MODAL: Edit Scoring Weights & Save to Configuration Database */}
       {isModalOpen && (
