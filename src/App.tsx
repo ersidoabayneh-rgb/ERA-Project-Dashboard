@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence, animate } from 'motion/react';
 import { 
   HardHat, 
@@ -19,6 +19,7 @@ import {
   Coins,
   Shield,
   ShieldCheck,
+  ShieldAlert,
   Activity,
   Calendar,
   Briefcase,
@@ -38,10 +39,11 @@ import {
   BookOpen,
   Archive,
   Sparkles,
-  Send
+  Send,
+  X
 } from 'lucide-react';
 
-import { Project, User, ApprovalRequest, PrivateDraft, WorkflowAuditLogEntry, KpiAllocatedItem, SeriesItem, MonthlyProgress, LinearData, RowMetric, ProgressPlan, PaymentItem, AnnualItem, WorkProgramActivity, BondGuarantee, formatAccounting, ProjectDocument, ALL_EDITABLE_PAGES, EditablePageOption, ProjectLifecycleStatus, isProjectClosed, isCpmOrMasterAdmin, isRecentlyUpdated, formatRelativeTime, ContractorScoringWeights, ConsultantScoringWeights, DEFAULT_CONTRACTOR_SCORING_WEIGHTS, DEFAULT_CONSULTANT_SCORING_WEIGHTS } from './types';
+import { Project, User, ApprovalRequest, PrivateDraft, WorkflowAuditLogEntry, KpiAllocatedItem, SeriesItem, MonthlyProgress, LinearData, RowMetric, ProgressPlan, PaymentItem, AnnualItem, WorkProgramActivity, BondGuarantee, formatAccounting, ProjectDocument, ALL_EDITABLE_PAGES, EditablePageOption, ProjectLifecycleStatus, isProjectClosed, isCpmOrMasterAdmin, isRecentlyUpdated, formatRelativeTime, ContractorScoringWeights, ConsultantScoringWeights, DEFAULT_CONTRACTOR_SCORING_WEIGHTS, DEFAULT_CONSULTANT_SCORING_WEIGHTS, SupervisionConsultantInfo } from './types';
 
 export function hasApprovalCredentials(user: User | null): boolean {
   if (!user) return false;
@@ -409,7 +411,7 @@ export default function App() {
     if (currentProject) {
       setEditProjectName(currentProject.name || '');
       setEditClient(currentProject.client || '');
-      setEditConsultant(currentProject.consultant || '');
+      setEditConsultant(currentProject.supervisionConsultant?.firmName || currentProject.consultant || '');
       setEditContractor(currentProject.contractor || '');
       setEditSignDate(currentProject.signDate || '');
       setEditStartDate(currentProject.startDate || '');
@@ -428,7 +430,7 @@ export default function App() {
       setEditProgramDirectorate(currentProject.programDirectorate || 'Southern');
       setEditPmo(currentProject.pmo || 'PMO 1');
     }
-  }, [currentProject?.id, currentProject?.lastModifiedAt]);
+  }, [currentProject?.id, currentProject?.lastModifiedAt, currentProject?.consultant, currentProject?.supervisionConsultant?.firmName]);
 
   const initialSampleDrafts: PrivateDraft[] = [
     {
@@ -563,6 +565,17 @@ export default function App() {
   const [selectedAdminTab, setSelectedAdminTab] = useState<'projects' | 'credentials' | 'activities'>('projects');
   const [showApprovals, setShowApprovals] = useState(false);
   const [showDraftsPlayground, setShowDraftsPlayground] = useState(false);
+  const [showProjectApprovalBanner, setShowProjectApprovalBanner] = useState(true);
+
+  // Compute pending approval requests specifically scoped to the currently opened project
+  const currentProjectPendingApprovals = useMemo(() => {
+    if (!currentProject) return [];
+    return pendingApprovals.filter(a =>
+      a.projectId === currentProject.id &&
+      a.status === 'pending' &&
+      canUserApproveRequest(currentUserObj, a, projects)
+    );
+  }, [pendingApprovals, currentProject, currentUserObj, projects]);
   
   // Network simulation peers list
   const [onlinePeers, setOnlinePeers] = useState<string[]>([]);
@@ -2128,7 +2141,7 @@ let isBatchSyncRunning = false;
     setCurrentPage('projects');
   };
 
-  const handleSelectProject = (id: string) => {
+  const handleSelectProject = (id: string, autoOpenApprovals: boolean = false) => {
     const isMasterAdmin = currentUserObj?.role === 'admin' || currentUserObj?.role === 'master_admin' || currentUserObj?.role === 'cpm_admin' || currentUserObj?.username === 'proj_1781786415663';
     if (!isMasterAdmin) {
       const proj = projects.find(pr => pr.id === id);
@@ -2154,6 +2167,10 @@ let isBatchSyncRunning = false;
     const p = projects.find(pr => pr.id === id);
     if (p) {
       setCurrentProject(p);
+      setShowProjectApprovalBanner(true);
+      if (autoOpenApprovals) {
+        setShowApprovals(true);
+      }
       setCurrentPage('dashboard');
       if (currentUserObj && currentUserObj.assignedPages && Array.isArray(currentUserObj.assignedPages) && currentUserObj.assignedPages.length > 0 && !isMasterAdmin) {
         if (!currentUserObj.assignedPages.includes(activeTab)) {
@@ -2427,6 +2444,22 @@ let isBatchSyncRunning = false;
       lastModifiedSection: sectionName
     };
 
+    // 0. Automatic bidirectional link: Supervising Consultant on Project Information & Supervision Agreement Consulting Firm
+    if (fields.consultant !== undefined || fields.supervisionConsultant !== undefined) {
+      const firmFromSc = fields.supervisionConsultant?.firmName !== undefined ? fields.supervisionConsultant.firmName.trim() : undefined;
+      const firmFromConsultant = fields.consultant !== undefined ? fields.consultant.trim() : undefined;
+      const resolvedFirm = firmFromSc !== undefined 
+        ? firmFromSc 
+        : (firmFromConsultant !== undefined ? firmFromConsultant : (currentProject.supervisionConsultant?.firmName || currentProject.consultant || ''));
+
+      updatedProject.consultant = resolvedFirm;
+      updatedProject.supervisionConsultant = {
+        ...(currentProject.supervisionConsultant || {}),
+        ...(fields.supervisionConsultant || {}),
+        firmName: resolvedFirm
+      } as SupervisionConsultantInfo;
+    }
+
     // 1. S-Curve & Overall Physical Progress automatic bidirectional integration
     if (fields.physicalProgress !== undefined) {
       const syncResult = updateMonthlyWithProgress(currentProject, fields.physicalProgress);
@@ -2693,7 +2726,9 @@ let isBatchSyncRunning = false;
           updatedAt: nowIso,
           snapshotData: {
             ...privateDrafts[existingDraftIndex].snapshotData,
-            ...fields
+            ...fields,
+            ...(updatedProject.consultant ? { consultant: updatedProject.consultant } : {}),
+            ...(updatedProject.supervisionConsultant ? { supervisionConsultant: updatedProject.supervisionConsultant } : {})
           },
           baselineData: currentProject,
           status: 'draft'
@@ -2713,7 +2748,11 @@ let isBatchSyncRunning = false;
           createdAt: nowIso,
           updatedAt: nowIso,
           status: 'draft',
-          snapshotData: { ...fields },
+          snapshotData: {
+            ...fields,
+            ...(updatedProject.consultant ? { consultant: updatedProject.consultant } : {}),
+            ...(updatedProject.supervisionConsultant ? { supervisionConsultant: updatedProject.supervisionConsultant } : {})
+          },
           baselineData: currentProject,
           grantedAccessUsernames: []
         };
@@ -2725,6 +2764,7 @@ let isBatchSyncRunning = false;
 
       // Reflect in the editor's current local session view
       setCurrentProject(updatedProject);
+      setEditConsultant(updatedProject.consultant || updatedProject.supervisionConsultant?.firmName || '');
 
       // Record in governance workflow audit log
       const logEntry: WorkflowAuditLogEntry = {
@@ -2756,6 +2796,7 @@ let isBatchSyncRunning = false;
     const updatedProjects = projects.map(p => p.id === currentProject.id ? updatedProject : p);
     setProjects(updatedProjects);
     setCurrentProject(updatedProject);
+    setEditConsultant(updatedProject.consultant || updatedProject.supervisionConsultant?.firmName || '');
     safeSetItem('era_proj_v28', JSON.stringify(updatedProjects));
 
     // Sync current update to Cloud Databases in real-time
@@ -2858,9 +2899,14 @@ let isBatchSyncRunning = false;
 
   const handleSaveDossier = () => {
     if (!currentProject) return;
+    const trimmedConsultant = editConsultant.trim();
     const fields: Partial<Project> = {
       client: editClient,
-      consultant: editConsultant,
+      consultant: trimmedConsultant,
+      supervisionConsultant: {
+        ...(currentProject.supervisionConsultant || {}),
+        firmName: trimmedConsultant
+      } as SupervisionConsultantInfo,
       contractor: editContractor,
       signDate: editSignDate,
       startDate: editStartDate,
@@ -3294,26 +3340,26 @@ let isBatchSyncRunning = false;
                   <CheckCircle className="w-3.5 h-3.5" />
                   <span>{currentUserObj?.role === 'editor' ? 'Private Draft Workspace' : 'Save to Database'}</span>
                 </button>
-                {/* Workflow & Approvals Shortcut */}
+                {/* Workflow & Approvals Shortcut (Scoped strictly to currently opened project) */}
                 <button
                   onClick={() => setShowApprovals(true)}
                   className={`p-2 rounded-full border flex items-center gap-1.5 text-[11px] font-extrabold px-3 py-1.5 transition shadow-sm ${
                     hasApprovalCredentials(currentUserObj)
-                      ? pendingApprovals.filter(a => a.status === 'pending').length > 0
+                      ? currentProjectPendingApprovals.length > 0
                         ? 'bg-amber-500 hover:bg-amber-600 text-white border-amber-600 animate-pulse'
                         : 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-700'
                       : currentUserObj?.role === 'editor'
                       ? 'bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-700'
                       : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-700'
                   }`}
-                  title={currentUserObj?.role === 'editor' ? 'Manage Private Drafts' : 'Review & Certify Workflow Approvals'}
+                  title={currentUserObj?.role === 'editor' ? `Manage Private Drafts for ${currentProject?.name}` : `Review & Certify Approvals for ${currentProject?.name}`}
                 >
                   <ShieldCheck className="w-3.5 h-3.5" />
                   <span>
-                    {currentUserObj?.role === 'editor' ? 'Private Drafts' : 'Approvals'}
-                    {hasApprovalCredentials(currentUserObj) && pendingApprovals.filter(a => a.status === 'pending').length > 0 && (
+                    {currentUserObj?.role === 'editor' ? 'Private Drafts' : 'Project Approvals'}
+                    {hasApprovalCredentials(currentUserObj) && currentProjectPendingApprovals.length > 0 && (
                       <span className="ml-1 px-1.5 py-0.2 bg-white text-amber-700 rounded-full text-[9px] font-black">
-                        {pendingApprovals.filter(a => a.status === 'pending').length}
+                        {currentProjectPendingApprovals.length}
                       </span>
                     )}
                   </span>
@@ -3387,6 +3433,48 @@ let isBatchSyncRunning = false;
                 </button>
               </div>
             </header>
+
+            {/* Project-Specific Pending Approvals Alert Banner (Displayed within the project when opening it) */}
+            {hasApprovalCredentials(currentUserObj) && currentProjectPendingApprovals.length > 0 && showProjectApprovalBanner && (
+              <motion.div
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-gradient-to-r from-amber-500/15 via-amber-500/10 to-amber-500/5 border border-amber-500/30 dark:border-amber-500/40 rounded-2xl p-3.5 mb-2 flex items-center justify-between flex-wrap gap-3 shadow-xs"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs animate-pulse">
+                    <ShieldAlert className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="font-black text-xs sm:text-sm text-slate-850 dark:text-white flex items-center gap-2">
+                      <span>{currentProjectPendingApprovals.length} Pending Approval Request{currentProjectPendingApprovals.length > 1 ? 's' : ''} for {currentProject.name}</span>
+                      <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-amber-500 text-white shadow-2xs">
+                        Action Required
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5">
+                      Review submitted field variations for <strong>{currentProject.name}</strong> before committing changes to the live project baseline.
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowApprovals(true)}
+                    className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    <span>Review Approvals ({currentProjectPendingApprovals.length})</span>
+                  </button>
+                  <button
+                    onClick={() => setShowProjectApprovalBanner(false)}
+                    className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs p-1.5 rounded-lg hover:bg-slate-200/50 dark:hover:bg-slate-800 transition cursor-pointer"
+                    title="Dismiss notification"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </motion.div>
+            )}
 
             {/* Contract Specifications Cards deck */}
             <section className="bg-white dark:bg-slate-850 p-4 border border-slate-100 dark:border-slate-800 shadow-sm rounded-3xl grid grid-cols-2 lg:grid-cols-5 gap-4 text-xs font-semibold text-slate-700 dark:text-slate-300">
@@ -3468,7 +3556,7 @@ let isBatchSyncRunning = false;
                                 setIsEditingDossier(false);
                                 // Reset to original values
                                 setEditClient(currentProject.client);
-                                setEditConsultant(currentProject.consultant);
+                                setEditConsultant(currentProject.supervisionConsultant?.firmName || currentProject.consultant || '');
                                 setEditContractor(currentProject.contractor);
                                 setEditSignDate(currentProject.signDate);
                                 setEditStartDate(currentProject.startDate);
@@ -3517,8 +3605,15 @@ let isBatchSyncRunning = false;
                         </div>
 
                         <div className="space-y-1">
-                          <span className="text-[9px] text-slate-400 block font-mono">SUPERVISING CONSULTANT</span>
-                          <span className="text-slate-800 dark:text-zinc-150 block truncate font-bold" title={currentProject.consultant}>{currentProject.consultant}</span>
+                          <div className="flex items-center justify-between">
+                            <span className="text-[9px] text-slate-400 block font-mono">SUPERVISING CONSULTANT</span>
+                            <span className="text-[8.5px] font-semibold text-emerald-600 dark:text-emerald-400 font-mono flex items-center gap-0.5" title="Bidirectionally linked with Supervision Agreement & Contractual Terms">
+                              🔗 Linked
+                            </span>
+                          </div>
+                          <span className="text-slate-800 dark:text-zinc-150 block truncate font-bold" title={currentProject.supervisionConsultant?.firmName || currentProject.consultant}>
+                            {currentProject.supervisionConsultant?.firmName || currentProject.consultant || 'N/A'}
+                          </span>
                         </div>
 
                         <div className="space-y-1">
@@ -3667,11 +3762,15 @@ let isBatchSyncRunning = false;
                         </div>
 
                         <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
-                          <label className="text-[9px] text-slate-400 block font-mono">SUPERVISING CONSULTANT</label>
+                          <div className="flex items-center justify-between">
+                            <label className="text-[9px] text-slate-400 block font-mono">SUPERVISING CONSULTANT</label>
+                            <span className="text-[8.5px] font-mono text-emerald-600 dark:text-emerald-400">🔗 Syncs with Supervision Agreement Firm</span>
+                          </div>
                           <input
                             type="text"
                             value={editConsultant}
                             onChange={(e) => setEditConsultant(e.target.value)}
+                            placeholder="Consulting Firm / Lead Partner Name"
                             className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1.5 rounded-lg text-slate-850 dark:text-zinc-100 outline-none focus:border-blue-500 focus:ring-1"
                           />
                         </div>
@@ -4232,6 +4331,7 @@ let isBatchSyncRunning = false;
                     approvals={pendingApprovals}
                     auditLogs={workflowAuditLogs}
                     users={usersListState}
+                    currentProjectId={currentProject.id}
                     onSaveDrafts={(updatedDrafts) => {
                       setPrivateDrafts(updatedDrafts);
                       safeSetItem('era_private_drafts_v1', JSON.stringify(updatedDrafts));
@@ -5684,8 +5784,8 @@ let isBatchSyncRunning = false;
         </div>
       )}
 
-      {/* Approvals Modal Overlay */}
-      {showApprovals && hasApprovalCredentials(currentUserObj) && (
+      {/* Approvals Modal Overlay (Scoped strictly to current project) */}
+      {showApprovals && hasApprovalCredentials(currentUserObj) && currentProject && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 animate-fade-in">
           <motion.div 
             initial={{ opacity: 0, scale: 0.95 }}
@@ -5694,23 +5794,28 @@ let isBatchSyncRunning = false;
           >
             <div className="flex justify-between items-center border-b pb-3">
               <div>
-                <h3 className="font-bold text-sm text-slate-850 dark:text-zinc-100 uppercase tracking-wide">
-                  Interim Variance Approvals & Verification
-                </h3>
-                <p className="text-[10px] text-slate-400 font-medium">
-                  Review side-by-side audit comparing <strong className="text-rose-600 dark:text-rose-400">Current State (Live Baseline)</strong> vs <strong className="text-emerald-600 dark:text-emerald-400">Requested Changes (Submitted Draft)</strong>.
+                <div className="flex items-center gap-2">
+                  <span className="bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 text-[10px] font-black px-2 py-0.5 rounded-full border border-amber-300 dark:border-amber-700">
+                    Project-Specific
+                  </span>
+                  <h3 className="font-bold text-sm text-slate-850 dark:text-zinc-100 uppercase tracking-wide">
+                    Approval Requests — {currentProject.name}
+                  </h3>
+                </div>
+                <p className="text-[10px] text-slate-400 font-medium mt-1">
+                  Review side-by-side audit comparing <strong className="text-rose-600 dark:text-rose-400">Current State (Live Baseline)</strong> vs <strong className="text-emerald-600 dark:text-emerald-400">Requested Changes (Submitted Draft)</strong> for {currentProject.name} only.
                 </p>
               </div>
               <button 
                 onClick={() => setShowApprovals(false)}
-                className="text-xs font-bold text-slate-400 hover:text-slate-650 px-2 py-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition"
+                className="text-xs font-bold text-slate-400 hover:text-slate-650 px-2 py-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition cursor-pointer"
               >
                 Close
               </button>
             </div>
 
             <div className="space-y-4">
-              {pendingApprovals.filter(a => a.status === 'pending' && canUserApproveRequest(currentUserObj, a, projects)).map((a, aIdx) => (
+              {currentProjectPendingApprovals.map((a, aIdx) => (
                 <div key={`papp-${a.id || aIdx}-${aIdx}`} className="p-3.5 bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-2xl text-xs space-y-3 shadow-sm">
                   <div className="flex justify-between items-center flex-wrap gap-2 text-2xs text-slate-400 font-bold border-b border-slate-200/60 dark:border-slate-800/80 pb-2">
                     <span className="text-slate-700 dark:text-slate-300 font-extrabold text-xs">{a.projectName}</span>
@@ -5777,8 +5882,18 @@ let isBatchSyncRunning = false;
                                 approvedAt: new Date().toISOString(),
                                 approverRole: currentUserObj.role
                               };
+                              const resolvedFirm = (merged.supervisionConsultant && merged.supervisionConsultant.firmName)
+                                ? merged.supervisionConsultant.firmName
+                                : (merged.consultant || '');
+                              if (resolvedFirm) {
+                                merged.consultant = resolvedFirm;
+                                if (merged.supervisionConsultant) {
+                                  merged.supervisionConsultant.firmName = resolvedFirm;
+                                }
+                              }
                               if (currentProjectId === p.id) {
                                 setCurrentProject(merged);
+                                setEditConsultant(merged.consultant || merged.supervisionConsultant?.firmName || '');
                               }
                               return merged;
                             }
@@ -6202,9 +6317,11 @@ let isBatchSyncRunning = false;
                 </div>
               ))}
 
-              {pendingApprovals.filter(a => a.status === 'pending' && canUserApproveRequest(currentUserObj, a, projects)).length === 0 && (
-                <div className="text-center py-10 text-slate-400 font-medium text-xs">
-                  No pending interim variance requests awaiting signature.
+              {currentProjectPendingApprovals.length === 0 && (
+                <div className="text-center py-10 text-slate-400 font-medium text-xs space-y-2">
+                  <CheckCircle2 className="w-9 h-9 text-emerald-500 mx-auto opacity-70" />
+                  <p className="font-bold text-slate-700 dark:text-slate-300">No Pending Approval Requests for {currentProject.name}</p>
+                  <p className="text-slate-400 text-[11px]">All submitted drafts and interim variance requests for this project have been reviewed.</p>
                 </div>
               )}
             </div>

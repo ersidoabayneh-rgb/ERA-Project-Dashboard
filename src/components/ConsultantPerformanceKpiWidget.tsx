@@ -340,24 +340,36 @@ export default function ConsultantPerformanceKpiWidget({
     let gradeBadgeStyle = 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700';
     
     if (totalPendingDelayedSubmittals > 0) {
-      if (totalEarnedScore >= 80) {
-        gradeLabel = `Grade B+ (Penalized: ${totalPendingDelayedSubmittals} Pending Overdue)`;
-        gradeBadgeStyle = 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border-amber-300 dark:border-amber-700';
+      if (totalEarnedScore >= 90) {
+        gradeLabel = `Grade A- (Penalized: ${totalPendingDelayedSubmittals} Pending Overdue)`;
+        gradeBadgeStyle = 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700';
+      } else if (totalEarnedScore >= 75) {
+        gradeLabel = `Grade B (Penalized: ${totalPendingDelayedSubmittals} Pending Overdue)`;
+        gradeBadgeStyle = 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border-blue-300 dark:border-blue-700';
       } else if (totalEarnedScore >= 60) {
         gradeLabel = `Grade C (Penalized: ${totalPendingDelayedSubmittals} Pending Overdue)`;
-        gradeBadgeStyle = 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 border-rose-300 dark:border-rose-700';
+        gradeBadgeStyle = 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border-amber-300 dark:border-amber-700';
+      } else if (totalEarnedScore >= 50) {
+        gradeLabel = `Grade D (Penalized: ${totalPendingDelayedSubmittals} Pending Overdue)`;
+        gradeBadgeStyle = 'bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-300 border-orange-300 dark:border-orange-700';
       } else {
-        gradeLabel = `Grade F (Non-Compliant: ${totalPendingDelayedSubmittals} Pending Overdue)`;
+        gradeLabel = `Grade Failed (Non-Compliant: ${totalPendingDelayedSubmittals} Pending Overdue)`;
         gradeBadgeStyle = 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 border-rose-300 dark:border-rose-700';
       }
-    } else if (totalEarnedScore >= 85) {
+    } else if (totalEarnedScore >= 90) {
       gradeLabel = 'Grade A (Excellent)';
       gradeBadgeStyle = 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700';
-    } else if (totalEarnedScore >= 70) {
+    } else if (totalEarnedScore >= 75) {
       gradeLabel = 'Grade B (Satisfactory)';
-      gradeBadgeStyle = 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border-amber-300 dark:border-amber-700';
-    } else {
+      gradeBadgeStyle = 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border-blue-300 dark:border-blue-700';
+    } else if (totalEarnedScore >= 60) {
       gradeLabel = 'Grade C (Needs Review)';
+      gradeBadgeStyle = 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border-amber-300 dark:border-amber-700';
+    } else if (totalEarnedScore >= 50) {
+      gradeLabel = 'Grade D (Deficient)';
+      gradeBadgeStyle = 'bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-300 border-orange-300 dark:border-orange-700';
+    } else {
+      gradeLabel = 'Grade Failed (Non-Compliant)';
       gradeBadgeStyle = 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 border-rose-300 dark:border-rose-700';
     }
 

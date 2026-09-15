@@ -95,6 +95,7 @@ export default function ProjectsPage({
   const [selectedPeer, setSelectedPeer] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<'name' | 'id' | 'directorate' | 'bondWarnings' | 'progress' | 'budget' | 'length'>('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  const [filterPendingApprovalsOnly, setFilterPendingApprovalsOnly] = useState(false);
 
   // Group report generator toggle state
   const [showReportGenerator, setShowReportGenerator] = useState(false);
@@ -286,8 +287,14 @@ export default function ProjectsPage({
         if (similarityFilter.type === 'client') return p.client === similarityFilter.value;
         if (similarityFilter.type === 'contractor') return p.contractor === similarityFilter.value;
         return true;
+      })
+      .filter(p => {
+        if (!filterPendingApprovalsOnly) return true;
+        return pendingApprovals.some(
+          a => a.projectId === p.id && a.status === 'pending' && canUserApproveRequest(currentUserObj, a, projects)
+        );
       });
-  }, [projects, isMasterAdmin, currentUserObj, selectedDirectorate, selectedStatusFilter, searchQuery, similarityFilter]);
+  }, [projects, isMasterAdmin, currentUserObj, selectedDirectorate, selectedStatusFilter, searchQuery, similarityFilter, filterPendingApprovalsOnly, pendingApprovals]);
 
   const sortedProjects = useMemo(() => {
     return [...filteredProjects].sort((a, b) => {
@@ -580,19 +587,21 @@ export default function ProjectsPage({
               </button>
             )}
             
-            {!hasNoProjects && hasApprovalCredentials(currentUserObj) && (
+            {!hasNoProjects && hasApprovalCredentials(currentUserObj) && pendingCount > 0 && (
               <button 
-                onClick={onOpenApprovals}
-                className="flex items-center gap-1 bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-xl text-xs font-bold transition relative"
-                title="Review and approve submitted workflow change requests"
+                onClick={() => setFilterPendingApprovalsOnly(prev => !prev)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition relative cursor-pointer ${
+                  filterPendingApprovalsOnly 
+                    ? 'bg-amber-600 text-white shadow-xs ring-2 ring-amber-400/60' 
+                    : 'bg-amber-500 hover:bg-amber-600 text-white'
+                }`}
+                title="Filter contracts with pending approval requests — open any contract to review and approve its specific workflow requests"
               >
                 <CheckSquare className="w-3.5 h-3.5" />
-                Approvals
-                {pendingCount > 0 && (
-                  <span className="absolute -top-1.5 -right-1 bg-rose-600 text-white rounded-full text-[9px] w-4 h-4 flex items-center justify-center animate-pulse">
-                    {pendingCount}
-                  </span>
-                )}
+                <span>{filterPendingApprovalsOnly ? 'Showing Needing Approval' : 'Filter Needing Approval'}</span>
+                <span className="bg-rose-600 text-white rounded-full text-[9px] px-1.5 py-0.2 font-black animate-pulse">
+                  {pendingCount}
+                </span>
               </button>
             )}
 
@@ -969,15 +978,22 @@ export default function ProjectsPage({
                     <button onClick={() => setSimilarityFilter({ type: 'none', value: null })} className="hover:text-amber-900 dark:hover:text-white cursor-pointer ml-0.5">✕</button>
                   </span>
                 )}
+                {filterPendingApprovalsOnly && (
+                  <span className="bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-800/60 px-2 py-0.5 rounded-md font-extrabold text-[11px] flex items-center gap-1">
+                    <span>Pending Review ({pendingCount})</span>
+                    <button onClick={() => setFilterPendingApprovalsOnly(false)} className="hover:text-amber-900 dark:hover:text-white cursor-pointer ml-0.5">✕</button>
+                  </span>
+                )}
               </div>
 
-              {(searchQuery || selectedDirectorate !== 'All' || selectedStatusFilter !== 'All' || similarityFilter.type !== 'none') && (
+              {(searchQuery || selectedDirectorate !== 'All' || selectedStatusFilter !== 'All' || similarityFilter.type !== 'none' || filterPendingApprovalsOnly) && (
                 <button
                   onClick={() => {
                     setSearchQuery('');
                     setSelectedDirectorate('All');
                     setSelectedStatusFilter('All');
                     setSimilarityFilter({ type: 'none', value: null });
+                    setFilterPendingApprovalsOnly(false);
                   }}
                   className="text-xs font-bold text-rose-600 dark:text-rose-400 hover:underline cursor-pointer transition shrink-0 ml-2"
                 >

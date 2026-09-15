@@ -162,8 +162,22 @@ export function handleFsError(err: any): void {
 export function normalizeProject(p: any): Project {
   if (!p) return p;
   const tmpl = defaultProjectTemplate();
+  let linkedConsultantFirm = '';
+  const scFirm = p.supervisionConsultant?.firmName?.trim();
+  const cFirm = p.consultant?.trim();
+  if (scFirm && cFirm && scFirm !== cFirm) {
+    const modSection = (p.lastModifiedSection || '').toLowerCase();
+    if (modSection.includes('project information') || modSection.includes('dossier') || modSection.includes('stakeholder')) {
+      linkedConsultantFirm = cFirm;
+    } else {
+      linkedConsultantFirm = scFirm;
+    }
+  } else {
+    linkedConsultantFirm = scFirm || cFirm || tmpl.supervisionConsultant?.firmName || tmpl.consultant || '';
+  }
   return {
     ...p,
+    consultant: linkedConsultantFirm,
     origDays: typeof p.origDays === 'string' ? parseFloat(p.origDays) || 0 : (p.origDays || 0),
     eotDays: typeof p.eotDays === 'string' ? parseFloat(p.eotDays) || 0 : (p.eotDays || 0),
     variation: typeof p.variation === 'string' ? parseFloat(p.variation) || 0 : (p.variation || 0),
@@ -192,12 +206,12 @@ export function normalizeProject(p: any): Project {
     supervisionConsultant: p.supervisionConsultant ? {
       ...tmpl.supervisionConsultant,
       ...p.supervisionConsultant,
-      firmName: p.supervisionConsultant.firmName || p.consultant || tmpl.supervisionConsultant?.firmName || '',
+      firmName: linkedConsultantFirm,
       personnel: Array.isArray(p.supervisionConsultant.personnel) ? p.supervisionConsultant.personnel : (tmpl.supervisionConsultant?.personnel || []),
       invoices: Array.isArray(p.supervisionConsultant.invoices) ? p.supervisionConsultant.invoices : (tmpl.supervisionConsultant?.invoices || [])
     } : (tmpl.supervisionConsultant ? {
       ...tmpl.supervisionConsultant,
-      firmName: p.consultant || tmpl.supervisionConsultant.firmName
+      firmName: linkedConsultantFirm
     } : undefined)
   };
 }

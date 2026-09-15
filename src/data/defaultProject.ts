@@ -14,6 +14,7 @@ import {
 } from '../types';
 import { calculateProjectEvm } from '../lib/evmCalculations';
 import { resolveCurrentMonthKey, isSameMonth } from '../lib/monthlySync';
+import { getProjectConsultantEvaluation } from './consultantEvaluationMatrix';
 
 export const MILLION = 1_000_000;
 
@@ -1296,6 +1297,48 @@ export const defaultSupervisionConsultant = (): SupervisionConsultantInfo => ({
       remarks: 'Submitted for Resident Engineer and PMO review.',
       attachmentName: 'Consultant_Invoice_05_Submission.pdf'
     }
+  ],
+  previousConsultants: [
+    {
+      id: 'prev_cons_1',
+      firmName: 'Net Consulting Engineers PLC in JV with Core Consulting Ltd',
+      associationType: 'Joint Venture (JV)',
+      jvPartners: 'Net Consulting Engineers (Lead) & Core Consulting Ltd (Member)',
+      contractRefNo: 'ERA/SC/DGM-MM/PREV/2018',
+      commencementDate: '2018-06-15',
+      originalCompletionDate: '2020-06-14',
+      handoverDate: '2020-12-28',
+      transitionReason: 'Completion of Initial Supervision Phase & Joint Venture Contract Restructuring',
+      reasonForTransition: 'Scheduled contract phase transition and re-procurement under revised ERA framework.',
+      transitionNotes: 'All design review dossiers, benchmark surveys, and Phase 1 inspection logs handed over successfully to incoming consultant.',
+      originalFeeEtb: 34500000.00,
+      revisedFeeEtb: 38200000.00,
+      totalInvoicedEtb: 38200000.00,
+      totalPaidEtb: 38200000.00,
+      residentEngineerName: 'Eng. Kassa Hailemariam (PE, MSc)',
+      residentEngineerPhone: '+251 91 123 4455',
+      residentEngineerEmail: 'kassa.h@netconsult.et',
+      siteOfficeLocation: 'Daye Site Camp Section 1',
+      scopeOfServices: 'Phase 1 Construction Supervision, ROW alignment clearance, centerline pegging, and material source exploration.',
+      archivedAt: '2020-12-29T10:00:00.000Z',
+      archivedBy: 'cpm_admin',
+      performanceRating: 'Outstanding',
+      officialGrade: 'A',
+      evaluationScore: 92.4,
+      slaComplianceRatePct: 94.5,
+      evaluationSummary: {
+        slaScore: 94.5,
+        staffingScore: 90.0,
+        ipcScore: 95.0,
+        contractAdminScore: 91.0,
+        qualityScore: 91.5,
+        totalWeightedScore: 92.4,
+        grade: 'A',
+        avgTurnaroundDays: 4.2,
+        submittalsCount: 148,
+        onTimePct: 94.5
+      }
+    }
   ]
 });
 
@@ -1482,46 +1525,574 @@ export const getDefaultMonthlyGradingRecords = (): MonthlyGradingRecord[] => [
   }
 ];
 
-export function resolveProjectMonthlyGrading(project: Project): MonthlyGradingRecord[] {
-  const records = (project.monthlyGradingRecords && project.monthlyGradingRecords.length > 0)
-    ? project.monthlyGradingRecords
-    : getDefaultMonthlyGradingRecords();
+export function parseMonthToYyyyMm(periodStr?: string): string {
+  if (!periodStr) return '';
+  const trimmed = periodStr.trim();
 
-  return records.map(r => {
-    const contractorPlanMonthly = typeof r.contractorPlanMonthly === 'number' ? r.contractorPlanMonthly : 0;
-    const contractorActualMonthly = typeof r.contractorActualMonthly === 'number' ? r.contractorActualMonthly : 0;
-    const contractorPlanCumulative = typeof r.contractorPlanCumulative === 'number' ? r.contractorPlanCumulative : contractorPlanMonthly;
-    const contractorActualCumulative = typeof r.contractorActualCumulative === 'number' ? r.contractorActualCumulative : contractorActualMonthly;
-    const contractorVariance = typeof r.contractorVariance === 'number' ? r.contractorVariance : Number((contractorActualMonthly - contractorPlanMonthly).toFixed(2));
-    const contractorSpi = typeof r.contractorSpi === 'number' ? r.contractorSpi : (contractorPlanMonthly > 0 ? Number((contractorActualMonthly / contractorPlanMonthly).toFixed(2)) : 1.0);
-    const contractorScore = typeof r.contractorScore === 'number' ? r.contractorScore : 80;
-    const consultantSlaTurnaroundScore = typeof r.consultantSlaTurnaroundScore === 'number' ? r.consultantSlaTurnaroundScore : 85;
-    const consultantFiveDimScore = typeof r.consultantFiveDimScore === 'number' ? r.consultantFiveDimScore : 80;
-    const consultantOverallScore = typeof r.consultantOverallScore === 'number' ? r.consultantOverallScore : Number(((consultantSlaTurnaroundScore + consultantFiveDimScore) / 2).toFixed(1));
+  // If already standard ISO 'YYYY-MM' or 'YYYY-MM-DD'
+  if (/^\d{4}-\d{2}/.test(trimmed)) {
+    return trimmed.slice(0, 7);
+  }
+
+  // Handle textual format like 'Dec-20', 'Dec-2020', 'Dec 20', 'December 2020', 'Feb-26'
+  const monthMap: Record<string, string> = {
+    jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
+    jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12'
+  };
+
+  const match = trimmed.match(/^([a-zA-Z]+)[-/\s]+(\d{2,4})/);
+  if (match) {
+    const monthKey = match[1].slice(0, 3).toLowerCase();
+    const mm = monthMap[monthKey] || '01';
+    let yStr = match[2];
+    if (yStr.length === 2) {
+      yStr = '20' + yStr;
+    }
+    return `${yStr}-${mm}`;
+  }
+
+  // Ethiopian month mapping (approximate calendar mapping for comparison and sequencing)
+  const ethMonthMap: Record<string, string> = {
+    meskerem: '09', maskaram: '09',
+    tikimt: '10', teqemt: '10',
+    hidar: '11', hedar: '11',
+    tahsas: '12', tahisas: '12',
+    tir: '01', ter: '01',
+    yakatit: '02', yekatit: '02',
+    megabit: '03', megabyt: '03',
+    miazia: '04', miyazya: '04',
+    ginbot: '05', genbot: '05',
+    sene: '06', sane: '06',
+    hamle: '07', hamile: '07',
+    nehase: '08', nahase: '08',
+    pagume: '09', pagumen: '09'
+  };
+
+  const ethMatch = trimmed.match(/^([a-zA-Z]+)\s*(\d{4})?/);
+  if (ethMatch) {
+    const key = ethMatch[1].toLowerCase();
+    if (ethMonthMap[key]) {
+      const mm = ethMonthMap[key];
+      const ethYear = ethMatch[2] ? parseInt(ethMatch[2], 10) : 2017;
+      // Convert EFY to Gregorian approximate year
+      const gregYear = mm >= '09' ? ethYear + 7 : ethYear + 8;
+      return `${gregYear}-${mm}`;
+    }
+  }
+
+  return trimmed.slice(0, 7);
+}
+
+export function isMonthAboveCurrentMonth(periodStr?: string, recordedDate?: string): boolean {
+  if (!periodStr && !recordedDate) return false;
+  const now = new Date();
+  const currentYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  
+  const parsedYm = parseMonthToYyyyMm(periodStr) || parseMonthToYyyyMm(recordedDate);
+  if (parsedYm && /^\d{4}-\d{2}$/.test(parsedYm)) {
+    return parsedYm > currentYm;
+  }
+  return false;
+}
+
+export function isCurrentMonth(periodStr?: string, recordedDate?: string): boolean {
+  if (!periodStr && !recordedDate) return false;
+  const now = new Date();
+  const currentYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const parsedYm = parseMonthToYyyyMm(periodStr) || parseMonthToYyyyMm(recordedDate);
+  if (parsedYm && /^\d{4}-\d{2}$/.test(parsedYm)) {
+    return parsedYm === currentYm;
+  }
+  return false;
+}
+
+export function matchCanonicalKpiPeriod(project: Project, periodStr?: string): { exactPeriodName: string; parsedYm: string } | null {
+  if (!periodStr || !project) return null;
+  const targetYm = parseMonthToYyyyMm(periodStr);
+  const targetClean = periodStr.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+  // 1. Check progressPlanHistory (Historical KPI records archived from Progress Comparison)
+  if (project.progressPlanHistory && project.progressPlanHistory.length > 0) {
+    for (const h of project.progressPlanHistory) {
+      if (!h.monthLabel) continue;
+      const hYm = parseMonthToYyyyMm(h.monthLabel);
+      const hClean = h.monthLabel.toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (h.monthLabel === periodStr || (targetYm && hYm && targetYm === hYm) || (hClean && targetClean && (targetClean.includes(hClean) || hClean.includes(targetClean)))) {
+        return { exactPeriodName: h.monthLabel, parsedYm: hYm || targetYm };
+      }
+    }
+  }
+
+  // 2. Check monthly progress array (S-Curve periods)
+  if (project.monthly && project.monthly.length > 0) {
+    for (const m of project.monthly) {
+      if (!m.month) continue;
+      const mYm = parseMonthToYyyyMm(m.month);
+      const mClean = m.month.toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (m.month === periodStr || (targetYm && mYm && targetYm === mYm) || (mClean && targetClean && (targetClean.includes(mClean) || mClean.includes(targetClean)))) {
+        return { exactPeriodName: m.month, parsedYm: mYm || targetYm };
+      }
+    }
+  }
+
+  // 3. Check progressPlanLabels (Current period label)
+  if (project.progressPlanLabels?.monthLabel) {
+    const lbl = project.progressPlanLabels.monthLabel;
+    const lYm = parseMonthToYyyyMm(lbl);
+    const lClean = lbl.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (lbl === periodStr || (targetYm && lYm && targetYm === lYm) || (lClean && targetClean && (targetClean.includes(lClean) || lClean.includes(targetClean)))) {
+      return { exactPeriodName: lbl, parsedYm: lYm || targetYm };
+    }
+  }
+
+  return null;
+}
+
+export function compareMonthsDesc(monthA?: string, monthB?: string, dateA?: string, dateB?: string): number {
+  const ymA = parseMonthToYyyyMm(monthA || dateA || '') || monthA || dateA || '';
+  const ymB = parseMonthToYyyyMm(monthB || dateB || '') || monthB || dateB || '';
+  
+  if (ymA && ymB && ymA !== ymB) {
+    return ymB.localeCompare(ymA);
+  }
+  
+  const rawDateA = dateA || monthA || '';
+  const rawDateB = dateB || monthB || '';
+  return rawDateB.localeCompare(rawDateA);
+}
+
+export interface ConsultantTenureResolution {
+  isHistorical: boolean;
+  isBeforeAssignmentDate: boolean;
+  tenureId: string;
+  firmName: string;
+  residentEngineer: string;
+  assignmentDate: string;
+  handoverDate?: string;
+  officialGrade: 'A' | 'B' | 'C' | 'D' | 'F';
+  overallScore: number;
+  slaScore: number;
+  fiveDimScore: number;
+  standing: string;
+  transitionReason?: string;
+  associationType?: string;
+}
+
+export function resolveConsultantForPeriod(project: Project, periodStr?: string): ConsultantTenureResolution {
+  if (!project) {
+    return {
+      isHistorical: false,
+      isBeforeAssignmentDate: false,
+      tenureId: 'current',
+      firmName: 'Supervision Consultant',
+      residentEngineer: 'Resident Engineer',
+      assignmentDate: '2020-12-29',
+      officialGrade: 'B',
+      overallScore: 84.0,
+      slaScore: 88.0,
+      fiveDimScore: 82.0,
+      standing: 'Satisfactory / Standard Standing'
+    };
+  }
+
+  const activeFirmName = project.supervisionConsultant?.firmName || project.consultant || 'Supervision Consultant';
+  const activeCommencementDate = project.supervisionConsultant?.commencementDate || project.startDate || '2020-12-29';
+  const activeRE = project.supervisionConsultant?.residentEngineerName ||
+    project.supervisionConsultant?.personnel?.find(p => p.position?.toLowerCase().includes('resident'))?.name ||
+    'Resident Engineer';
+  const previousConsultants = project.supervisionConsultant?.previousConsultants || [];
+
+  if (!periodStr) {
+    return {
+      isHistorical: false,
+      isBeforeAssignmentDate: false,
+      tenureId: 'current',
+      firmName: activeFirmName,
+      residentEngineer: activeRE,
+      assignmentDate: activeCommencementDate,
+      handoverDate: undefined,
+      officialGrade: 'B',
+      overallScore: 84.0,
+      slaScore: 88.0,
+      fiveDimScore: 82.0,
+      standing: 'Satisfactory / Standard Standing'
+    };
+  }
+
+  const normPeriod = parseMonthToYyyyMm(periodStr); // e.g., '2021-04'
+  const activeStartNorm = parseMonthToYyyyMm(activeCommencementDate); // e.g., '2022-05'
+
+  // Check if period is strictly before the active consultant's assignment date
+  const isBeforeActive = Boolean(activeStartNorm && normPeriod && normPeriod < activeStartNorm);
+
+  if (isBeforeActive && previousConsultants.length > 0) {
+    // 1. Check exact match in previousConsultants tenures
+    for (const prev of previousConsultants) {
+      const prevStart = parseMonthToYyyyMm(prev.commencementDate);
+      const prevEnd = parseMonthToYyyyMm(prev.handoverDate);
+
+      if (prevStart && prevEnd && normPeriod >= prevStart && normPeriod <= prevEnd) {
+        return {
+          isHistorical: true,
+          isBeforeAssignmentDate: true,
+          tenureId: prev.id,
+          firmName: prev.firmName,
+          residentEngineer: prev.residentEngineerName || 'Resident Engineer',
+          assignmentDate: prev.commencementDate,
+          handoverDate: prev.handoverDate,
+          officialGrade: (prev.officialGrade || 'A') as 'A' | 'B' | 'C' | 'D' | 'F',
+          overallScore: typeof prev.evaluationScore === 'number' ? prev.evaluationScore : (prev.evaluationSummary?.totalWeightedScore || 90.0),
+          slaScore: typeof prev.slaComplianceRatePct === 'number' ? prev.slaComplianceRatePct : (prev.evaluationSummary?.slaScore || 92.0),
+          fiveDimScore: prev.evaluationSummary?.qualityScore || 88.0,
+          standing: prev.performanceRating ? `${prev.performanceRating} (Archived Predecessor)` : 'Archived Predecessor Standing',
+          transitionReason: prev.transitionReason,
+          associationType: prev.associationType
+        };
+      }
+    }
+
+    // 2. If no exact interval match, pick the predecessor closest to the period
+    const sortedPrevs = [...previousConsultants].sort((a, b) => 
+      (b.handoverDate || b.commencementDate || '').localeCompare(a.handoverDate || a.commencementDate || '')
+    );
+    const closestPrev = sortedPrevs[0];
+    if (closestPrev) {
+      return {
+        isHistorical: true,
+        isBeforeAssignmentDate: true,
+        tenureId: closestPrev.id,
+        firmName: closestPrev.firmName,
+        residentEngineer: closestPrev.residentEngineerName || 'Resident Engineer',
+        assignmentDate: closestPrev.commencementDate,
+        handoverDate: closestPrev.handoverDate,
+        officialGrade: (closestPrev.officialGrade || 'A') as 'A' | 'B' | 'C' | 'D' | 'F',
+        overallScore: typeof closestPrev.evaluationScore === 'number' ? closestPrev.evaluationScore : (closestPrev.evaluationSummary?.totalWeightedScore || 90.0),
+        slaScore: typeof closestPrev.slaComplianceRatePct === 'number' ? closestPrev.slaComplianceRatePct : (closestPrev.evaluationSummary?.slaScore || 92.0),
+        fiveDimScore: closestPrev.evaluationSummary?.qualityScore || 88.0,
+        standing: closestPrev.performanceRating ? `${closestPrev.performanceRating} (Archived Predecessor)` : 'Archived Predecessor Standing',
+        transitionReason: closestPrev.transitionReason,
+        associationType: closestPrev.associationType
+      };
+    }
+  }
+
+  // Active consultant - retrieve exact values from Consultant SLA Response Performance & Weighted Evaluation Matrix
+  const activeEval = getProjectConsultantEvaluation(project);
+  return {
+    isHistorical: false,
+    isBeforeAssignmentDate: isBeforeActive,
+    tenureId: 'current',
+    firmName: activeEval.firmName || activeFirmName,
+    residentEngineer: activeEval.residentEngineer || activeRE,
+    assignmentDate: activeCommencementDate,
+    handoverDate: undefined,
+    officialGrade: (activeEval.officialGrade || 'B') as 'A' | 'B' | 'C' | 'D' | 'F',
+    overallScore: activeEval.compositeScore ?? activeEval.overallScore ?? 84.0,
+    slaScore: activeEval.slaTurnaroundScore ?? 88.0,
+    fiveDimScore: activeEval.fiveDimScore ?? 82.0,
+    standing: activeEval.officialStanding || 'Satisfactory / Standard Standing'
+  };
+}
+
+export function resolveProjectMonthlyGrading(project: Project): MonthlyGradingRecord[] {
+  if (!project) return [];
+
+  const contractorName = project.contractor || 'Assigned Contractor';
+
+  // 1. If the project already has explicit monthly grading records, format and return them strictly reflecting this project's metadata
+  if (project.monthlyGradingRecords && project.monthlyGradingRecords.length > 0) {
+    // Strictly filter out any record for future months above current month
+    const validRecords = project.monthlyGradingRecords.filter(r => !isMonthAboveCurrentMonth(r.month, r.recordedDate));
+
+    const formatted = validRecords.map(r => {
+      // Crosscheck month name against Historical KPI performance reading table
+      const canonicalMatch = matchCanonicalKpiPeriod(project, r.month || r.monthName);
+      const exactMonthName = canonicalMatch ? canonicalMatch.exactPeriodName : (r.monthName || r.month);
+      const exactMonth = canonicalMatch ? canonicalMatch.exactPeriodName : (r.month || r.monthName);
+
+      const consInfo = resolveConsultantForPeriod(project, r.month || r.recordedDate);
+
+      const isCurr = isCurrentMonth(r.month || r.monthName, r.recordedDate);
+      const contractorPlanMonthly = typeof r.contractorPlanMonthly === 'number' ? r.contractorPlanMonthly : 0;
+      const contractorActualMonthly = typeof r.contractorActualMonthly === 'number' ? r.contractorActualMonthly : 0;
+      const contractorPlanCumulative = typeof r.contractorPlanCumulative === 'number' ? r.contractorPlanCumulative : contractorPlanMonthly;
+      const contractorActualCumulative = typeof r.contractorActualCumulative === 'number' ? r.contractorActualCumulative : contractorActualMonthly;
+      const contractorVariance = typeof r.contractorVariance === 'number' ? r.contractorVariance : Number((contractorActualMonthly - contractorPlanMonthly).toFixed(2));
+      const contractorSpi = typeof r.contractorSpi === 'number' ? r.contractorSpi : (contractorPlanMonthly > 0 ? Number((contractorActualMonthly / contractorPlanMonthly).toFixed(2)) : 1.0);
+      const contractorScore = typeof r.contractorScore === 'number' ? r.contractorScore : 80;
+
+      // Active consultant or open/provisional current month records sync directly with evaluation matrix
+      const isActiveConsultant = !consInfo.isHistorical;
+      const consultantSlaTurnaroundScore = isActiveConsultant || isCurr
+        ? consInfo.slaScore
+        : (typeof r.consultantSlaTurnaroundScore === 'number' ? r.consultantSlaTurnaroundScore : consInfo.slaScore);
+      const consultantFiveDimScore = isActiveConsultant || isCurr
+        ? consInfo.fiveDimScore
+        : (typeof r.consultantFiveDimScore === 'number' ? r.consultantFiveDimScore : consInfo.fiveDimScore);
+      const consultantOverallScore = isActiveConsultant || isCurr
+        ? consInfo.overallScore
+        : (typeof r.consultantOverallScore === 'number' ? r.consultantOverallScore : consInfo.overallScore);
+      const consultantGrade = isActiveConsultant || isCurr
+        ? consInfo.officialGrade
+        : (r.consultantGrade || consInfo.officialGrade);
+      const consultantStanding = isActiveConsultant || isCurr
+        ? consInfo.standing
+        : (r.consultantStanding || consInfo.standing);
+
+      return {
+        ...r,
+        month: exactMonth,
+        monthName: exactMonthName,
+        status: isCurr ? (r.status === 'Approved' ? 'Approved' : 'Provisional') : (r.status || 'Finalized'),
+        contractorName: r.contractorName || contractorName,
+        consultantName: r.consultantName || consInfo.firmName,
+        residentEngineer: r.residentEngineer || consInfo.residentEngineer,
+        consultantTenureId: r.consultantTenureId || consInfo.tenureId,
+        isHistoricalConsultant: r.isHistoricalConsultant !== undefined ? r.isHistoricalConsultant : consInfo.isHistorical,
+        consultantAssignmentDate: r.consultantAssignmentDate || consInfo.assignmentDate,
+        consultantHandoverDate: r.consultantHandoverDate || consInfo.handoverDate,
+        contractorPlanMonthly,
+        contractorActualMonthly,
+        contractorPlanCumulative,
+        contractorActualCumulative,
+        contractorVariance,
+        contractorSpi,
+        contractorScore,
+        contractorGrade: r.contractorGrade || (contractorScore >= 90 ? 'A' : contractorScore >= 80 ? 'B' : contractorScore >= 65 ? 'C' : 'D'),
+        contractorStanding: isCurr ? 'Open / Provisional (Pending Month-End Finalization)' : (r.contractorStanding || (contractorScore >= 80 ? 'Satisfactory / Standard Standing' : 'Caution / Needs Improvement')),
+        consultantSlaTurnaroundScore,
+        consultantFiveDimScore,
+        consultantOverallScore,
+        consultantGrade,
+        consultantStanding,
+        consultantOnTimeRate: typeof r.consultantOnTimeRate === 'number' ? r.consultantOnTimeRate : consultantSlaTurnaroundScore,
+        consultantAvgRfiDays: typeof r.consultantAvgRfiDays === 'number' ? r.consultantAvgRfiDays : 5.5,
+        notes: r.notes || `Specific project audit cycle: ${project.name} (${project.id})`
+      };
+    });
+
+    if (formatted.length > 0) {
+      // Ensure order is strictly from latest month to oldest
+      return formatted.sort((a, b) => compareMonthsDesc(a.month, b.month, a.recordedDate, b.recordedDate));
+    }
+  }
+
+  // 2. Check if the project has archived progressPlanHistory (exact source of Historical KPI performance table)
+  if (project.progressPlanHistory && project.progressPlanHistory.length > 0) {
+    const validHistory = project.progressPlanHistory.filter(h => !isMonthAboveCurrentMonth(h.monthLabel));
+    
+    if (validHistory.length > 0) {
+      const generated: MonthlyGradingRecord[] = validHistory.map(h => {
+        const consInfo = resolveConsultantForPeriod(project, h.monthLabel);
+        const planMonthly = typeof h.eraMonth === 'number' ? h.eraMonth : (typeof h.contractorMonth === 'number' ? h.contractorMonth : 0);
+        const actualMonthly = typeof h.actualMonth === 'number' ? h.actualMonth : 0;
+        const cumPlan = typeof h.eraTodate === 'number' ? h.eraTodate : (typeof h.contractorTodate === 'number' ? h.contractorTodate : planMonthly);
+        const cumActual = typeof h.actualTodate === 'number' ? h.actualTodate : actualMonthly;
+        const variance = Number((actualMonthly - planMonthly).toFixed(2));
+        const spi = planMonthly > 0 ? Number((actualMonthly / planMonthly).toFixed(2)) : 1.0;
+
+        let score = 80;
+        if (spi >= 1.1) score = 95;
+        else if (spi >= 1.0) score = 90;
+        else if (spi >= 0.9) score = 82;
+        else if (spi >= 0.75) score = 72;
+        else score = Math.max(40, Number((60 - (0.75 - spi) * 40).toFixed(1)));
+
+        const grade: 'A' | 'B' | 'C' | 'D' | 'F' = score >= 90 ? 'A' : score >= 80 ? 'B' : score >= 65 ? 'C' : score >= 50 ? 'D' : 'F';
+        const isCurr = isCurrentMonth(h.monthLabel);
+        const standing = isCurr ? 'Open / Provisional (Pending Month-End Finalization)' : (score >= 90 ? 'Superior / Accelerated Progress' : score >= 80 ? 'Satisfactory / Standard Execution' : score >= 65 ? 'Caution / Tolerable Lag' : 'Critical Delay / Underperforming');
+
+        return {
+          id: `mgrad_${project.id}_${h.id || (h.monthLabel || 'm').replace(/[^a-zA-Z0-9]/g, '_')}`,
+          month: h.monthLabel,
+          monthName: h.monthLabel,
+          recordedDate: new Date().toISOString().slice(0, 10),
+          recordedBy: project.client || 'ERA Engineer',
+          status: isCurr ? 'Provisional' : 'Finalized',
+          contractorName,
+          contractorPlanMonthly: planMonthly,
+          contractorActualMonthly: actualMonthly,
+          contractorPlanCumulative: cumPlan,
+          contractorActualCumulative: cumActual,
+          contractorVariance: variance,
+          contractorSpi: spi,
+          contractorScore: score,
+          contractorGrade: grade,
+          contractorStanding: standing,
+          contractorRemarks: isCurr
+            ? `Current active month execution remains open. Contractor progress and grade are provisional until month-end cut-off.`
+            : (actualMonthly >= planMonthly 
+                ? `Monthly execution milestone reached on schedule for ${project.name}.`
+                : `Physical output lag recorded against target work program for ${project.name}.`),
+          consultantName: consInfo.firmName,
+          residentEngineer: consInfo.residentEngineer,
+          consultantTenureId: consInfo.tenureId,
+          isHistoricalConsultant: consInfo.isHistorical,
+          consultantAssignmentDate: consInfo.assignmentDate,
+          consultantHandoverDate: consInfo.handoverDate,
+          consultantSlaTurnaroundScore: consInfo.slaScore,
+          consultantFiveDimScore: consInfo.fiveDimScore,
+          consultantOverallScore: consInfo.overallScore,
+          consultantGrade: consInfo.officialGrade,
+          consultantStanding: consInfo.standing,
+          consultantOnTimeRate: consInfo.slaScore,
+          consultantAvgRfiDays: 5.5,
+          consultantRemarks: consInfo.isHistorical 
+            ? `Historical supervisory sign-offs and Phase handover dossier certified for ${project.name}.`
+            : `Supervisory quality audit and submittal reviews completed for ${project.name}.`,
+          notes: `Historical KPI aligned audit cycle: ${h.monthLabel} (${project.id})`
+        };
+      });
+
+      return generated.sort((a, b) => compareMonthsDesc(a.month, b.month, a.recordedDate, b.recordedDate));
+    }
+  }
+
+  // 3. Check if the specific project has monthly progress records in project.monthly
+  const monthlyList = project.monthly || [];
+  const activeMonths = monthlyList
+    .filter(m => (Number(m.originalPlan || 0) > 0 || Number(m.revisedPlan || 0) > 0 || Number(m.actual || 0) > 0))
+    .filter(m => !isMonthAboveCurrentMonth(m.month));
+
+  if (activeMonths.length > 0) {
+    let runningPlan = 0;
+    let runningActual = 0;
+    
+    // Sort chronologically then build ledger
+    const sorted = [...activeMonths].sort((a, b) => (a.month || '').localeCompare(b.month || ''));
+    const generated: MonthlyGradingRecord[] = [];
+
+    sorted.forEach((m) => {
+      const consInfo = resolveConsultantForPeriod(project, m.month);
+
+      const planMonthly = typeof m.revisedPlan === 'number' && m.revisedPlan > 0 ? m.revisedPlan : (typeof m.originalPlan === 'number' ? m.originalPlan : 0);
+      const actualMonthly = typeof m.actual === 'number' ? m.actual : 0;
+      runningPlan = Number((runningPlan + planMonthly).toFixed(2));
+      runningActual = Number((runningActual + actualMonthly).toFixed(2));
+
+      const variance = Number((actualMonthly - planMonthly).toFixed(2));
+      const spi = planMonthly > 0 ? Number((actualMonthly / planMonthly).toFixed(2)) : 1.0;
+
+      let score = 80;
+      if (spi >= 1.1) score = 95;
+      else if (spi >= 1.0) score = 90;
+      else if (spi >= 0.9) score = 82;
+      else if (spi >= 0.75) score = 72;
+      else score = Math.max(40, Number((60 - (0.75 - spi) * 40).toFixed(1)));
+
+      const grade: 'A' | 'B' | 'C' | 'D' | 'F' = score >= 90 ? 'A' : score >= 80 ? 'B' : score >= 65 ? 'C' : score >= 50 ? 'D' : 'F';
+      const isCurr = isCurrentMonth(m.month);
+      const standing = isCurr ? 'Open / Provisional (Pending Month-End Finalization)' : (score >= 90 ? 'Superior / Accelerated Progress' : score >= 80 ? 'Satisfactory / Standard Execution' : score >= 65 ? 'Caution / Tolerable Lag' : 'Critical Delay / Underperforming');
+
+      generated.push({
+        id: `mgrad_${project.id}_${(m.month || 'm').replace(/[^a-zA-Z0-9]/g, '_')}`,
+        month: m.month,
+        monthName: m.month,
+        recordedDate: new Date().toISOString().slice(0, 10),
+        recordedBy: project.client || 'ERA Engineer',
+        status: isCurr ? 'Provisional' : 'Finalized',
+        contractorName,
+        contractorPlanMonthly: planMonthly,
+        contractorActualMonthly: actualMonthly,
+        contractorPlanCumulative: runningPlan,
+        contractorActualCumulative: runningActual,
+        contractorVariance: variance,
+        contractorSpi: spi,
+        contractorScore: score,
+        contractorGrade: grade,
+        contractorStanding: standing,
+        contractorRemarks: isCurr
+          ? `Current active month execution remains open. Contractor progress and grade are provisional until month-end cut-off.`
+          : (actualMonthly >= planMonthly 
+              ? `Monthly execution milestone reached on schedule for ${project.name}.`
+              : `Physical output lag recorded against target work program for ${project.name}.`),
+        consultantName: consInfo.firmName,
+        residentEngineer: consInfo.residentEngineer,
+        consultantTenureId: consInfo.tenureId,
+        isHistoricalConsultant: consInfo.isHistorical,
+        consultantAssignmentDate: consInfo.assignmentDate,
+        consultantHandoverDate: consInfo.handoverDate,
+        consultantSlaTurnaroundScore: consInfo.slaScore,
+        consultantFiveDimScore: consInfo.fiveDimScore,
+        consultantOverallScore: consInfo.overallScore,
+        consultantGrade: consInfo.officialGrade,
+        consultantStanding: consInfo.standing,
+        consultantOnTimeRate: consInfo.slaScore,
+        consultantAvgRfiDays: 5.5,
+        consultantRemarks: consInfo.isHistorical 
+          ? `Historical supervisory sign-offs and Phase handover dossier certified for ${project.name}.`
+          : `Supervisory quality audit and submittal reviews completed for ${project.name}.`,
+        notes: `Audited cycle for ${project.name} (${project.id})`
+      });
+    });
+
+    // Return strictly in reverse chronological order (newest month first)
+    return generated.sort((a, b) => compareMonthsDesc(a.month, b.month, a.recordedDate, b.recordedDate));
+  }
+
+  // 4. If no explicit monthly history records exist yet, generate baseline cycles tailored specifically to this project
+  const now = new Date();
+  // The latest completed audit record is strictly the month before today (offsets 1, 2, 3)
+  const baselineMonths = [1, 2, 3].map(offset => {
+    const d = new Date(now.getFullYear(), now.getMonth() - offset, 1);
+    return {
+      month: d.toISOString().slice(0, 7),
+      monthName: d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
+      offset
+    };
+  }).filter(b => !isMonthAboveCurrentMonth(b.month));
+
+  const currentPhys = typeof project.physicalProgress === 'number' ? project.physicalProgress : 0;
+
+  const baselineList: MonthlyGradingRecord[] = baselineMonths.map(({ month, monthName, offset }) => {
+    const consInfo = resolveConsultantForPeriod(project, month);
+
+    const planMonthly = Number(Math.max(0.5, (currentPhys / 6) + (offset === 0 ? 0.3 : 0)).toFixed(2));
+    const actualMonthly = Number(Math.max(0.2, planMonthly * (offset === 1 ? 0.85 : 0.95)).toFixed(2));
+    const cumPlan = Number(Math.max(planMonthly, currentPhys - (offset * 1.5)).toFixed(2));
+    const cumActual = Number(Math.max(actualMonthly, currentPhys - (offset * 1.6)).toFixed(2));
+    const variance = Number((actualMonthly - planMonthly).toFixed(2));
+    const spi = planMonthly > 0 ? Number((actualMonthly / planMonthly).toFixed(2)) : 1.0;
+    const score = spi >= 1.0 ? 88.0 : Math.max(50, Number((80 - (1 - spi) * 40).toFixed(1)));
+    const grade: 'A' | 'B' | 'C' | 'D' | 'F' = score >= 90 ? 'A' : score >= 80 ? 'B' : score >= 65 ? 'C' : 'D';
 
     return {
-      ...r,
-      contractorName: r.contractorName || project.contractor || 'China Tisiju Civil Engineering Group',
-      consultantName: r.consultantName || project.consultant || 'LEA Associates South Asia JV',
-      residentEngineer: r.residentEngineer || 'Eng. Dawit Hailu',
-      contractorPlanMonthly,
-      contractorActualMonthly,
-      contractorPlanCumulative,
-      contractorActualCumulative,
-      contractorVariance,
-      contractorSpi,
-      contractorScore,
-      contractorGrade: r.contractorGrade || 'B',
-      contractorStanding: r.contractorStanding || (contractorScore >= 80 ? 'Satisfactory / Standard Standing' : 'Caution / Needs Improvement'),
-      consultantSlaTurnaroundScore,
-      consultantFiveDimScore,
-      consultantOverallScore,
-      consultantGrade: r.consultantGrade || 'B',
-      consultantStanding: r.consultantStanding || (consultantOverallScore >= 80 ? 'Satisfactory / Standard Standing' : 'Caution / Needs Improvement'),
-      consultantOnTimeRate: typeof r.consultantOnTimeRate === 'number' ? r.consultantOnTimeRate : consultantSlaTurnaroundScore,
-      consultantAvgRfiDays: typeof r.consultantAvgRfiDays === 'number' ? r.consultantAvgRfiDays : 6,
+      id: `mgrad_${project.id}_${month.replace('-', '_')}`,
+      month: monthName,
+      monthName: monthName,
+      recordedDate: new Date(now.getFullYear(), now.getMonth() - offset, 28).toISOString().slice(0, 10),
+      recordedBy: project.client || 'ERA Directorate',
+      status: 'Finalized',
+      contractorName,
+      contractorPlanMonthly: planMonthly,
+      contractorActualMonthly: actualMonthly,
+      contractorPlanCumulative: cumPlan,
+      contractorActualCumulative: cumActual,
+      contractorVariance: variance,
+      contractorSpi: spi,
+      contractorScore: score,
+      contractorGrade: grade,
+      contractorStanding: score >= 80 ? 'Satisfactory / Standard Standing' : 'Caution / Needs Improvement',
+      contractorRemarks: `Monthly progress audit logged for ${project.name}.`,
+      consultantName: consInfo.firmName,
+      residentEngineer: consInfo.residentEngineer,
+      consultantTenureId: consInfo.tenureId,
+      isHistoricalConsultant: consInfo.isHistorical,
+      consultantAssignmentDate: consInfo.assignmentDate,
+      consultantHandoverDate: consInfo.handoverDate,
+      consultantSlaTurnaroundScore: consInfo.slaScore,
+      consultantFiveDimScore: consInfo.fiveDimScore,
+      consultantOverallScore: consInfo.overallScore,
+      consultantGrade: consInfo.officialGrade,
+      consultantStanding: consInfo.standing,
+      consultantOnTimeRate: consInfo.slaScore,
+      consultantAvgRfiDays: 5.5,
+      consultantRemarks: `Supervision consultant oversight and inspection sign-offs completed for ${project.name}.`,
+      notes: `Specific project audit cycle: ${project.name} (${project.id})`
     };
   });
+
+  return baselineList.sort((a, b) => compareMonthsDesc(a.month, b.month, a.recordedDate, b.recordedDate));
 }
 
 export function defaultProjectTemplate(): Project {
@@ -1529,7 +2100,7 @@ export function defaultProjectTemplate(): Project {
     id: 'proj_default',
     name: "Daye-Girja-Melka Desta & Meleya-Mejo Spur",
     client: "Ethiopian Roads Administration",
-    consultant: "LEA Associates South Asia JV",
+    consultant: "LEA Associates South Asia JV in Association with SABA Engineering PLC",
     contractor: "China Tisiju Civil Engineering Group",
     signDate: "2020-04-28",
     startDate: "2020-12-29",

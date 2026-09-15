@@ -18,6 +18,7 @@ interface ApprovalWorkflowManagerProps {
   approvals: ApprovalRequest[];
   auditLogs: WorkflowAuditLogEntry[];
   users: User[];
+  currentProjectId?: string;
   onSaveDrafts: (drafts: PrivateDraft[]) => void;
   onSaveApprovals: (approvals: ApprovalRequest[]) => void;
   onSaveProjects: (projects: Project[]) => void;
@@ -33,6 +34,7 @@ export default function ApprovalWorkflowManager({
   approvals,
   auditLogs,
   users,
+  currentProjectId,
   onSaveDrafts,
   onSaveApprovals,
   onSaveProjects,
@@ -66,8 +68,8 @@ export default function ApprovalWorkflowManager({
   const [auditSearch, setAuditSearch] = useState('');
   const [auditActionFilter, setAuditActionFilter] = useState<string>('ALL');
 
-  // Queue filter state
-  const [queueProjectFilter, setQueueProjectFilter] = useState<string>('ALL');
+  // Queue filter state - default to currentProjectId if provided
+  const [queueProjectFilter, setQueueProjectFilter] = useState<string>(currentProjectId || 'ALL');
   const [queueScopeFilter, setQueueScopeFilter] = useState<string>('ALL');
 
   const currentUsername = currentUser?.username || 'anonymous';

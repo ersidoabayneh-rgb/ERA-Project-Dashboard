@@ -60,7 +60,9 @@ import {
   DEFAULT_GRADE_THRESHOLDS,
   evaluateQualitativeGrade,
   SubmittalQuantitativeMetrics,
-  getCriterionSourceInfo
+  getCriterionSourceInfo,
+  CriterionCalculationSource,
+  CriterionSourceInfo
 } from '../data/consultantEvaluationMatrix';
 
 export interface ComprehensiveConsultantEvaluationMatrixViewProps {
@@ -223,10 +225,23 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
   };
 
   // Track which criteria have been manually overridden by the user
-  const [manualOverrides, setManualOverrides] = useState<Record<string, boolean>>({});
+  const [manualOverrides, setManualOverrides] = useState<Record<string, boolean>>(() => {
+    const overrides: Record<string, boolean> = {};
+    if (consultant.detailedEvaluations) {
+      Object.entries(consultant.detailedEvaluations).forEach(([code, ev]: [string, any]) => {
+        const srcInfo = getCriterionSourceInfo({ code });
+        if (srcInfo.source !== 'user_evaluation' && ev.autoEvaluated === false) {
+          overrides[code] = true;
+        }
+      });
+    }
+    return overrides;
+  });
   const [showMetricsFeed, setShowMetricsFeed] = useState(false);
 
   // Evaluation scores state: map of criterion code to evaluation payload
+  // Auto-calculated criteria are populated from live submittals and project DB metrics;
+  // Qualitative criteria provide a user evaluation option and preserve any previous ratings.
   const [evaluations, setEvaluations] = useState<Record<string, {
     score: number;
     actualValue?: string | number;
@@ -234,10 +249,67 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
     formulaEvidence?: string;
     autoEvaluated?: boolean;
     evaluatedAt?: string;
+    calculationSource?: CriterionCalculationSource;
+    isAutoCalculated?: boolean;
+    isUserEvaluated?: boolean;
   }>>(() => {
-    // Always auto-evaluate based on live submittals and criteria quantitative formulas
-    return autoEvaluateAllCriteria(project, consultant, submittalsList);
+    const autoResults = autoEvaluateAllCriteria(project, consultant, submittalsList);
+    if (consultant.detailedEvaluations && Object.keys(consultant.detailedEvaluations).length > 0) {
+      const merged: Record<string, any> = { ...autoResults };
+      Object.entries(consultant.detailedEvaluations).forEach(([code, prevEval]: [string, any]) => {
+        const src = getCriterionSourceInfo({ code });
+        if (src.source === 'user_evaluation' || prevEval.autoEvaluated === false || prevEval.isUserEvaluated) {
+          merged[code] = {
+            ...prevEval,
+            calculationSource: src.source,
+            isAutoCalculated: src.source !== 'user_evaluation',
+            isUserEvaluated: true
+          };
+        }
+      });
+      return merged;
+    }
+    return autoResults;
   });
+
+  // Source categorization filter: All, Auto-Calculated, Submittal, Project DB, User Evaluation Option, Overridden
+  const [sourceFilter, setSourceFilter] = useState<'ALL' | 'AUTO_ALL' | 'AUTO_SUBMITTAL' | 'AUTO_DATABASE' | 'USER_EVALUATION' | 'OVERRIDDEN'>('ALL');
+  // Expanded rubrics state for qualitative user evaluation criteria
+  const [expandedRubrics, setExpandedRubrics] = useState<Record<string, boolean>>({});
+
+  const toggleRubric = (code: string) => {
+    setExpandedRubrics(prev => ({ ...prev, [code]: !prev[code] }));
+  };
+
+  // Compute breakdown counts across quantitative and qualitative criteria
+  const autoCounts = useMemo(() => {
+    let submittalCount = 0;
+    let databaseCount = 0;
+    let userEvalCount = 0;
+    let userRatedCount = 0;
+
+    dynamicCriteriaList.forEach(c => {
+      const info = getCriterionSourceInfo(c);
+      if (info.source === 'auto_submittal') submittalCount++;
+      else if (info.source === 'auto_database') databaseCount++;
+      else {
+        userEvalCount++;
+        const ev = evaluations[c.code];
+        if (ev?.isUserEvaluated && ev?.score !== undefined) {
+          userRatedCount++;
+        }
+      }
+    });
+
+    return {
+      submittal: submittalCount,
+      database: databaseCount,
+      autoTotal: submittalCount + databaseCount,
+      userEval: userEvalCount,
+      userRated: userRatedCount,
+      total: dynamicCriteriaList.length
+    };
+  }, [dynamicCriteriaList, evaluations]);
 
   // UI Filter states
   const [selectedDimension, setSelectedDimension] = useState<DimensionId | 'ALL'>('A');
@@ -409,11 +481,25 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
     return Array.from(map.values());
   }, [dynamicCriteriaList]);
 
-  // Filtered criteria based on active filters
+  // Filtered criteria based on active dimension, category, source, and search filters
   const filteredCriteria = useMemo(() => {
     return dynamicCriteriaList.filter(c => {
       if (selectedDimension !== 'ALL' && c.dim !== selectedDimension) return false;
       if (selectedParentId !== 'ALL' && c.ref !== selectedParentId) return false;
+      
+      const sourceInfo = getCriterionSourceInfo(c);
+      if (sourceFilter === 'AUTO_ALL') {
+        if (sourceInfo.source !== 'auto_submittal' && sourceInfo.source !== 'auto_database') return false;
+      } else if (sourceFilter === 'AUTO_SUBMITTAL') {
+        if (sourceInfo.source !== 'auto_submittal') return false;
+      } else if (sourceFilter === 'AUTO_DATABASE') {
+        if (sourceInfo.source !== 'auto_database') return false;
+      } else if (sourceFilter === 'USER_EVALUATION') {
+        if (sourceInfo.source !== 'user_evaluation') return false;
+      } else if (sourceFilter === 'OVERRIDDEN') {
+        if (!manualOverrides[c.code]) return false;
+      }
+
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         const matchCode = c.code.toLowerCase().includes(q);
@@ -425,7 +511,7 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
       }
       return true;
     });
-  }, [selectedDimension, selectedParentId, searchQuery, dynamicCriteriaList]);
+  }, [selectedDimension, selectedParentId, sourceFilter, searchQuery, dynamicCriteriaList, manualOverrides]);
 
   interface CriteriaGroup {
     parentInfo: {
@@ -458,17 +544,42 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
     return groups;
   }, [filteredCriteria]);
 
-  // Handle score update for an individual criterion (marks as manual override)
+  // Handle score update for an individual criterion:
+  // - If it is an auto-calculated criterion, marks it as a manual override
+  // - If it is a user evaluation option criterion, records the user's qualitative rating
   const handleScoreChange = (criterionId: string, newScore: number) => {
     if (isReadonly || !isAdmin) return;
-    setManualOverrides(prev => ({ ...prev, [criterionId]: true }));
+    const sourceInfo = getCriterionSourceInfo({ code: criterionId });
+    const isAuto = sourceInfo.source !== 'user_evaluation';
+    if (isAuto) {
+      setManualOverrides(prev => ({ ...prev, [criterionId]: true }));
+    }
     setEvaluations(prev => ({
       ...prev,
       [criterionId]: {
         ...(prev[criterionId] || {}),
         score: newScore,
-        autoEvaluated: false,
-        notes: `Manual score override (${newScore}/5) set by evaluator.`
+        autoEvaluated: isAuto ? false : false,
+        isUserEvaluated: true,
+        calculationSource: sourceInfo.source,
+        evaluatedAt: new Date().toISOString(),
+        notes: prev[criterionId]?.notes || (sourceInfo.source === 'user_evaluation'
+          ? `User qualitative performance rating: ${newScore}/5`
+          : `Manual score override (${newScore}/5) set by evaluator.`)
+      }
+    }));
+  };
+
+  // Handle evaluator notes or observation remarks update
+  const handleNotesChange = (criterionId: string, newNotes: string) => {
+    if (isReadonly || !isAdmin) return;
+    setEvaluations(prev => ({
+      ...prev,
+      [criterionId]: {
+        ...(prev[criterionId] || {}),
+        score: prev[criterionId]?.score || 4,
+        notes: newNotes,
+        evaluatedAt: new Date().toISOString()
       }
     }));
   };
@@ -490,9 +601,59 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
         notes: auto.notes,
         formulaEvidence: auto.formulaEvidence,
         autoEvaluated: true,
+        calculationSource: auto.calculationSource,
+        isAutoCalculated: true,
+        isUserEvaluated: false,
         evaluatedAt: new Date().toISOString()
       }
     }));
+  };
+
+  // Recalculate auto-calculated criteria (submittals & project DB) from live data,
+  // without touching qualitative user evaluations
+  const handleRecalculateAutoCriteria = () => {
+    const autoResults = autoEvaluateAllCriteria(project, consultant, submittalsList);
+    setEvaluations(prev => {
+      const next = { ...prev };
+      Object.entries(autoResults).forEach(([code, autoData]) => {
+        const sourceInfo = getCriterionSourceInfo({ code });
+        if (sourceInfo.source !== 'user_evaluation' && !manualOverrides[code]) {
+          next[code] = autoData;
+        }
+      });
+      return next;
+    });
+    setAutoEvaluatedCount(autoCounts.autoTotal);
+    setSaveSuccessMsg(`Recalculated ${autoCounts.autoTotal} auto-criteria from live submittals & project database metrics!`);
+    setTimeout(() => {
+      setAutoEvaluatedCount(null);
+      setSaveSuccessMsg(null);
+    }, 4500);
+  };
+
+  // Quick baseline assigner for qualitative user evaluation criteria
+  const handleSetBaselineUserCriteria = (targetScore = 4) => {
+    if (isReadonly || !isAdmin) return;
+    setEvaluations(prev => {
+      const next = { ...prev };
+      dynamicCriteriaList.forEach(c => {
+        const sourceInfo = getCriterionSourceInfo(c);
+        if (sourceInfo.source === 'user_evaluation') {
+          next[c.code] = {
+            ...(next[c.code] || {}),
+            score: targetScore,
+            isUserEvaluated: true,
+            autoEvaluated: false,
+            calculationSource: 'user_evaluation',
+            evaluatedAt: new Date().toISOString(),
+            notes: next[c.code]?.notes || `Standard benchmark baseline evaluation: ${targetScore}/5`
+          };
+        }
+      });
+      return next;
+    });
+    setSaveSuccessMsg(`Assigned benchmark baseline (${targetScore}/5 - Good) across ${autoCounts.userEval} qualitative user criteria!`);
+    setTimeout(() => setSaveSuccessMsg(null), 4000);
   };
 
   // Auto-evaluate all criteria from current project and submittal records
@@ -832,23 +993,37 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-center font-mono">
-                <div className="bg-slate-50 dark:bg-slate-800/40 p-2 rounded-xl">
-                  <span className="text-[9px] text-slate-400 block font-bold uppercase">Avg Likert</span>
-                  <span className="text-xs font-black text-slate-700 dark:text-slate-300">
-                    {evaluationResult.averageLikert.toFixed(2)}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-center font-mono">
+                <div className="bg-blue-50/50 dark:bg-blue-950/30 p-2 rounded-xl border border-blue-100 dark:border-blue-900/40">
+                  <span className="text-[9px] text-blue-600 dark:text-blue-400 block font-bold uppercase flex items-center justify-center gap-1">
+                    <Zap className="w-2.5 h-2.5" /> Submittals Auto
+                  </span>
+                  <span className="text-xs font-black text-blue-700 dark:text-blue-300">
+                    {autoCounts.submittal} Criteria
                   </span>
                 </div>
-                <div className="bg-slate-50 dark:bg-slate-800/40 p-2 rounded-xl">
-                  <span className="text-[9px] text-slate-400 block font-bold uppercase">Manual</span>
-                  <span className="text-xs font-black text-amber-500">
-                    {overriddenCount}
+                <div className="bg-teal-50/50 dark:bg-teal-950/30 p-2 rounded-xl border border-teal-100 dark:border-teal-900/40">
+                  <span className="text-[9px] text-teal-600 dark:text-teal-400 block font-bold uppercase flex items-center justify-center gap-1">
+                    <Database className="w-2.5 h-2.5" /> Project DB Auto
+                  </span>
+                  <span className="text-xs font-black text-teal-700 dark:text-teal-300">
+                    {autoCounts.database} Criteria
                   </span>
                 </div>
-                <div className="bg-slate-50 dark:bg-slate-800/40 p-2 rounded-xl">
-                  <span className="text-[9px] text-slate-400 block font-bold uppercase">Auto Calcs</span>
-                  <span className="text-xs font-black text-emerald-500">
-                    {105 - overriddenCount}
+                <div className="bg-amber-50/50 dark:bg-amber-950/30 p-2 rounded-xl border border-amber-100 dark:border-amber-900/40">
+                  <span className="text-[9px] text-amber-600 dark:text-amber-400 block font-bold uppercase flex items-center justify-center gap-1">
+                    <Award className="w-2.5 h-2.5" /> User Eval Option
+                  </span>
+                  <span className="text-xs font-black text-amber-700 dark:text-amber-300">
+                    {autoCounts.userEval} Criteria
+                  </span>
+                </div>
+                <div className="bg-slate-50 dark:bg-slate-800/40 p-2 rounded-xl border border-slate-200 dark:border-slate-700">
+                  <span className="text-[9px] text-slate-500 dark:text-slate-400 block font-bold uppercase">
+                    User Rated / Ovr
+                  </span>
+                  <span className="text-xs font-black text-slate-800 dark:text-white">
+                    {autoCounts.userRated} rated · {overriddenCount} ovr
                   </span>
                 </div>
               </div>
@@ -1103,23 +1278,52 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
           </div>
 
           {/* Core Action Command Center */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="space-y-0.5 text-center sm:text-left">
-              <h4 className="text-xs font-black uppercase text-indigo-300 tracking-wider">Evaluation Command Center</h4>
-              <p className="text-[11px] text-slate-400">Save active scores to records, or reset all manual overrides to live calculated results.</p>
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex flex-col lg:flex-row items-center justify-between gap-4">
+            <div className="space-y-1 text-center lg:text-left">
+              <h4 className="text-xs font-black uppercase text-indigo-300 tracking-wider flex items-center justify-center lg:justify-start gap-2">
+                <Sliders className="w-4 h-4 text-indigo-400" />
+                Section 2 Evaluation Command Center
+              </h4>
+              <p className="text-[11px] text-slate-400 max-w-xl">
+                Auto-calculated criteria are populated directly from submittals and the project database, while qualitative criteria provide an interactive user evaluation option.
+              </p>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-center sm:justify-end">
+            <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto justify-center lg:justify-end">
               {!isReadonly && isAdmin && (
-                <button
-                  type="button"
-                  onClick={handleAutoEvaluateAll}
-                  className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold flex items-center gap-1.5 border border-slate-700 transition cursor-pointer"
-                  title="Recalculate all 105 criteria automatically using live submittal logs and project data"
-                >
-                  <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
-                  Reset to Auto Calcs
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={handleRecalculateAutoCriteria}
+                    className="px-3.5 py-2 rounded-xl bg-blue-900/60 hover:bg-blue-800 text-blue-200 text-xs font-bold flex items-center gap-1.5 border border-blue-700 transition cursor-pointer"
+                    title="Recalculate only the criteria gained from submittals and project database without overwriting user ratings"
+                  >
+                    <Zap className="w-3.5 h-3.5 text-blue-400" />
+                    Auto-Calculate ({autoCounts.autoTotal})
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleSetBaselineUserCriteria(4)}
+                    className="px-3.5 py-2 rounded-xl bg-amber-950/60 hover:bg-amber-900 text-amber-200 text-xs font-bold flex items-center gap-1.5 border border-amber-800 transition cursor-pointer"
+                    title="Set all qualitative user criteria to benchmark rating (4 - Good)"
+                  >
+                    <Award className="w-3.5 h-3.5 text-amber-400" />
+                    Set Baseline for User Criteria (4/5)
+                  </button>
+
+                  {overriddenCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleAutoEvaluateAll}
+                      className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold flex items-center gap-1.5 border border-slate-700 transition cursor-pointer"
+                      title="Reset all manual overrides back to calculated results"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
+                      Reset Overrides ({overriddenCount})
+                    </button>
+                  )}
+                </>
               )}
 
               {!isReadonly && isAdmin && (
@@ -1208,6 +1412,89 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
                 >
                   <Plus className="w-3.5 h-3.5" />
                   Add Criterion
+                </button>
+              )}
+            </div>
+
+            {/* Evaluation Source Filter Tabs */}
+            <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <span className="text-xs font-bold text-slate-400 mr-1 flex items-center gap-1">
+                <Filter className="w-3 h-3" /> Evaluation Source:
+              </span>
+              <button
+                type="button"
+                onClick={() => setSourceFilter('ALL')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
+                  sourceFilter === 'ALL'
+                    ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-2xs'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                }`}
+              >
+                All ({dynamicCriteriaList.filter(c => selectedDimension === 'ALL' || c.dim === selectedDimension).length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setSourceFilter('AUTO_ALL')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
+                  sourceFilter === 'AUTO_ALL'
+                    ? 'bg-emerald-600 text-white shadow-2xs'
+                    : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 hover:bg-emerald-100'
+                }`}
+                title="Criteria auto-calculated from Submittals and Project Database"
+              >
+                <Zap className="w-3 h-3" />
+                Auto-Calculated ({dynamicCriteriaList.filter(c => (selectedDimension === 'ALL' || c.dim === selectedDimension) && (getCriterionSourceInfo(c).source === 'auto_submittal' || getCriterionSourceInfo(c).source === 'auto_database')).length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setSourceFilter('AUTO_SUBMITTAL')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
+                  sourceFilter === 'AUTO_SUBMITTAL'
+                    ? 'bg-blue-600 text-white shadow-2xs'
+                    : 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60 hover:bg-blue-100'
+                }`}
+                title="Submittal Logs & Turnaround SLAs"
+              >
+                <FileText className="w-3 h-3" />
+                Submittals ({dynamicCriteriaList.filter(c => (selectedDimension === 'ALL' || c.dim === selectedDimension) && getCriterionSourceInfo(c).source === 'auto_submittal').length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setSourceFilter('AUTO_DATABASE')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
+                  sourceFilter === 'AUTO_DATABASE'
+                    ? 'bg-teal-600 text-white shadow-2xs'
+                    : 'bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800/60 hover:bg-teal-100'
+                }`}
+                title="Project Database (IPCs, SPI, Staff, Invoices, Safety)"
+              >
+                <Database className="w-3 h-3" />
+                Project DB ({dynamicCriteriaList.filter(c => (selectedDimension === 'ALL' || c.dim === selectedDimension) && getCriterionSourceInfo(c).source === 'auto_database').length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setSourceFilter('USER_EVALUATION')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
+                  sourceFilter === 'USER_EVALUATION'
+                    ? 'bg-amber-600 text-white shadow-2xs'
+                    : 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60 hover:bg-amber-100'
+                }`}
+                title="Qualitative Supervisory Performance Criteria requiring User Evaluation"
+              >
+                <Award className="w-3 h-3 text-amber-500" />
+                User Evaluation Option ({dynamicCriteriaList.filter(c => (selectedDimension === 'ALL' || c.dim === selectedDimension) && getCriterionSourceInfo(c).source === 'user_evaluation').length})
+              </button>
+              {overriddenCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSourceFilter('OVERRIDDEN')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
+                    sourceFilter === 'OVERRIDDEN'
+                      ? 'bg-purple-600 text-white shadow-2xs'
+                      : 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/60 hover:bg-purple-100'
+                  }`}
+                >
+                  ✍ Overridden ({overriddenCount})
                 </button>
               )}
             </div>
@@ -1311,6 +1598,14 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
                           const currentScore = evalItem.score || 1;
                           const isOverridden = !!manualOverrides[criterion.code];
                           
+                          const sourceInfo = getCriterionSourceInfo(criterion);
+                          const isSubmittal = sourceInfo.source === 'auto_submittal';
+                          const isDatabase = sourceInfo.source === 'auto_database';
+                          const isUserEval = sourceInfo.source === 'user_evaluation';
+                          const isAuto = isSubmittal || isDatabase;
+                          const isRatedByUser = !!evalItem.isUserEvaluated;
+                          const isRubricExpanded = !!expandedRubrics[criterion.code];
+
                           const effectiveTotalWeight = customCriterionWeights[criterion.code] !== undefined
                             ? customCriterionWeights[criterion.code]
                             : criterion.effectiveWeight;
@@ -1320,7 +1615,15 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
                           return (
                             <div
                               key={`crit-row-${criterion.code || 'item'}-${critIdx}`}
-                              className="p-4 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition space-y-3"
+                              className={`p-4 transition space-y-3 ${
+                                isOverridden
+                                  ? 'bg-amber-50/40 dark:bg-amber-950/20 border-l-4 border-amber-400'
+                                  : isSubmittal
+                                  ? 'hover:bg-blue-50/30 dark:hover:bg-blue-950/20 border-l-4 border-blue-400'
+                                  : isDatabase
+                                  ? 'hover:bg-teal-50/30 dark:hover:bg-teal-950/20 border-l-4 border-teal-400'
+                                  : 'hover:bg-amber-50/20 dark:hover:bg-amber-950/10 border-l-4 border-amber-500'
+                              }`}
                             >
                               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                                 <div className="space-y-2 max-w-3xl flex-1">
@@ -1329,26 +1632,24 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
                                       Code {criterion.code}
                                     </span>
 
-
-                                    {isMasterAdminUser && !isReadonly && (
-                                      <div className="flex items-center gap-1 ml-auto">
-                                        <button
-                                          type="button"
-                                          onClick={() => handleEditCriterionClick(criterion)}
-                                          className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-500 transition cursor-pointer"
-                                          title="Edit Criterion"
-                                        >
-                                          <Edit3 className="w-3.5 h-3.5" />
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => handleDeleteCriterion(criterion.code)}
-                                          className="p-1 hover:bg-rose-100 dark:hover:bg-rose-950/40 rounded text-rose-500 transition cursor-pointer"
-                                          title="Delete Criterion"
-                                        >
-                                          <Trash2 className="w-3.5 h-3.5" />
-                                        </button>
-                                      </div>
+                                    {/* Source Classification Badge */}
+                                    {isSubmittal && (
+                                      <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800 flex items-center gap-1 font-mono">
+                                        <FileText className="w-2.5 h-2.5 text-blue-600" />
+                                        Submittal Auto
+                                      </span>
+                                    )}
+                                    {isDatabase && (
+                                      <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-teal-100 dark:bg-teal-950/60 text-teal-800 dark:text-teal-300 border border-teal-200 dark:border-teal-800 flex items-center gap-1 font-mono">
+                                        <Database className="w-2.5 h-2.5 text-teal-600" />
+                                        Project DB Auto
+                                      </span>
+                                    )}
+                                    {isUserEval && (
+                                      <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800 flex items-center gap-1 font-mono">
+                                        <Award className="w-2.5 h-2.5 text-amber-600" />
+                                        User Evaluation Option
+                                      </span>
                                     )}
 
                                     {/* Score Weight Contribution */}
@@ -1376,46 +1677,163 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
                                       </div>
                                     )}
 
-                                    {/* Mode Indicator */}
+                                    {/* Evaluation Status & Override Indicator */}
                                     {isOverridden ? (
                                       <div className="flex items-center gap-1.5">
                                         <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-300">
-                                          ✍ Override
+                                          ✍ Manual Override
                                         </span>
                                         {!isReadonly && isAdmin && (
                                           <button
                                             type="button"
                                             onClick={() => handleResetCriterionToAuto(criterion)}
                                             className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-0.5 cursor-pointer"
+                                            title="Revert back to formula-calculated live score"
                                           >
                                             <RotateCcw className="w-2.5 h-2.5" />
-                                            Reset
+                                            Reset to Auto
                                           </button>
                                         )}
                                       </div>
-                                    ) : (
+                                    ) : isAuto ? (
                                       <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-300 flex items-center gap-1">
                                         <Zap className="w-2.5 h-2.5 text-emerald-600" />
-                                        Auto Calcs
+                                        Auto Calculated
                                       </span>
+                                    ) : isRatedByUser ? (
+                                      <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-indigo-100 dark:bg-indigo-950 text-indigo-800 dark:text-indigo-300 border border-indigo-300 flex items-center gap-1">
+                                        <Check className="w-2.5 h-2.5 text-indigo-600" />
+                                        User Rated
+                                      </span>
+                                    ) : (
+                                      <span className="px-2 py-0.5 rounded-full text-[9px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-300 dark:border-slate-700">
+                                        Benchmark Baseline (4)
+                                      </span>
+                                    )}
+
+                                    {isMasterAdminUser && !isReadonly && (
+                                      <div className="flex items-center gap-1 ml-auto">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleEditCriterionClick(criterion)}
+                                          className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-500 transition cursor-pointer"
+                                          title="Edit Criterion"
+                                        >
+                                          <Edit3 className="w-3.5 h-3.5" />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDeleteCriterion(criterion.code)}
+                                          className="p-1 hover:bg-rose-100 dark:hover:bg-rose-950/40 rounded text-rose-500 transition cursor-pointer"
+                                          title="Delete Criterion"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
                                     )}
                                   </div>
 
                                   {/* Evaluator Question Box */}
-                                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-1 mt-1">
-                                    <span className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-wider flex items-center gap-1">
-                                      <HelpCircle className="w-3 h-3" /> Evaluator Question:
-                                    </span>
+                                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-1.5 mt-1">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-wider flex items-center gap-1">
+                                        <HelpCircle className="w-3 h-3" /> Performance Criterion Description:
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => toggleRubric(criterion.code)}
+                                        className="text-[10px] font-bold text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 flex items-center gap-1 cursor-pointer"
+                                      >
+                                        {isRubricExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                                        <span>Scoring Rubrics (1–5)</span>
+                                      </button>
+                                    </div>
                                     <p className="text-xs font-bold text-slate-900 dark:text-white leading-relaxed">
                                       {criterion.name}
                                     </p>
+
+                                    {/* Data Source & Calculation Evidence Info */}
+                                    <div className="pt-2 mt-2 border-t border-slate-200/60 dark:border-slate-700/60 flex flex-wrap items-center gap-3 text-[11px]">
+                                      <div className="flex items-center gap-1 text-slate-500 dark:text-slate-400">
+                                        <span className="font-semibold text-slate-600 dark:text-slate-300">Data Source:</span>
+                                        <span className="font-mono text-[10px] px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-750 text-slate-700 dark:text-slate-300">
+                                          {criterion.dataSource}
+                                        </span>
+                                      </div>
+
+                                      {isAuto && (
+                                        <div className="flex items-center gap-1 text-slate-500 dark:text-slate-400">
+                                          <span className="font-semibold text-slate-600 dark:text-slate-300">Formula:</span>
+                                          <span className="font-mono text-[10px] text-indigo-600 dark:text-indigo-400">
+                                            {evalItem.formulaEvidence || criterion.formula}
+                                          </span>
+                                        </div>
+                                      )}
+
+                                      {isAuto && evalItem.actualValue !== undefined && (
+                                        <div className="flex items-center gap-1">
+                                          <span className="font-semibold text-slate-600 dark:text-slate-300">Metric Value:</span>
+                                          <span className="font-mono text-[10px] font-bold px-1.5 py-0.2 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300">
+                                            {evalItem.actualValue}
+                                          </span>
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    {/* Optional Evaluator Qualitative Notes Input for User Evaluated criteria */}
+                                    {isUserEval && (
+                                      <div className="pt-2 mt-2 border-t border-slate-200/60 dark:border-slate-700/60 space-y-1">
+                                        <div className="flex items-center gap-1 text-amber-700 dark:text-amber-400 text-[10px] font-bold">
+                                          <Award className="w-3 h-3" />
+                                          <span>Qualitative Supervisory Assessment (User Input Required)</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <input
+                                            type="text"
+                                            disabled={isReadonly || !isAdmin}
+                                            value={evalItem.notes || ''}
+                                            onChange={(e) => handleNotesChange(criterion.code, e.target.value)}
+                                            placeholder="Add evaluator assessment notes, evidence, or observation..."
+                                            className="w-full px-2.5 py-1 text-xs rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-750 text-slate-800 dark:text-slate-200 focus:ring-1 focus:ring-amber-500 outline-none placeholder:text-slate-400 disabled:opacity-60"
+                                          />
+                                        </div>
+                                      </div>
+                                    )}
                                   </div>
+
+                                  {/* Expandable Scoring Rubrics (1 to 5) */}
+                                  {isRubricExpanded && (
+                                    <div className="grid grid-cols-1 sm:grid-cols-5 gap-1.5 p-2 rounded-xl bg-slate-100 dark:bg-slate-850 text-[10px] border border-slate-200 dark:border-slate-750">
+                                      <div className={`p-2 rounded-lg border ${currentScore === 1 ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-300' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'}`}>
+                                        <span className="font-bold text-rose-600 dark:text-rose-400 block mb-0.5">1 - Deficient</span>
+                                        <p className="text-slate-600 dark:text-slate-400 text-[9px] leading-tight">{criterion.benchmarks?.score1 || 'Deficient performance benchmark'}</p>
+                                      </div>
+                                      <div className={`p-2 rounded-lg border ${currentScore === 2 ? 'bg-orange-50 dark:bg-orange-950/40 border-orange-300' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'}`}>
+                                        <span className="font-bold text-orange-600 dark:text-orange-400 block mb-0.5">2 - Marginal</span>
+                                        <p className="text-slate-600 dark:text-slate-400 text-[9px] leading-tight">{criterion.benchmarks?.score2 || 'Marginal performance benchmark'}</p>
+                                      </div>
+                                      <div className={`p-2 rounded-lg border ${currentScore === 3 ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-300' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'}`}>
+                                        <span className="font-bold text-amber-600 dark:text-amber-400 block mb-0.5">3 - Acceptable</span>
+                                        <p className="text-slate-600 dark:text-slate-400 text-[9px] leading-tight">{criterion.benchmarks?.score3 || 'Acceptable performance benchmark'}</p>
+                                      </div>
+                                      <div className={`p-2 rounded-lg border ${currentScore === 4 ? 'bg-blue-50 dark:bg-blue-950/40 border-blue-300' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'}`}>
+                                        <span className="font-bold text-blue-600 dark:text-blue-400 block mb-0.5">4 - Good</span>
+                                        <p className="text-slate-600 dark:text-slate-400 text-[9px] leading-tight">{criterion.benchmarks?.score4 || 'Good performance benchmark'}</p>
+                                      </div>
+                                      <div className={`p-2 rounded-lg border ${currentScore === 5 ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'}`}>
+                                        <span className="font-bold text-emerald-600 dark:text-emerald-400 block mb-0.5">5 - Superior</span>
+                                        <p className="text-slate-600 dark:text-slate-400 text-[9px] leading-tight">{criterion.benchmarks?.score5 || 'Superior performance benchmark'}</p>
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
 
                                 {/* Right: Likert scale 1 to 5 selector */}
                                 <div className="flex flex-col items-start lg:items-end gap-1.5 shrink-0">
                                   <div className="flex items-center gap-1.5">
-                                    <span className="text-[10px] font-bold text-slate-400">Likert Rating (5 is Best):</span>
+                                    <span className="text-[10px] font-bold text-slate-400">
+                                      {isAuto ? 'Score (Click to Override):' : 'Evaluator Rating (1–5):'}
+                                    </span>
                                     <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
                                       {[1, 2, 3, 4, 5].map((val) => {
                                         const isActive = currentScore === val;
@@ -1425,7 +1843,7 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
                                             type="button"
                                             disabled={isReadonly || !isAdmin}
                                             onClick={() => handleScoreChange(criterion.code, val)}
-                                            title={`Score ${val}`}
+                                            title={`Score ${val} — ${val === 5 ? 'Superior' : val === 4 ? 'Good' : val === 3 ? 'Acceptable' : val === 2 ? 'Marginal' : 'Deficient'}`}
                                             className={`w-7 h-7 rounded-lg text-xs font-black transition flex items-center justify-center cursor-pointer ${
                                               isActive
                                                 ? val >= 4
@@ -1442,6 +1860,19 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
                                       })}
                                     </div>
                                   </div>
+
+                                  <div className="text-[10px] font-bold font-mono">
+                                    <span className={
+                                      currentScore >= 4 ? 'text-emerald-600 dark:text-emerald-400' :
+                                      currentScore === 3 ? 'text-amber-600 dark:text-amber-400' :
+                                      'text-rose-600 dark:text-rose-400'
+                                    }>
+                                      {currentScore === 5 ? '5 - Superior' :
+                                       currentScore === 4 ? '4 - Good' :
+                                       currentScore === 3 ? '3 - Acceptable' :
+                                       currentScore === 2 ? '2 - Marginal' : '1 - Deficient'}
+                                    </span>
+                                  </div>
                                 </div>
                               </div>
                             </div>
@@ -1457,17 +1888,41 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
 
           {/* Footer Save / Auto-Evaluate Options */}
           <div className="p-4 bg-slate-900 border border-slate-800 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div>
+            <div className="flex flex-wrap items-center gap-2">
               {!isReadonly && isAdmin && (
-                <button
-                  type="button"
-                  onClick={handleAutoEvaluateAll}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-bold rounded-xl transition flex items-center gap-1.5 cursor-pointer"
-                  title="Recalculate all 105 criteria automatically using live submittal logs and project data"
-                >
-                  <RefreshCw className="w-3.5 h-3.5 text-slate-400" />
-                  Reset to Auto Calcs
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={handleRecalculateAutoCriteria}
+                    className="px-3.5 py-2 bg-blue-900/50 hover:bg-blue-800 text-blue-200 border border-blue-700/60 text-xs font-bold rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+                    title="Recalculate auto criteria directly from live submittals and project database"
+                  >
+                    <Zap className="w-3.5 h-3.5 text-blue-400" />
+                    Auto-Calculate ({autoCounts.autoTotal})
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleSetBaselineUserCriteria(4)}
+                    className="px-3.5 py-2 bg-amber-950/50 hover:bg-amber-900 text-amber-200 border border-amber-800/60 text-xs font-bold rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+                    title="Apply standard benchmark rating (4 - Good) to qualitative user criteria"
+                  >
+                    <Award className="w-3.5 h-3.5 text-amber-400" />
+                    Baseline User Criteria (4/5)
+                  </button>
+
+                  {overriddenCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleAutoEvaluateAll}
+                      className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-bold rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+                      title="Reset all manual overrides back to calculated live scores"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
+                      Reset Overrides ({overriddenCount})
+                    </button>
+                  )}
+                </>
               )}
             </div>
 

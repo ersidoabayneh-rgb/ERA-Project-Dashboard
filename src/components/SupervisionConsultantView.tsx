@@ -99,12 +99,13 @@ export default function SupervisionConsultantView({
     );
   }, [currentUser]);
 
-  // Extract or initialize supervision consultant data
+  // Extract or initialize supervision consultant data (bidirectionally linked with project.consultant)
   const consultant: SupervisionConsultantInfo = useMemo(() => {
+    const linkedFirmName = project.supervisionConsultant?.firmName || project.consultant || 'Supervision Consultant JV';
     if (project.supervisionConsultant) {
       return {
         ...project.supervisionConsultant,
-        firmName: project.supervisionConsultant.firmName || project.consultant || 'Supervision Consultant JV',
+        firmName: linkedFirmName,
         enableUsdPayments: project.supervisionConsultant.enableUsdPayments !== undefined 
           ? project.supervisionConsultant.enableUsdPayments 
           : Boolean((project.supervisionConsultant.originalFeeUsd || 0) > 0 || (project.supervisionConsultant.revisedFeeUsd || 0) > 0),
@@ -247,6 +248,17 @@ export default function SupervisionConsultantView({
     headOfficeEmail: consultant.headOfficeEmail || '',
     headOfficeContactPerson: consultant.headOfficeContactPerson || ''
   });
+
+  // Keep consultantForm and headOfficeForm responsive to external updates (e.g. from Project Dossier edits)
+  useEffect(() => {
+    setConsultantForm(consultant);
+    setHeadOfficeForm({
+      headOfficeAddress: consultant.headOfficeAddress || '',
+      headOfficePhone: consultant.headOfficePhone || '',
+      headOfficeEmail: consultant.headOfficeEmail || '',
+      headOfficeContactPerson: consultant.headOfficeContactPerson || ''
+    });
+  }, [consultant]);
 
   // Form state for Assigning New Consultant (Continuation of Service)
   const [newConsultantForm, setNewConsultantForm] = useState<{
@@ -541,9 +553,13 @@ export default function SupervisionConsultantView({
   // Helper to commit consultant changes to project
   const saveConsultantData = (updatedConsultant: SupervisionConsultantInfo, actionDescription: string) => {
     if (!onUpdateProject) return;
+    const cleanFirmName = (updatedConsultant.firmName || '').trim();
     onUpdateProject({
-      supervisionConsultant: updatedConsultant,
-      consultant: updatedConsultant.firmName // Keep backward compatibility
+      supervisionConsultant: {
+        ...updatedConsultant,
+        firmName: cleanFirmName
+      },
+      consultant: cleanFirmName // Keep backward compatibility & synchronize with Project Information
     }, `Supervision Consultant: ${actionDescription}`);
   };
 
@@ -2408,10 +2424,30 @@ export default function SupervisionConsultantView({
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                <div>
-                  <span className="text-slate-400 font-semibold uppercase tracking-wider text-[10px] block">Consulting Firm</span>
-                  <div className="font-bold text-slate-900 dark:text-white text-sm mt-0.5">
-                    {consultant.firmName || '-'}
+                <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-2xl border border-slate-100 dark:border-slate-800">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400 font-semibold uppercase tracking-wider text-[10px] block">Consulting Firm</span>
+                    {!isReadonly && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setConsultantForm(consultant);
+                          setEditModalSection('firm');
+                          setIsEditConsultantOpen(true);
+                        }}
+                        className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 flex items-center gap-1 text-[11px] font-semibold hover:underline cursor-pointer"
+                        title="Edit Consulting Firm (synchronizes with Project Information Supervising Consultant)"
+                      >
+                        <Edit3 className="w-3 h-3" />
+                        Modify
+                      </button>
+                    )}
+                  </div>
+                  <div className="font-bold text-slate-900 dark:text-white text-sm mt-1 flex flex-wrap items-center gap-2">
+                    <span>{consultant.firmName || '-'}</span>
+                    <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800" title="Bidirectionally linked with Supervising Consultant on Project Information">
+                      🔗 Linked to Project Info
+                    </span>
                   </div>
                 </div>
 
@@ -3115,9 +3151,14 @@ export default function SupervisionConsultantView({
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                       <div className="sm:col-span-2">
-                        <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                          Consulting Firm / Lead Partner Name <span className="text-red-500">*</span>
-                        </label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block font-semibold text-slate-700 dark:text-slate-300">
+                            Consulting Firm / Lead Partner Name <span className="text-red-500">*</span>
+                          </label>
+                          <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
+                            🔗 Syncs with Project Information Supervising Consultant
+                          </span>
+                        </div>
                         <input
                           type="text"
                           required

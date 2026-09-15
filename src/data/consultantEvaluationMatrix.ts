@@ -217,14 +217,14 @@ export interface SubmittalQuantitativeMetrics {
   };
 }
 
-export interface CriterionSourceInfo {
+export interface CriterionModuleLocation {
   pageName: string;
   categoryTag: string;
   iconName: string;
   badgeClass: string;
 }
 
-export function getCriterionSourceInfo(code: string, dim: DimensionId): CriterionSourceInfo {
+export function getCriterionModuleLocation(code: string, dim: DimensionId): CriterionModuleLocation {
   if (code.startsWith('A1') || code === 'A5.4' || code === 'A5.5') {
     return {
       pageName: 'Submittal Log - Drawings & Designs',
@@ -1046,6 +1046,96 @@ export function calculateSubmittalQuantitativeMetrics(
   };
 }
 
+export type CriterionCalculationSource = 'auto_submittal' | 'auto_database' | 'user_evaluation';
+
+export interface CriterionSourceInfo {
+  source: CriterionCalculationSource;
+  label: string;
+  sourceName: string;
+  badgeColor: string;
+  description: string;
+}
+
+// Maps each criterion to its quantitative calculation source (Submittal logs or Overall Project Database),
+// or marks it as requiring User Evaluation (human expert assessment).
+export function getCriterionSourceInfo(criterion: ConsultantEvaluationCriterion | { code: string }): CriterionSourceInfo {
+  const code = criterion.code;
+
+  // 1. Direct quantitative criteria gained from Submittal Logs (RFIs, WIRs, Material Tests, Design Reviews, Variations, Claims, SLAs)
+  const submittalCodes = new Set([
+    'A1.1', // Drawing & design review SLA <= 14d
+    'A1.2', // Technical query / RFI turnaround <= 7d
+    'A1.3', // Design review comment closure rate
+    'A1.5', // Variation & design change engineering justification
+    'A2.1', // Method statement & material review SLA
+    'A2.2', // WIR site inspection frequency & hold point witness
+    'A2.4', // Quality audit corrective action closure
+    'A2.5', // Workmanship compliance index (WIR pass rate)
+    'A2.6', // Rework / resubmission rate
+    'A3.1', // Material test verification against standards
+    'A3.5', // Concrete & asphalt mix design review turnaround
+    'A3.6', // Material approval turnaround <= 14d
+    'A5.4', // Digital reporting, BIM adoption & electronic transmittals
+    'B1.2', // Employer & contractor technical query turnaround
+    'B3.2', // Extension of Time (EOT) claim evaluation <= 28d
+    'B4.2', // Adherence to agreed operational SLAs across all submittals
+    'B4.3', // Engineering response clarity, written remarks & attachments
+    'C1.3', // Hold point witness rate prior to covering work
+    'C1.4', // Defect notification turnaround <= 24-48h
+    'D1.1', // Contract claim determination timeliness
+    'D1.2', // Claim assessment compliance & time-bar verification
+    'D2.1'  // Variation rate analysis turnaround <= 21d
+  ]);
+
+  if (submittalCodes.has(code)) {
+    return {
+      source: 'auto_submittal',
+      label: 'Auto (Submittals)',
+      sourceName: 'Submittal Register & SLAs',
+      badgeColor: 'bg-blue-50 text-blue-700 dark:bg-blue-950/70 dark:text-blue-300 border-blue-200 dark:border-blue-800',
+      description: 'Calculated automatically from live RFI, WIR, Material, Design, and SLA turnaround records.'
+    };
+  }
+
+  // 2. Direct quantitative criteria gained from Overall Project Database telemetry (IPCs, Schedule/SPI, Key Personnel, Invoices, ROW, Safety/Risks)
+  const databaseCodes = new Set([
+    'B2.1', // Key Expert mobilization rate vs approved proposal
+    'B2.2', // Key Expert turnover & replacement rate
+    'B3.4', // Dispute escalation rate & active dispute claims
+    'B3.5', // Dispute avoidance & amicable settlement efficacy
+    'C2.2', // BoQ quantity variance between claimed and certified
+    'C2.3', // IPC issuance within 7 days by the Engineer
+    'C2.4', // Advance, retention & tax deduction calculation accuracy
+    'C3.1', // Contractor physical progress SPI & slippage oversight
+    'C3.2', // Monthly progress report submission timeliness to PMO
+    'C3.3', // Work program critical path variance & EVM tracking
+    'D3.1', // Consultant fee timesheet reconciliation vs site presence
+    'D3.5', // Consultant fee invoice line-item reconciliation
+    'A4.6', // LTIFR & lost-time injury incident tracking
+    'A5.1', // ROW site handover & obstruction clearance verification
+    'A5.2'  // ROW boundary demarcation monitoring
+  ]);
+
+  if (databaseCodes.has(code)) {
+    return {
+      source: 'auto_database',
+      label: 'Auto (Project DB)',
+      sourceName: 'Project Database Telemetry',
+      badgeColor: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
+      description: 'Calculated automatically from project database (IPCs, Physical SPI, Personnel, Invoices, ROW, Risks).'
+    };
+  }
+
+  // 3. Qualitative criteria requiring human engineering assessment (User Evaluation Option)
+  return {
+    source: 'user_evaluation',
+    label: 'User Evaluation',
+    sourceName: 'Qualitative Expert Assessment',
+    badgeColor: 'bg-amber-50 text-amber-700 dark:bg-amber-950/70 dark:text-amber-300 border-amber-200 dark:border-amber-800',
+    description: 'Qualitative supervisory performance criterion — gives the user full option to evaluate and rate.'
+  };
+}
+
 // Helper: Auto-compute baseline metric values and scores from project data
 export function autoEvaluateProjectCriterion(
   criterion: ConsultantEvaluationCriterion,
@@ -1053,8 +1143,33 @@ export function autoEvaluateProjectCriterion(
   consultant: SupervisionConsultantInfo,
   submittalsOverride?: ConsultantSubmittalKpi[],
   precomputedMetrics?: SubmittalQuantitativeMetrics
-): { score: number; actualValue: string; numericVal?: number; notes?: string; formulaEvidence?: string } {
+): {
+  score: number;
+  actualValue: string;
+  numericVal?: number;
+  notes?: string;
+  formulaEvidence?: string;
+  calculationSource: CriterionCalculationSource;
+  isAutoCalculated: boolean;
+  isUserEvaluated: boolean;
+} {
+  const sourceInfo = getCriterionSourceInfo(criterion);
   const m = precomputedMetrics || calculateSubmittalQuantitativeMetrics(project, consultant, submittalsOverride);
+
+  // If this criterion is qualitative and cannot be derived from submittal or database telemetry,
+  // return an evaluation option baseline so the user can evaluate the consultant's performance.
+  if (sourceInfo.source === 'user_evaluation') {
+    return {
+      score: 4,
+      actualValue: 'Awaiting Evaluator Assessment (Benchmark Baseline: 4 - Good)',
+      numericVal: 80.0,
+      notes: criterion.formula || 'Qualitative supervisory criterion — provide evaluation score and engineering remarks.',
+      formulaEvidence: 'Qualitative Evaluation Option (Likert 1 to 5 Rating by User)',
+      calculationSource: 'user_evaluation',
+      isAutoCalculated: false,
+      isUserEvaluated: false
+    };
+  }
 
   let numVal = 92;
   let actualStr = '';
@@ -1438,7 +1553,10 @@ export function autoEvaluateProjectCriterion(
     actualValue: actualStr,
     numericVal: numVal,
     notes: noteStr,
-    formulaEvidence: formulaEv
+    formulaEvidence: formulaEv,
+    calculationSource: sourceInfo.source,
+    isAutoCalculated: true,
+    isUserEvaluated: false
   };
 }
 
@@ -1447,8 +1565,30 @@ export function autoEvaluateAllCriteria(
   project: Project,
   consultant: SupervisionConsultantInfo,
   submittalsOverride?: ConsultantSubmittalKpi[]
-): Record<string, { score: number; actualValue: string; numericVal?: number; notes?: string; formulaEvidence?: string; autoEvaluated: boolean; evaluatedAt: string }> {
-  const result: Record<string, { score: number; actualValue: string; numericVal?: number; notes?: string; formulaEvidence?: string; autoEvaluated: boolean; evaluatedAt: string }> = {};
+): Record<string, {
+  score: number;
+  actualValue: string;
+  numericVal?: number;
+  notes?: string;
+  formulaEvidence?: string;
+  autoEvaluated: boolean;
+  evaluatedAt: string;
+  calculationSource: CriterionCalculationSource;
+  isAutoCalculated: boolean;
+  isUserEvaluated: boolean;
+}> {
+  const result: Record<string, {
+    score: number;
+    actualValue: string;
+    numericVal?: number;
+    notes?: string;
+    formulaEvidence?: string;
+    autoEvaluated: boolean;
+    evaluatedAt: string;
+    calculationSource: CriterionCalculationSource;
+    isAutoCalculated: boolean;
+    isUserEvaluated: boolean;
+  }> = {};
   const evaluatedAt = new Date().toISOString();
   const precomputedMetrics = calculateSubmittalQuantitativeMetrics(project, consultant, submittalsOverride);
 
@@ -1460,7 +1600,10 @@ export function autoEvaluateAllCriteria(
       numericVal: evalData.numericVal,
       notes: evalData.notes,
       formulaEvidence: evalData.formulaEvidence,
-      autoEvaluated: true,
+      autoEvaluated: evalData.isAutoCalculated,
+      calculationSource: evalData.calculationSource,
+      isAutoCalculated: evalData.isAutoCalculated,
+      isUserEvaluated: evalData.isUserEvaluated,
       evaluatedAt
     };
   });
@@ -1511,11 +1654,11 @@ export const DEFAULT_GRADE_THRESHOLDS: QualitativeGradeThreshold[] = [
     color: 'orange'
   },
   {
-    id: 'grade_f',
-    grade: 'Grade F',
+    id: 'grade_failed',
+    grade: 'Grade Failed',
     minScore: 0,
     maxScore: 49.9,
-    label: 'Unacceptable / Non-Compliant',
+    label: 'Failed / Non-Compliant',
     standing: 'Grounds for Immediate Contract Termination & Default Notice under Contract Guidelines',
     badgeStyle: 'bg-rose-500/20 text-rose-300 border-rose-400/40',
     color: 'rose'
@@ -1526,7 +1669,18 @@ export function evaluateQualitativeGrade(
   score: number,
   thresholds: QualitativeGradeThreshold[] = DEFAULT_GRADE_THRESHOLDS
 ): QualitativeGradeThreshold {
-  const activeThresholds = thresholds && thresholds.length > 0 ? thresholds : DEFAULT_GRADE_THRESHOLDS;
+  const rawList = thresholds && thresholds.length > 0 ? thresholds : DEFAULT_GRADE_THRESHOLDS;
+  const activeThresholds = rawList.map(t => {
+    if (t.grade === 'Grade F' || t.grade === 'F' || t.id === 'grade_f') {
+      return {
+        ...t,
+        id: 'grade_failed',
+        grade: 'Grade Failed',
+        label: t.label && !t.label.toLowerCase().includes('failed') ? `Failed / ${t.label}` : (t.label || 'Failed / Non-Compliant')
+      };
+    }
+    return t;
+  });
   const sorted = [...activeThresholds].sort((a, b) => b.minScore - a.minScore);
   const matched = sorted.find(t => score >= t.minScore);
   return matched || sorted[sorted.length - 1] || DEFAULT_GRADE_THRESHOLDS[4];

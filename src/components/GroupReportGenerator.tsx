@@ -927,7 +927,8 @@ export default function GroupReportGenerator({
     let gradeStr = (isHistorical && selectedHist?.officialGrade)
       ? selectedHist.officialGrade.replace('Grade ', '').trim()
       : matchedThreshold.grade.replace('Grade ', '').trim();
-    const officialGrade: 'A' | 'B' | 'C' | 'D' | 'F' = (['A', 'B', 'C', 'D', 'F'].includes(gradeStr) ? gradeStr : 'F') as any;
+    if (gradeStr === 'F') gradeStr = 'Failed';
+    const officialGrade: 'A' | 'B' | 'C' | 'D' | 'Failed' = (['A', 'B', 'C', 'D', 'Failed'].includes(gradeStr) ? gradeStr : 'Failed') as any;
 
     const officialRatingTitle = `Grade ${officialGrade}: ${matchedThreshold.label}`;
     const officialStanding = matchedThreshold.standing;
@@ -2843,10 +2844,14 @@ export default function GroupReportGenerator({
       doc.setTextColor(100, 116, 139);
       doc.text("AVG CONSULTANT PERFORMANCE", 40 + cardWidth + 18, cardY + 18);
       doc.setFontSize(13);
-      if (consultantAuditStats.avgScore >= 80) {
+      if (consultantAuditStats.avgScore >= 90) {
         doc.setTextColor(22, 163, 74); // green
-      } else if (consultantAuditStats.avgScore >= 65) {
+      } else if (consultantAuditStats.avgScore >= 75) {
+        doc.setTextColor(37, 99, 235); // blue
+      } else if (consultantAuditStats.avgScore >= 60) {
         doc.setTextColor(217, 119, 6); // amber
+      } else if (consultantAuditStats.avgScore >= 50) {
+        doc.setTextColor(234, 88, 12); // orange
       } else {
         doc.setTextColor(220, 38, 38); // red
       }
@@ -2963,10 +2968,10 @@ export default function GroupReportGenerator({
     doc.setTextColor(71, 85, 105);
     if (isConsultantAudit) {
       doc.text(
-        "• Submittal SLA (25%): Turnaround vs Target Days   • Staff Mobilization (20%): Key Personnel in Field   • IPC Verification (20%): Timeliness & Deduction Accuracy", 48, curY + 18
+        "• Submittal SLA & RFI Turnaround (50%): Operational Turnaround vs Contract SLA Targets   • 5-Dimension Technical Audit (50%): 105 FIDIC/ERA Evaluation Criteria", 48, curY + 18
       );
       doc.text(
-        "• Contract Admin & Claims (20%): FIDIC Cl. 3 Determinations   • Quality Assurance (15%): WIR & Materials   • Rating Scale: Grade A (>=85% Outstanding) | B (75-84% Satisfactory) | C (65-74% Needs Improvement) | D/F (Breach)", 48, curY + 24
+        "• Combined Overall Score: 50% SLA + 50% Technical Audit   • Rating Scale: Grade A (90-100%) | Grade B (75-89%) | Grade C (60-74%) | Grade D (50-59%) | Grade Failed (<50%)", 48, curY + 24
       );
     } else {
       doc.text(

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   History, Save, Sparkles, Trash2, Printer, CheckCircle, AlertTriangle, ShieldCheck, 
@@ -8,8 +8,18 @@ import {
   HardHat, Briefcase, Layers
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
-import { Project, HistoryItem, MonthlyGradingRecord, formatAccounting, isProjectClosed } from '../types';
-import { buildKpiHierarchy, getIntegratedKpiAllocated, resolveProjectMonthlyGrading } from '../data/defaultProject';
+import { Project, HistoryItem, MonthlyGradingRecord, HistoricalSupervisionConsultant, formatAccounting, isProjectClosed } from '../types';
+import { 
+  buildKpiHierarchy, 
+  getIntegratedKpiAllocated, 
+  resolveProjectMonthlyGrading, 
+  resolveConsultantForPeriod, 
+  parseMonthToYyyyMm, 
+  compareMonthsDesc,
+  isMonthAboveCurrentMonth,
+  isCurrentMonth,
+  matchCanonicalKpiPeriod
+} from '../data/defaultProject';
 import { calculateProjectEvm } from '../lib/evmCalculations';
 import { getProjectConsultantEvaluation } from '../data/consultantEvaluationMatrix';
 import eraLogo from '../assets/logo.png';
@@ -44,7 +54,9 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
   const [gradingActiveTab, setGradingActiveTab] = useState<'contractor' | 'consultant' | 'both'>('both');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('All');
   const [selectedGradingMonthFilter, setSelectedGradingMonthFilter] = useState<string>('All');
+  const [selectedConsultantTenureFilter, setSelectedConsultantTenureFilter] = useState<string>('All');
   const [selectedGradingDetailModal, setSelectedGradingDetailModal] = useState<MonthlyGradingRecord | null>(null);
+  const [selectedHistoricalConsultantModal, setSelectedHistoricalConsultantModal] = useState<HistoricalSupervisionConsultant | null>(null);
   const [isRecordGradingModalOpen, setIsRecordGradingModalOpen] = useState(false);
   const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
 
@@ -111,22 +123,60 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     notes: ''
   });
 
+  // Keep gradingForm in sync when switching projects
+  useEffect(() => {
+    setGradingForm(prev => ({
+      ...prev,
+      contractorName: p.contractor || '',
+      consultantName: consultantEval.firmName || p.consultant || '',
+      residentEngineer: consultantEval.residentEngineer || '',
+      consultantSlaTurnaroundScore: consultantEval.metrics?.overallOnTimeRate || 85,
+      consultantFiveDimScore: consultantEval.overallTechnicalScore || 80,
+      consultantOverallScore: consultantEval.overallScore || 82.5,
+      consultantGrade: consultantEval.officialGrade || 'B',
+      consultantStanding: consultantEval.officialStanding || 'Satisfactory / Standard Standing',
+      consultantOnTimeRate: consultantEval.metrics?.overallOnTimeRate || 85,
+      consultantAvgRfiDays: consultantEval.metrics?.rfis?.avgDays || 6,
+    }));
+  }, [p.id, p.contractor, p.consultant, consultantEval]);
+
   const monthlyGradingRecords = useMemo(() => {
-    return resolveProjectMonthlyGrading(p);
-  }, [p.monthlyGradingRecords, p.monthly, p.progressPlan, p.progressPlanHistory, p.contractor, p.consultant, consultantEval]);
+    const list = resolveProjectMonthlyGrading(p);
+    const validList = list.filter(r => !isMonthAboveCurrentMonth(r.month, r.recordedDate));
+    return [...validList].sort((a, b) => compareMonthsDesc(a.month, b.month, a.recordedDate, b.recordedDate));
+  }, [p.id, p.name, p.monthlyGradingRecords, p.monthly, p.progressPlan, p.progressPlanHistory, p.contractor, p.consultant, p.supervisionConsultant, consultantEval]);
+
+  const previousConsultants = p.supervisionConsultant?.previousConsultants || [];
+  const activeConsultantAssignmentDate = p.supervisionConsultant?.commencementDate || p.startDate || '2020-12-29';
+  const activeConsultantFirmName = p.supervisionConsultant?.firmName || p.consultant || 'Supervision Consultant';
 
   const filteredMonthlyGradingRecords = useMemo(() => {
-    if (selectedGradingMonthFilter === 'All') return monthlyGradingRecords;
-    return monthlyGradingRecords.filter(r => r.month === selectedGradingMonthFilter || r.monthName === selectedGradingMonthFilter);
-  }, [monthlyGradingRecords, selectedGradingMonthFilter]);
+    const filtered = monthlyGradingRecords.filter(r => {
+      if (isMonthAboveCurrentMonth(r.month, r.recordedDate)) return false;
+      const matchMonth = selectedGradingMonthFilter === 'All' || r.month === selectedGradingMonthFilter || r.monthName === selectedGradingMonthFilter;
+      const matchTenure = selectedConsultantTenureFilter === 'All' || 
+        (selectedConsultantTenureFilter === 'current' && (!r.consultantTenureId || r.consultantTenureId === 'current' || !r.isHistoricalConsultant)) ||
+        (selectedConsultantTenureFilter === r.consultantTenureId);
+      return matchMonth && matchTenure;
+    });
+    return [...filtered].sort((a, b) => compareMonthsDesc(a.month, b.month, a.recordedDate, b.recordedDate));
+  }, [monthlyGradingRecords, selectedGradingMonthFilter, selectedConsultantTenureFilter]);
 
   // Auto-calculate grading values for form
   const handleAutoCalculateForm = (targetMonth: string) => {
-    const mMatch = (p.monthly || []).find(m => 
-      (m.month || '').toLowerCase().includes(targetMonth.toLowerCase()) || 
-      targetMonth.toLowerCase().includes((m.month || '').toLowerCase())
-    );
-    const planM = mMatch && typeof mMatch.originalPlan === 'number' ? mMatch.originalPlan : 2.5;
+    const canonicalMatch = matchCanonicalKpiPeriod(p, targetMonth);
+    const normTarget = canonicalMatch ? canonicalMatch.parsedYm : (parseMonthToYyyyMm(targetMonth) || targetMonth);
+    const exactMonthStr = canonicalMatch ? canonicalMatch.exactPeriodName : targetMonth;
+
+    const mMatch = (p.monthly || []).find(m => {
+      const mNorm = parseMonthToYyyyMm(m.month);
+      return (mNorm && mNorm === normTarget) || 
+        (m.month || '').toLowerCase().includes(targetMonth.toLowerCase()) || 
+        targetMonth.toLowerCase().includes((m.month || '').toLowerCase());
+    });
+    const planM = mMatch && typeof mMatch.revisedPlan === 'number' && mMatch.revisedPlan > 0 
+      ? mMatch.revisedPlan 
+      : (mMatch && typeof mMatch.originalPlan === 'number' ? mMatch.originalPlan : 2.5);
     const actM = mMatch && typeof mMatch.actual === 'number' ? mMatch.actual : 2.1;
     const planCum = mMatch && typeof mMatch.originalPlan === 'number' ? mMatch.originalPlan : 65.0;
     const actCum = mMatch && typeof mMatch.actual === 'number' ? mMatch.actual : physicalProgress;
@@ -142,25 +192,35 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     else if (cScore >= 60) { cGrade = 'D'; cStanding = 'Poor / Critical Variance Notice'; }
     else { cGrade = 'F'; cStanding = 'Unacceptable / Severe Contractual Default'; }
 
-    const consSla = consultantEval.metrics?.overallOnTimeRate || 85.0;
-    const consDim = consultantEval.overallTechnicalScore || 80.0;
-    const consOverall = Number(((consSla + consDim) / 2).toFixed(1));
-    const consGrade = consultantEval.officialGrade || 'B';
-    const consStanding = consultantEval.officialStanding || 'Satisfactory / Standard Standing';
+    // Resolve consultant tenure based on the target month
+    const consResolution = resolveConsultantForPeriod(p, exactMonthStr);
 
-    let monthNameStr = targetMonth;
-    try {
-      const [y, m] = targetMonth.split('-');
-      if (y && m) {
-        const d = new Date(parseInt(y), parseInt(m) - 1, 1);
-        monthNameStr = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-      }
-    } catch {}
+    const consSla = consResolution.slaScore;
+    const consDim = consResolution.fiveDimScore;
+    const consOverall = consResolution.overallScore;
+    const consGrade = consResolution.officialGrade;
+    const consStanding = consResolution.standing;
+
+    let monthNameStr = exactMonthStr;
+    if (!canonicalMatch) {
+      try {
+        const [y, m] = targetMonth.split('-');
+        if (y && m) {
+          const d = new Date(parseInt(y), parseInt(m) - 1, 1);
+          monthNameStr = d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+        }
+      } catch {}
+    }
+
+    const isTargetCurrent = isCurrentMonth(exactMonthStr);
+    const resolvedStatus: MonthlyGradingRecord['status'] = isTargetCurrent ? 'Provisional' : 'Finalized';
+    const resolvedStanding = isTargetCurrent ? 'Open / Provisional (Pending Month-End Finalization)' : cStanding;
 
     setGradingForm(prev => ({
       ...prev,
-      month: targetMonth,
+      month: exactMonthStr,
       monthName: monthNameStr,
+      status: resolvedStatus,
       contractorName: p.contractor || prev.contractorName,
       contractorPlanMonthly: planM,
       contractorActualMonthly: actM,
@@ -170,28 +230,59 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
       contractorSpi: spiVal,
       contractorScore: Number(cScore.toFixed(1)),
       contractorGrade: cGrade,
-      contractorStanding: cStanding,
-      consultantName: consultantEval.firmName || prev.consultantName,
-      residentEngineer: consultantEval.residentEngineer || prev.residentEngineer,
+      contractorStanding: resolvedStanding,
+      consultantName: consResolution.firmName,
+      residentEngineer: consResolution.residentEngineer,
+      consultantTenureId: consResolution.tenureId,
+      isHistoricalConsultant: consResolution.isHistorical,
+      consultantAssignmentDate: consResolution.assignmentDate,
+      consultantHandoverDate: consResolution.handoverDate,
       consultantSlaTurnaroundScore: consSla,
       consultantFiveDimScore: consDim,
       consultantOverallScore: consOverall,
       consultantGrade: consGrade,
       consultantStanding: consStanding,
-      consultantOnTimeRate: consultantEval.metrics?.overallOnTimeRate,
-      consultantAvgRfiDays: consultantEval.metrics?.rfis?.avgDays,
+      consultantOnTimeRate: consResolution.slaScore,
+      consultantAvgRfiDays: consResolution.isHistorical ? 5.2 : (consultantEval.metrics?.rfis?.avgDays || 5.5),
+      consultantRemarks: consResolution.isHistorical
+        ? `Predecessor supervisory milestone and quality audits archived for ${consResolution.firmName}.`
+        : `Active supervisory oversight and submittal review cycle logged for ${consResolution.firmName}.`
     }));
   };
 
   const handleSaveGradingRecord = () => {
     if (!gradingForm.month) return;
+    if (isMonthAboveCurrentMonth(gradingForm.month, gradingForm.recordedDate)) {
+      alert("Months above the current month cannot be recorded into the grading ledger.");
+      return;
+    }
+
+    const canonicalMatch = matchCanonicalKpiPeriod(p, gradingForm.month);
+    const exactMonthStr = canonicalMatch ? canonicalMatch.exactPeriodName : gradingForm.month;
+    const exactMonthName = canonicalMatch ? canonicalMatch.exactPeriodName : (gradingForm.monthName || gradingForm.month);
+
+    const consResolution = resolveConsultantForPeriod(p, exactMonthStr);
+
+    const isTargetCurrent = isCurrentMonth(exactMonthStr, gradingForm.recordedDate);
+    // If the record is for the current month, grade must remain Open / Provisional until the month concludes
+    let resolvedStatus: MonthlyGradingRecord['status'] = (gradingForm.status as any) || (isTargetCurrent ? 'Provisional' : 'Finalized');
+    if (isTargetCurrent && resolvedStatus === 'Finalized') {
+      resolvedStatus = 'Provisional';
+    }
+
+    const resolvedStanding = isTargetCurrent
+      ? (gradingForm.contractorStanding && !gradingForm.contractorStanding.includes('Satisfactory')
+          ? gradingForm.contractorStanding
+          : 'Open / Provisional (Pending Month-End Finalization)')
+      : (gradingForm.contractorStanding || 'Satisfactory / Standard Standing');
+
     const newRec: MonthlyGradingRecord = {
-      id: editingRecordId || `mgrad_${gradingForm.month.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}`,
-      month: gradingForm.month,
-      monthName: gradingForm.monthName || gradingForm.month,
+      id: editingRecordId || `mgrad_${exactMonthStr.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}`,
+      month: exactMonthStr,
+      monthName: exactMonthName,
       recordedDate: gradingForm.recordedDate || new Date().toISOString().slice(0, 10),
       recordedBy: currentUserObj?.username || 'Audit Officer',
-      status: (gradingForm.status as any) || 'Finalized',
+      status: resolvedStatus,
       contractorName: gradingForm.contractorName || p.contractor || 'Contractor',
       contractorPlanMonthly: Number(gradingForm.contractorPlanMonthly) || 0,
       contractorActualMonthly: Number(gradingForm.contractorActualMonthly) || 0,
@@ -201,19 +292,23 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
       contractorSpi: Number(gradingForm.contractorSpi) || 1.0,
       contractorScore: Number(gradingForm.contractorScore) || 80,
       contractorGrade: (gradingForm.contractorGrade as any) || 'B',
-      contractorStanding: gradingForm.contractorStanding || 'Satisfactory / Standard Standing',
+      contractorStanding: resolvedStanding,
       contractorRemarks: gradingForm.contractorRemarks || '',
-      consultantName: gradingForm.consultantName || consultantEval.firmName || 'Consultant',
-      residentEngineer: gradingForm.residentEngineer || consultantEval.residentEngineer || '',
-      consultantSlaTurnaroundScore: Number(gradingForm.consultantSlaTurnaroundScore) || 85,
-      consultantFiveDimScore: Number(gradingForm.consultantFiveDimScore) || 80,
-      consultantOverallScore: Number(gradingForm.consultantOverallScore) || 82.5,
-      consultantGrade: (gradingForm.consultantGrade as any) || 'B',
-      consultantStanding: gradingForm.consultantStanding || 'Satisfactory / Standard Standing',
-      consultantOnTimeRate: Number(gradingForm.consultantOnTimeRate) || 85,
-      consultantAvgRfiDays: Number(gradingForm.consultantAvgRfiDays) || 6,
-      consultantRemarks: gradingForm.consultantRemarks || '',
-      notes: gradingForm.notes || ''
+      consultantName: gradingForm.consultantName || consResolution.firmName || 'Consultant',
+      residentEngineer: gradingForm.residentEngineer || consResolution.residentEngineer || '',
+      consultantTenureId: gradingForm.consultantTenureId || consResolution.tenureId,
+      isHistoricalConsultant: gradingForm.isHistoricalConsultant !== undefined ? gradingForm.isHistoricalConsultant : consResolution.isHistorical,
+      consultantAssignmentDate: gradingForm.consultantAssignmentDate || consResolution.assignmentDate,
+      consultantHandoverDate: gradingForm.consultantHandoverDate || consResolution.handoverDate,
+      consultantSlaTurnaroundScore: Number(gradingForm.consultantSlaTurnaroundScore) || consResolution.slaScore,
+      consultantFiveDimScore: Number(gradingForm.consultantFiveDimScore) || consResolution.fiveDimScore,
+      consultantOverallScore: Number(gradingForm.consultantOverallScore) || consResolution.overallScore,
+      consultantGrade: (gradingForm.consultantGrade as any) || consResolution.officialGrade,
+      consultantStanding: gradingForm.consultantStanding || consResolution.standing,
+      consultantOnTimeRate: Number(gradingForm.consultantOnTimeRate) || consResolution.slaScore,
+      consultantAvgRfiDays: Number(gradingForm.consultantAvgRfiDays) || 5.5,
+      consultantRemarks: gradingForm.consultantRemarks || (consResolution.isHistorical ? `Historical predecessor audit logged for ${consResolution.firmName}.` : ''),
+      notes: gradingForm.notes || `Specific project audit cycle: ${p.name} (${p.id})`
     };
 
     let updatedList = [...monthlyGradingRecords];
@@ -223,9 +318,13 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     } else {
       updatedList = [newRec, ...updatedList];
     }
+    // Filter any future month and sort
+    const cleanList = updatedList
+      .filter(r => !isMonthAboveCurrentMonth(r.month, r.recordedDate))
+      .sort((a, b) => compareMonthsDesc(a.month, b.month, a.recordedDate, b.recordedDate));
 
     if (onProjectUpdate) {
-      onProjectUpdate({ monthlyGradingRecords: updatedList }, `Updated monthly grading audit records for ${newRec.monthName}`);
+      onProjectUpdate({ monthlyGradingRecords: cleanList }, `Updated monthly grading audit records for ${newRec.monthName}`);
     }
     setIsRecordGradingModalOpen(false);
     setEditingRecordId(null);
@@ -247,8 +346,10 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
 
   const openCreateGradingModal = () => {
     setEditingRecordId(null);
-    const currMonth = new Date().toISOString().slice(0, 7);
-    handleAutoCalculateForm(currMonth);
+    const d = new Date();
+    d.setMonth(d.getMonth() - 1);
+    const prevMonth = d.toISOString().slice(0, 7);
+    handleAutoCalculateForm(prevMonth);
     setIsRecordGradingModalOpen(true);
   };
 
@@ -513,7 +614,12 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
       });
     }
 
-    return [currentRecord, ...pastRecords];
+    const allRecords = [currentRecord, ...pastRecords];
+    return allRecords.sort((a, b) => {
+      if (a.isCurrent) return -1;
+      if (b.isCurrent) return 1;
+      return compareMonthsDesc(a.period, b.period);
+    });
   }, [p.progressPlanLabels, physicalProgress, p.progressPlanHistory, p.progressPlan, p.monthly, p.lengthKm, elapsed, ratio, CPI, SPI, EV, PV, AC, BAC]);
   
   // Schedule Variance
@@ -2518,14 +2624,17 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                 <Award className="w-4 h-4" />
               </div>
               <div>
-                <h3 className="text-xs font-bold text-slate-800 dark:text-zinc-150 uppercase tracking-wider flex items-center gap-2">
+                <h3 className="text-xs font-bold text-slate-800 dark:text-zinc-150 uppercase tracking-wider flex items-center gap-2 flex-wrap">
                   Monthly Contractor & Supervision Consultant Grading Ledger
                   <span className="text-[10px] font-semibold tracking-normal text-amber-700 dark:text-amber-300 normal-case bg-amber-100/70 dark:bg-amber-950/50 px-2 py-0.5 rounded-full border border-amber-200/50 dark:border-amber-800/40">
                     {monthlyGradingRecords.length} Audited Months
                   </span>
+                  <span className="text-[10px] font-medium tracking-normal text-slate-600 dark:text-slate-300 normal-case bg-slate-100 dark:bg-slate-700/60 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-600">
+                    Project: <strong className="text-slate-800 dark:text-slate-100">{p.name || p.id}</strong>
+                  </span>
                 </h3>
                 <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
-                  Multi-month performance ledger tracking contractor physical SPI execution vs. consultant dual-pillar technical ratings.
+                  Performance ledger strictly scoped to <span className="font-semibold text-slate-700 dark:text-slate-300">{p.name}</span> — tracking contractor ({p.contractor || 'N/A'}) SPI execution vs. consultant ({consultantEval.firmName || p.consultant || 'N/A'}) ratings.
                 </p>
               </div>
             </div>
@@ -2609,6 +2718,27 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                         {monthlyGradingRecords.map((r) => (
                           <option key={r.id} value={r.month}>
                             {r.monthName || r.month}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Supervision Consultant Tenure Filter */}
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Consultant:</span>
+                      <select
+                        value={selectedConsultantTenureFilter}
+                        onChange={(e) => setSelectedConsultantTenureFilter(e.target.value)}
+                        className="text-xs font-semibold py-1.5 px-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-200 cursor-pointer shadow-xs focus:ring-1 focus:ring-indigo-500 max-w-[210px] truncate"
+                        title="Filter ledger by consultant assignment tenure"
+                      >
+                        <option value="All">All Tenures ({monthlyGradingRecords.length} Mos)</option>
+                        <option value="current">
+                          Active: {activeConsultantFirmName} (From {activeConsultantAssignmentDate})
+                        </option>
+                        {previousConsultants.map((prev, pIdx) => (
+                          <option key={prev.id || `prev-${pIdx}`} value={prev.id}>
+                            Predecessor: {prev.firmName} ({prev.commencementDate} - {prev.handoverDate}) • Grade {prev.officialGrade || 'A'}
                           </option>
                         ))}
                       </select>
@@ -2764,9 +2894,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                           <thead>
                             <tr className="bg-amber-50/70 dark:bg-amber-950/30 text-slate-700 dark:text-slate-300 border-b border-amber-200/70 dark:border-amber-900/50 font-extrabold text-[10px] uppercase tracking-wide">
                               <th className="py-2.5 px-3.5 text-left">Month / Audit Period</th>
-                              <th className="py-2.5 px-3.5 text-left">Monthly Plan vs Actual %</th>
-                              <th className="py-2.5 px-3 text-center">Variance %</th>
-                              <th className="py-2.5 px-3.5 text-left">Cumulative Actual % (SPI)</th>
+                              <th className="py-2.5 px-3.5 text-left">Monthly Plan & Execution %</th>
                               <th className="py-2.5 px-3 text-center">Contractor Grade</th>
                               <th className="py-2.5 px-3.5 text-left">Contractor Remarks & Delay Exceptions</th>
                               <th className="py-2.5 px-3 text-center w-24 no-print">Actions</th>
@@ -2806,33 +2934,19 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                                     </div>
                                   </td>
 
-                                  {/* Monthly Plan vs Actual */}
-                                  <td className="py-2.5 px-3.5">
+                                  {/* Monthly Plan vs Actual & Execution Metrics */}
+                                  <td className="py-2.5 px-3.5 min-w-[210px]">
                                     <div className="flex items-center gap-2 font-mono text-[10px]">
                                       <span className="text-slate-500">Plan: <strong className="text-slate-700 dark:text-slate-300">{(rec.contractorPlanMonthly ?? 0).toFixed(2)}%</strong></span>
                                       <span className="text-slate-500">Act: <strong className="text-slate-900 dark:text-white">{(rec.contractorActualMonthly ?? 0).toFixed(2)}%</strong></span>
-                                    </div>
-                                  </td>
-
-                                  {/* Variance */}
-                                  <td className="py-2.5 px-3 text-center font-mono">
-                                    <span className={`inline-block px-2 py-0.5 rounded font-bold text-[9.5px] ${
-                                      varM >= 0 ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400' : 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400'
-                                    }`}>
-                                      {varM >= 0 ? '+' : ''}{varM.toFixed(2)}%
-                                    </span>
-                                  </td>
-
-                                  {/* Cumulative Actual & SPI */}
-                                  <td className="py-2.5 px-3.5 font-mono text-[10px]">
-                                    <div className="text-slate-800 dark:text-slate-200 font-bold">
-                                      {(rec.contractorActualCumulative ?? 0).toFixed(2)}% Cumulative
-                                    </div>
-                                    <div className="flex items-center gap-1 mt-0.5">
-                                      <span className="text-[9px] text-slate-400">SPI:</span>
-                                      <span className={`text-[9.5px] font-bold ${(rec.contractorSpi ?? 1) >= 1 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
-                                        {(rec.contractorSpi ?? 1).toFixed(2)} ({(rec.contractorSpi ?? 1) >= 1 ? 'On-track' : 'Delayed'})
+                                      <span className={`px-1.5 py-0.2 rounded font-bold text-[9px] ${
+                                        varM >= 0 ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400' : 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400'
+                                      }`}>
+                                        {varM >= 0 ? '+' : ''}{varM.toFixed(2)}%
                                       </span>
+                                    </div>
+                                    <div className="text-[9.5px] text-slate-400 font-mono mt-1">
+                                      Cum Act: <strong className="text-slate-700 dark:text-slate-300">{(rec.contractorActualCumulative ?? 0).toFixed(2)}%</strong>  •  SPI: <strong className={(rec.contractorSpi ?? 1) >= 1 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>{(rec.contractorSpi ?? 1).toFixed(2)}</strong>
                                     </div>
                                   </td>
 
@@ -2982,6 +3096,172 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                       </div>
                     </div>
 
+                    {/* Active & Predecessor Supervision Consultant Tenure & Final Output Grades Panel */}
+                    <div className="bg-gradient-to-r from-indigo-50/70 via-slate-50/70 to-blue-50/70 dark:from-indigo-950/25 dark:via-slate-900/40 dark:to-blue-950/25 border border-indigo-200/70 dark:border-indigo-900/50 rounded-xl p-3.5 space-y-3 shadow-xs">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-indigo-100 dark:border-indigo-900/40">
+                        <div className="flex items-center gap-2">
+                          <div className="p-1.5 rounded-lg bg-indigo-600 text-white shadow-xs">
+                            <Briefcase className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-2 flex-wrap">
+                              Supervision Consultant Assignment Timeline & Predecessor Archives
+                              <span className="text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 font-mono">
+                                Assignment Date: {activeConsultantAssignmentDate}
+                              </span>
+                            </h4>
+                            <p className="text-[10.5px] text-slate-500 dark:text-slate-400">
+                              Active consultant ledger starts from assignment date. Historical supervision predecessor records are recorded with verified final output grades.
+                            </p>
+                          </div>
+                        </div>
+
+                        {selectedConsultantTenureFilter !== 'All' && (
+                          <button
+                            type="button"
+                            onClick={() => setSelectedConsultantTenureFilter('All')}
+                            className="self-start sm:self-auto text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer"
+                          >
+                            <RefreshCw className="w-3 h-3" />
+                            Show All Tenures
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Active Consultant Banner */}
+                      <div className="p-3 bg-white dark:bg-slate-800/90 rounded-lg border border-indigo-200/80 dark:border-indigo-800/60 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-xs">
+                        <div className="flex items-center gap-3">
+                          <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs font-black text-slate-850 dark:text-white">
+                                {activeConsultantFirmName}
+                              </span>
+                              <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/50">
+                                Active Supervision Consultant
+                              </span>
+                              {p.supervisionConsultant?.associationType && (
+                                <span className="text-[9px] font-bold text-slate-500 dark:text-slate-400">
+                                  ({p.supervisionConsultant.associationType})
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-3 mt-1 text-[10px] text-slate-500 dark:text-slate-400 font-mono flex-wrap">
+                              <span>Assigned / Commenced: <strong className="text-indigo-600 dark:text-indigo-400">{activeConsultantAssignmentDate}</strong></span>
+                              <span>•</span>
+                              <span>Contract Ref: <strong>{p.supervisionConsultant?.contractRefNo || 'ERA/CS/2021'}</strong></span>
+                              <span>•</span>
+                              <span>RE: <strong>{p.supervisionConsultant?.residentEngineerName || consultantEval.residentEngineer || 'Lead Engineer'}</strong></span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-3 self-end md:self-auto">
+                          <div className="text-right">
+                            <span className="text-[9px] text-slate-400 font-mono block">Current Period Standing</span>
+                            <span className="text-xs font-black text-indigo-600 dark:text-indigo-400">
+                              Grade {consultantEval.officialGrade} ({(consultantEval.slaTurnaroundScore ?? 85).toFixed(1)}% SLA)
+                            </span>
+                          </div>
+                          {selectedConsultantTenureFilter !== 'current' && (
+                            <button
+                              type="button"
+                              onClick={() => setSelectedConsultantTenureFilter('current')}
+                              className="px-2.5 py-1 text-[10.5px] font-bold rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/50 transition cursor-pointer"
+                            >
+                              Filter Current Tenure
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Archived Predecessors with Final Output Grade */}
+                      {previousConsultants.length > 0 && (
+                        <div className="space-y-2 pt-1">
+                          <h5 className="text-[10px] font-black uppercase text-slate-600 dark:text-slate-400 tracking-wider flex items-center gap-1.5 font-mono">
+                            <Clock className="w-3.5 h-3.5 text-slate-400" />
+                            Predecessor Supervision Consultants — Historical Records & Final Output Grades
+                          </h5>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                            {previousConsultants.map((prev, prevIdx) => {
+                              const gradeBadge = prev.officialGrade === 'A'
+                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                                : prev.officialGrade === 'B'
+                                  ? 'bg-teal-100 text-teal-800 dark:bg-teal-950/60 dark:text-teal-300 border-teal-200 dark:border-teal-800'
+                                  : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border-amber-200 dark:border-amber-800';
+
+                              const isSelected = selectedConsultantTenureFilter === prev.id;
+
+                              return (
+                                <div 
+                                  key={prev.id || `prev-card-${prevIdx}`}
+                                  className={`p-3 rounded-lg border transition-all ${
+                                    isSelected 
+                                      ? 'bg-indigo-50/90 dark:bg-indigo-950/50 border-indigo-500 dark:border-indigo-500 shadow-sm' 
+                                      : 'bg-white/80 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 hover:border-indigo-300'
+                                  }`}
+                                >
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div>
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 uppercase">
+                                          Predecessor #{prevIdx + 1}
+                                        </span>
+                                        <span className="text-xs font-black text-slate-800 dark:text-slate-200">
+                                          {prev.firmName}
+                                        </span>
+                                      </div>
+                                      <div className="text-[10px] text-slate-500 font-mono mt-0.5">
+                                        Tenure: <strong>{prev.commencementDate}</strong> → <strong>{prev.handoverDate}</strong>
+                                      </div>
+                                    </div>
+
+                                    {/* Final Output Grade Badge */}
+                                    <div className="text-right shrink-0">
+                                      <span className="text-[8.5px] uppercase font-bold text-slate-400 block">Final Output Grade</span>
+                                      <span className={`inline-block px-2 py-0.5 rounded-md font-black text-xs border ${gradeBadge}`}>
+                                        Grade {prev.officialGrade || 'A'} • {(prev.evaluationScore ?? 92.4).toFixed(1)}%
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-700/60 flex items-center justify-between gap-2 text-[10px]">
+                                    <span className="text-slate-500 truncate max-w-[200px]" title={prev.transitionReason || prev.transitionNotes}>
+                                      {prev.transitionReason || prev.transitionNotes || 'Supervisory services completed & transitioned.'}
+                                    </span>
+
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                      <button
+                                        type="button"
+                                        onClick={() => setSelectedHistoricalConsultantModal(prev)}
+                                        className="p-1 px-2 rounded text-[10px] font-bold text-slate-700 dark:text-slate-200 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-650 transition cursor-pointer flex items-center gap-1"
+                                        title="View Archived Final Output Appraisal Dossier"
+                                      >
+                                        <Eye className="w-3 h-3" />
+                                        <span>Dossier</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setSelectedConsultantTenureFilter(isSelected ? 'All' : prev.id)}
+                                        className={`p-1 px-2 rounded text-[10px] font-bold transition cursor-pointer ${
+                                          isSelected 
+                                            ? 'bg-indigo-600 text-white' 
+                                            : 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 hover:bg-indigo-100'
+                                        }`}
+                                      >
+                                        {isSelected ? 'Selected' : 'Filter Ledger'}
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
                     {/* Dedicated Supervision Consultant Table */}
                     <div className="border border-slate-200/80 dark:border-slate-700/60 rounded-xl bg-white dark:bg-slate-900 overflow-hidden shadow-xs">
                       <div className="overflow-x-auto">
@@ -3022,13 +3302,25 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                                       </span>
                                     </div>
                                     <div className="mt-1 flex items-center gap-1 flex-wrap">
-                                      <span className="inline-flex items-center gap-1 text-[9px] font-bold text-indigo-800 dark:text-indigo-200 bg-indigo-50 dark:bg-indigo-950/40 px-1.5 py-0.5 rounded border border-indigo-200/60 dark:border-indigo-800/40">
-                                        <Briefcase className="w-2.5 h-2.5 text-indigo-500" />
-                                        <span className="truncate max-w-[140px]">{rec.consultantName || consultantEval.firmName || p.consultant || 'Supervision Consultant'}</span>
-                                      </span>
+                                      {rec.isHistoricalConsultant ? (
+                                        <span className="inline-flex items-center gap-1 text-[9px] font-bold text-slate-800 dark:text-slate-200 bg-amber-50/90 dark:bg-amber-950/40 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800/40" title={`Predecessor Tenure: ${rec.consultantAssignmentDate} to ${rec.consultantHandoverDate}`}>
+                                          <Clock className="w-2.5 h-2.5 text-amber-600" />
+                                          <span className="truncate max-w-[140px]">🏛️ {rec.consultantName || 'Predecessor Consultant'}</span>
+                                        </span>
+                                      ) : (
+                                        <span className="inline-flex items-center gap-1 text-[9px] font-bold text-indigo-800 dark:text-indigo-200 bg-indigo-50 dark:bg-indigo-950/40 px-1.5 py-0.5 rounded border border-indigo-200/60 dark:border-indigo-800/40" title={`Active Consultant: Assigned ${rec.consultantAssignmentDate || activeConsultantAssignmentDate}`}>
+                                          <Briefcase className="w-2.5 h-2.5 text-indigo-500" />
+                                          <span className="truncate max-w-[140px]">{rec.consultantName || consultantEval.firmName || p.consultant || 'Supervision Consultant'}</span>
+                                        </span>
+                                      )}
                                       {(rec.residentEngineer || consultantEval.residentEngineer) && (
                                         <span className="text-[9px] text-slate-400 dark:text-slate-500 font-mono">
                                           RE: {rec.residentEngineer || consultantEval.residentEngineer}
+                                        </span>
+                                      )}
+                                      {rec.isHistoricalConsultant && (
+                                        <span className="text-[8.5px] font-black text-amber-700 dark:text-amber-400 bg-amber-100/60 dark:bg-amber-950/60 px-1.5 py-0.2 rounded">
+                                          Predecessor Final: {rec.consultantGrade || 'A'} ({(rec.consultantOverallScore ?? 92.4).toFixed(1)}%)
                                         </span>
                                       )}
                                     </div>
@@ -3300,13 +3592,25 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                                   {/* Consultant Dual-Pillar Scores */}
                                   <td className="py-2.5 px-3.5 min-w-[210px]">
                                     <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
-                                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/50 text-indigo-800 dark:text-indigo-200 border border-indigo-200 dark:border-indigo-800/60 font-semibold text-[9.5px]">
-                                        <Briefcase className="w-2.5 h-2.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
-                                        <span className="truncate max-w-[130px]">{rec.consultantName || consultantEval.firmName || p.consultant || 'Supervision Consultant'}</span>
-                                      </span>
+                                      {rec.isHistoricalConsultant ? (
+                                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950/50 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800/60 font-semibold text-[9.5px]" title={`Predecessor Tenure: ${rec.consultantAssignmentDate} to ${rec.consultantHandoverDate}`}>
+                                          <Clock className="w-2.5 h-2.5 text-amber-600 shrink-0" />
+                                          <span className="truncate max-w-[130px]">🏛️ {rec.consultantName || 'Predecessor Consultant'}</span>
+                                        </span>
+                                      ) : (
+                                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/50 text-indigo-800 dark:text-indigo-200 border border-indigo-200 dark:border-indigo-800/60 font-semibold text-[9.5px]" title={`Active Consultant: Assigned ${rec.consultantAssignmentDate || activeConsultantAssignmentDate}`}>
+                                          <Briefcase className="w-2.5 h-2.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                                          <span className="truncate max-w-[130px]">{rec.consultantName || consultantEval.firmName || p.consultant || 'Supervision Consultant'}</span>
+                                        </span>
+                                      )}
                                       {(rec.residentEngineer || consultantEval.residentEngineer) && (
                                         <span className="text-[8.5px] text-slate-400 font-mono">
                                           RE: {rec.residentEngineer || consultantEval.residentEngineer}
+                                        </span>
+                                      )}
+                                      {rec.isHistoricalConsultant && (
+                                        <span className="text-[8px] font-black text-amber-700 dark:text-amber-400 bg-amber-100/60 dark:bg-amber-950/60 px-1.5 py-0.2 rounded">
+                                          Predecessor Final
                                         </span>
                                       )}
                                     </div>
@@ -4478,6 +4782,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                     </label>
                     <input
                       type="month"
+                      max={new Date().toISOString().slice(0, 7)}
                       value={gradingForm.month || ''}
                       onChange={(e) => {
                         const val = e.target.value;
@@ -4488,15 +4793,115 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                     />
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => handleAutoCalculateForm(gradingForm.month || new Date().toISOString().slice(0, 7))}
-                    className="flex items-center justify-center gap-1.5 py-1 px-3 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-lg text-[10px] transition-colors cursor-pointer"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                    <span>Auto-Calculate from Live Project Data</span>
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const d = new Date();
+                        d.setMonth(d.getMonth() - 1);
+                        const defaultMonth = d.toISOString().slice(0, 7);
+                        handleAutoCalculateForm(gradingForm.month || defaultMonth);
+                      }}
+                      className="flex items-center justify-center gap-1.5 py-1 px-3 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-lg text-[10px] transition-colors cursor-pointer"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>Auto-Calculate</span>
+                    </button>
+                  </div>
                 </div>
+
+                {/* Current Month Open / Provisional Notice */}
+                {isCurrentMonth(gradingForm.month) && (
+                  <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-200 rounded-xl text-xs flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                    <div>
+                      <strong className="block text-[11px] font-black uppercase font-mono tracking-wide">
+                        Current Month Ledger Standing: Open / Provisional
+                      </strong>
+                      <span className="text-[10px] text-slate-600 dark:text-slate-300">
+                        The current month's contractor grading remains open and provisional until the end of the month. Finalized certification unlocks automatically after the month concludes.
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Supervision Consultant Tenure Cross-Check & Verification Status */}
+                {(() => {
+                  const checkInfo = resolveConsultantForPeriod(p, gradingForm.month);
+                  return (
+                    <div className={`p-3 rounded-xl border text-xs ${
+                      checkInfo.isHistorical 
+                        ? 'bg-amber-50/90 dark:bg-amber-950/30 border-amber-300 dark:border-amber-800/70 text-amber-950 dark:text-amber-100'
+                        : 'bg-indigo-50/70 dark:bg-indigo-950/30 border-indigo-200 dark:border-indigo-800/60 text-indigo-950 dark:text-indigo-100'
+                    }`}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <div className={`p-1.5 rounded-lg shrink-0 ${checkInfo.isHistorical ? 'bg-amber-600 text-white' : 'bg-indigo-600 text-white'}`}>
+                            {checkInfo.isHistorical ? <Clock className="w-4 h-4" /> : <ShieldCheck className="w-4 h-4" />}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-black text-xs uppercase tracking-wide">
+                                {checkInfo.isHistorical ? 'Historical Predecessor Consultant Tenure' : 'Active Supervision Consultant Tenure'}
+                              </span>
+                              <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md font-mono ${
+                                checkInfo.isHistorical 
+                                  ? 'bg-amber-200 text-amber-900 dark:bg-amber-900 dark:text-amber-100' 
+                                  : 'bg-emerald-100 text-emerald-900 dark:bg-emerald-900 dark:text-emerald-100'
+                              }`}>
+                                {checkInfo.isHistorical ? 'Pre-Assignment Archive' : 'Active Assignment'}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5">
+                              Supervisory Firm: <strong className="text-slate-900 dark:text-white">{checkInfo.firmName}</strong>
+                              {checkInfo.residentEngineer && <> • RE: <strong>{checkInfo.residentEngineer}</strong></>}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="text-right shrink-0">
+                          <span className="text-[9px] text-slate-500 dark:text-slate-400 uppercase font-mono block">Attributed Grade</span>
+                          <span className={`inline-block px-2 py-0.5 rounded text-[11px] font-black ${
+                            checkInfo.officialGrade === 'A' ? 'bg-emerald-600 text-white' : 'bg-indigo-600 text-white'
+                          }`}>
+                            Grade {checkInfo.officialGrade} ({checkInfo.overallScore.toFixed(1)}%)
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="mt-2 pt-2 border-t border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between gap-2 text-[10px] text-slate-600 dark:text-slate-400">
+                        <span>
+                          {checkInfo.isHistorical 
+                            ? `Audit month (${gradingForm.month}) is before active commencement (${activeConsultantAssignmentDate}). Linked to predecessor archive (${checkInfo.assignmentDate} → ${checkInfo.handoverDate}).`
+                            : `Audit month (${gradingForm.month}) falls on or after assignment date (${activeConsultantAssignmentDate}).`
+                          }
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setGradingForm(prev => ({
+                              ...prev,
+                              consultantName: checkInfo.firmName,
+                              residentEngineer: checkInfo.residentEngineer,
+                              consultantTenureId: checkInfo.tenureId,
+                              isHistoricalConsultant: checkInfo.isHistorical,
+                              consultantAssignmentDate: checkInfo.assignmentDate,
+                              consultantHandoverDate: checkInfo.handoverDate,
+                              consultantSlaTurnaroundScore: checkInfo.slaScore,
+                              consultantFiveDimScore: checkInfo.fiveDimScore,
+                              consultantOverallScore: checkInfo.overallScore,
+                              consultantGrade: checkInfo.officialGrade,
+                              consultantStanding: checkInfo.standing
+                            }));
+                          }}
+                          className="px-2 py-1 rounded bg-white dark:bg-slate-800 hover:bg-slate-100 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 font-bold transition shrink-0 cursor-pointer"
+                        >
+                          Sync Consultant Parameters
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Section A: Contractor Metrics */}
                 <div className="space-y-2">
@@ -4693,6 +5098,166 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                 >
                   <Check className="w-4 h-4" />
                   <span>Save Monthly Grading Record</span>
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal 3: Historical Predecessor Supervision Consultant Appraisal Dossier */}
+      <AnimatePresence>
+        {selectedHistoricalConsultantModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs no-print"
+            onClick={() => setSelectedHistoricalConsultantModal(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white dark:bg-slate-900 rounded-2xl max-w-3xl w-full border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
+            >
+              {/* Modal Header */}
+              <div className="p-4 bg-slate-900 text-white flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-lg bg-indigo-600 text-white">
+                    <Briefcase className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-black uppercase tracking-wide">
+                        {selectedHistoricalConsultantModal.firmName}
+                      </h3>
+                      <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-amber-500 text-white">
+                        Predecessor Supervision Consultant
+                      </span>
+                    </div>
+                    <p className="text-[10.5px] text-slate-400">
+                      Archived Contract & Final Output Performance Evaluation Dossier
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedHistoricalConsultantModal(null)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Modal Content */}
+              <div className="p-5 overflow-y-auto space-y-4 text-xs">
+                {/* Final Output Grade Hero Banner */}
+                <div className="p-4 rounded-xl bg-gradient-to-r from-indigo-50 via-slate-50 to-emerald-50 dark:from-indigo-950/40 dark:via-slate-900/60 dark:to-emerald-950/40 border border-indigo-200/80 dark:border-indigo-800/60 flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <div>
+                    <span className="text-[9.5px] font-mono uppercase font-black tracking-wider text-indigo-700 dark:text-indigo-300 block mb-1">
+                      OFFICIAL FINAL OUTPUT PERFORMANCE GRADE
+                    </span>
+                    <div className="flex items-baseline gap-3">
+                      <span className="text-3xl font-black text-slate-900 dark:text-white">
+                        Grade {selectedHistoricalConsultantModal.officialGrade || 'A'}
+                      </span>
+                      <span className="text-base font-extrabold text-emerald-600 dark:text-emerald-400 font-mono">
+                        {(selectedHistoricalConsultantModal.evaluationScore ?? 92.4).toFixed(1)}% Overall Score
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                      Standing: <strong className="text-slate-700 dark:text-slate-200">{selectedHistoricalConsultantModal.performanceRating || 'Outstanding'}</strong> • Archived on {selectedHistoricalConsultantModal.archivedAt?.slice(0, 10) || selectedHistoricalConsultantModal.handoverDate}
+                    </p>
+                  </div>
+
+                  <div className="text-right sm:border-l sm:border-slate-200 dark:sm:border-slate-700 sm:pl-4 space-y-1">
+                    <div className="text-[10px] text-slate-500">
+                      SLA On-Time Compliance: <strong className="font-mono text-emerald-600 dark:text-emerald-400">{(selectedHistoricalConsultantModal.slaComplianceRatePct ?? 94.2).toFixed(1)}%</strong>
+                    </div>
+                    <div className="text-[10px] text-slate-500">
+                      Contract Ref: <strong className="font-mono text-slate-700 dark:text-slate-300">{selectedHistoricalConsultantModal.contractRefNo}</strong>
+                    </div>
+                    <div className="text-[10px] text-slate-500">
+                      Resident Engineer: <strong className="text-slate-700 dark:text-slate-300">{selectedHistoricalConsultantModal.residentEngineerName || 'Resident Engineer'}</strong>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Tenure and Handover Details */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 space-y-2">
+                    <h4 className="text-[10.5px] font-black uppercase tracking-wider text-slate-700 dark:text-slate-300 font-mono flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5 text-indigo-500" />
+                      Assignment & Handover Period
+                    </h4>
+                    <div className="space-y-1.5 text-[11px]">
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Commencement / Assignment:</span>
+                        <strong className="font-mono text-slate-800 dark:text-slate-200">{selectedHistoricalConsultantModal.commencementDate}</strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Handover / Transition Date:</span>
+                        <strong className="font-mono text-indigo-600 dark:text-indigo-400">{selectedHistoricalConsultantModal.handoverDate}</strong>
+                      </div>
+                      {selectedHistoricalConsultantModal.originalCompletionDate && (
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Original Scheduled End:</span>
+                          <span className="font-mono text-slate-600 dark:text-slate-400">{selectedHistoricalConsultantModal.originalCompletionDate}</span>
+                        </div>
+                      )}
+                      {selectedHistoricalConsultantModal.associationType && (
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Association Type:</span>
+                          <span className="font-semibold text-slate-700 dark:text-slate-300">{selectedHistoricalConsultantModal.associationType}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 space-y-2">
+                    <h4 className="text-[10.5px] font-black uppercase tracking-wider text-slate-700 dark:text-slate-300 font-mono flex items-center gap-1.5">
+                      <FileBadge className="w-3.5 h-3.5 text-emerald-500" />
+                      Financial & Contract Overview
+                    </h4>
+                    <div className="space-y-1.5 text-[11px]">
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Original Contract Fee:</span>
+                        <strong className="font-mono text-slate-800 dark:text-slate-200">{formatAccounting(selectedHistoricalConsultantModal.originalFeeEtb || 0)} ETB</strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Total Invoiced to Transition:</span>
+                        <span className="font-mono text-slate-700 dark:text-slate-300">{formatAccounting(selectedHistoricalConsultantModal.totalInvoicedEtb || (selectedHistoricalConsultantModal.originalFeeEtb || 0) * 0.95)} ETB</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Total Settled / Paid:</span>
+                        <strong className="font-mono text-emerald-600 dark:text-emerald-400">{formatAccounting(selectedHistoricalConsultantModal.totalPaidEtb || (selectedHistoricalConsultantModal.originalFeeEtb || 0) * 0.92)} ETB</strong>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Transition Notes and Reasons */}
+                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 space-y-1.5">
+                  <h4 className="text-[10.5px] font-black uppercase tracking-wider text-slate-700 dark:text-slate-300 font-mono flex items-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5 text-slate-400" />
+                    Transition & Handover PMO Statement
+                  </h4>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
+                    {selectedHistoricalConsultantModal.transitionReason || selectedHistoricalConsultantModal.transitionNotes || 'Supervision consulting contract successfully executed for the assigned phase. All submittal audits, IPC certifications, and site handover protocols formally archived into the ERA project repository.'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-3 bg-slate-50 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedHistoricalConsultantModal(null)}
+                  className="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold rounded-lg transition-colors cursor-pointer text-xs"
+                >
+                  Close Dossier
                 </button>
               </div>
             </motion.div>

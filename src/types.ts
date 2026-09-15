@@ -211,7 +211,7 @@ export interface MonthlyGradingRecord {
   monthName: string; // e.g. "September 2026"
   recordedDate: string; // YYYY-MM-DD
   recordedBy?: string;
-  status?: 'Approved' | 'Finalized' | 'Draft' | 'Audited';
+  status?: 'Approved' | 'Finalized' | 'Draft' | 'Audited' | 'Provisional' | 'Open' | string;
   
   // Contractor Performance & Grading
   contractorName?: string;
@@ -229,6 +229,10 @@ export interface MonthlyGradingRecord {
   // Supervision Consultant Performance & Grading
   consultantName?: string;
   residentEngineer?: string;
+  consultantTenureId?: string; // 'current' or ID of HistoricalSupervisionConsultant
+  isHistoricalConsultant?: boolean;
+  consultantAssignmentDate?: string;
+  consultantHandoverDate?: string;
   consultantSlaTurnaroundScore: number; // % (Pillar 1)
   consultantFiveDimScore: number; // % (Pillar 2)
   consultantOverallScore: number; // % Combined 50/50
@@ -707,7 +711,7 @@ export interface SupervisionConsultantInfo {
   detailedEvaluations?: Record<string, { score: number; actualValue?: string | number; evaluatedAt?: string; evaluator?: string; notes?: string }>;
   dimensionScores?: Record<'A' | 'B' | 'C' | 'D' | 'E' | string, { earnedScore: number; maxScore: number; scorePct: number }>;
   overallEvaluationScore?: number;
-  officialEvaluationGrade?: 'A' | 'B' | 'C' | 'D' | 'F';
+  officialEvaluationGrade?: 'A' | 'B' | 'C' | 'D' | 'F' | 'Failed';
   customConsultantEvaluationCriteria?: ConsultantEvaluationCriterion[];
   evaluationMethodology?: 'comprehensive_5dim' | 'sla_operational' | 'hybrid';
   personnel: ConsultantPersonnel[];
