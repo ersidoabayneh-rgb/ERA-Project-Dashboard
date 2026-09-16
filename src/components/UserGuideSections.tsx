@@ -2340,37 +2340,38 @@ export default function UserGuideSections({ onScrollToSection, onDownloadPdf }: 
           <strong>Figure 16.1 — Interactive CPM Gantt Chart & Zero-Float Critical Path:</strong> Identifies driving path activities with zero total float, predecessor link dependencies, and automated duration calculations.
         </p>
 
-        {/* Screen Mockup: Figure 16.2 Primavera CSV Import */}
+        {/* Screen Mockup: Figure 16.2 Microsoft Project (.mpp / .xml) & CSV Importer */}
         <ScreenMockup 
-          title="Figure 16.2 — Primavera P6 / MS Project CSV Schedule Importer" 
+          title="Figure 16.2 — Microsoft Project (.mpp, .xml) & CPM Schedule Importer" 
           url="https://eradashboard.com.et/project/daye-girja/schedule?tab=import" 
           badge="Figure 16.2"
           badgeColor="bg-blue-600"
         >
           <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-2 text-2xs text-slate-300">
-            <span className="font-bold text-slate-200 block">Standard ERA Primavera CSV Mapping Schema</span>
+            <span className="font-bold text-slate-200 block">MS Project (.mpp / .xml) &amp; CSV CPM Schedule Importer</span>
             <div className="p-2 bg-slate-900 rounded font-mono text-[10px] text-emerald-400 overflow-x-auto">
-              Activity_ID,Activity_Name,Planned_Duration,Early_Start,Early_Finish,Total_Float,Predecessors,Lag<br />
-              RD-101,Roadway Excavation,90,01-Oct-2023,30-Dec-2023,0,START,0<br />
-              BR-201,Girja River Bridge Abutments,120,15-Jan-2024,15-May-2024,14,RD-101 FS,15
+              Format: ID, Name, Duration, Predecessors, Lag, Sequence Type<br />
+              Supports: .mpp (Microsoft Project Native), .xml (MS Project XML), .mpx, .csv, .tsv, .txt<br />
+              Example: RD-101, Roadway Excavation, 90, START, 0, FS<br />
+              Example: BR-201, Girja River Bridge Abutments, 120, RD-101, 15, FS
             </div>
           </div>
         </ScreenMockup>
 
         <p className="text-2xs text-slate-500 dark:text-slate-400 italic">
-          <strong>Figure 16.2 — Primavera P6 / MS Project CSV Schedule Importer:</strong> Outlines column headers required for importing revised baseline schedules directly from external scheduling suites.
+          <strong>Figure 16.2 — Microsoft Project (.mpp, .xml) &amp; CPM Schedule Importer:</strong> Accepts native Microsoft Project files (.mpp), MS Project XML (.xml), and standard CPM CSV spreadsheets to synchronize directly into Interactive CPM Analytics &amp; Gantt Chart.
         </p>
 
         {/* Step-by-Step Instructions */}
         <div className="p-4 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2 text-xs text-slate-700 dark:text-slate-300 font-medium">
           <h4 className="font-bold text-slate-900 dark:text-white uppercase text-2xs tracking-wide">
-            How to Maintain CPM Work Programs
+            How to Maintain &amp; Import CPM Work Programs
           </h4>
           <ol className="space-y-1.5 list-decimal list-inside">
-            <li><strong>Access Work Program:</strong> Navigate to "Work Program CPM" from the main schedule menu.</li>
-            <li><strong>Review Gantt Bars:</strong> Red horizontal bars represent critical path items; blue bars represent floating activities with schedule buffers.</li>
-            <li><strong>Import P6 Export:</strong> Click <strong>Import Primavera CSV</strong> to synchronize updated contractor work programs directly into the ERA ERP database.</li>
-            <li><strong>Analyze Slippages:</strong> Compare baseline finish milestone dates against recalculated CPM projected completion dates.</li>
+            <li><strong>Access Work Program:</strong> Navigate to &quot;Work Program CPM&quot; from the main navigation menu.</li>
+            <li><strong>Import MS Project Schedule:</strong> Drag-and-drop or select your <strong>.mpp</strong> file prepared by Microsoft Project (or MS Project XML / CPM CSV).</li>
+            <li><strong>Synchronize CPM Engine:</strong> Click <strong>Import &amp; Sync CPM</strong>. The engine automatically parses task durations, predecessors (FS, SS, FF, SF), lag offsets, performs forward and backward passes, and synchronizes the Gantt chart and AON network.</li>
+            <li><strong>Review Gantt Bars &amp; Critical Path:</strong> Red horizontal bars and badges represent critical path items with zero float; subcritical bars display positive float buffers.</li>
           </ol>
         </div>
       </section>

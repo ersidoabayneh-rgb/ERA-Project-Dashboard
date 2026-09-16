@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Calendar, Plus, Trash2, Import, Award, Activity } from 'lucide-react';
+import { Calendar, Plus, Trash2, Import, Award, Activity, FileSpreadsheet, CheckCircle2, AlertCircle, Download, FileCode, Layers } from 'lucide-react';
 import { Project, WorkProgramActivity } from '../types';
 import { defaultWorkProgram } from '../data/defaultProject';
 import CPMChart from './CPMChart';
+import { parseWorkProgramFile, calculateCPM, ParseResult } from '../lib/mppParser';
 
 interface WorkProgramViewProps {
   project: Project;
@@ -12,110 +13,31 @@ interface WorkProgramViewProps {
 
 export default function WorkProgramView({ project, onUpdateActivities }: WorkProgramViewProps) {
   const activities = project.workProgram || [];
-  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isParsing, setIsParsing] = useState(false);
+  const [importStatus, setImportStatus] = useState<{
+    type: 'success' | 'error' | 'warning' | null;
+    message: string;
+    details?: string;
+  } | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const calculateCPMLocal = (acts: WorkProgramActivity[]) => {
-    if (acts.length === 0) return;
-    const startDate = new Date(project.startDate || new Date());
-    
-    // Clear previous settings
-    acts.forEach(a => {
-      a.est = 0;
-      a.eft = 0;
-      a.lst = 0;
-      a.lft = 0;
-      a.float = 0;
-      a.critical = false;
-    });
-
-    // Forward Pass
-    acts.forEach(a => {
-      const preds = a.predecessors ? a.predecessors.split(',').map(s => s.trim()).filter(s => s) : [];
-      if (preds.length === 0) {
-        a.est = 0;
-      } else {
-        let maxEst = 0;
-        preds.forEach(pid => {
-          const pa = acts.find(x => x.id === pid);
-          if (pa) {
-            const linkDetail = a.predDetails?.[pid];
-            const lag = linkDetail !== undefined ? linkDetail.lag : (a.lag || 0);
-            const type = linkDetail !== undefined ? linkDetail.depType : (a.depType || 'FS');
-            
-            let reqEst = 0;
-            if (type === 'FS') {
-              reqEst = (pa.eft || 0) + lag;
-            } else if (type === 'SS') {
-              reqEst = (pa.est || 0) + lag;
-            } else if (type === 'FF') {
-              reqEst = (pa.eft || 0) + lag - (a.duration || 0);
-            } else if (type === 'SF') {
-              reqEst = (pa.est || 0) + lag - (a.duration || 0);
-            }
-            if (reqEst > maxEst) {
-              maxEst = reqEst;
-            }
-          }
-        });
-        a.est = maxEst;
-      }
-      a.eft = a.est + (a.duration || 0);
-    });
-
-    // Backward Pass
-    const lastAct = acts.reduce((max, a) => (a.eft || 0) > ((max ? max.eft : 0) || 0) ? a : max, acts[0]);
-    const projectEnd = lastAct ? (lastAct.eft || 0) : 0;
-
-    const tempActs = [...acts].reverse();
-    tempActs.forEach(a => {
-      // Find successors
-      const succs = acts.filter(x => {
-        const pList = x.predecessors ? x.predecessors.split(',').map(s => s.trim()) : [];
-        return pList.includes(a.id);
-      });
-
-      if (succs.length === 0) {
-        a.lft = projectEnd;
-      } else {
-        let minLft = Infinity;
-        succs.forEach(s => {
-          const linkDetail = s.predDetails?.[a.id];
-          const slag = linkDetail !== undefined ? linkDetail.lag : (s.lag || 0);
-          const stype = linkDetail !== undefined ? linkDetail.depType : (s.depType || 'FS');
-          
-          let reqLft = projectEnd;
-          if (stype === 'FS') {
-            reqLft = (s.lst || 0) - slag;
-          } else if (stype === 'SS') {
-            reqLft = (s.lst || 0) - slag + (a.duration || 0);
-          } else if (stype === 'FF') {
-            reqLft = (s.lft || 0) - slag;
-          } else if (stype === 'SF') {
-            reqLft = (s.lft || 0) - slag + (a.duration || 0);
-          }
-          if (reqLft < minLft) {
-            minLft = reqLft;
-          }
-        });
-        a.lft = minLft === Infinity ? projectEnd : minLft;
-      }
-      a.lst = a.lft - (a.duration || 0);
-    });
-
-    // Compute floats & formatted display dates
-    acts.forEach(a => {
-      a.float = (a.lst || 0) - (a.est || 0);
-      a.critical = Math.abs(a.float) < 0.01;
-      
-      if (!a.manualStart) {
-        const s = new Date(startDate);
-        s.setDate(s.getDate() + (a.est || 0));
-        a.start = s.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-      }
-      if (!a.manualFinish) {
-        const f = new Date(startDate);
-        f.setDate(f.getDate() + (a.eft || 0));
-        a.finish = f.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    if (!acts || acts.length === 0) return;
+    const calculated = calculateCPM(acts, project.startDate);
+    // Mutate in place for local compatibility
+    acts.forEach((a, i) => {
+      const src = calculated[i];
+      if (src) {
+        a.est = src.est;
+        a.eft = src.eft;
+        a.lst = src.lst;
+        a.lft = src.lft;
+        a.float = src.float;
+        a.critical = src.critical;
+        if (!a.manualStart && src.start) a.start = src.start;
+        if (!a.manualFinish && src.finish) a.finish = src.finish;
       }
     });
   };
@@ -232,6 +154,10 @@ export default function WorkProgramView({ project, onUpdateActivities }: WorkPro
     const samples = defaultWorkProgram();
     calculateCPMLocal(samples);
     onUpdateActivities(samples);
+    setImportStatus({
+      type: 'success',
+      message: 'Sample CPM schedule loaded successfully. Interactive CPM analytics and Gantt chart synchronized.'
+    });
   };
 
   const handleAddNewActivity = () => {
@@ -254,49 +180,109 @@ export default function WorkProgramView({ project, onUpdateActivities }: WorkPro
     onUpdateActivities(updated);
   };
 
-  const handleCsvImport = () => {
-    if (!csvFile) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const text = e.target?.result as string;
-      const lines = text.split('\n').filter(l => l.trim());
-      if (lines.length < 2) return;
-      
-      const imported: WorkProgramActivity[] = lines.slice(1).map(l => {
-        const cols = l.split(',');
-        const rawLag = cols[4]?.trim();
-        const rawDepType = cols[5]?.trim()?.toUpperCase();
-        return {
-          id: cols[0]?.trim() || 'X',
-          name: cols[1]?.trim() || 'Unnamed',
-          duration: parseInt(cols[2], 10) || 0,
-          predecessors: cols[3]?.trim() || '',
-          lag: rawLag ? parseInt(rawLag, 10) || 0 : 0,
-          depType: (rawDepType === 'SS' || rawDepType === 'FF' || rawDepType === 'SF' || rawDepType === 'FS') ? rawDepType : 'FS'
-        };
-      });
+  const handleFileSelection = (file: File | null) => {
+    setSelectedFile(file);
+    setImportStatus(null);
+  };
 
-      calculateCPMLocal(imported);
-      onUpdateActivities(imported);
-      setCsvFile(null);
-    };
-    reader.readAsText(csvFile);
+  const handleImportFile = async () => {
+    if (!selectedFile) return;
+    setIsParsing(true);
+    setImportStatus(null);
+
+    try {
+      const result: ParseResult = await parseWorkProgramFile(selectedFile);
+
+      if (!result.activities || result.activities.length === 0) {
+        setImportStatus({
+          type: 'error',
+          message: `Could not parse activities from "${selectedFile.name}".`,
+          details: 'Please ensure the file is an MS Project (.mpp), MS Project XML (.xml), or CSV/text file with ID, Name, Duration, Predecessors, Lag, Sequence Type.'
+        });
+        setIsParsing(false);
+        return;
+      }
+
+      // Calculate CPM metrics (Float, Critical Path, Early Start, Early Finish)
+      const calculated = calculateCPM(result.activities, project.startDate);
+      const criticalCount = calculated.filter(a => a.critical).length;
+      const totalDur = calculated.reduce((max, a) => Math.max(max, a.eft || 0), 0);
+
+      onUpdateActivities(calculated);
+      setSelectedFile(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+
+      setImportStatus({
+        type: 'success',
+        message: `Successfully imported ${calculated.length} activities from ${result.formatLabel}!`,
+        details: `CPM Schedule synchronized: ${criticalCount} critical activities identified, total duration ${totalDur} days. Interactive Gantt Chart & Network Diagram updated.`
+      });
+    } catch (err: any) {
+      console.error('Import error:', err);
+      setImportStatus({
+        type: 'error',
+        message: 'Failed to process the schedule file.',
+        details: err?.message || 'An unexpected error occurred while parsing the project schedule file.'
+      });
+    } finally {
+      setIsParsing(false);
+    }
+  };
+
+  const handleExportCsv = () => {
+    if (activities.length === 0) return;
+    const headers = ['ID', 'Name', 'Duration', 'Predecessors', 'Lag', 'Sequence Type', 'Early Start', 'Early Finish', 'Float', 'Critical'];
+    const rows = activities.map(a => [
+      `"${a.id}"`,
+      `"${(a.name || '').replace(/"/g, '""')}"`,
+      a.duration || 0,
+      `"${a.predecessors || ''}"`,
+      a.lag || 0,
+      `"${a.depType || 'FS'}"`,
+      `"${a.start || ''}"`,
+      `"${a.finish || ''}"`,
+      a.float !== undefined ? a.float : 0,
+      a.critical ? 'Yes' : 'No'
+    ]);
+
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `${project.name.replace(/\s+/g, '_')}_CPM_Schedule.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
     <div className="space-y-4">
-      <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 p-5 rounded-2xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+      {/* Top Header Card */}
+      <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-5 rounded-2xl shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-lg font-bold text-slate-800 dark:text-zinc-100 mb-1 flex items-center gap-2">
             <Calendar className="w-5 h-5 text-blue-500" />
             Critical Path Method (CPM) & Program Work Plan
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Define task dependency constraints. Zero-float paths are automatically color-coded with critical paths.
+            Define task dependency constraints and sequence types. Zero-float paths are automatically color-coded with critical paths and synchronized to the Gantt Chart.
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-2">
+          {activities.length > 0 && (
+            <button
+              onClick={handleExportCsv}
+              className="bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-250 text-xs font-bold py-1.5 px-3 rounded-xl flex items-center gap-1.5 transition"
+              title="Export schedule to CSV format"
+            >
+              <Download className="w-3.5 h-3.5 text-slate-500" />
+              Export CSV
+            </button>
+          )}
+
           <button
             onClick={preloadSample}
             className="bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-250 text-xs font-bold py-1.5 px-3 rounded-xl transition"
@@ -306,7 +292,7 @@ export default function WorkProgramView({ project, onUpdateActivities }: WorkPro
           
           <button
             onClick={handleAddNewActivity}
-            className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-1.5 px-3 rounded-xl flex items-center gap-1 transition"
+            className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-1.5 px-3 rounded-xl flex items-center gap-1 transition shadow-xs"
           >
             <Plus className="w-3.5 h-3.5" />
             Add Activity
@@ -314,35 +300,135 @@ export default function WorkProgramView({ project, onUpdateActivities }: WorkPro
         </div>
       </div>
 
-      {/* CSV importer banner */}
-      <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-4 rounded-2xl shadow-xs flex flex-wrap items-center justify-between gap-3 text-xs">
-        <div className="flex items-center gap-2">
-          <Import className="w-4 h-4 text-emerald-500" />
-          <span className="font-semibold">Import CPM Schedule (.csv):</span>
-          <span className="text-slate-400 text-[10px]">Format: ID, Name, Duration, Predecessors, Lag, SequenceType</span>
+      {/* Enhanced Multi-Format Importer Banner (MPP, XML, MPX, CSV) */}
+      <div 
+        onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+        onDragLeave={() => setIsDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setIsDragOver(false);
+          const file = e.dataTransfer.files?.[0];
+          if (file) handleFileSelection(file);
+        }}
+        className={`bg-white dark:bg-slate-800 border transition-all duration-200 p-4 rounded-2xl shadow-xs ${
+          isDragOver 
+            ? 'border-blue-500 bg-blue-50/40 dark:bg-blue-950/20 ring-2 ring-blue-500/20' 
+            : 'border-slate-150 dark:border-slate-700/60'
+        }`}
+      >
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 text-xs">
+          <div className="flex items-start gap-3">
+            <div className="p-2.5 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/40 rounded-xl text-emerald-600 dark:text-emerald-400 shrink-0">
+              <Import className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-bold text-slate-800 dark:text-zinc-100 text-sm">
+                  Import CPM Schedule (.mpp, .csv, .xml):
+                </span>
+                <span className="bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 font-semibold px-2 py-0.5 rounded-md text-[10px] border border-blue-200 dark:border-blue-800/40">
+                  MS Project .mpp Ready
+                </span>
+                <span className="bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 font-semibold px-2 py-0.5 rounded-md text-[10px] border border-emerald-200 dark:border-emerald-800/40">
+                  XML & CSV Supported
+                </span>
+              </div>
+              <p className="text-slate-500 dark:text-slate-400 text-xs mt-0.5">
+                Upload files created in <strong>Microsoft Project (.mpp)</strong>, <strong>MS Project XML (.xml)</strong>, or spreadsheet <strong>CSV</strong> (Format: <code className="bg-slate-100 dark:bg-slate-700 px-1 py-0.5 rounded font-mono text-[11px]">ID, Name, Duration, Predecessors, Lag, Sequence Type</code>).
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5 self-start lg:self-center">
+            <input 
+              ref={fileInputRef}
+              type="file" 
+              accept=".mpp,.xml,.mpx,.csv,.tsv,.txt"
+              onChange={(e) => handleFileSelection(e.target.files?.[0] || null)}
+              className="text-xs text-slate-600 dark:text-slate-300 file:mr-2.5 file:bg-slate-100 dark:file:bg-slate-700 file:hover:bg-slate-200 dark:file:hover:bg-slate-600 file:border file:border-slate-200 dark:file:border-slate-600 file:rounded-xl file:px-3 file:py-1.5 file:text-xs file:font-bold file:text-slate-700 dark:file:text-slate-200 cursor-pointer"
+            />
+
+            {selectedFile && (
+              <button 
+                onClick={handleImportFile}
+                disabled={isParsing}
+                className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-400 text-white font-bold px-4 py-1.5 rounded-xl text-xs flex items-center gap-1.5 transition shadow-xs"
+              >
+                {isParsing ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Parsing MS Project...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Import & Sync CPM
+                  </>
+                )}
+              </button>
+            )}
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <input 
-            type="file" 
-            accept=".csv"
-            onChange={(e) => setCsvFile(e.target.files?.[0] || null)}
-            className="text-xs text-slate-400 file:bg-slate-100 dark:file:bg-slate-700 file:border-none file:rounded-lg file:px-2.5 file:py-1 file:text-xs file:font-semibold cursor-pointer"
-          />
-          {csvFile && (
-            <button 
-              onClick={handleCsvImport}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1 rounded-lg text-xs"
-            >
-              Parse Data
-            </button>
-          )}
-        </div>
+
+        {/* Selected file preview info chip */}
+        {selectedFile && !importStatus && (
+          <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-700/60 flex items-center justify-between text-xs text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-900/40 p-2.5 rounded-xl">
+            <div className="flex items-center gap-2">
+              <FileSpreadsheet className="w-4 h-4 text-emerald-500" />
+              <span className="font-semibold text-slate-800 dark:text-zinc-200">{selectedFile.name}</span>
+              <span className="text-slate-400 text-[11px]">({(selectedFile.size / 1024).toFixed(1)} KB)</span>
+            </div>
+            <span className="text-[11px] text-blue-600 dark:text-blue-400 font-medium">
+              Click &quot;Import &amp; Sync CPM&quot; to parse tasks &amp; dependencies
+            </span>
+          </div>
+        )}
+
+        {/* Status / Feedback message */}
+        {importStatus && (
+          <motion.div 
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            className={`mt-3 p-3 rounded-xl border flex items-start gap-2.5 text-xs ${
+              importStatus.type === 'success'
+                ? 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800/50 text-emerald-800 dark:text-emerald-300'
+                : 'bg-rose-50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-800/50 text-rose-800 dark:text-rose-300'
+            }`}
+          >
+            {importStatus.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+            ) : (
+              <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+            )}
+            <div>
+              <p className="font-bold">{importStatus.message}</p>
+              {importStatus.details && (
+                <p className="text-[11px] opacity-90 mt-0.5">{importStatus.details}</p>
+              )}
+            </div>
+          </motion.div>
+        )}
       </div>
 
       {/* CPM Analytics and Interactive Charts */}
       <CPMChart project={project} activities={activities} />
 
       <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 rounded-2xl overflow-hidden shadow-sm">
+        <div className="p-4 border-b border-slate-150 dark:border-slate-700/60 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Layers className="w-4 h-4 text-blue-500" />
+            <h3 className="text-sm font-bold text-slate-800 dark:text-zinc-100">
+              Work Program Activity Table & CPM Logic
+            </h3>
+            <span className="text-xs bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-full text-slate-600 dark:text-slate-300 font-semibold">
+              {activities.length} Activities
+            </span>
+          </div>
+          <span className="text-[11px] text-slate-400">
+            Dependencies support FS (Finish-to-Start), SS (Start-to-Start), FF (Finish-to-Finish), SF (Start-to-Finish) &amp; Lag
+          </span>
+        </div>
+
         <div className="overflow-x-auto max-h-[600px] overflow-y-auto scroll-smooth">
           <table className="w-full text-left border-collapse text-xs text-slate-700 dark:text-slate-200">
             <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-900 shadow-2xs">
@@ -613,3 +699,4 @@ export default function WorkProgramView({ project, onUpdateActivities }: WorkPro
     </div>
   );
 }
+
