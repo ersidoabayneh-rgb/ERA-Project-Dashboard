@@ -252,7 +252,7 @@ export async function safeFetchDeletedProjectIds(): Promise<string[]> {
 /**
  * Robust, self-healing project sync function that handles Firebase Cloud Firestore & REST Backend Sync.
  */
-export async function safeSyncProject(proj: Project, isBackgroundQueueSync = false): Promise<void> {
+export async function safeSyncProject(proj: Project, isBackgroundQueueSync = false, forceWrite = false): Promise<void> {
   if (!proj || !proj.id) return;
 
   // Block sync if this project has been permanently deleted
@@ -279,8 +279,12 @@ export async function safeSyncProject(proj: Project, isBackgroundQueueSync = fal
 
   const normalized = normalizeProject(proj);
 
+  if (forceWrite) {
+    reactivateSync();
+  }
+
   // Firestore Sync
-  if (!isSyncSuspended()) {
+  if (!isSyncSuspended() || forceWrite) {
     try {
       const cleanNormalized = JSON.parse(JSON.stringify(normalized));
       cleanNormalized.updatedAt = new Date().toISOString();

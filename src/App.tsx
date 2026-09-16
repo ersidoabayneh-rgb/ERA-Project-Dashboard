@@ -3065,7 +3065,7 @@ let isBatchSyncRunning = false;
     safeSetItem('era_proj_v28', JSON.stringify(updatedProjects));
 
     // Sync current update to Cloud Databases in real-time
-    safeSyncProject(updatedProject).catch(err => {
+    safeSyncProject(updatedProject, false, true).catch(err => {
       console.warn('Project update cloud sync fell back to local storage:', err);
     });
   };
@@ -3588,7 +3588,7 @@ let isBatchSyncRunning = false;
                         approvedAt: new Date().toISOString(),
                         approverRole: currentUserObj.role
                       };
-                      await safeSyncProject(weightedProject);
+                      await safeSyncProject(weightedProject, false, true);
                       
                       setCurrentProject(weightedProject);
                       const updatedProjs = projects.map(p => p.id === weightedProject.id ? weightedProject : p);
