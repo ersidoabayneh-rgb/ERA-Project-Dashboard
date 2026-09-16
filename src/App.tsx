@@ -3578,6 +3578,10 @@ let isBatchSyncRunning = false;
                       return;
                     }
 
+                    if (!window.confirm(`Are you sure you want to save all updated parameters for "${currentProject.name}" directly to the database?`)) {
+                      return;
+                    }
+
                     try {
                       const weightedProject = {
                         ...currentProject,

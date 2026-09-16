@@ -218,6 +218,9 @@ export default function SeriesEditorView({ project, onUpdateSeries, onProjectUpd
   };
 
   const handleSaveToDatabase = () => {
+    if (!window.confirm('Are you sure you want to save these updated division quantities directly to the database?')) {
+      return;
+    }
     // Sanitize and ensure types
     const cleanedSeries = draftSeries.map(item => {
       const ca = Number(item.contractAmt) || 0;
