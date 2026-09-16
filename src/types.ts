@@ -787,6 +787,9 @@ export interface User {
   approvedBy?: string; // Username who approved this account
   approvedAt?: string; // ISO date timestamp of approval
   registeredAt?: string; // ISO date timestamp of initial registration
+  lastSignInApprovalRequestedAt?: string; // ISO date timestamp when user attempted sign-in or requested approval
+  requestLocation?: string; // Location or timezone of user when requesting sign-in approval
+  requestDeviceInfo?: string; // Device, operating system, and browser info when requesting sign-in approval
 }
 
 export interface EditablePageOption {

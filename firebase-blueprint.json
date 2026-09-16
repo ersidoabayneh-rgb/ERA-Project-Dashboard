@@ -46,6 +46,9 @@
         "approvedBy": { "type": "string", "maxLength": 128 },
         "approvedAt": { "type": "string", "maxLength": 100 },
         "registeredAt": { "type": "string", "maxLength": 100 },
+        "lastSignInApprovalRequestedAt": { "type": "string", "maxLength": 100 },
+        "requestLocation": { "type": "string", "maxLength": 255 },
+        "requestDeviceInfo": { "type": "string", "maxLength": 255 },
         "updatedAt": { "type": "string", "maxLength": 100 }
       },
       "required": ["username"]

@@ -261,11 +261,13 @@ export default function ApprovalWorkflowManager({
     });
 
     alert(
-      '🚀 SUBMITTED FOR APPROVAL!\n\n' +
-      `Your draft for "${draft.section}" has been submitted into the Approval Queue.\n\n` +
-      '• Status: Locked & Pending Review\n' +
-      '• Reviewers: Approver, PMO, and Directorate Admin credentials\n' +
-      '• Live Database: Unaltered until approved with mandatory MFA verification.'
+      '⏳ SUBMISSION QUEUED & WAITING ON APPROVER!\n\n' +
+      `Your changes for "${draft.section}" in "${draft.projectName}" have been submitted for formal review.\n\n` +
+      '• Current Status: WAITING ON APPROVER DECISION\n' +
+      '• Review Policy: The submitted request will remain in the waiting queue until an authorized Approver, PMO, or Directorate Admin reviews and either APPROVES or REJECTS your request.\n' +
+      '• Safe Isolation: The live project database remains unaltered until approval is finalized.\n' +
+      '• If Approved: Changes are immediately incorporated into the live system.\n' +
+      '• If Rejected: The request is returned to you with the reviewer\'s formal notes for adjustments.'
     );
   };
 
@@ -968,8 +970,9 @@ export default function ApprovalWorkflowManager({
                             </span>
                           )}
                           {draft.status === 'submitted' && (
-                            <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800 flex items-center gap-1">
-                              <Clock className="w-3 h-3 animate-spin" /> Submitted (Locked for Review)
+                            <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700 flex items-center gap-1.5 shadow-2xs">
+                              <Clock className="w-3.5 h-3.5 animate-spin text-amber-600 dark:text-amber-400" />
+                              <span>Waiting on Approver Decision (In Review)</span>
                             </span>
                           )}
                           {draft.status === 'approved' && (
@@ -991,12 +994,19 @@ export default function ApprovalWorkflowManager({
                           <span>•</span>
                           <span>Updated: {new Date(draft.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                         </div>
+
+                        {draft.status === 'submitted' && (
+                          <div className="mt-1 text-[11px] font-medium text-amber-800 dark:text-amber-300 bg-amber-50/80 dark:bg-amber-950/30 px-3 py-1.5 rounded-xl border border-amber-200/80 dark:border-amber-900/40 flex items-center gap-2">
+                            <Clock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0 animate-spin" />
+                            <span>This submission is waiting in the queue until an authorized Approver, PMO, or Directorate Admin reviews and either <strong>approves</strong> or <strong>rejects</strong> your request.</span>
+                          </div>
+                        )}
                       </div>
 
                       {/* Action Buttons */}
                       <div className="flex items-center gap-2 flex-wrap shrink-0">
                         {/* Grant Explicit Access button */}
-                        {isAuthor && (
+                        {isAuthor && draft.status !== 'submitted' && (
                           <button
                             onClick={() => setSelectedExplicitDraft(draft)}
                             className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border border-slate-200 dark:border-slate-700"
@@ -1005,6 +1015,23 @@ export default function ApprovalWorkflowManager({
                             <Users className="w-3.5 h-3.5" />
                             <span>Grant Access ({grantedCount})</span>
                           </button>
+                        )}
+
+                        {/* Submitted Waiting Status Pill */}
+                        {draft.status === 'submitted' && (
+                          <div className="flex items-center gap-1.5">
+                            <div className="px-3 py-1.5 bg-amber-100 dark:bg-amber-950/80 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-2xs">
+                              <Clock className="w-3.5 h-3.5 animate-spin text-amber-600 dark:text-amber-400" />
+                              <span>Waiting on Approver</span>
+                            </div>
+                            <button
+                              onClick={() => setActiveTab('queue')}
+                              className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border border-indigo-200 dark:border-indigo-900"
+                            >
+                              <Shield className="w-3.5 h-3.5" />
+                              <span>View in Queue</span>
+                            </button>
+                          </div>
                         )}
 
                         {/* Submit for Approval Button */}
@@ -1025,7 +1052,7 @@ export default function ApprovalWorkflowManager({
                         )}
 
                         {/* Continue Editing Section */}
-                        {onNavigateToEdit && (
+                        {onNavigateToEdit && draft.status !== 'submitted' && (
                           <button
                             onClick={() => onNavigateToEdit(draft.projectId, draft.pageId || draft.section)}
                             className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border border-blue-200 dark:border-blue-900"
@@ -1257,8 +1284,9 @@ export default function ApprovalWorkflowManager({
                             • {req.projectName}
                           </span>
                           {req.status === 'submitted' && (
-                            <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800 flex items-center gap-1">
-                              <Clock className="w-3 h-3 animate-spin" /> Pending Review
+                            <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700 flex items-center gap-1.5 shadow-2xs">
+                              <Clock className="w-3.5 h-3.5 animate-spin text-amber-600 dark:text-amber-400" />
+                              <span>Waiting on Approver Decision</span>
                             </span>
                           )}
                           {req.status === 'approved' && (
@@ -1285,15 +1313,21 @@ export default function ApprovalWorkflowManager({
                           <span>•</span>
                           <span>Authority Scope: <strong>{hasScope ? 'Authorized' : 'Out of Scope'}</strong></span>
                         </div>
+
+                        {req.status === 'submitted' && (
+                          <div className="mt-1 text-[11px] font-medium text-amber-800 dark:text-amber-300 bg-amber-50/80 dark:bg-amber-950/30 px-2.5 py-1 rounded-lg border border-amber-200/80 dark:border-amber-900/40 inline-flex items-center gap-1.5">
+                            <span>⏳ Request is waiting in queue until an Approver either approves or rejects.</span>
+                          </div>
+                        )}
                       </div>
 
                       {/* Approver Action Buttons */}
                       <div className="flex items-center gap-2 flex-wrap shrink-0">
                         {/* Self-Approval Block Notice */}
                         {isAuthor && req.status === 'submitted' ? (
-                          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900 rounded-xl text-rose-700 dark:text-rose-300 text-xs font-bold">
-                            <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
-                            <span>Self-Approval Prohibited (You are the Author)</span>
+                          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-800 rounded-xl text-amber-800 dark:text-amber-300 text-xs font-bold shadow-2xs">
+                            <Clock className="w-3.5 h-3.5 shrink-0 text-amber-600 animate-spin" />
+                            <span>Waiting on Approver Review (Author Self-Approval Prohibited)</span>
                           </div>
                         ) : req.status === 'submitted' && isUserApprovalCapable && hasScope ? (
                           <>

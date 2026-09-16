@@ -1,10 +1,39 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { HardHat, Lock, User, UserPlus, LogIn, Eye, EyeOff, Mail, Phone, Building2, Briefcase, CheckCircle2 } from 'lucide-react';
+import { HardHat, Lock, User, UserPlus, LogIn, Eye, EyeOff, Mail, Phone, Building2, Briefcase, CheckCircle2, Bell, Clock, AlertCircle, Laptop, MapPin } from 'lucide-react';
 import { User as UserType } from '../types';
 import eraLogo from '../assets/logo.png';
-import { safeSaveSingleUser } from '../lib/apiSync';
+import { safeSaveSingleUser, safeFetchUsers } from '../lib/apiSync';
 import { safeDispatchCustomEvent } from '../lib/storage';
+
+function getDeviceSummary(): string {
+  if (typeof window === 'undefined' || !navigator) return 'Web Client';
+  const ua = navigator.userAgent || '';
+  let device = 'Desktop PC';
+  if (/android/i.test(ua)) device = 'Android Mobile';
+  else if (/iPad|iPhone|iPod/.test(ua)) device = 'iOS Mobile Device';
+  else if (/Macintosh/i.test(ua)) device = 'macOS Workstation';
+  else if (/Windows/i.test(ua)) device = 'Windows PC';
+  else if (/Linux/i.test(ua)) device = 'Linux Workstation';
+
+  let browser = 'Browser';
+  if (/Edg/i.test(ua)) browser = 'Edge';
+  else if (/Chrome/i.test(ua)) browser = 'Chrome';
+  else if (/Firefox/i.test(ua)) browser = 'Firefox';
+  else if (/Safari/i.test(ua)) browser = 'Safari';
+
+  return `${device} • ${browser}`;
+}
+
+function getLocationSummary(): string {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const lang = (navigator && navigator.language) || 'en';
+    return `${tz || 'Remote Client'} (${lang.toUpperCase()})`;
+  } catch {
+    return 'Remote Location / Client Device';
+  }
+}
 
 interface LoginPageProps {
   onLoginSuccess: (username: string, userObj: UserType) => void;
@@ -32,24 +61,131 @@ export default function LoginPage({ onLoginSuccess, getUsers, saveUsers }: Login
   const [logoError, setLogoError] = useState(false);
   const [regSuccess, setRegSuccess] = useState(false);
   const [lastRegisteredUser, setLastRegisteredUser] = useState<UserType | null>(null);
+  const [pendingApprovalNotice, setPendingApprovalNotice] = useState<UserType | null>(null);
+  const [pingSuccess, setPingSuccess] = useState(false);
+
+  // Sync users from authoritative cloud on mount so multi-device/location registrations are immediately available
+  useEffect(() => {
+    safeFetchUsers().then(cloudUsers => {
+      if (cloudUsers && Array.isArray(cloudUsers) && cloudUsers.length > 0) {
+        saveUsers(cloudUsers);
+      }
+    }).catch(() => {});
+  }, []);
+
+  // Listen for real-time Master Admin approval cross-tab / cross-window
+  useEffect(() => {
+    let bc: BroadcastChannel | null = null;
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      try {
+        bc = new BroadcastChannel('era_frontend_sync');
+        bc.onmessage = (event) => {
+          if (event.data?.type === 'USER_APPROVED' && event.data.user) {
+            const approved = event.data.user as UserType;
+            if (
+              (pendingApprovalNotice && approved.username.toLowerCase() === pendingApprovalNotice.username.toLowerCase()) ||
+              (username && approved.username.toLowerCase() === username.trim().toLowerCase())
+            ) {
+              setPendingApprovalNotice(null);
+              setError('');
+              setPingSuccess(true);
+              alert(`🎉 APPROVAL GRANTED!\n\nYour account "${approved.username}" has been verified and activated by the Master Administrator.\n\nYou can now log in immediately.`);
+            }
+          }
+        };
+      } catch (e) {}
+    }
+    return () => {
+      if (bc) try { bc.close(); } catch (e) {}
+    };
+  }, [pendingApprovalNotice, username]);
+
+  const broadcastUserApprovalRequest = (targetUser: UserType) => {
+    const updatedUser: UserType = {
+      ...targetUser,
+      isPendingApproval: true,
+      lastSignInApprovalRequestedAt: new Date().toISOString(),
+      requestDeviceInfo: getDeviceSummary(),
+      requestLocation: getLocationSummary()
+    };
+
+    // 1. Update user collection locally
+    const currentUsers = getUsers();
+    const updatedList = currentUsers.map(u => 
+      u.username.toLowerCase() === targetUser.username.toLowerCase() ? updatedUser : u
+    );
+    if (!updatedList.some(u => u.username.toLowerCase() === targetUser.username.toLowerCase())) {
+      updatedList.push(updatedUser);
+    }
+    saveUsers(updatedList);
+    
+    // 2. Persist to Firestore across all locations & devices
+    safeSaveSingleUser(updatedUser).catch(() => {});
+
+    // 3. Dispatch custom events for immediate in-window Master Admin listener
+    safeDispatchCustomEvent('user_requested_signin_approval', updatedUser);
+    safeDispatchCustomEvent('new_user_registered', updatedUser);
+
+    // 4. Broadcast across tabs and windows
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      try {
+        const bc = new BroadcastChannel('era_frontend_sync');
+        bc.postMessage({ type: 'USER_SIGNIN_APPROVAL_REQUESTED', user: updatedUser });
+        bc.close();
+      } catch (e) {}
+
+      try {
+        const eraBc = new BroadcastChannel('era_broadcast_channel');
+        eraBc.postMessage({ type: 'USER_SIGNIN_APPROVAL_REQUESTED', user: updatedUser });
+        eraBc.close();
+      } catch (e) {}
+    }
+
+    return updatedUser;
+  };
+
+  const handlePingMasterAdmin = (userToPing: UserType) => {
+    const updated = broadcastUserApprovalRequest(userToPing);
+    setPendingApprovalNotice(updated);
+    setPingSuccess(true);
+    setTimeout(() => setPingSuccess(false), 4000);
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setPingSuccess(false);
     
     if (!username.trim() || !password) {
       setError('Please fill in all fields.');
       return;
     }
 
-    const users = getUsers();
-    const found = users.find(
+    let users = getUsers();
+    let found = users.find(
       u => u.username.toLowerCase() === username.trim().toLowerCase() && u.password === password
     );
 
+    // If not found locally, query authoritative Firestore in real-time in case user registered from another device/location
+    if (!found) {
+      try {
+        const cloudUsers = await safeFetchUsers();
+        if (cloudUsers && Array.isArray(cloudUsers)) {
+          saveUsers(cloudUsers);
+          users = cloudUsers;
+          found = cloudUsers.find(
+            u => u.username.toLowerCase() === username.trim().toLowerCase() && u.password === password
+          );
+        }
+      } catch (e) {}
+    }
+
     if (found) {
       if (found.isPendingApproval) {
-        setError('Your registration is pending Master Admin approval. Please wait for an Administrator to approve your credentials.');
+        // Immediate notification trigger for Master Admin on sign-in attempt from any location & device
+        const updated = broadcastUserApprovalRequest(found);
+        setPendingApprovalNotice(updated);
+        setError('Your account is pending Master Admin approval. An immediate alert with your device & location details has been sent to the Master Admin screen for real-time authorization.');
         return;
       }
       if (found.status === 'Inactive') {
@@ -123,15 +259,33 @@ export default function LoginPage({ onLoginSuccess, getUsers, saveUsers }: Login
       assignedPmo: requestedPmo,
       status: 'Inactive',
       isPendingApproval: true,
-      registeredAt: new Date().toISOString()
+      registeredAt: new Date().toISOString(),
+      lastSignInApprovalRequestedAt: new Date().toISOString(),
+      requestDeviceInfo: getDeviceSummary(),
+      requestLocation: getLocationSummary()
     };
 
     const updatedUsers = [...users, newUser];
     saveUsers(updatedUsers);
     safeSaveSingleUser(newUser).catch(() => {});
     
-    // Broadcast immediate notification event
+    // Broadcast immediate notification event for Master Admin
     safeDispatchCustomEvent('new_user_registered', newUser);
+    safeDispatchCustomEvent('user_requested_signin_approval', newUser);
+
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      try {
+        const bc = new BroadcastChannel('era_frontend_sync');
+        bc.postMessage({ type: 'USER_REGISTRATION_SUBMITTED', user: newUser });
+        bc.close();
+      } catch (e) {}
+
+      try {
+        const eraBc = new BroadcastChannel('era_broadcast_channel');
+        eraBc.postMessage({ type: 'USER_REGISTRATION_SUBMITTED', user: newUser });
+        eraBc.close();
+      } catch (e) {}
+    }
 
     setLastRegisteredUser(newUser);
     setRegSuccess(true);
@@ -639,6 +793,49 @@ export default function LoginPage({ onLoginSuccess, getUsers, saveUsers }: Login
               <p className="text-xs text-rose-500 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/20 px-3 py-2 rounded-xl border border-rose-100 dark:border-rose-900/30 text-center font-bold">
                 {error}
               </p>
+            )}
+
+            {pendingApprovalNotice && (
+              <div className="p-3.5 bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/50 dark:to-orange-950/30 border-2 border-amber-400 dark:border-amber-600 rounded-2xl space-y-2.5 text-center shadow-md shadow-amber-500/10">
+                <div className="flex items-center justify-center gap-2 text-amber-800 dark:text-amber-300 font-black text-xs uppercase tracking-wider">
+                  <Clock className="w-4 h-4 text-amber-600 animate-spin" />
+                  <span>Pending Master Admin Approval</span>
+                </div>
+                <p className="text-[11px] text-slate-700 dark:text-slate-200 leading-relaxed font-medium">
+                  Your credentials for <strong className="font-mono text-amber-800 dark:text-amber-300">@{pendingApprovalNotice.username}</strong> ({pendingApprovalNotice.fullName || 'User'}) have been transmitted directly to the Master Admin screen for immediate review and role activation.
+                </p>
+                {(pendingApprovalNotice.requestLocation || pendingApprovalNotice.requestDeviceInfo) && (
+                  <div className="text-[10px] text-slate-600 dark:text-slate-300 bg-white/80 dark:bg-slate-900/80 p-2 rounded-xl border border-amber-300/60 dark:border-amber-700/60 text-left space-y-1 font-medium">
+                    {pendingApprovalNotice.requestLocation && (
+                      <div className="flex items-center gap-1.5 truncate">
+                        <MapPin className="w-3 h-3 text-amber-600 dark:text-amber-400 shrink-0" />
+                        <span><strong>Location / TZ:</strong> {pendingApprovalNotice.requestLocation}</span>
+                      </div>
+                    )}
+                    {pendingApprovalNotice.requestDeviceInfo && (
+                      <div className="flex items-center gap-1.5 truncate">
+                        <Laptop className="w-3 h-3 text-blue-600 dark:text-blue-400 shrink-0" />
+                        <span><strong>Client Device:</strong> {pendingApprovalNotice.requestDeviceInfo}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {pingSuccess ? (
+                  <div className="p-2 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 rounded-xl text-emerald-700 dark:text-emerald-300 text-[11px] font-black flex items-center justify-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>✓ Alert Re-Dispatched to Master Admin Screen!</span>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => handlePingMasterAdmin(pendingApprovalNotice)}
+                    className="w-full py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-black text-[11px] rounded-xl shadow-xs transition flex items-center justify-center gap-2 cursor-pointer uppercase tracking-wider"
+                  >
+                    <Bell className="w-3.5 h-3.5 animate-bounce" />
+                    <span>Ping Master Admin for Immediate Review</span>
+                  </button>
+                )}
+              </div>
             )}
 
             <button

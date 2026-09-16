@@ -42,6 +42,9 @@ import {
   Send,
   Clock,
   Lock,
+  Laptop,
+  MapPin,
+  Globe,
   X
 } from 'lucide-react';
 
@@ -274,26 +277,33 @@ export function getIntegratedProjectWithDrafts(
                    currentUser.role === 'contractor_editor';
   if (!isEditor) return baseProject;
 
-  // Find all active unsubmitted drafts for this project by this author
-  const activeDrafts = drafts.filter(d => 
+  // Find all active drafts for this project by this author (both active editing drafts and submitted drafts waiting for approver)
+  const authorDrafts = drafts.filter(d => 
     d.projectId === baseProject.id && 
-    d.author === currentUser.username &&
-    (d.status === 'draft' || d.status === 'changes_requested')
+    d.author === currentUser.username
   );
 
-  if (activeDrafts.length === 0) return baseProject;
+  if (authorDrafts.length === 0) return baseProject;
 
-  // Check if there are non-expired active drafts (updated within 10 minutes)
   const now = Date.now();
-  const nonExpiredDrafts = activeDrafts.filter(d => {
-    const elapsedMs = now - new Date(d.updatedAt).getTime();
-    return elapsedMs < 10 * 60 * 1000; // 10 minutes
+  // Valid drafts to merge:
+  // 1. Submitted drafts waiting for approval (wait indefinitely until approved or rejected)
+  // 2. Active unsubmitted drafts updated within the 10-minute isolated session window
+  const validDrafts = authorDrafts.filter(d => {
+    if (d.status === 'submitted') {
+      return true; // Wait indefinitely on waiting list until approver approves or rejects
+    }
+    if (d.status === 'draft' || d.status === 'changes_requested') {
+      const elapsedMs = now - new Date(d.updatedAt).getTime();
+      return elapsedMs < 10 * 60 * 1000; // 10 minutes
+    }
+    return false;
   });
 
-  if (nonExpiredDrafts.length === 0) return baseProject;
+  if (validDrafts.length === 0) return baseProject;
 
   // Sort them by updatedAt ascending so that more recent changes overwrite older ones
-  const sortedDrafts = [...nonExpiredDrafts].sort((a, b) => 
+  const sortedDrafts = [...validDrafts].sort((a, b) => 
     new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime()
   );
 
@@ -1477,16 +1487,36 @@ let isBatchSyncRunning = false;
     const mergeAndApplyUsers = (cloudUsers: User[]) => {
       if (!cloudUsers || !Array.isArray(cloudUsers)) return;
       setUsersListState(prev => {
-        // Detect newly arrived registration requests that are pending approval
+        // Detect newly arrived registration requests or urgent sign-in approval attempts from any location/device
+        const urgentUsers: User[] = [];
         cloudUsers.forEach(cu => {
           if (cu?.isPendingApproval) {
-            const wasPendingInPrev = prev.some(pu => pu.username.toLowerCase() === cu.username.toLowerCase() && pu.isPendingApproval);
-            if (!wasPendingInPrev) {
-              playApprovalChime();
+            const existingInPrev = prev.find(pu => pu.username.toLowerCase() === cu.username.toLowerCase());
+            const wasPendingInPrev = existingInPrev && existingInPrev.isPendingApproval;
+            
+            const prevSignTime = existingInPrev?.lastSignInApprovalRequestedAt ? new Date(existingInPrev.lastSignInApprovalRequestedAt).getTime() : 0;
+            const cuSignTime = cu.lastSignInApprovalRequestedAt ? new Date(cu.lastSignInApprovalRequestedAt).getTime() : 0;
+            const isNewSignInAttempt = cuSignTime > 0 && cuSignTime > prevSignTime;
+
+            if (!wasPendingInPrev || isNewSignInAttempt) {
               dismissedUsernamesRef.current.delete(cu.username.toLowerCase());
+              urgentUsers.push(cu);
             }
           }
         });
+
+        if (urgentUsers.length > 0) {
+          playApprovalChime();
+          // Immediately ensure Master Admin popup activates with highest urgency
+          setPendingUserPopups(prevPopups => {
+            const map = new Map<string, User>();
+            urgentUsers.forEach(u => map.set(u.username.toLowerCase(), u));
+            prevPopups.forEach(u => {
+              if (!map.has(u.username.toLowerCase())) map.set(u.username.toLowerCase(), u);
+            });
+            return Array.from(map.values());
+          });
+        }
 
         const map = new Map<string, User>();
         prev.forEach(u => { if (u?.username) map.set(u.username.toLowerCase(), u); });
@@ -1885,7 +1915,25 @@ let isBatchSyncRunning = false;
     if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
       try {
         broadcastChannel = new BroadcastChannel('era_frontend_sync');
-        broadcastChannel.onmessage = () => {
+        broadcastChannel.onmessage = (event) => {
+          if (event.data?.type === 'USER_REGISTRATION_SUBMITTED' || event.data?.type === 'USER_SIGNIN_APPROVAL_REQUESTED') {
+            const user = event.data.user as User;
+            if (user && user.username) {
+              dismissedUsernamesRef.current.delete(user.username.toLowerCase());
+              playApprovalChime();
+              setUsersListState(prev => {
+                const exists = prev.some(u => u.username.toLowerCase() === user.username.toLowerCase());
+                if (exists) {
+                  return prev.map(u => u.username.toLowerCase() === user.username.toLowerCase() ? { ...u, ...user, isPendingApproval: true } : u);
+                }
+                return [...prev, user];
+              });
+              setPendingUserPopups(prev => {
+                const filtered = prev.filter(p => p.username.toLowerCase() !== user.username.toLowerCase());
+                return [user, ...filtered];
+              });
+            }
+          }
           reloadLocalState();
         };
       } catch (e) {}
@@ -1895,6 +1943,23 @@ let isBatchSyncRunning = false;
         eraChannel.onmessage = (event) => {
           if (event.data?.type === 'PROJECT_DELETED' && event.data.id) {
             applyGlobalProjectDeletions([event.data.id]);
+          } else if (event.data?.type === 'USER_REGISTRATION_SUBMITTED' || event.data?.type === 'USER_SIGNIN_APPROVAL_REQUESTED') {
+            const user = event.data.user as User;
+            if (user && user.username) {
+              dismissedUsernamesRef.current.delete(user.username.toLowerCase());
+              playApprovalChime();
+              setUsersListState(prev => {
+                const exists = prev.some(u => u.username.toLowerCase() === user.username.toLowerCase());
+                if (exists) {
+                  return prev.map(u => u.username.toLowerCase() === user.username.toLowerCase() ? { ...u, ...user, isPendingApproval: true } : u);
+                }
+                return [...prev, user];
+              });
+              setPendingUserPopups(prev => {
+                const filtered = prev.filter(p => p.username.toLowerCase() !== user.username.toLowerCase());
+                return [user, ...filtered];
+              });
+            }
           } else {
             reloadLocalState();
           }
@@ -1917,13 +1982,18 @@ let isBatchSyncRunning = false;
         setUsersListState(prev => {
           const exists = prev.some(u => u.username.toLowerCase() === newUser.username.toLowerCase());
           if (exists) {
-            return prev.map(u => u.username.toLowerCase() === newUser.username.toLowerCase() ? { ...u, ...newUser } : u);
+            return prev.map(u => u.username.toLowerCase() === newUser.username.toLowerCase() ? { ...u, ...newUser, isPendingApproval: true } : u);
           }
           return [...prev, newUser];
+        });
+        setPendingUserPopups(prev => {
+          const filtered = prev.filter(p => p.username.toLowerCase() !== newUser.username.toLowerCase());
+          return [newUser, ...filtered];
         });
       }
     };
     window.addEventListener('new_user_registered', handleNewUserRegisteredEvent);
+    window.addEventListener('user_requested_signin_approval', handleNewUserRegisteredEvent);
 
     // Run initial sync on mount
     pollAllBackendData();
@@ -1948,6 +2018,7 @@ let isBatchSyncRunning = false;
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('project_globally_deleted', handleProjectGloballyDeleted);
       window.removeEventListener('new_user_registered', handleNewUserRegisteredEvent);
+      window.removeEventListener('user_requested_signin_approval', handleNewUserRegisteredEvent);
       if (broadcastChannel) {
         try { broadcastChannel.close(); } catch (e) {}
       }
@@ -2018,11 +2089,27 @@ let isBatchSyncRunning = false;
       }
     }
 
+    // Sort so users with the newest sign-in requests or registrations appear first
+    const sortedPending = [...pendingList].sort((a, b) => {
+      const timeA = a.lastSignInApprovalRequestedAt ? new Date(a.lastSignInApprovalRequestedAt).getTime() : (a.registeredAt ? new Date(a.registeredAt).getTime() : 0);
+      const timeB = b.lastSignInApprovalRequestedAt ? new Date(b.lastSignInApprovalRequestedAt).getTime() : (b.registeredAt ? new Date(b.registeredAt).getTime() : 0);
+      return timeB - timeA;
+    });
+
     setPendingUserPopups(prev => {
-      if (prev.length === pendingList.length && prev.every((u, i) => u.username === pendingList[i]?.username && u.role === pendingList[i]?.role)) {
+      if (
+        prev.length === sortedPending.length && 
+        prev.every((u, i) => 
+          u.username === sortedPending[i]?.username && 
+          u.role === sortedPending[i]?.role &&
+          u.lastSignInApprovalRequestedAt === sortedPending[i]?.lastSignInApprovalRequestedAt &&
+          u.requestLocation === sortedPending[i]?.requestLocation &&
+          u.requestDeviceInfo === sortedPending[i]?.requestDeviceInfo
+        )
+      ) {
         return prev;
       }
-      return pendingList;
+      return sortedPending;
     });
   }, [currentUserObj?.role, currentUserObj?.assignedDirectorate, currentUserObj?.assignedPmo, usersListState, currentUserObj?.username]);
 
@@ -3707,6 +3794,67 @@ let isBatchSyncRunning = false;
                       >
                         <ShieldCheck className="w-3.5 h-3.5" />
                         <span>Submit Private Drafts ({activeUnexpired.length})</span>
+                      </button>
+                    </div>
+                  </motion.div>
+                );
+              })()
+            )}
+
+            {/* Editor-Specific Submitted Draft Banner - Persistent Waiting State until Approver Decision */}
+            {currentUserObj && (
+              currentUserObj.role === 'editor' || 
+              currentUserObj.role === 'era_editor' || 
+              currentUserObj.role === 'consultant_editor' || 
+              currentUserObj.role === 'contractor_editor'
+            ) && currentProject && (
+              (() => {
+                const submittedDrafts = privateDrafts.filter(d => 
+                  d.projectId === currentProject.id && 
+                  d.author === currentUserObj.username &&
+                  d.status === 'submitted'
+                );
+
+                if (submittedDrafts.length === 0) return null;
+
+                return (
+                  <motion.div
+                    initial={{ opacity: 0, y: -8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-500/5 border-2 border-amber-500/40 dark:border-amber-500/50 rounded-2xl p-3.5 mb-2 flex items-center justify-between flex-wrap gap-3 shadow-xs"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs animate-spin">
+                        <Clock className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="font-black text-xs sm:text-sm text-slate-850 dark:text-white flex items-center gap-2">
+                          <span>⏳ Waiting on Approver Review ({submittedDrafts.length} section{submittedDrafts.length > 1 ? 's' : ''} submitted)</span>
+                          <span className="text-[9px] font-extrabold uppercase px-2.5 py-0.5 rounded-full bg-amber-500 text-white shadow-2xs">
+                            Waiting in Queue
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5 flex flex-col gap-1">
+                          <div>
+                            Your submitted submittal is actively waiting in the queue until an Approver, PMO, or Directorate Admin reviews and either <strong>approves</strong> (incorporating into the live project) or <strong>rejects</strong> your request.
+                          </div>
+                          <div className="flex items-center gap-2 flex-wrap mt-1">
+                            {submittedDrafts.map(d => (
+                              <span key={d.id} className="inline-flex items-center gap-1.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 px-2.5 py-0.7 rounded-lg text-[10px] font-bold text-amber-800 dark:text-amber-300 shadow-3xs">
+                                <strong>{d.section}</strong>: Submitted at {new Date(d.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • <em>Waiting on Approver Decision</em>
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setActiveTab('approvalWorkflow')}
+                        className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <ShieldCheck className="w-3.5 h-3.5" />
+                        <span>View Waiting Queue ({submittedDrafts.length})</span>
                       </button>
                     </div>
                   </motion.div>
@@ -6946,10 +7094,14 @@ let isBatchSyncRunning = false;
                   </div>
                   <div>
                     <span className="text-[10px] font-black uppercase tracking-widest bg-black/20 px-2 py-0.5 rounded-full border border-white/20 inline-block mb-0.5">
-                      🔔 REAL-TIME CREDENTIALS APPROVAL REQUEST
+                      {pendingUserPopups[0]?.lastSignInApprovalRequestedAt 
+                        ? '🔔 URGENT SIGN-IN APPROVAL REQUEST' 
+                        : '🔔 REAL-TIME CREDENTIALS APPROVAL REQUEST'}
                     </span>
                     <h3 className="text-base font-black tracking-tight leading-none">
-                      New User Registration Received!
+                      {pendingUserPopups[0]?.lastSignInApprovalRequestedAt
+                        ? 'User Attempting to Sign In — Immediate Approval Required!'
+                        : 'New User Registration Received!'}
                     </h3>
                   </div>
                 </div>
@@ -6978,6 +7130,28 @@ let isBatchSyncRunning = false;
 
                 return (
                   <div className="p-6 space-y-5">
+                    {/* Urgent Sign-in Banner for Real-time sign in requests */}
+                    {activePending.lastSignInApprovalRequestedAt && (
+                      <div className="bg-gradient-to-r from-amber-500/15 via-rose-500/10 to-amber-500/15 border-2 border-amber-500/50 dark:border-amber-500/40 rounded-2xl p-3.5 flex items-start gap-3 shadow-xs animate-in fade-in">
+                        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500 to-rose-500 text-white flex items-center justify-center shrink-0 shadow-sm animate-pulse">
+                          <Zap className="w-5 h-5 text-white" />
+                        </div>
+                        <div className="space-y-1 text-xs text-slate-800 dark:text-slate-100 flex-1">
+                          <div className="flex items-center justify-between flex-wrap gap-1">
+                            <span className="font-black text-amber-900 dark:text-amber-300 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                              ⚡ Urgent Real-Time Sign-In Request
+                            </span>
+                            <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/60 px-2 py-0.5 rounded-full border border-rose-200 dark:border-rose-900">
+                              Active at login screen
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-700 dark:text-slate-300 leading-snug">
+                            This user is actively at the sign-in screen waiting for immediate authorization. Authorizing below activates the account across all devices in real-time.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Submitted Applicant Credentials Card */}
                     <div className="bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 space-y-3">
                       <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2.5">
@@ -6985,9 +7159,16 @@ let isBatchSyncRunning = false;
                           <UserCheck className="w-3.5 h-3.5 text-amber-500" />
                           Applicant Credentials & Identity
                         </span>
-                        <span className="bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 font-extrabold text-[10px] px-2.5 py-0.5 rounded-full border border-amber-300 dark:border-amber-700 animate-pulse">
-                          Awaiting Admin Approval
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          {activePending.lastSignInApprovalRequestedAt && (
+                            <span className="bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 font-black text-[10px] px-2 py-0.5 rounded-full border border-rose-300 dark:border-rose-700 animate-pulse">
+                              ⚡ Sign-In Attempting Now
+                            </span>
+                          )}
+                          <span className="bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 font-extrabold text-[10px] px-2.5 py-0.5 rounded-full border border-amber-300 dark:border-amber-700 animate-pulse">
+                            Awaiting Admin Approval
+                          </span>
+                        </div>
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
@@ -7032,13 +7213,48 @@ let isBatchSyncRunning = false;
                             {activePending.assignedPmo || 'PMO 1'}
                           </span>
                         </div>
+
+                        {(activePending.requestLocation || activePending.requestDeviceInfo) && (
+                          <div className="sm:col-span-2 bg-amber-50/70 dark:bg-amber-950/30 p-2.5 rounded-xl border border-amber-200/80 dark:border-amber-800/80 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                            {activePending.requestLocation && (
+                              <div className="flex items-center gap-2">
+                                <div className="p-1 rounded-lg bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300 shrink-0">
+                                  <MapPin className="w-3.5 h-3.5" />
+                                </div>
+                                <div className="truncate">
+                                  <span className="text-[9px] font-bold text-amber-800/80 dark:text-amber-400 uppercase tracking-wider block">Origin / Location</span>
+                                  <span className="font-semibold text-slate-800 dark:text-slate-200 text-[11px] truncate block" title={activePending.requestLocation}>
+                                    {activePending.requestLocation}
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+                            {activePending.requestDeviceInfo && (
+                              <div className="flex items-center gap-2">
+                                <div className="p-1 rounded-lg bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 shrink-0">
+                                  <Laptop className="w-3.5 h-3.5" />
+                                </div>
+                                <div className="truncate">
+                                  <span className="text-[9px] font-bold text-blue-800/80 dark:text-blue-400 uppercase tracking-wider block">Client Device & Browser</span>
+                                  <span className="font-semibold text-slate-800 dark:text-slate-200 text-[11px] truncate block" title={activePending.requestDeviceInfo}>
+                                    {activePending.requestDeviceInfo}
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
 
-                      <div className="flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500 pt-1">
+                      <div className="flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500 pt-1 flex-wrap gap-2">
                         <span>Requested Role: <strong className="capitalize text-slate-700 dark:text-slate-300">{activePending.role || 'editor'}</strong></span>
-                        {activePending.registeredAt && (
+                        {activePending.lastSignInApprovalRequestedAt ? (
+                          <span className="text-amber-700 dark:text-amber-300 font-bold">
+                            ⚡ Sign-in requested: {new Date(activePending.lastSignInApprovalRequestedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                          </span>
+                        ) : activePending.registeredAt ? (
                           <span>Submitted: {new Date(activePending.registeredAt).toLocaleString()}</span>
-                        )}
+                        ) : null}
                       </div>
                     </div>
 
