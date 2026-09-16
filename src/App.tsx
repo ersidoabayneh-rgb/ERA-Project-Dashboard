@@ -412,6 +412,24 @@ export default function App() {
     }
   }, [currentProjectId]);
 
+  // Keep currentProject strictly synchronized with real-time updates in projects array within < 2 seconds
+  useEffect(() => {
+    if (!currentProjectId || projects.length === 0) return;
+    const latest = projects.find(p => p.id === currentProjectId);
+    if (latest) {
+      setCurrentProject(prev => {
+        if (!prev) return latest;
+        if (prev.id !== latest.id) return latest;
+        const prevTime = prev.lastModifiedAt ? new Date(prev.lastModifiedAt).getTime() : 0;
+        const latestTime = latest.lastModifiedAt ? new Date(latest.lastModifiedAt).getTime() : 0;
+        if (latestTime > prevTime || JSON.stringify(prev) !== JSON.stringify(latest)) {
+          return latest;
+        }
+        return prev;
+      });
+    }
+  }, [projects, currentProjectId]);
+
   // Enforce project access restriction
   useEffect(() => {
     if (!currentUserObj || !currentProject) return;
@@ -4692,6 +4710,7 @@ let isBatchSyncRunning = false;
               {activeTab === 'workspace' && (
                 <WorkspaceView 
                   projects={projects}
+                  currentUserObj={currentUserObj}
                   onRestoreProjects={(restored) => {
                     setProjects(restored);
                     safeSetItem('era_proj_v28', JSON.stringify(restored));
@@ -6296,183 +6315,187 @@ let isBatchSyncRunning = false;
               )}
             </div>
 
-            {/* Firebase Cloud Firestore Live Sync Manager */}
-            <div className="border-t border-slate-150 dark:border-slate-700/60 pt-4 space-y-4">
-              <h4 className="text-xs font-extrabold text-slate-800 dark:text-zinc-100 uppercase tracking-wider block flex items-center justify-between">
-                <span className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400">
-                  <Database className="w-4 h-4" /> ⚡ Standalone Firebase Cloud Firestore Sync
-                </span>
-                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase ${!syncSuspended ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400' : 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-400'}`}>
-                  {!syncSuspended ? (
-                    <>
-                      <Wifi className="w-2.5 h-2.5 animate-pulse" /> Live Syncing
-                    </>
-                  ) : (
-                    <>
-                      <WifiOff className="w-2.5 h-2.5" /> Paused (Rate Control)
-                    </>
-                  )}
-                </span>
-              </h4>
+            {/* Firebase Cloud Firestore Live Sync Manager - Only visible to Master Admin */}
+            {(currentUserObj?.role === 'master_admin' || currentUserObj?.role === 'cpm_admin' || currentUserObj?.role === 'admin' || currentUserObj?.username === 'proj_1781786415663' || Boolean(currentUserObj?.username && currentUserObj.username.toLowerCase().includes('ersido'))) && (
+              <>
+                <div className="border-t border-slate-150 dark:border-slate-700/60 pt-4 space-y-4">
+                  <h4 className="text-xs font-extrabold text-slate-800 dark:text-zinc-100 uppercase tracking-wider block flex items-center justify-between">
+                    <span className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400">
+                      <Database className="w-4 h-4" /> ⚡ Standalone Firebase Cloud Firestore Sync
+                    </span>
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase ${!syncSuspended ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400' : 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-400'}`}>
+                      {!syncSuspended ? (
+                        <>
+                          <Wifi className="w-2.5 h-2.5 animate-pulse" /> Live Syncing
+                        </>
+                      ) : (
+                        <>
+                          <WifiOff className="w-2.5 h-2.5" /> Paused (Rate Control)
+                        </>
+                      )}
+                    </span>
+                  </h4>
 
-              <div className="bg-slate-50 dark:bg-slate-900/40 p-3.5 rounded-2xl border border-slate-150 dark:border-slate-700/60 space-y-3">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                  <label className="flex items-center gap-2 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={isSyncAutoSuspendDisabled}
-                      onChange={(e) => handleToggleSyncAutoSuspend(e.target.checked)}
-                      className="w-3.5 h-3.5 text-indigo-600 border-slate-300 dark:border-slate-700 rounded focus:ring-indigo-500"
-                    />
-                    <div className="text-2xs font-semibold text-slate-700 dark:text-slate-300">
-                      <span className="block font-bold">Continuous Sync Mode</span>
-                      <span className="block text-[10px] text-slate-400 font-normal">Keep active sync to Firebase Cloud Firestore</span>
+                  <div className="bg-slate-50 dark:bg-slate-900/40 p-3.5 rounded-2xl border border-slate-150 dark:border-slate-700/60 space-y-3">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                      <label className="flex items-center gap-2 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={isSyncAutoSuspendDisabled}
+                          onChange={(e) => handleToggleSyncAutoSuspend(e.target.checked)}
+                          className="w-3.5 h-3.5 text-indigo-600 border-slate-300 dark:border-slate-700 rounded focus:ring-indigo-500"
+                        />
+                        <div className="text-2xs font-semibold text-slate-700 dark:text-slate-300">
+                          <span className="block font-bold">Continuous Sync Mode</span>
+                          <span className="block text-[10px] text-slate-400 font-normal">Keep active sync to Firebase Cloud Firestore</span>
+                        </div>
+                      </label>
+
+                      <button
+                        type="button"
+                        onClick={handleManualReactivateSync}
+                        className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl px-3 py-1.5 text-2xs font-bold uppercase cursor-pointer transition shadow-sm"
+                      >
+                        <RefreshCw className="w-3 h-3" />
+                        Force Reactivate Live Sync
+                      </button>
                     </div>
-                  </label>
 
-                  <button
-                    type="button"
-                    onClick={handleManualReactivateSync}
-                    className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl px-3 py-1.5 text-2xs font-bold uppercase cursor-pointer transition shadow-sm"
-                  >
-                    <RefreshCw className="w-3 h-3" />
-                    Force Reactivate Live Sync
-                  </button>
-                </div>
-
-                {syncSuspended && (
-                  <div className="bg-amber-50/50 dark:bg-amber-950/10 border border-amber-100 dark:border-amber-900/40 rounded-xl p-2.5 text-[11px] text-amber-700 dark:text-amber-300 flex items-start gap-2">
-                    <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-                    <p className="leading-snug">
-                      <strong>Sync paused:</strong> Sync rate control engaged. Click <strong>Force Reactivate Live Sync</strong> or enable <strong>Continuous Sync Mode</strong> to resume active multi-location sync.
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Real-time Firebase Firestore Sync Manager */}
-            <div className="border-t border-slate-150 dark:border-slate-700/60 pt-4 space-y-4">
-              <h4 className="text-xs font-extrabold text-slate-800 dark:text-zinc-100 uppercase tracking-wider block flex items-center justify-between">
-                <span className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400">
-                  <Database className="w-4 h-4" /> ⚡️ Firebase Cloud Firestore Sync Manager
-                </span>
-                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase ${isOnline ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400' : 'bg-rose-100 text-rose-800 dark:bg-rose-950/40 dark:text-rose-400'}`}>
-                  {isOnline ? (
-                    <>
-                      <Wifi className="w-2.5 h-2.5" /> Online
-                    </>
-                  ) : (
-                    <>
-                      <WifiOff className="w-2.5 h-2.5" /> Offline
-                    </>
-                  )}
-                </span>
-              </h4>
-
-              <div className="bg-slate-50 dark:bg-slate-900/40 p-3.5 rounded-2xl border border-slate-150 dark:border-slate-700/60 space-y-3">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-                  <div className="text-2xs font-semibold text-slate-500 dark:text-slate-400 space-y-0.5">
-                    <p>
-                      <strong>Local Offline Queue:</strong>{' '}
-                      <span className={`font-mono px-1.5 py-0.5 rounded text-xs font-bold ${offlineQueueLength > 0 ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-400' : 'bg-slate-100 text-slate-750 dark:bg-slate-800 dark:text-slate-300'}`}>
-                        {offlineQueueLength} updates pending
-                      </span>
-                    </p>
-                    {lastSyncTime && <p>Last Queue Sync attempt: <span className="font-mono text-slate-700 dark:text-slate-300">{lastSyncTime}</span></p>}
-                  </div>
-
-                  <div className="flex flex-wrap gap-2 w-full sm:w-auto font-bold text-xs">
-                    <button
-                      type="button"
-                      disabled={isSyncingQueue || !isOnline}
-                      onClick={triggerOfflineQueueSync}
-                      className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl px-3 py-1.5 text-2xs font-bold uppercase cursor-pointer transition shadow-sm"
-                    >
-                      <RefreshCw className={`w-3 h-3 ${isSyncingQueue ? 'animate-spin' : ''}`} />
-                      {isSyncingQueue ? 'Syncing...' : 'Sync Now'}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isBatchSyncing || !isOnline || offlineQueueLength === 0}
-                      onClick={handleBatchSyncNow}
-                      className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 disabled:opacity-50 text-white rounded-xl px-3 py-1.5 text-2xs font-bold uppercase cursor-pointer transition shadow-sm"
-                      title="Force manual high-priority transmission of all offline queue changes directly to Firebase Firestore"
-                    >
-                      <Zap className={`w-3 h-3 ${isBatchSyncing ? 'animate-bounce' : ''}`} />
-                      {isBatchSyncing ? 'Batching...' : 'Batch Sync Now'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={fetchSyncLogs}
-                      className="bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-xl px-2.5 py-1.5 text-2xs font-bold uppercase shrink-0 text-slate-700 dark:text-zinc-200 cursor-pointer transition shadow-sm inline-flex items-center gap-1"
-                      title="Refresh Logs"
-                    >
-                      <RefreshCw className="w-3 h-3" /> Refresh
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        clearSyncLogs();
-                        fetchSyncLogs();
-                      }}
-                      className="bg-rose-100 hover:bg-rose-200 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 rounded-xl px-2.5 py-1.5 text-2xs font-bold uppercase shrink-0 text-rose-700 dark:text-rose-300 cursor-pointer transition shadow-sm inline-flex items-center gap-1"
-                      title="Clear Event Logs"
-                    >
-                      <Trash2 className="w-3 h-3" /> Clear
-                    </button>
-                  </div>
-                </div>
-
-                {/* Database Sync Diagnostics Logs */}
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-2xs font-extrabold text-slate-400 uppercase tracking-wider block">Real-Time Sync Event & Diagnostics Logs</span>
-                    <span className="text-[10px] font-medium text-slate-400 font-mono">{syncLogs.length} events</span>
-                  </div>
-                  <div className="max-h-52 overflow-y-auto border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-850 rounded-xl divide-y divide-slate-100 dark:divide-slate-800">
-                    {syncLogs.length === 0 ? (
-                      <p className="text-center py-6 text-2xs text-slate-400 font-medium font-mono">No synchronization events recorded yet.</p>
-                    ) : (
-                      syncLogs.map((log, lIdx) => {
-                        let statusColor = 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-900';
-                        if (log.status === 'validation_failed') statusColor = 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/20 dark:text-amber-400 dark:border-amber-900';
-                        if (log.status === 'server_error') statusColor = 'bg-rose-50 text-rose-800 border-rose-200 dark:bg-rose-950/20 dark:text-rose-400 dark:border-rose-900';
-                        if (log.status === 'offline_queued') statusColor = 'bg-blue-50 text-blue-800 border-blue-200 dark:bg-blue-950/20 dark:text-blue-400 dark:border-blue-900';
-                        if (log.status === 'deleted') statusColor = 'bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700';
-
-                        return (
-                          <div key={`slog-${log.id || lIdx}-${lIdx}`} className="p-2.5 space-y-1 text-2xs">
-                            <div className="flex justify-between items-center">
-                              <span className="font-mono text-slate-400 text-[10px]">{new Date(log.createdAt).toLocaleString()}</span>
-                              <span className={`px-1.5 py-0.5 rounded border text-[9px] font-extrabold uppercase ${statusColor}`}>
-                                {log.status?.replace('_', ' ')}
-                              </span>
-                            </div>
-                            <div className="flex justify-between items-center gap-2">
-                              <span className="font-bold text-slate-700 dark:text-zinc-200">
-                                {log.recordType?.toUpperCase()} {log.recordId ? `(${log.recordId})` : ''}
-                              </span>
-                              {log.ipAddress && <span className="font-mono text-slate-400 text-[10px]">IP: {log.ipAddress}</span>}
-                            </div>
-                            {log.details && (
-                              <p className="text-[11px] text-slate-600 dark:text-slate-300">
-                                {log.details}
-                              </p>
-                            )}
-                            {log.errorMessage && (
-                              <p className="font-mono text-[10px] text-rose-500 bg-rose-50/50 dark:bg-rose-950/10 p-1.5 rounded border border-rose-100 dark:border-rose-950/30">
-                                {log.errorMessage}
-                              </p>
-                            )}
-                          </div>
-                        );
-                      })
+                    {syncSuspended && (
+                      <div className="bg-amber-50/50 dark:bg-amber-950/10 border border-amber-100 dark:border-amber-900/40 rounded-xl p-2.5 text-[11px] text-amber-700 dark:text-amber-300 flex items-start gap-2">
+                        <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                        <p className="leading-snug">
+                          <strong>Sync paused:</strong> Sync rate control engaged. Click <strong>Force Reactivate Live Sync</strong> or enable <strong>Continuous Sync Mode</strong> to resume active multi-location sync.
+                        </p>
+                      </div>
                     )}
                   </div>
                 </div>
-              </div>
-            </div>
+
+                {/* Real-time Firebase Firestore Sync Manager */}
+                <div className="border-t border-slate-150 dark:border-slate-700/60 pt-4 space-y-4">
+                  <h4 className="text-xs font-extrabold text-slate-800 dark:text-zinc-100 uppercase tracking-wider block flex items-center justify-between">
+                    <span className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400">
+                      <Database className="w-4 h-4" /> ⚡️ Firebase Cloud Firestore Sync Manager
+                    </span>
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase ${isOnline ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400' : 'bg-rose-100 text-rose-800 dark:bg-rose-950/40 dark:text-rose-400'}`}>
+                      {isOnline ? (
+                        <>
+                          <Wifi className="w-2.5 h-2.5" /> Online
+                        </>
+                      ) : (
+                        <>
+                          <WifiOff className="w-2.5 h-2.5" /> Offline
+                        </>
+                      )}
+                    </span>
+                  </h4>
+
+                  <div className="bg-slate-50 dark:bg-slate-900/40 p-3.5 rounded-2xl border border-slate-150 dark:border-slate-700/60 space-y-3">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                      <div className="text-2xs font-semibold text-slate-500 dark:text-slate-400 space-y-0.5">
+                        <p>
+                          <strong>Local Offline Queue:</strong>{' '}
+                          <span className={`font-mono px-1.5 py-0.5 rounded text-xs font-bold ${offlineQueueLength > 0 ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-400' : 'bg-slate-100 text-slate-750 dark:bg-slate-800 dark:text-slate-300'}`}>
+                            {offlineQueueLength} updates pending
+                          </span>
+                        </p>
+                        {lastSyncTime && <p>Last Queue Sync attempt: <span className="font-mono text-slate-700 dark:text-slate-300">{lastSyncTime}</span></p>}
+                      </div>
+
+                      <div className="flex flex-wrap gap-2 w-full sm:w-auto font-bold text-xs">
+                        <button
+                          type="button"
+                          disabled={isSyncingQueue || !isOnline}
+                          onClick={triggerOfflineQueueSync}
+                          className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl px-3 py-1.5 text-2xs font-bold uppercase cursor-pointer transition shadow-sm"
+                        >
+                          <RefreshCw className={`w-3 h-3 ${isSyncingQueue ? 'animate-spin' : ''}`} />
+                          {isSyncingQueue ? 'Syncing...' : 'Sync Now'}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isBatchSyncing || !isOnline || offlineQueueLength === 0}
+                          onClick={handleBatchSyncNow}
+                          className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 disabled:opacity-50 text-white rounded-xl px-3 py-1.5 text-2xs font-bold uppercase cursor-pointer transition shadow-sm"
+                          title="Force manual high-priority transmission of all offline queue changes directly to Firebase Firestore"
+                        >
+                          <Zap className={`w-3 h-3 ${isBatchSyncing ? 'animate-bounce' : ''}`} />
+                          {isBatchSyncing ? 'Batching...' : 'Batch Sync Now'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={fetchSyncLogs}
+                          className="bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-xl px-2.5 py-1.5 text-2xs font-bold uppercase shrink-0 text-slate-700 dark:text-zinc-200 cursor-pointer transition shadow-sm inline-flex items-center gap-1"
+                          title="Refresh Logs"
+                        >
+                          <RefreshCw className="w-3 h-3" /> Refresh
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            clearSyncLogs();
+                            fetchSyncLogs();
+                          }}
+                          className="bg-rose-100 hover:bg-rose-200 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 rounded-xl px-2.5 py-1.5 text-2xs font-bold uppercase shrink-0 text-rose-700 dark:text-rose-300 cursor-pointer transition shadow-sm inline-flex items-center gap-1"
+                          title="Clear Event Logs"
+                        >
+                          <Trash2 className="w-3 h-3" /> Clear
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Database Sync Diagnostics Logs */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-2xs font-extrabold text-slate-400 uppercase tracking-wider block">Real-Time Sync Event & Diagnostics Logs</span>
+                        <span className="text-[10px] font-medium text-slate-400 font-mono">{syncLogs.length} events</span>
+                      </div>
+                      <div className="max-h-52 overflow-y-auto border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-850 rounded-xl divide-y divide-slate-100 dark:divide-slate-800">
+                        {syncLogs.length === 0 ? (
+                          <p className="text-center py-6 text-2xs text-slate-400 font-medium font-mono">No synchronization events recorded yet.</p>
+                        ) : (
+                          syncLogs.map((log, lIdx) => {
+                            let statusColor = 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-900';
+                            if (log.status === 'validation_failed') statusColor = 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/20 dark:text-amber-400 dark:border-amber-900';
+                            if (log.status === 'server_error') statusColor = 'bg-rose-50 text-rose-800 border-rose-200 dark:bg-rose-950/20 dark:text-rose-400 dark:border-rose-900';
+                            if (log.status === 'offline_queued') statusColor = 'bg-blue-50 text-blue-800 border-blue-200 dark:bg-blue-950/20 dark:text-blue-400 dark:border-blue-900';
+                            if (log.status === 'deleted') statusColor = 'bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700';
+
+                            return (
+                              <div key={`slog-${log.id || lIdx}-${lIdx}`} className="p-2.5 space-y-1 text-2xs">
+                                <div className="flex justify-between items-center">
+                                  <span className="font-mono text-slate-400 text-[10px]">{new Date(log.createdAt).toLocaleString()}</span>
+                                  <span className={`px-1.5 py-0.5 rounded border text-[9px] font-extrabold uppercase ${statusColor}`}>
+                                    {log.status?.replace('_', ' ')}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between items-center gap-2">
+                                  <span className="font-bold text-slate-700 dark:text-zinc-200">
+                                    {log.recordType?.toUpperCase()} {log.recordId ? `(${log.recordId})` : ''}
+                                  </span>
+                                  {log.ipAddress && <span className="font-mono text-slate-400 text-[10px]">IP: {log.ipAddress}</span>}
+                                </div>
+                                {log.details && (
+                                  <p className="text-[11px] text-slate-600 dark:text-slate-300">
+                                    {log.details}
+                                  </p>
+                                )}
+                                {log.errorMessage && (
+                                  <p className="font-mono text-[10px] text-rose-500 bg-rose-50/50 dark:bg-rose-950/10 p-1.5 rounded border border-rose-100 dark:border-rose-950/30">
+                                    {log.errorMessage}
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
             </div>
 
             {/* Sticky Action Footer */}
