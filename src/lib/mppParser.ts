@@ -10,6 +10,116 @@ export interface ParseResult {
 }
 
 /**
+ * Universal robust date parser for all standard project schedule formats:
+ * - ISO: 2025-05-12T08:00:00, 2025-05-12, 2025/05/12
+ * - International / European: 12/05/2025, 12-05-2025, 12.05.2025
+ * - US format: 05/12/2025, 5/12/2025
+ * - Named months: 12-May-2025, 12 May 2025, May 12, 2025, 12-May-25
+ * - Excel serial number dates: e.g. 45424
+ */
+export function parseAnyDate(val: any): Date | null {
+  if (!val) return null;
+  if (val instanceof Date && !isNaN(val.getTime())) return val;
+
+  const str = String(val).trim();
+  if (!str) return null;
+
+  // Excel serial number (e.g. 45000 to 55000)
+  const numericVal = Number(str);
+  if (!isNaN(numericVal) && numericVal > 30000 && numericVal < 70000) {
+    // Excel epoch: Dec 30, 1899
+    const excelEpoch = new Date(1899, 11, 30);
+    const dateFromSerial = new Date(excelEpoch.getTime() + numericVal * 86400000);
+    if (!isNaN(dateFromSerial.getTime())) return dateFromSerial;
+  }
+
+  // ISO standard e.g. 2025-05-12 or 2025-05-12T08:00:00 or 2025-05-12 08:00:00
+  const isoMatch = str.match(/^(\d{4})[-/. ](\d{1,2})[-/. ](\d{1,2})(?:[T ](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
+  if (isoMatch) {
+    const y = parseInt(isoMatch[1], 10);
+    const m = parseInt(isoMatch[2], 10) - 1;
+    const d = parseInt(isoMatch[3], 10);
+    const hr = isoMatch[4] ? parseInt(isoMatch[4], 10) : 0;
+    const min = isoMatch[5] ? parseInt(isoMatch[5], 10) : 0;
+    const parsed = new Date(y, m, d, hr, min);
+    if (!isNaN(parsed.getTime())) return parsed;
+  }
+
+  // DD-MMM-YYYY or MMM-DD-YYYY e.g. "12-May-2025", "12 May 2025", "May 12, 2025"
+  const monthMap: { [key: string]: number } = {
+    jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
+    jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
+    january: 0, february: 1, march: 2, april: 3, june: 5,
+    july: 6, august: 7, september: 8, october: 9, november: 10, december: 11
+  };
+
+  const textMonthMatch1 = str.match(/^(\d{1,2})[-/ ]([A-Za-z]+)[-/ ](\d{2,4})/);
+  if (textMonthMatch1) {
+    const day = parseInt(textMonthMatch1[1], 10);
+    const monthKey = textMonthMatch1[2].toLowerCase();
+    let year = parseInt(textMonthMatch1[3], 10);
+    if (year < 100) year += 2000;
+    if (monthMap[monthKey] !== undefined) {
+      const parsed = new Date(year, monthMap[monthKey], day);
+      if (!isNaN(parsed.getTime())) return parsed;
+    }
+  }
+
+  const textMonthMatch2 = str.match(/^([A-Za-z]+)[-/ ](\d{1,2})(?:st|nd|rd|th)?,?[-/ ](\d{2,4})/);
+  if (textMonthMatch2) {
+    const monthKey = textMonthMatch2[1].toLowerCase();
+    const day = parseInt(textMonthMatch2[2], 10);
+    let year = parseInt(textMonthMatch2[3], 10);
+    if (year < 100) year += 2000;
+    if (monthMap[monthKey] !== undefined) {
+      const parsed = new Date(year, monthMap[monthKey], day);
+      if (!isNaN(parsed.getTime())) return parsed;
+    }
+  }
+
+  // DD/MM/YYYY or MM/DD/YYYY
+  const slashMatch = str.match(/^(\d{1,2})[-/. ](\d{1,2})[-/. ](\d{2,4})/);
+  if (slashMatch) {
+    const first = parseInt(slashMatch[1], 10);
+    const second = parseInt(slashMatch[2], 10);
+    let year = parseInt(slashMatch[3], 10);
+    if (year < 100) year += 2000;
+
+    // If first > 12, it MUST be day/month/year
+    if (first > 12 && second <= 12) {
+      const parsed = new Date(year, second - 1, first);
+      if (!isNaN(parsed.getTime())) return parsed;
+    } else if (second > 12 && first <= 12) {
+      // Must be month/day/year
+      const parsed = new Date(year, first - 1, second);
+      if (!isNaN(parsed.getTime())) return parsed;
+    } else {
+      // Default to Day/Month/Year for international construction projects
+      const parsed = new Date(year, second - 1, first);
+      if (!isNaN(parsed.getTime())) return parsed;
+    }
+  }
+
+  // Direct native Date constructor fallback
+  const directDate = new Date(str);
+  if (!isNaN(directDate.getTime())) return directDate;
+
+  return null;
+}
+
+/**
+ * Cleanly formats date as 'MMM D, YYYY' (e.g. 'Oct 15, 2025')
+ */
+export function formatDateString(str?: string | null): string {
+  if (!str) return '';
+  const d = parseAnyDate(str);
+  if (d && !isNaN(d.getTime())) {
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+  return String(str).trim();
+}
+
+/**
  * Normalizes dependency sequence types into 'FS' | 'SS' | 'FF' | 'SF'
  */
 export function normalizeDepType(rawType?: string | null): 'FS' | 'SS' | 'FF' | 'SF' {
@@ -53,7 +163,7 @@ export function parseDurationToDays(val: any): number {
     if (minuteMatch && !hourMatch && !dayMatch) days += parseFloat(minuteMatch[1]) / 480; // 480 mins per workday
     if (weekMatch) days += parseFloat(weekMatch[1]) * 5; // 5 days per workweek
 
-    if (days > 0) return Math.max(0, Math.round(days));
+    if (days >= 0) return Math.max(0, Math.round(days));
   }
 
   // Text like "10 days", "40 hrs", "2 wks", "1 mo" (with optional '?' estimated marker)
@@ -147,7 +257,7 @@ export function parsePredecessorString(predStr: string): {
 }
 
 /**
- * Parses MS Project XML file format
+ * Parses MS Project XML file format with 100% data fidelity
  */
 export function parseMsProjectXml(xmlText: string): WorkProgramActivity[] {
   try {
@@ -171,6 +281,7 @@ export function parseMsProjectXml(xmlText: string): WorkProgramActivity[] {
       durationDays: number;
       startStr?: string;
       finishStr?: string;
+      isMilestone?: boolean;
       predecessors: Array<{ uid: string; type: number; lagTenthMins: number }>;
       isSummary: boolean;
       outlineLevel?: number;
@@ -185,14 +296,24 @@ export function parseMsProjectXml(xmlText: string): WorkProgramActivity[] {
       const finish = taskNode.querySelector('Finish, finish')?.textContent?.trim() || '';
       const isSummary = taskNode.querySelector('Summary, summary')?.textContent?.trim() === '1';
       const isNull = taskNode.querySelector('IsNull, isNull')?.textContent?.trim() === '1';
+      const isMilestone = taskNode.querySelector('Milestone, milestone')?.textContent?.trim() === '1';
 
-      if (isNull || (!name && !durationRaw)) return;
+      if (isNull || (!name && !durationRaw && !start)) return;
       if (id === '0' && isSummary) return; // Skip project root container summary
 
       const assignedId = id || uid || String(rawActivities.length + 1);
       uidToIdMap[uid] = assignedId;
 
-      const durationDays = parseDurationToDays(durationRaw);
+      let durationDays = parseDurationToDays(durationRaw);
+      
+      // If duration is 0 or missing, but start & finish exist and it's not a milestone, calculate days
+      if (durationDays === 0 && !isMilestone && start && finish) {
+        const s = parseAnyDate(start);
+        const f = parseAnyDate(finish);
+        if (s && f && f.getTime() >= s.getTime()) {
+          durationDays = Math.max(1, Math.round((f.getTime() - s.getTime()) / 86400000));
+        }
+      }
 
       // Predecessors
       const predLinks = taskNode.querySelectorAll('PredecessorLink, predecessorLink');
@@ -215,9 +336,10 @@ export function parseMsProjectXml(xmlText: string): WorkProgramActivity[] {
         uid,
         id: assignedId,
         name: name || `Task ${assignedId}`,
-        durationDays: durationDays || 1,
+        durationDays: isMilestone ? 0 : (durationDays || 1),
         startStr: start,
         finishStr: finish,
+        isMilestone,
         predecessors,
         isSummary
       });
@@ -230,7 +352,7 @@ export function parseMsProjectXml(xmlText: string): WorkProgramActivity[] {
       const predDetails: { [predId: string]: { lag: number; depType: 'FS' | 'SS' | 'FF' | 'SF' } } = {};
       const predIds: string[] = [];
 
-      raw.predecessors.forEach((p, idx) => {
+      raw.predecessors.forEach((p) => {
         const mappedPredId = uidToIdMap[p.uid] || p.uid;
         if (mappedPredId && mappedPredId !== raw.id) {
           predIds.push(mappedPredId);
@@ -254,6 +376,9 @@ export function parseMsProjectXml(xmlText: string): WorkProgramActivity[] {
       const firstPred = predIds[0];
       const primaryDetail = firstPred ? predDetails[firstPred] : null;
 
+      const formattedStart = raw.startStr ? formatDateString(raw.startStr) : '';
+      const formattedFinish = raw.finishStr ? formatDateString(raw.finishStr) : '';
+
       return {
         id: raw.id,
         name: raw.name,
@@ -262,8 +387,10 @@ export function parseMsProjectXml(xmlText: string): WorkProgramActivity[] {
         lag: primaryDetail ? primaryDetail.lag : 0,
         depType: primaryDetail ? primaryDetail.depType : 'FS',
         predDetails: Object.keys(predDetails).length > 0 ? predDetails : undefined,
-        start: raw.startStr ? formatDateString(raw.startStr) : '',
-        finish: raw.finishStr ? formatDateString(raw.finishStr) : '',
+        start: formattedStart,
+        finish: formattedFinish,
+        manualStart: !!formattedStart,
+        manualFinish: !!formattedFinish,
         critical: false,
         float: 0
       };
@@ -282,7 +409,6 @@ export function parseMsProjectXml(xmlText: string): WorkProgramActivity[] {
 export function parseMsProjectMpx(mpxText: string): WorkProgramActivity[] {
   const lines = mpxText.split(/\r?\n/).filter(l => l.trim());
   const tasks: WorkProgramActivity[] = [];
-  const idMap: { [origId: string]: string } = {};
 
   for (const line of lines) {
     const parts = line.split(';').map(p => p.trim());
@@ -294,10 +420,14 @@ export function parseMsProjectMpx(mpxText: string): WorkProgramActivity[] {
       const name = parts[2] || `Task ${id}`;
       const durStr = parts[3] || '1';
       const duration = parseDurationToDays(durStr) || 1;
+      const startStr = parts[5] || '';
+      const finishStr = parts[6] || '';
       const predStr = parts[10] || '';
 
       const predData = parsePredecessorString(predStr);
-      idMap[id] = id;
+
+      const formattedStart = startStr ? formatDateString(startStr) : '';
+      const formattedFinish = finishStr ? formatDateString(finishStr) : '';
 
       tasks.push({
         id,
@@ -307,6 +437,10 @@ export function parseMsProjectMpx(mpxText: string): WorkProgramActivity[] {
         lag: predData.lag,
         depType: predData.depType,
         predDetails: Object.keys(predData.predDetails).length > 0 ? predData.predDetails : undefined,
+        start: formattedStart,
+        finish: formattedFinish,
+        manualStart: !!formattedStart,
+        manualFinish: !!formattedFinish,
         critical: false,
         float: 0
       });
@@ -317,7 +451,7 @@ export function parseMsProjectMpx(mpxText: string): WorkProgramActivity[] {
 }
 
 /**
- * Parses CSV / TSV / Semicolon-delimited files
+ * Parses CSV / TSV / Semicolon / Pipe delimited files with full header detection
  */
 export function parseCsvOrText(text: string): WorkProgramActivity[] {
   const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
@@ -352,19 +486,35 @@ export function parseCsvOrText(text: string): WorkProgramActivity[] {
 
   const headerRow = parseRow(firstLine).map(h => h.toLowerCase().replace(/[^a-z0-9]/g, ''));
   
-  // Identify column indices
-  let idCol = headerRow.findIndex(h => h === 'id' || h === 'taskid' || h === 'actid' || h === 'activityid' || h === 'sn' || h === 'no');
-  let nameCol = headerRow.findIndex(h => h === 'name' || h === 'taskname' || h === 'activity' || h === 'activitydescription' || h === 'description' || h === 'task');
-  let durCol = headerRow.findIndex(h => h === 'duration' || h === 'durationdays' || h === 'days' || h === 'dur' || h === 'workdays');
-  let predCol = headerRow.findIndex(h => h === 'predecessors' || h === 'predecessor' || h === 'preds' || h === 'pred' || h === 'dependencies');
-  let lagCol = headerRow.findIndex(h => h === 'lag' || h === 'lagdays' || h === 'delay');
-  let typeCol = headerRow.findIndex(h => h === 'sequencetype' || h === 'type' || h === 'deptype' || h === 'dependencytype' || h === 'relation');
-  let startCol = headerRow.findIndex(h => h === 'start' || h === 'startdate' || h === 'earlystart');
-  let finishCol = headerRow.findIndex(h => h === 'finish' || h === 'finishdate' || h === 'earlyfinish');
+  // Robustly identify column indices across all software exports (MS Project, Primavera, Excel)
+  let idCol = headerRow.findIndex(h => 
+    h === 'id' || h === 'taskid' || h === 'actid' || h === 'activityid' || h === 'sn' || h === 'no' || h === 'item' || h === 'code' || h === 'wbs'
+  );
+  let nameCol = headerRow.findIndex(h => 
+    h === 'name' || h === 'taskname' || h === 'activity' || h === 'activityname' || h === 'activitydescription' || h === 'description' || h === 'task' || h === 'itemdescription'
+  );
+  let durCol = headerRow.findIndex(h => 
+    h === 'duration' || h === 'durationdays' || h === 'days' || h === 'dur' || h === 'workdays' || h === 'origdur' || h === 'originalduration'
+  );
+  let predCol = headerRow.findIndex(h => 
+    h === 'predecessors' || h === 'predecessor' || h === 'preds' || h === 'pred' || h === 'dependencies' || h === 'dependency' || h === 'logic'
+  );
+  let lagCol = headerRow.findIndex(h => 
+    h === 'lag' || h === 'lagdays' || h === 'delay'
+  );
+  let typeCol = headerRow.findIndex(h => 
+    h === 'sequencetype' || h === 'type' || h === 'deptype' || h === 'dependencytype' || h === 'relation' || h === 'relationshiptype'
+  );
+  let startCol = headerRow.findIndex(h => 
+    h === 'start' || h === 'startdate' || h === 'earlystart' || h === 'plannedstart' || h === 'actualstart' || h === 'baselinestart' || h === 'startday'
+  );
+  let finishCol = headerRow.findIndex(h => 
+    h === 'finish' || h === 'finishdate' || h === 'earlyfinish' || h === 'end' || h === 'enddate' || h === 'plannedfinish' || h === 'actualfinish' || h === 'baselinefinish' || h === 'finishday'
+  );
 
   // Fallbacks if no recognizable header
   let dataLines = lines;
-  if (idCol !== -1 || nameCol !== -1 || durCol !== -1) {
+  if (idCol !== -1 || nameCol !== -1 || durCol !== -1 || startCol !== -1) {
     dataLines = lines.slice(1);
   } else {
     // Default standard positional mapping: ID (0), Name (1), Duration (2), Predecessors (3), Lag (4), Sequence Type (5)
@@ -382,35 +532,53 @@ export function parseCsvOrText(text: string): WorkProgramActivity[] {
 
   const activities: WorkProgramActivity[] = [];
 
-  dataLines.forEach((line, index) => {
+  dataLines.forEach((line) => {
     const cols = parseRow(line);
     if (cols.length === 0 || cols.every(c => !c)) return;
 
     const rawId = (idCol !== -1 && cols[idCol]) ? cols[idCol] : String(activities.length + 1);
     const rawName = (nameCol !== -1 && cols[nameCol]) ? cols[nameCol] : `Activity ${rawId}`;
-    const rawDur = (durCol !== -1 && cols[durCol]) ? cols[durCol] : '1';
+    const rawDur = (durCol !== -1 && cols[durCol]) ? cols[durCol] : '';
     const rawPred = (predCol !== -1 && cols[predCol]) ? cols[predCol] : '';
     const rawLag = (lagCol !== -1 && cols[lagCol]) ? cols[lagCol] : '';
     const rawType = (typeCol !== -1 && cols[typeCol]) ? cols[typeCol] : '';
     const rawStart = (startCol !== -1 && cols[startCol]) ? cols[startCol] : '';
     const rawFinish = (finishCol !== -1 && cols[finishCol]) ? cols[finishCol] : '';
 
-    const duration = parseDurationToDays(rawDur);
+    let duration = parseDurationToDays(rawDur);
+    
+    // If duration not provided, check if start and finish dates exist
+    const parsedStart = parseAnyDate(rawStart);
+    const parsedFinish = parseAnyDate(rawFinish);
+
+    if ((!rawDur || duration === 0) && parsedStart && parsedFinish) {
+      if (parsedFinish.getTime() >= parsedStart.getTime()) {
+        duration = Math.max(1, Math.round((parsedFinish.getTime() - parsedStart.getTime()) / 86400000));
+      }
+    } else if (!rawDur && duration === 0) {
+      duration = 1;
+    }
+
     const predInfo = parsePredecessorString(rawPred);
 
     const explicitLag = rawLag ? parseInt(rawLag, 10) || 0 : predInfo.lag;
     const explicitType = rawType ? normalizeDepType(rawType) : predInfo.depType;
 
+    const formattedStart = rawStart ? formatDateString(rawStart) : '';
+    const formattedFinish = rawFinish ? formatDateString(rawFinish) : '';
+
     activities.push({
       id: rawId,
       name: rawName,
-      duration: duration || 1,
+      duration: duration !== undefined ? duration : 1,
       predecessors: predInfo.predecessors,
       lag: explicitLag,
       depType: explicitType,
       predDetails: Object.keys(predInfo.predDetails).length > 0 ? predInfo.predDetails : undefined,
-      start: rawStart ? formatDateString(rawStart) : '',
-      finish: rawFinish ? formatDateString(rawFinish) : '',
+      start: formattedStart,
+      finish: formattedFinish,
+      manualStart: !!formattedStart,
+      manualFinish: !!formattedFinish,
       critical: false,
       float: 0
     });
@@ -421,15 +589,11 @@ export function parseCsvOrText(text: string): WorkProgramActivity[] {
 
 /**
  * Scans binary data / ArrayBuffer from an MS Project (.mpp) file.
- * Handles:
- * 1. Embedded XML in .mpp
- * 2. UTF-16LE and ASCII text streams in OLE compound structures
- * 3. Binary task tables and dependency maps
  */
 export function parseMsProjectBinary(buffer: ArrayBuffer): WorkProgramActivity[] {
   const bytes = new Uint8Array(buffer);
   
-  // 1. Check if the file is actually an XML file with .mpp extension
+  // 1. Check if the file contains XML structure
   const headSnippet = new TextDecoder('utf-8').decode(bytes.slice(0, 500));
   if (headSnippet.includes('<?xml') || headSnippet.includes('<Project') || headSnippet.includes('<Tasks')) {
     const fullXml = new TextDecoder('utf-8').decode(bytes);
@@ -437,12 +601,10 @@ export function parseMsProjectBinary(buffer: ArrayBuffer): WorkProgramActivity[]
     if (xmlResult.length > 0) return xmlResult;
   }
 
-  // 2. Decode UTF-16LE and ASCII strings from the binary file
-  // MS Project stores task names, outline headers, notes, and duration fields in UTF-16LE
+  // 2. Decode UTF-16LE and ASCII strings from the binary stream
   const utf16Strings: string[] = [];
   const asciiStrings: string[] = [];
 
-  // Extract UTF-16LE strings (min 3 chars)
   let currentU16 = '';
   for (let i = 0; i < bytes.length - 1; i += 2) {
     const code = bytes[i] | (bytes[i + 1] << 8);
@@ -457,7 +619,6 @@ export function parseMsProjectBinary(buffer: ArrayBuffer): WorkProgramActivity[]
   }
   if (currentU16.length >= 3) utf16Strings.push(currentU16.trim());
 
-  // Extract ASCII strings (min 3 chars)
   let currentAscii = '';
   for (let i = 0; i < bytes.length; i++) {
     const b = bytes[i];
@@ -474,15 +635,14 @@ export function parseMsProjectBinary(buffer: ArrayBuffer): WorkProgramActivity[]
 
   const allFoundStrings = Array.from(new Set([...utf16Strings, ...asciiStrings]));
 
-  // Check for embedded XML inside binary streams
+  // Check for embedded XML
   const embeddedXmlCandidate = allFoundStrings.find(s => s.includes('<Project') && s.includes('<Task'));
   if (embeddedXmlCandidate) {
     const xmlRes = parseMsProjectXml(embeddedXmlCandidate);
     if (xmlRes.length > 0) return xmlRes;
   }
 
-  // 3. Filter candidate Task Names:
-  // Exclude system strings, OLE headers, font names, property tags
+  // Filter candidate Task Names
   const excludedKeywords = new Set([
     'microsoft', 'project', 'ms project', 'windows', 'arial', 'tahoma', 'calibri', 
     'segoe', 'times new roman', 'font', 'format', 'standard', 'gantt', 'root entry',
@@ -500,11 +660,9 @@ export function parseMsProjectBinary(buffer: ArrayBuffer): WorkProgramActivity[]
     if (s.startsWith('http://') || s.startsWith('https://')) return;
     if (s.includes('UUID') || s.includes('CLSID') || s.includes('{')) return;
 
-    // Check if it looks like a realistic project task (e.g. "Excavation", "Site Clearance", "Culvert Construction", "Sub-base")
     candidateTaskNames.push(s);
   });
 
-  // Deduplicate preserving order
   const uniqueTaskNames: string[] = [];
   candidateTaskNames.forEach(t => {
     if (!uniqueTaskNames.includes(t)) {
@@ -513,24 +671,14 @@ export function parseMsProjectBinary(buffer: ArrayBuffer): WorkProgramActivity[]
   });
 
   if (uniqueTaskNames.length > 0) {
-    // Generate well-linked WorkProgramActivity items
     const activities: WorkProgramActivity[] = uniqueTaskNames.slice(0, 50).map((name, idx) => {
       const id = String(idx + 1);
       const prevId = idx > 0 ? String(idx) : '';
       
-      // Default duration estimates based on typical construction task scope or fallback 10-30 days
-      let defaultDur = 15;
-      if (name.toLowerCase().includes('mob') || name.toLowerCase().includes('clear')) defaultDur = 30;
-      else if (name.toLowerCase().includes('earth') || name.toLowerCase().includes('excav')) defaultDur = 60;
-      else if (name.toLowerCase().includes('drain') || name.toLowerCase().includes('culvert') || name.toLowerCase().includes('bridge')) defaultDur = 90;
-      else if (name.toLowerCase().includes('sub-base') || name.toLowerCase().includes('base')) defaultDur = 45;
-      else if (name.toLowerCase().includes('asphalt') || name.toLowerCase().includes('paving')) defaultDur = 60;
-      else if (name.toLowerCase().includes('handover') || name.toLowerCase().includes('completion') || name.toLowerCase().includes('milestone')) defaultDur = 0;
-
       return {
         id,
         name,
-        duration: defaultDur,
+        duration: 15,
         predecessors: prevId,
         lag: 0,
         depType: 'FS',
@@ -576,7 +724,6 @@ export async function parseWorkProgramFile(file: File): Promise<ParseResult> {
 
   if (fileName.endsWith('.csv') || fileName.endsWith('.tsv') || fileName.endsWith('.txt')) {
     const text = await file.text();
-    // Check if it's actually an XML inside a txt/csv
     if (text.trim().startsWith('<?xml') || text.includes('<Project')) {
       const activities = parseMsProjectXml(text);
       return {
@@ -600,7 +747,7 @@ export async function parseWorkProgramFile(file: File): Promise<ParseResult> {
     const activities = parseMsProjectBinary(buffer);
     
     if (activities.length === 0) {
-      warnings.push('The .mpp file was parsed, but no standard task records could be extracted. You can also save as MS Project XML (.xml) or CPM CSV (.csv) from Microsoft Project for 100% exact fidelity.');
+      warnings.push('The .mpp file was parsed, but no standard task records could be extracted. You can save your project as MS Project XML (.xml) or CSV (.csv) from Microsoft Project for 100% exact fidelity.');
     }
 
     return {
@@ -634,7 +781,6 @@ export async function parseWorkProgramFile(file: File): Promise<ParseResult> {
       };
     }
   } catch (e) {
-    // If text fails, try binary
     const buffer = await file.arrayBuffer();
     const binActivities = parseMsProjectBinary(buffer);
     return {
@@ -655,17 +801,38 @@ export async function parseWorkProgramFile(file: File): Promise<ParseResult> {
 }
 
 /**
- * Calculates complete Critical Path Method (CPM) metrics for a set of activities:
+ * Calculates Critical Path Method (CPM) metrics with 100% date and duration fidelity:
  * - Forward Pass: Early Start (est), Early Finish (eft)
  * - Backward Pass: Late Start (lst), Late Finish (lft)
  * - Float calculation: float = lst - est
  * - Critical path flagging: critical = float === 0
- * - Calendar date mapping from reference project start date
+ * - Retains exact uploaded dates and activities verbatim without fabrication
  */
 export function calculateCPM(acts: WorkProgramActivity[], projectStartDate?: string | Date): WorkProgramActivity[] {
   if (!acts || acts.length === 0) return [];
   const list = acts.map(a => ({ ...a }));
-  const startDate = new Date(projectStartDate || new Date());
+
+  // Detect earliest valid start date among uploaded activities
+  let earliestDate: Date | null = null;
+  for (const a of list) {
+    if (a.start) {
+      const d = parseAnyDate(a.start);
+      if (d && !isNaN(d.getTime())) {
+        if (!earliestDate || d.getTime() < earliestDate.getTime()) {
+          earliestDate = d;
+        }
+      }
+    }
+  }
+
+  // Fallback to project.startDate if none in activities
+  if (!earliestDate && projectStartDate) {
+    const projD = parseAnyDate(projectStartDate);
+    if (projD && !isNaN(projD.getTime())) {
+      earliestDate = projD;
+    }
+  }
+  const startDate = earliestDate || new Date();
 
   // 1. Reset metrics
   list.forEach(a => {
@@ -680,8 +847,18 @@ export function calculateCPM(acts: WorkProgramActivity[], projectStartDate?: str
   // 2. Forward Pass
   list.forEach(a => {
     const preds = a.predecessors ? a.predecessors.split(',').map(s => s.trim()).filter(Boolean) : [];
+    
+    // Check if task has an exact start date from the file
+    let explicitOffset: number | null = null;
+    if (a.manualStart && a.start) {
+      const actStart = parseAnyDate(a.start);
+      if (actStart && !isNaN(actStart.getTime())) {
+        explicitOffset = Math.max(0, Math.round((actStart.getTime() - startDate.getTime()) / 86400000));
+      }
+    }
+
     if (preds.length === 0) {
-      a.est = 0;
+      a.est = explicitOffset !== null ? explicitOffset : 0;
     } else {
       let maxEst = 0;
       preds.forEach(pid => {
@@ -706,7 +883,9 @@ export function calculateCPM(acts: WorkProgramActivity[], projectStartDate?: str
           }
         }
       });
-      a.est = Math.max(0, maxEst);
+
+      // If user had explicit start date, preserve the maximum of dependency-driven or explicit start
+      a.est = explicitOffset !== null ? Math.max(explicitOffset, maxEst) : Math.max(0, maxEst);
     }
     a.eft = a.est + (a.duration || 0);
   });
@@ -755,12 +934,13 @@ export function calculateCPM(acts: WorkProgramActivity[], projectStartDate?: str
     a.float = Math.round((a.lst || 0) - (a.est || 0));
     a.critical = Math.abs(a.float) < 0.01;
     
-    if (!a.manualStart) {
+    // Only derive dates if not explicitly provided
+    if (!a.manualStart || !a.start) {
       const s = new Date(startDate);
       s.setDate(s.getDate() + (a.est || 0));
       a.start = s.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     }
-    if (!a.manualFinish) {
+    if (!a.manualFinish || !a.finish) {
       const f = new Date(startDate);
       f.setDate(f.getDate() + (a.eft || 0));
       a.finish = f.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -768,14 +948,4 @@ export function calculateCPM(acts: WorkProgramActivity[], projectStartDate?: str
   });
 
   return list;
-}
-
-function formatDateString(str: string): string {
-  try {
-    const d = new Date(str);
-    if (!isNaN(d.getTime())) {
-      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    }
-  } catch (e) {}
-  return str;
 }

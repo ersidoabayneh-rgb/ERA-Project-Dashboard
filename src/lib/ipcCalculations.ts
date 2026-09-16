@@ -1,4 +1,4 @@
-import { IpcItem, Project, formatAccounting } from '../types';
+import { IpcItem, Project, formatAccounting, isProjectClosed } from '../types';
 
 export interface IpcMaturationDetails {
   submissionDate: string | null; // Contractor Submission Date
@@ -204,6 +204,7 @@ export function calculateProjectIpcSummary(
   project: Project,
   referenceDate: Date = new Date()
 ): ProjectIpcAggregatedSummary {
+  const isClosed = isProjectClosed(project.status);
   const ipcTracker = project.ipcTracker || [];
   const exchangeRate = project.usdExchangeRate !== undefined ? project.usdExchangeRate : 57.50;
   const defaultAnnualRate = project.annualInterestRate !== undefined ? project.annualInterestRate : 16.50;
@@ -233,19 +234,25 @@ export function calculateProjectIpcSummary(
     totalPaidEqvEtb += paidEqv;
     totalUnpaidEqvEtb += unpaidEqv;
 
-    if (maturation.isFullyPaid) {
+    if (maturation.isFullyPaid || isClosed) {
       paidIpcCount++;
     } else {
       unpaidIpcCount++;
-      if (maturation.isOverdue) {
+      if (maturation.isOverdue && !isClosed) {
         maturedOverdueIpcCount++;
         totalMaturedPrincipalEqvEtb += unpaidEqv;
       }
-      if (maturation.accruedInterestEqvEtb > 0) {
+      if (maturation.accruedInterestEqvEtb > 0 && !isClosed) {
         totalAccruedInterestEqvEtb += maturation.accruedInterestEqvEtb;
       }
     }
   });
+
+  if (isClosed) {
+    maturedOverdueIpcCount = 0;
+    totalMaturedPrincipalEqvEtb = 0;
+    totalAccruedInterestEqvEtb = 0;
+  }
 
   const totalClaimableExposureEqvEtb = totalUnpaidEqvEtb + totalAccruedInterestEqvEtb;
 

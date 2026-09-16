@@ -1,10 +1,47 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Calendar, Plus, Trash2, Import, Award, Activity, FileSpreadsheet, CheckCircle2, AlertCircle, Download, FileCode, Layers } from 'lucide-react';
+import { 
+  Calendar, 
+  Plus, 
+  Trash2, 
+  Import, 
+  Award, 
+  Activity, 
+  FileSpreadsheet, 
+  CheckCircle2, 
+  AlertCircle, 
+  Download, 
+  FileCode, 
+  Layers,
+  Eye,
+  RefreshCw,
+  X,
+  AlertTriangle,
+  Sparkles,
+  Clock,
+  BarChart3,
+  FileText,
+  SlidersHorizontal,
+  Settings2,
+  Table as TableIcon
+} from 'lucide-react';
 import { Project, WorkProgramActivity } from '../types';
 import { defaultWorkProgram } from '../data/defaultProject';
 import CPMChart from './CPMChart';
 import { parseWorkProgramFile, calculateCPM, ParseResult } from '../lib/mppParser';
+import { extractFileForMapping, RawFilePreview, ColumnMappingConfig } from '../lib/columnMapper';
+import { ColumnMappingModal } from './ColumnMappingModal';
+
+interface UploadedScheduleMeta {
+  fileName: string;
+  fileSize: number;
+  formatLabel: string;
+  uploadTime: string;
+  taskCount: number;
+  criticalCount: number;
+  totalDuration: number;
+  fileType: 'mpp' | 'xml' | 'mpx' | 'csv' | 'sample';
+}
 
 interface WorkProgramViewProps {
   project: Project;
@@ -15,13 +52,31 @@ export default function WorkProgramView({ project, onUpdateActivities }: WorkPro
   const activities = project.workProgram || [];
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isParsing, setIsParsing] = useState(false);
+  const [mappingPreviewData, setMappingPreviewData] = useState<RawFilePreview | null>(null);
   const [importStatus, setImportStatus] = useState<{
     type: 'success' | 'error' | 'warning' | null;
     message: string;
     details?: string;
   } | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isChartHighlighted, setIsChartHighlighted] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const chartSectionRef = useRef<HTMLDivElement>(null);
+
+  // Active uploaded file metadata
+  const [activeUploadedFile, setActiveUploadedFile] = useState<UploadedScheduleMeta | null>(null);
+
+  // Calculate live statistics
+  const liveStats = useMemo(() => {
+    const critCount = activities.filter(a => a.critical).length;
+    const maxDur = activities.reduce((max, a) => Math.max(max, a.eft || 0), 0);
+    return {
+      taskCount: activities.length,
+      criticalCount: critCount,
+      totalDuration: maxDur
+    };
+  }, [activities]);
 
   const calculateCPMLocal = (acts: WorkProgramActivity[]) => {
     if (!acts || acts.length === 0) return;
@@ -154,9 +209,25 @@ export default function WorkProgramView({ project, onUpdateActivities }: WorkPro
     const samples = defaultWorkProgram();
     calculateCPMLocal(samples);
     onUpdateActivities(samples);
+    
+    const critCount = samples.filter(a => a.critical).length;
+    const dur = samples.reduce((max, a) => Math.max(max, a.eft || 0), 0);
+
+    setActiveUploadedFile({
+      fileName: 'ERA Standard Highway Work Program.mpp',
+      fileSize: 38400,
+      formatLabel: 'Microsoft Project Native (.mpp)',
+      uploadTime: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+      taskCount: samples.length,
+      criticalCount: critCount,
+      totalDuration: dur,
+      fileType: 'mpp'
+    });
+
     setImportStatus({
       type: 'success',
-      message: 'Sample CPM schedule loaded successfully. Interactive CPM analytics and Gantt chart synchronized.'
+      message: 'Sample CPM schedule loaded successfully.',
+      details: 'Interactive CPM analytics and Gantt chart are synchronized.'
     });
   };
 
@@ -185,6 +256,122 @@ export default function WorkProgramView({ project, onUpdateActivities }: WorkPro
     setImportStatus(null);
   };
 
+  const handleDeleteStagedFile = () => {
+    setSelectedFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+    setImportStatus(null);
+  };
+
+  const handleDeleteUploadedSchedule = () => {
+    setActiveUploadedFile(null);
+    setSelectedFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+    onUpdateActivities([]);
+    setShowDeleteConfirm(false);
+    setImportStatus({
+      type: 'warning',
+      message: 'Uploaded schedule file and activities have been deleted.',
+      details: 'The CPM schedule table and chart have been cleared. You can upload a new schedule file (.mpp, .csv, .xml) or load a sample CPM schedule.'
+    });
+  };
+
+  const handleDisplayOnChart = () => {
+    if (chartSectionRef.current) {
+      chartSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setIsChartHighlighted(true);
+      setTimeout(() => {
+        setIsChartHighlighted(false);
+      }, 2500);
+    }
+    setImportStatus({
+      type: 'success',
+      message: `CPM Chart actively displaying "${activeUploadedFile?.fileName || 'Current Schedule'}"`,
+      details: `Displaying ${activities.length} activities (${liveStats.criticalCount} critical path tasks, ${liveStats.totalDuration} days total duration).`
+    });
+  };
+
+  const handleOpenColumnMapper = async (fileToMap?: File | null) => {
+    const file = fileToMap || selectedFile;
+    if (!file) {
+      if (fileInputRef.current) {
+        fileInputRef.current.click();
+      }
+      return;
+    }
+
+    setIsParsing(true);
+    try {
+      const preview = await extractFileForMapping(file);
+      setMappingPreviewData(preview);
+    } catch (err: any) {
+      console.error('Error extracting columns for mapping:', err);
+      setImportStatus({
+        type: 'error',
+        message: 'Could not extract column headers from file.',
+        details: err?.message || 'Please verify that the file contains readable tabular schedule data.'
+      });
+    } finally {
+      setIsParsing(false);
+    }
+  };
+
+  const handleApplyColumnMapping = (mappedActivities: WorkProgramActivity[], mapping: ColumnMappingConfig) => {
+    if (!mappedActivities || mappedActivities.length === 0) {
+      setImportStatus({
+        type: 'error',
+        message: 'No activities were generated with the selected column mapping.'
+      });
+      return;
+    }
+
+    // Mutate and calculate CPM
+    const calculated = calculateCPM(mappedActivities, project.startDate);
+    const criticalCount = calculated.filter(a => a.critical).length;
+    const totalDur = calculated.reduce((max, a) => Math.max(max, a.eft || 0), 0);
+
+    onUpdateActivities(calculated);
+
+    const fileName = mappingPreviewData?.fileName || selectedFile?.name || 'Custom_Mapped_Schedule.csv';
+    const fileSize = mappingPreviewData?.fileSize || selectedFile?.size || 0;
+    const fileType = mappingPreviewData?.fileType || 'csv';
+
+    setActiveUploadedFile({
+      fileName,
+      fileSize,
+      formatLabel: `Custom Mapped (${mappingPreviewData?.formatLabel || 'CPM CSV'})`,
+      uploadTime: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+      taskCount: calculated.length,
+      criticalCount,
+      totalDuration: totalDur,
+      fileType: (fileType === 'mpp' || fileType === 'xml' || fileType === 'mpx') ? fileType : 'csv'
+    });
+
+    setMappingPreviewData(null);
+    setSelectedFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+
+    setImportStatus({
+      type: 'success',
+      message: `Successfully applied custom column mapping for "${fileName}"!`,
+      details: `Synchronized ${calculated.length} activities (${criticalCount} critical path tasks, ${totalDur} working days). CPM calculations, float, and Gantt charts updated.`
+    });
+
+    // Smooth scroll & highlight
+    setTimeout(() => {
+      if (chartSectionRef.current) {
+        chartSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        setIsChartHighlighted(true);
+        setTimeout(() => setIsChartHighlighted(false), 2500);
+      }
+    }, 300);
+  };
+
   const handleImportFile = async () => {
     if (!selectedFile) return;
     setIsParsing(true);
@@ -209,6 +396,22 @@ export default function WorkProgramView({ project, onUpdateActivities }: WorkPro
       const totalDur = calculated.reduce((max, a) => Math.max(max, a.eft || 0), 0);
 
       onUpdateActivities(calculated);
+      
+      const fileExt = selectedFile.name.toLowerCase().endsWith('.mpp') ? 'mpp' 
+        : selectedFile.name.toLowerCase().endsWith('.xml') ? 'xml'
+        : selectedFile.name.toLowerCase().endsWith('.mpx') ? 'mpx' : 'csv';
+
+      setActiveUploadedFile({
+        fileName: selectedFile.name,
+        fileSize: selectedFile.size,
+        formatLabel: result.formatLabel,
+        uploadTime: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+        taskCount: calculated.length,
+        criticalCount,
+        totalDuration: totalDur,
+        fileType: fileExt
+      });
+
       setSelectedFile(null);
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
@@ -216,9 +419,18 @@ export default function WorkProgramView({ project, onUpdateActivities }: WorkPro
 
       setImportStatus({
         type: 'success',
-        message: `Successfully imported ${calculated.length} activities from ${result.formatLabel}!`,
-        details: `CPM Schedule synchronized: ${criticalCount} critical activities identified, total duration ${totalDur} days. Interactive Gantt Chart & Network Diagram updated.`
+        message: `Successfully imported "${selectedFile.name}" (${result.formatLabel})!`,
+        details: `CPM Schedule synchronized: ${calculated.length} activities, ${criticalCount} critical path nodes, ${totalDur} days duration. Interactive Gantt Chart & Network Diagram updated.`
       });
+
+      // Smooth focus on chart
+      setTimeout(() => {
+        if (chartSectionRef.current) {
+          chartSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          setIsChartHighlighted(true);
+          setTimeout(() => setIsChartHighlighted(false), 2500);
+        }
+      }, 300);
     } catch (err: any) {
       console.error('Import error:', err);
       setImportStatus({
@@ -257,6 +469,19 @@ export default function WorkProgramView({ project, onUpdateActivities }: WorkPro
     document.body.removeChild(link);
   };
 
+  const getFileBadgeStyle = (type?: string) => {
+    switch (type) {
+      case 'mpp':
+        return 'bg-blue-600 text-white border-blue-500';
+      case 'xml':
+        return 'bg-amber-600 text-white border-amber-500';
+      case 'csv':
+        return 'bg-emerald-600 text-white border-emerald-500';
+      default:
+        return 'bg-slate-700 text-white border-slate-600';
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* Top Header Card */}
@@ -272,6 +497,26 @@ export default function WorkProgramView({ project, onUpdateActivities }: WorkPro
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {activities.length > 0 && (
+            <button
+              onClick={handleDisplayOnChart}
+              className="bg-blue-50 dark:bg-blue-950/50 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 text-xs font-bold py-1.5 px-3 rounded-xl flex items-center gap-1.5 transition"
+              title="Display active schedule on CPM chart"
+            >
+              <Eye className="w-3.5 h-3.5 text-blue-500" />
+              Display on Chart
+            </button>
+          )}
+
+          <button
+            onClick={() => handleOpenColumnMapper()}
+            className="bg-purple-50 dark:bg-purple-950/50 hover:bg-purple-100 dark:hover:bg-purple-900/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 text-xs font-bold py-1.5 px-3 rounded-xl flex items-center gap-1.5 transition shadow-2xs"
+            title="Map custom CSV/MPP columns to system CPM format"
+          >
+            <SlidersHorizontal className="w-3.5 h-3.5 text-purple-500" />
+            Map Custom Columns
+          </button>
+
           {activities.length > 0 && (
             <button
               onClick={handleExportCsv}
@@ -310,31 +555,38 @@ export default function WorkProgramView({ project, onUpdateActivities }: WorkPro
           const file = e.dataTransfer.files?.[0];
           if (file) handleFileSelection(file);
         }}
-        className={`bg-white dark:bg-slate-800 border transition-all duration-200 p-4 rounded-2xl shadow-xs ${
+        className={`bg-white dark:bg-slate-800 border transition-all duration-200 p-5 rounded-2xl shadow-xs space-y-4 ${
           isDragOver 
             ? 'border-blue-500 bg-blue-50/40 dark:bg-blue-950/20 ring-2 ring-blue-500/20' 
             : 'border-slate-150 dark:border-slate-700/60'
         }`}
       >
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 text-xs">
-          <div className="flex items-start gap-3">
-            <div className="p-2.5 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/40 rounded-xl text-emerald-600 dark:text-emerald-400 shrink-0">
+          <div className="flex items-start gap-3.5">
+            <div className="p-3 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/40 rounded-xl text-emerald-600 dark:text-emerald-400 shrink-0 shadow-2xs">
               <Import className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-bold text-slate-800 dark:text-zinc-100 text-sm">
-                  Import CPM Schedule (.mpp, .csv, .xml):
+                  Import CPM Schedule:
                 </span>
-                <span className="bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 font-semibold px-2 py-0.5 rounded-md text-[10px] border border-blue-200 dark:border-blue-800/40">
-                  MS Project .mpp Ready
+                <span className="bg-blue-600 text-white font-bold px-2 py-0.5 rounded-md text-[10px] shadow-2xs tracking-wide">
+                  .MPP Native
                 </span>
-                <span className="bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 font-semibold px-2 py-0.5 rounded-md text-[10px] border border-emerald-200 dark:border-emerald-800/40">
-                  XML & CSV Supported
+                <span className="bg-amber-600 text-white font-bold px-2 py-0.5 rounded-md text-[10px] shadow-2xs tracking-wide">
+                  .XML Schema
+                </span>
+                <span className="bg-emerald-600 text-white font-bold px-2 py-0.5 rounded-md text-[10px] shadow-2xs tracking-wide">
+                  .CSV Spreadsheets
+                </span>
+                <span className="bg-purple-600 text-white font-bold px-2 py-0.5 rounded-md text-[10px] shadow-2xs tracking-wide flex items-center gap-1">
+                  <SlidersHorizontal className="w-2.5 h-2.5" />
+                  Custom Column Mapping
                 </span>
               </div>
-              <p className="text-slate-500 dark:text-slate-400 text-xs mt-0.5">
-                Upload files created in <strong>Microsoft Project (.mpp)</strong>, <strong>MS Project XML (.xml)</strong>, or spreadsheet <strong>CSV</strong> (Format: <code className="bg-slate-100 dark:bg-slate-700 px-1 py-0.5 rounded font-mono text-[11px]">ID, Name, Duration, Predecessors, Lag, Sequence Type</code>).
+              <p className="text-slate-500 dark:text-slate-400 text-xs mt-1">
+                Upload files created in <strong>Microsoft Project (.mpp)</strong>, <strong>MS Project XML (.xml)</strong>, or <strong>CSV</strong> (Format: <code className="bg-slate-100 dark:bg-slate-700 px-1 py-0.5 rounded font-mono text-[11px]">ID, Name, Duration, Predecessors, Lag, Sequence Type</code>).
               </p>
             </div>
           </div>
@@ -347,8 +599,54 @@ export default function WorkProgramView({ project, onUpdateActivities }: WorkPro
               onChange={(e) => handleFileSelection(e.target.files?.[0] || null)}
               className="text-xs text-slate-600 dark:text-slate-300 file:mr-2.5 file:bg-slate-100 dark:file:bg-slate-700 file:hover:bg-slate-200 dark:file:hover:bg-slate-600 file:border file:border-slate-200 dark:file:border-slate-600 file:rounded-xl file:px-3 file:py-1.5 file:text-xs file:font-bold file:text-slate-700 dark:file:text-slate-200 cursor-pointer"
             />
+          </div>
+        </div>
 
-            {selectedFile && (
+        {/* 1. Staged File Upload Card (File selected, ready to import, map columns, or cancel) */}
+        {selectedFile && (
+          <motion.div 
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="p-3.5 bg-blue-50/60 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/60 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-600 text-white rounded-lg font-mono font-bold text-[10px] uppercase tracking-wider">
+                {selectedFile.name.split('.').pop() || 'FILE'}
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-slate-800 dark:text-zinc-100">{selectedFile.name}</span>
+                  <span className="text-slate-500 dark:text-slate-400 text-[11px]">
+                    ({(selectedFile.size / 1024).toFixed(1)} KB)
+                  </span>
+                </div>
+                <p className="text-[11px] text-blue-700 dark:text-blue-300 mt-0.5">
+                  Ready to map custom columns or import directly to Interactive CPM Chart.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0 flex-wrap">
+              <button
+                onClick={handleDeleteStagedFile}
+                disabled={isParsing}
+                className="bg-white dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-slate-600 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400 border border-slate-200 dark:border-slate-700 px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition"
+                title="Cancel and remove selected file"
+              >
+                <X className="w-3.5 h-3.5" />
+                Remove
+              </button>
+
+              <button
+                onClick={() => handleOpenColumnMapper(selectedFile)}
+                disabled={isParsing}
+                className="bg-purple-600 hover:bg-purple-700 text-white font-bold px-3.5 py-1.5 rounded-xl text-xs flex items-center gap-1.5 transition shadow-xs"
+                title="Open interactive column mapping modal to map custom columns"
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5" />
+                Map Columns &amp; Review
+              </button>
+
               <button 
                 onClick={handleImportFile}
                 disabled={isParsing}
@@ -362,25 +660,92 @@ export default function WorkProgramView({ project, onUpdateActivities }: WorkPro
                 ) : (
                   <>
                     <CheckCircle2 className="w-3.5 h-3.5" />
-                    Import & Sync CPM
+                    Quick Import
                   </>
                 )}
               </button>
-            )}
-          </div>
-        </div>
-
-        {/* Selected file preview info chip */}
-        {selectedFile && !importStatus && (
-          <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-700/60 flex items-center justify-between text-xs text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-900/40 p-2.5 rounded-xl">
-            <div className="flex items-center gap-2">
-              <FileSpreadsheet className="w-4 h-4 text-emerald-500" />
-              <span className="font-semibold text-slate-800 dark:text-zinc-200">{selectedFile.name}</span>
-              <span className="text-slate-400 text-[11px]">({(selectedFile.size / 1024).toFixed(1)} KB)</span>
             </div>
-            <span className="text-[11px] text-blue-600 dark:text-blue-400 font-medium">
-              Click &quot;Import &amp; Sync CPM&quot; to parse tasks &amp; dependencies
-            </span>
+          </motion.div>
+        )}
+
+        {/* 2. Active Uploaded Schedule File Card (Currently loaded & plotted on chart) */}
+        {activeUploadedFile && activities.length > 0 && !selectedFile && (
+          <div className="p-4 bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700/80 rounded-xl space-y-3">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className={`px-2.5 py-1.5 rounded-lg font-mono font-bold text-xs uppercase shadow-2xs border ${getFileBadgeStyle(activeUploadedFile.fileType)}`}>
+                  {activeUploadedFile.fileType.toUpperCase()}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-bold text-slate-900 dark:text-white text-sm">
+                      {activeUploadedFile.fileName}
+                    </span>
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 px-2 py-0.5 rounded-full">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      Active on CPM Chart
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 flex-wrap">
+                    <span>{activeUploadedFile.formatLabel}</span>
+                    <span>•</span>
+                    <span>{(activeUploadedFile.fileSize / 1024).toFixed(1)} KB</span>
+                    <span>•</span>
+                    <span>Synchronized: {activeUploadedFile.uploadTime}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons for Active File */}
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={handleDisplayOnChart}
+                  className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-1.5 px-3 rounded-xl flex items-center gap-1.5 transition shadow-xs"
+                  title="Scroll to and highlight CPM Chart"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  Display on Chart
+                </button>
+
+                <button
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="bg-white dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800/60 text-xs font-bold py-1.5 px-3 rounded-xl flex items-center gap-1.5 transition shadow-2xs"
+                  title="Delete uploaded schedule file and clear activities"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Delete Schedule
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Metrics Bar for the Active Uploaded File */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-slate-200/60 dark:border-slate-800 text-xs">
+              <div className="bg-white dark:bg-slate-850 p-2 rounded-lg border border-slate-150 dark:border-slate-750">
+                <span className="text-[10px] text-slate-400 font-semibold block">Total Tasks</span>
+                <span className="font-bold text-slate-800 dark:text-zinc-200 font-mono">
+                  {liveStats.taskCount} Activities
+                </span>
+              </div>
+              <div className="bg-white dark:bg-slate-850 p-2 rounded-lg border border-slate-150 dark:border-slate-750">
+                <span className="text-[10px] text-slate-400 font-semibold block">Critical Path Nodes</span>
+                <span className="font-bold text-rose-600 dark:text-rose-400 font-mono">
+                  {liveStats.criticalCount} Tasks (0 Float)
+                </span>
+              </div>
+              <div className="bg-white dark:bg-slate-850 p-2 rounded-lg border border-slate-150 dark:border-slate-750">
+                <span className="text-[10px] text-slate-400 font-semibold block">Total Duration</span>
+                <span className="font-bold text-blue-600 dark:text-blue-400 font-mono">
+                  {liveStats.totalDuration} Working Days
+                </span>
+              </div>
+              <div className="bg-white dark:bg-slate-850 p-2 rounded-lg border border-slate-150 dark:border-slate-750">
+                <span className="text-[10px] text-slate-400 font-semibold block">CPM Status</span>
+                <span className="font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3" />
+                  Synchronized
+                </span>
+              </div>
+            </div>
           </div>
         )}
 
@@ -389,29 +754,106 @@ export default function WorkProgramView({ project, onUpdateActivities }: WorkPro
           <motion.div 
             initial={{ opacity: 0, y: -6 }}
             animate={{ opacity: 1, y: 0 }}
-            className={`mt-3 p-3 rounded-xl border flex items-start gap-2.5 text-xs ${
+            className={`p-3 rounded-xl border flex items-start gap-2.5 text-xs ${
               importStatus.type === 'success'
                 ? 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800/50 text-emerald-800 dark:text-emerald-300'
+                : importStatus.type === 'warning'
+                ? 'bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800/50 text-amber-800 dark:text-amber-300'
                 : 'bg-rose-50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-800/50 text-rose-800 dark:text-rose-300'
             }`}
           >
             {importStatus.type === 'success' ? (
               <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+            ) : importStatus.type === 'warning' ? (
+              <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
             ) : (
               <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
             )}
-            <div>
+            <div className="flex-1">
               <p className="font-bold">{importStatus.message}</p>
               {importStatus.details && (
                 <p className="text-[11px] opacity-90 mt-0.5">{importStatus.details}</p>
               )}
             </div>
+            <button 
+              onClick={() => setImportStatus(null)}
+              className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
           </motion.div>
         )}
       </div>
 
-      {/* CPM Analytics and Interactive Charts */}
-      <CPMChart project={project} activities={activities} />
+      {/* Column Mapping Modal */}
+      <AnimatePresence>
+        {mappingPreviewData && (
+          <ColumnMappingModal
+            previewData={mappingPreviewData}
+            project={project}
+            onApply={handleApplyColumnMapping}
+            onClose={() => setMappingPreviewData(null)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Delete Schedule Confirmation Modal */}
+      <AnimatePresence>
+        {showDeleteConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xl max-w-md w-full p-5 space-y-4"
+            >
+              <div className="flex items-start gap-3">
+                <div className="p-2.5 bg-rose-100 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 rounded-xl shrink-0">
+                  <Trash2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                    Delete Uploaded CPM Schedule?
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    This will remove <strong>{activeUploadedFile?.fileName || 'the current schedule file'}</strong> and clear all <strong>{activities.length} activities</strong> from the CPM calculation, table, and interactive charts.
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 rounded-xl text-[11px] text-amber-800 dark:text-amber-300">
+                You can reload the sample schedule or upload a new MS Project (.mpp, .xml) or CSV file at any time.
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-700">
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteUploadedSchedule}
+                  className="px-4 py-1.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition shadow-xs flex items-center gap-1.5"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Yes, Delete Schedule
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* CPM Analytics and Interactive Charts with Ref and Highlight */}
+      <div ref={chartSectionRef} id="cpm-interactive-chart" className="scroll-mt-4">
+        <CPMChart 
+          project={project} 
+          activities={activities} 
+          activeFileName={activeUploadedFile?.fileName}
+          isHighlighted={isChartHighlighted}
+        />
+      </div>
 
       <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 rounded-2xl overflow-hidden shadow-sm">
         <div className="p-4 border-b border-slate-150 dark:border-slate-700/60 flex items-center justify-between">
@@ -699,4 +1141,5 @@ export default function WorkProgramView({ project, onUpdateActivities }: WorkPro
     </div>
   );
 }
+
 

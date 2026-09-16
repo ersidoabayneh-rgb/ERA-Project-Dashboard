@@ -25,6 +25,7 @@ import {
 import { calculateProjectEvm } from '../lib/evmCalculations';
 import { getProjectConsultantEvaluation } from '../data/consultantEvaluationMatrix';
 import eraLogo from '../assets/logo.png';
+import ChangelogAuditHistory from './ChangelogAuditHistory';
 
 export interface InconsistencyAlert {
   id: string;
@@ -4830,44 +4831,15 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
         </div>
 
       {/* Changelog Audit History */}
-      <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-5 rounded-2xl shadow-sm space-y-4 no-print">
-        <h3 className="font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500">
-          Changelog Audit History
-        </h3>
-        
-        <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
-          {history.map((h, i) => {
-            const hProg = typeof h?.physicalProgress === 'number'
-              ? h.physicalProgress
-              : (parseFloat(String(h?.physicalProgress || 0)) || 0);
-            return (
-              <div 
-                key={i} 
-                className="p-3 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-xl space-y-1 text-2xs"
-              >
-                <div className="flex justify-between font-bold text-slate-500">
-                  <span>{h.timestamp}</span>
-                  <span className="text-blue-500">{hProg.toFixed(2)}%</span>
-                </div>
-                <p className="text-slate-705 dark:text-slate-350">
-                  Modified by <strong>{h.user}</strong> during updates on <strong>{h.section || 'General'}</strong>
-                </p>
-                {h.details && (
-                  <p className="text-[11px] text-slate-600 dark:text-slate-400 italic mt-1 pt-1 border-t border-slate-200/60 dark:border-slate-800">
-                    {h.details}
-                  </p>
-                )}
-              </div>
-            );
-          })}
-
-          {history.length === 0 && (
-            <div className="text-center py-10 text-slate-400 font-medium text-xs">
-              No history snapshots tracked yet.
-            </div>
-          )}
-        </div>
-      </div>
+      <ChangelogAuditHistory
+        history={history}
+        onClearHistory={onClearHistory}
+        canClear={
+          currentUserObj?.role === 'master_admin' ||
+          currentUserObj?.role === 'cpm_admin' ||
+          currentUserObj?.role === 'admin'
+        }
+      />
 
       {/* Modal 1: Detailed Monthly Grading Inspection View */}
       <AnimatePresence>

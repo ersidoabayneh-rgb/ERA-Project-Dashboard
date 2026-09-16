@@ -124,12 +124,23 @@ export interface KpiAllocatedItem {
   isOverridden?: boolean;
 }
 
+export interface HistoryChangeDetail {
+  field: string;
+  label?: string;
+  oldVal?: any;
+  newVal?: any;
+  description?: string;
+}
+
 export interface HistoryItem {
+  id?: string;
   timestamp: string;
   user: string;
+  role?: string;
   section: string;
   physicalProgress: number;
   details?: string;
+  changes?: HistoryChangeDetail[];
 }
 
 export interface WorkProgramActivity {

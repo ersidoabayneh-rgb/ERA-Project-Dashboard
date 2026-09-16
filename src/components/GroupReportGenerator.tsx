@@ -853,17 +853,19 @@ export default function GroupReportGenerator({
     // Matured IPC check (>56 days)
     const today = new Date().getFullYear() < 2026 ? new Date('2026-06-26') : new Date();
     let maturedIpcCount = 0;
-    relevantIpcTracker.forEach(item => {
-      const isEtbUnpaid = (item.statusEtb || item.status) === 'Unpaid';
-      const isUsdUnpaid = (item.statusUsd || item.status) === 'Unpaid';
-      if ((isEtbUnpaid || isUsdUnpaid) && item.submissionDate) {
-        const subDate = new Date(item.submissionDate);
-        if (!isNaN(subDate.getTime())) {
-          const daysElapsed = Math.floor((today.getTime() - subDate.getTime()) / (1000 * 60 * 60 * 24));
-          if (daysElapsed > 56) maturedIpcCount++;
+    if (!isClosed) {
+      relevantIpcTracker.forEach(item => {
+        const isEtbUnpaid = (item.statusEtb || item.status) === 'Unpaid';
+        const isUsdUnpaid = (item.statusUsd || item.status) === 'Unpaid';
+        if ((isEtbUnpaid || isUsdUnpaid) && item.submissionDate) {
+          const subDate = new Date(item.submissionDate);
+          if (!isNaN(subDate.getTime())) {
+            const daysElapsed = Math.floor((today.getTime() - subDate.getTime()) / (1000 * 60 * 60 * 24));
+            if (daysElapsed > 56) maturedIpcCount++;
+          }
         }
-      }
-    });
+      });
+    }
 
     let ipcCertificationScore = 20;
     if (maturedIpcCount > 0) {
@@ -1515,7 +1517,13 @@ export default function GroupReportGenerator({
       
       if (!isMatch) return false;
       
+      // When in Matured Payment Status & Amount mode, automatically exclude completed & closed projects
+      if (reportMode === 'payments' && isProjectClosed(p.status)) {
+        return false;
+      }
+
       if (maturedFilterOnly) {
+        if (isProjectClosed(p.status)) return false;
         const tracker = p.ipcTracker || [];
         const hasMatured = tracker.some(item => {
           const isEtbUnpaid = (item.statusEtb || item.status) === 'Unpaid';
@@ -1534,7 +1542,7 @@ export default function GroupReportGenerator({
       
       return true;
     });
-  }, [projects, groupType, selectedGroup, maturedFilterOnly, currentUserObj]);
+  }, [projects, groupType, selectedGroup, maturedFilterOnly, reportMode, currentUserObj]);
 
   // Group-wide audit metrics
   const auditStats = useMemo(() => {
@@ -1756,7 +1764,9 @@ export default function GroupReportGenerator({
 
   // Derived payment and matured outstanding claims statistics
   const paymentStats = useMemo(() => {
-    const totalCount = rawGroupProjects.length;
+    // Exclude completed & closed projects from matured payment status & amounts
+    const activeProjects = rawGroupProjects.filter(p => !isProjectClosed(p.status));
+    const totalCount = activeProjects.length;
     if (totalCount === 0) {
       return {
         totalCertifiedEtb: 0,
@@ -1767,10 +1777,14 @@ export default function GroupReportGenerator({
         totalUnpaidUsd: 0,
         totalMaturedEtb: 0,
         totalMaturedUsd: 0,
+        totalAccruedInterestEtb: 0,
+        totalAccruedInterestUsd: 0,
         combinedCertifiedEtb: 0,
         combinedPaidEtb: 0,
         combinedUnpaidEtb: 0,
         combinedMaturedEtb: 0,
+        combinedAccruedInterestEtb: 0,
+        combinedClaimableEtb: 0,
         maturedIpcCount: 0,
         totalIpcCount: 0,
         unpaidIpcCount: 0,
@@ -1799,7 +1813,7 @@ export default function GroupReportGenerator({
 
     const today = new Date();
 
-    rawGroupProjects.forEach(p => {
+    activeProjects.forEach(p => {
       const tracker = p.ipcTracker || [];
       const rate = p.usdExchangeRate || 28.0;
       const annualRate = p.annualInterestRate !== undefined ? p.annualInterestRate : 16.50;
@@ -1905,6 +1919,7 @@ export default function GroupReportGenerator({
 
   // Helper to calculate project payment metrics
   const getProjectPaymentMetrics = (p: Project) => {
+    const isClosed = isProjectClosed(p.status);
     const tracker = p.ipcTracker || [];
     const rate = p.usdExchangeRate || 28.0;
     const today = new Date();
@@ -1940,22 +1955,31 @@ export default function GroupReportGenerator({
       unpaidEtb += maturation.unpaidCertifiedEtb;
       unpaidUsd += maturation.unpaidCertifiedUsd;
 
-      if (maturation.isFullyPaid) {
+      if (maturation.isFullyPaid || isClosed) {
         paidIpcs++;
       } else {
         unpaidIpcs++;
-        if (maturation.isOverdue) {
+        if (maturation.isOverdue && !isClosed) {
           maturedIpcsCount++;
           maturedEtb += maturation.unpaidCertifiedEtb;
           maturedUsd += maturation.unpaidCertifiedUsd;
         }
-        if (maturation.accruedInterestEqvEtb > 0) {
+        if (maturation.accruedInterestEqvEtb > 0 && !isClosed) {
           accruedInterestEtb += maturation.accruedInterestEtb;
           accruedInterestUsd += maturation.accruedInterestUsd;
           accruedInterestEqv += maturation.accruedInterestEqvEtb;
         }
       }
     });
+
+    if (isClosed) {
+      maturedIpcsCount = 0;
+      maturedEtb = 0;
+      maturedUsd = 0;
+      accruedInterestEtb = 0;
+      accruedInterestUsd = 0;
+      accruedInterestEqv = 0;
+    }
 
     const combinedCertified = certEtb + (certUsd * rate);
     const combinedPaid = paidEtb + (paidUsd * rate);
@@ -1965,10 +1989,10 @@ export default function GroupReportGenerator({
 
     let statusLabel: 'Paid' | 'Pending' | 'Overdue' = 'Paid';
     let statusColor = 'bg-emerald-50 text-emerald-600 border-emerald-100 dark:bg-emerald-950/20 dark:text-emerald-400';
-    if (maturedIpcsCount > 0) {
+    if (!isClosed && maturedIpcsCount > 0) {
       statusLabel = 'Overdue';
       statusColor = 'bg-red-50 text-red-600 border-red-150 dark:bg-red-950/20 dark:text-red-400 animate-pulse';
-    } else if (unpaidIpcs > 0) {
+    } else if (!isClosed && unpaidIpcs > 0) {
       statusLabel = 'Pending';
       statusColor = 'bg-amber-50 text-amber-600 border-amber-100 dark:bg-amber-950/20 dark:text-amber-400';
     }
@@ -4278,110 +4302,166 @@ export default function GroupReportGenerator({
 
       // Title & Metadata Block
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(11);
+      doc.setFontSize(10.5);
       doc.setTextColor(15, 23, 42); // slate-900
       doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA) • FINANCIAL MONITORING OFFICE", 40, 42);
       
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8);
+      doc.setFontSize(7.5);
       doc.setTextColor(100, 116, 139); // slate-500
-      doc.text(`CMS - CONTRACT MONITORING & OUTSTANDING IPC CLAIMS AUDIT • AUDITOR: ${currentUserObj.username.toUpperCase()}`, 40, 54);
+      const subTitleStr = `CMS - CONTRACT MONITORING & OUTSTANDING IPC CLAIMS AUDIT • AUDITOR: ${currentUserObj.username.toUpperCase()}`;
+      const wrappedSubTitle = doc.splitTextToSize(subTitleStr, 500);
+      doc.text(wrappedSubTitle[0] || subTitleStr, 40, 53);
 
       const dStr = new Date().toLocaleString();
-      doc.text(`AUDIT GENERATION DATE: ${dStr}`, pageWidth - 260, 42);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`AUDIT GENERATION DATE: ${dStr}`, pageWidth - 40, 42, { align: 'right' });
 
       // Footer line
       doc.setLineWidth(0.75);
       doc.setDrawColor(203, 213, 225); // slate-300
-      doc.line(40, pageHeight - 40, pageWidth - 40, pageHeight - 40);
+      doc.line(40, pageHeight - 38, pageWidth - 40, pageHeight - 38);
 
       // Header bottom divider line
       doc.line(40, 58, pageWidth - 40, 58);
 
-      doc.setFontSize(7.5);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
       doc.setTextColor(148, 163, 184); // slate-400
       doc.text(`CONFIDENTIALITY CLAUSE: RESTRICTED TO GOVERNANCE & FINANCE RECONCILIATION TEAMS ONLY`, 40, pageHeight - 24);
-      doc.text(`Page ${pageCount}`, pageWidth - 60, pageHeight - 24);
+      doc.text(`Page ${pageCount}`, pageWidth - 40, pageHeight - 24, { align: 'right' });
     };
 
     drawHeaderFooter();
 
     // Document Subject Headline
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(13);
+    doc.setFontSize(11);
     doc.setTextColor(16, 185, 129); // emerald-600
     const groupNameStr = selectedGroup === 'All' ? 'ALL GROUPINGS (COMBINED STATS)' : selectedGroup.toUpperCase();
     const groupLabelStr = 
       groupType === 'directorate' ? 'PROGRAM DIRECTORATE' : 
       groupType === 'pmo' ? 'PMO GROUP' :
       groupType === 'contractor' ? 'CONTRACTOR' : 'CONSULTANT';
-    doc.text(`MATURED PAYMENT STATUS & OUTSTANDING CLAIMS DOSSIER: ${groupLabelStr} • ${groupNameStr}`, 40, 85);
+    const headlineText = `MATURED PAYMENT STATUS & OUTSTANDING CLAIMS DOSSIER: ${groupLabelStr} • ${groupNameStr}`;
+    const headlineLines = doc.splitTextToSize(headlineText, pageWidth - 80);
+    headlineLines.forEach((hLine: string, hIdx: number) => {
+      doc.text(hLine, 40, 75 + hIdx * 11);
+    });
 
     // Decorative thin separator
+    const separatorY = 75 + (headlineLines.length * 11) + 4;
     doc.setDrawColor(226, 232, 240);
     doc.setLineWidth(1);
-    doc.line(40, 95, pageWidth - 40, 95);
+    doc.line(40, separatorY, pageWidth - 40, separatorY);
 
-    // Top Compliance KPI Summary Blocks
-    const cardWidth = (pageWidth - 80 - 30) / 4; 
-    const cardY = 110;
-    const cardHeight = 52;
+    // Top Compliance KPI Summary Blocks (with exact currency breakdowns and boundary wrapping)
+    const cardGap = 10;
+    const cardWidth = (pageWidth - 80 - (cardGap * 3)) / 4; 
+    const cardY = separatorY + 8;
+    const cardHeight = 62;
+    const cardInnerPad = 8;
+    const cardTextWidth = cardWidth - (cardInnerPad * 2);
 
     // KPI Card 1: Total Audited Contracts
-    doc.setFillColor(236, 253, 245); // very soft green
+    doc.setFillColor(236, 253, 245); // soft green
     doc.rect(40, cardY, cardWidth, cardHeight, 'F');
     doc.setDrawColor(167, 243, 208);
     doc.rect(40, cardY, cardWidth, cardHeight, 'S');
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7.5);
     doc.setTextColor(16, 185, 129);
-    doc.text("TOTAL ACTIVE PROJECTS", 48, cardY + 18);
-    doc.setFontSize(13);
-    doc.setTextColor(15, 23, 42);
-    doc.text(`${processedProjects.length} Contracts`, 48, cardY + 38);
-
-    // KPI Card 2: Total Certified Outstandings
-    doc.setFillColor(248, 250, 252);
-    doc.rect(40 + cardWidth + 10, cardY, cardWidth, cardHeight, 'F');
-    doc.setDrawColor(226, 232, 240);
-    doc.rect(40 + cardWidth + 10, cardY, cardWidth, cardHeight, 'S');
-    doc.setFontSize(7.5);
-    doc.setTextColor(100, 116, 139);
-    doc.text("TOTAL OUTSTANDING CLAIMS", 40 + cardWidth + 18, cardY + 18);
+    const c1Title = doc.splitTextToSize("TOTAL ACTIVE PROJECTS", cardTextWidth);
+    doc.text(c1Title[0] || "TOTAL ACTIVE PROJECTS", 40 + cardInnerPad, cardY + 14);
     doc.setFontSize(11);
     doc.setTextColor(15, 23, 42);
-    doc.text(`ETB ${paymentStats.combinedUnpaidEtb.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, 40 + cardWidth + 18, cardY + 38);
+    const c1Val = doc.splitTextToSize(`${processedProjects.length} Contracts`, cardTextWidth);
+    doc.text(c1Val[0] || `${processedProjects.length} Contracts`, 40 + cardInnerPad, cardY + 28);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(100, 116, 139);
+    const c1Sub1 = doc.splitTextToSize(`Total IPCs: ${paymentStats.totalIpcCount}`, cardTextWidth);
+    doc.text(c1Sub1[0] || '', 40 + cardInnerPad, cardY + 41);
+    const c1Sub2 = doc.splitTextToSize(`Paid: ${paymentStats.totalIpcCount - paymentStats.unpaidIpcCount} • Unpaid: ${paymentStats.unpaidIpcCount}`, cardTextWidth);
+    doc.text(c1Sub2[0] || '', 40 + cardInnerPad, cardY + 52);
 
-    // KPI Card 3: Critical Matured Overdue
+    // KPI Card 2: Total Certified Value (Exact ETB + USD)
+    const card2X = 40 + cardWidth + cardGap;
+    doc.setFillColor(248, 250, 252);
+    doc.rect(card2X, cardY, cardWidth, cardHeight, 'F');
+    doc.setDrawColor(226, 232, 240);
+    doc.rect(card2X, cardY, cardWidth, cardHeight, 'S');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(71, 85, 105);
+    const c2Title = doc.splitTextToSize("TOTAL CERTIFIED CLAIMS", cardTextWidth);
+    doc.text(c2Title[0] || "TOTAL CERTIFIED CLAIMS", card2X + cardInnerPad, cardY + 14);
+    doc.setFontSize(7.5);
+    doc.setTextColor(15, 23, 42);
+    const c2Etb = doc.splitTextToSize(`ETB: ${formatAccounting(paymentStats.totalCertifiedEtb, '')}`, cardTextWidth);
+    doc.text(c2Etb[0] || '', card2X + cardInnerPad, cardY + 27);
+    const c2Usd = doc.splitTextToSize(`USD: $${formatAccounting(paymentStats.totalCertifiedUsd, '')}`, cardTextWidth);
+    doc.text(c2Usd[0] || '', card2X + cardInnerPad, cardY + 39);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(100, 116, 139);
+    const c2Eqv = doc.splitTextToSize(`Eqv: ETB ${paymentStats.combinedCertifiedEtb.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, cardTextWidth);
+    doc.text(c2Eqv[0] || '', card2X + cardInnerPad, cardY + 52);
+
+    // KPI Card 3: Total Outstanding Unpaid (Exact ETB + USD)
+    const card3X = 40 + (cardWidth + cardGap) * 2;
+    doc.setFillColor(255, 251, 235); // soft amber
+    doc.rect(card3X, cardY, cardWidth, cardHeight, 'F');
+    doc.setDrawColor(253, 230, 138);
+    doc.rect(card3X, cardY, cardWidth, cardHeight, 'S');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(180, 83, 9); // amber-700
+    const c3Title = doc.splitTextToSize("TOTAL OUTSTANDING (UNPAID)", cardTextWidth);
+    doc.text(c3Title[0] || "TOTAL OUTSTANDING (UNPAID)", card3X + cardInnerPad, cardY + 14);
+    doc.setFontSize(7.5);
+    doc.setTextColor(180, 83, 9);
+    const c3Etb = doc.splitTextToSize(`ETB: ${formatAccounting(paymentStats.totalUnpaidEtb, '')}`, cardTextWidth);
+    doc.text(c3Etb[0] || '', card3X + cardInnerPad, cardY + 27);
+    const c3Usd = doc.splitTextToSize(`USD: $${formatAccounting(paymentStats.totalUnpaidUsd, '')}`, cardTextWidth);
+    doc.text(c3Usd[0] || '', card3X + cardInnerPad, cardY + 39);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(146, 64, 14);
+    const c3Eqv = doc.splitTextToSize(`Eqv: ETB ${paymentStats.combinedUnpaidEtb.toLocaleString(undefined, { maximumFractionDigits: 0 })} (${paymentStats.unpaidIpcCount} IPCs)`, cardTextWidth);
+    doc.text(c3Eqv[0] || '', card3X + cardInnerPad, cardY + 52);
+
+    // KPI Card 4: Critical Matured Overdue (Exact ETB + USD)
+    const card4X = 40 + (cardWidth + cardGap) * 3;
     doc.setFillColor(254, 242, 242); // soft red
-    doc.rect(40 + (cardWidth + 10) * 2, cardY, cardWidth, cardHeight, 'F');
+    doc.rect(card4X, cardY, cardWidth, cardHeight, 'F');
     doc.setDrawColor(252, 165, 165);
-    doc.rect(40 + (cardWidth + 10) * 2, cardY, cardWidth, cardHeight, 'S');
+    doc.rect(card4X, cardY, cardWidth, cardHeight, 'S');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(185, 28, 28); // red-700
+    const c4Title = doc.splitTextToSize("MATURED OVERDUE (>56 DAYS)", cardTextWidth);
+    doc.text(c4Title[0] || "MATURED OVERDUE (>56 DAYS)", card4X + cardInnerPad, cardY + 14);
     doc.setFontSize(7.5);
     doc.setTextColor(185, 28, 28);
-    doc.text("MATURED OVERDUE (>56d)", 40 + (cardWidth + 10) * 2 + 12, cardY + 18);
-    doc.setFontSize(11);
-    doc.setTextColor(185, 28, 28);
-    doc.text(`ETB ${paymentStats.combinedMaturedEtb.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, 40 + (cardWidth + 10) * 2 + 12, cardY + 38);
-
-    // KPI Card 4: Overdue Ratio / Count
-    doc.setFillColor(248, 250, 252);
-    doc.rect(40 + (cardWidth + 10) * 3, cardY, cardWidth, cardHeight, 'F');
-    doc.setDrawColor(226, 232, 240);
-    doc.rect(40 + (cardWidth + 10) * 3, cardY, cardWidth, cardHeight, 'S');
-    doc.setFontSize(7.5);
-    doc.setTextColor(100, 116, 139);
-    doc.text("MATURED OVERDUE CLAIM COUNT", 40 + (cardWidth + 10) * 3 + 12, cardY + 18);
-    doc.setFontSize(13);
-    doc.setTextColor(15, 23, 42);
-    doc.text(`${paymentStats.maturedIpcCount} Overdue IPCs`, 40 + (cardWidth + 10) * 3 + 12, cardY + 38);
+    const c4Etb = doc.splitTextToSize(`ETB: ${formatAccounting(paymentStats.totalMaturedEtb, '')}`, cardTextWidth);
+    doc.text(c4Etb[0] || '', card4X + cardInnerPad, cardY + 27);
+    const c4Usd = doc.splitTextToSize(`USD: $${formatAccounting(paymentStats.totalMaturedUsd, '')}`, cardTextWidth);
+    doc.text(c4Usd[0] || '', card4X + cardInnerPad, cardY + 39);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(153, 27, 27);
+    const c4Eqv = doc.splitTextToSize(`Eqv: ETB ${paymentStats.combinedMaturedEtb.toLocaleString(undefined, { maximumFractionDigits: 0 })} (${paymentStats.maturedIpcCount} Overdue)`, cardTextWidth);
+    doc.text(c4Eqv[0] || '', card4X + cardInnerPad, cardY + 52);
 
     const colWidths = {
-      name: 260,
-      ipcCount: 110,
+      name: 210,
+      ipcCount: 95,
       certified: 150,
-      outstanding: 120,
-      matured: 121.89
+      outstanding: 150,
+      matured: 156.89
     };
 
     const colX = {
@@ -4395,11 +4475,11 @@ export default function GroupReportGenerator({
     const drawTableHeader = (y: number) => {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(7.5);
-      const headerNameLines = doc.splitTextToSize("CONTRACT TITLE & CONTRACTOR", colWidths.name - 12);
-      const headerIpcLines = doc.splitTextToSize("TOTAL IPC COUNT", colWidths.ipcCount - 12);
-      const headerCertifiedLines = doc.splitTextToSize("TOTAL CERTIFIED VALUE (ETB Equivalent)", colWidths.certified - 12);
-      const headerOutstandingLines = doc.splitTextToSize("OUTSTANDING CLAIMS", colWidths.outstanding - 12);
-      const headerMaturedLines = doc.splitTextToSize("MATURED OVERDUE (>56 Days)", colWidths.matured - 12);
+      const headerNameLines = doc.splitTextToSize("CONTRACT TITLE & CONTRACTOR", colWidths.name - 14);
+      const headerIpcLines = doc.splitTextToSize("IPC COUNT & STATUS", colWidths.ipcCount - 14);
+      const headerCertifiedLines = doc.splitTextToSize("TOTAL CERTIFIED VALUE (ETB & USD)", colWidths.certified - 14);
+      const headerOutstandingLines = doc.splitTextToSize("OUTSTANDING CLAIMS (ETB & USD)", colWidths.outstanding - 14);
+      const headerMaturedLines = doc.splitTextToSize("MATURED OVERDUE (>56d) (ETB & USD)", colWidths.matured - 14);
 
       const maxHeaderLines = Math.max(
         headerNameLines.length,
@@ -4420,7 +4500,7 @@ export default function GroupReportGenerator({
       const drawHeaderCellLines = (lines: string[], x: number) => {
         const startY = y + (headerHeight - (lines.length * 9.5)) / 2 + 7.5;
         lines.forEach((line, idx) => {
-          doc.text(line, x + 6, startY + idx * 9.5);
+          doc.text(line, x + 7, startY + idx * 9.5);
         });
       };
 
@@ -4447,53 +4527,104 @@ export default function GroupReportGenerator({
       return headerHeight;
     };
 
-    curY = 185;
+    curY = cardY + cardHeight + 12;
     const initialHeaderHeight = drawTableHeader(curY);
     curY += initialHeaderHeight;
 
     processedProjects.forEach((p, idx) => {
       const m = getProjectPaymentMetrics(p);
 
-      // Pre-calculate wrapped line lengths and cell heights
+      // Pre-calculate wrapped lines for Column 1
       const combinedTitle = p.name || 'Untitled Project';
-      const titleLines = doc.splitTextToSize(combinedTitle, colWidths.name - 12);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      const titleLines = doc.splitTextToSize(combinedTitle, colWidths.name - 14);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.5);
       const subTextStr = `Contractor: ${p.contractor || 'N/A'}`;
-      const subTextLines = doc.splitTextToSize(subTextStr, colWidths.name - 12);
+      const subTextLines = doc.splitTextToSize(subTextStr, colWidths.name - 14);
 
-      const ipcText = `${m.totalIpcs} total (${m.unpaidIpcs} unpaid)`;
-      const ipcLines = doc.splitTextToSize(ipcText, colWidths.ipcCount - 12);
+      doc.setFontSize(6);
+      const metaTextStr = `Dir: ${p.programDirectorate || 'N/A'} • PMO: ${p.pmo || 'N/A'} (1 USD = ${p.usdExchangeRate || 28.0} ETB)`;
+      const metaTextLines = doc.splitTextToSize(metaTextStr, colWidths.name - 14);
 
-      const certifiedText = `ETB ${m.combinedCertified.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
-      const certifiedLines = doc.splitTextToSize(certifiedText, colWidths.certified - 12);
+      // Pre-calculate wrapped lines for Column 2
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      const ipcLines = doc.splitTextToSize(`${m.totalIpcs} Total IPCs`, colWidths.ipcCount - 14);
+      
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.5);
+      const ipcSubLines = doc.splitTextToSize(`${m.paidIpcs} Paid • ${m.unpaidIpcs} Unpaid`, colWidths.ipcCount - 14);
 
-      const outstandingText = m.combinedUnpaid > 0 
-        ? `ETB ${m.combinedUnpaid.toLocaleString(undefined, { maximumFractionDigits: 0 })}` 
-        : "Fully Paid";
-      const outstandingLines = doc.splitTextToSize(outstandingText, colWidths.outstanding - 12);
+      const ipcStatusBadge = m.maturedIpcsCount > 0 
+        ? `[!] ${m.maturedIpcsCount} Overdue (>56d)` 
+        : m.unpaidIpcs > 0 
+        ? `[*] ${m.unpaidIpcs} Pending` 
+        : `[v] Fully Paid`;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.5);
+      const ipcBadgeLines = doc.splitTextToSize(ipcStatusBadge, colWidths.ipcCount - 14);
 
-      const maturedText = m.combinedMatured > 0 
-        ? `ETB ${m.combinedMatured.toLocaleString(undefined, { maximumFractionDigits: 0 })}` 
-        : "ETB 0.00";
-      const maturedLines = doc.splitTextToSize(maturedText, colWidths.matured - 12);
+      // Pre-calculate wrapped lines for Column 3 (Certified)
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      const certEtbLines = doc.splitTextToSize(`ETB: ${formatAccounting(m.certEtb, '')}`, colWidths.certified - 14);
+      const certUsdLines = doc.splitTextToSize(`USD: $${formatAccounting(m.certUsd, '')}`, colWidths.certified - 14);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.5);
+      const certEqvLines = doc.splitTextToSize(`Eqv: ETB ${m.combinedCertified.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, colWidths.certified - 14);
 
-      const titleHeight = titleLines.length * 9.5;
-      const subTextHeight = subTextLines.length * 8.5;
-      const col1Height = titleHeight + subTextHeight + 14;
+      // Pre-calculate wrapped lines for Column 4 (Outstanding)
+      const isOutstanding = m.combinedUnpaid > 0 || m.unpaidEtb > 0 || m.unpaidUsd > 0;
+      doc.setFont('helvetica', isOutstanding ? 'bold' : 'normal');
+      doc.setFontSize(isOutstanding ? 7.5 : 6.5);
+      const outEtbLines = doc.splitTextToSize(isOutstanding ? `ETB: ${formatAccounting(m.unpaidEtb, '')}` : `ETB: 0.00`, colWidths.outstanding - 14);
+      const outUsdLines = doc.splitTextToSize(isOutstanding ? `USD: $${formatAccounting(m.unpaidUsd, '')}` : `USD: $0.00`, colWidths.outstanding - 14);
+      doc.setFont('helvetica', isOutstanding ? 'normal' : 'bold');
+      doc.setFontSize(6.5);
+      const outEqvLines = doc.splitTextToSize(
+        isOutstanding 
+          ? `Eqv: ETB ${m.combinedUnpaid.toLocaleString(undefined, { maximumFractionDigits: 0 })} (${m.unpaidIpcs} Pending)` 
+          : `Fully Paid (0 Pending)`, 
+        colWidths.outstanding - 14
+      );
 
-      const col2Height = ipcLines.length * 9.5 + 14;
-      const col3Height = certifiedLines.length * 9.5 + 14;
-      const col4Height = outstandingLines.length * 9.5 + 14;
-      const col5Height = maturedLines.length * 9.5 + 14;
+      // Pre-calculate wrapped lines for Column 5 (Matured)
+      const isMatured = m.combinedMatured > 0 || m.maturedEtb > 0 || m.maturedUsd > 0;
+      doc.setFont('helvetica', isMatured ? 'bold' : 'normal');
+      doc.setFontSize(isMatured ? 7.5 : 6.5);
+      const matEtbLines = doc.splitTextToSize(isMatured ? `ETB: ${formatAccounting(m.maturedEtb, '')}` : `ETB: 0.00`, colWidths.matured - 14);
+      const matUsdLines = doc.splitTextToSize(isMatured ? `USD: $${formatAccounting(m.maturedUsd, '')}` : `USD: $0.00`, colWidths.matured - 14);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.5);
+      const matEqvLines = doc.splitTextToSize(
+        isMatured 
+          ? `Eqv: ETB ${m.combinedMatured.toLocaleString(undefined, { maximumFractionDigits: 0 })}` 
+          : `No Overdue Claims`, 
+        colWidths.matured - 14
+      );
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.5);
+      const matBadgeLines = isMatured ? doc.splitTextToSize(`! ${m.maturedIpcsCount} Overdue IPCs (>56d)`, colWidths.matured - 14) : [];
 
-      const rowHeight = Math.max(col1Height, col2Height, col3Height, col4Height, col5Height, 36);
+      // Calculate total required heights per column
+      const col1Height = (titleLines.length * 8.5) + (subTextLines.length * 7.5) + (metaTextLines.length * 7) + 12;
+      const col2Height = (ipcLines.length * 8.5) + (ipcSubLines.length * 7.5) + (ipcBadgeLines.length * 7.5) + 12;
+      const col3Height = (certEtbLines.length * 8.5) + (certUsdLines.length * 8.5) + (certEqvLines.length * 7.5) + 12;
+      const col4Height = (outEtbLines.length * 8) + (outUsdLines.length * 8) + (outEqvLines.length * 7.5) + 12;
+      const col5Height = (matEtbLines.length * 8) + (matUsdLines.length * 8) + (matEqvLines.length * 7.5) + (matBadgeLines.length * 7.5) + 12;
 
-      // Page break check with dynamic row height
-      if (curY + rowHeight > pageHeight - 55) {
+      const rowHeight = Math.max(col1Height, col2Height, col3Height, col4Height, col5Height, 42);
+
+      // Page break check with exact dynamic row height
+      if (curY + rowHeight > pageHeight - 50) {
         doc.addPage();
         pageCount++;
         drawHeaderFooter();
         
-        curY = 80;
+        curY = 75;
         const headerHeight = drawTableHeader(curY);
         curY += headerHeight;
       }
@@ -4508,7 +4639,7 @@ export default function GroupReportGenerator({
       
       // Draw outer borders for each row
       doc.setDrawColor(203, 213, 225); // slate-300
-      doc.setLineWidth(1);
+      doc.setLineWidth(0.75);
       doc.rect(40, curY, pageWidth - 80, rowHeight, 'S');
 
       // Draw vertical separators for columns
@@ -4517,70 +4648,364 @@ export default function GroupReportGenerator({
       doc.line(colX.outstanding, curY, colX.outstanding, curY + rowHeight);
       doc.line(colX.matured, curY, colX.matured, curY + rowHeight);
 
-      // Render Column 1 (Title & Contractor) Vertically Centered
-      const totalCol1TextHeight = titleLines.length * 9.5 + 2 + subTextLines.length * 8.5;
-      let col1Y = curY + (rowHeight - totalCol1TextHeight) / 2 + 8.5;
-      
+      // Render Column 1 (Title, Contractor, Directorate/PMO)
+      let col1Y = curY + 9;
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8);
+      doc.setFontSize(7.5);
       doc.setTextColor(15, 23, 42);
       titleLines.forEach((line: string) => {
-        doc.text(line, colX.name + 6, col1Y);
-        col1Y += 9.5;
-      });
-      
-      col1Y += 2;
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7);
-      doc.setTextColor(100, 116, 139);
-      subTextLines.forEach((line: string) => {
-        doc.text(line, colX.name + 6, col1Y);
+        doc.text(line, colX.name + 7, col1Y);
         col1Y += 8.5;
       });
-
-      // Render Column 2 (Total IPC Count) Vertically Centered
+      
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8);
-      doc.setTextColor(51, 65, 85);
-      const col2Y = curY + (rowHeight - (ipcLines.length * 9.5)) / 2 + 8.5;
-      ipcLines.forEach((line: string, iIdx: number) => {
-        doc.text(line, colX.ipcCount + 6, col2Y + iIdx * 9.5);
+      doc.setFontSize(6.5);
+      doc.setTextColor(71, 85, 105);
+      subTextLines.forEach((line: string) => {
+        doc.text(line, colX.name + 7, col1Y);
+        col1Y += 7.5;
       });
 
-      // Render Column 3 (Total Certified Value) Vertically Centered
-      const col3Y = curY + (rowHeight - (certifiedLines.length * 9.5)) / 2 + 8.5;
-      certifiedLines.forEach((line: string, cIdx: number) => {
-        doc.text(line, colX.certified + 6, col3Y + cIdx * 9.5);
+      doc.setFontSize(6);
+      doc.setTextColor(148, 163, 184);
+      metaTextLines.forEach((line: string) => {
+        doc.text(line, colX.name + 7, col1Y);
+        col1Y += 7;
+      });
+
+      // Render Column 2 (IPC Count & Status)
+      let col2Y = curY + 9;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(15, 23, 42);
+      ipcLines.forEach((line: string) => {
+        doc.text(line, colX.ipcCount + 7, col2Y);
+        col2Y += 8.5;
       });
       
-      // Render Column 4 (Outstanding Claims) Vertically Centered
-      if (m.combinedUnpaid > 0) {
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(51, 65, 85);
-      } else {
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(16, 185, 129); // Fully Paid emerald green
-      }
-      const col4Y = curY + (rowHeight - (outstandingLines.length * 9.5)) / 2 + 8.5;
-      outstandingLines.forEach((line: string, oIdx: number) => {
-        doc.text(line, colX.outstanding + 6, col4Y + oIdx * 9.5);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.5);
+      doc.setTextColor(100, 116, 139);
+      ipcSubLines.forEach((line: string) => {
+        doc.text(line, colX.ipcCount + 7, col2Y);
+        col2Y += 7.5;
       });
 
-      // Render Column 5 (Matured Overdue) Vertically Centered
-      if (m.combinedMatured > 0) {
+      if (m.maturedIpcsCount > 0) {
         doc.setFont('helvetica', 'bold');
-        doc.setTextColor(185, 28, 28); // Overdue dark red
+        doc.setTextColor(220, 38, 38); // red-600
+      } else if (m.unpaidIpcs > 0) {
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(217, 119, 6); // amber-600
+      } else {
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(16, 185, 129); // emerald-600
+      }
+      doc.setFontSize(6.5);
+      ipcBadgeLines.forEach((line: string) => {
+        doc.text(line, colX.ipcCount + 7, col2Y);
+        col2Y += 7.5;
+      });
+
+      // Render Column 3 (Total Certified Value: ETB, USD, Eqv)
+      let col3Y = curY + 9;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(30, 41, 59);
+      certEtbLines.forEach((line: string) => {
+        doc.text(line, colX.certified + 7, col3Y);
+        col3Y += 8.5;
+      });
+      certUsdLines.forEach((line: string) => {
+        doc.text(line, colX.certified + 7, col3Y);
+        col3Y += 8.5;
+      });
+      
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.5);
+      doc.setTextColor(100, 116, 139);
+      certEqvLines.forEach((line: string) => {
+        doc.text(line, colX.certified + 7, col3Y);
+        col3Y += 7.5;
+      });
+
+      // Render Column 4 (Outstanding Claims: exact ETB & USD)
+      let col4Y = curY + 9;
+      if (isOutstanding) {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.setTextColor(180, 83, 9); // amber-700
+        outEtbLines.forEach((line: string) => {
+          doc.text(line, colX.outstanding + 7, col4Y);
+          col4Y += 8;
+        });
+        outUsdLines.forEach((line: string) => {
+          doc.text(line, colX.outstanding + 7, col4Y);
+          col4Y += 8;
+        });
+        
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(6.5);
+        doc.setTextColor(146, 64, 14);
+        outEqvLines.forEach((line: string) => {
+          doc.text(line, colX.outstanding + 7, col4Y);
+          col4Y += 7.5;
+        });
       } else {
         doc.setFont('helvetica', 'normal');
-        doc.setTextColor(100, 116, 139); // ETB 0.00 gray
+        doc.setFontSize(6.5);
+        doc.setTextColor(148, 163, 184);
+        outEtbLines.forEach((line: string) => {
+          doc.text(line, colX.outstanding + 7, col4Y);
+          col4Y += 7.5;
+        });
+        outUsdLines.forEach((line: string) => {
+          doc.text(line, colX.outstanding + 7, col4Y);
+          col4Y += 7.5;
+        });
+        
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(6.5);
+        doc.setTextColor(16, 185, 129); // emerald-600
+        outEqvLines.forEach((line: string) => {
+          doc.text(line, colX.outstanding + 7, col4Y);
+          col4Y += 7.5;
+        });
       }
-      const col5Y = curY + (rowHeight - (maturedLines.length * 9.5)) / 2 + 8.5;
-      maturedLines.forEach((line: string, mIdx: number) => {
-        doc.text(line, colX.matured + 6, col5Y + mIdx * 9.5);
-      });
+
+      // Render Column 5 (Matured Overdue: exact ETB & USD)
+      let col5Y = curY + 9;
+      if (isMatured) {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.setTextColor(185, 28, 28); // red-700
+        matEtbLines.forEach((line: string) => {
+          doc.text(line, colX.matured + 7, col5Y);
+          col5Y += 8;
+        });
+        matUsdLines.forEach((line: string) => {
+          doc.text(line, colX.matured + 7, col5Y);
+          col5Y += 8;
+        });
+        
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(6.5);
+        doc.setTextColor(153, 27, 27);
+        matEqvLines.forEach((line: string) => {
+          doc.text(line, colX.matured + 7, col5Y);
+          col5Y += 7.5;
+        });
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(6.5);
+        doc.setTextColor(220, 38, 38);
+        matBadgeLines.forEach((line: string) => {
+          doc.text(line, colX.matured + 7, col5Y);
+          col5Y += 7.5;
+        });
+      } else {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(6.5);
+        doc.setTextColor(148, 163, 184);
+        matEtbLines.forEach((line: string) => {
+          doc.text(line, colX.matured + 7, col5Y);
+          col5Y += 7.5;
+        });
+        matUsdLines.forEach((line: string) => {
+          doc.text(line, colX.matured + 7, col5Y);
+          col5Y += 7.5;
+        });
+        matEqvLines.forEach((line: string) => {
+          doc.text(line, colX.matured + 7, col5Y);
+          col5Y += 7.5;
+        });
+      }
 
       curY += rowHeight;
     });
+
+    // Render Grand Total Summary Row with boundary checks
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    const sTitleLines = doc.splitTextToSize(`PORTFOLIO TOTALS (${processedProjects.length} Projects)`, colWidths.name - 14);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    const sSubLines = doc.splitTextToSize(`Consolidated payment audit figures for all audited contracts`, colWidths.name - 14);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    const sIpcLines = doc.splitTextToSize(`${paymentStats.totalIpcCount} Total IPCs`, colWidths.ipcCount - 14);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    const sIpcSubLines = doc.splitTextToSize(`${paymentStats.totalIpcCount - paymentStats.unpaidIpcCount} Paid • ${paymentStats.unpaidIpcCount} Unpaid`, colWidths.ipcCount - 14);
+    const sOverdueLines = paymentStats.maturedIpcCount > 0 ? doc.splitTextToSize(`! ${paymentStats.maturedIpcCount} Overdue IPCs`, colWidths.ipcCount - 14) : [];
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    const sCertEtbLines = doc.splitTextToSize(`ETB: ${formatAccounting(paymentStats.totalCertifiedEtb, '')}`, colWidths.certified - 14);
+    const sCertUsdLines = doc.splitTextToSize(`USD: $${formatAccounting(paymentStats.totalCertifiedUsd, '')}`, colWidths.certified - 14);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    const sCertEqvLines = doc.splitTextToSize(`Eqv: ETB ${paymentStats.combinedCertifiedEtb.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, colWidths.certified - 14);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    const sOutEtbLines = doc.splitTextToSize(`ETB: ${formatAccounting(paymentStats.totalUnpaidEtb, '')}`, colWidths.outstanding - 14);
+    const sOutUsdLines = doc.splitTextToSize(`USD: $${formatAccounting(paymentStats.totalUnpaidUsd, '')}`, colWidths.outstanding - 14);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    const sOutEqvLines = doc.splitTextToSize(`Eqv: ETB ${paymentStats.combinedUnpaidEtb.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, colWidths.outstanding - 14);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    const sMatEtbLines = doc.splitTextToSize(`ETB: ${formatAccounting(paymentStats.totalMaturedEtb, '')}`, colWidths.matured - 14);
+    const sMatUsdLines = doc.splitTextToSize(`USD: $${formatAccounting(paymentStats.totalMaturedUsd, '')}`, colWidths.matured - 14);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    const sMatEqvLines = doc.splitTextToSize(`Eqv: ETB ${paymentStats.combinedMaturedEtb.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, colWidths.matured - 14);
+    const sMatBadgeLines = paymentStats.maturedIpcCount > 0 ? doc.splitTextToSize(`${paymentStats.maturedIpcCount} Matured Overdue IPCs`, colWidths.matured - 14) : [];
+
+    const sCol1H = (sTitleLines.length * 9) + (sSubLines.length * 8) + 14;
+    const sCol2H = (sIpcLines.length * 8.5) + (sIpcSubLines.length * 7.5) + (sOverdueLines.length * 7.5) + 14;
+    const sCol3H = (sCertEtbLines.length * 8.5) + (sCertUsdLines.length * 8.5) + (sCertEqvLines.length * 7.5) + 14;
+    const sCol4H = (sOutEtbLines.length * 8.5) + (sOutUsdLines.length * 8.5) + (sOutEqvLines.length * 7.5) + 14;
+    const sCol5H = (sMatEtbLines.length * 8.5) + (sMatUsdLines.length * 8.5) + (sMatEqvLines.length * 7.5) + (sMatBadgeLines.length * 7.5) + 14;
+    const summaryRowHeight = Math.max(sCol1H, sCol2H, sCol3H, sCol4H, sCol5H, 48);
+
+    if (curY + summaryRowHeight > pageHeight - 50) {
+      doc.addPage();
+      pageCount++;
+      drawHeaderFooter();
+      curY = 75;
+      const headerHeight = drawTableHeader(curY);
+      curY += headerHeight;
+    }
+
+    doc.setFillColor(15, 23, 42); // slate-900 dark background
+    doc.rect(40, curY, pageWidth - 80, summaryRowHeight, 'F');
+    doc.setDrawColor(15, 23, 42);
+    doc.rect(40, curY, pageWidth - 80, summaryRowHeight, 'S');
+
+    // Vertical dividers in total row
+    doc.setDrawColor(51, 65, 85);
+    doc.line(colX.ipcCount, curY, colX.ipcCount, curY + summaryRowHeight);
+    doc.line(colX.certified, curY, colX.certified, curY + summaryRowHeight);
+    doc.line(colX.outstanding, curY, colX.outstanding, curY + summaryRowHeight);
+    doc.line(colX.matured, curY, colX.matured, curY + summaryRowHeight);
+
+    // Summary Col 1
+    let sCol1Y = curY + 10;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(255, 255, 255);
+    sTitleLines.forEach((line: string) => {
+      doc.text(line, colX.name + 7, sCol1Y);
+      sCol1Y += 9;
+    });
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(148, 163, 184);
+    sSubLines.forEach((line: string) => {
+      doc.text(line, colX.name + 7, sCol1Y);
+      sCol1Y += 8;
+    });
+
+    // Summary Col 2
+    let sCol2Y = curY + 10;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(255, 255, 255);
+    sIpcLines.forEach((line: string) => {
+      doc.text(line, colX.ipcCount + 7, sCol2Y);
+      sCol2Y += 8.5;
+    });
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(148, 163, 184);
+    sIpcSubLines.forEach((line: string) => {
+      doc.text(line, colX.ipcCount + 7, sCol2Y);
+      sCol2Y += 7.5;
+    });
+    if (paymentStats.maturedIpcCount > 0) {
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(248, 113, 113); // red-400
+      sOverdueLines.forEach((line: string) => {
+        doc.text(line, colX.ipcCount + 7, sCol2Y);
+        sCol2Y += 7.5;
+      });
+    }
+
+    // Summary Col 3
+    let sCol3Y = curY + 10;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(255, 255, 255);
+    sCertEtbLines.forEach((line: string) => {
+      doc.text(line, colX.certified + 7, sCol3Y);
+      sCol3Y += 8.5;
+    });
+    sCertUsdLines.forEach((line: string) => {
+      doc.text(line, colX.certified + 7, sCol3Y);
+      sCol3Y += 8.5;
+    });
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(148, 163, 184);
+    sCertEqvLines.forEach((line: string) => {
+      doc.text(line, colX.certified + 7, sCol3Y);
+      sCol3Y += 7.5;
+    });
+
+    // Summary Col 4
+    let sCol4Y = curY + 10;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(251, 191, 36); // amber-400
+    sOutEtbLines.forEach((line: string) => {
+      doc.text(line, colX.outstanding + 7, sCol4Y);
+      sCol4Y += 8.5;
+    });
+    sOutUsdLines.forEach((line: string) => {
+      doc.text(line, colX.outstanding + 7, sCol4Y);
+      sCol4Y += 8.5;
+    });
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(253, 230, 138);
+    sOutEqvLines.forEach((line: string) => {
+      doc.text(line, colX.outstanding + 7, sCol4Y);
+      sCol4Y += 7.5;
+    });
+
+    // Summary Col 5
+    let sCol5Y = curY + 10;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(248, 113, 113); // red-400
+    sMatEtbLines.forEach((line: string) => {
+      doc.text(line, colX.matured + 7, sCol5Y);
+      sCol5Y += 8.5;
+    });
+    sMatUsdLines.forEach((line: string) => {
+      doc.text(line, colX.matured + 7, sCol5Y);
+      sCol5Y += 8.5;
+    });
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(254, 202, 202);
+    sMatEqvLines.forEach((line: string) => {
+      doc.text(line, colX.matured + 7, sCol5Y);
+      sCol5Y += 7.5;
+    });
+    if (paymentStats.maturedIpcCount > 0) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.5);
+      doc.setTextColor(254, 226, 226);
+      sMatBadgeLines.forEach((line: string) => {
+        doc.text(line, colX.matured + 7, sCol5Y);
+        sCol5Y += 7.5;
+      });
+    }
 
     // Save PDF
     const gName = selectedGroup.replace(/\s+/g, '_');
@@ -5517,53 +5942,68 @@ export default function GroupReportGenerator({
                   <span className="text-[9px] font-extrabold text-slate-400 dark:text-slate-500 block uppercase tracking-wider">
                     TOTAL CERTIFIED CLAIMS
                   </span>
-                  <div className="flex items-baseline gap-1.5">
-                    <span className="text-lg font-black text-slate-800 dark:text-zinc-100">
-                      ETB {paymentStats.combinedCertifiedEtb.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                    </span>
-                  </div>
-                  <div className="text-[9px] text-slate-400">
-                    {paymentStats.totalIpcCount} total certificates submitted
+                  <div className="flex flex-col gap-0.5">
+                    <div className="text-xs font-black text-slate-800 dark:text-zinc-100 flex items-center justify-between">
+                      <span>ETB:</span>
+                      <span className="font-mono">{formatAccounting(paymentStats.totalCertifiedEtb, '')}</span>
+                    </div>
+                    <div className="text-xs font-black text-slate-800 dark:text-zinc-100 flex items-center justify-between">
+                      <span>USD:</span>
+                      <span className="font-mono">${formatAccounting(paymentStats.totalCertifiedUsd, '')}</span>
+                    </div>
+                    <div className="text-[10px] text-slate-450 dark:text-slate-400 font-bold border-t border-slate-200/50 dark:border-slate-700/50 pt-1 mt-0.5">
+                      Eqv: ETB {paymentStats.combinedCertifiedEtb.toLocaleString(undefined, { maximumFractionDigits: 0 })} • {paymentStats.totalIpcCount} IPCs
+                    </div>
                   </div>
                 </div>
 
                 {/* Payments KPI Block 2 */}
-                <div className="bg-slate-50/60 dark:bg-slate-900/20 p-3.5 rounded-xl border border-slate-150 dark:border-slate-700/40 space-y-1">
-                  <span className="text-[9px] font-extrabold text-slate-400 dark:text-slate-500 block uppercase tracking-wider">
+                <div className="bg-amber-50/40 dark:bg-amber-950/10 p-3.5 rounded-xl border border-amber-200/60 dark:border-amber-900/30 space-y-1">
+                  <span className="text-[9px] font-extrabold text-amber-600 dark:text-amber-500 block uppercase tracking-wider">
                     OUTSTANDING (UNPAID) CLAIMS
                   </span>
-                  <div className="flex items-baseline gap-1.5">
-                    <span className="text-lg font-black text-amber-600 dark:text-amber-400">
-                      ETB {paymentStats.combinedUnpaidEtb.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                    </span>
-                  </div>
-                  <div className="text-[9px] text-slate-400">
-                    {paymentStats.unpaidIpcCount} IPCs pending payment processing
+                  <div className="flex flex-col gap-0.5">
+                    <div className="text-xs font-black text-amber-700 dark:text-amber-400 flex items-center justify-between">
+                      <span>ETB:</span>
+                      <span className="font-mono">{formatAccounting(paymentStats.totalUnpaidEtb, '')}</span>
+                    </div>
+                    <div className="text-xs font-black text-amber-700 dark:text-amber-400 flex items-center justify-between">
+                      <span>USD:</span>
+                      <span className="font-mono">${formatAccounting(paymentStats.totalUnpaidUsd, '')}</span>
+                    </div>
+                    <div className="text-[10px] text-amber-800/80 dark:text-amber-300 font-bold border-t border-amber-200/50 dark:border-amber-800/50 pt-1 mt-0.5">
+                      Eqv: ETB {paymentStats.combinedUnpaidEtb.toLocaleString(undefined, { maximumFractionDigits: 0 })} • {paymentStats.unpaidIpcCount} Pending IPCs
+                    </div>
                   </div>
                 </div>
 
                 {/* Payments KPI Block 3 */}
                 <div className={`p-3.5 rounded-xl border space-y-1 ${
                   paymentStats.maturedIpcCount > 0 
-                    ? 'bg-rose-50/30 dark:bg-rose-950/5 border-rose-150 dark:border-rose-900/30' 
+                    ? 'bg-rose-50/40 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/40' 
                     : 'bg-slate-50/60 dark:bg-slate-900/20 border-slate-150 dark:border-slate-700/40'
                 }`}>
                   <span className={`text-[9px] font-extrabold block uppercase tracking-wider ${
-                    paymentStats.maturedIpcCount > 0 ? 'text-red-500 dark:text-rose-400' : 'text-slate-400 dark:text-slate-500'
+                    paymentStats.maturedIpcCount > 0 ? 'text-red-600 dark:text-rose-400' : 'text-slate-400 dark:text-slate-500'
                   }`}>
                     CRITICAL MATURED OVERDUE (&gt;56 DAYS)
                   </span>
-                  <div className="flex items-baseline gap-1.5">
-                    <span className={`text-lg font-black ${
-                      paymentStats.maturedIpcCount > 0 ? 'text-red-500 dark:text-rose-450' : 'text-slate-850 dark:text-zinc-200'
+                  <div className="flex flex-col gap-0.5">
+                    <div className={`text-xs font-black flex items-center justify-between ${paymentStats.maturedIpcCount > 0 ? 'text-red-600 dark:text-rose-400' : 'text-slate-700 dark:text-zinc-300'}`}>
+                      <span>ETB:</span>
+                      <span className="font-mono">{formatAccounting(paymentStats.totalMaturedEtb, '')}</span>
+                    </div>
+                    <div className={`text-xs font-black flex items-center justify-between ${paymentStats.maturedIpcCount > 0 ? 'text-red-600 dark:text-rose-400' : 'text-slate-700 dark:text-zinc-300'}`}>
+                      <span>USD:</span>
+                      <span className="font-mono">${formatAccounting(paymentStats.totalMaturedUsd, '')}</span>
+                    </div>
+                    <div className={`text-[10px] font-bold border-t pt-1 mt-0.5 ${
+                      paymentStats.maturedIpcCount > 0 
+                        ? 'text-red-600 dark:text-rose-300 border-rose-200/60 dark:border-rose-800/60' 
+                        : 'text-slate-400 border-slate-200/50 dark:border-slate-700/50'
                     }`}>
-                      ETB {paymentStats.combinedMaturedEtb.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                    </span>
-                  </div>
-                  <div className={`text-[9px] font-bold ${
-                    paymentStats.maturedIpcCount > 0 ? 'text-red-500' : 'text-slate-400'
-                  }`}>
-                    {paymentStats.maturedIpcCount} overdue claims (FIDIC Cl. 14.7 Breach)
+                      Eqv: ETB {paymentStats.combinedMaturedEtb.toLocaleString(undefined, { maximumFractionDigits: 0 })} • {paymentStats.maturedIpcCount} Overdue (&gt;56d)
+                    </div>
                   </div>
                 </div>
               </>

@@ -49,6 +49,7 @@ import {
 } from 'lucide-react';
 
 import { Project, User, ApprovalRequest, PrivateDraft, WorkflowAuditLogEntry, KpiAllocatedItem, SeriesItem, MonthlyProgress, LinearData, RowMetric, ProgressPlan, PaymentItem, AnnualItem, WorkProgramActivity, BondGuarantee, formatAccounting, ProjectDocument, ALL_EDITABLE_PAGES, EditablePageOption, ProjectLifecycleStatus, isProjectClosed, isCpmOrMasterAdmin, isRecentlyUpdated, formatRelativeTime, ContractorScoringWeights, ConsultantScoringWeights, DEFAULT_CONTRACTOR_SCORING_WEIGHTS, DEFAULT_CONSULTANT_SCORING_WEIGHTS, SupervisionConsultantInfo } from './types';
+import { createProjectHistoryEntry } from './lib/projectAuditDiff';
 
 export function hasApprovalCredentials(user: User | null): boolean {
   if (!user) return false;
@@ -2935,15 +2936,14 @@ let isBatchSyncRunning = false;
       alert(lengthWarning);
     }
 
-    const newHistory: typeof currentProject.history = [
-      {
-        timestamp: new Date().toLocaleString(),
-        user: currentUserObj.username,
-        section: sectionName,
-        physicalProgress: cleanHistProgress
-      },
-      ...(currentProject.history || [])
-    ].slice(0, 10); // Maintain max 10 entries
+    const newHistory = createProjectHistoryEntry(
+      currentProject,
+      fields,
+      sectionName,
+      cleanHistProgress,
+      currentUserObj,
+      150 // Keep at least 100 entries (retains up to 150)
+    );
 
     updatedProject.history = newHistory;
 

@@ -18,7 +18,7 @@ import {
   ShieldAlert,
   Award
 } from 'lucide-react';
-import { Project, WorkProgramActivity, formatAccounting } from '../types';
+import { Project, WorkProgramActivity, formatAccounting, isProjectClosed } from '../types';
 import { calculateIpcMaturation } from '../lib/ipcCalculations';
 
 interface CpmLinearComparisonProps {
@@ -505,10 +505,12 @@ export default function CpmLinearComparison({ project }: CpmLinearComparisonProp
               let oldestDaysElapsed = 0;
               let oldestOverdueDays = 0;
 
+              const isClosed = isProjectClosed(project.status);
+
               ipcs.forEach(item => {
                 const mat = calculateIpcMaturation(item, defaultAnnualRate, rate, now, isUsdEnabled);
                 
-                if (!mat.isFullyPaid) {
+                if (!mat.isFullyPaid && !isClosed) {
                   totalUnpaidIpcCount++;
                   unpaidEtb += mat.unpaidCertifiedEtb;
                   if (isUsdEnabled) {

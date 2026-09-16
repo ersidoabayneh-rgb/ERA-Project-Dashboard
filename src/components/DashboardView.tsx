@@ -1060,10 +1060,10 @@ export default function DashboardView({
       }
     }
 
-    const isMatured = (isEtbUnpaid || isUsdUnpaid) && daysElapsed !== null && daysElapsed > 56;
-    const isWithinMaturity = (isEtbUnpaid || isUsdUnpaid) && (!isMatured);
+    const isMatured = !isClosed && (isEtbUnpaid || isUsdUnpaid) && daysElapsed !== null && daysElapsed > 56;
+    const isWithinMaturity = !isClosed && (isEtbUnpaid || isUsdUnpaid) && (!isMatured);
 
-    if (isFullyPaid) {
+    if (isFullyPaid || isClosed) {
       paidIpcCount++;
       totalPaidEtbSum += etbAmt;
       totalPaidUsdSum += usdAmt;
@@ -1072,11 +1072,11 @@ export default function DashboardView({
       if (isEtbUnpaid) totalUnpaidEtbSum += etbAmt; else totalPaidEtbSum += etbAmt;
       if (isUsdUnpaid) totalUnpaidUsdSum += usdAmt; else totalPaidUsdSum += usdAmt;
 
-      if (isMatured) {
+      if (isMatured && !isClosed) {
         maturedIpcCount++;
         if (isEtbUnpaid) maturedUnpaidEtbSum += etbAmt;
         if (isUsdUnpaid) maturedUnpaidUsdSum += usdAmt;
-      } else {
+      } else if (isWithinMaturity && !isClosed) {
         withinMaturityIpcCount++;
         if (isEtbUnpaid) withinMaturityUnpaidEtbSum += etbAmt;
         if (isUsdUnpaid) withinMaturityUnpaidUsdSum += usdAmt;
