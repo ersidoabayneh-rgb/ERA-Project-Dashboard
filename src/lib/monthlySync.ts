@@ -1,4 +1,4 @@
-import { Project, MonthlyProgress } from '../types';
+import { Project, MonthlyProgress, ProjectLifecycleStatus } from '../types';
 
 export const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 export const FULL_MONTH_NAMES = [
@@ -10,6 +10,25 @@ export interface ParsedMonth {
   monthIndex: number; // 0-11
   year: number;       // e.g. 2026
   key: string;        // e.g. "Aug-26"
+}
+
+/**
+ * Gets the current real-world calendar month key formatted as 'Mon-YY' (e.g. 'Sep-26').
+ */
+export function getCurrentCalendarMonthKey(): string {
+  const now = new Date();
+  const mIdx = now.getMonth();
+  const yr = (now.getFullYear() % 100).toString().padStart(2, '0');
+  return `${MONTH_NAMES[mIdx]}-${yr}`;
+}
+
+/**
+ * Checks whether a project lifecycle is 'In Progress' or 'Completed' (active tracking lifecycles).
+ */
+export function isProjectActiveLifecycle(status?: string | ProjectLifecycleStatus | null): boolean {
+  if (!status) return true; // Default project lifecycle status is 'In Progress'
+  const s = status.trim().toLowerCase();
+  return s === 'in progress' || s === 'completed';
 }
 
 /**
@@ -114,9 +133,15 @@ export function isSameMonth(monthA: string | undefined | null, monthB: string | 
 
 /**
  * Resolves the target current month key for a project.
- * Uses project.progressPlanLabels.monthLabel if valid, else falls back to current calendar month.
+ * For projects in "In Progress" or "Completed" status (active lifecycles), the current month is ALWAYS the live calendar month.
+ * For closed or frozen lifecycles, preserves project.progressPlanLabels.monthLabel if valid.
  */
 export function resolveCurrentMonthKey(project: Partial<Project> | undefined): string {
+  const isLive = isProjectActiveLifecycle(project?.status);
+  if (isLive) {
+    return getCurrentCalendarMonthKey();
+  }
+
   if (project?.progressPlanLabels?.monthLabel) {
     const parsed = parseMonthKey(project.progressPlanLabels.monthLabel);
     if (parsed) {
@@ -124,10 +149,7 @@ export function resolveCurrentMonthKey(project: Partial<Project> | undefined): s
     }
   }
 
-  const now = new Date();
-  const mIdx = now.getMonth();
-  const yr = (now.getFullYear() % 100).toString().padStart(2, '0');
-  return `${MONTH_NAMES[mIdx]}-${yr}`;
+  return getCurrentCalendarMonthKey();
 }
 
 /**
@@ -480,6 +502,8 @@ export function deduplicateAndSortMonthly(monthlyList: MonthlyProgress[] | undef
 
 /**
  * Ensures that the live tracking month row is ALWAYS the last row for the Actual column ONLY.
+ * - If the project is in "In Progress" or "Completed" status, the current calendar month is ensured to be present as the live tracking row.
+ * - Until changed by the user, the live month takes the previous month's actual value.
  * - Other columns (Month, Original Plan %, Revised Plan %) can extend beyond the live row into future months.
  * - For the Actual % column, values are only allowed up to the live row; all rows after the live row have actual = ''.
  * - Ensures rows are strictly deduplicated and sorted in ascending chronological order.
@@ -488,40 +512,41 @@ export function deduplicateAndSortMonthly(monthlyList: MonthlyProgress[] | undef
 export function ensureLiveRowForActual(
   monthlyList: MonthlyProgress[] | undefined,
   currentMonthKey: string,
-  liveActualValue?: number
+  liveActualValue?: number,
+  projectStatus?: ProjectLifecycleStatus | string
 ): MonthlyProgress[] {
   let list = deduplicateAndSortMonthly(monthlyList);
+  const shouldHaveLiveRow = isProjectActiveLifecycle(projectStatus);
 
   if (list.length === 0) {
-    if (liveActualValue !== undefined) {
+    if (shouldHaveLiveRow) {
       return [{
         month: currentMonthKey,
         originalPlan: '',
         revisedPlan: '',
-        actual: liveActualValue
+        actual: liveActualValue !== undefined ? liveActualValue : 0
       }];
     }
-    return [{
-      month: currentMonthKey,
-      originalPlan: '',
-      revisedPlan: '',
-      actual: ''
-    }];
+    return [];
   }
 
   let liveIdx = list.findIndex(m => isSameMonth(m.month, currentMonthKey));
 
-  if (liveIdx === -1) {
+  if (liveIdx === -1 && shouldHaveLiveRow) {
     // Live row doesn't exist yet: create it and insert it into ascending list
     const newLiveRow: MonthlyProgress = {
       month: currentMonthKey,
       originalPlan: '',
       revisedPlan: '',
-      actual: liveActualValue !== undefined ? liveActualValue : ''
+      actual: ''
     };
     list.push(newLiveRow);
     list = deduplicateAndSortMonthly(list);
     liveIdx = list.findIndex(m => isSameMonth(m.month, currentMonthKey));
+  }
+
+  if (liveIdx === -1) {
+    return list;
   }
 
   // Find the previous actual value before liveIdx
@@ -535,22 +560,20 @@ export function ensureLiveRowForActual(
   }
 
   // Now ensure that:
-  // 1. The live row actual is guaranteed to be >= the previous value (or liveActualValue if provided)
+  // 1. The live row actual is guaranteed to take previous month's actual until changed by user (or use liveActualValue if explicitly provided)
   // 2. For the ACTUAL column ONLY: no row AFTER the live row can have an actual value (actual is set to '')
   return list.map((m, idx) => {
     if (idx === liveIdx) {
       let resolvedLiveActual = m.actual;
-      if (liveActualValue !== undefined) {
+      if (liveActualValue !== undefined && !isNaN(liveActualValue)) {
         // If an explicit live actual is provided, it must be at least the previous actual value
         resolvedLiveActual = prevActVal !== null ? Math.max(liveActualValue, prevActVal) : liveActualValue;
       } else {
-        // Guarantee: Live row actual is always >= previous row value until updated by user
-        if (prevActVal !== null) {
-          if (resolvedLiveActual === '' || resolvedLiveActual === null || resolvedLiveActual === undefined || isNaN(Number(resolvedLiveActual))) {
-            resolvedLiveActual = prevActVal;
-          } else if (Number(resolvedLiveActual) < prevActVal) {
-            resolvedLiveActual = prevActVal;
-          }
+        // Guarantee: Live row actual takes the previous month actual until changed by the user
+        if (resolvedLiveActual === '' || resolvedLiveActual === null || resolvedLiveActual === undefined || isNaN(Number(resolvedLiveActual))) {
+          resolvedLiveActual = prevActVal !== null ? prevActVal : '';
+        } else if (prevActVal !== null && Number(resolvedLiveActual) < prevActVal) {
+          resolvedLiveActual = prevActVal;
         }
       }
 
@@ -576,7 +599,8 @@ export function insertMonthAboveLiveRow(
   monthlyList: MonthlyProgress[] | undefined,
   currentMonthKey: string,
   newRow: MonthlyProgress,
-  liveActualValue?: number
+  liveActualValue?: number,
+  projectStatus?: ProjectLifecycleStatus | string
 ): MonthlyProgress[] {
   const currentList = Array.isArray(monthlyList) ? [...monthlyList] : [];
   
@@ -598,7 +622,7 @@ export function insertMonthAboveLiveRow(
     currentList.push(newRow);
   }
 
-  return ensureLiveRowForActual(currentList, currentMonthKey, liveActualValue);
+  return ensureLiveRowForActual(currentList, currentMonthKey, liveActualValue, projectStatus);
 }
 
 /**
@@ -636,7 +660,7 @@ export function updateMonthlyWithProgress(
   const existingIndex = monthlyList.findIndex(m => isSameMonth(m.month, currentMonthKey));
   const action = existingIndex !== -1 ? 'edited' : 'added';
 
-  const updatedMonthly = ensureLiveRowForActual(monthlyList, currentMonthKey, newProgress);
+  const updatedMonthly = ensureLiveRowForActual(monthlyList, currentMonthKey, newProgress, project.status);
 
   return {
     updatedMonthly,

@@ -2714,7 +2714,7 @@ let isBatchSyncRunning = false;
     } else if (fields.monthly !== undefined) {
       // Keep overall physicalProgress synchronized with the exact live Actual value in the monthly table
       const currentMonthKey = resolveCurrentMonthKey(currentProject);
-      const ensuredMonthly = ensureLiveRowForActual(fields.monthly, currentMonthKey);
+      const ensuredMonthly = ensureLiveRowForActual(fields.monthly, currentMonthKey, undefined, currentProject.status);
       updatedProject.monthly = ensuredMonthly;
       const liveActual = getLiveActualValue(ensuredMonthly, currentMonthKey);
       if (liveActual !== null) {

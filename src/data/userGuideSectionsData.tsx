@@ -22,7 +22,8 @@ import {
   FileSpreadsheet, 
   Bot, 
   Sparkles, 
-  Phone
+  Phone,
+  History
 } from 'lucide-react';
 
 export interface UserGuideSectionMeta {
@@ -32,37 +33,35 @@ export interface UserGuideSectionMeta {
   category: string;
   icon: React.ComponentType<{ className?: string }>;
   pageLabel: string;
+  figLabel?: string;
 }
 
 export const USER_GUIDE_SECTIONS_META: UserGuideSectionMeta[] = [
-  { id: 'sec-intro', number: 1, title: 'Title & Introduction', category: 'Overview', icon: BookOpen, pageLabel: 'Sec 1' },
-  { id: 'sec-toc', number: 2, title: 'Table of Contents', category: 'Index', icon: Compass, pageLabel: 'Sec 2' },
-  { id: 'sec-getting-started', number: 3, title: 'Getting Started & Login Access', category: 'Authentication', icon: Lock, pageLabel: 'Sec 3' },
-  { id: 'sec-portfolio', number: 4, title: 'Active Contracts Portfolio Page', category: 'Portfolio', icon: FolderTree, pageLabel: 'Sec 4' },
-  { id: 'sec-dossier', number: 5, title: 'Project Header & Master Dossier', category: 'Dossier', icon: FileText, pageLabel: 'Sec 5' },
-  { id: 'sec-dash', number: 6, title: 'Executive Dashboard (📊 Dashboard)', category: 'Executive', icon: BarChart3, pageLabel: 'Sec 6' },
-  { id: 'sec-financial-boq', number: 7, title: 'Financial BOQ & Divisions (📋 Financial Data)', category: 'Financials', icon: Landmark, pageLabel: 'Sec 7' },
-  { id: 'sec-ipc-billing', number: 8, title: 'IPC Billing Certificates (📋 Financial Data)', category: 'Billing', icon: TrendingUp, pageLabel: 'Sec 8' },
-  { id: 'sec-issue-log', number: 9, title: 'Issue & Claims Log (🚩 Issue Log)', category: 'Claims & Issues', icon: AlertTriangle, pageLabel: 'Sec 9' },
-  { id: 'sec-linear', number: 10, title: 'Linear Elevation Diagram (📏 Linear diagram)', category: 'Physical Progress', icon: Layers, pageLabel: 'Sec 10' },
-  { id: 'sec-row', number: 11, title: 'Utilities & Right of Way (ROW) (🛣️ Utilities & ROW)', category: 'Site & ROW', icon: HardHat, pageLabel: 'Sec 11' },
-  { id: 'sec-progress-plan', number: 12, title: 'Progress Plan Comparisons (📈 Progress Comparisons)', category: 'Benchmarking', icon: Scale, pageLabel: 'Sec 12' },
-  { id: 'sec-qty', number: 13, title: 'Engineering Quantities Log (📐 Quantities log)', category: 'Technical', icon: CheckCircle2, pageLabel: 'Sec 13' },
-  { id: 'sec-bonds', number: 14, title: 'Bonds & Performance Guarantees (🔒 Bonds)', category: 'Compliance', icon: ShieldCheck, pageLabel: 'Sec 14' },
-  { id: 'sec-kpis', number: 15, title: 'KPI Scorecard & Weights (🎯 KPIs)', category: 'Contractor Audit', icon: Scale, pageLabel: 'Sec 15' },
-  { id: 'sec-monthly', number: 16, title: 'Monthly Cumulative S-Curve (📅 Monthly Cumulative)', category: 'Analytics', icon: TrendingUp, pageLabel: 'Sec 16' },
-  { id: 'sec-work-program', number: 17, title: 'Work Program CPM Schedule (📅 Work Program CPM)', category: 'CPM Scheduling', icon: Clock, pageLabel: 'Sec 17' },
-  { id: 'sec-resources', number: 18, title: 'Logistics & Resources (🚚 Logistics & Resources)', category: 'Fleet & Supply', icon: HardHat, pageLabel: 'Sec 18' },
-  { id: 'sec-risks', number: 19, title: 'Project Risk Register (⚠️ Project Risks)', category: 'Risk Control', icon: AlertTriangle, pageLabel: 'Sec 19' },
-  { id: 'sec-consultant', number: 20, title: 'Supervision Consultant & SLA Matrix (👔 Supervision Consultant)', category: 'Supervision', icon: Users, pageLabel: 'Sec 20' },
-  { id: 'sec-analysis', number: 21, title: 'Comprehensive EVM Diagnostics (📊 Comprehensive analysis)', category: 'EVM Analytics', icon: BarChart3, pageLabel: 'Sec 21' },
-  { id: 'sec-docs', number: 22, title: 'Project Documentation Vault (📁 Documentation)', category: 'Dossier Vault', icon: FileText, pageLabel: 'Sec 22' },
-  { id: 'sec-history', number: 23, title: 'Audit History Snapshots (📜 History)', category: 'Audit Trail', icon: Clock, pageLabel: 'Sec 23' },
-  { id: 'sec-settings', number: 24, title: 'Workspace Settings & RBAC (⚙️ Settings)', category: 'Administration', icon: Sliders, pageLabel: 'Sec 24' },
-  { id: 'sec-workspace', number: 25, title: 'Workspace Notes & Scratchpad (☁️ Workspace)', category: 'Collaboration', icon: Sparkles, pageLabel: 'Sec 25' },
-  { id: 'sec-ai', number: 26, title: 'AI Road Engineer Assistant Chat', category: 'AI Assistant', icon: Bot, pageLabel: 'Sec 26' },
-  { id: 'sec-group-report', number: 27, title: 'Executive Group Comparative Report Generator', category: 'Portfolio Reports', icon: FileSpreadsheet, pageLabel: 'Sec 27' },
-  { id: 'sec-draft-sandbox', number: 28, title: 'Draft Playground & Simulation Sandbox', category: 'Simulation', icon: Play, pageLabel: 'Sec 28' },
-  { id: 'sec-faqs', number: 29, title: 'FAQs & Quick Troubleshooting Guide', category: 'Help & Errors', icon: HelpCircle, pageLabel: 'Sec 29' },
-  { id: 'sec-contact', number: 30, title: 'Contact & Official Technical Support', category: 'Official Support', icon: Phone, pageLabel: 'Sec 30' },
+  { id: 'sec-intro', number: 1, title: 'Introduction & Core Purpose of the ERA ERP System', category: 'Overview', icon: BookOpen, pageLabel: 'Page 3' },
+  { id: 'sec-getting-started', number: 2, title: 'Getting Started: Authentication & Role-Based Access', category: 'Authentication', icon: Lock, pageLabel: 'Page 3-4' },
+  { id: 'sec-portfolio', number: 3, title: 'Portfolio Overview & Active Contracts Selection', category: 'Portfolio', icon: FolderTree, pageLabel: 'Page 5-6', figLabel: 'Fig. 3.1' },
+  { id: 'sec-dash', number: 4, title: 'Project Executive Dashboard (Gauges, Detail & KPI Gallery)', category: 'Executive', icon: BarChart3, pageLabel: 'Page 7-12', figLabel: 'Fig. 4.1-4.3' },
+  { id: 'sec-financial-boq', number: 5, title: 'Financial Data, BOQ Divisions & IPC Tracker', category: 'Financials', icon: Landmark, pageLabel: 'Page 13-18', figLabel: 'Fig. 5.1-5.3' },
+  { id: 'sec-issue-log', number: 6, title: 'Issue Log & Blocker Action Tracking', category: 'Claims & Issues', icon: AlertTriangle, pageLabel: 'Page 18-20', figLabel: 'Fig. 6.1' },
+  { id: 'sec-linear', number: 7, title: 'Linear Diagram & Station Chainage Progress', category: 'Physical Progress', icon: Layers, pageLabel: 'Page 20-22', figLabel: 'Fig. 7.1' },
+  { id: 'sec-row', number: 8, title: 'Utilities Relocation & Right-of-Way (ROW) Compensation', category: 'Site & ROW', icon: HardHat, pageLabel: 'Page 22-24', figLabel: 'Fig. 8.1' },
+  { id: 'sec-progress-plan', number: 9, title: 'Progress Plan Mileage Comparisons (Km)', category: 'Benchmarking', icon: Scale, pageLabel: 'Page 24-26', figLabel: 'Fig. 9.1' },
+  { id: 'sec-qty', number: 10, title: 'Engineering Quantities & Construction Conformance', category: 'Technical', icon: CheckCircle2, pageLabel: 'Page 26-28', figLabel: 'Fig. 10.1' },
+  { id: 'sec-bonds', number: 11, title: 'Bonds & Performance Guarantees Audit', category: 'Compliance', icon: ShieldCheck, pageLabel: 'Page 28-30', figLabel: 'Fig. 11.1' },
+  { id: 'sec-kpis', number: 12, title: 'ERA Contract Audit KPI Matrix', category: 'Audit Scorecard', icon: Scale, pageLabel: 'Page 30-32', figLabel: 'Fig. 12.1' },
+  { id: 'sec-monthly', number: 13, title: 'S-Curve Analysis (Monthly Cumulative Progress)', category: 'Analytics', icon: TrendingUp, pageLabel: 'Page 32-34', figLabel: 'Fig. 13.1' },
+  { id: 'sec-work-program', number: 14, title: 'Critical Path Method (CPM) Work Program', category: 'CPM Scheduling', icon: Clock, pageLabel: 'Page 34-36', figLabel: 'Fig. 14.1' },
+  { id: 'sec-resources', number: 15, title: 'Logistics, Resource Mobilization & Heavy Equipment', category: 'Fleet & Supply', icon: HardHat, pageLabel: 'Page 36-38', figLabel: 'Fig. 15.1' },
+  { id: 'sec-risks', number: 16, title: 'Project Risks & FIDIC Claims Management', category: 'Risk Control', icon: AlertTriangle, pageLabel: 'Page 38-40', figLabel: 'Fig. 16.1' },
+  { id: 'sec-consultant', number: 17, title: 'Supervision Consultant Portal & SLA Matrix', category: 'Supervision', icon: Users, pageLabel: 'Page 40-42', figLabel: 'Fig. 17.1' },
+  { id: 'sec-analysis', number: 18, title: 'Comprehensive Analysis & EVM Diagnostics', category: 'EVM Analytics', icon: BarChart3, pageLabel: 'Page 42-45', figLabel: 'Fig. 18.1-18.2' },
+  { id: 'sec-docs', number: 19, title: 'Project Documentation Vault (Secure Dossier)', category: 'Dossier Vault', icon: FileText, pageLabel: 'Page 45-47', figLabel: 'Fig. 19.1' },
+  { id: 'sec-history', number: 20, title: 'Audit History Snapshots & Activity Trail', category: 'Audit Trail', icon: History, pageLabel: 'Web App', figLabel: 'Fig. 20.1' },
+  { id: 'sec-settings', number: 21, title: 'Workspace Settings, Multi-Device Telemetry & RBAC', category: 'Administration', icon: Sliders, pageLabel: 'Web App', figLabel: 'Fig. 21.1' },
+  { id: 'sec-workspace', number: 22, title: 'Workspace Collaboration Notes & Scratchpad', category: 'Collaboration', icon: Sparkles, pageLabel: 'Web App', figLabel: 'Fig. 22.1' },
+  { id: 'sec-ai', number: 23, title: 'AI Road Engineer Assistant Chat', category: 'AI Assistant', icon: Bot, pageLabel: 'Web App', figLabel: 'Fig. 23.1' },
+  { id: 'sec-group-report', number: 24, title: 'Executive Group Comparative Portfolio Report', category: 'Portfolio Reports', icon: FileSpreadsheet, pageLabel: 'Web App', figLabel: 'Fig. 24.1' },
+  { id: 'sec-draft-sandbox', number: 25, title: 'Draft Playground & Simulation Sandbox', category: 'Simulation', icon: Play, pageLabel: 'Web App', figLabel: 'Fig. 25.1' },
+  { id: 'sec-faqs', number: 26, title: 'Troubleshooting Guide & Glossary of Key Terms', category: 'Help & Errors', icon: HelpCircle, pageLabel: 'Page 47-48' },
+  { id: 'sec-contact', number: 27, title: 'Official Support Contacts & Document Control', category: 'Official Support', icon: Phone, pageLabel: 'Page 48-49' },
 ];

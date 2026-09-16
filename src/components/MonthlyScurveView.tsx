@@ -115,20 +115,33 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
   const currentMonthKey = resolveCurrentMonthKey(project);
   const [tableError, setTableError] = useState<string | null>(null);
   const [months, setMonths] = useState<MonthlyProgress[]>(() => {
-    return ensureLiveRowForActual(project.monthly || [], currentMonthKey, project.physicalProgress);
+    return ensureLiveRowForActual(project.monthly || [], currentMonthKey, project.physicalProgress, project.status);
   });
 
   React.useEffect(() => {
-    const ensured = ensureLiveRowForActual(project.monthly || [], currentMonthKey, project.physicalProgress);
+    const ensured = ensureLiveRowForActual(project.monthly || [], currentMonthKey, project.physicalProgress, project.status);
     setMonths(ensured);
-  }, [project.id, project.monthly, currentMonthKey, project.physicalProgress]);
+
+    // If current month was added as live row or actual was defaulted from previous month, synchronize with parent
+    const originalMonthly = project.monthly || [];
+    const isDifferent = originalMonthly.length !== ensured.length ||
+      originalMonthly.some((m, i) => 
+        m.month !== ensured[i]?.month || 
+        m.actual !== ensured[i]?.actual || 
+        m.originalPlan !== ensured[i]?.originalPlan || 
+        m.revisedPlan !== ensured[i]?.revisedPlan
+      );
+    if (isDifferent) {
+      onUpdateMonthly(ensured);
+    }
+  }, [project.id, currentMonthKey, project.status, project.monthly]);
 
   // Check for any actuals in previous rows that exceed the live month's value
   const exceedingActuals = findActualsExceedingLive(months, currentMonthKey);
 
   const handleAdjustExceedingActuals = () => {
     const adjusted = clampActualsToLiveValue(months, currentMonthKey);
-    const finalEnsured = ensureLiveRowForActual(adjusted, currentMonthKey);
+    const finalEnsured = ensureLiveRowForActual(adjusted, currentMonthKey, undefined, project.status);
     setMonths(finalEnsured);
     onUpdateMonthly(finalEnsured);
     setTableError(null);
@@ -241,7 +254,8 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
     updated = ensureLiveRowForActual(
       updated, 
       currentMonthKey, 
-      idx === liveIdx && field === 'actual' && parsedVal !== '' ? parsedVal : undefined
+      idx === liveIdx && field === 'actual' && parsedVal !== '' ? parsedVal : undefined,
+      project.status
     );
 
     setMonths(updated);
@@ -273,7 +287,7 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
     }
 
     const newRow: MonthlyProgress = { month: nextName, originalPlan: '', revisedPlan: '', actual: '' };
-    const updated = insertMonthAboveLiveRow(months, currentMonthKey, newRow);
+    const updated = insertMonthAboveLiveRow(months, currentMonthKey, newRow, undefined, project.status);
     setMonths(updated);
     onUpdateMonthly(updated);
   };
@@ -303,7 +317,7 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
     }
 
     const newRow: MonthlyProgress = { month: nextName, originalPlan: '', revisedPlan: '', actual: '' };
-    const updated = ensureLiveRowForActual([...months, newRow], currentMonthKey);
+    const updated = ensureLiveRowForActual([...months, newRow], currentMonthKey, undefined, project.status);
     setMonths(updated);
     onUpdateMonthly(updated);
   };
@@ -329,7 +343,7 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
     const newRow: MonthlyProgress = { month: nextName, originalPlan: '', revisedPlan: '', actual: '' };
     const copy = [...months];
     copy.splice(idx, 0, newRow);
-    const updated = ensureLiveRowForActual(copy, currentMonthKey);
+    const updated = ensureLiveRowForActual(copy, currentMonthKey, undefined, project.status);
     setMonths(updated);
     onUpdateMonthly(updated);
   };
@@ -349,7 +363,7 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
     } else {
       updated = months.slice(0, -1);
     }
-    const finalUpdated = ensureLiveRowForActual(updated, currentMonthKey);
+    const finalUpdated = ensureLiveRowForActual(updated, currentMonthKey, undefined, project.status);
     setMonths(finalUpdated);
     onUpdateMonthly(finalUpdated);
   };
@@ -357,7 +371,7 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
   const handleDeleteRow = (idx: number) => {
     if (months.length <= 1) return;
     const copy = months.filter((_, i) => i !== idx);
-    const updated = ensureLiveRowForActual(copy, currentMonthKey);
+    const updated = ensureLiveRowForActual(copy, currentMonthKey, undefined, project.status);
     setMonths(updated);
     onUpdateMonthly(updated);
   };
@@ -372,7 +386,7 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
             S‑Curve Analysis (Monthly Cumulative %)
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Any month added to the cumulative table is placed above the live row. The last row with an Actual value is always the live row; Plan columns can extend into future months.
+            For projects in In Progress and Completed status, the current month ({currentMonthKey}) is automatically maintained as the live month, defaulting to the previous month's actual value until updated. The live month is the final row with Actual progress; Plan columns extend into future months.
           </p>
         </div>
 
