@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence, animate } from 'motion/react';
+import { Analytics } from '@vercel/analytics/react';
 import { 
   HardHat, 
   FolderOpen, 
@@ -7149,6 +7150,9 @@ let isBatchSyncRunning = false;
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Vercel Web Analytics */}
+      <Analytics />
 
       {/* Interactive User Guide Manual Modal */}
       <UserGuideManualModal 
