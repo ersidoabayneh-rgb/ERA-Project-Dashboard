@@ -682,10 +682,18 @@ export default function SettingsView({
           </div>
         )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2">
+          <div className="p-3.5 bg-slate-50 dark:bg-slate-900/40 rounded-xl border border-slate-100 dark:border-slate-750">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Database Server Host</div>
+            <div className="text-sm font-extrabold text-slate-800 dark:text-slate-100 mt-1 flex items-center gap-1.5 truncate" title="eradashboard.com.et">
+              <span className="truncate">eradashboard.com.et</span>
+            </div>
+            <div className="text-[11px] text-slate-500 mt-0.5">Ethio Telecom Server (Port 3306)</div>
+          </div>
+
           <div className="p-3.5 bg-slate-50 dark:bg-slate-900/40 rounded-xl border border-slate-100 dark:border-slate-750">
             <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Connected Devices</div>
-            <div className="text-base font-extrabold text-slate-800 dark:text-slate-100 mt-1 flex items-center gap-2">
+            <div className="text-sm font-extrabold text-slate-800 dark:text-slate-100 mt-1 flex items-center gap-2">
               <span>{realtimeStatus.activeDevices} {realtimeStatus.activeDevices === 1 ? 'Device' : 'Devices'}</span>
               <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-950/50 px-1.5 py-0.5 rounded">Live</span>
             </div>
@@ -694,7 +702,7 @@ export default function SettingsView({
 
           <div className="p-3.5 bg-slate-50 dark:bg-slate-900/40 rounded-xl border border-slate-100 dark:border-slate-750">
             <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Sync Protocol & Delivery</div>
-            <div className="text-base font-extrabold text-slate-800 dark:text-slate-100 mt-1 uppercase">
+            <div className="text-sm font-extrabold text-slate-800 dark:text-slate-100 mt-1 uppercase">
               {realtimeStatus.mode === 'websocket' ? 'WebSocket (Real-Time)' : realtimeStatus.mode === 'sse' ? 'SSE (Stream)' : 'Polling Fallback'}
             </div>
             <div className="text-[11px] text-slate-500 mt-0.5">Zero-delay instant packet broadcast</div>
@@ -702,7 +710,7 @@ export default function SettingsView({
 
           <div className="p-3.5 bg-slate-50 dark:bg-slate-900/40 rounded-xl border border-slate-100 dark:border-slate-750">
             <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Central Database Engine</div>
-            <div className="text-base font-extrabold text-slate-800 dark:text-slate-100 mt-1 flex items-center gap-1.5">
+            <div className="text-sm font-extrabold text-slate-800 dark:text-slate-100 mt-1 flex items-center gap-1.5">
               <span>Persistent Server DB</span>
             </div>
             <div className="text-[11px] text-slate-500 mt-0.5">High availability with safe fallbacks</div>

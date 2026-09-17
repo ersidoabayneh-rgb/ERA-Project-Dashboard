@@ -164,6 +164,9 @@ async function startServer() {
       status: 'ok',
       database: isConn ? 'mysql+server_db' : 'persistent_server_db',
       mysqlConnected: isConn,
+      serverHost: process.env.MYSQL_HOST || 'eradashboard.com.et',
+      serverProvider: 'Ethio Telecom (eradashboard.com.et)',
+      databaseName: process.env.MYSQL_DATABASE || 'era_dashboard',
       stats,
       realtimeClients: connectedClients.size + sseClients.size,
       timestamp: new Date().toISOString()
@@ -175,6 +178,9 @@ async function startServer() {
     const stats = serverGetDbStats();
     res.json({
       status: 'active',
+      serverHost: process.env.MYSQL_HOST || 'eradashboard.com.et',
+      serverProvider: 'Ethio Telecom (eradashboard.com.et)',
+      databaseName: process.env.MYSQL_DATABASE || 'era_dashboard',
       stats,
       realtimeClients: connectedClients.size + sseClients.size,
       timestamp: new Date().toISOString()

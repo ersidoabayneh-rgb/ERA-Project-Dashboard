@@ -25,6 +25,8 @@ export interface RealtimeSyncStatus {
   activeDevices: number;
   lastSyncTime: string;
   databaseVersion: number;
+  serverHost: string;
+  serverProvider: string;
 }
 
 class RealtimeClientManager {
@@ -39,6 +41,8 @@ class RealtimeClientManager {
   private connectionStatus: 'connected' | 'reconnecting' | 'offline' = 'reconnecting';
   private lastSyncTime: string = new Date().toISOString();
   private lastKnownVersion = 0;
+  private serverHost = 'eradashboard.com.et';
+  private serverProvider = 'Ethio Telecom (eradashboard.com.et)';
   private pollingTimer: any = null;
   private heartbeatTimer: any = null;
   private lastMessageReceivedAt = Date.now();
@@ -199,6 +203,9 @@ class RealtimeClientManager {
             this.connectedUsersCount = info.realtimeClients || this.connectedUsersCount;
             const newVersion = info.stats.version || 0;
             
+            if (info.serverHost) this.serverHost = info.serverHost;
+            if (info.serverProvider) this.serverProvider = info.serverProvider;
+
             // If server database version has changed, pull latest changes
             if (this.lastKnownVersion > 0 && newVersion > this.lastKnownVersion) {
               console.log(`⚡ [Real-time Sync Daemon] Detected new database version (${newVersion} vs ${this.lastKnownVersion}). Triggering sync.`);
@@ -441,7 +448,9 @@ class RealtimeClientManager {
       mode,
       activeDevices: Math.max(1, this.connectedUsersCount),
       lastSyncTime: this.lastSyncTime,
-      databaseVersion: this.lastKnownVersion
+      databaseVersion: this.lastKnownVersion,
+      serverHost: this.serverHost,
+      serverProvider: this.serverProvider
     };
   }
 

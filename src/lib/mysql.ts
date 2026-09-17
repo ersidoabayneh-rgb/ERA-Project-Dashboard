@@ -7,8 +7,8 @@ export function getMySQLPool(): mysql.Pool | null {
   if (pool) return pool;
 
   const rawUrl = (process.env.DATABASE_URL || process.env.MYSQL_URL || '').trim();
-  const host = (process.env.MYSQL_HOST || process.env.MYSQLHOST || 'mysql-db01.remote').trim();
-  const port = parseInt(process.env.MYSQL_PORT || process.env.MYSQLPORT || '31636', 10);
+  const host = (process.env.MYSQL_HOST || process.env.MYSQLHOST || 'eradashboard.com.et').trim();
+  const port = parseInt(process.env.MYSQL_PORT || process.env.MYSQLPORT || '3306', 10);
   const user = (process.env.MYSQL_USER || process.env.MYSQLUSER || 'root').trim();
   const password = process.env.MYSQL_PASSWORD || process.env.MYSQLPASSWORD || '';
   const database = (process.env.MYSQL_DATABASE || process.env.MYSQLDATABASE || 'era_dashboard').trim();
@@ -28,8 +28,8 @@ export function getMySQLPool(): mysql.Pool | null {
   // Fallback to object configuration
   try {
     pool = mysql.createPool({
-      host: host || 'mysql-db01.remote',
-      port: isNaN(port) ? 31636 : port,
+      host: host || 'eradashboard.com.et',
+      port: isNaN(port) ? 3306 : port,
       user: user || 'root',
       password,
       database: database || 'era_dashboard',

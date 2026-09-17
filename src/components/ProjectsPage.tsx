@@ -720,7 +720,7 @@ export default function ProjectsPage({
               <button
                 onClick={handleTriggerManualSync}
                 disabled={isManualSyncing}
-                title={`Real-Time Data Synchronization: ${realtimeStatus.status.toUpperCase()} (${realtimeStatus.activeDevices} devices online across locations). Click to synchronize immediately with database.`}
+                title={`Real-Time Data Synchronization: ${realtimeStatus.status.toUpperCase()} (${realtimeStatus.activeDevices} devices online). Database: Ethio Telecom server (eradashboard.com.et). Click to synchronize immediately.`}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition shadow-sm cursor-pointer ${
                   realtimeStatus.status === 'connected'
                     ? 'bg-emerald-50/90 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/50'
