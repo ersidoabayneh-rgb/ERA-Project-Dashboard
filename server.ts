@@ -1,9 +1,10 @@
 import express from 'express';
 import http from 'http';
 import path from 'path';
+import fs from 'fs';
 import { WebSocketServer, WebSocket } from 'ws';
 import { createServer as createViteServer } from 'vite';
-import { getMySQLPool, initMySQLTables, testMySQLConnection } from './src/lib/mysql.js';
+import { getMySQLPool, initMySQLTables, testMySQLConnection, diagnoseMySQLConnection } from './src/lib/mysql.js';
 import {
   initServerDatabase,
   serverGetProjects,
@@ -16,7 +17,8 @@ import {
   serverSaveApprovals,
   serverGetConfig,
   serverSaveConfig,
-  serverGetDbStats
+  serverGetDbStats,
+  serverSyncAllWithMySQL
 } from './src/lib/serverDb.js';
 
 async function startServer() {
@@ -185,6 +187,65 @@ async function startServer() {
       realtimeClients: connectedClients.size + sseClients.size,
       timestamp: new Date().toISOString()
     });
+  });
+
+  // GET /api/mysql/status - comprehensive diagnostics of traditional Ethio Telecom MySQL hosting
+  app.get('/api/mysql/status', async (req, res) => {
+    try {
+      const diagnostics = await diagnoseMySQLConnection();
+      res.json(diagnostics);
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message || 'Failed to diagnose MySQL' });
+    }
+  });
+
+  // POST /api/mysql/test - ping test with latency measurement
+  app.post('/api/mysql/test', async (req, res) => {
+    try {
+      const isConnected = await testMySQLConnection();
+      const diagnostics = await diagnoseMySQLConnection();
+      res.json({ success: isConnected, diagnostics });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err?.message || 'Test failed' });
+    }
+  });
+
+  // POST /api/mysql/sync - full bi-directional push & pull sync with MySQL
+  app.post('/api/mysql/sync', async (req, res) => {
+    try {
+      const syncResult = await serverSyncAllWithMySQL();
+      // Broadcast real-time refresh to all connected clients
+      broadcastRealtime('DATABASE_SYNCED', { source: 'mysql', timestamp: new Date().toISOString() });
+      res.json(syncResult);
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err?.message || 'MySQL sync failed' });
+    }
+  });
+
+  // GET /api/mysql/schema - get raw SQL script for traditional MySQL installation
+  app.get('/api/mysql/schema', (req, res) => {
+    try {
+      const schemaPath = path.join(process.cwd(), 'ethiotelecom_mysql_schema.sql');
+      if (fs.existsSync(schemaPath)) {
+        const sql = fs.readFileSync(schemaPath, 'utf-8');
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        res.send(sql);
+      } else {
+        res.status(404).send('-- Schema file not found');
+      }
+    } catch (err: any) {
+      res.status(500).send(`-- Error loading schema: ${err.message}`);
+    }
+  });
+
+  // GET /api/mysql/download-schema - download .sql file attachment
+  app.get('/api/mysql/download-schema', (req, res) => {
+    const schemaPath = path.join(process.cwd(), 'ethiotelecom_mysql_schema.sql');
+    if (fs.existsSync(schemaPath)) {
+      res.download(schemaPath, 'ethiotelecom_mysql_schema.sql');
+    } else {
+      res.status(404).send('File not found');
+    }
   });
 
   // GET /api/projects - fetch all non-deleted projects

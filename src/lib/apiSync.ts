@@ -547,3 +547,69 @@ export async function safeFetchScoringWeights(): Promise<{
   } catch {}
   return null;
 }
+
+// ---------------------------------------------------------------------------
+// Ethio Telecom Traditional MySQL Database Client Helpers
+// ---------------------------------------------------------------------------
+
+export interface ClientMySQLDiagnostics {
+  connected: boolean;
+  host: string;
+  port: number;
+  user: string;
+  database: string;
+  socket?: string;
+  charset: string;
+  timezone: string;
+  latencyMs: number;
+  lastTestedAt: string;
+  errorDetails?: string;
+  recommendation?: string;
+  tableStats?: {
+    projects: number;
+    users: number;
+    approvals: number;
+    config: number;
+    deletedProjects: number;
+  };
+}
+
+export async function fetchMySQLDiagnostics(): Promise<ClientMySQLDiagnostics | null> {
+  return await apiGet('/api/mysql/status');
+}
+
+export async function testMySQLServerConnection(): Promise<{ success: boolean; diagnostics?: ClientMySQLDiagnostics; error?: string }> {
+  const result = await apiPost('/api/mysql/test', {});
+  return result || { success: false, error: 'Network request failed' };
+}
+
+export async function triggerMySQLBiDirectionalSync(): Promise<{
+  success: boolean;
+  pushedProjects?: number;
+  pulledProjects?: number;
+  pushedUsers?: number;
+  pulledUsers?: number;
+  message?: string;
+  error?: string;
+}> {
+  const result = await apiPost('/api/mysql/sync', {});
+  if (result?.success) {
+    recordSyncLog({
+      recordType: 'batch_sync',
+      status: 'synced',
+      details: result.message || 'Bi-directional MySQL synchronization completed'
+    });
+  }
+  return result || { success: false, error: 'Sync request failed' };
+}
+
+export async function fetchMySQLSchemaSQL(): Promise<string> {
+  try {
+    const res = await fetch('/api/mysql/schema');
+    if (res.ok) {
+      return await res.text();
+    }
+  } catch {}
+  return '-- Failed to fetch schema script from server.';
+}
+

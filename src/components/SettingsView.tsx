@@ -22,7 +22,17 @@ import {
   Scale,
   Award,
   Plus,
-  Trash2
+  Trash2,
+  Database,
+  Server,
+  HardDrive,
+  Download,
+  Copy,
+  ExternalLink,
+  HelpCircle,
+  ChevronDown,
+  ChevronUp,
+  FileCode2
 } from 'lucide-react';
 import { 
   User, 
@@ -32,7 +42,14 @@ import {
   DEFAULT_CONSULTANT_SCORING_WEIGHTS,
   CustomScoringCriterion
 } from '../types';
-import { safeSyncScoringWeights } from '../lib/apiSync';
+import { 
+  safeSyncScoringWeights,
+  fetchMySQLDiagnostics,
+  testMySQLServerConnection,
+  triggerMySQLBiDirectionalSync,
+  fetchMySQLSchemaSQL,
+  ClientMySQLDiagnostics
+} from '../lib/apiSync';
 import { realtimeManager, RealtimeSyncStatus } from '../lib/realtime';
 
 const CONTRACTOR_CRITERIA_META: Array<{ key: string; defaultLabel: string; defaultDesc: string; defaultWeight: number }> = [
@@ -143,6 +160,103 @@ export default function SettingsView({
     } finally {
       setIsSyncingNow(false);
     }
+  };
+
+  // Ethio Telecom Traditional MySQL Database States
+  const [mysqlDiag, setMysqlDiag] = useState<ClientMySQLDiagnostics | null>(null);
+  const [isLoadingMysql, setIsLoadingMysql] = useState(false);
+  const [isTestingMysql, setIsTestingMysql] = useState(false);
+  const [isSyncingMysql, setIsSyncingMysql] = useState(false);
+  const [mysqlNotice, setMysqlNotice] = useState<{ type: 'success' | 'error' | 'info'; text: string; recommendation?: string } | null>(null);
+  const [isSchemaModalOpen, setIsSchemaModalOpen] = useState(false);
+  const [schemaSqlText, setSchemaSqlText] = useState('');
+  const [hasCopiedSchema, setHasCopiedSchema] = useState(false);
+  const [showCpanelGuide, setShowCpanelGuide] = useState(false);
+
+  const loadMySQLDiagnostics = async () => {
+    setIsLoadingMysql(true);
+    try {
+      const diag = await fetchMySQLDiagnostics();
+      if (diag) setMysqlDiag(diag);
+    } catch {} finally {
+      setIsLoadingMysql(false);
+    }
+  };
+
+  React.useEffect(() => {
+    loadMySQLDiagnostics();
+  }, []);
+
+  const handleTestMySQL = async () => {
+    setIsTestingMysql(true);
+    setMysqlNotice(null);
+    try {
+      const res = await testMySQLServerConnection();
+      if (res.success && res.diagnostics) {
+        setMysqlDiag(res.diagnostics);
+        setMysqlNotice({
+          type: 'success',
+          text: `Connection verified! Ethio Telecom MySQL responded in ${res.diagnostics.latencyMs}ms.`
+        });
+      } else {
+        const diag = res.diagnostics || (await fetchMySQLDiagnostics());
+        if (diag) setMysqlDiag(diag);
+        setMysqlNotice({
+          type: 'error',
+          text: diag?.errorDetails || res.error || 'Connection to Ethio Telecom MySQL host is offline or blocked by firewall.',
+          recommendation: diag?.recommendation || 'Verify database credentials in cPanel and check Remote MySQL port 3306.'
+        });
+      }
+    } catch (e: any) {
+      setMysqlNotice({
+        type: 'error',
+        text: e?.message || 'Failed to ping Ethio Telecom MySQL host.'
+      });
+    } finally {
+      setIsTestingMysql(false);
+      setTimeout(() => setMysqlNotice(null), 12000);
+    }
+  };
+
+  const handleSyncMySQL = async () => {
+    setIsSyncingMysql(true);
+    setMysqlNotice(null);
+    try {
+      const res = await triggerMySQLBiDirectionalSync();
+      if (res.success) {
+        await loadMySQLDiagnostics();
+        setMysqlNotice({
+          type: 'success',
+          text: res.message || 'Bi-directional synchronization with Ethio Telecom MySQL database completed!'
+        });
+      } else {
+        setMysqlNotice({
+          type: 'error',
+          text: res.error || 'Failed to execute bi-directional MySQL sync. Verify database is reachable.'
+        });
+      }
+    } catch (e: any) {
+      setMysqlNotice({ type: 'error', text: e?.message || 'Sync operation encountered an error.' });
+    } finally {
+      setIsSyncingMysql(false);
+      setTimeout(() => setMysqlNotice(null), 12000);
+    }
+  };
+
+  const handleOpenSchemaModal = async () => {
+    setIsSchemaModalOpen(true);
+    if (!schemaSqlText) {
+      const sql = await fetchMySQLSchemaSQL();
+      setSchemaSqlText(sql);
+    }
+  };
+
+  const handleCopySchema = async () => {
+    try {
+      await navigator.clipboard.writeText(schemaSqlText);
+      setHasCopiedSchema(true);
+      setTimeout(() => setHasCopiedSchema(false), 2500);
+    } catch {}
   };
 
   const handleOpenModal = () => {
@@ -715,6 +829,213 @@ export default function SettingsView({
             </div>
             <div className="text-[11px] text-slate-500 mt-0.5">High availability with safe fallbacks</div>
           </div>
+        </div>
+      </div>
+
+      {/* Ethio Telecom Traditional MySQL Database Configuration & Diagnostics Card */}
+      <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-5 rounded-2xl shadow-sm space-y-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
+                <Database className="w-4 h-4 text-emerald-500" />
+                Ethio Telecom Traditional MySQL Database Hosting (cPanel / Linux)
+              </h3>
+              <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${
+                mysqlDiag?.connected
+                  ? 'bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300'
+                  : 'bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300'
+              }`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${
+                  mysqlDiag?.connected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
+                }`}></span>
+                {mysqlDiag?.connected
+                  ? `MYSQL CONNECTED (${mysqlDiag.latencyMs}ms latency)`
+                  : 'STANDALONE HYBRID MODE (AWAITING CPANEL MYSQL)'}
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              Production MySQL database configuration on Ethio Telecom web hosting (<code>eradashboard.com.et</code> / <code>lin1.ethiotelecom.et</code>). Supports traditional InnoDB tables, utf8mb4 Amharic Ge'ez collation, and native Apache/PHP bridges.
+            </p>
+          </div>
+
+          {/* Action Toolbar */}
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <button
+              onClick={handleTestMySQL}
+              disabled={isTestingMysql}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 rounded-xl text-xs font-bold transition cursor-pointer disabled:opacity-50"
+              title="Ping Ethio Telecom MySQL host and measure latency"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isTestingMysql ? 'animate-spin text-indigo-500' : ''}`} />
+              <span>{isTestingMysql ? 'Testing Ping...' : 'Test Connection'}</span>
+            </button>
+
+            <button
+              onClick={handleSyncMySQL}
+              disabled={isSyncingMysql}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer disabled:opacity-50"
+              title="Push and pull all records to/from MySQL tables"
+            >
+              <Server className={`w-3.5 h-3.5 ${isSyncingMysql ? 'animate-spin' : ''}`} />
+              <span>{isSyncingMysql ? 'Syncing Tables...' : 'Force MySQL Sync'}</span>
+            </button>
+
+            <a
+              href="/api/mysql/download-schema"
+              download="ethiotelecom_mysql_schema.sql"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
+              title="Download standard schema.sql for phpMyAdmin import"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>schema.sql</span>
+            </a>
+
+            <button
+              onClick={handleOpenSchemaModal}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-650 text-slate-200 rounded-xl text-xs font-bold transition cursor-pointer"
+              title="Preview and copy MySQL SQL statements"
+            >
+              <FileCode2 className="w-3.5 h-3.5 text-amber-400" />
+              <span>View SQL</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Dynamic Notice / Recommendation Banner */}
+        {mysqlNotice && (
+          <div className={`p-3.5 rounded-xl border text-xs flex flex-col gap-1 ${
+            mysqlNotice.type === 'success'
+              ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200'
+              : 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200'
+          }`}>
+            <div className="flex items-center gap-2 font-bold">
+              {mysqlNotice.type === 'success' ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              ) : (
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+              )}
+              <span>{mysqlNotice.text}</span>
+            </div>
+            {mysqlNotice.recommendation && (
+              <div className="pl-6 text-[11px] opacity-90">
+                <strong>cPanel Setup Hint:</strong> {mysqlNotice.recommendation}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Diagnostic Parameters Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
+          <div className="p-3 bg-slate-50 dark:bg-slate-900/40 rounded-xl border border-slate-100 dark:border-slate-750">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">MySQL Host & Port</div>
+            <div className="text-sm font-extrabold text-slate-800 dark:text-slate-100 mt-1 flex items-center gap-1.5 truncate">
+              <HardDrive className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+              <span className="truncate">{mysqlDiag?.host || 'localhost'}:{mysqlDiag?.port || 3306}</span>
+            </div>
+            <div className="text-[11px] text-slate-500 mt-0.5">
+              {mysqlDiag?.socket ? `Unix Socket: ${mysqlDiag.socket}` : 'TCP Connection on Ethio Telecom'}
+            </div>
+          </div>
+
+          <div className="p-3 bg-slate-50 dark:bg-slate-900/40 rounded-xl border border-slate-100 dark:border-slate-750">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Database & User</div>
+            <div className="text-sm font-extrabold text-slate-800 dark:text-slate-100 mt-1 flex items-center gap-1.5 truncate">
+              <Database className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+              <span className="truncate">{mysqlDiag?.database || 'era_dashboard'}</span>
+            </div>
+            <div className="text-[11px] text-slate-500 mt-0.5">User: {mysqlDiag?.user || 'eradashb_user'}</div>
+          </div>
+
+          <div className="p-3 bg-slate-50 dark:bg-slate-900/40 rounded-xl border border-slate-100 dark:border-slate-750">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Charset & Timezone</div>
+            <div className="text-sm font-extrabold text-slate-800 dark:text-slate-100 mt-1 flex items-center gap-1.5 truncate">
+              <span className="font-mono text-xs text-indigo-600 dark:text-indigo-400">utf8mb4_unicode_ci</span>
+            </div>
+            <div className="text-[11px] text-slate-500 mt-0.5">+03:00 (East Africa Time)</div>
+          </div>
+
+          <div className="p-3 bg-slate-50 dark:bg-slate-900/40 rounded-xl border border-slate-100 dark:border-slate-750">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Database Storage Tables</div>
+            <div className="flex flex-wrap gap-1.5 mt-1.5">
+              <span className="px-1.5 py-0.5 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded text-[10px] font-mono">
+                projects: {mysqlDiag?.tableStats?.projects ?? '0'}
+              </span>
+              <span className="px-1.5 py-0.5 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded text-[10px] font-mono">
+                users: {mysqlDiag?.tableStats?.users ?? '4'}
+              </span>
+              <span className="px-1.5 py-0.5 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded text-[10px] font-mono">
+                approvals: {mysqlDiag?.tableStats?.approvals ?? '0'}
+              </span>
+              <span className="px-1.5 py-0.5 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded text-[10px] font-mono">
+                config: {mysqlDiag?.tableStats?.config ?? '1'}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Collapsible cPanel & Ethio Telecom Setup Instructions */}
+        <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
+          <button
+            onClick={() => setShowCpanelGuide(!showCpanelGuide)}
+            className="w-full p-3 bg-slate-50 hover:bg-slate-100 dark:bg-slate-900/50 dark:hover:bg-slate-800 flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300 transition cursor-pointer"
+          >
+            <span className="flex items-center gap-2">
+              <HelpCircle className="w-4 h-4 text-blue-500" />
+              <span>Ethio Telecom Web Hosting cPanel Setup Guide (5 Simple Steps)</span>
+            </span>
+            {showCpanelGuide ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          </button>
+
+          {showCpanelGuide && (
+            <div className="p-4 bg-white dark:bg-slate-850 text-xs text-slate-600 dark:text-slate-300 space-y-3 border-t border-slate-200 dark:border-slate-700 leading-relaxed">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <span className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 flex items-center justify-center font-mono text-[11px]">1</span>
+                    Create Database & User in cPanel
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 pl-6">
+                    Log in to cPanel at <code>https://eradashboard.com.et:2083</code>. Go to <strong>MySQL Databases</strong>, create database <code>eradashb_db</code> and user <code>eradashb_user</code>.
+                  </p>
+
+                  <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5 pt-2">
+                    <span className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 flex items-center justify-center font-mono text-[11px]">2</span>
+                    Grant All Privileges
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 pl-6">
+                    In cPanel, add the user to the database and check <strong>ALL PRIVILEGES</strong>. This grants permissions for <code>INSERT</code>, <code>UPDATE</code>, <code>DELETE</code>, and <code>CREATE TABLE</code>.
+                  </p>
+
+                  <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5 pt-2">
+                    <span className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 flex items-center justify-center font-mono text-[11px]">3</span>
+                    Import schema.sql into phpMyAdmin
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 pl-6">
+                    Click the <strong>schema.sql</strong> button above to download the script. Open <strong>phpMyAdmin</strong> in cPanel, select your database, click the <strong>Import</strong> tab, and upload the file.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <span className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 flex items-center justify-center font-mono text-[11px]">4</span>
+                    Configure Host (.env / db_config.php)
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 pl-6">
+                    When hosted directly on Ethio Telecom, set <code>MYSQL_HOST=localhost</code> (or <code>127.0.0.1</code>) and <code>MYSQL_PORT=3306</code>. If using PHP shared hosting, configure <code>public/db_config.php</code>.
+                  </p>
+
+                  <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5 pt-2">
+                    <span className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 flex items-center justify-center font-mono text-[11px]">5</span>
+                    Remote Access & Firewalls
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 pl-6">
+                    If connecting remotely from outside Ethio Telecom hosting, open <strong>Remote MySQL</strong> in cPanel and add your external server's IP address (or <code>%</code> for universal access).
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1326,6 +1647,93 @@ export default function SettingsView({
                   );
                 })()}
               </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* ETHIO TELECOM MYSQL SCHEMA VIEWER MODAL */}
+      {isSchemaModalOpen && (
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl max-w-4xl w-full overflow-hidden flex flex-col max-h-[90vh]"
+          >
+            {/* Modal Header */}
+            <div className="bg-slate-900 text-white p-5 flex items-center justify-between border-b border-slate-800 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-emerald-500/20 text-emerald-400 rounded-xl border border-emerald-500/30">
+                  <Database className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-black tracking-tight">ethiotelecom_mysql_schema.sql</h3>
+                    <span className="text-[9px] font-black uppercase px-2 py-0.5 bg-emerald-500 text-slate-950 rounded font-mono">
+                      InnoDB / utf8mb4
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Traditional DDL schema optimized for phpMyAdmin import on Ethio Telecom hosting (lin1.ethiotelecom.et).
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleCopySchema}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition cursor-pointer"
+                >
+                  {hasCopiedSchema ? (
+                    <>
+                      <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
+                      <span className="text-emerald-400">Copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>Copy SQL</span>
+                    </>
+                  )}
+                </button>
+
+                <a
+                  href="/api/mysql/download-schema"
+                  download="ethiotelecom_mysql_schema.sql"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download</span>
+                </a>
+
+                <button
+                  onClick={() => setIsSchemaModalOpen(false)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* SQL Content Box */}
+            <div className="p-4 flex-1 overflow-auto bg-slate-950">
+              <pre className="text-[11px] font-mono text-emerald-400 leading-relaxed overflow-x-auto whitespace-pre p-2 select-all">
+                {schemaSqlText || '-- Fetching schema SQL from server...'}
+              </pre>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-slate-900 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400 shrink-0">
+              <div>
+                💡 <strong>phpMyAdmin Tip:</strong> Log in to cPanel, open phpMyAdmin, select your database, click <strong>Import</strong>, and upload this file.
+              </div>
+              <button
+                onClick={() => setIsSchemaModalOpen(false)}
+                className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-bold transition cursor-pointer"
+              >
+                Close
+              </button>
             </div>
           </motion.div>
         </div>
