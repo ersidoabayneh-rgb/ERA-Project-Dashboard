@@ -1,6 +1,7 @@
 import { Project, User as AppUser, ApprovalRequest, ContractorScoringWeights, ConsultantScoringWeights } from '../types';
 import { defaultProjectTemplate, defaultZeroRowMetrics } from '../data/defaultProject';
 import { safeDispatchCustomEvent } from './storage';
+import { enqueueOfflineProject, removeOfflineQueueItem } from './offlineQueue';
 
 export enum OperationType {
   CREATE = 'create',
@@ -248,6 +249,12 @@ export async function safeSyncProject(proj: Project, isBackgroundQueueSync = fal
 
   safeDispatchCustomEvent('local_project_mutated');
 
+  if (apiRes && apiRes.success !== false) {
+    removeOfflineQueueItem(normalized.id);
+  } else if (!isBackgroundQueueSync) {
+    enqueueOfflineProject(normalized, normalized.lastModifiedSection || 'Project Update');
+  }
+
   recordSyncLog({
     recordType: 'project',
     recordId: normalized.id,
@@ -261,6 +268,8 @@ export async function safeSyncProject(proj: Project, isBackgroundQueueSync = fal
  */
 export async function safeDeleteProject(id: string, projectName?: string, deletedBy?: string): Promise<void> {
   if (!id) return;
+
+  removeOfflineQueueItem(id);
 
   try {
     const deletedStr = localStorage.getItem('era_deleted_project_ids') || '[]';

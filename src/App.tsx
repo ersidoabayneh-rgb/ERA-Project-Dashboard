@@ -212,6 +212,7 @@ import UserGuideManualModal from './components/UserGuideManualModal';
 import { UserProfileModal } from './components/UserProfileModal';
 import ApprovalWorkflowManager from './components/ApprovalWorkflowManager';
 import ThemeCustomizerModal, { ThemeConfig, DEFAULT_THEME_CONFIG } from './components/ThemeCustomizerModal';
+import { OfflineSyncStatusBar } from './components/OfflineSyncStatusBar';
 import eraLogo from './assets/logo.png';
 
 import { defaultProjectTemplate, blankProjectTemplate, generateKpiAllocated } from './data/defaultProject';
@@ -3317,7 +3318,7 @@ let isBatchSyncRunning = false;
     formatAccounting(v, '');
 
   return (
-    <div className="min-h-screen text-slate-800 dark:text-slate-100 flex flex-col font-sans transition-colors duration-300 relative bg-slate-50/50 dark:bg-slate-900/60 pb-12">
+    <div className="min-h-screen text-slate-800 dark:text-slate-100 flex flex-col font-sans transition-colors duration-300 relative bg-slate-50/50 dark:bg-slate-900/60 pb-24">
       
       {/* Dynamic Style Injection for Theme Modes, Accents, Background Wallpapers & Colors */}
       <style dangerouslySetInnerHTML={{__html: `
@@ -7584,6 +7585,11 @@ let isBatchSyncRunning = false;
       <UserGuideManualModal 
         isOpen={isUserGuideOpen}
         onClose={() => setIsUserGuideOpen(false)}
+      />
+
+      {/* Dedicated Status Bar Component: Offline Sync Queue & Individual Project Updates Progress */}
+      <OfflineSyncStatusBar 
+        projects={projects}
       />
 
     </div>
