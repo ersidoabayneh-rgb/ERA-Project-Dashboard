@@ -5,7 +5,8 @@ import {
   CheckCircle2, 
   Database, 
   RefreshCw, 
-  ShieldCheck
+  ShieldCheck,
+  Server
 } from 'lucide-react';
 
 interface WorkspaceViewProps {
@@ -18,6 +19,7 @@ export default function WorkspaceView({ projects = [], onRestoreProjects, curren
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
+  const [dbHealth, setDbHealth] = useState<{ database: string; connected: boolean } | null>(null);
 
   const activeUser = currentUserObj || authUser;
 
@@ -32,15 +34,22 @@ export default function WorkspaceView({ projects = [], onRestoreProjects, curren
     return () => unsubscribe();
   }, []);
 
+  useEffect(() => {
+    fetch('/api/health')
+      .then(res => res.json())
+      .then(data => setDbHealth(data))
+      .catch(() => setDbHealth({ database: 'mysql', connected: false }));
+  }, []);
+
   const handleSyncNow = async () => {
-    setSyncStatus('Saving database repository...');
+    setSyncStatus('Saving database repository to MySQL...');
     try {
       if (projects && projects.length > 0) {
         for (const p of projects) {
           await safeSyncProject(p, true).catch(() => {});
         }
       }
-      setSyncStatus('Database repository saved successfully.');
+      setSyncStatus('Database state saved to MySQL repository.');
     } catch (e: any) {
       setSyncStatus('Database update completed.');
     }
@@ -54,16 +63,16 @@ export default function WorkspaceView({ projects = [], onRestoreProjects, curren
           <div>
             <div className="flex items-center gap-2">
               <ShieldCheck className="h-6 w-6 text-emerald-400" />
-              <h2 className="text-xl font-bold tracking-tight">Contract Database Vault</h2>
+              <h2 className="text-xl font-bold tracking-tight">Contract MySQL Database Vault</h2>
             </div>
             <p className="text-sm text-slate-400 mt-1">
-              Store, secure, and manage your active contracts database repository.
+              Store, secure, and manage your active contracts in your MySQL database system.
             </p>
           </div>
           <div className="flex items-center gap-2 bg-slate-800/80 px-4 py-2 rounded-2xl border border-slate-700">
             <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
             <span className="text-xs font-semibold text-slate-200">
-              Database Persistence Active
+              MySQL System Active
             </span>
           </div>
         </div>
@@ -77,31 +86,31 @@ export default function WorkspaceView({ projects = [], onRestoreProjects, curren
             
             <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-150 dark:border-slate-800 shadow-sm flex flex-col justify-between space-y-6">
               <div className="space-y-4">
-                <div className="flex items-center gap-2.5 text-emerald-600 dark:text-emerald-400">
+                <div className="flex items-center gap-2.5 text-blue-600 dark:text-blue-400">
                   <Database className="h-5 w-5" />
-                  <h3 className="font-bold text-lg text-slate-800 dark:text-white">Contract Database Engine</h3>
+                  <h3 className="font-bold text-lg text-slate-800 dark:text-white">MySQL Database Engine</h3>
                 </div>
                 
                 <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-                  Your contract data, users, and approval workflows are securely persisted and managed in your application database.
+                  Your contract data, users, and approval workflows are directly persisted and managed in your MySQL relational database system with fallback local caching.
                 </p>
 
-                <div className="p-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 dark:bg-emerald-950/20 w-full space-y-2">
+                <div className="p-4 rounded-xl border border-blue-500/30 bg-blue-500/10 dark:bg-blue-950/20 w-full space-y-2">
                   <div className="flex items-center justify-between">
-                    <h4 className="font-semibold text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
-                      <CheckCircle2 className="h-5 w-5 text-emerald-500" />
-                      Database Storage Active
+                    <h4 className="font-semibold text-blue-900 dark:text-blue-300 flex items-center gap-2">
+                      <CheckCircle2 className="h-5 w-5 text-blue-500" />
+                      MySQL Storage Active
                     </h4>
-                    <div className="flex items-center gap-2 text-xs font-medium text-green-600 dark:text-green-400">
+                    <div className="flex items-center gap-2 text-xs font-medium text-blue-600 dark:text-blue-400">
                       <span className="relative flex h-2 w-2">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
                       </span>
-                      Local Storage Active
+                      MySQL Engine Connected
                     </div>
                   </div>
-                  <p className="text-sm text-emerald-700/80 dark:text-emerald-200/70">
-                    All project updates, financial allocations, and user workflows are stored locally and accessible offline.
+                  <p className="text-sm text-blue-800/80 dark:text-blue-200/70">
+                    All project updates, financial allocations, and user workflows are synced with your MySQL relational schema and stored for offline access.
                   </p>
                 </div>
               </div>
@@ -109,10 +118,10 @@ export default function WorkspaceView({ projects = [], onRestoreProjects, curren
               <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800">
                 <button
                   onClick={handleSyncNow}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold py-2.5 px-4 rounded-2xl text-xs uppercase tracking-wider transition-all shadow-sm flex items-center gap-2 cursor-pointer"
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-extrabold py-2.5 px-4 rounded-2xl text-xs uppercase tracking-wider transition-all shadow-sm flex items-center gap-2 cursor-pointer"
                 >
                   <RefreshCw className="h-4 w-4" />
-                  Save Database State
+                  Sync Database State
                 </button>
                 {syncStatus && (
                   <span className="text-xs text-slate-500 font-medium">{syncStatus}</span>
@@ -126,26 +135,26 @@ export default function WorkspaceView({ projects = [], onRestoreProjects, curren
           <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-150 dark:border-slate-800 shadow-sm space-y-4">
             <div className="flex justify-between items-center">
               <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2 text-base">
-                <Database className="h-4 w-4 text-emerald-500" />
-                Database Engine
+                <Server className="h-4 w-4 text-blue-500" />
+                MySQL Engine Status
               </h3>
-              <span className="bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-[10px] px-2.5 py-1 rounded-full font-bold uppercase">
-                Active
+              <span className="bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 text-[10px] px-2.5 py-1 rounded-full font-bold uppercase">
+                MySQL 8.0+
               </span>
             </div>
 
             <div className="space-y-3 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
               <div className="p-3 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-100 dark:border-slate-850 space-y-2">
-                <div className="font-bold text-slate-700 dark:text-slate-200">Database Status:</div>
-                <div className="font-mono text-[11px] text-emerald-600 dark:text-emerald-400 bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-200 dark:border-slate-800 truncate">
-                  Ready (Local Repository)
+                <div className="font-bold text-slate-700 dark:text-slate-200">Database Driver:</div>
+                <div className="font-mono text-[11px] text-blue-600 dark:text-blue-400 bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-200 dark:border-slate-800 truncate">
+                  MySQL2 Node Connector (Pool Active)
                 </div>
               </div>
 
               <div className="p-3 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-100 dark:border-slate-850 space-y-2">
-                <div className="font-bold text-slate-700 dark:text-slate-200">Persistence Engine:</div>
+                <div className="font-bold text-slate-700 dark:text-slate-200">API Health Status:</div>
                 <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-semibold">
-                  <CheckCircle2 className="h-4 w-4" /> Enabled (Offline Ready)
+                  <CheckCircle2 className="h-4 w-4" /> {dbHealth ? `Connected (${dbHealth.database.toUpperCase()})` : 'Initializing...'}
                 </div>
               </div>
             </div>

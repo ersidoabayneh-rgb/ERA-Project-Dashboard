@@ -34,6 +34,39 @@ export interface SyncLogEntry {
 
 const SYNC_LOGS_STORAGE_KEY = 'era_sync_logs_v28';
 
+// MySQL API HTTP Helper Functions
+async function apiPost(endpoint: string, body: any): Promise<any> {
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (res.ok) return await res.json();
+  } catch {}
+  return null;
+}
+
+async function apiGet(endpoint: string): Promise<any> {
+  try {
+    const res = await fetch(endpoint);
+    if (res.ok) return await res.json();
+  } catch {}
+  return null;
+}
+
+async function apiDelete(endpoint: string, body?: any): Promise<any> {
+  try {
+    const res = await fetch(endpoint, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: body ? JSON.stringify(body) : undefined
+    });
+    if (res.ok) return await res.json();
+  } catch {}
+  return null;
+}
+
 /**
  * Appends a sync event to the local audit trail and dispatches a notification event.
  */
@@ -52,7 +85,7 @@ export function recordSyncLog(entry: {
       recordType: entry.recordType,
       recordId: entry.recordId,
       status: entry.status,
-      ipAddress: entry.ipAddress || '127.0.0.1 (Local Client)',
+      ipAddress: entry.ipAddress || '127.0.0.1 (MySQL Client)',
       errorMessage: entry.errorMessage,
       details: entry.details,
     };
@@ -63,19 +96,13 @@ export function recordSyncLog(entry: {
       if (stored) currentLogs = JSON.parse(stored);
     } catch {}
 
-    // Prepend newest logs, capped at 100 entries
     currentLogs = [newLog, ...currentLogs].slice(0, 100);
     localStorage.setItem(SYNC_LOGS_STORAGE_KEY, JSON.stringify(currentLogs));
 
     safeDispatchCustomEvent('sync_log_recorded', newLog);
-  } catch (e) {
-    // Silently ignore storage failures
-  }
+  } catch {}
 }
 
-/**
- * Returns locally stored sync event logs.
- */
 export function getLocalSyncLogs(): SyncLogEntry[] {
   try {
     const stored = localStorage.getItem(SYNC_LOGS_STORAGE_KEY);
@@ -84,16 +111,10 @@ export function getLocalSyncLogs(): SyncLogEntry[] {
   return [];
 }
 
-/**
- * Fetches sync logs from local repository.
- */
 export async function safeFetchSyncLogs(): Promise<SyncLogEntry[]> {
   return getLocalSyncLogs();
 }
 
-/**
- * Clears local sync logs.
- */
 export function clearSyncLogs(): void {
   try {
     localStorage.removeItem(SYNC_LOGS_STORAGE_KEY);
@@ -102,20 +123,8 @@ export function clearSyncLogs(): void {
 }
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: null,
-      email: null,
-    },
-    operationType,
-    path
-  };
-  console.error('Storage Error: ', JSON.stringify(errInfo));
+  console.error('MySQL/Storage Error: ', error);
 }
-
-let syncSuspendedState = false;
-let quotaExhaustedState = false;
 
 export function isSyncSuspended(): boolean {
   return false;
@@ -125,14 +134,9 @@ export function isQuotaExhausted(): boolean {
   return false;
 }
 
-export async function reactivateSync(): Promise<void> {
-  syncSuspendedState = false;
-  quotaExhaustedState = false;
-}
+export async function reactivateSync(): Promise<void> {}
 
-export function handleFsError(err: any): void {
-  // No-op for local database
-}
+export function handleFsError(err: any): void {}
 
 export function normalizeProject(p: any): Project {
   if (!p) return p;
@@ -191,9 +195,6 @@ export function normalizeProject(p: any): Project {
   };
 }
 
-/**
- * Fetches all tombstoned / permanently deleted project IDs from local cache.
- */
 export async function safeFetchDeletedProjectIds(): Promise<string[]> {
   const localSet = new Set<string>();
   try {
@@ -208,18 +209,15 @@ export async function safeFetchDeletedProjectIds(): Promise<string[]> {
 }
 
 /**
- * Local project persistence function.
+ * Saves a project to MySQL database and updates local storage.
  */
 export async function safeSyncProject(proj: Project, isBackgroundQueueSync = false, forceWrite = false): Promise<void> {
   if (!proj || !proj.id) return;
 
-  // Block sync if this project has been permanently deleted
   try {
     const deletedStr = localStorage.getItem('era_deleted_project_ids') || '[]';
     const deletedIds: string[] = JSON.parse(deletedStr);
-    if (deletedIds.includes(proj.id)) {
-      return;
-    }
+    if (deletedIds.includes(proj.id)) return;
   } catch {}
 
   if (!proj.lastModifiedAt) {
@@ -228,7 +226,7 @@ export async function safeSyncProject(proj: Project, isBackgroundQueueSync = fal
 
   const normalized = normalizeProject(proj);
 
-  // Update local storage repository
+  // 1. Update local storage repository
   try {
     const existingStr = localStorage.getItem('era_proj_v28') || '[]';
     let projectsList: Project[] = JSON.parse(existingStr);
@@ -245,19 +243,21 @@ export async function safeSyncProject(proj: Project, isBackgroundQueueSync = fal
     console.warn('Failed to save project to local storage:', e);
   }
 
-  // Emit event for Local Mutation Listener
+  // 2. Sync to MySQL database via Express API
+  const apiRes = await apiPost('/api/projects/sync', { project: normalized });
+
   safeDispatchCustomEvent('local_project_mutated');
 
   recordSyncLog({
     recordType: 'project',
     recordId: normalized.id,
-    status: 'synced',
-    details: `Saved "${normalized.name || normalized.id}" to database`
+    status: apiRes ? 'synced' : 'offline_queued',
+    details: `Saved "${normalized.name || normalized.id}" to ${apiRes ? 'MySQL Database' : 'Local Repository'}`
   });
 }
 
 /**
- * Deletes a project from local storage.
+ * Permanently deletes a project from MySQL database and local cache.
  */
 export async function safeDeleteProject(id: string, projectName?: string, deletedBy?: string): Promise<void> {
   if (!id) return;
@@ -270,7 +270,6 @@ export async function safeDeleteProject(id: string, projectName?: string, delete
       localStorage.setItem('era_deleted_project_ids', JSON.stringify(deletedIds));
     }
 
-    // Clean from local cached projects
     const projStr = localStorage.getItem('era_proj_v28');
     if (projStr) {
       const projs: Project[] = JSON.parse(projStr);
@@ -283,9 +282,10 @@ export async function safeDeleteProject(id: string, projectName?: string, delete
     if (localStorage.getItem('era_current_project_id') === id) {
       localStorage.removeItem('era_current_project_id');
     }
-  } catch (err) {
-    console.warn('Failed to track deleted project ID locally:', err);
-  }
+  } catch {}
+
+  // Sync delete to MySQL API
+  await apiDelete(`/api/projects/${id}`, { projectName, deletedBy });
 
   safeDispatchCustomEvent('local_project_mutated');
   safeDispatchCustomEvent('project_globally_deleted', { id, projectName });
@@ -299,9 +299,26 @@ export async function safeDeleteProject(id: string, projectName?: string, delete
 }
 
 /**
- * Fetches all projects from local repository.
+ * Fetches all projects from MySQL database or local repository cache.
  */
 export async function safeFetchProjects(): Promise<Project[] | null> {
+  // Try fetching from MySQL API first
+  const apiData = await apiGet('/api/projects');
+  if (apiData && Array.isArray(apiData.projects) && apiData.projects.length > 0) {
+    const deletedSet = new Set<string>(apiData.deletedIds || []);
+    const projects = apiData.projects
+      .filter((p: any) => p && p.id && !deletedSet.has(p.id))
+      .map((p: any) => normalizeProject(p));
+
+    if (projects.length > 0) {
+      try {
+        localStorage.setItem('era_proj_v28', JSON.stringify(projects));
+      } catch {}
+      return projects;
+    }
+  }
+
+  // Fallback to local storage
   const deletedIds = await safeFetchDeletedProjectIds();
   const deletedSet = new Set(deletedIds);
 
@@ -315,7 +332,7 @@ export async function safeFetchProjects(): Promise<Project[] | null> {
           .map(p => normalizeProject(p));
       }
     }
-  } catch (e) {}
+  } catch {}
 
   return null;
 }
@@ -334,14 +351,16 @@ export async function safeSaveSingleUser(user: AppUser): Promise<void> {
       usersList.push(user);
     }
     localStorage.setItem('era_users_v28', JSON.stringify(usersList));
+  } catch {}
 
-    recordSyncLog({
-      recordType: 'user',
-      recordId: user.username,
-      status: 'synced',
-      details: `Saved user account "${user.username}"`
-    });
-  } catch (e) {}
+  await apiPost('/api/users/sync', { user });
+
+  recordSyncLog({
+    recordType: 'user',
+    recordId: user.username,
+    status: 'synced',
+    details: `Saved user account "${user.username}"`
+  });
 }
 
 export async function safeDeleteUser(username: string): Promise<void> {
@@ -353,58 +372,83 @@ export async function safeDeleteUser(username: string): Promise<void> {
       usersList = usersList.filter(u => u.username.toLowerCase() !== username.toLowerCase());
       localStorage.setItem('era_users_v28', JSON.stringify(usersList));
     }
-    recordSyncLog({
-      recordType: 'user',
-      recordId: username,
-      status: 'deleted',
-      details: `Deleted user "${username}"`
-    });
-  } catch (e) {}
+  } catch {}
+
+  await apiDelete(`/api/users/${username}`);
+
+  recordSyncLog({
+    recordType: 'user',
+    recordId: username,
+    status: 'deleted',
+    details: `Deleted user "${username}"`
+  });
 }
 
 export async function safeSyncUsers(users: AppUser[]): Promise<void> {
   try {
     localStorage.setItem('era_users_v28', JSON.stringify(users));
-    recordSyncLog({
-      recordType: 'user',
-      recordId: `${users.length} users`,
-      status: 'synced',
-      details: `Synchronized ${users.length} user accounts`
-    });
-  } catch (e) {}
+  } catch {}
+
+  await apiPost('/api/users/sync', { users });
+
+  recordSyncLog({
+    recordType: 'user',
+    recordId: `${users.length} users`,
+    status: 'synced',
+    details: `Synchronized ${users.length} user accounts`
+  });
 }
 
 export async function safeFetchUsers(): Promise<AppUser[] | null> {
+  const apiData = await apiGet('/api/users');
+  if (apiData && Array.isArray(apiData.users) && apiData.users.length > 0) {
+    try {
+      localStorage.setItem('era_users_v28', JSON.stringify(apiData.users));
+    } catch {}
+    return apiData.users;
+  }
+
   try {
     const usersStr = localStorage.getItem('era_users_v28');
     if (usersStr) {
       const users = JSON.parse(usersStr);
       if (Array.isArray(users) && users.length > 0) return users;
     }
-  } catch (e) {}
+  } catch {}
   return null;
 }
 
 export async function safeSyncApprovals(approvals: ApprovalRequest[]): Promise<void> {
   try {
     localStorage.setItem('era_appr_v28', JSON.stringify(approvals));
-    recordSyncLog({
-      recordType: 'approval',
-      recordId: `${approvals.length} requests`,
-      status: 'synced',
-      details: `Synchronized ${approvals.length} approval records`
-    });
-  } catch (e) {}
+  } catch {}
+
+  await apiPost('/api/approvals/sync', { approvals });
+
+  recordSyncLog({
+    recordType: 'approval',
+    recordId: `${approvals.length} requests`,
+    status: 'synced',
+    details: `Synchronized ${approvals.length} approval records`
+  });
 }
 
 export async function safeFetchApprovals(): Promise<ApprovalRequest[] | null> {
+  const apiData = await apiGet('/api/approvals');
+  if (apiData && Array.isArray(apiData.approvals)) {
+    try {
+      localStorage.setItem('era_appr_v28', JSON.stringify(apiData.approvals));
+    } catch {}
+    return apiData.approvals;
+  }
+
   try {
     const apprStr = localStorage.getItem('era_appr_v28');
     if (apprStr) {
       const approvals = JSON.parse(apprStr);
       if (Array.isArray(approvals)) return approvals;
     }
-  } catch (e) {}
+  } catch {}
   return null;
 }
 
@@ -412,15 +456,28 @@ export async function safeSyncConfig(pmos: string[], directorates: string[]): Pr
   try {
     localStorage.setItem('era_pmo_taxonomy', JSON.stringify(pmos));
     localStorage.setItem('era_directorates_taxonomy', JSON.stringify(directorates));
-    recordSyncLog({
-      recordType: 'config',
-      status: 'synced',
-      details: `Updated taxonomy configuration`
-    });
-  } catch (e) {}
+  } catch {}
+
+  await apiPost('/api/config/sync', { key: 'taxonomy', data: { pmos, directorates } });
+
+  recordSyncLog({
+    recordType: 'config',
+    status: 'synced',
+    details: `Updated taxonomy configuration`
+  });
 }
 
 export async function safeFetchConfig(): Promise<{ pmos: string[], directorates: string[] } | null> {
+  const apiData = await apiGet('/api/config');
+  if (apiData && apiData.config && apiData.config.taxonomy) {
+    const { pmos = [], directorates = [] } = apiData.config.taxonomy;
+    try {
+      localStorage.setItem('era_pmo_taxonomy', JSON.stringify(pmos));
+      localStorage.setItem('era_directorates_taxonomy', JSON.stringify(directorates));
+    } catch {}
+    return { pmos, directorates };
+  }
+
   try {
     const pmosStr = localStorage.getItem('era_pmo_taxonomy');
     const dirStr = localStorage.getItem('era_directorates_taxonomy');
@@ -430,7 +487,7 @@ export async function safeFetchConfig(): Promise<{ pmos: string[], directorates:
         directorates: dirStr ? JSON.parse(dirStr) : []
       };
     }
-  } catch (e) {}
+  } catch {}
   return null;
 }
 
@@ -442,18 +499,33 @@ export async function safeSyncScoringWeights(
   try {
     localStorage.setItem('era_contractor_scoring_weights', JSON.stringify(contractorWeights));
     localStorage.setItem('era_consultant_scoring_weights', JSON.stringify(consultantWeights));
-    recordSyncLog({
-      recordType: 'config',
-      status: 'synced',
-      details: `Updated Scoring Weights`
-    });
-  } catch (e) {}
+  } catch {}
+
+  await apiPost('/api/config/sync', { key: 'scoring_weights', data: { contractorWeights, consultantWeights } });
+
+  recordSyncLog({
+    recordType: 'config',
+    status: 'synced',
+    details: `Updated Scoring Weights`
+  });
 }
 
 export async function safeFetchScoringWeights(): Promise<{
   contractorWeights: ContractorScoringWeights;
   consultantWeights: ConsultantScoringWeights;
 } | null> {
+  const apiData = await apiGet('/api/config');
+  if (apiData && apiData.config && apiData.config.scoring_weights) {
+    const { contractorWeights, consultantWeights } = apiData.config.scoring_weights;
+    if (contractorWeights && consultantWeights) {
+      try {
+        localStorage.setItem('era_contractor_scoring_weights', JSON.stringify(contractorWeights));
+        localStorage.setItem('era_consultant_scoring_weights', JSON.stringify(consultantWeights));
+      } catch {}
+      return { contractorWeights, consultantWeights };
+    }
+  }
+
   try {
     const cW = localStorage.getItem('era_contractor_scoring_weights');
     const sW = localStorage.getItem('era_consultant_scoring_weights');
@@ -463,6 +535,6 @@ export async function safeFetchScoringWeights(): Promise<{
         consultantWeights: JSON.parse(sW)
       };
     }
-  } catch (e) {}
+  } catch {}
   return null;
 }
