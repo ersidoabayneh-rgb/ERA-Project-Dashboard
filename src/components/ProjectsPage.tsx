@@ -688,6 +688,16 @@ export default function ProjectsPage({
               User Manual
             </button>
 
+            <a
+              href="/download-single-html"
+              download="index.html"
+              title="Download complete standalone self-contained single index.html file"
+              className="flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Single HTML
+            </a>
+
             <button 
               onClick={onLogout}
               className="flex items-center gap-1 bg-rose-50 text-rose-700 hover:bg-rose-100 dark:bg-rose-950/20 dark:text-rose-400 dark:hover:bg-rose-900/30 px-3 py-1.5 rounded-xl text-xs font-semibold transition"

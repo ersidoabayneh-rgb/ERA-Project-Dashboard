@@ -338,6 +338,17 @@ async function startServer() {
     }
   });
 
+  // Serve the single-file self-contained HTML bundle
+  app.get('/download-single-html', (req, res) => {
+    const filePath = path.join(process.cwd(), 'standalone.html');
+    res.download(filePath, 'index.html');
+  });
+
+  app.get('/standalone.html', (req, res) => {
+    const filePath = path.join(process.cwd(), 'standalone.html');
+    res.sendFile(filePath);
+  });
+
   // Vite middleware for development vs static serve for production
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
