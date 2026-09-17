@@ -1621,34 +1621,65 @@ let isBatchSyncRunning = false;
     let wsSocket: WebSocket | null = null;
     let wsReconnectTimeout: any = null;
 
-    const handleRealtimePayload = (payload: any) => {
-      if (payload.type === 'users_update' && Array.isArray(payload.data)) {
-        mergeAndApplyUsers(payload.data);
-      } else if (payload.type === 'approvals_update' && Array.isArray(payload.data)) {
-        setPendingApprovals(payload.data);
-        safeSetItem('era_appr_v28', JSON.stringify(payload.data));
-      } else if (payload.type === 'project_update' && payload.data) {
-        const incoming = syncProjectPayment(payload.data);
-        setProjects(prev => {
-          const idx = prev.findIndex(p => p.id === incoming.id);
-          let updated;
-          if (idx === -1) updated = [...prev, incoming];
-          else {
-            updated = [...prev];
-            updated[idx] = incoming;
+    const handleRealtimePayload = (message: any) => {
+      if (!message || typeof message !== 'object') return;
+      const typeStr = (message.type || '').toUpperCase();
+      const rawData = message.payload !== undefined ? message.payload : message.data;
+
+      if (typeStr === 'PING' || typeStr === 'PRESENCE_UPDATE' || typeStr === 'CONNECTED') return;
+
+      if (typeStr === 'USERS_UPDATED' || typeStr === 'USERS_UPDATE') {
+        if (Array.isArray(rawData)) {
+          mergeAndApplyUsers(rawData);
+        } else if (rawData && typeof rawData === 'object' && rawData.deletedUsername) {
+          setUsersListState(prev => prev.filter(u => u.username.toLowerCase() !== rawData.deletedUsername.toLowerCase()));
+        }
+      } else if (typeStr === 'APPROVALS_UPDATED' || typeStr === 'APPROVALS_UPDATE') {
+        if (Array.isArray(rawData)) {
+          setPendingApprovals(rawData);
+          safeSetItem('era_appr_v28', JSON.stringify(rawData));
+        }
+      } else if (typeStr === 'PROJECT_UPDATED' || typeStr === 'PROJECT_UPDATE') {
+        if (rawData && rawData.id) {
+          const incoming = syncProjectPayment(rawData);
+          setProjects(prev => {
+            const idx = prev.findIndex(p => p.id === incoming.id);
+            let updated;
+            if (idx === -1) updated = [...prev, incoming];
+            else {
+              updated = [...prev];
+              updated[idx] = incoming;
+            }
+            safeSetItem('era_proj_v28', JSON.stringify(updated));
+            return updated;
+          });
+
+          // Instantly re-render currently viewed project across all devices
+          setCurrentProject(prevProj => {
+            if (prevProj && prevProj.id === incoming.id) {
+              return incoming;
+            }
+            return prevProj;
+          });
+        }
+      } else if (typeStr === 'PROJECT_DELETED' || typeStr === 'PROJECT_DELETE') {
+        const deletedId = rawData?.id || (typeof rawData === 'string' ? rawData : null);
+        if (deletedId) {
+          applyGlobalProjectDeletions([deletedId]);
+        }
+      } else if (typeStr === 'CONFIG_UPDATED' || typeStr === 'CONFIG_UPDATE') {
+        if (rawData) {
+          if (rawData.pmos) setPmos(rawData.pmos);
+          if (rawData.directorates) setProgramDirectorates(rawData.directorates);
+          if (rawData.contractorWeights && rawData.consultantWeights) {
+            setContractorWeights(rawData.contractorWeights);
+            setConsultantWeights(rawData.consultantWeights);
           }
-          safeSetItem('era_proj_v28', JSON.stringify(updated));
-          return updated;
-        });
-      } else if (payload.type === 'project_delete' && payload.data?.id) {
-        setProjects(prev => {
-          const updated = prev.filter(p => p.id !== payload.data.id);
-          safeSetItem('era_proj_v28', JSON.stringify(updated));
-          return updated;
-        });
-      } else if (payload.type === 'config_update' && payload.data) {
-        if (payload.data.pmos) setPmos(payload.data.pmos);
-        if (payload.data.directorates) setProgramDirectorates(payload.data.directorates);
+          if (rawData.taxonomy) {
+            if (rawData.taxonomy.pmos) setPmos(rawData.taxonomy.pmos);
+            if (rawData.taxonomy.directorates) setProgramDirectorates(rawData.taxonomy.directorates);
+          }
+        }
       }
     };
 
@@ -1904,6 +1935,46 @@ let isBatchSyncRunning = false;
     window.addEventListener('new_user_registered', handleNewUserRegisteredEvent);
     window.addEventListener('user_requested_signin_approval', handleNewUserRegisteredEvent);
 
+    const handleFocusOrOnline = async () => {
+      if (navigator.onLine) {
+        try {
+          const cloudProjs = await safeFetchProjects();
+          if (cloudProjs && cloudProjs.length > 0) {
+            setProjects(prev => {
+              const map = new Map<string, Project>();
+              prev.forEach(p => map.set(p.id, p));
+              cloudProjs.forEach(p => map.set(p.id, p));
+              const merged = Array.from(map.values());
+              safeSetItem('era_proj_v28', JSON.stringify(merged));
+              return merged;
+            });
+            setCurrentProject(prevProj => {
+              if (prevProj && prevProj.id) {
+                const fresh = cloudProjs.find(p => p.id === prevProj.id);
+                if (fresh) return fresh;
+              }
+              return prevProj;
+            });
+          }
+          const cloudUsers = await safeFetchUsers();
+          if (cloudUsers && cloudUsers.length > 0) {
+            mergeAndApplyUsers(cloudUsers);
+          }
+          const cloudApprs = await safeFetchApprovals();
+          if (cloudApprs && Array.isArray(cloudApprs)) {
+            setPendingApprovals(cloudApprs);
+            safeSetItem('era_appr_v28', JSON.stringify(cloudApprs));
+          }
+        } catch (e) {}
+      }
+    };
+
+    window.addEventListener('focus', handleFocusOrOnline);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') handleFocusOrOnline();
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     const handleRealtimeLocalMutated = () => {
       reloadLocalState();
     };
@@ -1930,6 +2001,8 @@ let isBatchSyncRunning = false;
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('focus', handleFocusOrOnline);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('sync_log_recorded', handleSyncLogRecorded);
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('project_globally_deleted', handleProjectGloballyDeleted);

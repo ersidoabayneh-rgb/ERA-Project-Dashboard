@@ -11,8 +11,9 @@ async function startServer() {
   const server = http.createServer(app);
   const wss = new WebSocketServer({ server });
 
-  // Track active real-time WebSocket clients
+  // Track active real-time WebSocket clients and SSE response streams
   const connectedClients = new Set<WebSocket>();
+  const sseClients = new Set<express.Response>();
 
   wss.on('connection', (ws) => {
     connectedClients.add(ws);
@@ -23,6 +24,23 @@ async function startServer() {
         const parsed = JSON.parse(message.toString());
         if (parsed.type === 'JOIN') {
           broadcastPresence();
+        } else if (parsed.type && (parsed.payload || parsed.data)) {
+          // Relay real-time client mutations to all other connected devices
+          const relayMsg = JSON.stringify({
+            ...parsed,
+            payload: parsed.payload || parsed.data,
+            data: parsed.data || parsed.payload,
+            timestamp: new Date().toISOString()
+          });
+          for (const client of connectedClients) {
+            if (client !== ws && client.readyState === WebSocket.OPEN) {
+              try { client.send(relayMsg); } catch (e) {}
+            }
+          }
+          const sseMsg = `data: ${relayMsg}\n\n`;
+          for (const sseRes of sseClients) {
+            try { sseRes.write(sseMsg); } catch (e) { sseClients.delete(sseRes); }
+          }
         }
       } catch (e) {}
     });
@@ -38,30 +56,87 @@ async function startServer() {
   });
 
   function broadcastPresence() {
-    const payload = JSON.stringify({
+    const payload = { activeUsers: connectedClients.size + sseClients.size };
+    const rawData = JSON.stringify({
       type: 'PRESENCE_UPDATE',
-      payload: { activeUsers: connectedClients.size },
+      payload,
+      data: payload,
       timestamp: new Date().toISOString()
     });
     for (const client of connectedClients) {
       if (client.readyState === WebSocket.OPEN) {
-        client.send(payload);
+        try { client.send(rawData); } catch (e) {}
       }
+    }
+    const sseMsg = `data: ${rawData}\n\n`;
+    for (const sseRes of sseClients) {
+      try { sseRes.write(sseMsg); } catch (e) { sseClients.delete(sseRes); }
     }
   }
 
   function broadcastRealtime(type: string, payload: any) {
-    const message = JSON.stringify({ type, payload, timestamp: new Date().toISOString() });
+    const rawObj = {
+      type,
+      payload,
+      data: payload,
+      timestamp: new Date().toISOString()
+    };
+    const wsMessage = JSON.stringify(rawObj);
+    const sseMessage = `data: ${wsMessage}\n\n`;
+
+    // 1. Send via WebSocket connections
     for (const client of connectedClients) {
       if (client.readyState === WebSocket.OPEN) {
-        client.send(message);
+        try { client.send(wsMessage); } catch (e) {}
       }
     }
+
+    // 2. Send via SSE event streams
+    for (const sseRes of sseClients) {
+      try { sseRes.write(sseMessage); } catch (e) { sseClients.delete(sseRes); }
+    }
   }
+
+  // Periodic heartbeat every 15 seconds to keep WebSocket and SSE stream connections active across proxies/Cloud Run
+  setInterval(() => {
+    const pingObj = { type: 'PING', timestamp: new Date().toISOString() };
+    const wsPing = JSON.stringify(pingObj);
+    for (const client of connectedClients) {
+      if (client.readyState === WebSocket.OPEN) {
+        try { client.send(wsPing); } catch (e) {}
+      }
+    }
+    const ssePing = `data: ${wsPing}\n\n`;
+    for (const sseRes of sseClients) {
+      try { sseRes.write(ssePing); } catch (e) { sseClients.delete(sseRes); }
+    }
+  }, 15000);
 
   // Middleware for parsing JSON payloads
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+  // SSE (Server-Sent Events) real-time event stream fallback endpoint
+  app.get('/api/events', (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    if (typeof (res as any).flushHeaders === 'function') {
+      (res as any).flushHeaders();
+    }
+
+    const initialConnectedMsg = JSON.stringify({ type: 'CONNECTED', activeUsers: connectedClients.size + sseClients.size + 1, timestamp: new Date().toISOString() });
+    res.write(`data: ${initialConnectedMsg}\n\n`);
+
+    sseClients.add(res);
+    broadcastPresence();
+
+    req.on('close', () => {
+      sseClients.delete(res);
+      broadcastPresence();
+    });
+  });
 
   // Initialize MySQL database schema
   await initMySQLTables().catch(() => false);
