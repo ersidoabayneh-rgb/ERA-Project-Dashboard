@@ -33,6 +33,12 @@ async function startServer() {
 
   wss.on('connection', (ws) => {
     connectedClients.add(ws);
+    (ws as any).isAlive = true;
+
+    ws.on('pong', () => {
+      (ws as any).isAlive = true;
+    });
+
     broadcastPresence();
 
     ws.on('message', (message) => {
@@ -40,6 +46,8 @@ async function startServer() {
         const parsed = JSON.parse(message.toString());
         if (parsed.type === 'JOIN') {
           broadcastPresence();
+        } else if (parsed.type === 'PONG') {
+          (ws as any).isAlive = true;
         } else if (parsed.type && (parsed.payload || parsed.data)) {
           // Relay real-time client mutations to all other connected devices
           const relayMsg = JSON.stringify({
@@ -113,8 +121,18 @@ async function startServer() {
     }
   }
 
-  // Periodic heartbeat every 15 seconds to keep WebSocket and SSE stream connections active across proxies/Cloud Run
+  // Periodic heartbeat every 15 seconds with dead connection pruning
   setInterval(() => {
+    wss.clients.forEach((ws) => {
+      const extWs = ws as any;
+      if (extWs.isAlive === false) {
+        connectedClients.delete(ws);
+        return ws.terminate();
+      }
+      extWs.isAlive = false;
+      try { ws.ping(); } catch (e) {}
+    });
+
     const pingObj = { type: 'PING', timestamp: new Date().toISOString() };
     const wsPing = JSON.stringify(pingObj);
     for (const client of connectedClients) {

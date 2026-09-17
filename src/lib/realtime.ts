@@ -35,7 +35,8 @@ class RealtimeClientManager {
   private listeners: Set<RealtimeListener> = new Set();
   private statusListeners: Set<(status: RealtimeSyncStatus) => void> = new Set();
   private isConnecting = false;
-  private reconnectInterval = 2500;
+  private reconnectInterval = 2000;
+  private maxReconnectInterval = 25000;
   private connectedUsersCount = 1;
   private activeMode: 'websocket' | 'sse' | 'polling' = 'polling';
   private connectionStatus: 'connected' | 'reconnecting' | 'offline' = 'reconnecting';
@@ -44,7 +45,7 @@ class RealtimeClientManager {
   private serverHost = 'eradashboard.com.et';
   private serverProvider = 'Ethio Telecom (eradashboard.com.et)';
   private pollingTimer: any = null;
-  private heartbeatTimer: any = null;
+  private watchdogTimer: any = null;
   private lastMessageReceivedAt = Date.now();
 
   constructor() {
@@ -63,7 +64,10 @@ class RealtimeClientManager {
     // 3. Start high-reliability synchronization polling daemon (detects out-of-sync events across networks)
     this.startSyncPollingDaemon();
 
-    // 4. Handle tab visibility and network online transitions
+    // 4. Start client-side WebSocket watchdog (detects silent half-open TCP connections or proxy drops)
+    this.startWatchdog();
+
+    // 5. Handle tab visibility and network online transitions
     window.addEventListener('online', () => {
       this.connectionStatus = 'reconnecting';
       this.notifyStatusChanged();
@@ -80,12 +84,31 @@ class RealtimeClientManager {
       if (document.visibilityState === 'visible') {
         // Tab brought to foreground - instantly verify synchronization
         this.forceSyncNow();
+        if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
+          this.connectWebSocket();
+        }
       }
     });
 
     window.addEventListener('focus', () => {
       this.forceSyncNow();
     });
+  }
+
+  private startWatchdog(): void {
+    if (this.watchdogTimer) clearInterval(this.watchdogTimer);
+    this.watchdogTimer = setInterval(() => {
+      const silenceDuration = Date.now() - this.lastMessageReceivedAt;
+      // If no message or ping received for 35 seconds, connection is considered dead/stale
+      if (silenceDuration > 35000) {
+        console.warn('⚠️ [Real-time WS] Watchdog detected connection silence. Force-reconnecting WebSocket...');
+        if (this.socket) {
+          try { this.socket.close(); } catch (e) {}
+          this.socket = null;
+        }
+        this.connectWebSocket();
+      }
+    }, 10000);
   }
 
   public connectWebSocket(): void {
@@ -105,7 +128,8 @@ class RealtimeClientManager {
         this.activeMode = 'websocket';
         this.connectionStatus = 'connected';
         this.lastMessageReceivedAt = Date.now();
-        console.log('⚡ [Real-time WS] Connected to Central Real-time Synchronization Server');
+        this.reconnectInterval = 2000; // Reset backoff on success
+        console.log('⚡ [Real-time WS] Connected securely to Central Synchronization Server');
         
         this.send('JOIN', { clientTime: new Date().toISOString() });
         this.notifyStatusChanged();
@@ -126,18 +150,21 @@ class RealtimeClientManager {
           this.connectionStatus = 'reconnecting';
           this.notifyStatusChanged();
         }
-        setTimeout(() => this.connectWebSocket(), this.reconnectInterval);
+        const jitter = Math.random() * 1000;
+        const delay = Math.min(this.maxReconnectInterval, this.reconnectInterval + jitter);
+        this.reconnectInterval = Math.min(this.maxReconnectInterval, this.reconnectInterval * 1.5);
+        setTimeout(() => this.connectWebSocket(), delay);
       };
 
       this.socket.onerror = () => {
-        // Fall back gracefully to SSE
         if (this.activeMode === 'websocket') {
           this.activeMode = this.sseSource && this.sseSource.readyState === EventSource.OPEN ? 'sse' : 'polling';
           this.notifyStatusChanged();
         }
       };
     } catch (err) {
-      setTimeout(() => this.connectWebSocket(), this.reconnectInterval);
+      const delay = Math.min(this.maxReconnectInterval, this.reconnectInterval * 1.5);
+      setTimeout(() => this.connectWebSocket(), delay);
     }
   }
 
@@ -269,6 +296,7 @@ class RealtimeClientManager {
     const rawData = msg.payload !== undefined ? msg.payload : msg.data;
 
     if (typeStr === 'PING') {
+      this.send('PONG', { time: new Date().toISOString() });
       return;
     }
 
