@@ -1,18 +1,70 @@
 import express from 'express';
+import http from 'http';
 import path from 'path';
+import { WebSocketServer, WebSocket } from 'ws';
 import { createServer as createViteServer } from 'vite';
 import { getMySQLPool, initMySQLTables, testMySQLConnection } from './src/lib/mysql.js';
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
+  const server = http.createServer(app);
+  const wss = new WebSocketServer({ server });
+
+  // Track active real-time WebSocket clients
+  const connectedClients = new Set<WebSocket>();
+
+  wss.on('connection', (ws) => {
+    connectedClients.add(ws);
+    broadcastPresence();
+
+    ws.on('message', (message) => {
+      try {
+        const parsed = JSON.parse(message.toString());
+        if (parsed.type === 'JOIN') {
+          broadcastPresence();
+        }
+      } catch (e) {}
+    });
+
+    ws.on('close', () => {
+      connectedClients.delete(ws);
+      broadcastPresence();
+    });
+
+    ws.on('error', () => {
+      connectedClients.delete(ws);
+    });
+  });
+
+  function broadcastPresence() {
+    const payload = JSON.stringify({
+      type: 'PRESENCE_UPDATE',
+      payload: { activeUsers: connectedClients.size },
+      timestamp: new Date().toISOString()
+    });
+    for (const client of connectedClients) {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(payload);
+      }
+    }
+  }
+
+  function broadcastRealtime(type: string, payload: any) {
+    const message = JSON.stringify({ type, payload, timestamp: new Date().toISOString() });
+    for (const client of connectedClients) {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(message);
+      }
+    }
+  }
 
   // Middleware for parsing JSON payloads
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
   // Initialize MySQL database schema
-  let mysqlOnline = await initMySQLTables().catch(() => false);
+  await initMySQLTables().catch(() => false);
 
   // Health check endpoint
   app.get('/api/health', async (req, res) => {
@@ -21,6 +73,7 @@ async function startServer() {
       status: 'ok',
       database: 'mysql',
       connected: isConn,
+      realtimeClients: connectedClients.size,
       timestamp: new Date().toISOString()
     });
   });
@@ -52,7 +105,7 @@ async function startServer() {
     }
   });
 
-  // POST /api/projects/sync - save / upsert a project in MySQL
+  // POST /api/projects/sync - save / upsert a project in MySQL & broadcast real-time
   app.post('/api/projects/sync', async (req, res) => {
     try {
       const { project } = req.body;
@@ -80,13 +133,16 @@ async function startServer() {
         [project.id, projName, projJson, lastMod]
       );
 
+      // Broadcast real-time update to all active users
+      broadcastRealtime('PROJECT_UPDATED', project);
+
       res.json({ success: true, id: project.id });
     } catch (err: any) {
       res.status(500).json({ error: err.message || 'Failed to save project to MySQL' });
     }
   });
 
-  // DELETE /api/projects/:id - permanently delete a project in MySQL
+  // DELETE /api/projects/:id - permanently delete a project in MySQL & broadcast
   app.delete('/api/projects/:id', async (req, res) => {
     try {
       const { id } = req.params;
@@ -108,6 +164,9 @@ async function startServer() {
 
       // Remove from active projects table
       await pool.query('DELETE FROM projects WHERE id = ?', [id]);
+
+      // Broadcast real-time deletion event
+      broadcastRealtime('PROJECT_DELETED', { id, projectName });
 
       res.json({ success: true, id });
     } catch (err: any) {
@@ -138,7 +197,7 @@ async function startServer() {
     }
   });
 
-  // POST /api/users/sync - save / upsert users in MySQL
+  // POST /api/users/sync - save / upsert users in MySQL & broadcast real-time
   app.post('/api/users/sync', async (req, res) => {
     try {
       const { user, users } = req.body;
@@ -157,13 +216,16 @@ async function startServer() {
         );
       }
 
+      // Broadcast real-time user update
+      broadcastRealtime('USERS_UPDATED', userList);
+
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message || 'Failed to save user in MySQL' });
     }
   });
 
-  // DELETE /api/users/:username - delete user in MySQL
+  // DELETE /api/users/:username - delete user in MySQL & broadcast
   app.delete('/api/users/:username', async (req, res) => {
     try {
       const { username } = req.params;
@@ -171,6 +233,9 @@ async function startServer() {
       if (!pool) return res.status(503).json({ error: 'MySQL database pool unavailable' });
 
       await pool.query('DELETE FROM users WHERE username = ?', [username]);
+
+      broadcastRealtime('USERS_UPDATED', { deletedUsername: username });
+
       res.json({ success: true, username });
     } catch (err: any) {
       res.status(500).json({ error: err.message || 'Failed to delete user in MySQL' });
@@ -200,7 +265,7 @@ async function startServer() {
     }
   });
 
-  // POST /api/approvals/sync - sync approvals list
+  // POST /api/approvals/sync - sync approvals list & broadcast
   app.post('/api/approvals/sync', async (req, res) => {
     try {
       const { approvals } = req.body;
@@ -220,13 +285,15 @@ async function startServer() {
         }
       }
 
+      broadcastRealtime('APPROVALS_UPDATED', approvals);
+
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message || 'Failed to sync approvals' });
     }
   });
 
-  // GET /api/config - fetch config items (taxonomy, scoring weights)
+  // GET /api/config - fetch config items
   app.get('/api/config', async (req, res) => {
     try {
       const pool = getMySQLPool();
@@ -246,7 +313,7 @@ async function startServer() {
     }
   });
 
-  // POST /api/config/sync - sync config
+  // POST /api/config/sync - sync config & broadcast
   app.post('/api/config/sync', async (req, res) => {
     try {
       const { key, data } = req.body;
@@ -262,6 +329,8 @@ async function startServer() {
          ON DUPLICATE KEY UPDATE data = VALUES(data)`,
         [key, dJson]
       );
+
+      broadcastRealtime('CONFIG_UPDATED', { [key]: data });
 
       res.json({ success: true });
     } catch (err: any) {
@@ -284,8 +353,8 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 [MySQL Server] Express server running on http://0.0.0.0:${PORT}`);
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 [MySQL & Real-time Server] Express + WebSockets running on http://0.0.0.0:${PORT}`);
   });
 }
 

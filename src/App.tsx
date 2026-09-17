@@ -1862,6 +1862,15 @@ let isBatchSyncRunning = false;
     window.addEventListener('new_user_registered', handleNewUserRegisteredEvent);
     window.addEventListener('user_requested_signin_approval', handleNewUserRegisteredEvent);
 
+    const handleRealtimeLocalMutated = () => {
+      reloadLocalState();
+    };
+    window.addEventListener('local_project_mutated', handleRealtimeLocalMutated);
+    window.addEventListener('realtime_project_updated', handleRealtimeLocalMutated);
+    window.addEventListener('realtime_users_updated', handleRealtimeLocalMutated);
+    window.addEventListener('realtime_approvals_updated', handleRealtimeLocalMutated);
+    window.addEventListener('realtime_config_updated', handleRealtimeLocalMutated);
+
     // Run initial sync on mount
 
     // Sync initial local users to backend so new installations share default users
@@ -1884,6 +1893,11 @@ let isBatchSyncRunning = false;
       window.removeEventListener('project_globally_deleted', handleProjectGloballyDeleted);
       window.removeEventListener('new_user_registered', handleNewUserRegisteredEvent);
       window.removeEventListener('user_requested_signin_approval', handleNewUserRegisteredEvent);
+      window.removeEventListener('local_project_mutated', handleRealtimeLocalMutated);
+      window.removeEventListener('realtime_project_updated', handleRealtimeLocalMutated);
+      window.removeEventListener('realtime_users_updated', handleRealtimeLocalMutated);
+      window.removeEventListener('realtime_approvals_updated', handleRealtimeLocalMutated);
+      window.removeEventListener('realtime_config_updated', handleRealtimeLocalMutated);
       if (broadcastChannel) {
         try { broadcastChannel.close(); } catch (e) {}
       }
