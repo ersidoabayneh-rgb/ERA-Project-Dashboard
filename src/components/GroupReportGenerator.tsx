@@ -1,8 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { db } from '../lib/firebase';
-import { doc, onSnapshot } from 'firebase/firestore';
-import { safeSyncScoringWeights } from '../lib/apiSync';
+import { safeSyncScoringWeights, safeFetchScoringWeights } from '../lib/apiSync';
 import { 
   FileText, 
   Download, 
@@ -249,26 +247,14 @@ export default function GroupReportGenerator({
   const [tempContractorWeights, setTempContractorWeights] = useState<ContractorScoringWeights>(contractorWeights);
   const [tempConsultantWeights, setTempConsultantWeights] = useState<ConsultantScoringWeights>(consultantWeights);
 
-  // Listen to Firestore scoring weights configuration database in real-time
+  // Load scoring weights from local database
   useEffect(() => {
-    try {
-      const unsub = onSnapshot(doc(db, 'config', 'scoring_weights'), (docSnap) => {
-        if (docSnap && docSnap.exists()) {
-          const data = docSnap.data();
-          if (data && data.contractorWeights) {
-            setContractorWeights(data.contractorWeights);
-            localStorage.setItem('era_contractor_scoring_weights', JSON.stringify(data.contractorWeights));
-          }
-          if (data && data.consultantWeights) {
-            setConsultantWeights(data.consultantWeights);
-            localStorage.setItem('era_consultant_scoring_weights', JSON.stringify(data.consultantWeights));
-          }
-        }
-      });
-      return () => unsub();
-    } catch (e) {
-      console.warn('Scoring weights listener notice:', e);
-    }
+    safeFetchScoringWeights().then(res => {
+      if (res) {
+        if (res.contractorWeights) setContractorWeights(res.contractorWeights);
+        if (res.consultantWeights) setConsultantWeights(res.consultantWeights);
+      }
+    }).catch(() => {});
   }, []);
 
   // Helper check for project access (matching standard view limits) - all users share the single database
