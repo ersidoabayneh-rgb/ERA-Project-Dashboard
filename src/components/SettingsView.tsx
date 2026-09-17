@@ -496,17 +496,9 @@ export default function SettingsView({
               {darkMode ? <Sun className="w-4 h-4 text-amber-500 animate-spin" /> : <Moon className="w-4 h-4 text-blue-600" />}
             </button>
           </div>
-
-          <button
-            onClick={() => onOpenThemeCustomizer?.()}
-            className="w-full mt-2 py-2.5 px-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-extrabold rounded-xl text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-xs"
-          >
-            <Palette className="w-4 h-4 text-white" />
-            <span>Theme, Colors & Wallpaper Customizer</span>
-          </button>
         </div>
 
-        {/* Custom Color Overrides Palette */}
+        {/* Custom Color Overrides Palette (without background change) */}
         <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-5 rounded-2xl shadow-sm space-y-4">
           <h3 className="font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1">
             <Sparkles className="w-4 h-4 text-emerald-500" />
@@ -515,41 +507,19 @@ export default function SettingsView({
 
           <div className="space-y-3 text-xs text-slate-650 dark:text-slate-350">
             <div className="flex items-center justify-between">
-              <span className="font-semibold">App Background Color:</span>
-              <div className="flex items-center gap-2">
-                <input 
-                  type="color" 
-                  value={customBgColor || (darkMode ? '#0f172a' : '#f8fafc')}
-                  onChange={e => onUpdateCustomColors(e.target.value, customTxtColor, customWordColor, customTxtBgColor, customChartTooltipBgColor)}
-                  className="w-8 h-6 rounded border-none cursor-pointer bg-transparent"
-                  title="Choose dynamic application background color"
-                />
-                {(customBgColor) && (
-                  <button
-                    type="button"
-                    onClick={() => onUpdateCustomColors('', customTxtColor, customWordColor, customTxtBgColor, customChartTooltipBgColor)}
-                    className="text-[10px] text-red-500 hover:underline"
-                  >
-                    Clear
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between">
               <span className="font-semibold">Text Background Color:</span>
               <div className="flex items-center gap-2">
                 <input 
                   type="color" 
                   value={customTxtBgColor || (darkMode ? '#1e293b' : '#ffffff')}
-                  onChange={e => onUpdateCustomColors(customBgColor, customTxtColor, customWordColor, e.target.value, customChartTooltipBgColor)}
+                  onChange={e => onUpdateCustomColors('', customTxtColor, customWordColor, e.target.value, customChartTooltipBgColor)}
                   className="w-8 h-6 rounded border-none cursor-pointer bg-transparent"
                   title="Choose custom background color specifically for text inputs, tables, and card containers"
                 />
                 {(customTxtBgColor) && (
                   <button
                     type="button"
-                    onClick={() => onUpdateCustomColors(customBgColor, customTxtColor, customWordColor, '', customChartTooltipBgColor)}
+                    onClick={() => onUpdateCustomColors('', customTxtColor, customWordColor, '', customChartTooltipBgColor)}
                     className="text-[10px] text-red-500 hover:underline"
                   >
                     Clear
@@ -749,295 +719,6 @@ export default function SettingsView({
            </div>
         </div>
       )}
-
-      {/* Real-time Data Synchronization & Database Health Card */}
-      <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-5 rounded-2xl shadow-sm space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2">
-              <h3 className="font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
-                <Globe className="w-4 h-4 text-indigo-500" />
-                Real-Time Data Synchronization & Database Health
-              </h3>
-              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
-                realtimeStatus.status === 'connected'
-                  ? 'bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300'
-                  : realtimeStatus.status === 'offline'
-                  ? 'bg-rose-100 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300'
-                  : 'bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300'
-              }`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${
-                  realtimeStatus.status === 'connected' ? 'bg-emerald-500 animate-pulse' : realtimeStatus.status === 'offline' ? 'bg-rose-500' : 'bg-amber-500'
-                }`}></span>
-                {realtimeStatus.status === 'connected' ? 'ACTIVE & CONNECTED' : realtimeStatus.status === 'offline' ? 'OFFLINE' : 'RECONNECTING'}
-              </span>
-            </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-              Synchronizes projects, configurations, approvals, and user accounts across all devices and locations without delay or glitch.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              onClick={handleForceSync}
-              disabled={isSyncingNow}
-              className="flex items-center gap-2 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isSyncingNow ? 'animate-spin' : ''}`} />
-              <span>{isSyncingNow ? 'Synchronizing...' : 'Sync All Devices Now'}</span>
-            </button>
-          </div>
-        </div>
-
-        {syncFeedback && (
-          <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl text-xs font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4" />
-            <span>{syncFeedback}</span>
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2">
-          <div className="p-3.5 bg-slate-50 dark:bg-slate-900/40 rounded-xl border border-slate-100 dark:border-slate-750">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Database Server Host</div>
-            <div className="text-sm font-extrabold text-slate-800 dark:text-slate-100 mt-1 flex items-center gap-1.5 truncate" title="eradashboard.com.et">
-              <span className="truncate">eradashboard.com.et</span>
-            </div>
-            <div className="text-[11px] text-slate-500 mt-0.5">Ethio Telecom Server (Port 3306)</div>
-          </div>
-
-          <div className="p-3.5 bg-slate-50 dark:bg-slate-900/40 rounded-xl border border-slate-100 dark:border-slate-750">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Connected Devices</div>
-            <div className="text-sm font-extrabold text-slate-800 dark:text-slate-100 mt-1 flex items-center gap-2">
-              <span>{realtimeStatus.activeDevices} {realtimeStatus.activeDevices === 1 ? 'Device' : 'Devices'}</span>
-              <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-950/50 px-1.5 py-0.5 rounded">Live</span>
-            </div>
-            <div className="text-[11px] text-slate-500 mt-0.5">Active across networks and locations</div>
-          </div>
-
-          <div className="p-3.5 bg-slate-50 dark:bg-slate-900/40 rounded-xl border border-slate-100 dark:border-slate-750">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Sync Protocol & Delivery</div>
-            <div className="text-sm font-extrabold text-slate-800 dark:text-slate-100 mt-1 uppercase">
-              {realtimeStatus.mode === 'websocket' ? 'WebSocket (Real-Time)' : realtimeStatus.mode === 'sse' ? 'SSE (Stream)' : 'Polling Fallback'}
-            </div>
-            <div className="text-[11px] text-slate-500 mt-0.5">Zero-delay instant packet broadcast</div>
-          </div>
-
-          <div className="p-3.5 bg-slate-50 dark:bg-slate-900/40 rounded-xl border border-slate-100 dark:border-slate-750">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Central Database Engine</div>
-            <div className="text-sm font-extrabold text-slate-800 dark:text-slate-100 mt-1 flex items-center gap-1.5">
-              <span>Persistent Server DB</span>
-            </div>
-            <div className="text-[11px] text-slate-500 mt-0.5">High availability with safe fallbacks</div>
-          </div>
-        </div>
-      </div>
-
-      {/* Ethio Telecom Traditional MySQL Database Configuration & Diagnostics Card */}
-      <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-5 rounded-2xl shadow-sm space-y-4">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <h3 className="font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
-                <Database className="w-4 h-4 text-emerald-500" />
-                Ethio Telecom Traditional MySQL Database Hosting (cPanel / Linux)
-              </h3>
-              <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${
-                mysqlDiag?.connected
-                  ? 'bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300'
-                  : 'bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300'
-              }`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${
-                  mysqlDiag?.connected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
-                }`}></span>
-                {mysqlDiag?.connected
-                  ? `MYSQL CONNECTED (${mysqlDiag.latencyMs}ms latency)`
-                  : 'STANDALONE HYBRID MODE (AWAITING CPANEL MYSQL)'}
-              </span>
-            </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-              Production MySQL database configuration on Ethio Telecom web hosting (<code>eradashboard.com.et</code> / <code>lin1.ethiotelecom.et</code>). Supports traditional InnoDB tables, utf8mb4 Amharic Ge'ez collation, and native Apache/PHP bridges.
-            </p>
-          </div>
-
-          {/* Action Toolbar */}
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
-            <button
-              onClick={handleTestMySQL}
-              disabled={isTestingMysql}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 rounded-xl text-xs font-bold transition cursor-pointer disabled:opacity-50"
-              title="Ping Ethio Telecom MySQL host and measure latency"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isTestingMysql ? 'animate-spin text-indigo-500' : ''}`} />
-              <span>{isTestingMysql ? 'Testing Ping...' : 'Test Connection'}</span>
-            </button>
-
-            <button
-              onClick={handleSyncMySQL}
-              disabled={isSyncingMysql}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer disabled:opacity-50"
-              title="Push and pull all records to/from MySQL tables"
-            >
-              <Server className={`w-3.5 h-3.5 ${isSyncingMysql ? 'animate-spin' : ''}`} />
-              <span>{isSyncingMysql ? 'Syncing Tables...' : 'Force MySQL Sync'}</span>
-            </button>
-
-            <a
-              href="/api/mysql/download-schema"
-              download="ethiotelecom_mysql_schema.sql"
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
-              title="Download standard schema.sql for phpMyAdmin import"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>schema.sql</span>
-            </a>
-
-            <button
-              onClick={handleOpenSchemaModal}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-650 text-slate-200 rounded-xl text-xs font-bold transition cursor-pointer"
-              title="Preview and copy MySQL SQL statements"
-            >
-              <FileCode2 className="w-3.5 h-3.5 text-amber-400" />
-              <span>View SQL</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Dynamic Notice / Recommendation Banner */}
-        {mysqlNotice && (
-          <div className={`p-3.5 rounded-xl border text-xs flex flex-col gap-1 ${
-            mysqlNotice.type === 'success'
-              ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200'
-              : 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200'
-          }`}>
-            <div className="flex items-center gap-2 font-bold">
-              {mysqlNotice.type === 'success' ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-              ) : (
-                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-              )}
-              <span>{mysqlNotice.text}</span>
-            </div>
-            {mysqlNotice.recommendation && (
-              <div className="pl-6 text-[11px] opacity-90">
-                <strong>cPanel Setup Hint:</strong> {mysqlNotice.recommendation}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Diagnostic Parameters Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
-          <div className="p-3 bg-slate-50 dark:bg-slate-900/40 rounded-xl border border-slate-100 dark:border-slate-750">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">MySQL Host & Port</div>
-            <div className="text-sm font-extrabold text-slate-800 dark:text-slate-100 mt-1 flex items-center gap-1.5 truncate">
-              <HardDrive className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-              <span className="truncate">{mysqlDiag?.host || 'localhost'}:{mysqlDiag?.port || 3306}</span>
-            </div>
-            <div className="text-[11px] text-slate-500 mt-0.5">
-              {mysqlDiag?.socket ? `Unix Socket: ${mysqlDiag.socket}` : 'TCP Connection on Ethio Telecom'}
-            </div>
-          </div>
-
-          <div className="p-3 bg-slate-50 dark:bg-slate-900/40 rounded-xl border border-slate-100 dark:border-slate-750">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Database & User</div>
-            <div className="text-sm font-extrabold text-slate-800 dark:text-slate-100 mt-1 flex items-center gap-1.5 truncate">
-              <Database className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-              <span className="truncate">{mysqlDiag?.database || 'era_dashboard'}</span>
-            </div>
-            <div className="text-[11px] text-slate-500 mt-0.5">User: {mysqlDiag?.user || 'eradashb_user'}</div>
-          </div>
-
-          <div className="p-3 bg-slate-50 dark:bg-slate-900/40 rounded-xl border border-slate-100 dark:border-slate-750">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Charset & Timezone</div>
-            <div className="text-sm font-extrabold text-slate-800 dark:text-slate-100 mt-1 flex items-center gap-1.5 truncate">
-              <span className="font-mono text-xs text-indigo-600 dark:text-indigo-400">utf8mb4_unicode_ci</span>
-            </div>
-            <div className="text-[11px] text-slate-500 mt-0.5">+03:00 (East Africa Time)</div>
-          </div>
-
-          <div className="p-3 bg-slate-50 dark:bg-slate-900/40 rounded-xl border border-slate-100 dark:border-slate-750">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Database Storage Tables</div>
-            <div className="flex flex-wrap gap-1.5 mt-1.5">
-              <span className="px-1.5 py-0.5 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded text-[10px] font-mono">
-                projects: {mysqlDiag?.tableStats?.projects ?? '0'}
-              </span>
-              <span className="px-1.5 py-0.5 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded text-[10px] font-mono">
-                users: {mysqlDiag?.tableStats?.users ?? '4'}
-              </span>
-              <span className="px-1.5 py-0.5 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded text-[10px] font-mono">
-                approvals: {mysqlDiag?.tableStats?.approvals ?? '0'}
-              </span>
-              <span className="px-1.5 py-0.5 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded text-[10px] font-mono">
-                config: {mysqlDiag?.tableStats?.config ?? '1'}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Collapsible cPanel & Ethio Telecom Setup Instructions */}
-        <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
-          <button
-            onClick={() => setShowCpanelGuide(!showCpanelGuide)}
-            className="w-full p-3 bg-slate-50 hover:bg-slate-100 dark:bg-slate-900/50 dark:hover:bg-slate-800 flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300 transition cursor-pointer"
-          >
-            <span className="flex items-center gap-2">
-              <HelpCircle className="w-4 h-4 text-blue-500" />
-              <span>Ethio Telecom Web Hosting cPanel Setup Guide (5 Simple Steps)</span>
-            </span>
-            {showCpanelGuide ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-          </button>
-
-          {showCpanelGuide && (
-            <div className="p-4 bg-white dark:bg-slate-850 text-xs text-slate-600 dark:text-slate-300 space-y-3 border-t border-slate-200 dark:border-slate-700 leading-relaxed">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                    <span className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 flex items-center justify-center font-mono text-[11px]">1</span>
-                    Create Database & User in cPanel
-                  </div>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 pl-6">
-                    Log in to cPanel at <code>https://eradashboard.com.et:2083</code>. Go to <strong>MySQL Databases</strong>, create database <code>eradashb_db</code> and user <code>eradashb_user</code>.
-                  </p>
-
-                  <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5 pt-2">
-                    <span className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 flex items-center justify-center font-mono text-[11px]">2</span>
-                    Grant All Privileges
-                  </div>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 pl-6">
-                    In cPanel, add the user to the database and check <strong>ALL PRIVILEGES</strong>. This grants permissions for <code>INSERT</code>, <code>UPDATE</code>, <code>DELETE</code>, and <code>CREATE TABLE</code>.
-                  </p>
-
-                  <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5 pt-2">
-                    <span className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 flex items-center justify-center font-mono text-[11px]">3</span>
-                    Import schema.sql into phpMyAdmin
-                  </div>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 pl-6">
-                    Click the <strong>schema.sql</strong> button above to download the script. Open <strong>phpMyAdmin</strong> in cPanel, select your database, click the <strong>Import</strong> tab, and upload the file.
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                    <span className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 flex items-center justify-center font-mono text-[11px]">4</span>
-                    Configure Host (.env / db_config.php)
-                  </div>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 pl-6">
-                    When hosted directly on Ethio Telecom, set <code>MYSQL_HOST=localhost</code> (or <code>127.0.0.1</code>) and <code>MYSQL_PORT=3306</code>. If using PHP shared hosting, configure <code>public/db_config.php</code>.
-                  </p>
-
-                  <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5 pt-2">
-                    <span className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 flex items-center justify-center font-mono text-[11px]">5</span>
-                    Remote Access & Firewalls
-                  </div>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 pl-6">
-                    If connecting remotely from outside Ethio Telecom hosting, open <strong>Remote MySQL</strong> in cPanel and add your external server's IP address (or <code>%</code> for universal access).
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
 
       {/* MASTER ADMIN MODAL: Edit Scoring Weights & Save to Configuration Database */}
       {isModalOpen && (
