@@ -211,6 +211,7 @@ import AiAssistantChat from './components/AiAssistantChat';
 import UserGuideManualModal from './components/UserGuideManualModal';
 import { UserProfileModal } from './components/UserProfileModal';
 import ApprovalWorkflowManager from './components/ApprovalWorkflowManager';
+import ThemeCustomizerModal, { ThemeConfig, DEFAULT_THEME_CONFIG } from './components/ThemeCustomizerModal';
 import eraLogo from './assets/logo.png';
 
 import { defaultProjectTemplate, blankProjectTemplate, generateKpiAllocated } from './data/defaultProject';
@@ -364,6 +365,68 @@ export default function App() {
   const [customWordColor, setCustomWordColor] = useState(() => localStorage.getItem('era_custom_word') || '');
   const [customTxtBgColor, setCustomTxtBgColor] = useState(() => localStorage.getItem('era_custom_txt_bg') || '');
   const [customChartTooltipBgColor, setCustomChartTooltipBgColor] = useState(() => localStorage.getItem('era_custom_chart_tooltip_bg') || '');
+  
+  const [themeConfig, setThemeConfig] = useState<ThemeConfig>(() => {
+    try {
+      const saved = localStorage.getItem('era_theme_config_v1');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') return { ...DEFAULT_THEME_CONFIG, ...parsed };
+      }
+    } catch {}
+    const isDark = localStorage.getItem('theme') === 'dark';
+    const customBg = localStorage.getItem('era_custom_bg') || '';
+    return {
+      ...DEFAULT_THEME_CONFIG,
+      darkMode: isDark,
+      themePreset: isDark ? 'dark' : 'light',
+      customBgColor: customBg
+    };
+  });
+  const [showThemeCustomizer, setShowThemeCustomizer] = useState(false);
+
+  const handleUpdateThemeConfig = (newConfig: ThemeConfig) => {
+    setThemeConfig(newConfig);
+    setDarkMode(newConfig.darkMode);
+    if (newConfig.darkMode) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
+    try {
+      localStorage.setItem('era_theme_config_v1', JSON.stringify(newConfig));
+      if (newConfig.customBgColor) {
+        localStorage.setItem('era_custom_bg', newConfig.customBgColor);
+        setCustomBgColor(newConfig.customBgColor);
+      } else {
+        localStorage.removeItem('era_custom_bg');
+        setCustomBgColor('');
+      }
+      if (newConfig.customTxtColor) {
+        localStorage.setItem('era_custom_txt', newConfig.customTxtColor);
+        setCustomTxtColor(newConfig.customTxtColor);
+      } else {
+        localStorage.removeItem('era_custom_txt');
+        setCustomTxtColor('');
+      }
+    } catch {}
+  };
+
+  const handleResetThemeDefault = () => {
+    setThemeConfig(DEFAULT_THEME_CONFIG);
+    setDarkMode(false);
+    document.documentElement.classList.remove('dark');
+    localStorage.setItem('theme', 'light');
+    try {
+      localStorage.removeItem('era_theme_config_v1');
+      localStorage.removeItem('era_custom_bg');
+      localStorage.removeItem('era_custom_txt');
+      setCustomBgColor('');
+      setCustomTxtColor('');
+    } catch {}
+  };
   
   // Database States
   const [projects, setProjects] = useState<Project[]>([]);
@@ -1820,7 +1883,13 @@ let isBatchSyncRunning = false;
               deletedIds = JSON.parse(delStr);
             } catch {}
             const filtered = parsed.filter((p: Project) => !deletedIds.includes(p.id));
-            setProjects(filtered.map(syncProjectPayment));
+            const syncedProjects = filtered.map(syncProjectPayment);
+            setProjects(syncedProjects);
+            setCurrentProject(prevCurrent => {
+              if (!prevCurrent) return prevCurrent;
+              const updated = syncedProjects.find(p => p.id === prevCurrent.id);
+              return updated || prevCurrent;
+            });
           }
         }
         const localUsersStr = localStorage.getItem('era_users_v28');
@@ -3250,54 +3319,92 @@ let isBatchSyncRunning = false;
   return (
     <div className="min-h-screen text-slate-800 dark:text-slate-100 flex flex-col font-sans transition-colors duration-300 relative bg-slate-50/50 dark:bg-slate-900/60 pb-12">
       
-      {/* Dynamic Style Injection for completely custom backgrounds and word colors */}
-      {customBgColor || customTxtColor || customWordColor || customTxtBgColor || customChartTooltipBgColor ? (
-        <style dangerouslySetInnerHTML={{__html: `
-          ${customBgColor ? `
-            body, .min-h-screen, .bg-slate-50, .bg-slate-50\\/50, .bg-slate-100, .bg-slate-50\\/40, .bg-slate-950\\/50 {
-              background-color: ${customBgColor} !important;
-            }
-            .bg-white, .dark\\:bg-slate-800, .bg-slate-900, .bg-slate-850, .dark\\:bg-slate-850 {
-              background-color: ${customBgColor}f4 !important;
-              border-color: rgba(255, 255, 255, 0.08) !important;
-            }
-          ` : ''}
-          ${customTxtBgColor ? `
-            .bg-white, .dark\\:bg-slate-800, .bg-slate-900, .bg-slate-850, .dark\\:bg-slate-850, input, select, textarea, td, th, .bg-slate-50\\/50, .bg-slate-50\\/40 {
-              background-color: ${customTxtBgColor} !important;
-              background: ${customTxtBgColor} !important;
-              border-color: rgba(0, 0, 0, 0.1) !important;
-            }
-          ` : ''}
-          ${customTxtColor ? `
-            body, p, span, td, th, input, select, textarea, label {
-              color: ${customTxtColor} !important;
-            }
-            .text-slate-400, .text-slate-500, .text-slate-600, .text-slate-700, .dark\\:text-slate-400, .text-slate-550, .text-slate-450 {
-              color: ${customTxtColor}cc !important;
-            }
-          ` : ''}
-          ${customWordColor ? `
-            h1, h2, h3, h4, .font-bold, font-semibold, font-black, button, strong {
-              color: ${customWordColor} !important;
-            }
-            svg {
-              stroke: ${customWordColor} !important;
-            }
-          ` : ''}
-          ${customChartTooltipBgColor ? `
-            .recharts-default-tooltip {
-              background-color: ${customChartTooltipBgColor} !important;
-              background: ${customChartTooltipBgColor} !important;
-              border: 1px solid ${customWordColor || '#475569'} !important;
-              border-radius: 8px !important;
-            }
-            .recharts-default-tooltip .recharts-tooltip-item, .recharts-default-tooltip span, .recharts-tooltip-label {
-              color: ${customTxtColor || '#ffffff'} !important;
-            }
-          ` : ''}
-        `}} />
-      ) : null}
+      {/* Dynamic Style Injection for Theme Modes, Accents, Background Wallpapers & Colors */}
+      <style dangerouslySetInnerHTML={{__html: `
+        ${themeConfig.bgImage ? `
+          body, .min-h-screen {
+            background-image: url('${themeConfig.bgImage}') !important;
+            background-size: ${themeConfig.bgFit === 'contain' ? 'contain' : themeConfig.bgFit === 'repeat' ? 'repeat' : 'cover'} !important;
+            background-position: center !important;
+            background-attachment: fixed !important;
+            background-repeat: ${themeConfig.bgFit === 'repeat' ? 'repeat' : 'no-repeat'} !important;
+          }
+          .min-h-screen::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-color: ${themeConfig.darkMode ? `rgba(15, 23, 42, ${(themeConfig.bgOpacity ?? 35) / 100})` : `rgba(255, 255, 255, ${(themeConfig.bgOpacity ?? 35) / 100})`};
+            backdrop-filter: blur(${themeConfig.bgBlur ?? 4}px);
+            -webkit-backdrop-filter: blur(${themeConfig.bgBlur ?? 4}px);
+            pointer-events: none;
+            z-index: 0;
+          }
+          .min-h-screen > * {
+            position: relative;
+            z-index: 1;
+          }
+        ` : ''}
+
+        ${themeConfig.primaryAccent ? `
+          .bg-blue-600, .bg-blue-500 {
+            background-color: ${themeConfig.primaryAccent} !important;
+          }
+          .border-blue-500, .border-blue-600 {
+            border-color: ${themeConfig.primaryAccent} !important;
+          }
+          .text-blue-600, .text-blue-500 {
+            color: ${themeConfig.primaryAccent} !important;
+          }
+        ` : ''}
+
+        ${customBgColor || themeConfig.customBgColor ? `
+          body, .min-h-screen, .bg-slate-50, .bg-slate-50\\/50, .bg-slate-100, .bg-slate-50\\/40, .bg-slate-950\\/50 {
+            background-color: ${themeConfig.customBgColor || customBgColor} !important;
+          }
+          .bg-white, .dark\\:bg-slate-800, .bg-slate-900, .bg-slate-850, .dark\\:bg-slate-850 {
+            background-color: ${themeConfig.customBgColor || customBgColor}f4 !important;
+            border-color: rgba(255, 255, 255, 0.08) !important;
+          }
+        ` : ''}
+
+        ${customTxtBgColor ? `
+          .bg-white, .dark\\:bg-slate-800, .bg-slate-900, .bg-slate-850, .dark\\:bg-slate-850, input, select, textarea, td, th, .bg-slate-50\\/50, .bg-slate-50\\/40 {
+            background-color: ${customTxtBgColor} !important;
+            background: ${customTxtBgColor} !important;
+            border-color: rgba(0, 0, 0, 0.1) !important;
+          }
+        ` : ''}
+
+        ${customTxtColor || themeConfig.customTxtColor ? `
+          body, p, span, td, th, input, select, textarea, label {
+            color: ${themeConfig.customTxtColor || customTxtColor} !important;
+          }
+          .text-slate-400, .text-slate-500, .text-slate-600, .text-slate-700, .dark\\:text-slate-400, .text-slate-550, .text-slate-450 {
+            color: ${(themeConfig.customTxtColor || customTxtColor)}cc !important;
+          }
+        ` : ''}
+
+        ${customWordColor ? `
+          h1, h2, h3, h4, .font-bold, font-semibold, font-black, button, strong {
+            color: ${customWordColor} !important;
+          }
+          svg {
+            stroke: ${customWordColor} !important;
+          }
+        ` : ''}
+
+        ${customChartTooltipBgColor ? `
+          .recharts-default-tooltip {
+            background-color: ${customChartTooltipBgColor} !important;
+            background: ${customChartTooltipBgColor} !important;
+            border: 1px solid ${customWordColor || '#475569'} !important;
+            border-radius: 8px !important;
+          }
+          .recharts-default-tooltip .recharts-tooltip-item, .recharts-default-tooltip span, .recharts-tooltip-label {
+            color: ${customTxtColor || '#ffffff'} !important;
+          }
+        ` : ''}
+      `}} />
       
       {/* Interactive 3D constellation animation */}
       <ThreeDAnimatedBackground darkMode={darkMode} />
@@ -3366,6 +3473,7 @@ let isBatchSyncRunning = false;
               }}
               onOpenDrafts={() => setShowDraftsPlayground(true)}
               onOpenUserGuide={() => setIsUserGuideOpen(true)}
+              onOpenThemeCustomizer={() => setShowThemeCustomizer(true)}
               onSaveToCloud={async () => {
                 try {
                   const isMasterAdmin = currentUserObj.role === 'admin' || currentUserObj.role === 'master_admin' || currentUserObj.username === 'proj_1781786415663';
@@ -3817,6 +3925,14 @@ let isBatchSyncRunning = false;
                 >
                   <BookOpen className="w-3.5 h-3.5" />
                   User Guide Manual
+                </button>
+                <button
+                  onClick={() => setShowThemeCustomizer(true)}
+                  className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 p-2 rounded-full border border-amber-600 flex items-center gap-1.5 text-[11px] font-extrabold text-white px-3 py-1.5 transition shadow-sm cursor-pointer shrink-0"
+                  title="Customize website theme mode, primary accent color, and background wallpaper picture"
+                >
+                  <Settings className="w-3.5 h-3.5 text-white" />
+                  <span>Theme Settings</span>
                 </button>
                 <button
                   onClick={() => window.print()}
@@ -4993,6 +5109,7 @@ let isBatchSyncRunning = false;
                     setConsultantWeights(cons);
                   }}
                   allUsers={usersListState}
+                  onOpenThemeCustomizer={() => setShowThemeCustomizer(true)}
                   onApproveUser={handleApproveUserSetting}
                   onRejectUser={handleRejectUserSetting}
                 />
@@ -5031,6 +5148,15 @@ let isBatchSyncRunning = false;
           onUpdateCredentials={handleSelfUpdateCredentials}
         />
       )}
+
+      {/* Website Theme, Accent Colors & Background Wallpaper Customizer Modal */}
+      <ThemeCustomizerModal
+        isOpen={showThemeCustomizer}
+        onClose={() => setShowThemeCustomizer(false)}
+        config={themeConfig}
+        onUpdateConfig={handleUpdateThemeConfig}
+        onResetDefault={handleResetThemeDefault}
+      />
 
       {/* Admin User Management Modal Overlay */}
       {showAdmin && (

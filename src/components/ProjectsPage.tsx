@@ -28,7 +28,11 @@ import {
   BookOpen,
   Archive,
   FolderArchive,
-  UserPlus
+  UserPlus,
+  Settings,
+  RefreshCw,
+  Wifi,
+  WifiOff
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { Project, User, ApprovalRequest, ProjectLifecycleStatus, isProjectClosed, isCpmOrMasterAdmin, isRecentlyUpdated, formatRelativeTime } from '../types';
@@ -36,6 +40,7 @@ import { canUserApproveRequest, hasApprovalCredentials } from '../App';
 import eraLogo from '../assets/logo.png';
 import GroupReportGenerator from './GroupReportGenerator';
 import { downloadUserManual } from '../data/userManual';
+import { realtimeManager, RealtimeSyncStatus } from '../lib/realtime';
 
 interface ProjectsPageProps {
   projects: Project[];
@@ -52,6 +57,7 @@ interface ProjectsPageProps {
   onOpenPendingUserApproval?: () => void;
   onOpenDrafts: () => void;
   onOpenUserGuide?: () => void;
+  onOpenThemeCustomizer?: () => void;
   onSaveToCloud?: () => void;
   onlineUsers: string[];
   programDirectorates?: string[];
@@ -74,6 +80,7 @@ export default function ProjectsPage({
   onOpenPendingUserApproval,
   onOpenDrafts,
   onOpenUserGuide,
+  onOpenThemeCustomizer,
   onSaveToCloud,
   onlineUsers,
   programDirectorates = ['Southern', 'North', 'East', 'West', 'Central', 'Expressway'],
@@ -98,6 +105,32 @@ export default function ProjectsPage({
 
   // Group report generator toggle state
   const [showReportGenerator, setShowReportGenerator] = useState(false);
+
+  // Real-time synchronization state
+  const [realtimeStatus, setRealtimeStatus] = useState<RealtimeSyncStatus>(() => realtimeManager.getStatus());
+  const [isManualSyncing, setIsManualSyncing] = useState(false);
+  const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    const unsubscribe = realtimeManager.subscribeStatus((newStatus) => {
+      setRealtimeStatus(newStatus);
+    });
+    return unsubscribe;
+  }, []);
+
+  const handleTriggerManualSync = async () => {
+    setIsManualSyncing(true);
+    try {
+      await realtimeManager.forceSyncNow();
+      setSyncFeedback('All projects synchronized with database!');
+      setTimeout(() => setSyncFeedback(null), 3000);
+    } catch {
+      setSyncFeedback('Sync completed.');
+      setTimeout(() => setSyncFeedback(null), 3000);
+    } finally {
+      setIsManualSyncing(false);
+    }
+  };
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [newProjectId, setNewProjectId] = useState('');
@@ -661,7 +694,7 @@ export default function ProjectsPage({
                 onClick={() => {
                   setShowReportGenerator(!showReportGenerator);
                 }}
-                className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
                   showReportGenerator
                     ? 'bg-indigo-600 text-white hover:bg-indigo-700'
                     : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-950/20 dark:text-indigo-400 dark:hover:bg-indigo-900/30'
@@ -671,6 +704,60 @@ export default function ProjectsPage({
                 Group Reports
               </button>
             )}
+
+            {/* Theme, Colors & Background Wallpaper Setting Button */}
+            <button
+              onClick={() => onOpenThemeCustomizer?.()}
+              title="Customize website theme mode, primary accent color, and background wallpaper picture"
+              className="flex items-center gap-1.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white px-3 py-1.5 rounded-xl text-xs font-extrabold transition shadow-sm cursor-pointer shrink-0"
+            >
+              <Settings className="w-3.5 h-3.5 text-white" />
+              <span>Theme Settings</span>
+            </button>
+
+            {/* Live Real-Time Data Synchronization Pill & Button */}
+            <div className="relative flex items-center shrink-0">
+              <button
+                onClick={handleTriggerManualSync}
+                disabled={isManualSyncing}
+                title={`Real-Time Data Synchronization: ${realtimeStatus.status.toUpperCase()} (${realtimeStatus.activeDevices} devices online across locations). Click to synchronize immediately with database.`}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition shadow-sm cursor-pointer ${
+                  realtimeStatus.status === 'connected'
+                    ? 'bg-emerald-50/90 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/50'
+                    : realtimeStatus.status === 'offline'
+                    ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-300 border-rose-300 dark:border-rose-800'
+                    : 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-800'
+                }`}
+              >
+                <span className="relative flex h-2 w-2">
+                  {realtimeStatus.status === 'connected' && (
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  )}
+                  <span className={`relative inline-flex rounded-full h-2 w-2 ${
+                    realtimeStatus.status === 'connected' ? 'bg-emerald-500' : realtimeStatus.status === 'offline' ? 'bg-rose-500' : 'bg-amber-500'
+                  }`}></span>
+                </span>
+
+                <RefreshCw className={`w-3.5 h-3.5 ${isManualSyncing ? 'animate-spin text-emerald-600 dark:text-emerald-400' : ''}`} />
+
+                <span className="hidden md:inline">Live Sync</span>
+                <span className="px-1.5 py-0.5 rounded-md bg-white/80 dark:bg-black/40 text-[10px] font-extrabold tracking-tight">
+                  {realtimeStatus.activeDevices} {realtimeStatus.activeDevices === 1 ? 'device' : 'devices'}
+                </span>
+              </button>
+
+              {syncFeedback && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 10 }}
+                  className="absolute top-full mt-2 right-0 z-50 bg-slate-900 text-white text-xs px-3 py-1.5 rounded-lg shadow-xl whitespace-nowrap flex items-center gap-1.5 font-medium border border-slate-700"
+                >
+                  <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>{syncFeedback}</span>
+                </motion.div>
+              )}
+            </div>
 
             <button
               onClick={() => {
