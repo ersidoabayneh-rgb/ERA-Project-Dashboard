@@ -45,7 +45,9 @@ import {
   Laptop,
   MapPin,
   Globe,
-  Download,
+  Bell,
+  BellRing,
+  ArrowRight,
   X
 } from 'lucide-react';
 
@@ -686,15 +688,54 @@ export default function App() {
   const [showDraftsPlayground, setShowDraftsPlayground] = useState(false);
   const [showProjectApprovalBanner, setShowProjectApprovalBanner] = useState(true);
 
-  // Compute pending approval requests specifically scoped to the currently opened project
+  // Compute pending approval requests specifically scoped to the currently opened project for the logged-in user
   const currentProjectPendingApprovals = useMemo(() => {
-    if (!currentProject) return [];
+    if (!currentProject || !currentUserObj) return [];
+    const isApprover = hasApprovalCredentials(currentUserObj);
+    if (isApprover) {
+      return pendingApprovals.filter(a =>
+        a.projectId === currentProject.id &&
+        (a.status === 'pending' || a.status === 'submitted') &&
+        canUserApproveRequest(currentUserObj, a, projects)
+      );
+    }
+    // For editors / authors: their own submitted requests awaiting review for this project
     return pendingApprovals.filter(a =>
       a.projectId === currentProject.id &&
-      a.status === 'pending' &&
-      canUserApproveRequest(currentUserObj, a, projects)
+      (a.status === 'pending' || a.status === 'submitted') &&
+      (a.author === currentUserObj.username || a.requestedBy === currentUserObj.username)
     );
   }, [pendingApprovals, currentProject, currentUserObj, projects]);
+
+  // Compute all pending approval requests scoped to the currently logged-in user across their operational scope
+  const userScopePendingApprovals = useMemo(() => {
+    if (!currentUserObj) return [];
+    const isApprover = hasApprovalCredentials(currentUserObj);
+    if (isApprover) {
+      return pendingApprovals.filter(a =>
+        (a.status === 'pending' || a.status === 'submitted') &&
+        canUserApproveRequest(currentUserObj, a, projects)
+      );
+    }
+    // For editors / authors: their own submitted requests awaiting review
+    return pendingApprovals.filter(a =>
+      (a.status === 'pending' || a.status === 'submitted') &&
+      (a.author === currentUserObj.username || a.requestedBy === currentUserObj.username)
+    );
+  }, [pendingApprovals, currentUserObj, projects]);
+
+  // Visual notification indicator state for new approval requests
+  const [showNotificationDropdown, setShowNotificationDropdown] = useState(false);
+  const [hasNewApprovalNotification, setHasNewApprovalNotification] = useState(false);
+  const prevPendingCountRef = useRef<number>(userScopePendingApprovals.length);
+
+  // When a new approval request arrives or pending count increases for the user's scope, trigger alert badge
+  useEffect(() => {
+    if (userScopePendingApprovals.length > prevPendingCountRef.current) {
+      setHasNewApprovalNotification(true);
+    }
+    prevPendingCountRef.current = userScopePendingApprovals.length;
+  }, [userScopePendingApprovals.length]);
   
   // Network simulation peers list
   const [onlinePeers, setOnlinePeers] = useState<string[]>([]);
@@ -3478,27 +3519,195 @@ let isBatchSyncRunning = false;
                 {/* Workflow & Approvals Shortcut (Scoped strictly to currently opened project) */}
                 <button
                   onClick={() => setShowApprovals(true)}
-                  className={`p-2 rounded-full border flex items-center gap-1.5 text-[11px] font-extrabold px-3 py-1.5 transition shadow-sm ${
+                  className={`p-2 rounded-full border flex items-center gap-1.5 text-[11px] font-extrabold px-3 py-1.5 transition shadow-sm cursor-pointer ${
                     hasApprovalCredentials(currentUserObj)
                       ? currentProjectPendingApprovals.length > 0
-                        ? 'bg-amber-500 hover:bg-amber-600 text-white border-amber-600 animate-pulse'
+                        ? 'bg-amber-500 hover:bg-amber-600 text-white border-amber-600 animate-pulse ring-2 ring-amber-400/40'
                         : 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-700'
                       : (currentUserObj?.role === 'editor' || currentUserObj?.role === 'era_editor' || currentUserObj?.role === 'consultant_editor' || currentUserObj?.role === 'contractor_editor')
                       ? 'bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-700'
                       : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-700'
                   }`}
-                  title={(currentUserObj?.role === 'editor' || currentUserObj?.role === 'era_editor' || currentUserObj?.role === 'consultant_editor' || currentUserObj?.role === 'contractor_editor') ? `Manage Private Drafts for ${currentProject?.name}` : `Review & Certify Approvals for ${currentProject?.name}`}
+                  title={(currentUserObj?.role === 'editor' || currentUserObj?.role === 'era_editor' || currentUserObj?.role === 'consultant_editor' || currentUserObj?.role === 'contractor_editor') ? `Manage Private Drafts for ${currentProject?.name}` : `Review & Certify Approvals for ${currentProject?.name} (${currentProjectPendingApprovals.length} pending)`}
                 >
                   <ShieldCheck className="w-3.5 h-3.5" />
                   <span>
                     {(currentUserObj?.role === 'editor' || currentUserObj?.role === 'era_editor' || currentUserObj?.role === 'consultant_editor' || currentUserObj?.role === 'contractor_editor') ? 'Private Drafts' : 'Project Approvals'}
-                    {hasApprovalCredentials(currentUserObj) && currentProjectPendingApprovals.length > 0 && (
-                      <span className="ml-1 px-1.5 py-0.2 bg-white text-amber-700 rounded-full text-[9px] font-black">
+                    {currentProjectPendingApprovals.length > 0 && (
+                      <span className="ml-1 px-1.5 py-0.2 bg-white text-amber-700 rounded-full text-[9px] font-black shadow-xs">
                         {currentProjectPendingApprovals.length}
                       </span>
                     )}
                   </span>
                 </button>
+
+                {/* Visual Notification Indicator on Navbar for Approval Requests within User's Scope */}
+                <div className="relative">
+                  <button
+                    onClick={() => {
+                      setShowNotificationDropdown(prev => !prev);
+                      setHasNewApprovalNotification(false);
+                    }}
+                    className={`relative p-2 rounded-full border flex items-center justify-center transition shadow-sm cursor-pointer ${
+                      userScopePendingApprovals.length > 0
+                        ? 'bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 border-rose-300 dark:border-rose-800 ring-2 ring-rose-500/30'
+                        : 'bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 hover:text-slate-700 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+                    }`}
+                    title={
+                      userScopePendingApprovals.length > 0
+                        ? `Notifications: ${userScopePendingApprovals.length} pending approval request${userScopePendingApprovals.length > 1 ? 's' : ''} in your scope`
+                        : 'Notifications: No pending approval requests'
+                    }
+                  >
+                    {userScopePendingApprovals.length > 0 ? (
+                      <BellRing className="w-4 h-4 text-rose-600 dark:text-rose-400 animate-bounce" />
+                    ) : (
+                      <Bell className="w-4 h-4" />
+                    )}
+
+                    {userScopePendingApprovals.length > 0 && (
+                      <>
+                        <span className="animate-ping absolute -top-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-rose-500 opacity-75"></span>
+                        <span className="absolute -top-1.5 -right-1.5 px-1.5 py-0.2 min-w-4.5 h-4.5 flex items-center justify-center bg-rose-600 text-white rounded-full text-[9px] font-black shadow-md border-2 border-white dark:border-slate-900">
+                          {userScopePendingApprovals.length}
+                        </span>
+                      </>
+                    )}
+                  </button>
+
+                  {/* Backdrop click-catcher when notification dropdown is open */}
+                  {showNotificationDropdown && (
+                    <div 
+                      className="fixed inset-0 z-40" 
+                      onClick={() => setShowNotificationDropdown(false)} 
+                    />
+                  )}
+
+                  {/* Dropdown Notification Menu */}
+                  <AnimatePresence>
+                    {showNotificationDropdown && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10, scale: 0.96 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 8, scale: 0.96 }}
+                        transition={{ duration: 0.15 }}
+                        className="absolute right-0 mt-2 w-80 sm:w-96 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 p-4 z-50 overflow-hidden text-left"
+                      >
+                        {/* Header */}
+                        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3 mb-3">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-xl bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center font-bold">
+                              <BellRing className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <div className="text-xs font-black text-slate-850 dark:text-white flex items-center gap-1.5">
+                                <span>Approval Requests</span>
+                                {hasNewApprovalNotification && (
+                                  <span className="px-1.5 py-0.2 bg-rose-500 text-white text-[8px] font-black rounded-full uppercase tracking-wider animate-pulse">
+                                    New
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                                {hasApprovalCredentials(currentUserObj)
+                                  ? 'Pending authorization in your scope'
+                                  : 'Your submitted requests awaiting review'}
+                              </div>
+                            </div>
+                          </div>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300">
+                            {userScopePendingApprovals.length} Pending
+                          </span>
+                        </div>
+
+                        {/* List */}
+                        {userScopePendingApprovals.length === 0 ? (
+                          <div className="py-6 text-center space-y-1.5">
+                            <div className="w-9 h-9 rounded-full bg-emerald-100 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto text-base font-bold">
+                              ✓
+                            </div>
+                            <p className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                              All caught up!
+                            </p>
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400 max-w-xs mx-auto">
+                              No pending approval requests requiring your review in this scope.
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                            {userScopePendingApprovals.slice(0, 5).map((req) => (
+                              <div
+                                key={req.id}
+                                className="p-2.5 rounded-xl border border-slate-100 dark:border-slate-800/80 bg-slate-50/70 dark:bg-slate-800/40 hover:bg-slate-100 dark:hover:bg-slate-800 transition flex flex-col gap-1.5"
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="font-extrabold text-xs text-slate-800 dark:text-slate-100 line-clamp-1">
+                                    {req.section || 'Project Baseline Update'}
+                                  </div>
+                                  <span className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
+                                    {req.projectId === currentProject?.id ? 'This Contract' : 'Other Contract'}
+                                  </span>
+                                </div>
+                                <div className="text-[10px] text-slate-500 dark:text-slate-400 flex items-center justify-between">
+                                  <span>By <strong className="text-slate-700 dark:text-slate-200">@{req.author || req.requestedBy}</strong></span>
+                                  <span>{req.requestedAt ? formatRelativeTime(req.requestedAt) : 'Recent'}</span>
+                                </div>
+                                <div className="flex items-center gap-2 pt-1 border-t border-slate-200/50 dark:border-slate-700/50">
+                                  <button
+                                    onClick={() => {
+                                      setShowNotificationDropdown(false);
+                                      if (req.projectId === currentProject?.id) {
+                                        setShowApprovals(true);
+                                      } else {
+                                        const target = projects.find(p => p.id === req.projectId);
+                                        if (target) {
+                                          setCurrentProject(target);
+                                          setCurrentProjectId(target.id);
+                                          setShowApprovals(true);
+                                        }
+                                      }
+                                    }}
+                                    className="w-full py-1 text-center bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-bold transition flex items-center justify-center gap-1 cursor-pointer"
+                                  >
+                                    <ShieldCheck className="w-3 h-3" />
+                                    Review Request
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                            {userScopePendingApprovals.length > 5 && (
+                              <p className="text-[10px] text-center text-slate-400 py-1 font-semibold">
+                                + {userScopePendingApprovals.length - 5} more pending requests
+                              </p>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Footer action */}
+                        {userScopePendingApprovals.length > 0 && (
+                          <div className="pt-3 mt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+                            <button
+                              onClick={() => {
+                                setShowNotificationDropdown(false);
+                                setActiveTab('approvalWorkflow');
+                              }}
+                              className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
+                            >
+                              <span>Open Approval Workflow</span>
+                              <ArrowRight className="w-3 h-3" />
+                            </button>
+                            <button
+                              onClick={() => setShowNotificationDropdown(false)}
+                              className="text-[11px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 font-semibold cursor-pointer"
+                            >
+                              Close
+                            </button>
+                          </div>
+                        )}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
                 {isMasterAdmin && usersListState.some(u => u && u.isPendingApproval) && (
                   <button
                     onClick={() => {
@@ -3536,15 +3745,6 @@ let isBatchSyncRunning = false;
                   <BookOpen className="w-3.5 h-3.5" />
                   User Guide Manual
                 </button>
-                <a
-                  href="/download-single-html"
-                  download="index.html"
-                  className="bg-blue-600 hover:bg-blue-700 p-2 rounded-full border border-blue-700 flex items-center gap-1.5 text-[11px] font-extrabold text-white px-3 py-1.5 transition shadow-sm"
-                  title="Download complete standalone self-contained single index.html file"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  Single HTML
-                </a>
                 <button
                   onClick={() => window.print()}
                   className="bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 p-2.5 rounded-full border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-blue-500 transition"
@@ -4289,6 +4489,7 @@ let isBatchSyncRunning = false;
                 { id: 'risks', label: '⚠️ Project Risks' },
                 { id: 'consultant', label: '👔 Supervision Consultant' },
                 { id: 'submittalLog', label: '📋 Submittal Log' },
+                { id: 'approvalWorkflow', label: '🛡️ Approvals' },
                 /* { id: 'workspace', label: '☁️ Workspace' }, */
                 { id: 'analysis', label: '📊 Comprehensive analysis' },
                 { id: 'documentation', label: '📁 Documentation' },
@@ -4296,19 +4497,49 @@ let isBatchSyncRunning = false;
                 { id: 'settings', label: '⚙️ Settings' }
               ]
                 .filter((tab) => canUserViewPage(currentUserObj, tab.id))
-                .map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`px-3 py-2 rounded-xl transition duration-150 whitespace-nowrap ${
-                    activeTab === tab.id
-                      ? 'bg-blue-600 dark:bg-blue-500 text-white shadow-sm'
-                      : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
+                .map((tab) => {
+                  const isDashTab = tab.id === 'dash';
+                  const isApprovalTab = tab.id === 'approvalWorkflow';
+                  const hasNotification = isDashTab 
+                    ? userScopePendingApprovals.length > 0 
+                    : (isApprovalTab && currentProjectPendingApprovals.length > 0);
+                  const notificationCount = isDashTab 
+                    ? userScopePendingApprovals.length 
+                    : currentProjectPendingApprovals.length;
+
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`relative px-3 py-2 rounded-xl transition duration-150 whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
+                        activeTab === tab.id
+                          ? 'bg-blue-600 dark:bg-blue-500 text-white shadow-sm'
+                          : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400'
+                      }`}
+                      title={
+                        isDashTab && userScopePendingApprovals.length > 0
+                          ? `Dashboard: ${userScopePendingApprovals.length} pending approval request${userScopePendingApprovals.length > 1 ? 's' : ''} in your scope`
+                          : isApprovalTab && currentProjectPendingApprovals.length > 0
+                          ? `Approvals: ${currentProjectPendingApprovals.length} pending request${currentProjectPendingApprovals.length > 1 ? 's' : ''} for this contract`
+                          : tab.label
+                      }
+                    >
+                      <span>{tab.label}</span>
+                      {hasNotification && (
+                        <span 
+                          className={`flex items-center gap-1 px-1.5 py-0.2 rounded-full text-[9px] font-black shadow-xs ${
+                            isDashTab 
+                              ? 'bg-rose-600 text-white animate-pulse' 
+                              : 'bg-amber-500 text-white'
+                          }`}
+                        >
+                          {isDashTab && <span className="w-1.5 h-1.5 rounded-full bg-white"></span>}
+                          <span>{notificationCount}</span>
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
             </div>
 
             {/* Tab Views Swappers */}

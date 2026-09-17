@@ -20,7 +20,6 @@ import {
   ShieldAlert,
   X,
   FileText,
-  Download,
   Sliders,
   ChevronDown,
   ChevronUp,
@@ -534,7 +533,7 @@ export default function ProjectsPage({
     };
   };
 
-  const pendingCount = pendingApprovals.filter(a => a.status === 'pending' && canUserApproveRequest(currentUserObj, a, projects)).length;
+  const pendingCount = pendingApprovals.filter(a => (a.status === 'pending' || a.status === 'submitted') && canUserApproveRequest(currentUserObj, a, projects)).length;
 
   const handleSendInvite = (e: React.FormEvent) => {
     e.preventDefault();
@@ -687,16 +686,6 @@ export default function ProjectsPage({
               <BookOpen className="w-3.5 h-3.5" />
               User Manual
             </button>
-
-            <a
-              href="/download-single-html"
-              download="index.html"
-              title="Download complete standalone self-contained single index.html file"
-              className="flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer"
-            >
-              <Download className="w-3.5 h-3.5" />
-              Single HTML
-            </a>
 
             <button 
               onClick={onLogout}
