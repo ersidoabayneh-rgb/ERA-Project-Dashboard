@@ -62,14 +62,14 @@ export default function WorkspaceView({ projects = [], onRestoreProjects, curren
   }, []);
 
   const handleSyncNow = async () => {
-    setSyncStatus('Saving database repository to MySQL & broadcasting real-time...');
+    setSyncStatus('Saving database repository to Cloud Firestore & broadcasting real-time...');
     try {
       if (projects && projects.length > 0) {
         for (const p of projects) {
           await safeSyncProject(p, true).catch(() => {});
         }
       }
-      setSyncStatus('Database state synchronized & broadcasted to all connected users in real time.');
+      setSyncStatus('Database state synchronized to Firebase & broadcasted to all connected users in real time.');
     } catch (e: any) {
       setSyncStatus('Database update completed.');
     }
@@ -83,10 +83,10 @@ export default function WorkspaceView({ projects = [], onRestoreProjects, curren
           <div>
             <div className="flex items-center gap-2">
               <ShieldCheck className="h-6 w-6 text-emerald-400" />
-              <h2 className="text-xl font-bold tracking-tight">Contract MySQL Database & Real-Time Sync Vault</h2>
+              <h2 className="text-xl font-bold tracking-tight">Contract Firebase Database & Real-Time Sync Vault</h2>
             </div>
             <p className="text-sm text-slate-300 mt-1">
-              Real-time multi-user synchronization powered by WebSockets and MySQL v8.0.32 database engine.
+              Real-time multi-user synchronization powered by WebSockets and Firebase Firestore NoSQL cloud database engine.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -112,11 +112,11 @@ export default function WorkspaceView({ projects = [], onRestoreProjects, curren
               <div className="space-y-4">
                 <div className="flex items-center gap-2.5 text-blue-600 dark:text-blue-400">
                   <Database className="h-5 w-5" />
-                  <h3 className="font-bold text-lg text-slate-800 dark:text-white">MySQL & Real-Time Engine</h3>
+                  <h3 className="font-bold text-lg text-slate-800 dark:text-white">Firebase & Real-Time Engine</h3>
                 </div>
                 
                 <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-                  Your contract data, users, and approval workflows are directly persisted in MySQL and instantaneously broadcasted across all connected user sessions via WebSockets so every user views the exact same live values.
+                  Your contract data, users, and approval workflows are directly persisted in Firebase Cloud Firestore and instantaneously broadcasted across all connected user sessions via WebSockets so every user views the exact same live values.
                 </p>
 
                 <div className="p-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 dark:bg-emerald-950/20 w-full space-y-2">
@@ -134,7 +134,7 @@ export default function WorkspaceView({ projects = [], onRestoreProjects, curren
                     </div>
                   </div>
                   <p className="text-sm text-emerald-800/80 dark:text-emerald-200/70">
-                    When any user updates a project accomplishment, quantity item, IPC bill, user role, or approval status, the MySQL database saves the record and immediately streams the update to all active browser sessions.
+                    When any user updates a project accomplishment, quantity item, IPC bill, user role, or approval status, the Firestore cloud database saves the record and immediately streams the update to all active browser sessions.
                   </p>
                 </div>
               </div>
@@ -163,7 +163,7 @@ export default function WorkspaceView({ projects = [], onRestoreProjects, curren
                 Real-Time & DB Engine
               </h3>
               <span className="bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 text-[10px] px-2.5 py-1 rounded-full font-bold uppercase">
-                MySQL 8.0 + WS
+                Firestore NoSQL + WS
               </span>
             </div>
 
@@ -179,7 +179,7 @@ export default function WorkspaceView({ projects = [], onRestoreProjects, curren
               <div className="p-3 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-100 dark:border-slate-850 space-y-2">
                 <div className="font-bold text-slate-700 dark:text-slate-200">Database Driver:</div>
                 <div className="font-mono text-[11px] text-blue-600 dark:text-blue-400 bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-200 dark:border-slate-800 truncate">
-                  MySQL2 Node Connector (Port 31636)
+                  Firebase Admin SDK (Cloud Connection)
                 </div>
               </div>
 

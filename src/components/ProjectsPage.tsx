@@ -284,7 +284,7 @@ export default function ProjectsPage({
   }, [accessibleProjects]);
 
   const filteredProjects = useMemo(() => {
-    return projects
+    const list = projects
       .filter(isAccessible)
       .filter(p => {
         if (selectedDirectorate === 'All') return true;
@@ -330,6 +330,16 @@ export default function ProjectsPage({
           a => a.projectId === p.id && a.status === 'pending' && canUserApproveRequest(currentUserObj, a, projects)
         );
       });
+
+    // Deduplicate by ID to guarantee unique elements
+    const seen = new Set<string>();
+    return list.filter(p => {
+      const idKey = p?.id || '';
+      if (!idKey) return true;
+      if (seen.has(idKey)) return false;
+      seen.add(idKey);
+      return true;
+    });
   }, [projects, isMasterAdmin, currentUserObj, selectedDirectorate, selectedStatusFilter, searchQuery, similarityFilter, filterPendingApprovalsOnly, pendingApprovals]);
 
   const sortedProjects = useMemo(() => {
@@ -1172,7 +1182,7 @@ export default function ProjectsPage({
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <AnimatePresence>
-              {sortedProjects.map((p) => {
+              {sortedProjects.map((p, pIdx) => {
                 const criticalBonds = p.bonds ? p.bonds.filter(b => {
                   if (b.status === 'Recovered' || b.status === 'N/A' || (b.status && (b.status.toLowerCase().includes('returned') || b.status.toLowerCase().includes('amortized')))) return false;
                   const exp = new Date(b.expireDate);
@@ -1193,7 +1203,7 @@ export default function ProjectsPage({
 
                 return (
                   <motion.div
-                    key={p.id}
+                    key={`proj-card-${p.id || pIdx}-${pIdx}`}
                     layout
                     initial={{ opacity: 0, scale: 0.95 }}
                     animate={{ opacity: 1, scale: 1 }}
@@ -1251,7 +1261,7 @@ export default function ProjectsPage({
                             </span>
                           )}
                           <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">
-                            ID: {p.id.substring(0, 10)}
+                            ID: {(p?.id || '').substring(0, 10)}
                           </span>
                         </div>
                         

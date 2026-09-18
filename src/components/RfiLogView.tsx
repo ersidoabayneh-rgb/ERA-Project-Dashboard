@@ -821,7 +821,7 @@ export default function RfiLogView({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 text-xs">
-                {filteredRfis.map(rfi => {
+                {filteredRfis.map((rfi, rIdx) => {
                   const elapsedDays = getElapsedDays(rfi.dateSubmitted, rfi.responseDate);
                   const isOverdue =
                     (rfi.status === 'Submitted' || rfi.status === 'Under Review') &&
@@ -829,7 +829,7 @@ export default function RfiLogView({
                   const isExpanded = expandedRfiId === rfi.id;
 
                   return (
-                    <React.Fragment key={rfi.id}>
+                    <React.Fragment key={`rfi-row-${rfi.id || rIdx}-${rIdx}`}>
                       <tr
                         className={`hover:bg-slate-50/80 dark:hover:bg-slate-850/50 transition cursor-pointer ${
                           isExpanded ? 'bg-blue-50/40 dark:bg-blue-950/20' : ''
@@ -870,9 +870,9 @@ export default function RfiLogView({
                           </div>
                           {rfi.pdfFiles && rfi.pdfFiles.length > 0 && (
                             <div className="flex items-center gap-1 mt-1.5 flex-wrap">
-                              {rfi.pdfFiles.map(pdf => (
+                              {rfi.pdfFiles.map((pdf, pIdx) => (
                                 <button
-                                  key={pdf.id}
+                                  key={`rfi-pdf-${pdf.id || pIdx}-${pIdx}`}
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
@@ -1113,8 +1113,8 @@ export default function RfiLogView({
 
                               {rfi.pdfFiles && rfi.pdfFiles.length > 0 ? (
                                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
-                                  {rfi.pdfFiles.map(pdf => (
-                                    <div key={pdf.id} className="p-2.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2">
+                                  {rfi.pdfFiles.map((pdf, pIdx) => (
+                                    <div key={`rfi-det-pdf-${pdf.id || pIdx}-${pIdx}`} className="p-2.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2">
                                       <div className="flex items-center gap-2 min-w-0">
                                         <div className="p-1.5 bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 rounded-lg shrink-0">
                                           <FileText className="w-4 h-4" />
@@ -1446,8 +1446,8 @@ export default function RfiLogView({
 
                   {formData.pdfFiles && formData.pdfFiles.length > 0 ? (
                     <div className="space-y-1.5">
-                      {formData.pdfFiles.map(pdf => (
-                        <div key={pdf.id} className="p-2 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2 text-xs">
+                      {formData.pdfFiles.map((pdf, pIdx) => (
+                        <div key={} className="p-2 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2 text-xs">
                           <div className="flex items-center gap-2 min-w-0">
                             <FileText className="w-4 h-4 text-rose-500 shrink-0" />
                             <span className="font-bold text-slate-800 dark:text-slate-200 truncate">{pdf.name}</span>

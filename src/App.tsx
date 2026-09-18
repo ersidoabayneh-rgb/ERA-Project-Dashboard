@@ -461,6 +461,25 @@ export default function App() {
   // User Guide Modal state
   const [isUserGuideOpen, setIsUserGuideOpen] = useState(false);
 
+  // Submittal log sub-tab state
+  const [submittalLogInitialTab, setSubmittalLogInitialTab] = useState<'submittals' | 'rfis' | 'combined'>('submittals');
+
+  // Custom event listener to switch tabs seamlessly from any deep component
+  useEffect(() => {
+    const handleSwitchTab = (e: Event) => {
+      const customEvent = e as CustomEvent<{ tab: string; subTab?: 'submittals' | 'rfis' | 'combined' }>;
+      if (customEvent.detail && customEvent.detail.tab) {
+        setActiveTab(customEvent.detail.tab);
+        localStorage.setItem('era_active_tab', customEvent.detail.tab);
+        if (customEvent.detail.subTab) {
+          setSubmittalLogInitialTab(customEvent.detail.subTab);
+        }
+      }
+    };
+    window.addEventListener('era-switch-tab', handleSwitchTab);
+    return () => window.removeEventListener('era-switch-tab', handleSwitchTab);
+  }, []);
+
   // Sync page view, active tab, and project ID state to local storage to persist on refresh
   useEffect(() => {
     localStorage.setItem('era_current_page', currentPage);
@@ -2350,6 +2369,15 @@ let isBatchSyncRunning = false;
       if (s) projList = JSON.parse(s).map((p: any) => normalizeProject(p));
     } catch {}
 
+    // Deduplicate local projects by id
+    const seenLocalIds = new Set<string>();
+    projList = projList.filter(p => {
+      if (!p || !p.id) return false;
+      if (seenLocalIds.has(p.id)) return false;
+      seenLocalIds.add(p.id);
+      return true;
+    });
+
     if (projList.length === 0) {
       const dp = defaultProjectTemplate();
       projList = [dp];
@@ -2395,21 +2423,40 @@ let isBatchSyncRunning = false;
             safeSyncProject(p).catch(err => console.warn('Failed to sync back local-only project:', err));
           });
 
-          setProjects(filteredMerged);
-          safeSetItem('era_proj_v28', JSON.stringify(filteredMerged));
+          // Deduplicate merged projects to guarantee zero duplicate keys
+          const dedupedMerged: Project[] = [];
+          const seenMergedIds = new Set<string>();
+          filteredMerged.forEach(p => {
+            if (p && p.id && !seenMergedIds.has(p.id)) {
+              seenMergedIds.add(p.id);
+              dedupedMerged.push(p);
+            }
+          });
+
+          setProjects(dedupedMerged);
+          safeSetItem('era_proj_v28', JSON.stringify(dedupedMerged));
           setCurrentProject(prev => {
-            if (!prev) return filteredMerged[0] || null;
-            const match = filteredMerged.find(p => p.id === prev.id);
-            return match || filteredMerged[0] || null;
+            if (!prev) return dedupedMerged[0] || null;
+            const match = dedupedMerged.find(p => p.id === prev.id);
+            return match || dedupedMerged[0] || null;
           });
           console.log('Successfully merged and initialized active contracts with cloud authoritative database.');
         } else {
-          setProjects(cleanLocal);
-          safeSetItem('era_proj_v28', JSON.stringify(cleanLocal));
+          const dedupedCleanLocal: Project[] = [];
+          const seenLocalSet = new Set<string>();
+          cleanLocal.forEach(p => {
+            if (p && p.id && !seenLocalSet.has(p.id)) {
+              seenLocalSet.add(p.id);
+              dedupedCleanLocal.push(p);
+            }
+          });
+
+          setProjects(dedupedCleanLocal);
+          safeSetItem('era_proj_v28', JSON.stringify(dedupedCleanLocal));
           setCurrentProject(prev => {
-            if (!prev) return cleanLocal[0] || null;
-            const match = cleanLocal.find(p => p.id === prev.id);
-            return match || cleanLocal[0] || null;
+            if (!prev) return dedupedCleanLocal[0] || null;
+            const match = dedupedCleanLocal.find(p => p.id === prev.id);
+            return match || dedupedCleanLocal[0] || null;
           });
         }
       } catch (err) {
@@ -3864,9 +3911,9 @@ let isBatchSyncRunning = false;
                           </div>
                         ) : (
                           <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-                            {userScopePendingApprovals.slice(0, 5).map((req) => (
+                            {userScopePendingApprovals.slice(0, 5).map((req, rIdx) => (
                               <div
-                                key={req.id}
+                                key={`user-scope-appr-${req.id || rIdx}-${rIdx}`}
                                 className="p-2.5 rounded-xl border border-slate-100 dark:border-slate-800/80 bg-slate-50/70 dark:bg-slate-800/40 hover:bg-slate-100 dark:hover:bg-slate-800 transition flex flex-col gap-1.5"
                               >
                                 <div className="flex items-start justify-between gap-2">
@@ -4101,13 +4148,13 @@ let isBatchSyncRunning = false;
                             You are viewing your local draft changes. These changes are isolated from other users.
                           </div>
                           <div className="flex items-center gap-2 flex-wrap mt-1">
-                            {activeUnexpired.map(d => {
+                            {activeUnexpired.map((d, dIdx) => {
                               const elapsedMs = nowMs - new Date(d.updatedAt).getTime();
                               const remainingMs = Math.max(0, 10 * 60 * 1000 - elapsedMs);
                               const remMins = Math.floor(remainingMs / 60000);
                               const remSecs = Math.floor((remainingMs % 60000) / 1000);
                               return (
-                                <span key={d.id} className="inline-flex items-center gap-1.5 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900 px-2.5 py-0.7 rounded-lg text-[10px] font-bold text-indigo-700 dark:text-indigo-300 shadow-3xs">
+                                <span key={`unexp-draft-${d.id || dIdx}-${dIdx}`} className="inline-flex items-center gap-1.5 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900 px-2.5 py-0.7 rounded-lg text-[10px] font-bold text-indigo-700 dark:text-indigo-300 shadow-3xs">
                                   <strong>{d.section}</strong>: expires in <span className="font-black text-amber-600 dark:text-amber-400 font-mono">{remMins}m {remSecs}s</span>
                                 </span>
                               );
@@ -4168,8 +4215,8 @@ let isBatchSyncRunning = false;
                             Your submitted submittal is actively waiting in the queue until an Approver, PMO, or Directorate Admin reviews and either <strong>approves</strong> (incorporating into the live project) or <strong>rejects</strong> your request.
                           </div>
                           <div className="flex items-center gap-2 flex-wrap mt-1">
-                            {submittedDrafts.map(d => (
-                              <span key={d.id} className="inline-flex items-center gap-1.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 px-2.5 py-0.7 rounded-lg text-[10px] font-bold text-amber-800 dark:text-amber-300 shadow-3xs">
+                            {submittedDrafts.map((d, dIdx) => (
+                              <span key={`sub-draft-${d.id || dIdx}-${dIdx}`} className="inline-flex items-center gap-1.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 px-2.5 py-0.7 rounded-lg text-[10px] font-bold text-amber-800 dark:text-amber-300 shadow-3xs">
                                 <strong>{d.section}</strong>: Submitted at {new Date(d.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • <em>Waiting on Approver Decision</em>
                               </span>
                             ))}
@@ -4734,7 +4781,7 @@ let isBatchSyncRunning = false;
                 { id: 'settings', label: '⚙️ Settings' }
               ]
                 .filter((tab) => canUserViewPage(currentUserObj, tab.id))
-                .map((tab) => {
+                .map((tab, tabIdx) => {
                   const isDashTab = tab.id === 'dash';
                   const isApprovalTab = tab.id === 'approvalWorkflow';
                   const hasNotification = isDashTab 
@@ -4746,7 +4793,7 @@ let isBatchSyncRunning = false;
 
                   return (
                     <button
-                      key={tab.id}
+                      key={`main-nav-tab-${tab.id}-${tabIdx}`}
                       onClick={() => setActiveTab(tab.id)}
                       className={`relative px-3 py-2 rounded-xl transition duration-150 whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
                         activeTab === tab.id
@@ -5027,7 +5074,7 @@ let isBatchSyncRunning = false;
                   onProjectUpdate={handleProjectUpdate}
                   isReadonly={currentUserObj?.role === 'viewer' && currentUserObj?.username !== 'proj_1781786415663'}
                   currentUserObj={currentUserObj}
-                  initialTab="submittals"
+                  initialTab={submittalLogInitialTab}
                 />
               )}
 
@@ -5758,7 +5805,7 @@ let isBatchSyncRunning = false;
                                          return (proj.pmo || '') === uDraft.assignedPmo;
                                       }
                                       return true;
-                                    }).map((proj) => {
+                                    }).map((proj, pIdx) => {
                                       const isMaster = uDraft.role === 'admin' || uDraft.role === 'master_admin';
                                       const isDirAdminUser = uDraft.role === 'directorate_admin' && (proj.programDirectorate || 'Southern') === uDraft.assignedDirectorate;
                                       const isPmoAdminUser = uDraft.role === 'pmo_admin' && (proj.pmo || '') === uDraft.assignedPmo;
@@ -5769,7 +5816,7 @@ let isBatchSyncRunning = false;
                                       const isChanged = !hasAutoAccess && (accessible !== originalAccessible);
 
                                       return (
-                                        <label key={`uacc-proj-${proj.id}`} className={`flex items-center gap-2 p-2 rounded-xl cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition ${
+                                        <label key={`uacc-proj-${proj.id}-${pIdx}`} className={`flex items-center gap-2 p-2 rounded-xl cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition ${
                                           isChanged ? 'text-amber-700 dark:text-amber-400 font-extrabold bg-amber-500/5' : 'text-slate-650 dark:text-slate-350 bg-slate-50/40 dark:bg-slate-900/10'
                                         }`}>
                                           <input
@@ -5852,7 +5899,7 @@ let isBatchSyncRunning = false;
                                   </div>
 
                                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-64 overflow-y-auto pr-1">
-                                    {ALL_EDITABLE_PAGES.map((pageOpt) => {
+                                    {ALL_EDITABLE_PAGES.map((pageOpt, poIdx) => {
                                       const isMaster = uDraft.role === 'admin' || uDraft.role === 'master_admin';
                                       const currentAssigned = uDraft.assignedPages || [];
                                       const isAssigned = isMaster || (currentAssigned.length === 0 ? true : currentAssigned.includes(pageOpt.id));
@@ -5861,7 +5908,7 @@ let isBatchSyncRunning = false;
 
                                       return (
                                         <label
-                                          key={pageOpt.id}
+                                          key={`page-opt-${pageOpt.id}-${poIdx}`}
                                           className={`flex items-start gap-2 p-2.5 rounded-xl cursor-pointer border transition ${
                                             isAssigned
                                               ? 'bg-blue-50/40 dark:bg-blue-950/20 border-blue-200/80 dark:border-blue-900/40 text-slate-800 dark:text-zinc-100'
@@ -7246,7 +7293,7 @@ let isBatchSyncRunning = false;
                             <div className="font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide text-2xs">Changes summary:</div>
                             {changes.map((c, i) => {
                               const rendered = renderHumanReadableDiff(c.field, c.old, c.new);
-                              return rendered ? <div key={i}>{rendered}</div> : null;
+                              return rendered ? <div key={`diff-${c.field || i}-${i}`}>{rendered}</div> : null;
                             })}
                           </div>
                         );

@@ -224,9 +224,9 @@ export default function ConsultantPerformanceKpiWidget({
   // Core Category KPI Statistics & Weighted Evaluation Scoring Calculation
   const categoryKpiStats = useMemo(() => {
     return evaluationCriteria.map((crit) => {
-      const cat = crit.name;
+      const cat = crit.name || '';
       const weightPct = crit.weightPct || 0;
-      const items = submittalsList.filter(s => s.type === cat || s.type.toLowerCase() === cat.toLowerCase());
+      const items = submittalsList.filter(s => (s.type || '') === cat || (s.type || '').toLowerCase() === cat.toLowerCase());
       const targetDays = targetOverrides[cat] !== undefined ? targetOverrides[cat] : crit.targetDays;
 
       const evaluatedItems = items.map(item => {
@@ -286,7 +286,7 @@ export default function ConsultantPerformanceKpiWidget({
       return {
         id: crit.id,
         category: cat,
-        shortName: cat.length > 18 ? cat.substring(0, 16) + '...' : cat,
+        shortName: (cat || '').length > 18 ? (cat || '').substring(0, 16) + '...' : (cat || ''),
         targetDays,
         actualDays: avgActualDays,
         varianceDays,
@@ -666,21 +666,35 @@ export default function ConsultantPerformanceKpiWidget({
               </h4>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setIsExpanded(!isExpanded)}
-              className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-black transition flex items-center gap-1.5 cursor-pointer border border-slate-200 dark:border-slate-700 shadow-3xs"
-            >
-              {isExpanded ? (
-                <>
-                  <ChevronUp className="w-4 h-4 text-indigo-600" /> Hide SLA Turnaround Table
-                </>
-              ) : (
-                <>
-                  <ChevronDown className="w-4 h-4 text-indigo-600" /> Show SLA Turnaround Table
-                </>
-              )}
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const event = new CustomEvent('era-switch-tab', { detail: { tab: 'submittalLog', subTab: 'combined' } });
+                  window.dispatchEvent(event);
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900 text-indigo-700 dark:text-indigo-300 text-xs font-black transition border border-indigo-100 dark:border-indigo-900/40 shadow-3xs cursor-pointer"
+                title="Navigate directly to the Submittals & RFI Log page"
+              >
+                <ArrowUpRight className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" /> View Log Register
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsExpanded(!isExpanded)}
+                className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-black transition flex items-center gap-1.5 cursor-pointer border border-slate-200 dark:border-slate-700 shadow-3xs"
+              >
+                {isExpanded ? (
+                  <>
+                    <ChevronUp className="w-4 h-4 text-indigo-600" /> Hide SLA Turnaround Table
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="w-4 h-4 text-indigo-600" /> Show SLA Turnaround Table
+                  </>
+                )}
+              </button>
+            </div>
           </div>
 
           {/* Summary Highlight Cards */}
@@ -859,7 +873,7 @@ export default function ConsultantPerformanceKpiWidget({
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-800 dark:text-slate-200">
                 {categoryKpiStats.map((stat, sIdx) => (
-                  <tr key={`stat-cat-${stat.category}-${sIdx}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
+                  <tr key={`stat-cat-${stat.category}-${sIdx}`} className="group hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
                     {/* Submittal Criteria Name */}
                     <td className="py-2.5 px-3.5 font-bold">
                       <div className="flex flex-col gap-0.5">
@@ -867,9 +881,25 @@ export default function ConsultantPerformanceKpiWidget({
                           <span className={`w-2 h-2 rounded-full shrink-0 ${
                             stat.isComplying ? 'bg-indigo-600' : 'bg-rose-500'
                           }`}></span>
-                          <span className="text-slate-900 dark:text-white font-semibold">
-                            {stat.category}
-                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const subTab = stat.category === 'RFI' ? 'rfis' : 'submittals';
+                              localStorage.setItem('era_prefilter_submittal_type', stat.category);
+                              const event = new CustomEvent('era-switch-tab', {
+                                detail: {
+                                  tab: 'submittalLog',
+                                  subTab: subTab
+                                }
+                              });
+                              window.dispatchEvent(event);
+                            }}
+                            className="text-slate-950 dark:text-white font-bold hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline text-left inline-flex items-center gap-1 cursor-pointer"
+                            title={`Click to view all ${stat.category} logs`}
+                          >
+                            <span>{stat.category}</span>
+                            <ArrowUpRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition text-indigo-500 shrink-0" />
+                          </button>
                         </div>
                         {stat.pmbokDomain && (
                           <div className="flex flex-wrap items-center gap-1.5 pl-4 text-[10px] font-normal text-slate-500 dark:text-slate-400">

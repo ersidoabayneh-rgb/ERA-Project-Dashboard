@@ -526,7 +526,7 @@ export default function RowStatusView({
                   </tr>
                 ) : (
                   compensations.map((c, idx) => (
-                    <tr key={c.id || idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/10">
+                    <tr key={`comp-row-${c.id || idx}-${idx}`} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/10">
                       <td className="p-3 text-center font-bold text-slate-400 font-mono">{idx + 1}</td>
                       
                       {/* Woreda/Location */}
@@ -713,7 +713,7 @@ export default function RowStatusView({
                   </tr>
                 ) : (
                   utilityCompensations.map((c, idx) => (
-                    <tr key={c.id || idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/10">
+                    <tr key={`util-row-${c.id || idx}-${idx}`} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/10">
                       <td className="p-3 text-center font-bold text-slate-400 font-mono">{idx + 1}</td>
                       
                       {/* Utility Type */}
@@ -872,7 +872,7 @@ export default function RowStatusView({
                   </tr>
                 ) : (
                   rowStatusItems.map((item, idx) => (
-                    <tr key={item.id || idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/10">
+                    <tr key={`row-stat-${item.id || idx}-${idx}`} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/10">
                       <td className="p-3 text-center font-bold text-slate-400 font-mono">{idx + 1}</td>
                       
                       {/* From Station */}

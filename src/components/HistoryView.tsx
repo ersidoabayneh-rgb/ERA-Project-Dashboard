@@ -1087,8 +1087,8 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     doc.text("DESIGN CONSULTANT", 310, curY + 48);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(15, 23, 42);
-    const consultantDisplay = `${consultantEval.firmName} (Grade ${consultantEval.officialGrade} • ${consultantEval.overallScore.toFixed(1)}%)`;
-    doc.text(consultantDisplay.length > 38 ? consultantDisplay.substring(0, 36) + '...' : consultantDisplay, 310, curY + 58);
+    const consultantDisplay = `${consultantEval.firmName || 'Consultant'} (Grade ${consultantEval.officialGrade || 'N/A'} • ${(consultantEval.overallScore || 0).toFixed(1)}%)`;
+    doc.text((consultantDisplay || '').length > 38 ? (consultantDisplay || '').substring(0, 36) + '...' : (consultantDisplay || ''), 310, curY + 58);
 
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(100, 116, 139);
@@ -1488,7 +1488,8 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
       doc.setFontSize(7);
       doc.setTextColor(51, 65, 85);
       const maxCharCount = 28;
-      const cleanLabel = g.name.length > maxCharCount ? g.name.substring(0, maxCharCount) + '...' : g.name;
+      const gName = g?.name || '';
+      const cleanLabel = gName.length > maxCharCount ? gName.substring(0, maxCharCount) + '...' : gName;
       doc.text(cleanLabel, gridBoxX + 24, gridBoxY + 11);
 
       // Score status colors

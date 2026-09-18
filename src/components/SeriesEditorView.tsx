@@ -672,7 +672,7 @@ export default function SeriesEditorView({ project, onUpdateSeries, onProjectUpd
             </thead>
             <tbody className="divide-y divide-slate-50 dark:divide-slate-700/40">
               {draftSeries.map((item, idx) => (
-                <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/10 border-b border-slate-100 dark:border-slate-800">
+                <tr key={`draft-series-${item.code || idx}-${idx}`} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/10 border-b border-slate-100 dark:border-slate-800">
                   {/* Code Cell - Fully Editable */}
                   <td className="p-3 text-center font-bold">
                     <input
@@ -881,7 +881,7 @@ export default function SeriesEditorView({ project, onUpdateSeries, onProjectUpd
                     const isRetentionMoney = p.item.trim().toLowerCase().includes('retention money');
                     const isReadonly = p.item === 'Total Todate Bill Summary' || p.item === 'Total Todate Certified IPC' || p.item === 'Remaining' || isPriceAdj || isAdvanceRepayment || isRetentionMoney;
                     return (
-                      <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/10">
+                      <tr key={`pay-row-${p.item || idx}-${idx}`} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/10">
                         <td className="p-2 font-medium">
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <input
@@ -976,7 +976,7 @@ export default function SeriesEditorView({ project, onUpdateSeries, onProjectUpd
                     const kmVal = a.km !== undefined ? a.km : (a.amount <= (totalProjectKm * 2) ? a.amount : Number(((a.percent / 100) * totalProjectKm).toFixed(2)));
                     const pctVal = totalProjectKm > 0 ? (kmVal / totalProjectKm) * 100 : (a.percent || 0);
                     return (
-                      <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/10">
+                      <tr key={`annual-row-${a.year || idx}-${idx}`} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/10">
                         <td className="p-2 text-center font-bold">
                           <input
                             type="number"

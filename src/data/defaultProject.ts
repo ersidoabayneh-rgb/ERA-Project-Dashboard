@@ -2733,8 +2733,8 @@ export function getSixMonthCumulativeGrading(records: MonthlyGradingRecord[]): S
     const ym = parseMonthToYyyyMm(r.month || r.recordedDate);
     if (!ym || !/^\d{4}-\d{2}$/.test(ym)) return;
 
-    const yyyy = parseInt(ym.substring(0, 4), 10);
-    const mm = parseInt(ym.substring(5, 7), 10);
+    const yyyy = parseInt((ym || '').substring(0, 4), 10);
+    const mm = parseInt((ym || '').substring(5, 7), 10);
 
     let fyStartYear: number;
     let fyEndYear: number;

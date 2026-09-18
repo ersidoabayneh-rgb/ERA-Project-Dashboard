@@ -94,7 +94,7 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
       // Find highest index
       let nextIndex = goal.sscs.length + 1;
       let formatPrefix = "SC";
-      if (newParentGoalId.startsWith("G")) {
+      if (newParentGoalId && newParentGoalId.startsWith("G")) {
         formatPrefix = `SC${newParentGoalId.substring(1)}.`;
       }
       

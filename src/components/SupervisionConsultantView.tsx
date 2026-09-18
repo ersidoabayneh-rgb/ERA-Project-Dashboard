@@ -224,22 +224,22 @@ export default function SupervisionConsultantView({
     return (consultant.personnelAuditLog || []).filter(log => {
       const matchesSearch = 
         !auditSearchQuery ||
-        log.adminUser.toLowerCase().includes(auditSearchQuery.toLowerCase()) ||
-        log.personnelName.toLowerCase().includes(auditSearchQuery.toLowerCase()) ||
-        log.position.toLowerCase().includes(auditSearchQuery.toLowerCase()) ||
-        log.details.toLowerCase().includes(auditSearchQuery.toLowerCase()) ||
-        log.category.toLowerCase().includes(auditSearchQuery.toLowerCase());
+        (log.adminUser || '').toLowerCase().includes(auditSearchQuery.toLowerCase()) ||
+        (log.personnelName || '').toLowerCase().includes(auditSearchQuery.toLowerCase()) ||
+        (log.position || '').toLowerCase().includes(auditSearchQuery.toLowerCase()) ||
+        (log.details || '').toLowerCase().includes(auditSearchQuery.toLowerCase()) ||
+        (log.category || '').toLowerCase().includes(auditSearchQuery.toLowerCase());
       
       const matchesAction = auditActionFilter === 'ALL' || log.actionType === auditActionFilter;
 
       let matchesDate = true;
       if (auditStartDate) {
-        const logDateOnly = log.timestamp.substring(0, 10);
-        if (logDateOnly < auditStartDate) matchesDate = false;
+        const logDateOnly = (log.timestamp || '').substring(0, 10);
+        if (logDateOnly && logDateOnly < auditStartDate) matchesDate = false;
       }
       if (auditEndDate) {
-        const logDateOnly = log.timestamp.substring(0, 10);
-        if (logDateOnly > auditEndDate) matchesDate = false;
+        const logDateOnly = (log.timestamp || '').substring(0, 10);
+        if (logDateOnly && logDateOnly > auditEndDate) matchesDate = false;
       }
 
       return matchesSearch && matchesAction && matchesDate;
@@ -2311,7 +2311,7 @@ export default function SupervisionConsultantView({
                       </td>
                     </tr>
                   ) : (
-                    filteredInvoices.map((inv) => {
+                    filteredInvoices.map((inv, invIdx) => {
                       const totalDeductions = (inv.advanceDeductionEtb || 0) + (inv.taxDeductionEtb || 0);
 
                       let statusBadge = (
@@ -2345,7 +2345,7 @@ export default function SupervisionConsultantView({
 
                       return (
                         <tr 
-                          key={inv.id}
+                          key={`inv-${inv.id || invIdx}-${invIdx}`}
                           className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition duration-150"
                         >
                           <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-white font-mono">
@@ -3079,7 +3079,7 @@ export default function SupervisionConsultantView({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
-                    {filteredAuditLogs.map((log) => {
+                    {filteredAuditLogs.map((log, lIdx) => {
                       const badgeColor = 
                         log.actionType === 'ASSIGNED' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300' :
                         log.actionType === 'STATUS_CHANGE' ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300' :
@@ -3087,7 +3087,7 @@ export default function SupervisionConsultantView({
                         'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300';
                       
                       return (
-                        <tr key={log.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition">
+                        <tr key={`sc-audit-${log.id || lIdx}-${lIdx}`} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition">
                           <td className="py-3.5 px-4 font-mono text-slate-600 dark:text-slate-300 whitespace-nowrap flex items-center gap-1.5">
                             <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                             {log.timestamp}
@@ -4736,8 +4736,8 @@ export default function SupervisionConsultantView({
                     </div>
                   ) : (
                     <div className="max-h-56 overflow-y-auto space-y-2 pr-1 divide-y divide-slate-100 dark:divide-slate-800">
-                      {selectedHistoricalConsultant.personnel.map((p) => (
-                        <div key={p.id} className="pt-2.5 first:pt-0 flex items-center justify-between gap-2">
+                      {selectedHistoricalConsultant.personnel.map((p, pIdx) => (
+                        <div key={`sc-roster-${p.id || pIdx}-${pIdx}`} className="pt-2.5 first:pt-0 flex items-center justify-between gap-2">
                           <div>
                             <div className="font-bold text-slate-900 dark:text-white text-xs flex items-center gap-2">
                               {p.name}

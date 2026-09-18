@@ -345,11 +345,11 @@ export default function CpmLinearComparison({ project }: CpmLinearComparisonProp
               </div>
 
               {/* Tiers rows mapping */}
-              {mappingTiers.map((tier) => {
+              {mappingTiers.map((tier, tIdx) => {
                 const isCritical = tier.cpmAct?.critical;
                 const hasMatch = !!tier.cpmAct;
                 return (
-                  <div key={tier.id} className="grid grid-cols-1 sm:grid-cols-12 gap-3 p-3.5 items-center hover:bg-slate-50/50 dark:hover:bg-slate-900/10 transition-colors">
+                  <div key={`cpm-tier-${tier.id || tIdx}-${tIdx}`} className="grid grid-cols-1 sm:grid-cols-12 gap-3 p-3.5 items-center hover:bg-slate-50/50 dark:hover:bg-slate-900/10 transition-colors">
                     
                     {/* Column 1: Layer Name */}
                     <div className="col-span-1 sm:col-span-3 flex items-center gap-2">
@@ -464,8 +464,8 @@ export default function CpmLinearComparison({ project }: CpmLinearComparisonProp
                 Elevation Cross-Section Stacking Schematic (Spatial footprint ratio)
               </span>
               <div className="space-y-1.5 pt-1">
-                {mappingTiers.map((tier) => (
-                  <div key={tier.id} className="flex items-center gap-2 text-[10px]">
+                {mappingTiers.map((tier, tIdx) => (
+                  <div key={`schem-tier-${tier.id || tIdx}-${tIdx}`} className="flex items-center gap-2 text-[10px]">
                     <span className="w-28 text-slate-500 dark:text-slate-400 truncate font-bold text-right pr-2">{tier.label}:</span>
                     <div className="flex-1 h-3.5 bg-slate-200 dark:bg-slate-800 rounded-sm overflow-hidden border border-slate-300/30 relative">
                       <div 

@@ -2765,7 +2765,8 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(7.5);
       doc.setTextColor(37, 99, 235);
-      doc.text(`[${issue.issueCode}] ${issue.title.substring(0, 65)}${issue.title.length > 65 ? '...' : ''}`, margin + 8, curY + 12);
+      const issueTitle = issue?.title || 'Untitled Issue';
+      doc.text(`[${issue?.issueCode || 'ISSUE'}] ${issueTitle.substring(0, 65)}${issueTitle.length > 65 ? '...' : ''}`, margin + 8, curY + 12);
 
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7);

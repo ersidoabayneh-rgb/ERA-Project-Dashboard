@@ -2173,8 +2173,8 @@ export default function DashboardView({
 
         {/* Linear Layer Progress Bars */}
         <div className="space-y-3">
-          {dashboardProgressChartData.map((item) => (
-            <div key={item.id} className="space-y-1">
+          {dashboardProgressChartData.map((item, itemIdx) => (
+            <div key={`dash-prog-${item.id || itemIdx}-${itemIdx}`} className="space-y-1">
               <div className="flex justify-between items-center text-xs font-bold text-slate-600 dark:text-slate-300 flex-wrap gap-1">
                 <span className="flex items-center gap-1.5">
                   <span className={`w-2.5 h-2.5 rounded-sm ${item.color}`} />
@@ -2947,7 +2947,7 @@ export default function DashboardView({
                   .map((risk, index) => {
                     return (
                       <div 
-                        key={risk.id} 
+                        key={`top-risk-${risk.id || index}-${index}`} 
                         className="text-slate-750 dark:text-zinc-200 leading-none text-center bg-slate-50/60 dark:bg-slate-900/40 px-3 py-1.5 rounded-lg border border-slate-100/50 dark:border-slate-700/30 w-full max-w-[220px]"
                         style={{ 
                           fontFamily: "'Times New Roman', Times, serif", 

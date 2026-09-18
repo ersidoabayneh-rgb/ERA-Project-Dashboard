@@ -352,13 +352,13 @@ export default function LinearDiagramView({
 
       {/* Structured Spreadsheet layout for values validation */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {sections.map((sec) => {
+        {sections.map((sec, secIdx) => {
           const list = activeLinear[sec.id] || [];
           const totalExec = list.reduce((sum, r) => sum + r.exec, 0);
 
           return (
             <div 
-              key={sec.id} 
+              key={`linear-sec-${sec.id || secIdx}-${secIdx}`} 
               className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 rounded-2xl overflow-hidden shadow-sm flex flex-col"
             >
               {/* Header Box */}
@@ -403,7 +403,7 @@ export default function LinearDiagramView({
                       </tr>
                     ) : (
                       list.map((r, rIdx) => (
-                        <tr key={rIdx} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/10">
+                        <tr key={`linear-row-${sec.id}-${rIdx}`} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/10">
                           <td className="p-2 text-center text-slate-450 font-bold font-mono">{r.no}</td>
                           <td className="p-2">
                             <input

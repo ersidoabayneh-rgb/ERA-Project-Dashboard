@@ -72,7 +72,9 @@ export default function DocumentationView({
           reader.readAsDataURL(file);
         });
 
-        const cleanFilename = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
+        const fileName = file?.name || 'document';
+        const lastDot = fileName.lastIndexOf('.');
+        const cleanFilename = lastDot > 0 ? fileName.substring(0, lastDot) : fileName;
         const formattedTitle = (files.length === 1 && docName.trim()) 
           ? docName.trim() 
           : cleanFilename.replace(/[-_]/g, ' ');

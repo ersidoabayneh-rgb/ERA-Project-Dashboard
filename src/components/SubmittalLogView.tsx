@@ -165,8 +165,19 @@ export default function SubmittalLogView({
 
   // Search & filter states
   const [submittalSearch, setSubmittalSearch] = useState('');
-  const [selectedTypeFilter, setSelectedTypeFilter] = useState<string>('ALL');
+  const [selectedTypeFilter, setSelectedTypeFilter] = useState<string>(() => {
+    return localStorage.getItem('era_prefilter_submittal_type') || 'ALL';
+  });
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('ALL');
+
+  // Synchronize pre-filter category selection when active log tab changes
+  React.useEffect(() => {
+    const prefilter = localStorage.getItem('era_prefilter_submittal_type');
+    if (prefilter) {
+      setSelectedTypeFilter(prefilter);
+      localStorage.removeItem('era_prefilter_submittal_type');
+    }
+  }, [activeLogTab]);
 
   // Sorting states (default: submittedDate descending = newest date first)
   type SortField = 'submittedDate' | 'respondedDate' | 'submittalNo' | 'type' | 'actualDays' | 'status' | 'attachmentsCount';
@@ -1436,8 +1447,8 @@ export default function SubmittalLogView({
 
                   {editingRowDraft.attachments && editingRowDraft.attachments.length > 0 ? (
                     <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
-                      {editingRowDraft.attachments.map((att) => (
-                        <div key={att.id} className="flex items-center justify-between p-2 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 text-xs">
+                      {editingRowDraft.attachments.map((att, attIdx) => (
+                        <div key={`draft-att-${att.id || attIdx}-${attIdx}`} className="flex items-center justify-between p-2 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 text-xs">
                           <div className="flex items-center gap-2 truncate">
                             <FileText className="w-4 h-4 text-rose-500 shrink-0" />
                             <span className="font-medium text-slate-800 dark:text-slate-200 truncate" title={att.name}>{att.name}</span>
@@ -1584,9 +1595,9 @@ export default function SubmittalLogView({
 
                 {activeAttachmentSubmittal.attachments && activeAttachmentSubmittal.attachments.length > 0 ? (
                   <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                    {activeAttachmentSubmittal.attachments.map((att) => (
+                    {activeAttachmentSubmittal.attachments.map((att, attIdx) => (
                       <div
-                        key={att.id}
+                        key={`sub-att-${att.id || attIdx}-${attIdx}`}
                         className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800/80 rounded-2xl border border-slate-200 dark:border-slate-700/80 text-xs hover:border-indigo-300 dark:hover:border-indigo-700 transition"
                       >
                         <div className="flex items-center gap-2.5 truncate">
