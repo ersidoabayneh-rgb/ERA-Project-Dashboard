@@ -1,6 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { safeSyncScoringWeights, safeFetchScoringWeights } from '../lib/apiSync';
+import { db } from '../lib/firebase';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { safeSyncScoringWeights } from '../lib/apiSync';
 import { 
   FileText, 
   Download, 
@@ -247,14 +249,26 @@ export default function GroupReportGenerator({
   const [tempContractorWeights, setTempContractorWeights] = useState<ContractorScoringWeights>(contractorWeights);
   const [tempConsultantWeights, setTempConsultantWeights] = useState<ConsultantScoringWeights>(consultantWeights);
 
-  // Load scoring weights from local database
+  // Listen to Firestore scoring weights configuration database in real-time
   useEffect(() => {
-    safeFetchScoringWeights().then(res => {
-      if (res) {
-        if (res.contractorWeights) setContractorWeights(res.contractorWeights);
-        if (res.consultantWeights) setConsultantWeights(res.consultantWeights);
-      }
-    }).catch(() => {});
+    try {
+      const unsub = onSnapshot(doc(db, 'config', 'scoring_weights'), (docSnap) => {
+        if (docSnap && docSnap.exists()) {
+          const data = docSnap.data();
+          if (data && data.contractorWeights) {
+            setContractorWeights(data.contractorWeights);
+            localStorage.setItem('era_contractor_scoring_weights', JSON.stringify(data.contractorWeights));
+          }
+          if (data && data.consultantWeights) {
+            setConsultantWeights(data.consultantWeights);
+            localStorage.setItem('era_consultant_scoring_weights', JSON.stringify(data.consultantWeights));
+          }
+        }
+      });
+      return () => unsub();
+    } catch (e) {
+      console.warn('Scoring weights listener notice:', e);
+    }
   }, []);
 
   // Helper check for project access (matching standard view limits) - all users share the single database
@@ -2137,7 +2151,7 @@ export default function GroupReportGenerator({
       reName,
       rePhone: sc?.residentEngineerPhone || '',
       reEmail: sc?.residentEngineerEmail || '',
-      contractRef: sc?.contractRefNo || `ERA/SC/${(p?.id || '').substring(0, 8)}`,
+      contractRef: sc?.contractRefNo || `ERA/SC/${p.id.substring(0, 8)}`,
       associationType: sc?.associationType || 'Joint Venture (JV)',
       personnel,
       invoices,
@@ -4123,7 +4137,7 @@ export default function GroupReportGenerator({
 
       doc.setFont('times', 'normal');
       doc.setFontSize(12);
-      const contractorText = `ID: ${(p?.id || '').toUpperCase().substring(0, 16)}  |  Contractor: ${p.contractor || 'N/A'}`;
+      const contractorText = `ID: ${p.id.toUpperCase().substring(0, 16)}  |  Contractor: ${p.contractor || 'N/A'}`;
       const wrappedContractor = doc.splitTextToSize(contractorText, 228);
 
       // Col 2: Total Logged & Bonds breakdown (boundary: 258pt)
@@ -5268,7 +5282,7 @@ export default function GroupReportGenerator({
 
       doc.setFont('times', 'normal');
       doc.setFontSize(8.5);
-      const subText = `ID: ${(p?.id || '').toUpperCase().substring(0, 12)} | Dir: ${p.programDirectorate || 'Southern'} | PMO: ${p.pmo || 'PMO 1'}`;
+      const subText = `ID: ${p.id.toUpperCase().substring(0, 12)} | Dir: ${p.programDirectorate || 'Southern'} | PMO: ${p.pmo || 'PMO 1'}`;
       const wrappedSub = doc.splitTextToSize(subText, 210);
 
       doc.setFont('times', 'bold');
@@ -6308,7 +6322,7 @@ export default function GroupReportGenerator({
                           <tr key={p.id ? `${p.id}_${pIdx}` : `proj_${pIdx}`} className="hover:bg-slate-50/40 dark:hover:bg-slate-800/25 transition">
                             <td className="px-3 py-2.5">
                               <div className="font-extrabold text-slate-700 dark:text-zinc-200 truncate max-w-[200px]">{p.name}</div>
-                              <div className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">ID: {(p?.id || '').substring(0, 10).toUpperCase()}</div>
+                              <div className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">ID: {p.id.substring(0, 10).toUpperCase()}</div>
                             </td>
                             <td className="px-3 py-2.5 space-y-0.5">
                               <div className="text-[10px] font-extrabold text-indigo-600 dark:text-indigo-400 uppercase">
@@ -6364,7 +6378,7 @@ export default function GroupReportGenerator({
                                 <td className="px-3 py-2.5">
                                   <div className="font-extrabold text-slate-700 dark:text-zinc-200 truncate max-w-[200px]">{p.name}</div>
                                   <div className="text-[10px] text-slate-400 dark:text-slate-500 font-mono flex items-center gap-1">
-                                    <span>ID: {(p?.id || '').substring(0, 10).toUpperCase()}</span>
+                                    <span>ID: {p.id.substring(0, 10).toUpperCase()}</span>
                                     <span className="text-indigo-600 dark:text-indigo-400 text-[9px] font-bold">(Click for Consultant Audit Dossier)</span>
                                   </div>
                                 </td>
@@ -6852,7 +6866,7 @@ export default function GroupReportGenerator({
                                 <td className="px-3 py-2.5">
                                   <div className="font-extrabold text-slate-700 dark:text-zinc-200 truncate max-w-[200px]">{p.name}</div>
                                   <div className="text-[10px] text-slate-400 dark:text-slate-500 font-mono flex items-center gap-1">
-                                    <span>ID: {(p?.id || '').substring(0, 10).toUpperCase()}</span>
+                                    <span>ID: {p.id.substring(0, 10).toUpperCase()}</span>
                                     <span className="text-indigo-500 text-[9px] font-bold">(Click for FIDIC Audit)</span>
                                   </div>
                                 </td>
@@ -7106,7 +7120,7 @@ export default function GroupReportGenerator({
                               <td className="px-3 py-2.5">
                                 <div className="font-extrabold text-slate-700 dark:text-zinc-200 truncate max-w-[200px]">{p.name}</div>
                                 <div className="text-[10px] text-slate-400 dark:text-slate-500 font-mono flex items-center gap-1">
-                                  <span>ID: {(p?.id || '').substring(0, 10).toUpperCase()}</span>
+                                  <span>ID: {p.id.substring(0, 10).toUpperCase()}</span>
                                   <span className="text-indigo-500 text-[9px] font-bold">(Click for IPC Details)</span>
                                 </div>
                               </td>
@@ -7303,7 +7317,7 @@ export default function GroupReportGenerator({
                               <td className="px-3 py-2.5">
                                 <div className="font-extrabold text-slate-700 dark:text-zinc-200 truncate max-w-[200px]">{p.name}</div>
                                 <div className="text-[10px] text-slate-400 dark:text-slate-500 font-mono flex items-center gap-1">
-                                  <span>ID: {(p?.id || '').substring(0, 10).toUpperCase()}</span>
+                                  <span>ID: {p.id.substring(0, 10).toUpperCase()}</span>
                                   <span className="text-indigo-500 text-[9px] font-bold">(Click for Bond Details)</span>
                                 </div>
                               </td>
@@ -7445,7 +7459,7 @@ export default function GroupReportGenerator({
                               <td className="px-3 py-2.5">
                                 <div className="font-extrabold text-slate-700 dark:text-zinc-200 truncate max-w-[200px]">{p.name}</div>
                                 <div className="text-[10px] text-slate-400 dark:text-slate-500 font-mono flex items-center gap-1">
-                                  <span>ID: {(p?.id || '').substring(0, 10).toUpperCase()}</span>
+                                  <span>ID: {p.id.substring(0, 10).toUpperCase()}</span>
                                   <span className="text-purple-600 dark:text-purple-400 text-[9px] font-bold">(Click for Staff Roster)</span>
                                 </div>
                               </td>
@@ -8256,19 +8270,13 @@ export default function GroupReportGenerator({
                       disabled={!isValid}
                       onClick={async () => {
                         if (!isValid) return;
-                        try {
-                          localStorage.setItem('era_contractor_scoring_weights', JSON.stringify(tempContractorWeights));
-                          localStorage.setItem('era_consultant_scoring_weights', JSON.stringify(tempConsultantWeights));
-                          setContractorWeights(tempContractorWeights);
-                          setConsultantWeights(tempConsultantWeights);
-                          await safeSyncScoringWeights(tempContractorWeights, tempConsultantWeights, currentUserObj?.username);
-                          setIsEditingWeightsModalOpen(false);
-                          alert(`✅ Master Admin Update Successful!\n\nAll criteria names, descriptions, and weight distribution for ${auditPerspective === 'contractor' ? 'Project Contractor' : 'Supervision Consultant'} scoring model have been saved to the database and applied across all reports.`);
-                        } catch (e: any) {
-                          console.error('Failed to sync scoring weights:', e);
-                          alert(`⚠️ Failed to synchronize scoring weights across devices, but local weights have been successfully updated: ${e?.message || 'Network error'}`);
-                          setIsEditingWeightsModalOpen(false);
-                        }
+                        localStorage.setItem('era_contractor_scoring_weights', JSON.stringify(tempContractorWeights));
+                        localStorage.setItem('era_consultant_scoring_weights', JSON.stringify(tempConsultantWeights));
+                        setContractorWeights(tempContractorWeights);
+                        setConsultantWeights(tempConsultantWeights);
+                        await safeSyncScoringWeights(tempContractorWeights, tempConsultantWeights, currentUserObj?.username);
+                        setIsEditingWeightsModalOpen(false);
+                        alert(`✅ Master Admin Update Successful!\n\nAll criteria names, descriptions, and weight distribution for ${auditPerspective === 'contractor' ? 'Project Contractor' : 'Supervision Consultant'} scoring model have been saved to the database and applied across all reports.`);
                       }}
                       className={`px-5 py-2 text-xs font-black rounded-xl transition flex items-center gap-2 cursor-pointer shadow-sm ${
                         isValid

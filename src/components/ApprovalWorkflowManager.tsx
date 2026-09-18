@@ -930,7 +930,7 @@ export default function ApprovalWorkflowManager({
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-4">
-              {visibleDrafts.map((draft, dIdx) => {
+              {visibleDrafts.map((draft) => {
                 const isExpanded = expandedDraftId === draft.id;
                 const isAuthor = draft.author.toLowerCase() === currentUsername.toLowerCase();
                 const grantedCount = draft.grantedAccessUsernames?.length || 0;
@@ -944,7 +944,7 @@ export default function ApprovalWorkflowManager({
 
                 return (
                   <div
-                    key={`appr-draft-${draft.id || dIdx}-${dIdx}`}
+                    key={draft.id}
                     className="bg-white dark:bg-slate-850 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden transition"
                   >
                     {/* Draft Card Header */}
@@ -1092,9 +1092,9 @@ export default function ApprovalWorkflowManager({
                           <span>Reviewer Feedback Trail:</span>
                         </span>
                         <div className="space-y-1.5">
-                          {draft.feedbackHistory.slice(-2).map((fb, fbIdx) => (
+                          {draft.feedbackHistory.slice(-2).map((fb) => (
                             <div
-                              key={`fb-${fb.id || fbIdx}-${fbIdx}`}
+                              key={fb.id}
                               className={`p-2.5 rounded-xl border text-[11px] ${
                                 fb.type === 'rejected'
                                   ? 'bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-900/40 text-rose-800 dark:text-rose-200'
@@ -1231,8 +1231,8 @@ export default function ApprovalWorkflowManager({
                 className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-800 dark:text-slate-100 outline-none font-semibold"
               >
                 <option value="ALL">All Projects ({projects.length})</option>
-                {projects.map((p, pIdx) => (
-                  <option key={`appr-proj-opt-${p.id || pIdx}-${pIdx}`} value={p.id}>{p.name}</option>
+                {projects.map(p => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
               </select>
 
@@ -1261,7 +1261,7 @@ export default function ApprovalWorkflowManager({
             </div>
           ) : (
             <div className="space-y-4">
-              {visibleApprovals.map((req, rIdx) => {
+              {visibleApprovals.map((req) => {
                 const isExpanded = expandedApprovalId === req.id;
                 const isAuthor = Boolean(
                   (req.author && req.author.toLowerCase() === currentUsername.toLowerCase()) ||
@@ -1271,7 +1271,7 @@ export default function ApprovalWorkflowManager({
 
                 return (
                   <div
-                    key={`appr-req-${req.id || rIdx}-${rIdx}`}
+                    key={req.id}
                     className="bg-white dark:bg-slate-850 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden"
                   >
                     <div className="p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -1507,7 +1507,7 @@ export default function ApprovalWorkflowManager({
                       (log.projectName && log.projectName.toLowerCase().includes(q))
                     );
                   })
-                  .map((log, lIdx) => {
+                  .map((log) => {
                     const getBadge = (action: string) => {
                       switch (action) {
                         case 'COMMITTED_TO_MAIN_DB':
@@ -1533,7 +1533,7 @@ export default function ApprovalWorkflowManager({
                     };
 
                     return (
-                      <tr key={`audit-row-${log.id || lIdx}-${lIdx}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
+                      <tr key={log.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
                         <td className="p-3 text-slate-500 whitespace-nowrap text-[11px]">
                           {new Date(log.timestamp).toLocaleString()}
                         </td>

@@ -45,9 +45,6 @@ import {
   Laptop,
   MapPin,
   Globe,
-  Bell,
-  BellRing,
-  ArrowRight,
   X
 } from 'lucide-react';
 
@@ -120,7 +117,7 @@ export function canUserViewPage(user: User | null, pageId: string): boolean {
     return true;
   }
 
-  // Contractor Editor is allowed to edit and view the Submittal log page
+  // Contractor Editor is allowed to edit and view the Submittal log page ONLY
   if (user.role === 'contractor_editor') {
     return pageId === 'submittalLog';
   }
@@ -150,7 +147,7 @@ export function canUserEditPage(user: User | null, pageId: string): boolean {
     return false;
   }
 
-  // Contractor Editor is allowed to edit and view the Submittal log page
+  // Contractor Editor is allowed to edit and view the Submittal log page ONLY
   if (user.role === 'contractor_editor') {
     return pageId === 'submittalLog';
   }
@@ -199,7 +196,6 @@ import ComprehensiveAnalysisView from './components/ComprehensiveAnalysisView';
 import DocumentationView from './components/DocumentationView';
 import SupervisionConsultantView from './components/SupervisionConsultantView';
 import SubmittalLogView from './components/SubmittalLogView';
-import RfiLogView from './components/RfiLogView';
 import HistoryView from './components/HistoryView';
 import SettingsView from './components/SettingsView';
 import WorkspaceView from './components/WorkspaceView';
@@ -212,7 +208,6 @@ import AiAssistantChat from './components/AiAssistantChat';
 import UserGuideManualModal from './components/UserGuideManualModal';
 import { UserProfileModal } from './components/UserProfileModal';
 import ApprovalWorkflowManager from './components/ApprovalWorkflowManager';
-import ThemeCustomizerModal, { ThemeConfig, DEFAULT_THEME_CONFIG } from './components/ThemeCustomizerModal';
 import eraLogo from './assets/logo.png';
 
 import { defaultProjectTemplate, blankProjectTemplate, generateKpiAllocated } from './data/defaultProject';
@@ -239,10 +234,11 @@ import {
   recordSyncLog,
   SyncLogEntry
 } from './lib/apiSync';
-import { realtimeManager, RealtimeSyncStatus } from './lib/realtime';
 import { getAccessToken } from './lib/auth';
 import { safeSetItem } from './lib/storage';
 import { updateMonthlyWithProgress, getLastActualProgress, getLiveActualValue, resolveCurrentMonthKey, ensureLiveRowForActual } from './lib/monthlySync';
+import { collection, onSnapshot, doc } from 'firebase/firestore';
+import { db } from './lib/firebase';
 
 function AnimatedCounter({ value, prefix = "" }: { value: number; prefix?: string }) {
   const [displayValue, setDisplayValue] = useState(value);
@@ -368,68 +364,6 @@ export default function App() {
   const [customTxtBgColor, setCustomTxtBgColor] = useState(() => localStorage.getItem('era_custom_txt_bg') || '');
   const [customChartTooltipBgColor, setCustomChartTooltipBgColor] = useState(() => localStorage.getItem('era_custom_chart_tooltip_bg') || '');
   
-  const [themeConfig, setThemeConfig] = useState<ThemeConfig>(() => {
-    try {
-      const saved = localStorage.getItem('era_theme_config_v1');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed && typeof parsed === 'object') return { ...DEFAULT_THEME_CONFIG, ...parsed };
-      }
-    } catch {}
-    const isDark = localStorage.getItem('theme') === 'dark';
-    const customBg = localStorage.getItem('era_custom_bg') || '';
-    return {
-      ...DEFAULT_THEME_CONFIG,
-      darkMode: isDark,
-      themePreset: isDark ? 'dark' : 'light',
-      customBgColor: customBg
-    };
-  });
-  const [showThemeCustomizer, setShowThemeCustomizer] = useState(false);
-
-  const handleUpdateThemeConfig = (newConfig: ThemeConfig) => {
-    setThemeConfig(newConfig);
-    setDarkMode(newConfig.darkMode);
-    if (newConfig.darkMode) {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('theme', 'dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('theme', 'light');
-    }
-    try {
-      localStorage.setItem('era_theme_config_v1', JSON.stringify(newConfig));
-      if (newConfig.customBgColor) {
-        localStorage.setItem('era_custom_bg', newConfig.customBgColor);
-        setCustomBgColor(newConfig.customBgColor);
-      } else {
-        localStorage.removeItem('era_custom_bg');
-        setCustomBgColor('');
-      }
-      if (newConfig.customTxtColor) {
-        localStorage.setItem('era_custom_txt', newConfig.customTxtColor);
-        setCustomTxtColor(newConfig.customTxtColor);
-      } else {
-        localStorage.removeItem('era_custom_txt');
-        setCustomTxtColor('');
-      }
-    } catch {}
-  };
-
-  const handleResetThemeDefault = () => {
-    setThemeConfig(DEFAULT_THEME_CONFIG);
-    setDarkMode(false);
-    document.documentElement.classList.remove('dark');
-    localStorage.setItem('theme', 'light');
-    try {
-      localStorage.removeItem('era_theme_config_v1');
-      localStorage.removeItem('era_custom_bg');
-      localStorage.removeItem('era_custom_txt');
-      setCustomBgColor('');
-      setCustomTxtColor('');
-    } catch {}
-  };
-  
   // Database States
   const [projects, setProjects] = useState<Project[]>([]);
   const [nowTimer, setNowTimer] = useState(Date.now());
@@ -461,25 +395,6 @@ export default function App() {
   // User Guide Modal state
   const [isUserGuideOpen, setIsUserGuideOpen] = useState(false);
 
-  // Submittal log sub-tab state
-  const [submittalLogInitialTab, setSubmittalLogInitialTab] = useState<'submittals' | 'rfis' | 'combined'>('submittals');
-
-  // Custom event listener to switch tabs seamlessly from any deep component
-  useEffect(() => {
-    const handleSwitchTab = (e: Event) => {
-      const customEvent = e as CustomEvent<{ tab: string; subTab?: 'submittals' | 'rfis' | 'combined' }>;
-      if (customEvent.detail && customEvent.detail.tab) {
-        setActiveTab(customEvent.detail.tab);
-        localStorage.setItem('era_active_tab', customEvent.detail.tab);
-        if (customEvent.detail.subTab) {
-          setSubmittalLogInitialTab(customEvent.detail.subTab);
-        }
-      }
-    };
-    window.addEventListener('era-switch-tab', handleSwitchTab);
-    return () => window.removeEventListener('era-switch-tab', handleSwitchTab);
-  }, []);
-
   // Sync page view, active tab, and project ID state to local storage to persist on refresh
   useEffect(() => {
     localStorage.setItem('era_current_page', currentPage);
@@ -496,24 +411,6 @@ export default function App() {
       localStorage.removeItem('era_current_project_id');
     }
   }, [currentProjectId]);
-
-  // Keep currentProject strictly synchronized with real-time updates in projects array within < 2 seconds
-  useEffect(() => {
-    if (!currentProjectId || projects.length === 0) return;
-    const latest = projects.find(p => p.id === currentProjectId);
-    if (latest) {
-      setCurrentProject(prev => {
-        if (!prev) return latest;
-        if (prev.id !== latest.id) return latest;
-        const prevTime = prev.lastModifiedAt ? new Date(prev.lastModifiedAt).getTime() : 0;
-        const latestTime = latest.lastModifiedAt ? new Date(latest.lastModifiedAt).getTime() : 0;
-        if (latestTime > prevTime || JSON.stringify(prev) !== JSON.stringify(latest)) {
-          return latest;
-        }
-        return prev;
-      });
-    }
-  }, [projects, currentProjectId]);
 
   // Enforce project access restriction
   useEffect(() => {
@@ -772,54 +669,15 @@ export default function App() {
   const [showDraftsPlayground, setShowDraftsPlayground] = useState(false);
   const [showProjectApprovalBanner, setShowProjectApprovalBanner] = useState(true);
 
-  // Compute pending approval requests specifically scoped to the currently opened project for the logged-in user
+  // Compute pending approval requests specifically scoped to the currently opened project
   const currentProjectPendingApprovals = useMemo(() => {
-    if (!currentProject || !currentUserObj) return [];
-    const isApprover = hasApprovalCredentials(currentUserObj);
-    if (isApprover) {
-      return pendingApprovals.filter(a =>
-        a.projectId === currentProject.id &&
-        (a.status === 'pending' || a.status === 'submitted') &&
-        canUserApproveRequest(currentUserObj, a, projects)
-      );
-    }
-    // For editors / authors: their own submitted requests awaiting review for this project
+    if (!currentProject) return [];
     return pendingApprovals.filter(a =>
       a.projectId === currentProject.id &&
-      (a.status === 'pending' || a.status === 'submitted') &&
-      (a.author === currentUserObj.username || a.requestedBy === currentUserObj.username)
+      a.status === 'pending' &&
+      canUserApproveRequest(currentUserObj, a, projects)
     );
   }, [pendingApprovals, currentProject, currentUserObj, projects]);
-
-  // Compute all pending approval requests scoped to the currently logged-in user across their operational scope
-  const userScopePendingApprovals = useMemo(() => {
-    if (!currentUserObj) return [];
-    const isApprover = hasApprovalCredentials(currentUserObj);
-    if (isApprover) {
-      return pendingApprovals.filter(a =>
-        (a.status === 'pending' || a.status === 'submitted') &&
-        canUserApproveRequest(currentUserObj, a, projects)
-      );
-    }
-    // For editors / authors: their own submitted requests awaiting review
-    return pendingApprovals.filter(a =>
-      (a.status === 'pending' || a.status === 'submitted') &&
-      (a.author === currentUserObj.username || a.requestedBy === currentUserObj.username)
-    );
-  }, [pendingApprovals, currentUserObj, projects]);
-
-  // Visual notification indicator state for new approval requests
-  const [showNotificationDropdown, setShowNotificationDropdown] = useState(false);
-  const [hasNewApprovalNotification, setHasNewApprovalNotification] = useState(false);
-  const prevPendingCountRef = useRef<number>(userScopePendingApprovals.length);
-
-  // When a new approval request arrives or pending count increases for the user's scope, trigger alert badge
-  useEffect(() => {
-    if (userScopePendingApprovals.length > prevPendingCountRef.current) {
-      setHasNewApprovalNotification(true);
-    }
-    prevPendingCountRef.current = userScopePendingApprovals.length;
-  }, [userScopePendingApprovals.length]);
   
   // Network simulation peers list
   const [onlinePeers, setOnlinePeers] = useState<string[]>([]);
@@ -965,9 +823,11 @@ export default function App() {
       console.warn('Failed to sync users to cloud:', err);
     });
 
-    try {
-      realtimeManager.send('USERS_UPDATE', deduped);
-    } catch (e) {}
+    if (globalWsRef.current && globalWsRef.current.readyState === WebSocket.OPEN) {
+      try {
+        globalWsRef.current.send(JSON.stringify({ type: 'users_update', data: deduped }));
+      } catch (e) {}
+    }
   };
 
   // User Access Administration draft state for pending changes
@@ -1698,92 +1558,113 @@ let isBatchSyncRunning = false;
       });
     };
 
+    // Handle real-time Open-Ended WebSocket connection and fallback SSE stream
+    let eventSource: EventSource | null = null;
+    let wsSocket: WebSocket | null = null;
+    let wsReconnectTimeout: any = null;
 
-
-    const handleRealtimePayload = (message: any) => {
-      if (!message || typeof message !== 'object') return;
-      const typeStr = (message.type || '').toUpperCase();
-      const rawData = message.payload !== undefined ? message.payload : message.data;
-
-      if (typeStr === 'PING' || typeStr === 'PRESENCE_UPDATE' || typeStr === 'CONNECTED') return;
-
-      if (typeStr === 'USERS_UPDATED' || typeStr === 'USERS_UPDATE') {
-        if (Array.isArray(rawData)) {
-          mergeAndApplyUsers(rawData);
-        } else if (rawData && typeof rawData === 'object' && rawData.deletedUsername) {
-          setUsersListState(prev => prev.filter(u => u.username.toLowerCase() !== rawData.deletedUsername.toLowerCase()));
-        }
-      } else if (typeStr === 'APPROVALS_UPDATED' || typeStr === 'APPROVALS_UPDATE') {
-        if (Array.isArray(rawData)) {
-          setPendingApprovals(rawData);
-          safeSetItem('era_appr_v28', JSON.stringify(rawData));
-        }
-      } else if (typeStr === 'PROJECT_UPDATED' || typeStr === 'PROJECT_UPDATE') {
-        if (Array.isArray(rawData)) {
-          const synced = rawData.map(syncProjectPayment);
-          setProjects(synced);
-          safeSetItem('era_proj_v28', JSON.stringify(synced));
-          setCurrentProject(prevProj => {
-            if (!prevProj) return synced[0] || null;
-            const match = synced.find(p => p.id === prevProj.id);
-            return match || synced[0] || null;
-          });
-        } else if (rawData && (rawData.id || (rawData.project && rawData.project.id))) {
-          const projObj = rawData.id ? rawData : rawData.project;
-          const incoming = syncProjectPayment(projObj);
-          setProjects(prev => {
-            const idx = prev.findIndex(p => p.id === incoming.id);
-            let updated;
-            if (idx === -1) updated = [...prev, incoming];
-            else {
-              updated = [...prev];
-              updated[idx] = incoming;
-            }
-            safeSetItem('era_proj_v28', JSON.stringify(updated));
-            return updated;
-          });
-
-          // Instantly re-render currently viewed project across all devices
-          setCurrentProject(prevProj => {
-            if (prevProj && prevProj.id === incoming.id) {
-              return incoming;
-            }
-            return prevProj;
-          });
-        }
-      } else if (typeStr === 'DATABASE_SYNCED' || typeStr === 'FORCE_REFRESH') {
-        safeFetchProjects().then(projs => {
-          if (projs && projs.length > 0) {
-            setProjects(projs);
-            setCurrentProject(prev => {
-              if (!prev) return projs[0] || null;
-              const match = projs.find(p => p.id === prev.id);
-              return match || projs[0] || null;
-            });
+    const handleRealtimePayload = (payload: any) => {
+      if (payload.type === 'users_update' && Array.isArray(payload.data)) {
+        mergeAndApplyUsers(payload.data);
+      } else if (payload.type === 'approvals_update' && Array.isArray(payload.data)) {
+        setPendingApprovals(payload.data);
+        safeSetItem('era_appr_v28', JSON.stringify(payload.data));
+      } else if (payload.type === 'project_update' && payload.data) {
+        const incoming = syncProjectPayment(payload.data);
+        setProjects(prev => {
+          const idx = prev.findIndex(p => p.id === incoming.id);
+          let updated;
+          if (idx === -1) updated = [...prev, incoming];
+          else {
+            updated = [...prev];
+            updated[idx] = incoming;
           }
-        }).catch(() => {});
-      } else if (typeStr === 'PROJECT_DELETED' || typeStr === 'PROJECT_DELETE') {
-        const deletedId = rawData?.id || (typeof rawData === 'string' ? rawData : null);
-        if (deletedId) {
-          applyGlobalProjectDeletions([deletedId]);
-        }
-      } else if (typeStr === 'CONFIG_UPDATED' || typeStr === 'CONFIG_UPDATE') {
-        if (rawData) {
-          if (rawData.pmos) setPmos(rawData.pmos);
-          if (rawData.directorates) setProgramDirectorates(rawData.directorates);
-          if (rawData.contractorWeights && rawData.consultantWeights) {
-            setContractorWeights(rawData.contractorWeights);
-            setConsultantWeights(rawData.consultantWeights);
-          }
-          if (rawData.taxonomy) {
-            if (rawData.taxonomy.pmos) setPmos(rawData.taxonomy.pmos);
-            if (rawData.taxonomy.directorates) setProgramDirectorates(rawData.taxonomy.directorates);
-          }
-        }
+          safeSetItem('era_proj_v28', JSON.stringify(updated));
+          return updated;
+        });
+      } else if (payload.type === 'project_delete' && payload.data?.id) {
+        setProjects(prev => {
+          const updated = prev.filter(p => p.id !== payload.data.id);
+          safeSetItem('era_proj_v28', JSON.stringify(updated));
+          return updated;
+        });
+      } else if (payload.type === 'config_update' && payload.data) {
+        if (payload.data.pmos) setPmos(payload.data.pmos);
+        if (payload.data.directorates) setProgramDirectorates(payload.data.directorates);
       }
     };
 
+    const initWebSocket = () => {
+      try {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/ws`;
+        wsSocket = new WebSocket(wsUrl);
+        globalWsRef.current = wsSocket;
 
+        wsSocket.onopen = () => {
+          console.log('[Real-Time WS] Open-ended WebSocket connected!');
+        };
+
+        wsSocket.onmessage = (event) => {
+          try {
+            const payload = JSON.parse(event.data);
+            handleRealtimePayload(payload);
+          } catch (e) {}
+        };
+
+        wsSocket.onerror = () => {
+          /* reconnect in onclose */
+        };
+
+        wsSocket.onclose = () => {
+          console.log('[Real-Time WS] WebSocket disconnected, reconnecting in 2s...');
+          globalWsRef.current = null;
+          clearTimeout(wsReconnectTimeout);
+          wsReconnectTimeout = setTimeout(initWebSocket, 2000);
+        };
+      } catch (err) {
+        console.warn('[Real-Time WS] WebSocket failed, relying on SSE:', err);
+      }
+    };
+
+    let sseReconnectTimeout: any = null;
+
+    const initSSE = () => {
+      try {
+        if (eventSource) {
+          try { eventSource.close(); } catch (e) {}
+          eventSource = null;
+        }
+
+        eventSource = new EventSource('/api/events');
+
+        eventSource.onopen = () => {
+          console.log('[Real-Time SSE] SSE event stream connected successfully.');
+        };
+
+        eventSource.onmessage = (event) => {
+          try {
+            if (!event.data) return;
+            const payload = JSON.parse(event.data);
+            handleRealtimePayload(payload);
+          } catch (err) {}
+        };
+
+        eventSource.onerror = () => {
+          if (eventSource && eventSource.readyState === EventSource.CLOSED) {
+            console.log('[Real-Time SSE] SSE connection closed. Retrying stream in 3s...');
+            try { eventSource.close(); } catch (e) {}
+            eventSource = null;
+            clearTimeout(sseReconnectTimeout);
+            sseReconnectTimeout = setTimeout(() => {
+              if (navigator.onLine) initSSE();
+            }, 3000);
+          }
+        };
+      } catch (e) {
+        console.warn('[Real-Time SSE] SSE initialization fallback error:', e);
+      }
+    };
 
     // Real-time synchronization powered directly by Cloud Firestore client listeners
     let unsubscribeUsersListener: (() => void) | null = null;
@@ -1837,7 +1718,157 @@ let isBatchSyncRunning = false;
       }
     };
 
-    // Local synchronization setup
+    try {
+      // 1. Listen for real-time deletions across all users and devices
+      unsubscribeDeletedProjectsListener = onSnapshot(collection(db, 'deleted_projects'), (snapshot) => {
+        if (snapshot && !snapshot.empty) {
+          const remoteDeletedIds: string[] = [];
+          snapshot.forEach(docSnap => {
+            const data = docSnap.data();
+            if (data && data.id) remoteDeletedIds.push(data.id);
+            else if (docSnap.id) remoteDeletedIds.push(docSnap.id);
+          });
+          if (remoteDeletedIds.length > 0) {
+            applyGlobalProjectDeletions(remoteDeletedIds);
+          }
+        }
+      }, err => {
+        handleFsError(err);
+        console.warn('[Firestore Deleted Projects Listener Notice]:', err?.message || err);
+      });
+
+      // 2. Listen for registered users
+      unsubscribeUsersListener = onSnapshot(collection(db, 'users'), (snapshot) => {
+        if (snapshot && !snapshot.empty) {
+          const liveUsers: User[] = [];
+          snapshot.forEach(docSnap => {
+            const data = docSnap.data() as User;
+            if (data && data.username) liveUsers.push(data);
+          });
+          if (liveUsers.length > 0) mergeAndApplyUsers(liveUsers);
+        }
+      }, err => {
+        handleFsError(err);
+        console.warn('[Firestore Users Listener Notice]:', err?.message || err);
+      });
+
+      // 3. Listen for live projects changes
+      unsubscribeProjectsListener = onSnapshot(collection(db, 'projects'), (snapshot) => {
+        if (snapshot) {
+          let deletedIds: string[] = [];
+          try {
+            const delStr = localStorage.getItem('era_deleted_project_ids') || '[]';
+            deletedIds = JSON.parse(delStr);
+          } catch {}
+          const delSet = new Set(deletedIds);
+
+          const liveProjects: Project[] = [];
+          snapshot.forEach(docSnap => {
+            const data = docSnap.data() as Project;
+            if (data && data.id && !delSet.has(data.id)) {
+              liveProjects.push(syncProjectPayment(data));
+            }
+          });
+
+          // Check if any deleted projects were removed in snapshot changes
+          const removedDocIds = snapshot.docChanges()
+            .filter(change => change.type === 'removed')
+            .map(change => change.doc.id);
+          if (removedDocIds.length > 0) {
+            applyGlobalProjectDeletions(removedDocIds);
+          }
+
+          setProjects(prev => {
+            const merged = [...prev.filter(p => !delSet.has(p.id))];
+            liveProjects.forEach(inc => {
+              const idx = merged.findIndex(p => p.id === inc.id);
+              if (idx === -1) {
+                merged.push(inc);
+              } else {
+                const existingTime = merged[idx].lastModifiedAt ? new Date(merged[idx].lastModifiedAt!).getTime() : 0;
+                const incTime = inc.lastModifiedAt ? new Date(inc.lastModifiedAt!).getTime() : 0;
+                if (incTime >= existingTime) merged[idx] = inc;
+              }
+            });
+            const filtered = merged.filter(p => !delSet.has(p.id));
+            setTimeout(() => {
+              safeSetItem('era_proj_v28', JSON.stringify(filtered));
+            }, 0);
+            return filtered;
+          });
+        }
+      }, err => {
+        handleFsError(err);
+        console.warn('[Firestore Projects Listener Notice]:', err?.message || err);
+      });
+
+      // 4. Listen for approvals
+      unsubscribeApprovalsListener = onSnapshot(collection(db, 'approvals'), (snapshot) => {
+        if (snapshot && !snapshot.empty) {
+          const liveApprovals: ApprovalRequest[] = [];
+          snapshot.forEach(docSnap => {
+            const data = docSnap.data() as ApprovalRequest;
+            if (data && data.id) liveApprovals.push(data);
+          });
+          if (liveApprovals.length > 0) {
+            let deletedIds: string[] = [];
+            try {
+              const delStr = localStorage.getItem('era_deleted_project_ids') || '[]';
+              deletedIds = JSON.parse(delStr);
+            } catch {}
+            const delSet = new Set(deletedIds);
+            const filteredApprovals = liveApprovals.filter(a => !delSet.has(a.projectId));
+            setPendingApprovals(filteredApprovals);
+            setTimeout(() => {
+              safeSetItem('era_appr_v28', JSON.stringify(filteredApprovals));
+            }, 0);
+          }
+        }
+      }, err => {
+        handleFsError(err);
+        console.warn('[Firestore Approvals Listener Notice]:', err?.message || err);
+      });
+
+      // 5. Listen for taxonomy configuration
+      unsubscribeConfigListener = onSnapshot(doc(db, 'config', 'taxonomy'), (docSnap) => {
+        if (docSnap && docSnap.exists()) {
+          const data = docSnap.data();
+          if (data && Array.isArray(data.pmos)) setPmos(data.pmos);
+          if (data && Array.isArray(data.directorates)) setProgramDirectorates(data.directorates);
+        }
+      }, err => {
+        handleFsError(err);
+        console.warn('[Firestore Config Listener Notice]:', err?.message || err);
+      });
+
+      // 6. Listen for scoring weights configuration database
+      onSnapshot(doc(db, 'config', 'scoring_weights'), (docSnap) => {
+        if (docSnap && docSnap.exists()) {
+          const data = docSnap.data();
+          if (data && data.contractorWeights) {
+            setContractorWeights(data.contractorWeights);
+            localStorage.setItem('era_contractor_scoring_weights', JSON.stringify(data.contractorWeights));
+          }
+          if (data && data.consultantWeights) {
+            setConsultantWeights(data.consultantWeights);
+            localStorage.setItem('era_consultant_scoring_weights', JSON.stringify(data.consultantWeights));
+          }
+        }
+      }, err => {
+        handleFsError(err);
+        console.warn('[Firestore Scoring Weights Listener Notice]:', err?.message || err);
+      });
+    } catch (e) {
+      console.warn('[Firestore Listeners Setup Notice]:', e);
+    }
+
+    const pollAllBackendData = () => {
+      // Polling is disabled to accommodate >4000 users and prevent quota exhaustion.
+      // Firestore onSnapshot listeners already provide real-time updates without heavy polling.
+      if (!navigator.onLine) return;
+    };
+
+    // Cross-tab and local state synchronization listener
     const reloadLocalState = () => {
       try {
         const localProjsStr = localStorage.getItem('era_proj_v28');
@@ -1850,13 +1881,7 @@ let isBatchSyncRunning = false;
               deletedIds = JSON.parse(delStr);
             } catch {}
             const filtered = parsed.filter((p: Project) => !deletedIds.includes(p.id));
-            const syncedProjects = filtered.map(syncProjectPayment);
-            setProjects(syncedProjects);
-            setCurrentProject(prevCurrent => {
-              if (!prevCurrent) return prevCurrent;
-              const updated = syncedProjects.find(p => p.id === prevCurrent.id);
-              return updated || prevCurrent;
-            });
+            setProjects(filtered.map(syncProjectPayment));
           }
         }
         const localUsersStr = localStorage.getItem('era_users_v28');
@@ -1919,8 +1944,6 @@ let isBatchSyncRunning = false;
         eraChannel.onmessage = (event) => {
           if (event.data?.type === 'PROJECT_DELETED' && event.data.id) {
             applyGlobalProjectDeletions([event.data.id]);
-          } else if (event.data?.type === 'PROJECT_UPDATED' && (event.data.project || event.data.payload)) {
-            handleRealtimePayload({ type: 'PROJECT_UPDATED', payload: event.data.project || event.data.payload });
           } else if (event.data?.type === 'USER_REGISTRATION_SUBMITTED' || event.data?.type === 'USER_SIGNIN_APPROVAL_REQUESTED') {
             const user = event.data.user as User;
             if (user && user.username) {
@@ -1973,66 +1996,8 @@ let isBatchSyncRunning = false;
     window.addEventListener('new_user_registered', handleNewUserRegisteredEvent);
     window.addEventListener('user_requested_signin_approval', handleNewUserRegisteredEvent);
 
-    const handleFocusOrOnline = async () => {
-      if (navigator.onLine) {
-        try {
-          const cloudProjs = await safeFetchProjects();
-          if (cloudProjs && cloudProjs.length > 0) {
-            setProjects(prev => {
-              const map = new Map<string, Project>();
-              prev.forEach(p => map.set(p.id, p));
-              cloudProjs.forEach(p => map.set(p.id, p));
-              const merged = Array.from(map.values());
-              safeSetItem('era_proj_v28', JSON.stringify(merged));
-              return merged;
-            });
-            setCurrentProject(prevProj => {
-              if (prevProj && prevProj.id) {
-                const fresh = cloudProjs.find(p => p.id === prevProj.id);
-                if (fresh) return fresh;
-              }
-              return prevProj;
-            });
-          }
-          const cloudUsers = await safeFetchUsers();
-          if (cloudUsers && cloudUsers.length > 0) {
-            mergeAndApplyUsers(cloudUsers);
-          }
-          const cloudApprs = await safeFetchApprovals();
-          if (cloudApprs && Array.isArray(cloudApprs)) {
-            setPendingApprovals(cloudApprs);
-            safeSetItem('era_appr_v28', JSON.stringify(cloudApprs));
-          }
-        } catch (e) {}
-      }
-    };
-
-    window.addEventListener('focus', handleFocusOrOnline);
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') handleFocusOrOnline();
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    const handleRealtimeLocalMutated = (evt?: any) => {
-      if (evt && evt.detail && (evt.detail.id || Array.isArray(evt.detail))) {
-        handleRealtimePayload({ type: 'PROJECT_UPDATED', payload: evt.detail });
-      } else {
-        reloadLocalState();
-      }
-    };
-    window.addEventListener('local_project_mutated', handleRealtimeLocalMutated);
-    window.addEventListener('realtime_project_updated', handleRealtimeLocalMutated);
-    window.addEventListener('realtime_users_updated', handleRealtimeLocalMutated);
-    window.addEventListener('realtime_approvals_updated', handleRealtimeLocalMutated);
-    window.addEventListener('realtime_config_updated', handleRealtimeLocalMutated);
-
-    // Start real-time multi-device synchronization engine
-    const unsubRealtime = realtimeManager.subscribe((msg) => {
-      handleRealtimePayload(msg);
-    });
-
     // Run initial sync on mount
-    realtimeManager.forceSyncNow().catch(() => {});
+    pollAllBackendData();
 
     // Sync initial local users to backend so new installations share default users
     safeSyncUsers(usersListState).catch(() => {});
@@ -2043,30 +2008,29 @@ let isBatchSyncRunning = false;
       setSyncSuspended(suspended);
       if (navigator.onLine) {
         triggerOfflineQueueSync();
+        pollAllBackendData();
       }
     }, 8000); // Check every 8s
 
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
-      window.removeEventListener('focus', handleFocusOrOnline);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('sync_log_recorded', handleSyncLogRecorded);
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('project_globally_deleted', handleProjectGloballyDeleted);
       window.removeEventListener('new_user_registered', handleNewUserRegisteredEvent);
       window.removeEventListener('user_requested_signin_approval', handleNewUserRegisteredEvent);
-      window.removeEventListener('local_project_mutated', handleRealtimeLocalMutated);
-      window.removeEventListener('realtime_project_updated', handleRealtimeLocalMutated);
-      window.removeEventListener('realtime_users_updated', handleRealtimeLocalMutated);
-      window.removeEventListener('realtime_approvals_updated', handleRealtimeLocalMutated);
-      window.removeEventListener('realtime_config_updated', handleRealtimeLocalMutated);
-      try { unsubRealtime(); } catch (e) {}
       if (broadcastChannel) {
         try { broadcastChannel.close(); } catch (e) {}
       }
       if (eraChannel) {
         try { eraChannel.close(); } catch (e) {}
+      }
+      if (eventSource) {
+        try { eventSource.close(); } catch (e) {}
+      }
+      if (wsSocket) {
+        try { wsSocket.close(); } catch (e) {}
       }
       if (unsubscribeDeletedProjectsListener) {
         try { unsubscribeDeletedProjectsListener(); } catch (e) {}
@@ -2083,6 +2047,8 @@ let isBatchSyncRunning = false;
       if (unsubscribeConfigListener) {
         try { unsubscribeConfigListener(); } catch (e) {}
       }
+      clearTimeout(wsReconnectTimeout);
+      clearTimeout(sseReconnectTimeout);
       clearInterval(interval);
     };
   }, []);
@@ -2284,15 +2250,6 @@ let isBatchSyncRunning = false;
       if (s) projList = JSON.parse(s).map((p: any) => normalizeProject(p));
     } catch {}
 
-    // Deduplicate local projects by id
-    const seenLocalIds = new Set<string>();
-    projList = projList.filter(p => {
-      if (!p || !p.id) return false;
-      if (seenLocalIds.has(p.id)) return false;
-      seenLocalIds.add(p.id);
-      return true;
-    });
-
     if (projList.length === 0) {
       const dp = defaultProjectTemplate();
       projList = [dp];
@@ -2338,41 +2295,12 @@ let isBatchSyncRunning = false;
             safeSyncProject(p).catch(err => console.warn('Failed to sync back local-only project:', err));
           });
 
-          // Deduplicate merged projects to guarantee zero duplicate keys
-          const dedupedMerged: Project[] = [];
-          const seenMergedIds = new Set<string>();
-          filteredMerged.forEach(p => {
-            if (p && p.id && !seenMergedIds.has(p.id)) {
-              seenMergedIds.add(p.id);
-              dedupedMerged.push(p);
-            }
-          });
-
-          setProjects(dedupedMerged);
-          safeSetItem('era_proj_v28', JSON.stringify(dedupedMerged));
-          setCurrentProject(prev => {
-            if (!prev) return dedupedMerged[0] || null;
-            const match = dedupedMerged.find(p => p.id === prev.id);
-            return match || dedupedMerged[0] || null;
-          });
+          setProjects(filteredMerged);
+          safeSetItem('era_proj_v28', JSON.stringify(filteredMerged));
           console.log('Successfully merged and initialized active contracts with cloud authoritative database.');
         } else {
-          const dedupedCleanLocal: Project[] = [];
-          const seenLocalSet = new Set<string>();
-          cleanLocal.forEach(p => {
-            if (p && p.id && !seenLocalSet.has(p.id)) {
-              seenLocalSet.add(p.id);
-              dedupedCleanLocal.push(p);
-            }
-          });
-
-          setProjects(dedupedCleanLocal);
-          safeSetItem('era_proj_v28', JSON.stringify(dedupedCleanLocal));
-          setCurrentProject(prev => {
-            if (!prev) return dedupedCleanLocal[0] || null;
-            const match = dedupedCleanLocal.find(p => p.id === prev.id);
-            return match || dedupedCleanLocal[0] || null;
-          });
+          setProjects(cleanLocal);
+          safeSetItem('era_proj_v28', JSON.stringify(cleanLocal));
         }
       } catch (err) {
         console.warn('Cloud database offline or table does not exist yet. Relying on localStorage:', err);
@@ -3119,7 +3047,7 @@ let isBatchSyncRunning = false;
     safeSetItem('era_proj_v28', JSON.stringify(updatedProjects));
 
     // Sync current update to Cloud Databases in real-time
-    safeSyncProject(updatedProject, false, true).catch(err => {
+    safeSyncProject(updatedProject).catch(err => {
       console.warn('Project update cloud sync fell back to local storage:', err);
     });
   };
@@ -3327,94 +3255,56 @@ let isBatchSyncRunning = false;
     formatAccounting(v, '');
 
   return (
-    <div className="min-h-screen text-slate-800 dark:text-slate-100 flex flex-col font-sans transition-colors duration-300 relative bg-slate-50/50 dark:bg-slate-900/60 pb-24">
+    <div className="min-h-screen text-slate-800 dark:text-slate-100 flex flex-col font-sans transition-colors duration-300 relative bg-slate-50/50 dark:bg-slate-900/60 pb-12">
       
-      {/* Dynamic Style Injection for Theme Modes, Accents, Background Wallpapers & Colors */}
-      <style dangerouslySetInnerHTML={{__html: `
-        ${themeConfig.bgImage ? `
-          body, .min-h-screen {
-            background-image: url('${themeConfig.bgImage}') !important;
-            background-size: ${themeConfig.bgFit === 'contain' ? 'contain' : themeConfig.bgFit === 'repeat' ? 'repeat' : 'cover'} !important;
-            background-position: center !important;
-            background-attachment: fixed !important;
-            background-repeat: ${themeConfig.bgFit === 'repeat' ? 'repeat' : 'no-repeat'} !important;
-          }
-          .min-h-screen::before {
-            content: '';
-            position: fixed;
-            inset: 0;
-            background-color: ${themeConfig.darkMode ? `rgba(15, 23, 42, ${(themeConfig.bgOpacity ?? 35) / 100})` : `rgba(255, 255, 255, ${(themeConfig.bgOpacity ?? 35) / 100})`};
-            backdrop-filter: blur(${themeConfig.bgBlur ?? 4}px);
-            -webkit-backdrop-filter: blur(${themeConfig.bgBlur ?? 4}px);
-            pointer-events: none;
-            z-index: 0;
-          }
-          .min-h-screen > * {
-            position: relative;
-            z-index: 1;
-          }
-        ` : ''}
-
-        ${themeConfig.primaryAccent ? `
-          .bg-blue-600, .bg-blue-500 {
-            background-color: ${themeConfig.primaryAccent} !important;
-          }
-          .border-blue-500, .border-blue-600 {
-            border-color: ${themeConfig.primaryAccent} !important;
-          }
-          .text-blue-600, .text-blue-500 {
-            color: ${themeConfig.primaryAccent} !important;
-          }
-        ` : ''}
-
-        ${customBgColor || themeConfig.customBgColor ? `
-          body, .min-h-screen, .bg-slate-50, .bg-slate-50\\/50, .bg-slate-100, .bg-slate-50\\/40, .bg-slate-950\\/50 {
-            background-color: ${themeConfig.customBgColor || customBgColor} !important;
-          }
-          .bg-white, .dark\\:bg-slate-800, .bg-slate-900, .bg-slate-850, .dark\\:bg-slate-850 {
-            background-color: ${themeConfig.customBgColor || customBgColor}f4 !important;
-            border-color: rgba(255, 255, 255, 0.08) !important;
-          }
-        ` : ''}
-
-        ${customTxtBgColor ? `
-          .bg-white, .dark\\:bg-slate-800, .bg-slate-900, .bg-slate-850, .dark\\:bg-slate-850, input, select, textarea, td, th, .bg-slate-50\\/50, .bg-slate-50\\/40 {
-            background-color: ${customTxtBgColor} !important;
-            background: ${customTxtBgColor} !important;
-            border-color: rgba(0, 0, 0, 0.1) !important;
-          }
-        ` : ''}
-
-        ${customTxtColor || themeConfig.customTxtColor ? `
-          body, p, span, td, th, input, select, textarea, label {
-            color: ${themeConfig.customTxtColor || customTxtColor} !important;
-          }
-          .text-slate-400, .text-slate-500, .text-slate-600, .text-slate-700, .dark\\:text-slate-400, .text-slate-550, .text-slate-450 {
-            color: ${(themeConfig.customTxtColor || customTxtColor)}cc !important;
-          }
-        ` : ''}
-
-        ${customWordColor ? `
-          h1, h2, h3, h4, .font-bold, font-semibold, font-black, button, strong {
-            color: ${customWordColor} !important;
-          }
-          svg {
-            stroke: ${customWordColor} !important;
-          }
-        ` : ''}
-
-        ${customChartTooltipBgColor ? `
-          .recharts-default-tooltip {
-            background-color: ${customChartTooltipBgColor} !important;
-            background: ${customChartTooltipBgColor} !important;
-            border: 1px solid ${customWordColor || '#475569'} !important;
-            border-radius: 8px !important;
-          }
-          .recharts-default-tooltip .recharts-tooltip-item, .recharts-default-tooltip span, .recharts-tooltip-label {
-            color: ${customTxtColor || '#ffffff'} !important;
-          }
-        ` : ''}
-      `}} />
+      {/* Dynamic Style Injection for completely custom backgrounds and word colors */}
+      {customBgColor || customTxtColor || customWordColor || customTxtBgColor || customChartTooltipBgColor ? (
+        <style dangerouslySetInnerHTML={{__html: `
+          ${customBgColor ? `
+            body, .min-h-screen, .bg-slate-50, .bg-slate-50\\/50, .bg-slate-100, .bg-slate-50\\/40, .bg-slate-950\\/50 {
+              background-color: ${customBgColor} !important;
+            }
+            .bg-white, .dark\\:bg-slate-800, .bg-slate-900, .bg-slate-850, .dark\\:bg-slate-850 {
+              background-color: ${customBgColor}f4 !important;
+              border-color: rgba(255, 255, 255, 0.08) !important;
+            }
+          ` : ''}
+          ${customTxtBgColor ? `
+            .bg-white, .dark\\:bg-slate-800, .bg-slate-900, .bg-slate-850, .dark\\:bg-slate-850, input, select, textarea, td, th, .bg-slate-50\\/50, .bg-slate-50\\/40 {
+              background-color: ${customTxtBgColor} !important;
+              background: ${customTxtBgColor} !important;
+              border-color: rgba(0, 0, 0, 0.1) !important;
+            }
+          ` : ''}
+          ${customTxtColor ? `
+            body, p, span, td, th, input, select, textarea, label {
+              color: ${customTxtColor} !important;
+            }
+            .text-slate-400, .text-slate-500, .text-slate-600, .text-slate-700, .dark\\:text-slate-400, .text-slate-550, .text-slate-450 {
+              color: ${customTxtColor}cc !important;
+            }
+          ` : ''}
+          ${customWordColor ? `
+            h1, h2, h3, h4, .font-bold, font-semibold, font-black, button, strong {
+              color: ${customWordColor} !important;
+            }
+            svg {
+              stroke: ${customWordColor} !important;
+            }
+          ` : ''}
+          ${customChartTooltipBgColor ? `
+            .recharts-default-tooltip {
+              background-color: ${customChartTooltipBgColor} !important;
+              background: ${customChartTooltipBgColor} !important;
+              border: 1px solid ${customWordColor || '#475569'} !important;
+              border-radius: 8px !important;
+            }
+            .recharts-default-tooltip .recharts-tooltip-item, .recharts-default-tooltip span, .recharts-tooltip-label {
+              color: ${customTxtColor || '#ffffff'} !important;
+            }
+          ` : ''}
+        `}} />
+      ) : null}
       
       {/* Interactive 3D constellation animation */}
       <ThreeDAnimatedBackground darkMode={darkMode} />
@@ -3483,7 +3373,6 @@ let isBatchSyncRunning = false;
               }}
               onOpenDrafts={() => setShowDraftsPlayground(true)}
               onOpenUserGuide={() => setIsUserGuideOpen(true)}
-              onOpenThemeCustomizer={() => setShowThemeCustomizer(true)}
               onSaveToCloud={async () => {
                 try {
                   const isMasterAdmin = currentUserObj.role === 'admin' || currentUserObj.role === 'master_admin' || currentUserObj.username === 'proj_1781786415663';
@@ -3671,10 +3560,6 @@ let isBatchSyncRunning = false;
                       return;
                     }
 
-                    if (!window.confirm(`Are you sure you want to save all updated parameters for "${currentProject.name}" directly to the database?`)) {
-                      return;
-                    }
-
                     try {
                       const weightedProject = {
                         ...currentProject,
@@ -3685,7 +3570,7 @@ let isBatchSyncRunning = false;
                         approvedAt: new Date().toISOString(),
                         approverRole: currentUserObj.role
                       };
-                      await safeSyncProject(weightedProject, false, true);
+                      await safeSyncProject(weightedProject);
                       
                       setCurrentProject(weightedProject);
                       const updatedProjs = projects.map(p => p.id === weightedProject.id ? weightedProject : p);
@@ -3710,195 +3595,27 @@ let isBatchSyncRunning = false;
                 {/* Workflow & Approvals Shortcut (Scoped strictly to currently opened project) */}
                 <button
                   onClick={() => setShowApprovals(true)}
-                  className={`p-2 rounded-full border flex items-center gap-1.5 text-[11px] font-extrabold px-3 py-1.5 transition shadow-sm cursor-pointer ${
+                  className={`p-2 rounded-full border flex items-center gap-1.5 text-[11px] font-extrabold px-3 py-1.5 transition shadow-sm ${
                     hasApprovalCredentials(currentUserObj)
                       ? currentProjectPendingApprovals.length > 0
-                        ? 'bg-amber-500 hover:bg-amber-600 text-white border-amber-600 animate-pulse ring-2 ring-amber-400/40'
+                        ? 'bg-amber-500 hover:bg-amber-600 text-white border-amber-600 animate-pulse'
                         : 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-700'
                       : (currentUserObj?.role === 'editor' || currentUserObj?.role === 'era_editor' || currentUserObj?.role === 'consultant_editor' || currentUserObj?.role === 'contractor_editor')
                       ? 'bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-700'
                       : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-700'
                   }`}
-                  title={(currentUserObj?.role === 'editor' || currentUserObj?.role === 'era_editor' || currentUserObj?.role === 'consultant_editor' || currentUserObj?.role === 'contractor_editor') ? `Manage Private Drafts for ${currentProject?.name}` : `Review & Certify Approvals for ${currentProject?.name} (${currentProjectPendingApprovals.length} pending)`}
+                  title={(currentUserObj?.role === 'editor' || currentUserObj?.role === 'era_editor' || currentUserObj?.role === 'consultant_editor' || currentUserObj?.role === 'contractor_editor') ? `Manage Private Drafts for ${currentProject?.name}` : `Review & Certify Approvals for ${currentProject?.name}`}
                 >
                   <ShieldCheck className="w-3.5 h-3.5" />
                   <span>
                     {(currentUserObj?.role === 'editor' || currentUserObj?.role === 'era_editor' || currentUserObj?.role === 'consultant_editor' || currentUserObj?.role === 'contractor_editor') ? 'Private Drafts' : 'Project Approvals'}
-                    {currentProjectPendingApprovals.length > 0 && (
-                      <span className="ml-1 px-1.5 py-0.2 bg-white text-amber-700 rounded-full text-[9px] font-black shadow-xs">
+                    {hasApprovalCredentials(currentUserObj) && currentProjectPendingApprovals.length > 0 && (
+                      <span className="ml-1 px-1.5 py-0.2 bg-white text-amber-700 rounded-full text-[9px] font-black">
                         {currentProjectPendingApprovals.length}
                       </span>
                     )}
                   </span>
                 </button>
-
-                {/* Visual Notification Indicator on Navbar for Approval Requests within User's Scope */}
-                <div className="relative">
-                  <button
-                    onClick={() => {
-                      setShowNotificationDropdown(prev => !prev);
-                      setHasNewApprovalNotification(false);
-                    }}
-                    className={`relative p-2 rounded-full border flex items-center justify-center transition shadow-sm cursor-pointer ${
-                      userScopePendingApprovals.length > 0
-                        ? 'bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 border-rose-300 dark:border-rose-800 ring-2 ring-rose-500/30'
-                        : 'bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 hover:text-slate-700 dark:text-slate-400 border-slate-200 dark:border-slate-700'
-                    }`}
-                    title={
-                      userScopePendingApprovals.length > 0
-                        ? `Notifications: ${userScopePendingApprovals.length} pending approval request${userScopePendingApprovals.length > 1 ? 's' : ''} in your scope`
-                        : 'Notifications: No pending approval requests'
-                    }
-                  >
-                    {userScopePendingApprovals.length > 0 ? (
-                      <BellRing className="w-4 h-4 text-rose-600 dark:text-rose-400 animate-bounce" />
-                    ) : (
-                      <Bell className="w-4 h-4" />
-                    )}
-
-                    {userScopePendingApprovals.length > 0 && (
-                      <>
-                        <span className="animate-ping absolute -top-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-rose-500 opacity-75"></span>
-                        <span className="absolute -top-1.5 -right-1.5 px-1.5 py-0.2 min-w-4.5 h-4.5 flex items-center justify-center bg-rose-600 text-white rounded-full text-[9px] font-black shadow-md border-2 border-white dark:border-slate-900">
-                          {userScopePendingApprovals.length}
-                        </span>
-                      </>
-                    )}
-                  </button>
-
-                  {/* Backdrop click-catcher when notification dropdown is open */}
-                  {showNotificationDropdown && (
-                    <div 
-                      className="fixed inset-0 z-40" 
-                      onClick={() => setShowNotificationDropdown(false)} 
-                    />
-                  )}
-
-                  {/* Dropdown Notification Menu */}
-                  <AnimatePresence>
-                    {showNotificationDropdown && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 10, scale: 0.96 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: 8, scale: 0.96 }}
-                        transition={{ duration: 0.15 }}
-                        className="absolute right-0 mt-2 w-80 sm:w-96 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 p-4 z-50 overflow-hidden text-left"
-                      >
-                        {/* Header */}
-                        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3 mb-3">
-                          <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 rounded-xl bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center font-bold">
-                              <BellRing className="w-4 h-4" />
-                            </div>
-                            <div>
-                              <div className="text-xs font-black text-slate-850 dark:text-white flex items-center gap-1.5">
-                                <span>Approval Requests</span>
-                                {hasNewApprovalNotification && (
-                                  <span className="px-1.5 py-0.2 bg-rose-500 text-white text-[8px] font-black rounded-full uppercase tracking-wider animate-pulse">
-                                    New
-                                  </span>
-                                )}
-                              </div>
-                              <div className="text-[10px] text-slate-500 dark:text-slate-400">
-                                {hasApprovalCredentials(currentUserObj)
-                                  ? 'Pending authorization in your scope'
-                                  : 'Your submitted requests awaiting review'}
-                              </div>
-                            </div>
-                          </div>
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300">
-                            {userScopePendingApprovals.length} Pending
-                          </span>
-                        </div>
-
-                        {/* List */}
-                        {userScopePendingApprovals.length === 0 ? (
-                          <div className="py-6 text-center space-y-1.5">
-                            <div className="w-9 h-9 rounded-full bg-emerald-100 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto text-base font-bold">
-                              ✓
-                            </div>
-                            <p className="text-xs font-bold text-slate-700 dark:text-slate-200">
-                              All caught up!
-                            </p>
-                            <p className="text-[11px] text-slate-500 dark:text-slate-400 max-w-xs mx-auto">
-                              No pending approval requests requiring your review in this scope.
-                            </p>
-                          </div>
-                        ) : (
-                          <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-                            {userScopePendingApprovals.slice(0, 5).map((req, rIdx) => (
-                              <div
-                                key={`user-scope-appr-${req.id || rIdx}-${rIdx}`}
-                                className="p-2.5 rounded-xl border border-slate-100 dark:border-slate-800/80 bg-slate-50/70 dark:bg-slate-800/40 hover:bg-slate-100 dark:hover:bg-slate-800 transition flex flex-col gap-1.5"
-                              >
-                                <div className="flex items-start justify-between gap-2">
-                                  <div className="font-extrabold text-xs text-slate-800 dark:text-slate-100 line-clamp-1">
-                                    {req.section || 'Project Baseline Update'}
-                                  </div>
-                                  <span className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
-                                    {req.projectId === currentProject?.id ? 'This Contract' : 'Other Contract'}
-                                  </span>
-                                </div>
-                                <div className="text-[10px] text-slate-500 dark:text-slate-400 flex items-center justify-between">
-                                  <span>By <strong className="text-slate-700 dark:text-slate-200">@{req.author || req.requestedBy}</strong></span>
-                                  <span>{req.requestedAt ? formatRelativeTime(req.requestedAt) : 'Recent'}</span>
-                                </div>
-                                <div className="flex items-center gap-2 pt-1 border-t border-slate-200/50 dark:border-slate-700/50">
-                                  <button
-                                    onClick={() => {
-                                      setShowNotificationDropdown(false);
-                                      if (req.projectId === currentProject?.id) {
-                                        setShowApprovals(true);
-                                      } else {
-                                        const target = projects.find(p => p.id === req.projectId);
-                                        if (target) {
-                                          setCurrentProject(target);
-                                          setCurrentProjectId(target.id);
-                                          setShowApprovals(true);
-                                        }
-                                      }
-                                    }}
-                                    className="w-full py-1 text-center bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-bold transition flex items-center justify-center gap-1 cursor-pointer"
-                                  >
-                                    <ShieldCheck className="w-3 h-3" />
-                                    Review Request
-                                  </button>
-                                </div>
-                              </div>
-                            ))}
-                            {userScopePendingApprovals.length > 5 && (
-                              <p className="text-[10px] text-center text-slate-400 py-1 font-semibold">
-                                + {userScopePendingApprovals.length - 5} more pending requests
-                              </p>
-                            )}
-                          </div>
-                        )}
-
-                        {/* Footer action */}
-                        {userScopePendingApprovals.length > 0 && (
-                          <div className="pt-3 mt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
-                            <button
-                              onClick={() => {
-                                setShowNotificationDropdown(false);
-                                setActiveTab('approvalWorkflow');
-                              }}
-                              className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
-                            >
-                              <span>Open Approval Workflow</span>
-                              <ArrowRight className="w-3 h-3" />
-                            </button>
-                            <button
-                              onClick={() => setShowNotificationDropdown(false)}
-                              className="text-[11px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 font-semibold cursor-pointer"
-                            >
-                              Close
-                            </button>
-                          </div>
-                        )}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
                 {isMasterAdmin && usersListState.some(u => u && u.isPendingApproval) && (
                   <button
                     onClick={() => {
@@ -3935,14 +3652,6 @@ let isBatchSyncRunning = false;
                 >
                   <BookOpen className="w-3.5 h-3.5" />
                   User Guide Manual
-                </button>
-                <button
-                  onClick={() => setShowThemeCustomizer(true)}
-                  className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 p-2 rounded-full border border-amber-600 flex items-center gap-1.5 text-[11px] font-extrabold text-white px-3 py-1.5 transition shadow-sm cursor-pointer shrink-0"
-                  title="Customize website theme mode, primary accent color, and background wallpaper picture"
-                >
-                  <Settings className="w-3.5 h-3.5 text-white" />
-                  <span>Theme Settings</span>
                 </button>
                 <button
                   onClick={() => window.print()}
@@ -4063,13 +3772,13 @@ let isBatchSyncRunning = false;
                             You are viewing your local draft changes. These changes are isolated from other users.
                           </div>
                           <div className="flex items-center gap-2 flex-wrap mt-1">
-                            {activeUnexpired.map((d, dIdx) => {
+                            {activeUnexpired.map(d => {
                               const elapsedMs = nowMs - new Date(d.updatedAt).getTime();
                               const remainingMs = Math.max(0, 10 * 60 * 1000 - elapsedMs);
                               const remMins = Math.floor(remainingMs / 60000);
                               const remSecs = Math.floor((remainingMs % 60000) / 1000);
                               return (
-                                <span key={`unexp-draft-${d.id || dIdx}-${dIdx}`} className="inline-flex items-center gap-1.5 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900 px-2.5 py-0.7 rounded-lg text-[10px] font-bold text-indigo-700 dark:text-indigo-300 shadow-3xs">
+                                <span key={d.id} className="inline-flex items-center gap-1.5 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900 px-2.5 py-0.7 rounded-lg text-[10px] font-bold text-indigo-700 dark:text-indigo-300 shadow-3xs">
                                   <strong>{d.section}</strong>: expires in <span className="font-black text-amber-600 dark:text-amber-400 font-mono">{remMins}m {remSecs}s</span>
                                 </span>
                               );
@@ -4130,8 +3839,8 @@ let isBatchSyncRunning = false;
                             Your submitted submittal is actively waiting in the queue until an Approver, PMO, or Directorate Admin reviews and either <strong>approves</strong> (incorporating into the live project) or <strong>rejects</strong> your request.
                           </div>
                           <div className="flex items-center gap-2 flex-wrap mt-1">
-                            {submittedDrafts.map((d, dIdx) => (
-                              <span key={`sub-draft-${d.id || dIdx}-${dIdx}`} className="inline-flex items-center gap-1.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 px-2.5 py-0.7 rounded-lg text-[10px] font-bold text-amber-800 dark:text-amber-300 shadow-3xs">
+                            {submittedDrafts.map(d => (
+                              <span key={d.id} className="inline-flex items-center gap-1.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 px-2.5 py-0.7 rounded-lg text-[10px] font-bold text-amber-800 dark:text-amber-300 shadow-3xs">
                                 <strong>{d.section}</strong>: Submitted at {new Date(d.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • <em>Waiting on Approver Decision</em>
                               </span>
                             ))}
@@ -4687,8 +4396,7 @@ let isBatchSyncRunning = false;
                 { id: 'resourceMobilization', label: '🚚 Logistics & Resources' },
                 { id: 'risks', label: '⚠️ Project Risks' },
                 { id: 'consultant', label: '👔 Supervision Consultant' },
-                { id: 'submittalLog', label: '📋 Submittals & RFI Log' },
-                { id: 'approvalWorkflow', label: '🛡️ Approvals' },
+                { id: 'submittalLog', label: '📋 Submittal Log' },
                 /* { id: 'workspace', label: '☁️ Workspace' }, */
                 { id: 'analysis', label: '📊 Comprehensive analysis' },
                 { id: 'documentation', label: '📁 Documentation' },
@@ -4696,49 +4404,19 @@ let isBatchSyncRunning = false;
                 { id: 'settings', label: '⚙️ Settings' }
               ]
                 .filter((tab) => canUserViewPage(currentUserObj, tab.id))
-                .map((tab, tabIdx) => {
-                  const isDashTab = tab.id === 'dash';
-                  const isApprovalTab = tab.id === 'approvalWorkflow';
-                  const hasNotification = isDashTab 
-                    ? userScopePendingApprovals.length > 0 
-                    : (isApprovalTab && currentProjectPendingApprovals.length > 0);
-                  const notificationCount = isDashTab 
-                    ? userScopePendingApprovals.length 
-                    : currentProjectPendingApprovals.length;
-
-                  return (
-                    <button
-                      key={`main-nav-tab-${tab.id}-${tabIdx}`}
-                      onClick={() => setActiveTab(tab.id)}
-                      className={`relative px-3 py-2 rounded-xl transition duration-150 whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
-                        activeTab === tab.id
-                          ? 'bg-blue-600 dark:bg-blue-500 text-white shadow-sm'
-                          : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400'
-                      }`}
-                      title={
-                        isDashTab && userScopePendingApprovals.length > 0
-                          ? `Dashboard: ${userScopePendingApprovals.length} pending approval request${userScopePendingApprovals.length > 1 ? 's' : ''} in your scope`
-                          : isApprovalTab && currentProjectPendingApprovals.length > 0
-                          ? `Approvals: ${currentProjectPendingApprovals.length} pending request${currentProjectPendingApprovals.length > 1 ? 's' : ''} for this contract`
-                          : tab.label
-                      }
-                    >
-                      <span>{tab.label}</span>
-                      {hasNotification && (
-                        <span 
-                          className={`flex items-center gap-1 px-1.5 py-0.2 rounded-full text-[9px] font-black shadow-xs ${
-                            isDashTab 
-                              ? 'bg-rose-600 text-white animate-pulse' 
-                              : 'bg-amber-500 text-white'
-                          }`}
-                        >
-                          {isDashTab && <span className="w-1.5 h-1.5 rounded-full bg-white"></span>}
-                          <span>{notificationCount}</span>
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
+                .map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`px-3 py-2 rounded-xl transition duration-150 whitespace-nowrap ${
+                    activeTab === tab.id
+                      ? 'bg-blue-600 dark:bg-blue-500 text-white shadow-sm'
+                      : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
             </div>
 
             {/* Tab Views Swappers */}
@@ -4984,12 +4662,9 @@ let isBatchSyncRunning = false;
               {activeTab === 'submittalLog' && (
                 <SubmittalLogView
                   project={currentProject}
-                  projects={projects}
-                  onSelectProject={(proj) => handleSelectProject(proj.id)}
                   onProjectUpdate={handleProjectUpdate}
                   isReadonly={currentUserObj?.role === 'viewer' && currentUserObj?.username !== 'proj_1781786415663'}
                   currentUserObj={currentUserObj}
-                  initialTab={submittalLogInitialTab}
                 />
               )}
 
@@ -5017,7 +4692,6 @@ let isBatchSyncRunning = false;
               {activeTab === 'workspace' && (
                 <WorkspaceView 
                   projects={projects}
-                  currentUserObj={currentUserObj}
                   onRestoreProjects={(restored) => {
                     setProjects(restored);
                     safeSetItem('era_proj_v28', JSON.stringify(restored));
@@ -5122,7 +4796,6 @@ let isBatchSyncRunning = false;
                     setConsultantWeights(cons);
                   }}
                   allUsers={usersListState}
-                  onOpenThemeCustomizer={() => setShowThemeCustomizer(true)}
                   onApproveUser={handleApproveUserSetting}
                   onRejectUser={handleRejectUserSetting}
                 />
@@ -5161,15 +4834,6 @@ let isBatchSyncRunning = false;
           onUpdateCredentials={handleSelfUpdateCredentials}
         />
       )}
-
-      {/* Website Theme, Accent Colors & Background Wallpaper Customizer Modal */}
-      <ThemeCustomizerModal
-        isOpen={showThemeCustomizer}
-        onClose={() => setShowThemeCustomizer(false)}
-        config={themeConfig}
-        onUpdateConfig={handleUpdateThemeConfig}
-        onResetDefault={handleResetThemeDefault}
-      />
 
       {/* Admin User Management Modal Overlay */}
       {showAdmin && (
@@ -5720,7 +5384,7 @@ let isBatchSyncRunning = false;
                                          return (proj.pmo || '') === uDraft.assignedPmo;
                                       }
                                       return true;
-                                    }).map((proj, pIdx) => {
+                                    }).map((proj) => {
                                       const isMaster = uDraft.role === 'admin' || uDraft.role === 'master_admin';
                                       const isDirAdminUser = uDraft.role === 'directorate_admin' && (proj.programDirectorate || 'Southern') === uDraft.assignedDirectorate;
                                       const isPmoAdminUser = uDraft.role === 'pmo_admin' && (proj.pmo || '') === uDraft.assignedPmo;
@@ -5731,7 +5395,7 @@ let isBatchSyncRunning = false;
                                       const isChanged = !hasAutoAccess && (accessible !== originalAccessible);
 
                                       return (
-                                        <label key={`uacc-proj-${proj.id}-${pIdx}`} className={`flex items-center gap-2 p-2 rounded-xl cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition ${
+                                        <label key={`uacc-proj-${proj.id}`} className={`flex items-center gap-2 p-2 rounded-xl cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition ${
                                           isChanged ? 'text-amber-700 dark:text-amber-400 font-extrabold bg-amber-500/5' : 'text-slate-650 dark:text-slate-350 bg-slate-50/40 dark:bg-slate-900/10'
                                         }`}>
                                           <input
@@ -5814,7 +5478,7 @@ let isBatchSyncRunning = false;
                                   </div>
 
                                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-64 overflow-y-auto pr-1">
-                                    {ALL_EDITABLE_PAGES.map((pageOpt, poIdx) => {
+                                    {ALL_EDITABLE_PAGES.map((pageOpt) => {
                                       const isMaster = uDraft.role === 'admin' || uDraft.role === 'master_admin';
                                       const currentAssigned = uDraft.assignedPages || [];
                                       const isAssigned = isMaster || (currentAssigned.length === 0 ? true : currentAssigned.includes(pageOpt.id));
@@ -5823,7 +5487,7 @@ let isBatchSyncRunning = false;
 
                                       return (
                                         <label
-                                          key={`page-opt-${pageOpt.id}-${poIdx}`}
+                                          key={pageOpt.id}
                                           className={`flex items-start gap-2 p-2.5 rounded-xl cursor-pointer border transition ${
                                             isAssigned
                                               ? 'bg-blue-50/40 dark:bg-blue-950/20 border-blue-200/80 dark:border-blue-900/40 text-slate-800 dark:text-zinc-100'
@@ -6632,6 +6296,183 @@ let isBatchSyncRunning = false;
               )}
             </div>
 
+            {/* Firebase Cloud Firestore Live Sync Manager */}
+            <div className="border-t border-slate-150 dark:border-slate-700/60 pt-4 space-y-4">
+              <h4 className="text-xs font-extrabold text-slate-800 dark:text-zinc-100 uppercase tracking-wider block flex items-center justify-between">
+                <span className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400">
+                  <Database className="w-4 h-4" /> ⚡ Standalone Firebase Cloud Firestore Sync
+                </span>
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase ${!syncSuspended ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400' : 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-400'}`}>
+                  {!syncSuspended ? (
+                    <>
+                      <Wifi className="w-2.5 h-2.5 animate-pulse" /> Live Syncing
+                    </>
+                  ) : (
+                    <>
+                      <WifiOff className="w-2.5 h-2.5" /> Paused (Rate Control)
+                    </>
+                  )}
+                </span>
+              </h4>
+
+              <div className="bg-slate-50 dark:bg-slate-900/40 p-3.5 rounded-2xl border border-slate-150 dark:border-slate-700/60 space-y-3">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={isSyncAutoSuspendDisabled}
+                      onChange={(e) => handleToggleSyncAutoSuspend(e.target.checked)}
+                      className="w-3.5 h-3.5 text-indigo-600 border-slate-300 dark:border-slate-700 rounded focus:ring-indigo-500"
+                    />
+                    <div className="text-2xs font-semibold text-slate-700 dark:text-slate-300">
+                      <span className="block font-bold">Continuous Sync Mode</span>
+                      <span className="block text-[10px] text-slate-400 font-normal">Keep active sync to Firebase Cloud Firestore</span>
+                    </div>
+                  </label>
+
+                  <button
+                    type="button"
+                    onClick={handleManualReactivateSync}
+                    className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl px-3 py-1.5 text-2xs font-bold uppercase cursor-pointer transition shadow-sm"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    Force Reactivate Live Sync
+                  </button>
+                </div>
+
+                {syncSuspended && (
+                  <div className="bg-amber-50/50 dark:bg-amber-950/10 border border-amber-100 dark:border-amber-900/40 rounded-xl p-2.5 text-[11px] text-amber-700 dark:text-amber-300 flex items-start gap-2">
+                    <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                    <p className="leading-snug">
+                      <strong>Sync paused:</strong> Sync rate control engaged. Click <strong>Force Reactivate Live Sync</strong> or enable <strong>Continuous Sync Mode</strong> to resume active multi-location sync.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Real-time Firebase Firestore Sync Manager */}
+            <div className="border-t border-slate-150 dark:border-slate-700/60 pt-4 space-y-4">
+              <h4 className="text-xs font-extrabold text-slate-800 dark:text-zinc-100 uppercase tracking-wider block flex items-center justify-between">
+                <span className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400">
+                  <Database className="w-4 h-4" /> ⚡️ Firebase Cloud Firestore Sync Manager
+                </span>
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase ${isOnline ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400' : 'bg-rose-100 text-rose-800 dark:bg-rose-950/40 dark:text-rose-400'}`}>
+                  {isOnline ? (
+                    <>
+                      <Wifi className="w-2.5 h-2.5" /> Online
+                    </>
+                  ) : (
+                    <>
+                      <WifiOff className="w-2.5 h-2.5" /> Offline
+                    </>
+                  )}
+                </span>
+              </h4>
+
+              <div className="bg-slate-50 dark:bg-slate-900/40 p-3.5 rounded-2xl border border-slate-150 dark:border-slate-700/60 space-y-3">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                  <div className="text-2xs font-semibold text-slate-500 dark:text-slate-400 space-y-0.5">
+                    <p>
+                      <strong>Local Offline Queue:</strong>{' '}
+                      <span className={`font-mono px-1.5 py-0.5 rounded text-xs font-bold ${offlineQueueLength > 0 ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-400' : 'bg-slate-100 text-slate-750 dark:bg-slate-800 dark:text-slate-300'}`}>
+                        {offlineQueueLength} updates pending
+                      </span>
+                    </p>
+                    {lastSyncTime && <p>Last Queue Sync attempt: <span className="font-mono text-slate-700 dark:text-slate-300">{lastSyncTime}</span></p>}
+                  </div>
+
+                  <div className="flex flex-wrap gap-2 w-full sm:w-auto font-bold text-xs">
+                    <button
+                      type="button"
+                      disabled={isSyncingQueue || !isOnline}
+                      onClick={triggerOfflineQueueSync}
+                      className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl px-3 py-1.5 text-2xs font-bold uppercase cursor-pointer transition shadow-sm"
+                    >
+                      <RefreshCw className={`w-3 h-3 ${isSyncingQueue ? 'animate-spin' : ''}`} />
+                      {isSyncingQueue ? 'Syncing...' : 'Sync Now'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isBatchSyncing || !isOnline || offlineQueueLength === 0}
+                      onClick={handleBatchSyncNow}
+                      className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 disabled:opacity-50 text-white rounded-xl px-3 py-1.5 text-2xs font-bold uppercase cursor-pointer transition shadow-sm"
+                      title="Force manual high-priority transmission of all offline queue changes directly to Firebase Firestore"
+                    >
+                      <Zap className={`w-3 h-3 ${isBatchSyncing ? 'animate-bounce' : ''}`} />
+                      {isBatchSyncing ? 'Batching...' : 'Batch Sync Now'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={fetchSyncLogs}
+                      className="bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-xl px-2.5 py-1.5 text-2xs font-bold uppercase shrink-0 text-slate-700 dark:text-zinc-200 cursor-pointer transition shadow-sm inline-flex items-center gap-1"
+                      title="Refresh Logs"
+                    >
+                      <RefreshCw className="w-3 h-3" /> Refresh
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        clearSyncLogs();
+                        fetchSyncLogs();
+                      }}
+                      className="bg-rose-100 hover:bg-rose-200 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 rounded-xl px-2.5 py-1.5 text-2xs font-bold uppercase shrink-0 text-rose-700 dark:text-rose-300 cursor-pointer transition shadow-sm inline-flex items-center gap-1"
+                      title="Clear Event Logs"
+                    >
+                      <Trash2 className="w-3 h-3" /> Clear
+                    </button>
+                  </div>
+                </div>
+
+                {/* Database Sync Diagnostics Logs */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-2xs font-extrabold text-slate-400 uppercase tracking-wider block">Real-Time Sync Event & Diagnostics Logs</span>
+                    <span className="text-[10px] font-medium text-slate-400 font-mono">{syncLogs.length} events</span>
+                  </div>
+                  <div className="max-h-52 overflow-y-auto border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-850 rounded-xl divide-y divide-slate-100 dark:divide-slate-800">
+                    {syncLogs.length === 0 ? (
+                      <p className="text-center py-6 text-2xs text-slate-400 font-medium font-mono">No synchronization events recorded yet.</p>
+                    ) : (
+                      syncLogs.map((log, lIdx) => {
+                        let statusColor = 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-900';
+                        if (log.status === 'validation_failed') statusColor = 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/20 dark:text-amber-400 dark:border-amber-900';
+                        if (log.status === 'server_error') statusColor = 'bg-rose-50 text-rose-800 border-rose-200 dark:bg-rose-950/20 dark:text-rose-400 dark:border-rose-900';
+                        if (log.status === 'offline_queued') statusColor = 'bg-blue-50 text-blue-800 border-blue-200 dark:bg-blue-950/20 dark:text-blue-400 dark:border-blue-900';
+                        if (log.status === 'deleted') statusColor = 'bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700';
+
+                        return (
+                          <div key={`slog-${log.id || lIdx}-${lIdx}`} className="p-2.5 space-y-1 text-2xs">
+                            <div className="flex justify-between items-center">
+                              <span className="font-mono text-slate-400 text-[10px]">{new Date(log.createdAt).toLocaleString()}</span>
+                              <span className={`px-1.5 py-0.5 rounded border text-[9px] font-extrabold uppercase ${statusColor}`}>
+                                {log.status?.replace('_', ' ')}
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-center gap-2">
+                              <span className="font-bold text-slate-700 dark:text-zinc-200">
+                                {log.recordType?.toUpperCase()} {log.recordId ? `(${log.recordId})` : ''}
+                              </span>
+                              {log.ipAddress && <span className="font-mono text-slate-400 text-[10px]">IP: {log.ipAddress}</span>}
+                            </div>
+                            {log.details && (
+                              <p className="text-[11px] text-slate-600 dark:text-slate-300">
+                                {log.details}
+                              </p>
+                            )}
+                            {log.errorMessage && (
+                              <p className="font-mono text-[10px] text-rose-500 bg-rose-50/50 dark:bg-rose-950/10 p-1.5 rounded border border-rose-100 dark:border-rose-950/30">
+                                {log.errorMessage}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
             </div>
 
             {/* Sticky Action Footer */}
@@ -7208,7 +7049,7 @@ let isBatchSyncRunning = false;
                             <div className="font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide text-2xs">Changes summary:</div>
                             {changes.map((c, i) => {
                               const rendered = renderHumanReadableDiff(c.field, c.old, c.new);
-                              return rendered ? <div key={`diff-${c.field || i}-${i}`}>{rendered}</div> : null;
+                              return rendered ? <div key={i}>{rendered}</div> : null;
                             })}
                           </div>
                         );

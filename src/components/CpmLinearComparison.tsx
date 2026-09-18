@@ -345,11 +345,11 @@ export default function CpmLinearComparison({ project }: CpmLinearComparisonProp
               </div>
 
               {/* Tiers rows mapping */}
-              {mappingTiers.map((tier, tIdx) => {
+              {mappingTiers.map((tier) => {
                 const isCritical = tier.cpmAct?.critical;
                 const hasMatch = !!tier.cpmAct;
                 return (
-                  <div key={`cpm-tier-${tier.id || tIdx}-${tIdx}`} className="grid grid-cols-1 sm:grid-cols-12 gap-3 p-3.5 items-center hover:bg-slate-50/50 dark:hover:bg-slate-900/10 transition-colors">
+                  <div key={tier.id} className="grid grid-cols-1 sm:grid-cols-12 gap-3 p-3.5 items-center hover:bg-slate-50/50 dark:hover:bg-slate-900/10 transition-colors">
                     
                     {/* Column 1: Layer Name */}
                     <div className="col-span-1 sm:col-span-3 flex items-center gap-2">
@@ -464,8 +464,8 @@ export default function CpmLinearComparison({ project }: CpmLinearComparisonProp
                 Elevation Cross-Section Stacking Schematic (Spatial footprint ratio)
               </span>
               <div className="space-y-1.5 pt-1">
-                {mappingTiers.map((tier, tIdx) => (
-                  <div key={`schem-tier-${tier.id || tIdx}-${tIdx}`} className="flex items-center gap-2 text-[10px]">
+                {mappingTiers.map((tier) => (
+                  <div key={tier.id} className="flex items-center gap-2 text-[10px]">
                     <span className="w-28 text-slate-500 dark:text-slate-400 truncate font-bold text-right pr-2">{tier.label}:</span>
                     <div className="flex-1 h-3.5 bg-slate-200 dark:bg-slate-800 rounded-sm overflow-hidden border border-slate-300/30 relative">
                       <div 
@@ -540,24 +540,17 @@ export default function CpmLinearComparison({ project }: CpmLinearComparisonProp
               const finalBacPct = BAC > 0 && totalCertifiedUnpaidCombinedEtb > 0 ? ((totalCertifiedUnpaidCombinedEtb / BAC) * 100).toFixed(2) : '0.00';
 
               // Project-specific ROW calculation
-              const rowReqMetric = (project.rowMetrics || []).find(m => 
-                m.name === 'ROW Request By Contractor' ||
-                m.name.toLowerCase().includes('request by contractor') ||
-                (m.name.toLowerCase().includes('row') && m.name.toLowerCase().includes('request'))
-              );
               const rowObstructionMetric = (project.rowMetrics || []).find(m => 
                 m.name.toLowerCase().includes('obstruction free') || 
                 m.name.toLowerCase().includes('free section') ||
                 m.name.toLowerCase().includes('site possession') || 
                 m.name.toLowerCase().includes('row cleared')
               );
-              const rowReqVal = rowReqMetric ? (Number(rowReqMetric.value) || 0) : 0;
               const rowSectionVal = rowObstructionMetric 
                 ? (Number(rowObstructionMetric.value) || 0) 
-                : 0;
-              const evalBase = rowReqVal > 0 ? rowReqVal : (project.lengthKm || 0);
-              const calcRowClearPct = evalBase > 0 
-                ? Math.min(100, Math.max(0, (rowSectionVal / evalBase) * 100)) 
+                : (project.lengthKm || 0);
+              const calcRowClearPct = project.lengthKm && project.lengthKm > 0 
+                ? Math.min(100, Math.max(0, (rowSectionVal / project.lengthKm) * 100)) 
                 : 100;
               const finalRowClearPct = calcRowClearPct.toFixed(2);
 

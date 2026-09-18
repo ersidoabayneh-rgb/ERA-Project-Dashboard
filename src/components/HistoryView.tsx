@@ -400,10 +400,8 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
   };
 
   // Right-of-Way metrics
-  const rowReqMetric = (p.rowMetrics || []).find(m => m.name === 'ROW Request By Contractor' || m.name.toLowerCase().includes('request by contractor') || (m.name.toLowerCase().includes('row') && m.name.toLowerCase().includes('request')))?.value || 0;
-  const rowClearMetric = (p.rowMetrics || []).find(m => m.name === 'ROW Obstruction free Section' || m.name.toLowerCase().includes('obstruction free'))?.value || 0;
-  const rowEvalBase = rowReqMetric > 0 ? rowReqMetric : (p.lengthKm || 0);
-  const rowImpediment = Math.max(0, rowEvalBase - rowClearMetric);
+  const rowClearMetric = (p.rowMetrics || []).find(m => m.name === 'ROW Obstruction free Section')?.value || 0;
+  const rowImpediment = Math.max(0, p.lengthKm - rowClearMetric);
   
   // Total Remaining Budget (In millions of Birr)
   const remainingBudget = Math.max(0, p.origAmount - (AC / 1_000_000));
@@ -1087,8 +1085,8 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     doc.text("DESIGN CONSULTANT", 310, curY + 48);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(15, 23, 42);
-    const consultantDisplay = `${consultantEval.firmName || 'Consultant'} (Grade ${consultantEval.officialGrade || 'N/A'} • ${(consultantEval.overallScore || 0).toFixed(1)}%)`;
-    doc.text((consultantDisplay || '').length > 38 ? (consultantDisplay || '').substring(0, 36) + '...' : (consultantDisplay || ''), 310, curY + 58);
+    const consultantDisplay = `${consultantEval.firmName} (Grade ${consultantEval.officialGrade} • ${consultantEval.overallScore.toFixed(1)}%)`;
+    doc.text(consultantDisplay.length > 38 ? consultantDisplay.substring(0, 36) + '...' : consultantDisplay, 310, curY + 58);
 
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(100, 116, 139);
@@ -1488,8 +1486,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
       doc.setFontSize(7);
       doc.setTextColor(51, 65, 85);
       const maxCharCount = 28;
-      const gName = g?.name || '';
-      const cleanLabel = gName.length > maxCharCount ? gName.substring(0, maxCharCount) + '...' : gName;
+      const cleanLabel = g.name.length > maxCharCount ? g.name.substring(0, maxCharCount) + '...' : g.name;
       doc.text(cleanLabel, gridBoxX + 24, gridBoxY + 11);
 
       // Score status colors
@@ -4221,7 +4218,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
               </div>
             </div>
             <p className="text-[9.5px] leading-snug text-slate-400">
-              {rowClearMetric.toFixed(2)} Km ({(((rowClearMetric / (rowEvalBase || 1)) * 100)).toFixed(2)}%) obstruction-free of requested.
+              {rowClearMetric.toFixed(2)} Km ({((rowClearMetric / p.lengthKm) * 100).toFixed(2)}%) obstruction-free.
             </p>
           </div>
 

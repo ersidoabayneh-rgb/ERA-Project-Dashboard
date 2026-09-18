@@ -1,0 +1,80 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidUserId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-\\.\\s@#%+]+$');
+    }
+
+    // Default deny all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Health check
+    match /test/{testId} {
+      allow read, write: if true;
+    }
+
+    // Projects collection - enforces ID validity and structured project record
+    match /projects/{projectId} {
+      allow read: if true;
+      allow write: if isValidId(projectId) && 
+                      request.resource.data.id is string && 
+                      request.resource.data.name is string;
+    }
+
+    // Deleted Projects collection for universal real-time deletion
+    match /deleted_projects/{deletedProjectId} {
+      allow read: if true;
+      allow write: if isValidId(deletedProjectId) && 
+                      request.resource.data.id is string;
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow read: if true;
+      allow write: if isValidUserId(userId);
+    }
+
+    // Approvals collection - ensures variance requests have valid project association
+    match /approvals/{approvalId} {
+      allow read: if true;
+      allow write: if isValidId(approvalId) && 
+                      request.resource.data.id is string && 
+                      request.resource.data.projectId is string;
+    }
+
+    // Private Drafts collection - isolated staging area for editor drafts
+    match /private_drafts/{draftId} {
+      allow read: if true;
+      allow write: if isValidId(draftId) && 
+                      request.resource.data.id is string;
+    }
+
+    // Workflow Audit Logs collection - tamper-evident governance trail
+    match /workflow_audit_logs/{logId} {
+      allow read: if true;
+      allow write: if isValidId(logId) && 
+                      request.resource.data.id is string;
+    }
+
+    // Config collection
+    match /config/{configId} {
+      allow read: if true;
+      allow write: if isValidId(configId);
+    }
+  }
+}

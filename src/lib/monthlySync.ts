@@ -77,7 +77,7 @@ export function parseMonthKey(str: string | undefined | null): ParsedMonth | nul
     let year = parseInt(monYearDash[2], 10);
     if (year < 100) year += 2000;
 
-    let monthIndex = MONTH_NAMES.findIndex(m => m.toLowerCase() === (monStr || '').substring(0, 3));
+    let monthIndex = MONTH_NAMES.findIndex(m => m.toLowerCase() === monStr.substring(0, 3));
     if (monthIndex === -1) {
       monthIndex = FULL_MONTH_NAMES.findIndex(m => m.startsWith(monStr));
     }

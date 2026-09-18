@@ -7,7 +7,6 @@ import {
   KpiAllocatedItem,
   LinearData,
   RiskItem,
-  RfiItem,
   SupervisionConsultantInfo,
   MonthlyResourceRecord,
   MonthlyGradingRecord,
@@ -526,7 +525,7 @@ export function buildKpiHierarchy(ct: 'DB' | 'DBB', project?: Project) {
   goals.push({
     id: 'G10', name: 'ROW Management', wt: 100, sscs: [
       { id: 'SC10.1', name: 'ROW Clearance', wt: 50, items: [
-          { id: 'RW-1', desc: 'ROW Obstruction free Section vs ROW Request By Contractor', unit: '%', wt: 100, max: 100, type: 'auto' }
+          { id: 'RW-1', desc: 'Km cleared of obstructions vs total km', unit: '%', wt: 100, max: 100, type: 'auto' }
         ] },
       { id: 'SC10.2', name: 'Compensation', wt: 30, items: [
           { id: 'RW-2A', desc: 'Properties identified, measured, evaluated', unit: '%', wt: 40, max: 100, type: 'pct' },
@@ -779,21 +778,20 @@ export function getIntegratedKpiAllocated(project: Project): KpiAllocatedItem[] 
 
   // 2. Right of Way (ROW) calculated clearance & utilities relocation
   const rowMetricsList = project.rowMetrics || [];
-  const rowReqMetric = rowMetricsList.find(m => m.name === 'ROW Request By Contractor' || m.name.toLowerCase().includes('request by contractor') || (m.name.toLowerCase().includes('row') && m.name.toLowerCase().includes('request')))?.value || 0;
-  const rowClearMetric = rowMetricsList.find(m => m.name === 'ROW Obstruction free Section' || m.name.toLowerCase().includes('obstruction free'))?.value || 0;
-  const rowEvalBase = rowReqMetric > 0 ? rowReqMetric : (project.lengthKm > 0 ? project.lengthKm : 1);
+  const projectLengthVal = project.lengthKm > 0 ? project.lengthKm : 1;
 
-  const rowPercent = (rowClearMetric / rowEvalBase) * 100;
+  const rowClearMetric = rowMetricsList.find(m => m.name === 'ROW Obstruction free Section')?.value || 0;
+  const rowPercent = (rowClearMetric / projectLengthVal) * 100;
 
   const measureMetricObj = rowMetricsList.find(m => {
     const n = m.name.toLowerCase();
     return n.includes('properties identified') || n.includes('measurement identification');
   });
   const measureMetricVal = measureMetricObj ? measureMetricObj.value : 0;
-  const measurePercent = (measureMetricVal / rowEvalBase) * 100;
+  const measurePercent = (measureMetricVal / projectLengthVal) * 100;
 
   const compMetricVal = rowMetricsList.find(m => m.name === 'Compensation Paid by ERA')?.value || 0;
-  const compPercent = (compMetricVal / rowEvalBase) * 100;
+  const compPercent = (compMetricVal / projectLengthVal) * 100;
 
   const matReqVal = rowMetricsList.find(m => m.name === 'Material Source Requested (No)')?.value || 0;
   const matHandVal = rowMetricsList.find(m => m.name === 'Material Source Handedover (No)')?.value || 0;
@@ -1313,80 +1311,6 @@ export const defaultSupervisionConsultant = (): SupervisionConsultantInfo => ({
         submittalsCount: 148,
         onTimePct: 94.5
       }
-    }
-  ],
-  evaluationChangeLog: [
-    {
-      id: 'ecl_01',
-      timestamp: '2026-09-18T00:30:00.000Z',
-      formattedDate: '2026-09-18 10:30:00',
-      criterionCode: 'A1.1',
-      criterionName: 'Standard Technical Specification Comprehension',
-      dimensionId: 'A',
-      dimensionName: 'Technical Skills & Engineering Competence',
-      previousScore: 4.0,
-      newScore: 5.0,
-      previousOverallScore: 82.4,
-      newOverallScore: 84.1,
-      actionType: 'SCORE_UPDATE',
-      user: 'era_approver',
-      approverName: 'ERA Approver',
-      approverRole: 'ERA Approver',
-      notes: 'Upgraded score after verification of comprehensive pavement structural design review and material testing logs.'
-    },
-    {
-      id: 'ecl_02',
-      timestamp: '2026-09-17T14:15:00.000Z',
-      formattedDate: '2026-09-17 17:15:00',
-      criterionCode: 'C1.2',
-      criterionName: 'Quality Control & Non-Conformance Resolution SLA',
-      dimensionId: 'C',
-      dimensionName: 'Quality Assurance & Site Quality Management',
-      previousScore: 3.0,
-      newScore: 4.0,
-      previousOverallScore: 80.8,
-      newOverallScore: 82.4,
-      actionType: 'MANUAL_OVERRIDE',
-      user: 'era_editor',
-      approverName: 'ERA Editor',
-      approverRole: 'ERA Editor',
-      notes: 'Calibrated score based on submitted closure of 12 outstanding NCRs along Km 25-38 bridge abutment.'
-    },
-    {
-      id: 'ecl_03',
-      timestamp: '2026-09-15T09:45:00.000Z',
-      formattedDate: '2026-09-15 12:45:00',
-      criterionCode: 'ALL',
-      criterionName: 'Comprehensive 5-Dimension Evaluation Baseline',
-      dimensionId: 'ALL',
-      dimensionName: 'All 5 Dimensions (105 Criteria)',
-      previousScore: 3.5,
-      newScore: 4.0,
-      previousOverallScore: 76.5,
-      newOverallScore: 80.8,
-      actionType: 'BASELINE_APPLIED',
-      user: 'ersidoabay',
-      approverName: 'Ersido Abayneh',
-      approverRole: 'Master Administrator',
-      notes: 'Applied standard benchmark baseline across qualitative evaluation criteria for Q3 2026 cycle.'
-    },
-    {
-      id: 'ecl_04',
-      timestamp: '2026-09-12T16:00:00.000Z',
-      formattedDate: '2026-09-12 19:00:00',
-      criterionCode: 'D1.1',
-      criterionName: 'Monthly Progress Report Timeliness & Accuracy',
-      dimensionId: 'D',
-      dimensionName: 'Progress Monitoring, Contract Administration & Reporting',
-      previousScore: 5.0,
-      newScore: 5.0,
-      previousOverallScore: 80.8,
-      newOverallScore: 80.8,
-      actionType: 'OFFICIAL_APPROVAL',
-      user: 'era_approver',
-      approverName: 'ERA Approver',
-      approverRole: 'ERA Approver',
-      notes: 'Monthly Executive Evaluation signed off and approved for September 2026 billing reconciliation.'
     }
   ]
 });
@@ -2175,95 +2099,6 @@ export function resolveProjectMonthlyGrading(project: Project): MonthlyGradingRe
   return ensureUniqueGradingRecords(baselineList);
 }
 
-export function defaultProjectRfis(): RfiItem[] {
-  return [
-    {
-      id: 'rfi_001',
-      rfiNo: 'RFI-CON-001',
-      subject: 'Abutment A1 Foundation Depth & Soil Bearing Capacity Clarification',
-      category: '1.2) Subgrade Preparation',
-      discipline: 'Bridges & Structures',
-      contractorRef: 'CTR/MEMO/2024/042',
-      dateSubmitted: '2024-03-08',
-      drawingRefNo: 'DWG-BR-004 Rev A',
-      stationKm: 'Km 14+250',
-      priority: 'Critical / Work Stop',
-      impactOnCost: true,
-      impactOnSchedule: true,
-      estimatedDelayDays: 14,
-      contractorQuery: 'During excavation for Abutment A1, soft expansive clay was encountered down to 4.2m depth, whereas borehole BH-02 indicated rock at 2.0m. Request RE clarification on whether subgrade replacement with rockfill or piling is required.',
-      attachments: ['BH02_Lithology_Log.pdf', 'AbutmentA1_Excavation_Photos.jpg'],
-      consultantResponse: 'RE instructed excavation to 4.5m depth, backfill with compacted rockfill (300mm layers, 95% MDD) up to formation level as per Variation Order #03.',
-      consultantResponder: 'Eng. Solomon Taddesse (Senior Bridge Specialist)',
-      responseDate: '2024-03-14',
-      status: 'Answered / Clarified',
-      slaDaysAllowed: 7
-    },
-    {
-      id: 'rfi_002',
-      rfiNo: 'RFI-CON-002',
-      subject: 'Culvert Structure Type & Invert Elevation Discrepancy',
-      category: '1.6) Drainage and Structural Invert Level Compliance',
-      discipline: 'Hydraulics & Drainage',
-      contractorRef: 'CTR/MEMO/2024/089',
-      dateSubmitted: '2024-05-02',
-      drawingRefNo: 'DWG-DR-018 & DWG-AL-012',
-      stationKm: 'Km 28+400',
-      priority: 'High',
-      impactOnCost: false,
-      impactOnSchedule: true,
-      estimatedDelayDays: 5,
-      contractorQuery: 'Alignment drawing DWG-AL-012 indicates a 2x2.0m Pipe Culvert at Km 28+400, whereas Drainage Schedule DWG-DR-018 specifies a 3x3.0m Box Culvert. Please clarify correct culvert structure and invert level.',
-      attachments: ['Drawing_CrossSection_Overlap.pdf'],
-      consultantResponse: 'Drainage Schedule DWG-DR-018 governs. A 3x3.0m RC Box Culvert shall be constructed. Invert level at inlet is set at 1842.15m MSL.',
-      consultantResponder: 'Eng. Yohannes Worku (Resident Engineer)',
-      responseDate: '2024-05-07',
-      status: 'Answered / Clarified',
-      slaDaysAllowed: 7
-    },
-    {
-      id: 'rfi_003',
-      rfiNo: 'RFI-CON-003',
-      subject: 'Pavement Capping Layer Thickness Modification Request for Low-CBR Subgrade',
-      category: '2.3) Material Suitability & Alternative Quarry/Borrow Pit approval',
-      discipline: 'Pavement & Materials',
-      contractorRef: 'CTR/MEMO/2024/114',
-      dateSubmitted: '2024-08-10',
-      drawingRefNo: 'DWG-PV-002',
-      stationKm: 'Km 42+000 - 48+500',
-      priority: 'High',
-      impactOnCost: true,
-      impactOnSchedule: true,
-      estimatedDelayDays: 10,
-      contractorQuery: 'Subgrade soil testing between Km 42+000 and 48+500 yielded soaked CBR values of 2.5% - 3.2% (below specification minimum 5.0%). Contractor requests confirmation if a 250mm capped layer of selected rock material is required before subbase laying.',
-      attachments: ['Soil_Lab_CBR_TestReport_SeriesB.pdf'],
-      consultantResponse: 'Under Consultant evaluation with Materials Specialist. Joint site verification and trial pit sampling scheduled.',
-      consultantResponder: 'Eng. Kebede Bekele (Senior Materials Engineer)',
-      responseDate: undefined,
-      status: 'Under Review',
-      slaDaysAllowed: 14
-    },
-    {
-      id: 'rfi_004',
-      rfiNo: 'RFI-CON-004',
-      subject: 'Traffic Signal & Junction Layout Alignment at Town Section Km 62+100',
-      category: '2.2) Right-of-Way (ROW) Obstruction & Public Utility interferences',
-      discipline: 'Highways & Alignment',
-      contractorRef: 'CTR/MEMO/2024/156',
-      dateSubmitted: '2024-09-01',
-      drawingRefNo: 'DWG-JN-005',
-      stationKm: 'Km 62+100',
-      priority: 'Medium',
-      impactOnCost: false,
-      impactOnSchedule: false,
-      contractorQuery: 'Proposed roundabout center island conflicts with existing municipal high-voltage power line pole at Km 62+110. Request revised junction radius or pole relocation approval.',
-      attachments: ['Junction_Site_Photo_OverheadLines.jpg'],
-      status: 'Submitted',
-      slaDaysAllowed: 10
-    }
-  ];
-}
-
 export function defaultProjectTemplate(): Project {
   return {
     id: 'proj_default',
@@ -2572,7 +2407,6 @@ export function defaultProjectTemplate(): Project {
     ],
     usdExchangeRate: 57.50,
     risks: defaultRoadRisks(),
-    rfis: defaultProjectRfis(),
     supervisionConsultant: defaultSupervisionConsultant()
   };
 }
@@ -2646,7 +2480,6 @@ export function blankProjectTemplate(): Project {
   d.images = [];
   d.history = [];
   d.risks = [];
-  d.rfis = [];
   d.supervisionConsultant = {
     firmName: '',
     associationType: 'Sole Consultant',
@@ -2733,8 +2566,8 @@ export function getSixMonthCumulativeGrading(records: MonthlyGradingRecord[]): S
     const ym = parseMonthToYyyyMm(r.month || r.recordedDate);
     if (!ym || !/^\d{4}-\d{2}$/.test(ym)) return;
 
-    const yyyy = parseInt((ym || '').substring(0, 4), 10);
-    const mm = parseInt((ym || '').substring(5, 7), 10);
+    const yyyy = parseInt(ym.substring(0, 4), 10);
+    const mm = parseInt(ym.substring(5, 7), 10);
 
     let fyStartYear: number;
     let fyEndYear: number;

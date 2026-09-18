@@ -1,7 +1,8 @@
 import { Project, User as AppUser, ApprovalRequest, ContractorScoringWeights, ConsultantScoringWeights } from '../types';
+import { db } from './firebase';
+import { doc, setDoc, deleteDoc, getDocs, getDoc, collection } from 'firebase/firestore';
 import { defaultProjectTemplate, defaultZeroRowMetrics } from '../data/defaultProject';
 import { safeDispatchCustomEvent } from './storage';
-import { enqueueOfflineProject, removeOfflineQueueItem } from './offlineQueue';
 
 export enum OperationType {
   CREATE = 'create',
@@ -35,39 +36,6 @@ export interface SyncLogEntry {
 
 const SYNC_LOGS_STORAGE_KEY = 'era_sync_logs_v28';
 
-// MySQL API HTTP Helper Functions
-async function apiPost(endpoint: string, body: any): Promise<any> {
-  try {
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    });
-    if (res.ok) return await res.json();
-  } catch {}
-  return null;
-}
-
-async function apiGet(endpoint: string): Promise<any> {
-  try {
-    const res = await fetch(endpoint);
-    if (res.ok) return await res.json();
-  } catch {}
-  return null;
-}
-
-async function apiDelete(endpoint: string, body?: any): Promise<any> {
-  try {
-    const res = await fetch(endpoint, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: body ? JSON.stringify(body) : undefined
-    });
-    if (res.ok) return await res.json();
-  } catch {}
-  return null;
-}
-
 /**
  * Appends a sync event to the local audit trail and dispatches a notification event.
  */
@@ -86,7 +54,7 @@ export function recordSyncLog(entry: {
       recordType: entry.recordType,
       recordId: entry.recordId,
       status: entry.status,
-      ipAddress: entry.ipAddress || '127.0.0.1 (MySQL Client)',
+      ipAddress: entry.ipAddress || '127.0.0.1 (Local Client)',
       errorMessage: entry.errorMessage,
       details: entry.details,
     };
@@ -97,13 +65,19 @@ export function recordSyncLog(entry: {
       if (stored) currentLogs = JSON.parse(stored);
     } catch {}
 
+    // Prepend newest logs, capped at 100 entries
     currentLogs = [newLog, ...currentLogs].slice(0, 100);
     localStorage.setItem(SYNC_LOGS_STORAGE_KEY, JSON.stringify(currentLogs));
 
     safeDispatchCustomEvent('sync_log_recorded', newLog);
-  } catch {}
+  } catch (e) {
+    // Silently ignore storage failures
+  }
 }
 
+/**
+ * Returns locally stored sync event logs.
+ */
 export function getLocalSyncLogs(): SyncLogEntry[] {
   try {
     const stored = localStorage.getItem(SYNC_LOGS_STORAGE_KEY);
@@ -112,10 +86,31 @@ export function getLocalSyncLogs(): SyncLogEntry[] {
   return [];
 }
 
+/**
+ * Fetches sync logs from local repository and attempts remote sync without noisy warnings.
+ */
 export async function safeFetchSyncLogs(): Promise<SyncLogEntry[]> {
-  return getLocalSyncLogs();
+  let logs = getLocalSyncLogs();
+  try {
+    const res = await fetch('/api/sync-logs').catch(() => null);
+    if (res && res.ok && res.headers.get('content-type')?.includes('application/json')) {
+      const json = await res.json().catch(() => null);
+      if (json && json.success && Array.isArray(json.logs)) {
+        const map = new Map<string, SyncLogEntry>();
+        logs.forEach(l => map.set(l.id, l));
+        json.logs.forEach((l: SyncLogEntry) => map.set(l.id, l));
+        logs = Array.from(map.values()).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 100);
+        localStorage.setItem(SYNC_LOGS_STORAGE_KEY, JSON.stringify(logs));
+      }
+    }
+  } catch {}
+
+  return logs;
 }
 
+/**
+ * Clears local sync logs.
+ */
 export function clearSyncLogs(): void {
   try {
     localStorage.removeItem(SYNC_LOGS_STORAGE_KEY);
@@ -124,20 +119,45 @@ export function clearSyncLogs(): void {
 }
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  console.error('MySQL/Storage Error: ', error);
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: null,
+      email: null,
+    },
+    operationType,
+    path
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
 }
 
+let syncSuspendedState = false;
+let quotaExhaustedState = false;
+
 export function isSyncSuspended(): boolean {
-  return false;
+  return syncSuspendedState || quotaExhaustedState;
 }
 
 export function isQuotaExhausted(): boolean {
-  return false;
+  return quotaExhaustedState;
 }
 
-export async function reactivateSync(): Promise<void> {}
+export async function reactivateSync(): Promise<void> {
+  syncSuspendedState = false;
+  quotaExhaustedState = false;
+}
 
-export function handleFsError(err: any): void {}
+export function handleFsError(err: any): void {
+  const msg = err?.message || String(err);
+  if (msg.includes('resource-exhausted') || msg.includes('Quota limit exceeded') || msg.includes('code=resource-exhausted')) {
+    if (!quotaExhaustedState) {
+      quotaExhaustedState = true;
+      syncSuspendedState = true;
+      console.warn('[Firestore Notice]: Cloud Firestore daily write quota reached. Operating seamlessly in local mode.');
+    }
+  }
+}
 
 export function normalizeProject(p: any): Project {
   if (!p) return p;
@@ -196,6 +216,9 @@ export function normalizeProject(p: any): Project {
   };
 }
 
+/**
+ * Fetches all tombstoned / permanently deleted project IDs from Firestore and local cache.
+ */
 export async function safeFetchDeletedProjectIds(): Promise<string[]> {
   const localSet = new Set<string>();
   try {
@@ -206,80 +229,159 @@ export async function safeFetchDeletedProjectIds(): Promise<string[]> {
     }
   } catch {}
 
-  return Array.from(localSet);
+  try {
+    const querySnapshot = await getDocs(collection(db, 'deleted_projects')).catch(() => null);
+    if (querySnapshot && !querySnapshot.empty) {
+      querySnapshot.forEach(docSnap => {
+        const data = docSnap.data();
+        if (data && data.id) localSet.add(data.id);
+        if (docSnap.id) localSet.add(docSnap.id);
+      });
+    }
+  } catch (e) {
+    console.warn('Firestore fetch deleted projects notice:', e);
+  }
+
+  const result = Array.from(localSet);
+  try {
+    localStorage.setItem('era_deleted_project_ids', JSON.stringify(result));
+  } catch {}
+  return result;
 }
 
 /**
- * Saves a project to MySQL database and updates local storage.
+ * Robust, self-healing project sync function that handles Firebase Cloud Firestore & REST Backend Sync.
  */
-export async function safeSyncProject(proj: Project, isBackgroundQueueSync = false, forceWrite = false): Promise<void> {
+export async function safeSyncProject(proj: Project, isBackgroundQueueSync = false): Promise<void> {
   if (!proj || !proj.id) return;
 
+  // Block sync if this project has been permanently deleted
   try {
     const deletedStr = localStorage.getItem('era_deleted_project_ids') || '[]';
     const deletedIds: string[] = JSON.parse(deletedStr);
-    if (deletedIds.includes(proj.id)) return;
+    if (deletedIds.includes(proj.id)) {
+      console.warn(`Sync blocked: Project "${proj.name || proj.id}" (ID: ${proj.id}) is permanently deleted.`);
+      // Clean from offline queue if accidentally present
+      const queueStr = localStorage.getItem('era_offline_sync_queue') || '[]';
+      const queue: Project[] = JSON.parse(queueStr);
+      const filtered = queue.filter(p => p.id !== proj.id);
+      localStorage.setItem('era_offline_sync_queue', JSON.stringify(filtered));
+      return;
+    }
   } catch {}
 
   if (!proj.lastModifiedAt) {
     proj.lastModifiedAt = new Date().toISOString();
   }
 
+  // Emit event for Local Mutation Listener to pick up
+  safeDispatchCustomEvent('local_project_mutated');
+
   const normalized = normalizeProject(proj);
 
-  // 1. Update local storage repository
-  try {
-    const existingStr = localStorage.getItem('era_proj_v28') || '[]';
-    let projectsList: Project[] = JSON.parse(existingStr);
-    if (!Array.isArray(projectsList)) projectsList = [];
-
-    const idx = projectsList.findIndex(p => p.id === normalized.id);
-    if (idx >= 0) {
-      projectsList[idx] = normalized;
-    } else {
-      projectsList.push(normalized);
+  // Firestore Sync
+  if (!isSyncSuspended()) {
+    try {
+      const cleanNormalized = JSON.parse(JSON.stringify(normalized));
+      cleanNormalized.updatedAt = new Date().toISOString();
+      await setDoc(doc(db, 'projects', normalized.id), cleanNormalized, { merge: true });
+      recordSyncLog({
+        recordType: 'project',
+        recordId: normalized.id,
+        status: 'firestore_synced',
+        details: `Successfully synchronized "${normalized.name || normalized.id}" to Cloud Firestore`
+      });
+    } catch (fsErr) {
+      handleFsError(fsErr);
+      recordSyncLog({
+        recordType: 'project',
+        recordId: normalized.id,
+        status: 'server_error',
+        errorMessage: fsErr instanceof Error ? fsErr.message : String(fsErr)
+      });
     }
-    localStorage.setItem('era_proj_v28', JSON.stringify(projectsList));
-  } catch (e) {
-    console.warn('Failed to save project to local storage:', e);
   }
 
-  // 2. Sync to MySQL database via Express API
-  const apiRes = await apiPost('/api/projects/sync', { project: normalized });
+  // Relational Database Sync: optional Express REST API (/api/projects/sync)
+  const sqlSyncPromise = (async () => {
+    if (!proj.id || typeof proj.id !== 'string') {
+      const msg = "Client Validation Failed: Project ID must be a non-empty string.";
+      recordSyncLog({ recordType: 'project', recordId: proj.id || 'unknown', status: 'validation_failed', errorMessage: msg });
+      throw new Error(msg);
+    }
+    if (!proj.name || typeof proj.name !== 'string' || proj.name.trim() === '') {
+      const msg = "Client Validation Failed: Project Name is required.";
+      recordSyncLog({ recordType: 'project', recordId: proj.id, status: 'validation_failed', errorMessage: msg });
+      throw new Error(msg);
+    }
+    if (!proj.client || typeof proj.client !== 'string' || proj.client.trim() === '') {
+      const msg = "Client Validation Failed: Client Name is required.";
+      recordSyncLog({ recordType: 'project', recordId: proj.id, status: 'validation_failed', errorMessage: msg });
+      throw new Error(msg);
+    }
 
-  safeDispatchCustomEvent('local_project_mutated', normalized);
-  safeDispatchCustomEvent('realtime_project_updated', normalized);
+    try {
+      const response = await fetch('/api/projects/sync', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify(proj)
+      });
+
+      if (response.ok && response.headers.get('content-type')?.includes('application/json')) {
+        const resJson = await response.json().catch(() => null);
+        if (resJson && resJson.success) {
+          // Clean from offline queue if present
+          try {
+            const queueStr = localStorage.getItem('era_offline_sync_queue') || '[]';
+            const queue: Project[] = JSON.parse(queueStr);
+            const filtered = queue.filter(p => p.id !== proj.id);
+            localStorage.setItem('era_offline_sync_queue', JSON.stringify(filtered));
+          } catch {}
+          console.log('Project successfully synchronized with backend REST API.');
+          recordSyncLog({
+            recordType: 'project',
+            recordId: proj.id,
+            status: 'synced',
+            details: `Synchronized "${proj.name}" with backend database`
+          });
+        }
+      }
+    } catch (e) {
+      // Optional REST backend offline or not deployed
+    }
+  })();
 
   try {
-    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
-      const bc = new BroadcastChannel('era_broadcast_channel');
-      bc.postMessage({ type: 'PROJECT_UPDATED', project: normalized });
-      bc.close();
-    }
-  } catch (e) {}
-
-  if (apiRes && apiRes.success !== false) {
-    removeOfflineQueueItem(normalized.id);
-  } else if (!isBackgroundQueueSync) {
-    enqueueOfflineProject(normalized, normalized.lastModifiedSection || 'Project Update');
+    await sqlSyncPromise;
+  } catch (error: any) {
+    try {
+      const queueStr = localStorage.getItem('era_offline_sync_queue') || '[]';
+      const queue: Project[] = JSON.parse(queueStr);
+      if (!queue.some(p => p.id === proj.id)) {
+        queue.push(proj);
+        localStorage.setItem('era_offline_sync_queue', JSON.stringify(queue));
+        recordSyncLog({
+          recordType: 'project',
+          recordId: proj.id,
+          status: 'offline_queued',
+          details: `Queued project "${proj.name || proj.id}" for offline sync`
+        });
+      }
+    } catch (e) {}
   }
-
-  recordSyncLog({
-    recordType: 'project',
-    recordId: normalized.id,
-    status: apiRes ? 'synced' : 'offline_queued',
-    details: `Saved "${normalized.name || normalized.id}" to ${apiRes ? 'MySQL Database' : 'Local Repository'}`
-  });
 }
 
 /**
- * Permanently deletes a project from MySQL database and local cache.
+ * Deletes a project from standalone Express backend and Firestore.
+ * Universally tombstones the project so all connected users and devices remove it in real time.
  */
 export async function safeDeleteProject(id: string, projectName?: string, deletedBy?: string): Promise<void> {
   if (!id) return;
 
-  removeOfflineQueueItem(id);
-
+  // 1. Store deleted ID locally so real-time listeners and sync daemons don't resurrect it
   try {
     const deletedStr = localStorage.getItem('era_deleted_project_ids') || '[]';
     const deletedIds: string[] = JSON.parse(deletedStr);
@@ -288,6 +390,13 @@ export async function safeDeleteProject(id: string, projectName?: string, delete
       localStorage.setItem('era_deleted_project_ids', JSON.stringify(deletedIds));
     }
 
+    // Clean from offline sync queue
+    const queueStr = localStorage.getItem('era_offline_sync_queue') || '[]';
+    const queue: Project[] = JSON.parse(queueStr);
+    const filteredQueue = queue.filter(p => p.id !== id);
+    localStorage.setItem('era_offline_sync_queue', JSON.stringify(filteredQueue));
+
+    // Clean from local cached projects
     const projStr = localStorage.getItem('era_proj_v28');
     if (projStr) {
       const projs: Project[] = JSON.parse(projStr);
@@ -297,396 +406,534 @@ export async function safeDeleteProject(id: string, projectName?: string, delete
       }
     }
 
+    // Clear active selection if viewing this deleted project
     if (localStorage.getItem('era_current_project_id') === id) {
       localStorage.removeItem('era_current_project_id');
     }
-  } catch {}
+  } catch (err) {
+    console.warn('Failed to track deleted project ID locally:', err);
+  }
 
-  // Sync delete to MySQL API
-  await apiDelete(`/api/projects/${id}`, { projectName, deletedBy });
-
+  // 2. Broadcast multi-tab and local window events
   safeDispatchCustomEvent('local_project_mutated');
   safeDispatchCustomEvent('project_globally_deleted', { id, projectName });
+  if (typeof window !== 'undefined') {
+    try {
+      if ('BroadcastChannel' in window) {
+        const bc = new BroadcastChannel('era_broadcast_channel');
+        bc.postMessage({ type: 'PROJECT_DELETED', id, projectName, timestamp: Date.now() });
+        bc.close();
+      }
+    } catch {}
+  }
 
   recordSyncLog({
     recordType: 'project',
     recordId: id,
     status: 'deleted',
-    details: `Permanently deleted project "${projectName || id}"`
+    details: `Permanently deleted project "${projectName || id}" from system`
   });
+
+  const syncPromises: Promise<any>[] = [];
+
+  // 3. Firestore Tombstone & Permanent Document Deletion
+  if (!isSyncSuspended()) {
+    // Record in deleted_projects tombstone collection for universal multi-user synchronization
+    syncPromises.push(
+      setDoc(doc(db, 'deleted_projects', id), {
+        id,
+        projectName: projectName || '',
+        deletedAt: new Date().toISOString(),
+        deletedBy: deletedBy || 'Administrator'
+      }, { merge: true }).catch(err => {
+        handleFsError(err);
+        console.warn('Firestore write deleted_project tombstone notice:', err);
+      })
+    );
+
+    // Delete project document from projects collection
+    syncPromises.push(
+      deleteDoc(doc(db, 'projects', id)).catch(fsErr => {
+        handleFsError(fsErr);
+        console.warn('Firestore delete project notice:', fsErr);
+      })
+    );
+
+    // Clean up any pending variance approval documents tied to this deleted project
+    syncPromises.push(
+      getDocs(collection(db, 'approvals')).then(snap => {
+        if (!snap.empty) {
+          snap.forEach(docSnap => {
+            const data = docSnap.data();
+            if (data && data.projectId === id) {
+              deleteDoc(doc(db, 'approvals', docSnap.id)).catch(() => {});
+            }
+          });
+        }
+      }).catch(() => {})
+    );
+  }
+
+  // 4. Delete from relational REST API backend if active
+  syncPromises.push(
+    fetch(`/api/projects/${id}`, { method: 'DELETE' })
+      .then(res => {
+        if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
+          console.log('Project deleted from backend DB:', id);
+        }
+      })
+      .catch(() => {})
+  );
+
+  await Promise.allSettled(syncPromises);
 }
 
 /**
- * Fetches all projects from MySQL database or local repository cache.
+ * Fetches all synchronized projects from standalone Express backend or Firestore.
  */
 export async function safeFetchProjects(): Promise<Project[] | null> {
-  // Try fetching from MySQL API first
-  const apiData = await apiGet('/api/projects');
-  if (apiData && Array.isArray(apiData.projects) && apiData.projects.length > 0) {
-    const deletedSet = new Set<string>(apiData.deletedIds || []);
-    const projects = apiData.projects
-      .filter((p: any) => p && p.id && !deletedSet.has(p.id))
-      .map((p: any) => normalizeProject(p));
-
-    if (projects.length > 0) {
-      try {
-        localStorage.setItem('era_proj_v28', JSON.stringify(projects));
-      } catch {}
-      return projects;
-    }
-  }
-
-  // Fallback to local storage
+  // Always fetch latest deleted project IDs first to guarantee zero resurrection
   const deletedIds = await safeFetchDeletedProjectIds();
   const deletedSet = new Set(deletedIds);
 
+  let fetched: Project[] | null = null;
   try {
-    const projStr = localStorage.getItem('era_proj_v28');
-    if (projStr) {
-      const projs: Project[] = JSON.parse(projStr);
-      if (Array.isArray(projs) && projs.length > 0) {
-        return projs
-          .filter(p => p && p.id && !deletedSet.has(p.id))
-          .map(p => normalizeProject(p));
+    const response = await fetch('/api/projects/sync', {
+      headers: { 'Accept': 'application/json' }
+    });
+    if (response.ok && response.headers.get('content-type')?.includes('application/json')) {
+      const json = await response.json();
+      if (json && json.success && Array.isArray(json.data) && json.data.length > 0) {
+        console.log('Successfully fetched projects from backend REST API');
+        fetched = json.data
+          .filter((p: any) => p && p.id && !deletedSet.has(p.id))
+          .map((p: any) => normalizeProject(p));
       }
     }
-  } catch {}
+  } catch (err: any) {
+    // Optional backend REST disabled/not present
+  }
 
-  return null;
+  try {
+    const querySnapshot = await getDocs(collection(db, 'projects')).catch(() => null);
+    if (querySnapshot && !querySnapshot.empty) {
+      const fsProjects: Project[] = [];
+      querySnapshot.forEach(docSnap => {
+        const data = docSnap.data() as Project;
+        if (data && data.id && !deletedSet.has(data.id)) {
+          fsProjects.push(normalizeProject(data));
+        }
+      });
+      if (fsProjects.length > 0) {
+        if (!fetched) {
+          fetched = fsProjects;
+        } else {
+          // Merge Firestore projects into fetched projects
+          const map = new Map<string, Project>();
+          fetched.forEach(p => {
+            if (!deletedSet.has(p.id)) map.set(p.id, p);
+          });
+          fsProjects.forEach(p => {
+            if (deletedSet.has(p.id)) return;
+            const existing = map.get(p.id);
+            if (!existing) {
+              map.set(p.id, p);
+            } else {
+              const existingTime = existing.lastModifiedAt ? new Date(existing.lastModifiedAt).getTime() : 0;
+              const fsTime = p.lastModifiedAt ? new Date(p.lastModifiedAt).getTime() : 0;
+              if (fsTime >= existingTime) {
+                map.set(p.id, { ...existing, ...p });
+              }
+            }
+          });
+          fetched = Array.from(map.values()).filter(p => !deletedSet.has(p.id));
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Firestore fetch projects notice:', e);
+  }
+
+  return fetched ? fetched.filter(p => !deletedSet.has(p.id)) : null;
 }
 
 export async function safeSaveSingleUser(user: AppUser): Promise<void> {
   if (!user || !user.username) return;
-  try {
-    const usersStr = localStorage.getItem('era_users_v28') || '[]';
-    let usersList: AppUser[] = JSON.parse(usersStr);
-    if (!Array.isArray(usersList)) usersList = [];
-
-    const idx = usersList.findIndex(u => u.username.toLowerCase() === user.username.toLowerCase());
-    if (idx >= 0) {
-      usersList[idx] = user;
-    } else {
-      usersList.push(user);
+  if (!isSyncSuspended()) {
+    try {
+      const userDocRef = doc(db, 'users', user.username.toLowerCase());
+      await setDoc(userDocRef, { ...user, updatedAt: new Date().toISOString() }, { merge: true }).catch(err => handleFsError(err));
+      recordSyncLog({
+        recordType: 'user',
+        recordId: user.username,
+        status: 'firestore_synced',
+        details: `Synchronized user account "${user.username}"`
+      });
+    } catch (e) {
+      handleFsError(e);
+      console.warn('Firestore single user sync notice:', e);
+      recordSyncLog({
+        recordType: 'user',
+        recordId: user.username,
+        status: 'server_error',
+        errorMessage: e instanceof Error ? e.message : String(e)
+      });
     }
-    localStorage.setItem('era_users_v28', JSON.stringify(usersList));
-  } catch {}
-
-  await apiPost('/api/users/sync', { user });
-
-  recordSyncLog({
-    recordType: 'user',
-    recordId: user.username,
-    status: 'synced',
-    details: `Saved user account "${user.username}"`
-  });
+  }
 }
 
 export async function safeDeleteUser(username: string): Promise<void> {
   if (!username) return;
-  try {
-    const usersStr = localStorage.getItem('era_users_v28') || '[]';
-    let usersList: AppUser[] = JSON.parse(usersStr);
-    if (Array.isArray(usersList)) {
-      usersList = usersList.filter(u => u.username.toLowerCase() !== username.toLowerCase());
-      localStorage.setItem('era_users_v28', JSON.stringify(usersList));
-    }
-  } catch {}
-
-  await apiDelete(`/api/users/${username}`);
-
-  recordSyncLog({
-    recordType: 'user',
-    recordId: username,
-    status: 'deleted',
-    details: `Deleted user "${username}"`
-  });
-}
-
-export async function safeSyncUsers(users: AppUser[]): Promise<void> {
-  try {
-    localStorage.setItem('era_users_v28', JSON.stringify(users));
-  } catch {}
-
-  await apiPost('/api/users/sync', { users });
-
-  recordSyncLog({
-    recordType: 'user',
-    recordId: `${users.length} users`,
-    status: 'synced',
-    details: `Synchronized ${users.length} user accounts`
-  });
-}
-
-export function fetchExternalDashboardUsers(): Promise<any> {
-  // Fetch external users via server-side proxy first to bypass browser CORS constraints
-  return fetch('/api/external/users')
-    .then(response => {
-      if (!response.ok) throw new Error(`Proxy status: ${response.status}`);
-      return response.json();
-    })
-    .then(result => {
-      if (result && result.status === 'success') {
-        console.log("Users loaded:", result.data);
-      }
-      return result;
-    })
-    .catch(() => {
-      // Secondary direct fetch fallback safely guarded against unhandled console errors
-      return fetch('https://eradashboard.com.et/api.php?action=get_users')
-        .then(response => response.json())
-        .then(result => {
-          if (result && result.status === 'success') {
-            console.log("Users loaded:", result.data);
-          }
-          return result;
-        })
-        .catch(() => null);
-    });
-}
-
-// Function to handle login to PHP API
-export async function loginUser(email: string, password: string): Promise<any> {
-  try {
-    const response = await fetch('https://eradashboard.com.et/api.php?action=login', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      // MUST include this to save the PHP session cookie
-      credentials: 'include', 
-      body: JSON.stringify({ email: email, password: password })
-    });
-
-    const result = await response.json();
-
-    if (result.status === 'success') {
-      console.log("Logged in successfully!", result.user);
-      return result;
-    } else {
-      console.warn("PHP API Login notice:", result.message);
-      return result;
-    }
-  } catch (error) {
-    console.error("Error connecting to API:", error);
-    // Proxy fallback if direct client-side fetch is blocked by CORS/network policy
+  if (!isSyncSuspended()) {
     try {
-      const proxyRes = await fetch('/api/external/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
+      const userDocRef = doc(db, 'users', username.toLowerCase());
+      await deleteDoc(userDocRef).catch(err => handleFsError(err));
+      recordSyncLog({
+        recordType: 'user',
+        recordId: username,
+        status: 'deleted',
+        details: `Deleted user "${username}"`
       });
-      return await proxyRes.json();
-    } catch {
-      return { status: 'error', message: 'Error connecting to API' };
+    } catch (e) {
+      handleFsError(e);
+      console.warn('Firestore delete user notice:', e);
     }
   }
 }
 
+/**
+ * Synchronizes all registered users with backend REST API and Firebase Firestore.
+ */
+export async function safeSyncUsers(users: AppUser[]): Promise<void> {
+  // Sync to Firestore if authenticated user or client present
+  if (!isSyncSuspended()) {
+    try {
+      for (const u of users) {
+        if (u && u.username) {
+          const userDocRef = doc(db, 'users', u.username.toLowerCase());
+          await setDoc(userDocRef, { ...u, updatedAt: new Date().toISOString() }, { merge: true }).catch(err => handleFsError(err));
+        }
+      }
+      recordSyncLog({
+        recordType: 'user',
+        recordId: `${users.length} users`,
+        status: 'firestore_synced',
+        details: `Synchronized ${users.length} user accounts to Cloud Firestore`
+      });
+    } catch (e) {
+      handleFsError(e);
+      console.warn('Firestore user sync notice:', e);
+      recordSyncLog({
+        recordType: 'user',
+        recordId: `${users.length} users`,
+        status: 'server_error',
+        errorMessage: e instanceof Error ? e.message : String(e)
+      });
+    }
+  }
+
+  try {
+    const response = await fetch('/api/users/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify(users)
+    });
+    if (response.ok && response.headers.get('content-type')?.includes('application/json')) {
+      console.log('Users successfully synchronized with backend REST API');
+      recordSyncLog({
+        recordType: 'user',
+        recordId: `${users.length} users`,
+        status: 'synced',
+        details: `Synchronized ${users.length} users with backend database`
+      });
+    }
+  } catch (err: any) {}
+}
+
+/**
+ * Fetches synchronized users list from backend REST API or Firestore fallback.
+ */
 export async function safeFetchUsers(): Promise<AppUser[] | null> {
-  // Trigger external ERA dashboard user sync
-  fetchExternalDashboardUsers();
-
-  const apiData = await apiGet('/api/users');
-  if (apiData && Array.isArray(apiData.users) && apiData.users.length > 0) {
-    try {
-      localStorage.setItem('era_users_v28', JSON.stringify(apiData.users));
-    } catch {}
-    return apiData.users;
-  }
+  let fetched: AppUser[] | null = null;
+  try {
+    const response = await fetch('/api/users/sync', {
+      headers: { 'Accept': 'application/json' }
+    });
+    if (response.ok && response.headers.get('content-type')?.includes('application/json')) {
+      const json = await response.json();
+      if (json && json.success && Array.isArray(json.data) && json.data.length > 0) {
+        console.log('Successfully fetched users from backend REST API');
+        fetched = json.data;
+      }
+    }
+  } catch (err: any) {}
 
   try {
-    const usersStr = localStorage.getItem('era_users_v28');
-    if (usersStr) {
-      const users = JSON.parse(usersStr);
-      if (Array.isArray(users) && users.length > 0) return users;
+    const querySnapshot = await getDocs(collection(db, 'users')).catch(() => null);
+    if (querySnapshot && !querySnapshot.empty) {
+      const fsUsers: AppUser[] = [];
+      querySnapshot.forEach(docSnap => {
+        const data = docSnap.data() as AppUser;
+        if (data && data.username) fsUsers.push(data);
+      });
+      if (fsUsers.length > 0) {
+        if (!fetched) {
+          fetched = fsUsers;
+        } else {
+          // Merge Firestore users into fetched users
+          const map = new Map<string, AppUser>();
+          fetched.forEach(u => map.set(u.username.toLowerCase(), u));
+          fsUsers.forEach(u => {
+            const existing = map.get(u.username.toLowerCase());
+            map.set(u.username.toLowerCase(), existing ? { ...existing, ...u } : u);
+          });
+          fetched = Array.from(map.values());
+        }
+      }
     }
-  } catch {}
-  return null;
+  } catch (e) {
+    console.warn('Firestore fetch users notice:', e);
+  }
+
+  return fetched;
 }
 
+/**
+ * Synchronizes all variance approvals with backend REST API and Firestore.
+ */
 export async function safeSyncApprovals(approvals: ApprovalRequest[]): Promise<void> {
+  if (!isSyncSuspended()) {
+    try {
+      for (const a of approvals) {
+        if (a && a.id) {
+          await setDoc(doc(db, 'approvals', a.id), { ...a, updatedAt: new Date().toISOString() }, { merge: true }).catch(err => handleFsError(err));
+        }
+      }
+      recordSyncLog({
+        recordType: 'approval',
+        recordId: `${approvals.length} requests`,
+        status: 'firestore_synced',
+        details: `Synchronized ${approvals.length} approval records to Cloud Firestore`
+      });
+    } catch (e) {
+      handleFsError(e);
+      console.warn('Firestore approvals sync notice:', e);
+      recordSyncLog({
+        recordType: 'approval',
+        status: 'server_error',
+        errorMessage: e instanceof Error ? e.message : String(e)
+      });
+    }
+  }
+
   try {
-    localStorage.setItem('era_appr_v28', JSON.stringify(approvals));
-  } catch {}
-
-  await apiPost('/api/approvals/sync', { approvals });
-
-  recordSyncLog({
-    recordType: 'approval',
-    recordId: `${approvals.length} requests`,
-    status: 'synced',
-    details: `Synchronized ${approvals.length} approval records`
-  });
+    const response = await fetch('/api/approvals/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify(approvals)
+    });
+    if (response.ok && response.headers.get('content-type')?.includes('application/json')) {
+      console.log('Approvals successfully synchronized with backend REST API');
+      recordSyncLog({
+        recordType: 'approval',
+        recordId: `${approvals.length} requests`,
+        status: 'synced',
+        details: `Synchronized ${approvals.length} approvals with backend database`
+      });
+    }
+  } catch (err: any) {}
 }
 
+/**
+ * Fetches synchronized approvals list from backend REST API or Firestore.
+ */
 export async function safeFetchApprovals(): Promise<ApprovalRequest[] | null> {
-  const apiData = await apiGet('/api/approvals');
-  if (apiData && Array.isArray(apiData.approvals)) {
-    try {
-      localStorage.setItem('era_appr_v28', JSON.stringify(apiData.approvals));
-    } catch {}
-    return apiData.approvals;
-  }
+  let fetched: ApprovalRequest[] | null = null;
+  try {
+    const response = await fetch('/api/approvals/sync', {
+      headers: { 'Accept': 'application/json' }
+    });
+    if (response.ok && response.headers.get('content-type')?.includes('application/json')) {
+      const json = await response.json();
+      if (json && json.success && Array.isArray(json.data) && json.data.length > 0) {
+        console.log('Successfully fetched approvals from backend REST API');
+        fetched = json.data;
+      }
+    }
+  } catch (err: any) {}
 
   try {
-    const apprStr = localStorage.getItem('era_appr_v28');
-    if (apprStr) {
-      const approvals = JSON.parse(apprStr);
-      if (Array.isArray(approvals)) return approvals;
+    const querySnapshot = await getDocs(collection(db, 'approvals')).catch(() => null);
+    if (querySnapshot && !querySnapshot.empty) {
+      const fsApprovals: ApprovalRequest[] = [];
+      querySnapshot.forEach(docSnap => {
+        const data = docSnap.data() as ApprovalRequest;
+        if (data && data.id) fsApprovals.push(data);
+      });
+      if (fsApprovals.length > 0) {
+        if (!fetched) {
+          fetched = fsApprovals;
+        } else {
+          const map = new Map<string, ApprovalRequest>();
+          fetched.forEach(a => map.set(a.id, a));
+          fsApprovals.forEach(a => map.set(a.id, a));
+          fetched = Array.from(map.values());
+        }
+      }
     }
-  } catch {}
-  return null;
+  } catch (e) {
+    console.warn('Firestore fetch approvals notice:', e);
+  }
+
+  return fetched;
 }
 
+/**
+ * Synchronizes PMO and Directorate taxonomy with backend REST API and Firestore.
+ */
 export async function safeSyncConfig(pmos: string[], directorates: string[]): Promise<void> {
-  try {
-    localStorage.setItem('era_pmo_taxonomy', JSON.stringify(pmos));
-    localStorage.setItem('era_directorates_taxonomy', JSON.stringify(directorates));
-  } catch {}
-
-  await apiPost('/api/config/sync', { key: 'taxonomy', data: { pmos, directorates } });
-
-  recordSyncLog({
-    recordType: 'config',
-    status: 'synced',
-    details: `Updated taxonomy configuration`
-  });
-}
-
-export async function safeFetchConfig(): Promise<{ pmos: string[], directorates: string[] } | null> {
-  const apiData = await apiGet('/api/config');
-  if (apiData && apiData.config && apiData.config.taxonomy) {
-    const { pmos = [], directorates = [] } = apiData.config.taxonomy;
+  if (!isSyncSuspended()) {
     try {
-      localStorage.setItem('era_pmo_taxonomy', JSON.stringify(pmos));
-      localStorage.setItem('era_directorates_taxonomy', JSON.stringify(directorates));
-    } catch {}
-    return { pmos, directorates };
+      await setDoc(doc(db, 'config', 'taxonomy'), { pmos, directorates, updatedAt: new Date().toISOString() }, { merge: true }).catch(err => handleFsError(err));
+      recordSyncLog({
+        recordType: 'config',
+        status: 'firestore_synced',
+        details: `Updated PMO taxonomy (${pmos.length}) & Directorate taxonomy (${directorates.length})`
+      });
+    } catch (e) {
+      handleFsError(e);
+      console.warn('Firestore config sync notice:', e);
+      recordSyncLog({
+        recordType: 'config',
+        status: 'server_error',
+        errorMessage: e instanceof Error ? e.message : String(e)
+      });
+    }
   }
 
   try {
-    const pmosStr = localStorage.getItem('era_pmo_taxonomy');
-    const dirStr = localStorage.getItem('era_directorates_taxonomy');
-    if (pmosStr || dirStr) {
-      return {
-        pmos: pmosStr ? JSON.parse(pmosStr) : [],
-        directorates: dirStr ? JSON.parse(dirStr) : []
-      };
+    const response = await fetch('/api/config/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ pmos, directorates })
+    });
+    if (response.ok && response.headers.get('content-type')?.includes('application/json')) {
+      console.log('Config successfully synchronized with backend REST API');
+      recordSyncLog({
+        recordType: 'config',
+        status: 'synced',
+        details: `Config taxonomy synchronized with backend database`
+      });
     }
-  } catch {}
-  return null;
+  } catch (err: any) {}
 }
 
+/**
+ * Fetches synchronized PMO and Directorate configuration from backend REST API or Firestore.
+ */
+export async function safeFetchConfig(): Promise<{ pmos: string[], directorates: string[] } | null> {
+  let fetched: { pmos: string[], directorates: string[] } | null = null;
+  try {
+    const response = await fetch('/api/config/sync', {
+      headers: { 'Accept': 'application/json' }
+    });
+    if (response.ok && response.headers.get('content-type')?.includes('application/json')) {
+      const json = await response.json();
+      if (json && json.success && json.data) {
+        console.log('Successfully fetched config from backend REST API');
+        fetched = json.data;
+      }
+    }
+  } catch (err: any) {}
+
+  try {
+    const querySnapshot = await getDocs(collection(db, 'config')).catch(() => null);
+    if (querySnapshot && !querySnapshot.empty) {
+      querySnapshot.forEach(docSnap => {
+        if (docSnap.id === 'taxonomy') {
+          const data = docSnap.data();
+          if (data && (Array.isArray(data.pmos) || Array.isArray(data.directorates))) {
+            fetched = {
+              pmos: data.pmos || fetched?.pmos || [],
+              directorates: data.directorates || fetched?.directorates || []
+            };
+          }
+        }
+      });
+    }
+  } catch (e) {
+    console.warn('Firestore fetch config notice:', e);
+  }
+
+  return fetched;
+}
+
+/**
+ * Synchronizes Contractor and Consultant scoring weights with Firestore configuration database.
+ */
 export async function safeSyncScoringWeights(
   contractorWeights: ContractorScoringWeights,
   consultantWeights: ConsultantScoringWeights,
   updatedBy?: string
 ): Promise<void> {
+  if (!isSyncSuspended()) {
+    try {
+      await setDoc(doc(db, 'config', 'scoring_weights'), {
+        contractorWeights,
+        consultantWeights,
+        updatedAt: new Date().toISOString(),
+        updatedBy: updatedBy || 'master_admin'
+      }, { merge: true }).catch(err => handleFsError(err));
+
+      recordSyncLog({
+        recordType: 'config',
+        status: 'firestore_synced',
+        details: `Updated Contractor & Consultant Scoring Weights in configuration database`
+      });
+    } catch (e) {
+      handleFsError(e);
+      console.warn('Firestore scoring weights sync notice:', e);
+      recordSyncLog({
+        recordType: 'config',
+        status: 'server_error',
+        errorMessage: e instanceof Error ? e.message : String(e)
+      });
+    }
+  }
+
   try {
-    localStorage.setItem('era_contractor_scoring_weights', JSON.stringify(contractorWeights));
-    localStorage.setItem('era_consultant_scoring_weights', JSON.stringify(consultantWeights));
-  } catch {}
-
-  await apiPost('/api/config/sync', { key: 'scoring_weights', data: { contractorWeights, consultantWeights } });
-
-  recordSyncLog({
-    recordType: 'config',
-    status: 'synced',
-    details: `Updated Scoring Weights`
-  });
+    const response = await fetch('/api/config/scoring-weights', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ contractorWeights, consultantWeights })
+    });
+    if (response.ok) {
+      console.log('Scoring weights successfully synchronized with backend API');
+    }
+  } catch (err: any) {}
 }
 
+/**
+ * Fetches synchronized scoring weights from Firestore configuration database.
+ */
 export async function safeFetchScoringWeights(): Promise<{
   contractorWeights: ContractorScoringWeights;
   consultantWeights: ConsultantScoringWeights;
 } | null> {
-  const apiData = await apiGet('/api/config');
-  if (apiData && apiData.config && apiData.config.scoring_weights) {
-    const { contractorWeights, consultantWeights } = apiData.config.scoring_weights;
-    if (contractorWeights && consultantWeights) {
-      try {
-        localStorage.setItem('era_contractor_scoring_weights', JSON.stringify(contractorWeights));
-        localStorage.setItem('era_consultant_scoring_weights', JSON.stringify(consultantWeights));
-      } catch {}
-      return { contractorWeights, consultantWeights };
-    }
-  }
-
   try {
-    const cW = localStorage.getItem('era_contractor_scoring_weights');
-    const sW = localStorage.getItem('era_consultant_scoring_weights');
-    if (cW && sW) {
-      return {
-        contractorWeights: JSON.parse(cW),
-        consultantWeights: JSON.parse(sW)
-      };
+    const docSnap = await getDoc(doc(db, 'config', 'scoring_weights')).catch(() => null);
+    if (docSnap && docSnap.exists()) {
+      const data = docSnap.data();
+      if (data && data.contractorWeights && data.consultantWeights) {
+        return {
+          contractorWeights: data.contractorWeights,
+          consultantWeights: data.consultantWeights
+        };
+      }
     }
-  } catch {}
+  } catch (e) {
+    console.warn('Firestore fetch scoring weights notice:', e);
+  }
   return null;
-}
-
-// ---------------------------------------------------------------------------
-// Ethio Telecom Traditional MySQL Database Client Helpers
-// ---------------------------------------------------------------------------
-
-export interface ClientMySQLDiagnostics {
-  connected: boolean;
-  host: string;
-  port: number;
-  user: string;
-  database: string;
-  socket?: string;
-  charset: string;
-  timezone: string;
-  latencyMs: number;
-  lastTestedAt: string;
-  errorDetails?: string;
-  recommendation?: string;
-  tableStats?: {
-    projects: number;
-    users: number;
-    approvals: number;
-    config: number;
-    deletedProjects: number;
-  };
-}
-
-export async function fetchMySQLDiagnostics(): Promise<ClientMySQLDiagnostics | null> {
-  return await apiGet('/api/mysql/status');
-}
-
-export async function testMySQLServerConnection(): Promise<{ success: boolean; diagnostics?: ClientMySQLDiagnostics; error?: string }> {
-  const result = await apiPost('/api/mysql/test', {});
-  return result || { success: false, error: 'Network request failed' };
-}
-
-export async function triggerMySQLBiDirectionalSync(): Promise<{
-  success: boolean;
-  pushedProjects?: number;
-  pulledProjects?: number;
-  pushedUsers?: number;
-  pulledUsers?: number;
-  message?: string;
-  error?: string;
-}> {
-  const result = await apiPost('/api/mysql/sync', {});
-  if (result?.success) {
-    recordSyncLog({
-      recordType: 'batch_sync',
-      status: 'synced',
-      details: result.message || 'Bi-directional MySQL synchronization completed'
-    });
-  }
-  return result || { success: false, error: 'Sync request failed' };
-}
-
-export async function fetchMySQLSchemaSQL(): Promise<string> {
-  try {
-    const res = await fetch('/api/mysql/schema');
-    if (res.ok) {
-      return await res.text();
-    }
-  } catch {}
-  return '-- Failed to fetch schema script from server.';
 }
 

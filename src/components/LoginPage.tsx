@@ -3,7 +3,7 @@ import { motion } from 'motion/react';
 import { HardHat, Lock, User, UserPlus, LogIn, Eye, EyeOff, Mail, Phone, Building2, Briefcase, CheckCircle2, Bell, Clock, AlertCircle, Laptop, MapPin } from 'lucide-react';
 import { User as UserType } from '../types';
 import eraLogo from '../assets/logo.png';
-import { safeSaveSingleUser, safeFetchUsers, loginUser } from '../lib/apiSync';
+import { safeSaveSingleUser, safeFetchUsers } from '../lib/apiSync';
 import { safeDispatchCustomEvent } from '../lib/storage';
 
 function getDeviceSummary(): string {
@@ -159,16 +159,6 @@ export default function LoginPage({ onLoginSuccess, getUsers, saveUsers }: Login
     if (!username.trim() || !password) {
       setError('Please fill in all fields.');
       return;
-    }
-
-    // Call external PHP API login to save PHP session cookie
-    try {
-      const phpResult = await loginUser(username.trim(), password);
-      if (phpResult && phpResult.status === 'success') {
-        console.log("Logged in successfully!", phpResult.user);
-      }
-    } catch (error) {
-      console.error("Error connecting to API:", error);
     }
 
     let users = getUsers();

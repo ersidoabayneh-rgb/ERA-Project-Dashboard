@@ -558,7 +558,6 @@ export interface Project {
   hasForeignCurrency?: boolean;
   risks?: RiskItem[];
   issues?: IssueLogItem[];
-  rfis?: RfiItem[];
   aiChatHistory?: any[];
   documents?: ProjectDocument[];
   supervisionConsultant?: SupervisionConsultantInfo;
@@ -689,26 +688,6 @@ export interface EvaluationCriteriaItem {
   pmbokDomain?: string;
 }
 
-export interface EvaluationChangeLogEntry {
-  id: string;
-  timestamp: string;
-  formattedDate?: string;
-  criterionCode: string;
-  criterionName: string;
-  dimensionId?: string;
-  dimensionName?: string;
-  previousScore?: number;
-  newScore: number;
-  previousOverallScore?: number;
-  newOverallScore?: number;
-  actionType: 'SCORE_UPDATE' | 'MANUAL_OVERRIDE' | 'RESET_TO_AUTO' | 'BASELINE_APPLIED' | 'WEIGHT_UPDATE' | 'OFFICIAL_APPROVAL' | 'CRITERION_ADDED' | 'CRITERION_MODIFIED';
-  user: string;
-  approverName: string;
-  approverRole: string;
-  notes?: string;
-  evidence?: string;
-}
-
 export interface SupervisionConsultantInfo {
   firmName: string;
   associationType?: 'Lead Consultant' | 'Joint Venture (JV)' | 'Sole Consultant' | 'Association / Consortium';
@@ -746,7 +725,6 @@ export interface SupervisionConsultantInfo {
   officialEvaluationGrade?: 'A' | 'B' | 'C' | 'D' | 'F' | 'Failed';
   customConsultantEvaluationCriteria?: ConsultantEvaluationCriterion[];
   evaluationMethodology?: 'comprehensive_5dim' | 'sla_operational' | 'hybrid';
-  evaluationChangeLog?: EvaluationChangeLogEntry[];
   personnel: ConsultantPersonnel[];
   personnelHistory?: ConsultantPersonnel[]; // Permanent history log of all assigned/inserted personnel records
   personnelAuditLog?: PersonnelAuditLogEntry[]; // Action audit log tracking timestamps and admin user identifiers
@@ -775,39 +753,6 @@ export interface ConsultantSubmittalKpi {
     url?: string;
     uploadedAt?: string;
   }>;
-}
-
-export interface RfiPdfAttachment {
-  id: string;
-  name: string;
-  size?: string;
-  fileData?: string;
-  fileType?: string;
-  uploadedAt?: string;
-}
-
-export interface RfiItem {
-  id: string;
-  rfiNo: string;
-  subject: string;
-  category: 'Design Clarification' | 'Drawing Discrepancy' | 'Specification Query' | 'Constructability' | 'Site Condition' | 'Material & Testing' | 'Variation Request' | string;
-  discipline: 'Highways & Alignment' | 'Bridges & Structures' | 'Geotechnical & Soils' | 'Hydraulics & Drainage' | 'Pavement & Materials' | 'Utilities & ROW' | 'General' | string;
-  contractorRef?: string;
-  dateSubmitted: string;
-  drawingRefNo?: string;
-  stationKm?: string;
-  priority: 'Critical / Work Stop' | 'High' | 'Medium' | 'Low';
-  impactOnCost: boolean;
-  impactOnSchedule: boolean;
-  estimatedDelayDays?: number;
-  contractorQuery: string;
-  attachments?: string[];
-  pdfFiles?: RfiPdfAttachment[];
-  consultantResponse?: string;
-  consultantResponder?: string;
-  responseDate?: string;
-  status: 'Submitted' | 'Under Review' | 'Answered / Clarified' | 'Pending Revision' | 'Closed';
-  slaDaysAllowed: number;
 }
 
 export interface ProjectDocument {
@@ -881,7 +826,7 @@ export const ALL_EDITABLE_PAGES: EditablePageOption[] = [
   { id: 'analysis', name: '📊 Performance Analysis', description: 'Financial & physical performance analytics' },
   { id: 'documentation', name: '📁 Project Documentation', description: 'Dossier files, monthly reports, contract upload library' },
   { id: 'consultant', name: '👔 Supervision Consultant', description: 'Consultant contract, fee invoices, and assigned personnel directory' },
-  { id: 'submittalLog', name: '📋 Submittals & RFI Log', description: 'Technical submittals, design approvals, and Request for Information (RFI) register' },
+  { id: 'submittalLog', name: '📋 Submittal Log & RFI Tracking', description: 'Supervision consultant submittal review log, design approvals, and RFI tracking' },
   { id: 'workspace', name: '☁️ Workspace Notes', description: 'Interactive collaborative scratchpad & design notes' }
 ];
 
@@ -1112,5 +1057,4 @@ export interface ConsultantEvaluationCriterion {
   };
   eraFidicRef?: string;
   contractType?: 'DB' | 'DBB' | 'ALL';
-  evaluationSource?: 'auto_calculated' | 'auto_submittal' | 'auto_database' | 'user_evaluation';
 }

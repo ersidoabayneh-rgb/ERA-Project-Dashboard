@@ -418,18 +418,14 @@ export default function DashboardView({
     rowBadgeSummary = `Removed: ${poleHand} / Requested: ${poleReq} (${poleReq > 0 ? ((poleHand / poleReq) * 100).toFixed(1) : 0}%)`;
   } else {
     const val = Number(rowMetricObj ? rowMetricObj.value : 0);
-    const rowReqMetric = availableRowMetrics.find(m => m.name === 'ROW Request By Contractor' || m.name.toLowerCase().includes('request by contractor') || (m.name.toLowerCase().includes('row') && m.name.toLowerCase().includes('request')));
-    const reqKm = Number(rowReqMetric?.value || 0);
+    const totalKm = Number(project.lengthKm || 65);
     const isTotalLengthMetric = activeRowMetric.toLowerCase().includes('project length');
-    const isObstructionFree = activeRowMetric.toLowerCase().includes('obstruction free');
-
-    const totalKm = (isObstructionFree && reqKm > 0) ? reqKm : Number(project.lengthKm || 65);
     const remainingKm = isTotalLengthMetric ? 0 : Math.max(0, totalKm - val);
     const pct = totalKm > 0 ? ((val / totalKm) * 100).toFixed(1) : '0';
 
     const unitStr = rowMetricObj?.unit || 'Km';
     const mainKey = `${activeRowMetric} (${unitStr})`;
-    const remKey = isObstructionFree ? `Pending Requested Section (${unitStr})` : `Remaining Section (${unitStr})`;
+    const remKey = `Remaining Section (${unitStr})`;
 
     rowChartData = [{
       name: '',
@@ -444,9 +440,7 @@ export default function DashboardView({
 
     rowBadgeSummary = isTotalLengthMetric 
       ? `Total Project Length: ${val.toFixed(2)} Km`
-      : isObstructionFree
-        ? `Obstruction Free: ${val.toFixed(2)} Km / Requested: ${totalKm.toFixed(2)} Km (${pct}%)`
-        : `Achieved: ${val.toFixed(2)} Km / ${totalKm.toFixed(2)} Km (${pct}%)`;
+      : `Achieved: ${val.toFixed(2)} Km / ${totalKm.toFixed(2)} Km (${pct}%)`;
   }
 
   // Charts mapping for Quantities: Plan vs Completed
@@ -1109,10 +1103,8 @@ export default function DashboardView({
   const maturedUnpaidCombined = maturedUnpaidEtbSum + (maturedUnpaidUsdSum * rateIpc);
   const withinMaturityUnpaidCombined = withinMaturityUnpaidEtbSum + (withinMaturityUnpaidUsdSum * rateIpc);
 
-  const rowReqMetric = (project.rowMetrics || []).find(m => m.name === 'ROW Request By Contractor' || m.name.toLowerCase().includes('request by contractor') || (m.name.toLowerCase().includes('row') && m.name.toLowerCase().includes('request')))?.value || 0;
-  const rowClearMetric = (project.rowMetrics || []).find(m => m.name === 'ROW Obstruction free Section' || m.name.toLowerCase().includes('obstruction free'))?.value || 0;
-  const rowEvalBase = rowReqMetric > 0 ? rowReqMetric : (project.lengthKm || 0);
-  const rowImpediment = Math.max(0, rowEvalBase - rowClearMetric);
+  const rowClearMetric = (project.rowMetrics || []).find(m => m.name === 'ROW Obstruction free Section')?.value || 0;
+  const rowImpediment = Math.max(0, project.lengthKm - rowClearMetric);
 
   // Compile active warning alerts list
   const healthAlerts: { type: 'critical' | 'warning' | 'info'; title: string; desc: string; field: string }[] = [];
@@ -2173,8 +2165,8 @@ export default function DashboardView({
 
         {/* Linear Layer Progress Bars */}
         <div className="space-y-3">
-          {dashboardProgressChartData.map((item, itemIdx) => (
-            <div key={`dash-prog-${item.id || itemIdx}-${itemIdx}`} className="space-y-1">
+          {dashboardProgressChartData.map((item) => (
+            <div key={item.id} className="space-y-1">
               <div className="flex justify-between items-center text-xs font-bold text-slate-600 dark:text-slate-300 flex-wrap gap-1">
                 <span className="flex items-center gap-1.5">
                   <span className={`w-2.5 h-2.5 rounded-sm ${item.color}`} />
@@ -2947,7 +2939,7 @@ export default function DashboardView({
                   .map((risk, index) => {
                     return (
                       <div 
-                        key={`top-risk-${risk.id || index}-${index}`} 
+                        key={risk.id} 
                         className="text-slate-750 dark:text-zinc-200 leading-none text-center bg-slate-50/60 dark:bg-slate-900/40 px-3 py-1.5 rounded-lg border border-slate-100/50 dark:border-slate-700/30 w-full max-w-[220px]"
                         style={{ 
                           fontFamily: "'Times New Roman', Times, serif", 

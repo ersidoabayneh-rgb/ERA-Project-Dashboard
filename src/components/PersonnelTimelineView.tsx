@@ -532,7 +532,7 @@ export default function PersonnelTimelineView({
               <div className="flex-1 relative h-10 flex items-center">
                 {timelineTicks.map((tick, idx) => (
                   <div
-                    key={`tick-hdr-${tick.label || idx}-${idx}`}
+                    key={idx}
                     className={`absolute top-0 bottom-0 flex flex-col justify-center px-1 text-[10px] font-mono border-l transition ${
                       tick.isMajor
                         ? 'border-slate-300 dark:border-slate-600 font-bold text-slate-800 dark:text-slate-200 bg-slate-200/40 dark:bg-slate-700/30'
@@ -570,7 +570,7 @@ export default function PersonnelTimelineView({
             ) : (
               <div className="divide-y divide-slate-100 dark:divide-slate-800/60">
                 {groupedPersonnel.map((group, groupIdx) => (
-                  <div key={`pers-grp-${group.category || groupIdx}-${groupIdx}`} className="relative">
+                  <div key={groupIdx} className="relative">
                     {/* Category Group Header if groupByCategory */}
                     {groupByCategory && (
                       <div className="bg-slate-50/90 dark:bg-slate-800/40 px-4 py-2 text-xs font-bold text-indigo-700 dark:text-indigo-400 border-y border-slate-200/60 dark:border-slate-800 flex items-center justify-between sticky left-0">
@@ -648,7 +648,7 @@ export default function PersonnelTimelineView({
                             {/* Grid vertical lines */}
                             {timelineTicks.map((tick, tIdx) => (
                               <div
-                                key={`tick-line-${tick.label || tIdx}-${tIdx}`}
+                                key={tIdx}
                                 className={`absolute top-0 bottom-0 border-l ${
                                   tick.isMajor
                                     ? 'border-slate-200 dark:border-slate-700'

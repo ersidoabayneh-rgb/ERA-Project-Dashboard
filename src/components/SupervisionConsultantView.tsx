@@ -87,41 +87,6 @@ export default function SupervisionConsultantView({
     );
   }, [currentUser]);
 
-  // Check whether current user can access and evaluate Supervision Consultant KPIs and Section 2 criteria
-  const canAccessKpis = useMemo(() => {
-    if (!currentUser) return true;
-    return (
-      currentUser.role === 'master_admin' ||
-      currentUser.role === 'cpm_admin' ||
-      currentUser.role === 'admin' ||
-      currentUser.role === 'directorate_admin' ||
-      currentUser.role === 'pmo_admin' ||
-      currentUser.role === 'era_approver' ||
-      currentUser.role === 'era_editor' ||
-      currentUser.role === 'approver' ||
-      currentUser.role === 'editor' ||
-      currentUser.username === 'proj_1781786415663' ||
-      Boolean(currentUser.username && currentUser.username.toLowerCase().includes('ersido'))
-    );
-  }, [currentUser]);
-
-  const canEvaluate = useMemo(() => {
-    if (!currentUser) return true;
-    return (
-      currentUser.role === 'master_admin' ||
-      currentUser.role === 'cpm_admin' ||
-      currentUser.role === 'admin' ||
-      currentUser.role === 'directorate_admin' ||
-      currentUser.role === 'pmo_admin' ||
-      currentUser.role === 'era_approver' ||
-      currentUser.role === 'era_editor' ||
-      currentUser.role === 'approver' ||
-      currentUser.role === 'editor' ||
-      currentUser.username === 'proj_1781786415663' ||
-      Boolean(currentUser.username && currentUser.username.toLowerCase().includes('ersido'))
-    );
-  }, [currentUser]);
-
   // Check whether current user is Master Admin
   const isMasterAdmin = useMemo(() => {
     if (!currentUser) return false;
@@ -197,13 +162,10 @@ export default function SupervisionConsultantView({
   const isConsultantUser = currentUser?.role === 'consultant_approver' || currentUser?.role === 'consultant_editor';
 
   useEffect(() => {
-    if ((!canAccessKpis || isConsultantUser) && (activeTab === 'kpis' || activeTab === 'history')) {
+    if ((!isAdmin || isConsultantUser) && (activeTab === 'personnel_audit' || activeTab === 'kpis' || activeTab === 'history')) {
       setActiveTab('personnel');
     }
-    if (!isAdmin && activeTab === 'personnel_audit') {
-      setActiveTab('personnel');
-    }
-  }, [canAccessKpis, isAdmin, isConsultantUser, activeTab]);
+  }, [isAdmin, isConsultantUser, activeTab]);
 
   // Search & Filter States for Personnel
   const [personnelSearch, setPersonnelSearch] = useState('');
@@ -224,22 +186,22 @@ export default function SupervisionConsultantView({
     return (consultant.personnelAuditLog || []).filter(log => {
       const matchesSearch = 
         !auditSearchQuery ||
-        (log.adminUser || '').toLowerCase().includes(auditSearchQuery.toLowerCase()) ||
-        (log.personnelName || '').toLowerCase().includes(auditSearchQuery.toLowerCase()) ||
-        (log.position || '').toLowerCase().includes(auditSearchQuery.toLowerCase()) ||
-        (log.details || '').toLowerCase().includes(auditSearchQuery.toLowerCase()) ||
-        (log.category || '').toLowerCase().includes(auditSearchQuery.toLowerCase());
+        log.adminUser.toLowerCase().includes(auditSearchQuery.toLowerCase()) ||
+        log.personnelName.toLowerCase().includes(auditSearchQuery.toLowerCase()) ||
+        log.position.toLowerCase().includes(auditSearchQuery.toLowerCase()) ||
+        log.details.toLowerCase().includes(auditSearchQuery.toLowerCase()) ||
+        log.category.toLowerCase().includes(auditSearchQuery.toLowerCase());
       
       const matchesAction = auditActionFilter === 'ALL' || log.actionType === auditActionFilter;
 
       let matchesDate = true;
       if (auditStartDate) {
-        const logDateOnly = (log.timestamp || '').substring(0, 10);
-        if (logDateOnly && logDateOnly < auditStartDate) matchesDate = false;
+        const logDateOnly = log.timestamp.substring(0, 10);
+        if (logDateOnly < auditStartDate) matchesDate = false;
       }
       if (auditEndDate) {
-        const logDateOnly = (log.timestamp || '').substring(0, 10);
-        if (logDateOnly && logDateOnly > auditEndDate) matchesDate = false;
+        const logDateOnly = log.timestamp.substring(0, 10);
+        if (logDateOnly > auditEndDate) matchesDate = false;
       }
 
       return matchesSearch && matchesAction && matchesDate;
@@ -1834,7 +1796,7 @@ export default function SupervisionConsultantView({
           </span>
         </button>
 
-        {canAccessKpis && !isConsultantUser && (
+        {isAdmin && !isConsultantUser && (
           <button
             onClick={() => setActiveTab('kpis')}
             className={`px-4 py-2 rounded-2xl text-xs md:text-sm font-bold flex items-center gap-2 transition ${
@@ -2311,7 +2273,7 @@ export default function SupervisionConsultantView({
                       </td>
                     </tr>
                   ) : (
-                    filteredInvoices.map((inv, invIdx) => {
+                    filteredInvoices.map((inv) => {
                       const totalDeductions = (inv.advanceDeductionEtb || 0) + (inv.taxDeductionEtb || 0);
 
                       let statusBadge = (
@@ -2345,7 +2307,7 @@ export default function SupervisionConsultantView({
 
                       return (
                         <tr 
-                          key={`inv-${inv.id || invIdx}-${invIdx}`}
+                          key={inv.id}
                           className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition duration-150"
                         >
                           <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-white font-mono">
@@ -2424,51 +2386,16 @@ export default function SupervisionConsultantView({
         </div>
       )}
 
-      {/* TAB: PERFORMANCE KPIS & RFI SLA EVALUATION */}
-      {canAccessKpis && activeTab === 'kpis' && (
-        <div className="space-y-4">
-          {/* Authorized Credentials Quick Access Banner */}
-          <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-indigo-500/30 rounded-2xl p-4 text-white shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-indigo-600/30 border border-indigo-400/40 flex items-center justify-center shrink-0">
-                <ShieldCheck className="w-5 h-5 text-indigo-300" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h4 className="text-xs font-black uppercase tracking-wider text-white">
-                    Authorized Evaluation & Approval Credentials
-                  </h4>
-                  <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 font-mono">
-                    Active Access
-                  </span>
-                </div>
-                <p className="text-[11px] text-slate-300">
-                  Use these official credentials to evaluate Section 2 criteria, adjust KPI weights, and log time stamped approval changes.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2 font-mono text-[11px]">
-              <div className="bg-white/10 hover:bg-white/15 px-3 py-1.5 rounded-xl border border-white/15">
-                <span className="text-indigo-300 font-bold">ERA Editor:</span>{' '}
-                <span className="text-white font-bold">era_editor</span> / <span className="text-amber-300">password123</span>
-              </div>
-              <div className="bg-white/10 hover:bg-white/15 px-3 py-1.5 rounded-xl border border-white/15">
-                <span className="text-emerald-300 font-bold">ERA Approver:</span>{' '}
-                <span className="text-white font-bold">era_approver</span> / <span className="text-amber-300">password123</span>
-              </div>
-            </div>
-          </div>
-
-          <ConsultantPerformanceKpiWidget
-            project={project}
-            consultant={consultant}
-            onUpdateConsultant={saveConsultantData}
-            isReadonly={isReadonly}
-            isAdmin={canEvaluate}
-            currentUser={currentUser}
-          />
-        </div>
+      {/* TAB: PERFORMANCE KPIS & RFI SLA EVALUATION (ADMIN ONLY) */}
+      {isAdmin && activeTab === 'kpis' && (
+        <ConsultantPerformanceKpiWidget
+          project={project}
+          consultant={consultant}
+          onUpdateConsultant={saveConsultantData}
+          isReadonly={isReadonly}
+          isAdmin={isAdmin}
+          currentUser={currentUser}
+        />
       )}
 
       {/* TAB 3: CONTRACT & SCOPE PROFILE */}
@@ -3079,7 +3006,7 @@ export default function SupervisionConsultantView({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
-                    {filteredAuditLogs.map((log, lIdx) => {
+                    {filteredAuditLogs.map((log) => {
                       const badgeColor = 
                         log.actionType === 'ASSIGNED' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300' :
                         log.actionType === 'STATUS_CHANGE' ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300' :
@@ -3087,7 +3014,7 @@ export default function SupervisionConsultantView({
                         'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300';
                       
                       return (
-                        <tr key={`sc-audit-${log.id || lIdx}-${lIdx}`} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition">
+                        <tr key={log.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition">
                           <td className="py-3.5 px-4 font-mono text-slate-600 dark:text-slate-300 whitespace-nowrap flex items-center gap-1.5">
                             <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                             {log.timestamp}
@@ -4736,8 +4663,8 @@ export default function SupervisionConsultantView({
                     </div>
                   ) : (
                     <div className="max-h-56 overflow-y-auto space-y-2 pr-1 divide-y divide-slate-100 dark:divide-slate-800">
-                      {selectedHistoricalConsultant.personnel.map((p, pIdx) => (
-                        <div key={`sc-roster-${p.id || pIdx}-${pIdx}`} className="pt-2.5 first:pt-0 flex items-center justify-between gap-2">
+                      {selectedHistoricalConsultant.personnel.map((p) => (
+                        <div key={p.id} className="pt-2.5 first:pt-0 flex items-center justify-between gap-2">
                           <div>
                             <div className="font-bold text-slate-900 dark:text-white text-xs flex items-center gap-2">
                               {p.name}

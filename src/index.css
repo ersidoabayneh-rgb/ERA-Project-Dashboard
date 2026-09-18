@@ -1,7 +1,5 @@
 @import "tailwindcss";
 
-@custom-variant dark (&:where(.dark, .dark *));
-
 :root {
   --bg-app: #f8fafc;
   --bg-card: #ffffff;
@@ -24,12 +22,11 @@ body {
   background-color: var(--bg-app);
   color: var(--text-main);
   transition: background-color 0.3s ease, color 0.3s ease;
-  font-family: 'Times New Roman', Times, Baskerville, Playfair Display, serif;
+  font-family: 'Times New Roman', Times, Baskerville, Playfair Display, serif !important;
 }
 
-/* Allow clean monospace font for numbers, IDs, and code blocks */
-.font-mono, [class*="font-mono"] {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !important;
+html, body, div, span, p, a, button, input, select, option, textarea, table, tr, th, td, h1, h2, h3, h4, h5, h6 {
+  font-family: 'Times New Roman', Times, Baskerville, Playfair Display, serif !important;
 }
 
 /* Ensure great contrast and visibility for all input fields, even disabled ones */
@@ -134,4 +131,7 @@ input:disabled, select:disabled {
     break-inside: avoid !important;
     page-break-inside: avoid !important;
   }
+}
+* {
+  font-family: 'Times New Roman', Times, serif !important;
 }
