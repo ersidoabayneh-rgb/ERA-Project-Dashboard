@@ -4220,7 +4220,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
               </div>
             </div>
             <p className="text-[9.5px] leading-snug text-slate-400">
-              {rowClearMetric.toFixed(2)} Km ({((rowClearMetric / p.lengthKm) * 100).toFixed(2)}%) obstruction-free.
+              {rowClearMetric.toFixed(2)} Km ({(((rowClearMetric / (rowEvalBase || 1)) * 100)).toFixed(2)}%) obstruction-free of requested.
             </p>
           </div>
 
