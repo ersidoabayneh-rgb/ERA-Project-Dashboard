@@ -32,9 +32,12 @@ import {
   ShieldAlert,
   Compass,
   FileCheck2,
-  UserCheck
+  UserCheck,
+  Upload,
+  Eye,
+  FileCheck
 } from 'lucide-react';
-import { Project, RfiItem, User } from '../types';
+import { Project, RfiItem, RfiPdfAttachment, User } from '../types';
 
 interface RfiLogViewProps {
   project: Project;
@@ -46,13 +49,18 @@ interface RfiLogViewProps {
 }
 
 const RFI_CATEGORIES = [
-  'Design Clarification',
-  'Drawing Discrepancy',
-  'Specification Query',
-  'Constructability',
-  'Site Condition',
-  'Material & Testing',
-  'Variation Request'
+  "1.1) Horizontal and Vertical Alignment Check",
+  "1.2) Subgrade Preparation",
+  "1.3) Compaction and Moisture Content Verification",
+  "1.4) Structural Formwork and Reinforcement Fixing",
+  "1.5) Concrete / Asphalt Material Temperature and Workability",
+  "1.6) Drainage and Structural Invert Level Compliance",
+  "1.7) Surface Protection",
+  "1.8) Traffic Management Integrity",
+  "2.1) Original Ground Line (OGL) Cross-Section & Topographical",
+  "2.2) Right-of-Way (ROW) Obstruction & Public Utility interferences",
+  "2.3) Material Suitability & Alternative Quarry/Borrow Pit approval",
+  "2.4) Variation Order (VO) Scope & Bill of Quantities (BOQ) Discrepancies"
 ];
 
 const RFI_DISCIPLINES = [
@@ -73,6 +81,13 @@ export default function RfiLogView({
   isReadonly = false,
   currentUserObj
 }: RfiLogViewProps) {
+  const isContractorUser = useMemo(() => {
+    if (!currentUserObj) return false;
+    const role = (currentUserObj.role || '').toLowerCase();
+    const uname = (currentUserObj.username || '').toLowerCase();
+    return role === 'contractor' || role === 'contractor_editor' || uname.includes('contractor');
+  }, [currentUserObj]);
+
   const rfisList: RfiItem[] = useMemo(() => {
     return project.rfis || [];
   }, [project.rfis]);
@@ -95,7 +110,7 @@ export default function RfiLogView({
   const [formData, setFormData] = useState<Partial<RfiItem>>({
     rfiNo: `RFI-CON-${String((rfisList.length || 0) + 1).padStart(3, '0')}`,
     subject: '',
-    category: 'Design Clarification',
+    category: '1.1) Horizontal and Vertical Alignment Check',
     discipline: 'Bridges & Structures',
     contractorRef: '',
     dateSubmitted: new Date().toISOString().split('T')[0],
@@ -107,8 +122,139 @@ export default function RfiLogView({
     estimatedDelayDays: 0,
     contractorQuery: '',
     slaDaysAllowed: 7,
-    status: 'Submitted'
+    status: 'Submitted',
+    pdfFiles: []
   });
+
+  // PDF Attachment handlers
+  const handleModalPdfUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    (Array.from(files) as File[]).forEach((file: File) => {
+      if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+        alert('Please upload a PDF document.');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const dataUrl = event.target?.result as string;
+        const newPdf: RfiPdfAttachment = {
+          id: `pdf_rfi_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          name: file.name,
+          size: `${(file.size / 1024).toFixed(1)} KB`,
+          fileData: dataUrl,
+          fileType: 'application/pdf',
+          uploadedAt: new Date().toISOString().split('T')[0]
+        };
+        setFormData(prev => ({
+          ...prev,
+          pdfFiles: [...(prev.pdfFiles || []), newPdf]
+        }));
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = '';
+  };
+
+  const handleRemoveModalPdf = (pdfId: string) => {
+    setFormData(prev => ({
+      ...prev,
+      pdfFiles: (prev.pdfFiles || []).filter(p => p.id !== pdfId)
+    }));
+  };
+
+  const handleDirectRfiPdfUpload = (rfiId: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    (Array.from(files) as File[]).forEach((file: File) => {
+      if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+        alert('Please select a valid PDF file.');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const dataUrl = event.target?.result as string;
+        const newPdf: RfiPdfAttachment = {
+          id: `pdf_rfi_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          name: file.name,
+          size: `${(file.size / 1024).toFixed(1)} KB`,
+          fileData: dataUrl,
+          fileType: 'application/pdf',
+          uploadedAt: new Date().toISOString().split('T')[0]
+        };
+        const updatedList = rfisList.map(rfi => {
+          if (rfi.id === rfiId) {
+            const currentPdfs = rfi.pdfFiles || [];
+            return {
+              ...rfi,
+              pdfFiles: [...currentPdfs, newPdf]
+            };
+          }
+          return rfi;
+        });
+        if (onProjectUpdate) {
+          onProjectUpdate({ rfis: updatedList }, `Attached PDF document ${file.name} to RFI ${rfiId}`);
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = '';
+  };
+
+  const handleRemoveRfiPdf = (rfiId: string, pdfId: string) => {
+    const updatedList = rfisList.map(rfi => {
+      if (rfi.id === rfiId) {
+        return {
+          ...rfi,
+          pdfFiles: (rfi.pdfFiles || []).filter(p => p.id !== pdfId)
+        };
+      }
+      return rfi;
+    });
+    if (onProjectUpdate) {
+      onProjectUpdate({ rfis: updatedList }, `Removed PDF document from RFI ${rfiId}`);
+    }
+  };
+
+  const handleOpenPdfView = (pdf: RfiPdfAttachment) => {
+    if (pdf.fileData) {
+      const pdfWindow = window.open();
+      if (pdfWindow) {
+        pdfWindow.document.write(`
+          <html>
+            <head>
+              <title>${pdf.name}</title>
+              <style>body { margin: 0; background: #0f172a; height: 100vh; display: flex; flex-direction: column; } header { padding: 12px 20px; background: #1e293b; color: white; font-family: sans-serif; font-size: 14px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; } iframe { flex: 1; border: none; width: 100%; height: 100%; }</style>
+            </head>
+            <body>
+              <header>
+                <span>📄 ${pdf.name} (${pdf.size || 'PDF Document'})</span>
+                <span style="font-size: 11px; opacity: 0.8;">AI Studio Document Viewer</span>
+              </header>
+              <iframe src="${pdf.fileData}"></iframe>
+            </body>
+          </html>
+        `);
+      }
+    } else {
+      alert(`PDF file ${pdf.name} does not contain readable data.`);
+    }
+  };
+
+  const handleDownloadPdf = (pdf: RfiPdfAttachment) => {
+    if (!pdf.fileData) {
+      alert('PDF data not available for download.');
+      return;
+    }
+    const link = document.createElement('a');
+    link.href = pdf.fileData;
+    link.download = pdf.name || 'RFI_Attachment.pdf';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   // Form State for Answer
   const [answerData, setAnswerData] = useState<{
@@ -183,7 +329,7 @@ export default function RfiLogView({
     setFormData({
       rfiNo: `RFI-CON-${String((rfisList.length || 0) + 1).padStart(3, '0')}`,
       subject: '',
-      category: 'Design Clarification',
+      category: '1.1) Horizontal and Vertical Alignment Check',
       discipline: 'Bridges & Structures',
       contractorRef: '',
       dateSubmitted: new Date().toISOString().split('T')[0],
@@ -195,7 +341,8 @@ export default function RfiLogView({
       estimatedDelayDays: 0,
       contractorQuery: '',
       slaDaysAllowed: 7,
-      status: 'Submitted'
+      status: 'Submitted',
+      pdfFiles: []
     });
     setIsAddModalOpen(true);
   };
@@ -203,7 +350,10 @@ export default function RfiLogView({
   // Open Edit Modal
   const handleOpenEditModal = (rfi: RfiItem) => {
     setEditingRfi(rfi);
-    setFormData({ ...rfi });
+    setFormData({
+      ...rfi,
+      pdfFiles: rfi.pdfFiles || []
+    });
     setIsAddModalOpen(true);
   };
 
@@ -248,7 +398,8 @@ export default function RfiLogView({
         estimatedDelayDays: Number(formData.estimatedDelayDays || 0),
         contractorQuery: formData.contractorQuery || '',
         status: (formData.status as RfiItem['status']) || 'Submitted',
-        slaDaysAllowed: Number(formData.slaDaysAllowed || 7)
+        slaDaysAllowed: Number(formData.slaDaysAllowed || 7),
+        pdfFiles: formData.pdfFiles || []
       };
       updatedList = [newRfi, ...rfisList];
     }
@@ -594,11 +745,22 @@ export default function RfiLogView({
               className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-medium text-slate-800 dark:text-slate-200"
             >
               <option value="all">All Categories</option>
-              {RFI_CATEGORIES.map(c => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
+              <optgroup label="1) Request for Inspection (RFI/IRB) Categories">
+                <option value="1.1) Horizontal and Vertical Alignment Check">1.1) Horizontal and Vertical Alignment Check</option>
+                <option value="1.2) Subgrade Preparation">1.2) Subgrade Preparation</option>
+                <option value="1.3) Compaction and Moisture Content Verification">1.3) Compaction and Moisture Content Verification</option>
+                <option value="1.4) Structural Formwork and Reinforcement Fixing">1.4) Structural Formwork and Reinforcement Fixing</option>
+                <option value="1.5) Concrete / Asphalt Material Temperature and Workability">1.5) Concrete / Asphalt Material Temperature and Workability</option>
+                <option value="1.6) Drainage and Structural Invert Level Compliance">1.6) Drainage and Structural Invert Level Compliance</option>
+                <option value="1.7) Surface Protection">1.7) Surface Protection</option>
+                <option value="1.8) Traffic Management Integrity">1.8) Traffic Management Integrity</option>
+              </optgroup>
+              <optgroup label="2) Request for Information (Material / Design Query)">
+                <option value="2.1) Original Ground Line (OGL) Cross-Section & Topographical">2.1) Original Ground Line (OGL) Cross-Section & Topographical</option>
+                <option value="2.2) Right-of-Way (ROW) Obstruction & Public Utility interferences">2.2) Right-of-Way (ROW) Obstruction & Public Utility interferences</option>
+                <option value="2.3) Material Suitability & Alternative Quarry/Borrow Pit approval">2.3) Material Suitability & Alternative Quarry/Borrow Pit approval</option>
+                <option value="2.4) Variation Order (VO) Scope & Bill of Quantities (BOQ) Discrepancies">2.4) Variation Order (VO) Scope & Bill of Quantities (BOQ) Discrepancies</option>
+              </optgroup>
             </select>
           </div>
 
@@ -655,7 +817,7 @@ export default function RfiLogView({
                   <th className="py-3 px-4">Priority & SLA</th>
                   <th className="py-3 px-4">Impacts</th>
                   <th className="py-3 px-4">Status</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
+                  {!isContractorUser && <th className="py-3 px-4 text-right">Actions</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 text-xs">
@@ -706,6 +868,25 @@ export default function RfiLogView({
                               </span>
                             )}
                           </div>
+                          {rfi.pdfFiles && rfi.pdfFiles.length > 0 && (
+                            <div className="flex items-center gap-1 mt-1.5 flex-wrap">
+                              {rfi.pdfFiles.map(pdf => (
+                                <button
+                                  key={pdf.id}
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenPdfView(pdf);
+                                  }}
+                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 text-rose-700 dark:text-rose-300 rounded text-[10px] font-mono border border-rose-200/80 dark:border-rose-800 transition cursor-pointer"
+                                  title={`View PDF: ${pdf.name}`}
+                                >
+                                  <FileText className="w-3 h-3 text-rose-500 shrink-0" />
+                                  <span className="truncate max-w-[110px]">{pdf.name}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
                         </td>
 
                         {/* Discipline & Category */}
@@ -781,56 +962,58 @@ export default function RfiLogView({
                         </td>
 
                         {/* Actions */}
-                        <td
-                          className="py-3.5 px-4 text-right"
-                          onClick={e => e.stopPropagation()}
-                        >
-                          <div className="flex items-center justify-end gap-1.5">
-                            {!isReadonly && (
-                              <button
-                                onClick={() => handleOpenAnswerModal(rfi)}
-                                className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/50 dark:hover:bg-blue-900/60 text-blue-600 dark:text-blue-300 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
-                                title="Provide or edit consultant answer"
-                              >
-                                <Send className="w-3 h-3" />
-                                <span>Answer</span>
-                              </button>
-                            )}
+                        {!isContractorUser ? (
+                          <td
+                            className="py-3.5 px-4 text-right"
+                            onClick={e => e.stopPropagation()}
+                          >
+                            <div className="flex items-center justify-end gap-1.5">
+                              {!isReadonly && (
+                                <button
+                                  onClick={() => handleOpenAnswerModal(rfi)}
+                                  className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/50 dark:hover:bg-blue-900/60 text-blue-600 dark:text-blue-300 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
+                                  title="Provide or edit consultant answer"
+                                >
+                                  <Send className="w-3 h-3" />
+                                  <span>Answer</span>
+                                </button>
+                              )}
 
-                            {!isReadonly && (
-                              <button
-                                onClick={() => handleOpenEditModal(rfi)}
-                                className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
-                                title="Edit RFI details"
-                              >
-                                <Edit2 className="w-3.5 h-3.5" />
-                              </button>
-                            )}
+                              {!isReadonly && (
+                                <button
+                                  onClick={() => handleOpenEditModal(rfi)}
+                                  className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                                  title="Edit RFI details"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
 
-                            {!isReadonly && (
-                              <button
-                                onClick={() => handleDeleteRfi(rfi.id, rfi.rfiNo)}
-                                className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40 transition cursor-pointer"
-                                title="Delete RFI record"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            )}
+                              {!isReadonly && (
+                                <button
+                                  onClick={() => handleDeleteRfi(rfi.id, rfi.rfiNo)}
+                                  className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40 transition cursor-pointer"
+                                  title="Delete RFI record"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
 
-                            <button
-                              onClick={() => setExpandedRfiId(isExpanded ? null : rfi.id)}
-                              className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded-lg transition cursor-pointer"
-                            >
-                              {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                            </button>
-                          </div>
-                        </td>
+                              <button
+                                onClick={() => setExpandedRfiId(isExpanded ? null : rfi.id)}
+                                className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded-lg transition cursor-pointer"
+                              >
+                                {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                              </button>
+                            </div>
+                          </td>
+                        ) : null}
                       </tr>
 
                       {/* Expanded Details Drawer */}
                       {isExpanded && (
                         <tr className="bg-slate-50/90 dark:bg-slate-850/80 border-b border-slate-200 dark:border-slate-800">
-                          <td colSpan={7} className="p-4 sm:p-6 space-y-4">
+                          <td colSpan={isContractorUser ? 6 : 7} className="p-4 sm:p-6 space-y-4">
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                               {/* Contractor Query Box */}
                               <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 space-y-2">
@@ -894,7 +1077,7 @@ export default function RfiLogView({
                                     <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
                                       Awaiting Resident Engineer / Consultant Formal Response
                                     </p>
-                                    {!isReadonly && (
+                                    {!isReadonly && !isContractorUser && (
                                       <button
                                         onClick={() => handleOpenAnswerModal(rfi)}
                                         className="mt-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition inline-flex items-center gap-1.5 cursor-pointer"
@@ -906,6 +1089,81 @@ export default function RfiLogView({
                                   </div>
                                 )}
                               </div>
+                            </div>
+
+                            {/* Attached PDF Files Card */}
+                            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 space-y-3">
+                              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
+                                <h4 className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                                  <FileText className="w-4 h-4 text-rose-500" />
+                                  <span>Attached PDF Documents & Site Drawings ({rfi.pdfFiles?.length || 0})</span>
+                                </h4>
+                                <label className="inline-flex items-center gap-1 px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[11px] font-bold cursor-pointer transition shadow-2xs">
+                                  <Upload className="w-3.5 h-3.5" />
+                                  <span>Attach PDF File</span>
+                                  <input
+                                    type="file"
+                                    accept=".pdf,application/pdf"
+                                    multiple
+                                    className="hidden"
+                                    onChange={e => handleDirectRfiPdfUpload(rfi.id, e)}
+                                  />
+                                </label>
+                              </div>
+
+                              {rfi.pdfFiles && rfi.pdfFiles.length > 0 ? (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+                                  {rfi.pdfFiles.map(pdf => (
+                                    <div key={pdf.id} className="p-2.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2">
+                                      <div className="flex items-center gap-2 min-w-0">
+                                        <div className="p-1.5 bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 rounded-lg shrink-0">
+                                          <FileText className="w-4 h-4" />
+                                        </div>
+                                        <div className="min-w-0">
+                                          <div className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate" title={pdf.name}>
+                                            {pdf.name}
+                                          </div>
+                                          <div className="text-[10px] text-slate-400 font-mono">
+                                            {pdf.size || 'PDF Document'} {pdf.uploadedAt ? `• ${pdf.uploadedAt}` : ''}
+                                          </div>
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center gap-1 shrink-0">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleOpenPdfView(pdf)}
+                                          className="p-1 bg-blue-50 dark:bg-blue-950 hover:bg-blue-100 dark:hover:bg-blue-900 text-blue-600 dark:text-blue-300 rounded-lg transition cursor-pointer"
+                                          title="View PDF"
+                                        >
+                                          <Eye className="w-3.5 h-3.5" />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDownloadPdf(pdf)}
+                                          className="p-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg transition cursor-pointer"
+                                          title="Download PDF"
+                                        >
+                                          <Download className="w-3.5 h-3.5" />
+                                        </button>
+                                        {!isReadonly && !isContractorUser && (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleRemoveRfiPdf(rfi.id, pdf.id)}
+                                            className="p-1 hover:bg-rose-100 dark:hover:bg-rose-950 text-slate-400 hover:text-rose-600 rounded-lg transition cursor-pointer"
+                                            title="Remove PDF"
+                                          >
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="py-3 text-center text-slate-400 text-xs border border-dashed border-slate-200 dark:border-slate-700 rounded-xl">
+                                  No PDF files attached to this RFI yet. Click <strong className="text-rose-600">Attach PDF File</strong> above to attach drawings or documentation.
+                                </div>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -1009,13 +1267,26 @@ export default function RfiLogView({
                       Query Category
                     </label>
                     <select
-                      value={formData.category || 'Design Clarification'}
+                      value={formData.category || '1.1) Horizontal and Vertical Alignment Check'}
                       onChange={e => setFormData({ ...formData, category: e.target.value })}
                       className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-semibold"
                     >
-                      {RFI_CATEGORIES.map(c => (
-                        <option key={c} value={c}>{c}</option>
-                      ))}
+                      <optgroup label="1) Request for Inspection (RFI/IRB) Categories">
+                        <option value="1.1) Horizontal and Vertical Alignment Check">1.1) Horizontal and Vertical Alignment Check</option>
+                        <option value="1.2) Subgrade Preparation">1.2) Subgrade Preparation</option>
+                        <option value="1.3) Compaction and Moisture Content Verification">1.3) Compaction and Moisture Content Verification</option>
+                        <option value="1.4) Structural Formwork and Reinforcement Fixing">1.4) Structural Formwork and Reinforcement Fixing</option>
+                        <option value="1.5) Concrete / Asphalt Material Temperature and Workability">1.5) Concrete / Asphalt Material Temperature and Workability</option>
+                        <option value="1.6) Drainage and Structural Invert Level Compliance">1.6) Drainage and Structural Invert Level Compliance</option>
+                        <option value="1.7) Surface Protection">1.7) Surface Protection</option>
+                        <option value="1.8) Traffic Management Integrity">1.8) Traffic Management Integrity</option>
+                      </optgroup>
+                      <optgroup label="2) Request for Information (Material / Design Query)">
+                        <option value="2.1) Original Ground Line (OGL) Cross-Section & Topographical">2.1) Original Ground Line (OGL) Cross-Section & Topographical</option>
+                        <option value="2.2) Right-of-Way (ROW) Obstruction & Public Utility interferences">2.2) Right-of-Way (ROW) Obstruction & Public Utility interferences</option>
+                        <option value="2.3) Material Suitability & Alternative Quarry/Borrow Pit approval">2.3) Material Suitability & Alternative Quarry/Borrow Pit approval</option>
+                        <option value="2.4) Variation Order (VO) Scope & Bill of Quantities (BOQ) Discrepancies">2.4) Variation Order (VO) Scope & Bill of Quantities (BOQ) Discrepancies</option>
+                      </optgroup>
                     </select>
                   </div>
 
@@ -1151,6 +1422,63 @@ export default function RfiLogView({
                     placeholder="Describe the technical query, site condition mismatch, or drawing discrepancy clearly..."
                     className="w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
                   />
+                </div>
+
+                {/* PDF Attachment Upload Section */}
+                <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 text-xs">
+                      <FileText className="w-4 h-4 text-rose-500" />
+                      <span>Attach PDF Documents & Site Drawings ({formData.pdfFiles?.length || 0})</span>
+                    </label>
+                    <label className="inline-flex items-center gap-1 px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold cursor-pointer transition shadow-2xs">
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>Upload PDF</span>
+                      <input
+                        type="file"
+                        accept=".pdf,application/pdf"
+                        multiple
+                        className="hidden"
+                        onChange={handleModalPdfUpload}
+                      />
+                    </label>
+                  </div>
+
+                  {formData.pdfFiles && formData.pdfFiles.length > 0 ? (
+                    <div className="space-y-1.5">
+                      {formData.pdfFiles.map(pdf => (
+                        <div key={pdf.id} className="p-2 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2 text-xs">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <FileText className="w-4 h-4 text-rose-500 shrink-0" />
+                            <span className="font-bold text-slate-800 dark:text-slate-200 truncate">{pdf.name}</span>
+                            <span className="text-[10px] text-slate-400 font-mono">({pdf.size})</span>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenPdfView(pdf)}
+                              className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-blue-600 cursor-pointer"
+                              title="Preview PDF"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveModalPdf(pdf.id)}
+                              className="p-1 hover:bg-rose-50 dark:hover:bg-rose-950 text-slate-400 hover:text-rose-600 rounded cursor-pointer"
+                              title="Remove PDF"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center p-3 border border-dashed border-slate-300 dark:border-slate-700 rounded-lg text-slate-400 text-xs">
+                      No PDF files attached. Click <strong className="text-rose-600">Upload PDF</strong> to attach drawings or technical documentation.
+                    </div>
+                  )}
                 </div>
 
                 {/* Submit Buttons */}

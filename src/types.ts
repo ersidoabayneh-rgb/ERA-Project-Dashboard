@@ -777,6 +777,15 @@ export interface ConsultantSubmittalKpi {
   }>;
 }
 
+export interface RfiPdfAttachment {
+  id: string;
+  name: string;
+  size?: string;
+  fileData?: string;
+  fileType?: string;
+  uploadedAt?: string;
+}
+
 export interface RfiItem {
   id: string;
   rfiNo: string;
@@ -793,6 +802,7 @@ export interface RfiItem {
   estimatedDelayDays?: number;
   contractorQuery: string;
   attachments?: string[];
+  pdfFiles?: RfiPdfAttachment[];
   consultantResponse?: string;
   consultantResponder?: string;
   responseDate?: string;

@@ -73,6 +73,13 @@ export default function SubmittalLogView({
 }: SubmittalLogViewProps) {
   const [activeLogTab, setActiveLogTab] = useState<'submittals' | 'rfis' | 'combined'>(initialTab);
 
+  const isContractorUser = useMemo(() => {
+    if (!currentUserObj) return false;
+    const role = (currentUserObj.role || '').toLowerCase();
+    const uname = (currentUserObj.username || '').toLowerCase();
+    return role === 'contractor' || role === 'contractor_editor' || uname.includes('contractor');
+  }, [currentUserObj]);
+
   React.useEffect(() => {
     if (initialTab) {
       setActiveLogTab(initialTab);
@@ -150,10 +157,10 @@ export default function SubmittalLogView({
         });
 
       const nonIpcItems = baseList.filter(s => s.type !== 'IPC Review' && !s.id.startsWith('ipc_kpi_'));
-      return [...nonIpcItems, ...ipcSubmittals];
+      return [...nonIpcItems, ...ipcSubmittals].filter(s => s.type !== 'RFI');
     }
 
-    return baseList;
+    return baseList.filter(s => s.type !== 'RFI');
   }, [consultant.submittalKpis, project?.id, project?.ipcTracker, consultant.residentEngineerName, consultant.commencementDate, targetOverrides]);
 
   // Search & filter states
@@ -220,8 +227,8 @@ export default function SubmittalLogView({
 
   // New submittal form
   const [newSubmittalForm, setNewSubmittalForm] = useState<Partial<ConsultantSubmittalKpi>>({
-    submittalNo: `RFI-0${submittalsList.length + 1}`,
-    type: 'RFI',
+    submittalNo: `SUB-0${submittalsList.length + 1}`,
+    type: 'Material Approval',
     title: '',
     submittedDate: new Date().toISOString().split('T')[0],
     respondedDate: new Date().toISOString().split('T')[0],
@@ -281,7 +288,7 @@ export default function SubmittalLogView({
     const newRecord: ConsultantSubmittalKpi = {
       id: `sub_${Date.now()}`,
       submittalNo: newSubmittalForm.submittalNo,
-      type: (newSubmittalForm.type as any) || 'RFI',
+      type: (newSubmittalForm.type as any) || 'Material Approval',
       title: newSubmittalForm.title,
       submittedDate: newSubmittalForm.submittedDate || new Date().toISOString().split('T')[0],
       respondedDate: newSubmittalForm.respondedDate || undefined,
@@ -628,7 +635,7 @@ export default function SubmittalLogView({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {!isReadonly && activeLogTab !== 'rfis' && (
+          {!isReadonly && !isContractorUser && activeLogTab !== 'rfis' && (
             <button
               onClick={handleInsertQuickRow}
               className="px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-xs flex items-center gap-1.5 transition cursor-pointer"
@@ -829,7 +836,6 @@ export default function SubmittalLogView({
               className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white font-medium cursor-pointer"
             >
               <option value="ALL">All Categories</option>
-              <option value="RFI">Technical RFI</option>
               <option value="Material Approval">Material Approval</option>
               <option value="IPC Review">IPC Review</option>
               <option value="Work Inspection (WIR)">Work Inspection (WIR)</option>
@@ -992,13 +998,13 @@ export default function SubmittalLogView({
                   </div>
                 </th>
                 <th className="p-3.5">Assigned Engineer</th>
-                <th className="p-3.5 text-right">Actions</th>
+                {!isContractorUser && <th className="p-3.5 text-right">Actions</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
               {sortedSubmittals.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="p-8 text-center text-slate-400">
+                  <td colSpan={isContractorUser ? 10 : 11} className="p-8 text-center text-slate-400">
                     No submittal records match your filter criteria.
                   </td>
                 </tr>
@@ -1129,44 +1135,46 @@ export default function SubmittalLogView({
                       <td className="p-3.5 text-slate-600 dark:text-slate-400">
                         {item.assignedEngineer || '-'}
                       </td>
-                      <td className="p-3.5 text-right whitespace-nowrap">
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            onClick={() => handleStartRowEdit(item)}
-                            title="Edit Submittal"
-                            className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition"
-                          >
-                            <Edit3 className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => handleDuplicateRow(item)}
-                            title="Duplicate Submittal"
-                            className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition"
-                          >
-                            <Copy className="w-3.5 h-3.5" />
-                          </button>
-                          {!isReadonly && (() => {
-                            const isApproved = item.status === 'Approved' || item.status === 'Approved / Closed' || item.status === 'Approved with Comment' || item.status === 'Approved with Comments' || item.status.toLowerCase().includes('approved');
-                            const isAdminUser = currentUserObj?.role === 'admin' || currentUserObj?.role === 'master_admin' || currentUserObj?.role === 'cpm_admin' || currentUserObj?.username === 'proj_1781786415663';
-                            if (isApproved && !isAdminUser) {
+                      {!isContractorUser && (
+                        <td className="p-3.5 text-right whitespace-nowrap">
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => handleStartRowEdit(item)}
+                              title="Edit Submittal"
+                              className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleDuplicateRow(item)}
+                              title="Duplicate Submittal"
+                              className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition"
+                            >
+                              <Copy className="w-3.5 h-3.5" />
+                            </button>
+                            {!isReadonly && (() => {
+                              const isApproved = item.status === 'Approved' || item.status === 'Approved / Closed' || item.status === 'Approved with Comment' || item.status === 'Approved with Comments' || item.status.toLowerCase().includes('approved');
+                              const isAdminUser = currentUserObj?.role === 'admin' || currentUserObj?.role === 'master_admin' || currentUserObj?.role === 'cpm_admin' || currentUserObj?.username === 'proj_1781786415663';
+                              if (isApproved && !isAdminUser) {
+                                return (
+                                  <span title="Approved submittals can only be deleted by Administrators" className="p-1.5 text-slate-300 dark:text-slate-700 cursor-not-allowed">
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </span>
+                                );
+                              }
                               return (
-                                <span title="Approved submittals can only be deleted by Administrators" className="p-1.5 text-slate-300 dark:text-slate-700 cursor-not-allowed">
+                                <button
+                                  onClick={() => handleDeleteRow(item.id)}
+                                  title="Delete Submittal"
+                                  className="p-1.5 rounded-lg hover:bg-rose-100 dark:hover:bg-rose-950/60 text-rose-600 dark:text-rose-400 transition"
+                                >
                                   <Trash2 className="w-3.5 h-3.5" />
-                                </span>
+                                </button>
                               );
-                            }
-                            return (
-                              <button
-                                onClick={() => handleDeleteRow(item.id)}
-                                title="Delete Submittal"
-                                className="p-1.5 rounded-lg hover:bg-rose-100 dark:hover:bg-rose-950/60 text-rose-600 dark:text-rose-400 transition"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            );
-                          })()}
-                        </div>
-                      </td>
+                            })()}
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   );
                 })
