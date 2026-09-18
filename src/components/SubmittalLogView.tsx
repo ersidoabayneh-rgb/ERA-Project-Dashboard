@@ -33,8 +33,12 @@ import {
   Upload,
   Eye,
   ExternalLink,
-  MoveVertical
+  MoveVertical,
+  HelpCircle,
+  Layers,
+  MessageSquare
 } from 'lucide-react';
+import RfiLogView from './RfiLogView';
 import {
   Project,
   SupervisionConsultantInfo,
@@ -55,6 +59,7 @@ interface SubmittalLogViewProps {
   onProjectUpdate?: (updatedFields: Partial<Project>, actionDescription?: string) => void;
   isReadonly?: boolean;
   currentUserObj?: User | null;
+  initialTab?: 'submittals' | 'rfis' | 'combined';
 }
 
 export default function SubmittalLogView({
@@ -63,8 +68,16 @@ export default function SubmittalLogView({
   onSelectProject,
   onProjectUpdate,
   isReadonly = false,
-  currentUserObj
+  currentUserObj,
+  initialTab = 'submittals'
 }: SubmittalLogViewProps) {
+  const [activeLogTab, setActiveLogTab] = useState<'submittals' | 'rfis' | 'combined'>(initialTab);
+
+  React.useEffect(() => {
+    if (initialTab) {
+      setActiveLogTab(initialTab);
+    }
+  }, [initialTab]);
   const consultant: SupervisionConsultantInfo = useMemo(() => {
     if (project.supervisionConsultant) {
       return {
@@ -615,7 +628,7 @@ export default function SubmittalLogView({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {!isReadonly && (
+          {!isReadonly && activeLogTab !== 'rfis' && (
             <button
               onClick={handleInsertQuickRow}
               className="px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-xs flex items-center gap-1.5 transition cursor-pointer"
@@ -624,15 +637,87 @@ export default function SubmittalLogView({
               Add Submittal Item
             </button>
           )}
-          <button
-            onClick={handleExportCsv}
-            className="px-4 py-2 text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl flex items-center gap-1.5 transition cursor-pointer"
-          >
-            <Download className="w-4 h-4 text-emerald-600" />
-            Export CSV
-          </button>
+          {activeLogTab !== 'rfis' && (
+            <button
+              onClick={handleExportCsv}
+              className="px-4 py-2 text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl flex items-center gap-1.5 transition cursor-pointer"
+            >
+              <Download className="w-4 h-4 text-emerald-600" />
+              Export CSV
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Sub-Navigation Tab Selector */}
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-100 dark:bg-slate-800/90 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-700/80 shadow-inner">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            onClick={() => setActiveLogTab('submittals')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+              activeLogTab === 'submittals'
+                ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm border border-slate-200 dark:border-slate-700'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <FileText className="w-4 h-4 text-indigo-500" />
+            <span>📋 Technical Submittals Register</span>
+            <span className="px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 text-[10px] font-mono font-bold">
+              {submittalsList.length}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveLogTab('rfis')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+              activeLogTab === 'rfis'
+                ? 'bg-white dark:bg-slate-900 text-purple-600 dark:text-purple-400 shadow-sm border border-slate-200 dark:border-slate-700'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <HelpCircle className="w-4 h-4 text-purple-500" />
+            <span>✉️ Request for Information (RFI Log)</span>
+            <span className="px-2 py-0.5 rounded-full bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 text-[10px] font-mono font-bold">
+              {project.rfis?.length || 0}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveLogTab('combined')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+              activeLogTab === 'combined'
+                ? 'bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-sm border border-slate-200 dark:border-slate-700'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <Layers className="w-4 h-4 text-emerald-500" />
+            <span>⚡ Combined Master Log</span>
+            <span className="px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 text-[10px] font-mono font-bold">
+              {submittalsList.length + (project.rfis?.length || 0)}
+            </span>
+          </button>
+        </div>
+
+        <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 px-3 hidden md:block">
+          Unified Technical Submittals & RFI Portal
+        </div>
+      </div>
+
+      {/* RFI Log Standalone Tab View */}
+      {activeLogTab === 'rfis' && (
+        <RfiLogView
+          project={project}
+          projects={projects}
+          onSelectProject={onSelectProject}
+          onProjectUpdate={onProjectUpdate}
+          isReadonly={isReadonly}
+          currentUserObj={currentUserObj}
+        />
+      )}
+
+      {/* Submittals Log View (Rendered for 'submittals' or 'combined' modes) */}
+      {(activeLogTab === 'submittals' || activeLogTab === 'combined') && (
+        <>
 
       {/* KPI & Evaluation Live Metrics Strip */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -1138,6 +1223,41 @@ export default function SubmittalLogView({
           </div>
         </div>
       </div>
+      </>
+      )}
+
+      {/* RFI Register Section (Appended for Combined Master Log Mode) */}
+      {activeLogTab === 'combined' && (
+        <div className="pt-6 border-t-2 border-dashed border-slate-200 dark:border-slate-800 space-y-4">
+          <div className="flex items-center justify-between bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+            <div className="flex items-center gap-2.5">
+              <span className="p-2 bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 rounded-xl">
+                <HelpCircle className="w-5 h-5" />
+              </span>
+              <div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                  Requests for Information (RFI) Register
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Design clarifications, drawing discrepancies, and technical queries logged by Contractor
+                </p>
+              </div>
+            </div>
+            <span className="px-3 py-1 bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 rounded-full text-xs font-mono font-bold border border-purple-200 dark:border-purple-800">
+              {project.rfis?.length || 0} RFIs
+            </span>
+          </div>
+
+          <RfiLogView
+            project={project}
+            projects={projects}
+            onSelectProject={onSelectProject}
+            onProjectUpdate={onProjectUpdate}
+            isReadonly={isReadonly}
+            currentUserObj={currentUserObj}
+          />
+        </div>
+      )}
 
       {/* EDIT / ADD MODAL */}
       <AnimatePresence>

@@ -5023,20 +5023,24 @@ let isBatchSyncRunning = false;
               {activeTab === 'submittalLog' && (
                 <SubmittalLogView
                   project={currentProject}
+                  projects={projects}
+                  onSelectProject={(proj) => handleSelectProject(proj.id)}
                   onProjectUpdate={handleProjectUpdate}
                   isReadonly={currentUserObj?.role === 'viewer' && currentUserObj?.username !== 'proj_1781786415663'}
                   currentUserObj={currentUserObj}
+                  initialTab="submittals"
                 />
               )}
 
               {activeTab === 'rfiLog' && (
-                <RfiLogView
+                <SubmittalLogView
                   project={currentProject}
                   projects={projects}
                   onSelectProject={(proj) => handleSelectProject(proj.id)}
                   onProjectUpdate={handleProjectUpdate}
                   isReadonly={currentUserObj?.role === 'viewer' && currentUserObj?.username !== 'proj_1781786415663'}
                   currentUserObj={currentUserObj}
+                  initialTab="rfis"
                 />
               )}
 
