@@ -286,6 +286,84 @@ export default function RowStatusView({
           </div>
         </div>
 
+        {/* ROW Evaluation Comparison: ROW Request By Contractor vs ROW Obstruction Free Section */}
+        {(() => {
+          const rowReqItem = metrics.find(m => m.name === 'ROW Request By Contractor' || m.name.toLowerCase().includes('request by contractor') || (m.name.toLowerCase().includes('row') && m.name.toLowerCase().includes('request')));
+          const rowClearItem = metrics.find(m => m.name === 'ROW Obstruction free Section' || m.name.toLowerCase().includes('obstruction free'));
+          const rowReqVal = rowReqItem ? Number(rowReqItem.value) || 0 : 0;
+          const rowClearVal = rowClearItem ? Number(rowClearItem.value) || 0 : 0;
+          const rowPendingVal = Math.max(0, rowReqVal - rowClearVal);
+          const rowClearRate = rowReqVal > 0 ? (rowClearVal / rowReqVal) * 100 : 0;
+
+          return (
+            <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 p-4 rounded-2xl shadow-sm space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-100 dark:border-slate-700/60">
+                <div>
+                  <h3 className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4 text-blue-500" />
+                    ROW Evaluation: Requested by Contractor vs Obstruction Free Section
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Contractual evaluation benchmark comparing contractor requested Right-of-Way length against actual obstruction-free handed-over sections.
+                  </p>
+                </div>
+                <div className="shrink-0 flex items-center gap-1 bg-blue-50 dark:bg-blue-950/40 border border-blue-200/60 dark:border-blue-800/60 px-3 py-1 rounded-xl">
+                  <span className="text-[10px] uppercase font-bold text-blue-600 dark:text-blue-400">Clearance Rate:</span>
+                  <span className="font-mono font-black text-sm text-blue-700 dark:text-blue-300">{rowClearRate.toFixed(1)}%</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="bg-slate-50 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-700/60 p-3 rounded-xl flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">ROW Request by Contractor</span>
+                    <span className="text-base font-black text-slate-800 dark:text-zinc-100 font-mono">{rowReqVal.toFixed(2)} <span className="text-xs font-normal text-slate-400">Km</span></span>
+                  </div>
+                  <div className="p-2 rounded-lg bg-blue-100/60 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400">
+                    <MapPin className="w-4 h-4" />
+                  </div>
+                </div>
+
+                <div className="bg-slate-50 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-700/60 p-3 rounded-xl flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">ROW Obstruction Free Section</span>
+                    <span className="text-base font-black text-emerald-600 dark:text-emerald-400 font-mono">{rowClearVal.toFixed(2)} <span className="text-xs font-normal text-slate-400">Km</span></span>
+                  </div>
+                  <div className="p-2 rounded-lg bg-emerald-100/60 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400">
+                    <CheckCircle2 className="w-4 h-4" />
+                  </div>
+                </div>
+
+                <div className="bg-slate-50 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-700/60 p-3 rounded-xl flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">Pending Contractor Handover</span>
+                    <span className={`text-base font-black font-mono ${rowPendingVal > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-400'}`}>
+                      {rowPendingVal.toFixed(2)} <span className="text-xs font-normal text-slate-400">Km</span>
+                    </span>
+                  </div>
+                  <div className="p-2 rounded-lg bg-amber-100/60 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400">
+                    <AlertCircle className="w-4 h-4" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Progress track */}
+              <div className="space-y-1 pt-1">
+                <div className="flex justify-between text-[11px] font-bold">
+                  <span className="text-slate-500">Obstruction Free Section ({rowClearVal.toFixed(2)} Km)</span>
+                  <span className="text-slate-700 dark:text-slate-300 font-mono">{rowClearRate.toFixed(1)}% of Request ({rowReqVal.toFixed(2)} Km)</span>
+                </div>
+                <div className="w-full bg-slate-200 dark:bg-slate-700 h-2.5 rounded-full overflow-hidden flex">
+                  <div
+                    className="bg-gradient-to-r from-blue-500 to-emerald-500 h-full rounded-full transition-all duration-500"
+                    style={{ width: `${Math.min(100, Math.max(0, rowClearRate))}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Spreadsheet Tables */}
         <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 rounded-2xl overflow-hidden shadow-sm">
           <div className="overflow-x-auto max-h-[500px] overflow-y-auto scroll-smooth">

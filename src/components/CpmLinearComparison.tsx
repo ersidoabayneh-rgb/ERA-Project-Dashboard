@@ -540,17 +540,24 @@ export default function CpmLinearComparison({ project }: CpmLinearComparisonProp
               const finalBacPct = BAC > 0 && totalCertifiedUnpaidCombinedEtb > 0 ? ((totalCertifiedUnpaidCombinedEtb / BAC) * 100).toFixed(2) : '0.00';
 
               // Project-specific ROW calculation
+              const rowReqMetric = (project.rowMetrics || []).find(m => 
+                m.name === 'ROW Request By Contractor' ||
+                m.name.toLowerCase().includes('request by contractor') ||
+                (m.name.toLowerCase().includes('row') && m.name.toLowerCase().includes('request'))
+              );
               const rowObstructionMetric = (project.rowMetrics || []).find(m => 
                 m.name.toLowerCase().includes('obstruction free') || 
                 m.name.toLowerCase().includes('free section') ||
                 m.name.toLowerCase().includes('site possession') || 
                 m.name.toLowerCase().includes('row cleared')
               );
+              const rowReqVal = rowReqMetric ? (Number(rowReqMetric.value) || 0) : 0;
               const rowSectionVal = rowObstructionMetric 
                 ? (Number(rowObstructionMetric.value) || 0) 
-                : (project.lengthKm || 0);
-              const calcRowClearPct = project.lengthKm && project.lengthKm > 0 
-                ? Math.min(100, Math.max(0, (rowSectionVal / project.lengthKm) * 100)) 
+                : 0;
+              const evalBase = rowReqVal > 0 ? rowReqVal : (project.lengthKm || 0);
+              const calcRowClearPct = evalBase > 0 
+                ? Math.min(100, Math.max(0, (rowSectionVal / evalBase) * 100)) 
                 : 100;
               const finalRowClearPct = calcRowClearPct.toFixed(2);
 

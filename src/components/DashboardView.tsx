@@ -418,14 +418,18 @@ export default function DashboardView({
     rowBadgeSummary = `Removed: ${poleHand} / Requested: ${poleReq} (${poleReq > 0 ? ((poleHand / poleReq) * 100).toFixed(1) : 0}%)`;
   } else {
     const val = Number(rowMetricObj ? rowMetricObj.value : 0);
-    const totalKm = Number(project.lengthKm || 65);
+    const rowReqMetric = availableRowMetrics.find(m => m.name === 'ROW Request By Contractor' || m.name.toLowerCase().includes('request by contractor') || (m.name.toLowerCase().includes('row') && m.name.toLowerCase().includes('request')));
+    const reqKm = Number(rowReqMetric?.value || 0);
     const isTotalLengthMetric = activeRowMetric.toLowerCase().includes('project length');
+    const isObstructionFree = activeRowMetric.toLowerCase().includes('obstruction free');
+
+    const totalKm = (isObstructionFree && reqKm > 0) ? reqKm : Number(project.lengthKm || 65);
     const remainingKm = isTotalLengthMetric ? 0 : Math.max(0, totalKm - val);
     const pct = totalKm > 0 ? ((val / totalKm) * 100).toFixed(1) : '0';
 
     const unitStr = rowMetricObj?.unit || 'Km';
     const mainKey = `${activeRowMetric} (${unitStr})`;
-    const remKey = `Remaining Section (${unitStr})`;
+    const remKey = isObstructionFree ? `Pending Requested Section (${unitStr})` : `Remaining Section (${unitStr})`;
 
     rowChartData = [{
       name: '',
@@ -440,7 +444,9 @@ export default function DashboardView({
 
     rowBadgeSummary = isTotalLengthMetric 
       ? `Total Project Length: ${val.toFixed(2)} Km`
-      : `Achieved: ${val.toFixed(2)} Km / ${totalKm.toFixed(2)} Km (${pct}%)`;
+      : isObstructionFree
+        ? `Obstruction Free: ${val.toFixed(2)} Km / Requested: ${totalKm.toFixed(2)} Km (${pct}%)`
+        : `Achieved: ${val.toFixed(2)} Km / ${totalKm.toFixed(2)} Km (${pct}%)`;
   }
 
   // Charts mapping for Quantities: Plan vs Completed
@@ -1103,8 +1109,10 @@ export default function DashboardView({
   const maturedUnpaidCombined = maturedUnpaidEtbSum + (maturedUnpaidUsdSum * rateIpc);
   const withinMaturityUnpaidCombined = withinMaturityUnpaidEtbSum + (withinMaturityUnpaidUsdSum * rateIpc);
 
-  const rowClearMetric = (project.rowMetrics || []).find(m => m.name === 'ROW Obstruction free Section')?.value || 0;
-  const rowImpediment = Math.max(0, project.lengthKm - rowClearMetric);
+  const rowReqMetric = (project.rowMetrics || []).find(m => m.name === 'ROW Request By Contractor' || m.name.toLowerCase().includes('request by contractor') || (m.name.toLowerCase().includes('row') && m.name.toLowerCase().includes('request')))?.value || 0;
+  const rowClearMetric = (project.rowMetrics || []).find(m => m.name === 'ROW Obstruction free Section' || m.name.toLowerCase().includes('obstruction free'))?.value || 0;
+  const rowEvalBase = rowReqMetric > 0 ? rowReqMetric : (project.lengthKm || 0);
+  const rowImpediment = Math.max(0, rowEvalBase - rowClearMetric);
 
   // Compile active warning alerts list
   const healthAlerts: { type: 'critical' | 'warning' | 'info'; title: string; desc: string; field: string }[] = [];

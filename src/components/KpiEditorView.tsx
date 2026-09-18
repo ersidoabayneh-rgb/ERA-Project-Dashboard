@@ -378,10 +378,10 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
       'CM-1': 'Cost Conformance: Variation amount vs original contract sum.',
       'CM-2': 'Cost Trend: Quarter-over-quarter cost increase rate. If no QoQ rate is available, evaluated based on Approved cost increase vs original contract (CM-1).',
       'TM-1': 'Time overruns: Approved EOT days vs original duration days.',
-      'RW-1': 'ROW Clearance: Calculated via cleared Km vs total project length Km.',
-      'RW-2A': 'Properties identified, measured, evaluated: Calculated via Properties identified, measured, evaluated Km vs total project length.',
-      'RW-2B': 'Compensation paid to owners: Calculated via Compensation Paid by ERA Km vs total project length.',
-      'RW-2C': 'Compensated properties removed: Calculated via ROW Obstruction free Section Km vs total project length.',
+      'RW-1': 'ROW Clearance: Calculated via ROW Obstruction free Section Km vs ROW Request By Contractor Km.',
+      'RW-2A': 'Properties identified, measured, evaluated: Calculated via Properties identified, measured, evaluated Km vs ROW Request By Contractor Km.',
+      'RW-2B': 'Compensation paid to owners: Calculated via Compensation Paid by ERA Km vs ROW Request By Contractor Km.',
+      'RW-2C': 'Compensated properties removed: Calculated via ROW Obstruction free Section Km vs ROW Request By Contractor Km.',
       'RW-3': 'Monthly ROW report completeness: Calculated via overall utility relocation handover completion rate.',
     };
     return kpiTooltips[id] || `${desc}. Enter 0-100% or select Yes(1)/No(0).`;
@@ -555,9 +555,6 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
             <CheckCircle className="w-5 h-5 text-blue-500" />
             ERA Contract Audit KPI Matrix
           </h2>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            Redistribute contract weight automatically by selecting N/A. Hover over <Info className="inline w-3 h-3" /> for standard auditing metrics.
-          </p>
         </div>
         <div className="flex flex-wrap items-center gap-3 self-end md:self-auto">
           {/* Subgroup creation button */}

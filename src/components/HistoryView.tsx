@@ -400,8 +400,10 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
   };
 
   // Right-of-Way metrics
-  const rowClearMetric = (p.rowMetrics || []).find(m => m.name === 'ROW Obstruction free Section')?.value || 0;
-  const rowImpediment = Math.max(0, p.lengthKm - rowClearMetric);
+  const rowReqMetric = (p.rowMetrics || []).find(m => m.name === 'ROW Request By Contractor' || m.name.toLowerCase().includes('request by contractor') || (m.name.toLowerCase().includes('row') && m.name.toLowerCase().includes('request')))?.value || 0;
+  const rowClearMetric = (p.rowMetrics || []).find(m => m.name === 'ROW Obstruction free Section' || m.name.toLowerCase().includes('obstruction free'))?.value || 0;
+  const rowEvalBase = rowReqMetric > 0 ? rowReqMetric : (p.lengthKm || 0);
+  const rowImpediment = Math.max(0, rowEvalBase - rowClearMetric);
   
   // Total Remaining Budget (In millions of Birr)
   const remainingBudget = Math.max(0, p.origAmount - (AC / 1_000_000));

@@ -1078,4 +1078,5 @@ export interface ConsultantEvaluationCriterion {
   };
   eraFidicRef?: string;
   contractType?: 'DB' | 'DBB' | 'ALL';
+  evaluationSource?: 'auto_calculated' | 'auto_submittal' | 'auto_database' | 'user_evaluation';
 }

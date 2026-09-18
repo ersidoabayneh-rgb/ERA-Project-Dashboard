@@ -525,7 +525,7 @@ export function buildKpiHierarchy(ct: 'DB' | 'DBB', project?: Project) {
   goals.push({
     id: 'G10', name: 'ROW Management', wt: 100, sscs: [
       { id: 'SC10.1', name: 'ROW Clearance', wt: 50, items: [
-          { id: 'RW-1', desc: 'Km cleared of obstructions vs total km', unit: '%', wt: 100, max: 100, type: 'auto' }
+          { id: 'RW-1', desc: 'ROW Obstruction free Section vs ROW Request By Contractor', unit: '%', wt: 100, max: 100, type: 'auto' }
         ] },
       { id: 'SC10.2', name: 'Compensation', wt: 30, items: [
           { id: 'RW-2A', desc: 'Properties identified, measured, evaluated', unit: '%', wt: 40, max: 100, type: 'pct' },
@@ -778,20 +778,21 @@ export function getIntegratedKpiAllocated(project: Project): KpiAllocatedItem[] 
 
   // 2. Right of Way (ROW) calculated clearance & utilities relocation
   const rowMetricsList = project.rowMetrics || [];
-  const projectLengthVal = project.lengthKm > 0 ? project.lengthKm : 1;
+  const rowReqMetric = rowMetricsList.find(m => m.name === 'ROW Request By Contractor' || m.name.toLowerCase().includes('request by contractor') || (m.name.toLowerCase().includes('row') && m.name.toLowerCase().includes('request')))?.value || 0;
+  const rowClearMetric = rowMetricsList.find(m => m.name === 'ROW Obstruction free Section' || m.name.toLowerCase().includes('obstruction free'))?.value || 0;
+  const rowEvalBase = rowReqMetric > 0 ? rowReqMetric : (project.lengthKm > 0 ? project.lengthKm : 1);
 
-  const rowClearMetric = rowMetricsList.find(m => m.name === 'ROW Obstruction free Section')?.value || 0;
-  const rowPercent = (rowClearMetric / projectLengthVal) * 100;
+  const rowPercent = (rowClearMetric / rowEvalBase) * 100;
 
   const measureMetricObj = rowMetricsList.find(m => {
     const n = m.name.toLowerCase();
     return n.includes('properties identified') || n.includes('measurement identification');
   });
   const measureMetricVal = measureMetricObj ? measureMetricObj.value : 0;
-  const measurePercent = (measureMetricVal / projectLengthVal) * 100;
+  const measurePercent = (measureMetricVal / rowEvalBase) * 100;
 
   const compMetricVal = rowMetricsList.find(m => m.name === 'Compensation Paid by ERA')?.value || 0;
-  const compPercent = (compMetricVal / projectLengthVal) * 100;
+  const compPercent = (compMetricVal / rowEvalBase) * 100;
 
   const matReqVal = rowMetricsList.find(m => m.name === 'Material Source Requested (No)')?.value || 0;
   const matHandVal = rowMetricsList.find(m => m.name === 'Material Source Handedover (No)')?.value || 0;

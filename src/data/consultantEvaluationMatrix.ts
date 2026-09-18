@@ -1046,7 +1046,7 @@ export function calculateSubmittalQuantitativeMetrics(
   };
 }
 
-export type CriterionCalculationSource = 'auto_submittal' | 'auto_database' | 'user_evaluation';
+export type CriterionCalculationSource = 'auto_calculated' | 'auto_submittal' | 'auto_database' | 'user_evaluation';
 
 export interface CriterionSourceInfo {
   source: CriterionCalculationSource;
@@ -1057,8 +1057,48 @@ export interface CriterionSourceInfo {
 }
 
 // Maps each criterion to its quantitative calculation source (Submittal logs or Overall Project Database),
-// or marks it as requiring User Evaluation (human expert assessment).
-export function getCriterionSourceInfo(criterion: ConsultantEvaluationCriterion | { code: string }): CriterionSourceInfo {
+// Auto-Calculated composite system metrics, or marks it as requiring User Evaluation (human expert assessment).
+export function getCriterionSourceInfo(criterion: ConsultantEvaluationCriterion | { code: string; evaluationSource?: CriterionCalculationSource }): CriterionSourceInfo {
+  const explicitSource = (criterion as any)?.evaluationSource;
+  if (explicitSource) {
+    if (explicitSource === 'auto_submittal') {
+      return {
+        source: 'auto_submittal',
+        label: 'Submittals',
+        sourceName: 'Submittal Register & SLAs',
+        badgeColor: 'bg-blue-50 text-blue-700 dark:bg-blue-950/70 dark:text-blue-300 border-blue-200 dark:border-blue-800',
+        description: 'Calculated automatically from live RFI, WIR, Material, Design, and SLA turnaround records.'
+      };
+    }
+    if (explicitSource === 'auto_database') {
+      return {
+        source: 'auto_database',
+        label: 'Project DB',
+        sourceName: 'Project Database Telemetry',
+        badgeColor: 'bg-teal-50 text-teal-700 dark:bg-teal-950/70 dark:text-teal-300 border-teal-200 dark:border-teal-800',
+        description: 'Calculated automatically from project database (IPCs, Physical SPI, Personnel, Invoices, ROW, Risks).'
+      };
+    }
+    if (explicitSource === 'auto_calculated') {
+      return {
+        source: 'auto_calculated',
+        label: 'Auto-Calculated',
+        sourceName: 'Auto-Calculated System Metrics',
+        badgeColor: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
+        description: 'Calculated automatically from live project submittals and database metrics.'
+      };
+    }
+    if (explicitSource === 'user_evaluation') {
+      return {
+        source: 'user_evaluation',
+        label: 'User Evaluation Option',
+        sourceName: 'Qualitative Expert Assessment',
+        badgeColor: 'bg-amber-50 text-amber-700 dark:bg-amber-950/70 dark:text-amber-300 border-amber-200 dark:border-amber-800',
+        description: 'Qualitative supervisory performance criterion — gives the user full option to evaluate and rate.'
+      };
+    }
+  }
+
   const code = criterion.code;
 
   // 1. Direct quantitative criteria gained from Submittal Logs (RFIs, WIRs, Material Tests, Design Reviews, Variations, Claims, SLAs)
@@ -1121,7 +1161,7 @@ export function getCriterionSourceInfo(criterion: ConsultantEvaluationCriterion 
       source: 'auto_database',
       label: 'Auto (Project DB)',
       sourceName: 'Project Database Telemetry',
-      badgeColor: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
+      badgeColor: 'bg-teal-50 text-teal-700 dark:bg-teal-950/70 dark:text-teal-300 border-teal-200 dark:border-teal-800',
       description: 'Calculated automatically from project database (IPCs, Physical SPI, Personnel, Invoices, ROW, Risks).'
     };
   }
@@ -1129,7 +1169,7 @@ export function getCriterionSourceInfo(criterion: ConsultantEvaluationCriterion 
   // 3. Qualitative criteria requiring human engineering assessment (User Evaluation Option)
   return {
     source: 'user_evaluation',
-    label: 'User Evaluation',
+    label: 'User Evaluation Option',
     sourceName: 'Qualitative Expert Assessment',
     badgeColor: 'bg-amber-50 text-amber-700 dark:bg-amber-950/70 dark:text-amber-300 border-amber-200 dark:border-amber-800',
     description: 'Qualitative supervisory performance criterion — gives the user full option to evaluate and rate.'
@@ -1321,6 +1361,17 @@ export function autoEvaluateProjectCriterion(
       actualStr = `0.00 (Zero Lost Time Injuries recorded)`;
       noteStr = `Zero lost-time injuries or fatal incidents on supervision watch.`;
       formulaEv = `LTIFR = 0.00`;
+      break;
+    }
+    case 'A5.1':
+    case 'A5.2': { // ROW site handover & obstruction clearance verification
+      const rowReq = (project.rowMetrics || []).find(rm => rm.name === 'ROW Request By Contractor' || rm.name.toLowerCase().includes('request by contractor') || (rm.name.toLowerCase().includes('row') && rm.name.toLowerCase().includes('request')))?.value || 0;
+      const rowClear = (project.rowMetrics || []).find(rm => rm.name === 'ROW Obstruction free Section' || rm.name.toLowerCase().includes('obstruction free'))?.value || 0;
+      const baseReq = rowReq > 0 ? rowReq : (project.lengthKm > 0 ? project.lengthKm : 1);
+      numVal = baseReq > 0 ? Math.min(100, Math.max(0, (rowClear / baseReq) * 100)) : 0;
+      actualStr = `${numVal.toFixed(1)}% (${rowClear.toFixed(2)} Km obstruction-free / ${baseReq.toFixed(2)} Km requested by contractor)`;
+      noteStr = `Calculated automatically: ROW Obstruction free Section (${rowClear.toFixed(2)} Km) evaluated against ROW Request By Contractor (${baseReq.toFixed(2)} Km).`;
+      formulaEv = `(${rowClear.toFixed(2)} Km obstruction-free ÷ ${baseReq.toFixed(2)} Km requested) × 100 = ${numVal.toFixed(1)}%`;
       break;
     }
     case 'A5.4': { // Digital reporting & BIM adoption
