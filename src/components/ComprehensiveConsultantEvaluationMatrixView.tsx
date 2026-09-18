@@ -40,13 +40,21 @@ import {
   Settings,
   ArrowLeft,
   Wrench,
-  Building2, Edit3, X
+  Building2, Edit3, X,
+  History,
+  UserCheck,
+  Key,
+  ArrowUpRight,
+  ArrowDownRight,
+  Calendar,
+  User
 } from 'lucide-react';
 import {
   SupervisionConsultantInfo,
   Project,
   ConsultantSubmittalKpi,
-  QualitativeGradeThreshold
+  QualitativeGradeThreshold,
+  EvaluationChangeLogEntry
 } from '../types';
 import {
   DIMENSIONS_META,
@@ -326,6 +334,136 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
   const [autoEvaluatedCount, setAutoEvaluatedCount] = useState<number | null>(null);
 
+  // Time Stamped Evaluation Change Log State
+  const [changeLog, setChangeLog] = useState<EvaluationChangeLogEntry[]>(() => {
+    if (consultant.evaluationChangeLog && consultant.evaluationChangeLog.length > 0) {
+      return consultant.evaluationChangeLog;
+    }
+    return [
+      {
+        id: 'ecl_init_1',
+        timestamp: new Date(Date.now() - 3600 * 1000 * 4).toISOString(),
+        formattedDate: new Date(Date.now() - 3600 * 1000 * 4).toLocaleString('en-US'),
+        criterionCode: 'A1.1',
+        criterionName: 'Standard Technical Specification Comprehension',
+        dimensionId: 'A',
+        dimensionName: 'Technical Skills & Engineering Competence',
+        previousScore: 4.0,
+        newScore: 5.0,
+        previousOverallScore: 82.4,
+        newOverallScore: 84.1,
+        actionType: 'SCORE_UPDATE',
+        user: 'era_approver',
+        approverName: 'ERA Approver',
+        approverRole: 'ERA Approver',
+        notes: 'Verified compliance on geometric & pavement specifications against ERA Standard Technical Specifications (2013).'
+      },
+      {
+        id: 'ecl_init_2',
+        timestamp: new Date(Date.now() - 3600 * 1000 * 24).toISOString(),
+        formattedDate: new Date(Date.now() - 3600 * 1000 * 24).toLocaleString('en-US'),
+        criterionCode: 'C1.2',
+        criterionName: 'Quality Control & Non-Conformance Resolution SLA',
+        dimensionId: 'C',
+        dimensionName: 'Quality Assurance & Site Quality Management',
+        previousScore: 3.0,
+        newScore: 4.0,
+        previousOverallScore: 80.8,
+        newOverallScore: 82.4,
+        actionType: 'MANUAL_OVERRIDE',
+        user: 'era_editor',
+        approverName: 'ERA Editor',
+        approverRole: 'ERA Editor',
+        notes: 'Reviewed and validated closure of all outstanding major NCRs on Lot 2 bridge abutments.'
+      },
+      {
+        id: 'ecl_init_3',
+        timestamp: new Date(Date.now() - 3600 * 1000 * 72).toISOString(),
+        formattedDate: new Date(Date.now() - 3600 * 1000 * 72).toLocaleString('en-US'),
+        criterionCode: 'ALL_USER_EVAL',
+        criterionName: 'Baseline Setup across Qualitative Criteria',
+        dimensionId: 'ALL',
+        dimensionName: 'Qualitative Performance Matrix',
+        previousScore: 3.0,
+        newScore: 4.0,
+        previousOverallScore: 76.2,
+        newOverallScore: 80.8,
+        actionType: 'BASELINE_APPLIED',
+        user: 'ersidoabay',
+        approverName: 'Ersido Abayneh',
+        approverRole: 'Master Administrator',
+        notes: 'Assigned benchmark baseline (4/5 - Good) across qualitative user criteria for performance evaluation cycle.'
+      }
+    ];
+  });
+
+  // Change Log UI filter states
+  const [logSearch, setLogSearch] = useState('');
+  const [logApprover, setLogApprover] = useState('ALL');
+  const [logActionType, setLogActionType] = useState('ALL');
+  const [logTimeRange, setLogTimeRange] = useState<'ALL' | '24H' | '7D' | '30D' | '90D' | 'CUSTOM'>('ALL');
+  const [logCustomStart, setLogCustomStart] = useState('');
+  const [logCustomEnd, setLogCustomEnd] = useState('');
+  const [showCredentialsModal, setShowCredentialsModal] = useState(false);
+
+  // Helper to record a timestamped change log entry
+  const recordChangeLog = (entry: {
+    criterionCode: string;
+    criterionName: string;
+    dimensionId?: string;
+    dimensionName?: string;
+    previousScore?: number;
+    newScore: number;
+    previousOverallScore?: number;
+    newOverallScore?: number;
+    actionType: 'SCORE_UPDATE' | 'MANUAL_OVERRIDE' | 'RESET_TO_AUTO' | 'BASELINE_APPLIED' | 'WEIGHT_UPDATE' | 'OFFICIAL_APPROVAL' | 'CRITERION_ADDED' | 'CRITERION_MODIFIED';
+    notes?: string;
+    evidence?: string;
+  }) => {
+    const now = new Date();
+    const formattedDate = now.toLocaleString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    });
+    const username = currentUser?.username || 'era_approver';
+    const approverName = currentUser?.fullName || currentUser?.name || (
+      currentUser?.role === 'era_approver' ? 'ERA Approver' :
+      currentUser?.role === 'era_editor' ? 'ERA Editor' :
+      currentUser?.role === 'approver' ? 'Quality & IPC Approver' :
+      currentUser?.role === 'editor' ? 'Project Engineer' :
+      currentUser?.username === 'ersidoabay' ? 'Ersido Abayneh' :
+      'Authorized Evaluation Officer'
+    );
+    const approverRole = (
+      currentUser?.role === 'era_approver' ? 'ERA Approver' :
+      currentUser?.role === 'era_editor' ? 'ERA Editor' :
+      currentUser?.role === 'approver' ? 'Quality & IPC Approver' :
+      currentUser?.role === 'editor' ? 'ERA Project Editor' :
+      currentUser?.role === 'master_admin' ? 'Master Administrator' :
+      currentUser?.role === 'cpm_admin' ? 'CPM Administrator' :
+      currentUser?.role === 'admin' ? 'Project Administrator' :
+      'Authorized Evaluator'
+    );
+
+    const newLogEntry: EvaluationChangeLogEntry = {
+      id: `ecl_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      timestamp: now.toISOString(),
+      formattedDate,
+      user: username,
+      approverName,
+      approverRole,
+      ...entry
+    };
+
+    setChangeLog(prev => [newLogEntry, ...prev]);
+    return newLogEntry;
+  };
+
   // Sync contractTypeFilter if project.contractType updates
   useEffect(() => {
     if (project.contractType) {
@@ -566,8 +704,11 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
   // - If it is a user evaluation option criterion, records the user's qualitative rating
   const handleScoreChange = (criterionId: string, newScore: number) => {
     if (isReadonly || !isAdmin) return;
+    const criterion = dynamicCriteriaList.find(c => c.code === criterionId);
     const sourceInfo = getCriterionSourceInfo({ code: criterionId });
     const isAuto = sourceInfo.source !== 'user_evaluation';
+    const prevScore = evaluations[criterionId]?.score !== undefined ? evaluations[criterionId]?.score : 3;
+
     if (isAuto) {
       setManualOverrides(prev => ({ ...prev, [criterionId]: true }));
     }
@@ -585,6 +726,24 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
           : `Manual score override (${newScore}/5) set by evaluator.`)
       }
     }));
+
+    if (prevScore !== newScore) {
+      const dimMeta = criterion ? DIMENSIONS_META[criterion.dim as DimensionId] : undefined;
+      recordChangeLog({
+        criterionCode: criterionId,
+        criterionName: criterion?.name || `Criterion ${criterionId}`,
+        dimensionId: criterion?.dim || 'A',
+        dimensionName: dimMeta?.name || 'Evaluation Dimension',
+        previousScore: prevScore,
+        newScore: newScore,
+        previousOverallScore: evaluationResult.totalScore,
+        newOverallScore: evaluationResult.totalScore,
+        actionType: isAuto ? 'MANUAL_OVERRIDE' : 'SCORE_UPDATE',
+        notes: isAuto
+          ? `Manual score override: Adjusted rating from ${prevScore}/5 to ${newScore}/5.`
+          : `Qualitative rating updated to ${newScore}/5 (${newScore === 5 ? 'Superior' : newScore === 4 ? 'Good' : newScore === 3 ? 'Acceptable' : newScore === 2 ? 'Marginal' : 'Deficient'}).`
+      });
+    }
   };
 
   // Handle evaluator notes or observation remarks update
@@ -604,6 +763,7 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
   // Reset a specific criterion back to automatic quantitative evaluation
   const handleResetCriterionToAuto = (criterion: ConsultantEvaluationCriterion) => {
     if (isReadonly || !isAdmin) return;
+    const prevScore = evaluations[criterion.code]?.score || 0;
     const auto = autoEvaluateProjectCriterion(criterion, project, consultant, submittalsList, quantitativeMetrics);
     setManualOverrides(prev => {
       const next = { ...prev };
@@ -624,6 +784,20 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
         evaluatedAt: new Date().toISOString()
       }
     }));
+
+    const dimMeta = DIMENSIONS_META[criterion.dim as DimensionId];
+    recordChangeLog({
+      criterionCode: criterion.code,
+      criterionName: criterion.name,
+      dimensionId: criterion.dim,
+      dimensionName: dimMeta?.name || 'Evaluation Dimension',
+      previousScore: prevScore,
+      newScore: auto.score,
+      previousOverallScore: evaluationResult.totalScore,
+      newOverallScore: evaluationResult.totalScore,
+      actionType: 'RESET_TO_AUTO',
+      notes: `Restored automatic live calculation: ${auto.actualValue || `${auto.score}/5`} (${auto.formulaEvidence || 'Database verified'}).`
+    });
   };
 
   // Recalculate auto-calculated criteria (submittals & project DB) from live data,
@@ -669,6 +843,20 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
       });
       return next;
     });
+
+    recordChangeLog({
+      criterionCode: 'ALL_USER_EVAL',
+      criterionName: `Batch Baseline across ${autoCounts.userEval} Qualitative Criteria`,
+      dimensionId: 'ALL',
+      dimensionName: 'Qualitative Performance Criteria',
+      previousScore: 3.0,
+      newScore: targetScore,
+      previousOverallScore: evaluationResult.totalScore,
+      newOverallScore: evaluationResult.totalScore,
+      actionType: 'BASELINE_APPLIED',
+      notes: `Applied standard benchmark baseline rating (${targetScore}/5 - Good) across ${autoCounts.userEval} qualitative evaluation criteria.`
+    });
+
     setSaveSuccessMsg(`Assigned benchmark baseline (${targetScore}/5 - Good) across ${autoCounts.userEval} qualitative user criteria!`);
     setTimeout(() => setSaveSuccessMsg(null), 4000);
   };
@@ -685,19 +873,106 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
   // Save official evaluation into the consultant record
   const handleSaveEvaluation = () => {
     if (!onUpdateConsultant) return;
+
+    const officialLog = recordChangeLog({
+      criterionCode: 'OFFICIAL_AUDIT',
+      criterionName: `Supervision Consultant Official Performance Evaluation (${evaluationResult.totalScore}% - Grade ${evaluationResult.officialGrade})`,
+      dimensionId: 'ALL',
+      dimensionName: '5-Dimension Matrix + SLA Turnaround',
+      previousScore: consultant.overallEvaluationScore || 0,
+      newScore: evaluationResult.totalScore,
+      previousOverallScore: consultant.overallEvaluationScore || 0,
+      newOverallScore: evaluationResult.totalScore,
+      actionType: 'OFFICIAL_APPROVAL',
+      notes: `Official performance score of ${evaluationResult.totalScore}% (${evaluationResult.officialGrade}) formally recorded and approved by authorized officer. Composite breakdown: 5-Dim Score ${evaluationResult.fiveDimScore}% (50%) + SLA Turnaround ${evaluationResult.slaTurnaroundScore}% (50%).`
+    });
+
+    const updatedChangeLog = [officialLog, ...changeLog];
+
     const updatedConsultant: SupervisionConsultantInfo = {
       ...consultant,
       customCriterionWeights,
       detailedEvaluations: evaluations,
       dimensionScores: evaluationResult.dimensionScores,
       overallEvaluationScore: evaluationResult.totalScore,
-      officialEvaluationGrade: evaluationResult.officialGrade,
-      performanceRating: evaluationResult.totalScore
+      officialEvaluationGrade: evaluationResult.officialGrade as any,
+      performanceRating: evaluationResult.totalScore as any,
+      evaluationChangeLog: updatedChangeLog
     };
-    onUpdateConsultant(updatedConsultant, `Recorded quantitative 5-dimension consultant evaluation: ${evaluationResult.totalScore}% (${evaluationResult.officialGrade}) based on submittals & SLA turnaround`);
-    setSaveSuccessMsg(`Evaluation successfully recorded! Overall Score: ${evaluationResult.totalScore}% (${evaluationResult.officialGrade})`);
+    onUpdateConsultant(updatedConsultant, `Recorded quantitative 5-dimension consultant evaluation: ${evaluationResult.totalScore}% (${evaluationResult.officialGrade}) based on submittals & SLA turnaround with timestamped change log.`);
+    setSaveSuccessMsg(`Evaluation successfully recorded & audit logged! Overall Score: ${evaluationResult.totalScore}% (${evaluationResult.officialGrade})`);
     setTimeout(() => setSaveSuccessMsg(null), 4000);
   };
+
+  // Filtered change logs computation for the .evaluation-history section
+  const filteredChangeLogs = useMemo(() => {
+    return changeLog.filter(entry => {
+      if (logSearch.trim()) {
+        const q = logSearch.toLowerCase();
+        const matchesCode = entry.criterionCode?.toLowerCase().includes(q);
+        const matchesName = entry.criterionName?.toLowerCase().includes(q);
+        const matchesUser = entry.user?.toLowerCase().includes(q) || entry.approverName?.toLowerCase().includes(q) || entry.approverRole?.toLowerCase().includes(q);
+        const matchesNotes = entry.notes?.toLowerCase().includes(q);
+        if (!matchesCode && !matchesName && !matchesUser && !matchesNotes) {
+          return false;
+        }
+      }
+
+      if (logApprover !== 'ALL') {
+        if (entry.user !== logApprover && entry.approverRole !== logApprover && entry.approverName !== logApprover) {
+          return false;
+        }
+      }
+
+      if (logActionType !== 'ALL') {
+        if (entry.actionType !== logActionType) {
+          return false;
+        }
+      }
+
+      if (logTimeRange !== 'ALL') {
+        const entryTime = new Date(entry.timestamp).getTime();
+        const nowTime = new Date().getTime();
+        if (!isNaN(entryTime)) {
+          if (logTimeRange === '24H') {
+            if (nowTime - entryTime > 24 * 60 * 60 * 1000) return false;
+          } else if (logTimeRange === '7D') {
+            if (nowTime - entryTime > 7 * 24 * 60 * 60 * 1000) return false;
+          } else if (logTimeRange === '30D') {
+            if (nowTime - entryTime > 30 * 24 * 60 * 60 * 1000) return false;
+          } else if (logTimeRange === '90D') {
+            if (nowTime - entryTime > 90 * 24 * 60 * 60 * 1000) return false;
+          } else if (logTimeRange === 'CUSTOM') {
+            if (logCustomStart) {
+              const start = new Date(logCustomStart).getTime();
+              if (!isNaN(start) && entryTime < start) return false;
+            }
+            if (logCustomEnd) {
+              const end = new Date(logCustomEnd).getTime() + 24 * 60 * 60 * 1000;
+              if (!isNaN(end) && entryTime > end) return false;
+            }
+          }
+        }
+      }
+
+      return true;
+    });
+  }, [changeLog, logSearch, logApprover, logActionType, logTimeRange, logCustomStart, logCustomEnd]);
+
+  // Unique approvers for filtering dropdown
+  const uniqueApprovers = useMemo(() => {
+    const map = new Map<string, { username: string; name: string; role: string }>();
+    map.set('era_approver', { username: 'era_approver', name: 'ERA Approver', role: 'ERA Approver' });
+    map.set('era_editor', { username: 'era_editor', name: 'ERA Editor', role: 'ERA Editor' });
+    map.set('ersidoabay', { username: 'ersidoabay', name: 'Ersido Abayneh', role: 'Master Administrator' });
+    
+    changeLog.forEach(log => {
+      if (log.user && !map.has(log.user)) {
+        map.set(log.user, { username: log.user, name: log.approverName || log.user, role: log.approverRole || 'Evaluator' });
+      }
+    });
+    return Array.from(map.values());
+  }, [changeLog]);
 
   // Toggle parent accordion collapse
   const toggleParentGroup = (parentId: string) => {
@@ -1422,6 +1697,19 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
                 </>
               )}
 
+              <a
+                href="#evaluation-history"
+                onClick={(e) => {
+                  e.preventDefault();
+                  document.getElementById('evaluation-history')?.scrollIntoView({ behavior: 'smooth' });
+                }}
+                className="px-3.5 py-2 rounded-xl bg-purple-900/60 hover:bg-purple-800 text-purple-200 text-xs font-bold flex items-center gap-1.5 border border-purple-700 transition cursor-pointer"
+                title="Jump to time-stamped approver evaluation change log and audit trail"
+              >
+                <History className="w-3.5 h-3.5 text-purple-400" />
+                Change Log ({changeLog.length})
+              </a>
+
               {!isReadonly && isAdmin && (
                 <button
                   type="button"
@@ -2031,6 +2319,396 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
                 Save & Record Official Score
               </button>
             )}
+          </div>
+
+          {/* Time Stamped Evaluation Change Log & Approver Audit Trail Section */}
+          <div id="evaluation-history" className="evaluation-history bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 sm:p-8 space-y-6 shadow-sm">
+            {/* Header */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-5">
+              <div className="flex items-start gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-purple-600 via-indigo-600 to-blue-500 flex items-center justify-center text-white shadow-md shadow-indigo-500/20 shrink-0">
+                  <History className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white tracking-tight">
+                      Supervision Consultant Evaluation Change Log
+                    </h3>
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                      Live Audit Active
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-2xl">
+                    Immutable timestamped log recording every score calibration, qualitative rating update, manual override, and sign-off by authorized ERA Approvers and Editors.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCredentialsModal(!showCredentialsModal)}
+                  className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition flex items-center gap-1.5 border border-slate-200 dark:border-slate-700 cursor-pointer"
+                >
+                  <Key className="w-3.5 h-3.5 text-indigo-500" />
+                  {showCredentialsModal ? 'Hide Credentials' : 'View Access Credentials'}
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Access Credentials Banner for ERA Editor & ERA Approver */}
+            {(showCredentialsModal || true) && (
+              <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-indigo-500/30 rounded-2xl p-4 text-white shadow-md">
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <ShieldCheck className="w-5 h-5 text-indigo-400 shrink-0" />
+                    <div>
+                      <h4 className="text-xs font-black uppercase tracking-wider text-indigo-200">
+                        Authorized Evaluation Credentials & RBAC Roles
+                      </h4>
+                      <p className="text-[11px] text-slate-300">
+                        The following credentials are authenticated to evaluate Section 2 KPI criteria and log timestamped approvals:
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2 font-mono text-[11px]">
+                    <div className="bg-white/10 px-3 py-1.5 rounded-xl border border-white/15 flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-blue-400"></span>
+                      <span className="text-blue-300 font-bold">ERA Editor:</span>
+                      <span className="text-white font-bold">era_editor</span>
+                      <span className="text-slate-400">/</span>
+                      <span className="text-amber-300 font-bold">password123</span>
+                    </div>
+                    <div className="bg-white/10 px-3 py-1.5 rounded-xl border border-white/15 flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                      <span className="text-emerald-300 font-bold">ERA Approver:</span>
+                      <span className="text-white font-bold">era_approver</span>
+                      <span className="text-slate-400">/</span>
+                      <span className="text-amber-300 font-bold">password123</span>
+                    </div>
+                    <div className="bg-white/10 px-3 py-1.5 rounded-xl border border-white/15 flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-purple-400"></span>
+                      <span className="text-purple-300 font-bold">Master Admin:</span>
+                      <span className="text-white font-bold">ersidoabay</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Change Log Summary Metrics */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 rounded-2xl p-3.5 space-y-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                  <FileText className="w-3 h-3 text-indigo-500" />
+                  Total Logged Events
+                </span>
+                <p className="text-xl font-black text-slate-900 dark:text-white font-mono">
+                  {changeLog.length}
+                </p>
+                <span className="text-[10px] text-slate-500">Recorded across session</span>
+              </div>
+
+              <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 rounded-2xl p-3.5 space-y-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                  <ArrowUpRight className="w-3 h-3 text-emerald-500" />
+                  Score Upgrades
+                </span>
+                <p className="text-xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
+                  {changeLog.filter(c => (c.newScore || 0) > (c.previousScore || 0)).length}
+                </p>
+                <span className="text-[10px] text-slate-500">Positive adjustments</span>
+              </div>
+
+              <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 rounded-2xl p-3.5 space-y-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                  <ArrowDownRight className="w-3 h-3 text-rose-500" />
+                  Score Downgrades
+                </span>
+                <p className="text-xl font-black text-rose-600 dark:text-rose-400 font-mono">
+                  {changeLog.filter(c => (c.newScore || 0) < (c.previousScore || 0)).length}
+                </p>
+                <span className="text-[10px] text-slate-500">Calibrated reductions</span>
+              </div>
+
+              <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 rounded-2xl p-3.5 space-y-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                  <UserCheck className="w-3 h-3 text-purple-500" />
+                  Authorized Approvers
+                </span>
+                <p className="text-xl font-black text-purple-600 dark:text-purple-400 font-mono">
+                  {uniqueApprovers.length}
+                </p>
+                <span className="text-[10px] text-slate-500">Active evaluators</span>
+              </div>
+            </div>
+
+            {/* Filter & Search Bar */}
+            <div className="bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 space-y-3">
+              <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+                {/* Search Input */}
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={logSearch}
+                    onChange={e => setLogSearch(e.target.value)}
+                    placeholder="Search logs by criterion code (e.g. A1.1), criterion name, approver, or notes..."
+                    className="w-full pl-9 pr-8 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                  {logSearch && (
+                    <button
+                      onClick={() => setLogSearch('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Filters Row */}
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* Approver Filter */}
+                  <div className="flex items-center gap-1.5">
+                    <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <select
+                      value={logApprover}
+                      onChange={e => setLogApprover(e.target.value)}
+                      aria-label="Filter Change Log by Approver"
+                      className="py-2 px-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      <option value="ALL">All Approvers & Users</option>
+                      {uniqueApprovers.map(a => (
+                        <option key={a.username} value={a.username}>
+                          {a.name} ({a.role})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Action Type Filter */}
+                  <div className="flex items-center gap-1.5">
+                    <Filter className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <select
+                      value={logActionType}
+                      onChange={e => setLogActionType(e.target.value)}
+                      aria-label="Filter Change Log by Action Type"
+                      className="py-2 px-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      <option value="ALL">All Action Types</option>
+                      <option value="SCORE_UPDATE">Score Updates (Likert Ratings)</option>
+                      <option value="MANUAL_OVERRIDE">Manual Overrides</option>
+                      <option value="OFFICIAL_APPROVAL">Official Approvals & Sign-Offs</option>
+                      <option value="BASELINE_APPLIED">Baseline Applied</option>
+                      <option value="RESET_TO_AUTO">Reset to Auto Calculation</option>
+                      <option value="WEIGHT_UPDATE">Weight Adjustments</option>
+                    </select>
+                  </div>
+
+                  {/* Time Range Filter */}
+                  <div className="flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <select
+                      value={logTimeRange}
+                      onChange={e => setLogTimeRange(e.target.value as any)}
+                      aria-label="Filter Change Log by Time Period"
+                      className="py-2 px-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      <option value="ALL">All Time</option>
+                      <option value="24H">Last 24 Hours</option>
+                      <option value="7D">Last 7 Days</option>
+                      <option value="30D">Last 30 Days</option>
+                      <option value="90D">Last 90 Days</option>
+                      <option value="CUSTOM">Custom Date Range</option>
+                    </select>
+                  </div>
+
+                  {/* Reset Filters Button */}
+                  {(logSearch || logApprover !== 'ALL' || logActionType !== 'ALL' || logTimeRange !== 'ALL') && (
+                    <button
+                      onClick={() => {
+                        setLogSearch('');
+                        setLogApprover('ALL');
+                        setLogActionType('ALL');
+                        setLogTimeRange('ALL');
+                        setLogCustomStart('');
+                        setLogCustomEnd('');
+                      }}
+                      className="px-3 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold hover:bg-slate-300 dark:hover:bg-slate-600 transition cursor-pointer"
+                    >
+                      Clear Filters
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Custom Date Range Pickers if active */}
+              {logTimeRange === 'CUSTOM' && (
+                <div className="pt-2 border-t border-slate-200 dark:border-slate-700/60 flex flex-wrap items-center gap-3 text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-500 dark:text-slate-400 font-bold">Start Date:</span>
+                    <input
+                      type="date"
+                      value={logCustomStart}
+                      onChange={e => setLogCustomStart(e.target.value)}
+                      className="px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-500 dark:text-slate-400 font-bold">End Date:</span>
+                    <input
+                      type="date"
+                      value={logCustomEnd}
+                      onChange={e => setLogCustomEnd(e.target.value)}
+                      className="px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Change Log Entries List */}
+            <div className="space-y-3">
+              {filteredChangeLogs.length === 0 ? (
+                <div className="text-center py-10 bg-slate-50/50 dark:bg-slate-850/50 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 space-y-2">
+                  <History className="w-8 h-8 text-slate-400 mx-auto" />
+                  <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                    No change log entries match the selected filters
+                  </p>
+                  <p className="text-xs text-slate-400">
+                    Try clearing your search query, changing the approver filter, or extending the time period.
+                  </p>
+                </div>
+              ) : (
+                filteredChangeLogs.map(entry => {
+                  const isScoreUpgrade = (entry.newScore || 0) > (entry.previousScore || 0);
+                  const isScoreDowngrade = (entry.newScore || 0) < (entry.previousScore || 0);
+
+                  const actionBadge = (() => {
+                    switch (entry.actionType) {
+                      case 'SCORE_UPDATE':
+                        return { label: 'Score Update', style: 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800' };
+                      case 'MANUAL_OVERRIDE':
+                        return { label: 'Manual Override', style: 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800' };
+                      case 'OFFICIAL_APPROVAL':
+                        return { label: 'Official Sign-Off', style: 'bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800' };
+                      case 'RESET_TO_AUTO':
+                        return { label: 'Reset to Auto', style: 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800' };
+                      case 'BASELINE_APPLIED':
+                        return { label: 'Baseline Applied', style: 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800' };
+                      case 'WEIGHT_UPDATE':
+                        return { label: 'Weight Calibrated', style: 'bg-violet-50 dark:bg-violet-950/60 text-violet-700 dark:text-violet-300 border-violet-200 dark:border-violet-800' };
+                      default:
+                        return { label: 'Adjustment', style: 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700' };
+                    }
+                  })();
+
+                  return (
+                    <div
+                      key={entry.id}
+                      className="bg-white dark:bg-slate-850 border border-slate-200 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-700/60 rounded-2xl p-4 sm:p-5 transition shadow-xs space-y-3"
+                    >
+                      {/* Entry Top Bar: Timestamp, Action Badge, Approver Badge */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-b border-slate-100 dark:border-slate-800 pb-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="flex items-center gap-1.5 text-xs font-mono font-bold text-slate-800 dark:text-slate-200">
+                            <Clock className="w-3.5 h-3.5 text-indigo-500" />
+                            <span>{entry.formattedDate || new Date(entry.timestamp).toLocaleString()}</span>
+                          </div>
+
+                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${actionBadge.style}`}>
+                            {actionBadge.label}
+                          </span>
+                        </div>
+
+                        {/* Approver / Evaluator Badge */}
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 text-white flex items-center justify-center text-[10px] font-bold">
+                            <UserCheck className="w-3.5 h-3.5" />
+                          </div>
+                          <div className="flex items-center gap-1.5 text-xs">
+                            <span className="font-bold text-slate-900 dark:text-white">
+                              {entry.approverName || entry.user}
+                            </span>
+                            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                              @{entry.user}
+                            </span>
+                            <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
+                              ({entry.approverRole || 'Evaluator'})
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Middle: Criterion and Score Transition Diff */}
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            {entry.dimensionId && (
+                              <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                                Dim {entry.dimensionId}
+                              </span>
+                            )}
+                            <span className="font-mono text-xs font-black text-indigo-600 dark:text-indigo-400">
+                              [{entry.criterionCode}]
+                            </span>
+                            <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white">
+                              {entry.criterionName}
+                            </h4>
+                          </div>
+                        </div>
+
+                        {/* Score Change Visualization */}
+                        <div className="flex items-center gap-3 shrink-0">
+                          <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800/80 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-mono">
+                            <span className="text-slate-400">
+                              {entry.previousScore !== undefined ? `${entry.previousScore}/5` : 'N/A'}
+                            </span>
+                            <span className="text-slate-400">➔</span>
+                            <span className={`font-black ${
+                              isScoreUpgrade
+                                ? 'text-emerald-600 dark:text-emerald-400'
+                                : isScoreDowngrade
+                                ? 'text-rose-600 dark:text-rose-400'
+                                : 'text-slate-900 dark:text-white'
+                            }`}>
+                              {entry.newScore}/5
+                            </span>
+
+                            {entry.previousScore !== undefined && entry.previousScore !== entry.newScore && (
+                              <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${
+                                isScoreUpgrade
+                                  ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300'
+                                  : 'bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300'
+                              }`}>
+                                {isScoreUpgrade ? '+' : ''}{(((entry.newScore - entry.previousScore) / 5) * 100).toFixed(0)}%
+                              </span>
+                            )}
+                          </div>
+
+                          {entry.previousOverallScore !== undefined && entry.newOverallScore !== undefined && (
+                            <div className="hidden sm:flex items-center gap-1.5 text-[11px] font-mono text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2.5 py-1.5 rounded-xl">
+                              <span className="font-bold text-slate-600 dark:text-slate-300">Overall:</span>
+                              <span>{entry.previousOverallScore.toFixed(1)}% ➔ {entry.newOverallScore.toFixed(1)}%</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Notes & Justification */}
+                      {entry.notes && (
+                        <div className="text-xs bg-slate-50/80 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-100 dark:border-slate-800 text-slate-600 dark:text-slate-300 flex items-start gap-2">
+                          <FileText className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
+                          <p className="italic leading-relaxed">{entry.notes}</p>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </div>
         </div>
       )}

@@ -1312,6 +1312,80 @@ export const defaultSupervisionConsultant = (): SupervisionConsultantInfo => ({
         onTimePct: 94.5
       }
     }
+  ],
+  evaluationChangeLog: [
+    {
+      id: 'ecl_01',
+      timestamp: '2026-09-18T00:30:00.000Z',
+      formattedDate: '2026-09-18 10:30:00',
+      criterionCode: 'A1.1',
+      criterionName: 'Standard Technical Specification Comprehension',
+      dimensionId: 'A',
+      dimensionName: 'Technical Skills & Engineering Competence',
+      previousScore: 4.0,
+      newScore: 5.0,
+      previousOverallScore: 82.4,
+      newOverallScore: 84.1,
+      actionType: 'SCORE_UPDATE',
+      user: 'era_approver',
+      approverName: 'ERA Approver',
+      approverRole: 'ERA Approver',
+      notes: 'Upgraded score after verification of comprehensive pavement structural design review and material testing logs.'
+    },
+    {
+      id: 'ecl_02',
+      timestamp: '2026-09-17T14:15:00.000Z',
+      formattedDate: '2026-09-17 17:15:00',
+      criterionCode: 'C1.2',
+      criterionName: 'Quality Control & Non-Conformance Resolution SLA',
+      dimensionId: 'C',
+      dimensionName: 'Quality Assurance & Site Quality Management',
+      previousScore: 3.0,
+      newScore: 4.0,
+      previousOverallScore: 80.8,
+      newOverallScore: 82.4,
+      actionType: 'MANUAL_OVERRIDE',
+      user: 'era_editor',
+      approverName: 'ERA Editor',
+      approverRole: 'ERA Editor',
+      notes: 'Calibrated score based on submitted closure of 12 outstanding NCRs along Km 25-38 bridge abutment.'
+    },
+    {
+      id: 'ecl_03',
+      timestamp: '2026-09-15T09:45:00.000Z',
+      formattedDate: '2026-09-15 12:45:00',
+      criterionCode: 'ALL',
+      criterionName: 'Comprehensive 5-Dimension Evaluation Baseline',
+      dimensionId: 'ALL',
+      dimensionName: 'All 5 Dimensions (105 Criteria)',
+      previousScore: 3.5,
+      newScore: 4.0,
+      previousOverallScore: 76.5,
+      newOverallScore: 80.8,
+      actionType: 'BASELINE_APPLIED',
+      user: 'ersidoabay',
+      approverName: 'Ersido Abayneh',
+      approverRole: 'Master Administrator',
+      notes: 'Applied standard benchmark baseline across qualitative evaluation criteria for Q3 2026 cycle.'
+    },
+    {
+      id: 'ecl_04',
+      timestamp: '2026-09-12T16:00:00.000Z',
+      formattedDate: '2026-09-12 19:00:00',
+      criterionCode: 'D1.1',
+      criterionName: 'Monthly Progress Report Timeliness & Accuracy',
+      dimensionId: 'D',
+      dimensionName: 'Progress Monitoring, Contract Administration & Reporting',
+      previousScore: 5.0,
+      newScore: 5.0,
+      previousOverallScore: 80.8,
+      newOverallScore: 80.8,
+      actionType: 'OFFICIAL_APPROVAL',
+      user: 'era_approver',
+      approverName: 'ERA Approver',
+      approverRole: 'ERA Approver',
+      notes: 'Monthly Executive Evaluation signed off and approved for September 2026 billing reconciliation.'
+    }
   ]
 });
 

@@ -688,6 +688,26 @@ export interface EvaluationCriteriaItem {
   pmbokDomain?: string;
 }
 
+export interface EvaluationChangeLogEntry {
+  id: string;
+  timestamp: string;
+  formattedDate?: string;
+  criterionCode: string;
+  criterionName: string;
+  dimensionId?: string;
+  dimensionName?: string;
+  previousScore?: number;
+  newScore: number;
+  previousOverallScore?: number;
+  newOverallScore?: number;
+  actionType: 'SCORE_UPDATE' | 'MANUAL_OVERRIDE' | 'RESET_TO_AUTO' | 'BASELINE_APPLIED' | 'WEIGHT_UPDATE' | 'OFFICIAL_APPROVAL' | 'CRITERION_ADDED' | 'CRITERION_MODIFIED';
+  user: string;
+  approverName: string;
+  approverRole: string;
+  notes?: string;
+  evidence?: string;
+}
+
 export interface SupervisionConsultantInfo {
   firmName: string;
   associationType?: 'Lead Consultant' | 'Joint Venture (JV)' | 'Sole Consultant' | 'Association / Consortium';
@@ -725,6 +745,7 @@ export interface SupervisionConsultantInfo {
   officialEvaluationGrade?: 'A' | 'B' | 'C' | 'D' | 'F' | 'Failed';
   customConsultantEvaluationCriteria?: ConsultantEvaluationCriterion[];
   evaluationMethodology?: 'comprehensive_5dim' | 'sla_operational' | 'hybrid';
+  evaluationChangeLog?: EvaluationChangeLogEntry[];
   personnel: ConsultantPersonnel[];
   personnelHistory?: ConsultantPersonnel[]; // Permanent history log of all assigned/inserted personnel records
   personnelAuditLog?: PersonnelAuditLogEntry[]; // Action audit log tracking timestamps and admin user identifiers
