@@ -107,20 +107,59 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
       : CONSULTANT_EVALUATION_CRITERIA;
   }, [consultant.customConsultantEvaluationCriteria]);
 
-  // Master Admin role verification
+  // Master Admin role verification: ONLY Master Admin can add, edit, or delete criteria structure, weights, and thresholds
   const isMasterAdminUser = useMemo(() => {
-    if (isMasterAdmin !== undefined) return isMasterAdmin;
-    if (isAdmin) return true;
-    if (!currentUser) return true;
+    if (!currentUser) {
+      return isMasterAdmin === true;
+    }
+    const role = currentUser.role?.toLowerCase?.() || '';
+    const username = currentUser.username?.toLowerCase?.() || '';
+    const email = currentUser.email?.toLowerCase?.() || '';
+
+    // ERA Editor & ERA Approver are evaluators ONLY (strictly forbidden from editing or deleting criteria)
+    if (
+      role === 'era_editor' ||
+      role === 'era_approver' ||
+      username === 'era_editor' ||
+      username === 'era_approver'
+    ) {
+      return false;
+    }
+
+    if (isMasterAdmin !== undefined) return Boolean(isMasterAdmin);
+
     return (
-      currentUser.role === 'master_admin' ||
-      currentUser.role === 'admin' ||
-      currentUser.role === 'cpm_admin' ||
-      currentUser.username === 'proj_1781786415663' ||
-      Boolean(currentUser.username && currentUser.username.toLowerCase().includes('ersido')) ||
-      Boolean(currentUser.email && currentUser.email.toLowerCase().includes('ersido'))
+      role === 'master_admin' ||
+      role === 'admin' ||
+      role === 'cpm_admin' ||
+      username === 'proj_1781786415663' ||
+      username.includes('ersido') ||
+      email.includes('ersido')
     );
-  }, [isMasterAdmin, currentUser, isAdmin]);
+  }, [isMasterAdmin, currentUser]);
+
+  // Evaluator permission: ERA Editor, ERA Approver, and Master Admins can evaluate / score criteria
+  const canEvaluate = useMemo(() => {
+    if (isReadonly) return false;
+    if (!currentUser) return Boolean(isAdmin);
+    const role = currentUser.role?.toLowerCase?.() || '';
+    const username = currentUser.username?.toLowerCase?.() || '';
+    const email = currentUser.email?.toLowerCase?.() || '';
+    return (
+      Boolean(isAdmin) ||
+      role === 'era_editor' ||
+      role === 'era_approver' ||
+      role === 'editor' ||
+      role === 'approver' ||
+      role === 'master_admin' ||
+      role === 'admin' ||
+      role === 'cpm_admin' ||
+      username === 'era_editor' ||
+      username === 'era_approver' ||
+      username.includes('ersido') ||
+      email.includes('ersido')
+    );
+  }, [isReadonly, isAdmin, currentUser]);
 
   // Editable criterion weights state for Master Admin
   const [customCriterionWeights, setCustomCriterionWeights] = useState<Record<string, number>>(() => {
@@ -703,7 +742,7 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
   // - If it is an auto-calculated criterion, marks it as a manual override
   // - If it is a user evaluation option criterion, records the user's qualitative rating
   const handleScoreChange = (criterionId: string, newScore: number) => {
-    if (isReadonly || !isAdmin) return;
+    if (isReadonly || !canEvaluate) return;
     const criterion = dynamicCriteriaList.find(c => c.code === criterionId);
     const sourceInfo = getCriterionSourceInfo({ code: criterionId });
     const isAuto = sourceInfo.source !== 'user_evaluation';
@@ -748,7 +787,7 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
 
   // Handle evaluator notes or observation remarks update
   const handleNotesChange = (criterionId: string, newNotes: string) => {
-    if (isReadonly || !isAdmin) return;
+    if (isReadonly || !canEvaluate) return;
     setEvaluations(prev => ({
       ...prev,
       [criterionId]: {
@@ -762,7 +801,7 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
 
   // Reset a specific criterion back to automatic quantitative evaluation
   const handleResetCriterionToAuto = (criterion: ConsultantEvaluationCriterion) => {
-    if (isReadonly || !isAdmin) return;
+    if (isReadonly || !canEvaluate) return;
     const prevScore = evaluations[criterion.code]?.score || 0;
     const auto = autoEvaluateProjectCriterion(criterion, project, consultant, submittalsList, quantitativeMetrics);
     setManualOverrides(prev => {
@@ -824,7 +863,7 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
 
   // Quick baseline assigner for qualitative user evaluation criteria
   const handleSetBaselineUserCriteria = (targetScore = 4) => {
-    if (isReadonly || !isAdmin) return;
+    if (isReadonly || !canEvaluate) return;
     setEvaluations(prev => {
       const next = { ...prev };
       dynamicCriteriaList.forEach(c => {
@@ -1661,7 +1700,7 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
             </div>
 
             <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto justify-center lg:justify-end">
-              {!isReadonly && isAdmin && (
+              {!isReadonly && canEvaluate && (
                 <>
                   <button
                     type="button"
@@ -1710,7 +1749,7 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
                 Change Log ({changeLog.length})
               </a>
 
-              {!isReadonly && isAdmin && (
+              {!isReadonly && canEvaluate && (
                 <button
                   type="button"
                   onClick={handleSaveEvaluation}
@@ -2067,7 +2106,7 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
                                         <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-300">
                                           ✍ Manual Override
                                         </span>
-                                        {!isReadonly && isAdmin && (
+                                        {!isReadonly && canEvaluate && (
                                           <button
                                             type="button"
                                             onClick={() => handleResetCriterionToAuto(criterion)}
@@ -2174,7 +2213,7 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
                                         <div className="flex items-center gap-2">
                                           <input
                                             type="text"
-                                            disabled={isReadonly || !isAdmin}
+                                            disabled={isReadonly || !canEvaluate}
                                             value={evalItem.notes || ''}
                                             onChange={(e) => handleNotesChange(criterion.code, e.target.value)}
                                             placeholder="Add evaluator assessment notes, evidence, or observation..."
@@ -2225,7 +2264,7 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
                                           <button
                                             key={val}
                                             type="button"
-                                            disabled={isReadonly || !isAdmin}
+                                            disabled={isReadonly || !canEvaluate}
                                             onClick={() => handleScoreChange(criterion.code, val)}
                                             title={`Score ${val} — ${val === 5 ? 'Superior' : val === 4 ? 'Good' : val === 3 ? 'Acceptable' : val === 2 ? 'Marginal' : 'Deficient'}`}
                                             className={`w-7 h-7 rounded-lg text-xs font-black transition flex items-center justify-center cursor-pointer ${
@@ -2273,7 +2312,7 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
           {/* Footer Save / Auto-Evaluate Options */}
           <div className="p-4 bg-slate-900 border border-slate-800 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2">
-              {!isReadonly && isAdmin && (
+              {!isReadonly && canEvaluate && (
                 <>
                   <button
                     type="button"
@@ -2310,7 +2349,7 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
               )}
             </div>
 
-            {!isReadonly && isAdmin && (
+            {!isReadonly && canEvaluate && (
               <button
                 onClick={handleSaveEvaluation}
                 className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl transition shadow-sm flex items-center gap-1.5 cursor-pointer"

@@ -81,6 +81,45 @@ export default function ConsultantPerformanceKpiWidget({
     return getProjectConsultantEvaluation(project, consultant);
   }, [project, consultant]);
 
+  // Check if current user is ERA Editor or ERA Approver
+  const isEraEditorOrApprover = useMemo(() => {
+    if (!currentUser) return false;
+    const role = currentUser.role?.toLowerCase?.() || '';
+    const username = currentUser.username?.toLowerCase?.() || '';
+    return (
+      role === 'era_editor' ||
+      role === 'era_approver' ||
+      username === 'era_editor' ||
+      username === 'era_approver'
+    );
+  }, [currentUser]);
+
+  // Master Admin verification (ERA Editor & ERA Approver are evaluators ONLY)
+  const isMasterAdmin = useMemo(() => {
+    if (!currentUser) return false;
+    const role = currentUser.role?.toLowerCase?.() || '';
+    const username = currentUser.username?.toLowerCase?.() || '';
+    const email = currentUser.email?.toLowerCase?.() || '';
+
+    if (
+      role === 'era_editor' ||
+      role === 'era_approver' ||
+      username === 'era_editor' ||
+      username === 'era_approver'
+    ) {
+      return false;
+    }
+
+    return (
+      role === 'master_admin' ||
+      role === 'admin' ||
+      role === 'cpm_admin' ||
+      username === 'proj_1781786415663' ||
+      username.includes('ersido') ||
+      email.includes('ersido')
+    );
+  }, [currentUser]);
+
   const isViewingHistorical = selectedTenureConsultantId !== 'current';
   const historicalConsultant = useMemo(() => {
     if (!isViewingHistorical) return null;
@@ -616,8 +655,9 @@ export default function ConsultantPerformanceKpiWidget({
           </div>
         </div>
 
-        {/* Section 1: Submittal Log & Operational SLA Turnaround (19 Categories - Pillar I) */}
-        <div className="space-y-6 pb-8 border-b border-slate-100 dark:border-slate-800">
+        {/* Section 1: Submittal Log & Operational SLA Turnaround (19 Categories - Pillar I) - Hidden for ERA Editor & ERA Approver */}
+        {!isEraEditorOrApprover && (
+          <div className="space-y-6 pb-8 border-b border-slate-100 dark:border-slate-800">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-2">
             <div className="flex items-center gap-2">
               <Clock className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
@@ -997,6 +1037,7 @@ export default function ConsultantPerformanceKpiWidget({
         </div>
       )}
         </div>
+        )}
 
         {/* Section 2 Supervision Consultant Performance Evaluation Criteria */}
         <div className="space-y-4 pt-8">
@@ -1012,7 +1053,7 @@ export default function ConsultantPerformanceKpiWidget({
             onUpdateConsultant={onUpdateConsultant}
             isReadonly={isReadonly}
             isAdmin={isAdmin}
-            isMasterAdmin={isAdmin}
+            isMasterAdmin={isMasterAdmin}
             currentUser={currentUser}
             submittalsList={submittalsList}
             onScoreChange={setLivePillar2Score}
