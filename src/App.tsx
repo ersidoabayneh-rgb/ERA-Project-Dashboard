@@ -120,9 +120,9 @@ export function canUserViewPage(user: User | null, pageId: string): boolean {
     return true;
   }
 
-  // Contractor Editor is allowed to edit and view the Submittal log and RFI log pages
+  // Contractor Editor is allowed to edit and view the Submittal log page
   if (user.role === 'contractor_editor') {
-    return pageId === 'submittalLog' || pageId === 'rfiLog';
+    return pageId === 'submittalLog';
   }
 
   // Consultant Approver or Editor are NOT allowed to view or access Performance KPIs & RFI SLA Evaluation, history page, setting page, KPIs page, progress comparison page and Issue log page
@@ -150,9 +150,9 @@ export function canUserEditPage(user: User | null, pageId: string): boolean {
     return false;
   }
 
-  // Contractor Editor is allowed to edit and view the Submittal log and RFI log pages
+  // Contractor Editor is allowed to edit and view the Submittal log page
   if (user.role === 'contractor_editor') {
-    return pageId === 'submittalLog' || pageId === 'rfiLog';
+    return pageId === 'submittalLog';
   }
 
   // Consultant Approver or Editor are NOT allowed to view or access forbidden pages
@@ -4725,8 +4725,7 @@ let isBatchSyncRunning = false;
                 { id: 'resourceMobilization', label: '🚚 Logistics & Resources' },
                 { id: 'risks', label: '⚠️ Project Risks' },
                 { id: 'consultant', label: '👔 Supervision Consultant' },
-                { id: 'submittalLog', label: '📋 Submittal Log' },
-                { id: 'rfiLog', label: '✉️ RFI Log' },
+                { id: 'submittalLog', label: '📋 Submittals & RFI Log' },
                 { id: 'approvalWorkflow', label: '🛡️ Approvals' },
                 /* { id: 'workspace', label: '☁️ Workspace' }, */
                 { id: 'analysis', label: '📊 Comprehensive analysis' },
@@ -5029,18 +5028,6 @@ let isBatchSyncRunning = false;
                   isReadonly={currentUserObj?.role === 'viewer' && currentUserObj?.username !== 'proj_1781786415663'}
                   currentUserObj={currentUserObj}
                   initialTab="submittals"
-                />
-              )}
-
-              {activeTab === 'rfiLog' && (
-                <SubmittalLogView
-                  project={currentProject}
-                  projects={projects}
-                  onSelectProject={(proj) => handleSelectProject(proj.id)}
-                  onProjectUpdate={handleProjectUpdate}
-                  isReadonly={currentUserObj?.role === 'viewer' && currentUserObj?.username !== 'proj_1781786415663'}
-                  currentUserObj={currentUserObj}
-                  initialTab="rfis"
                 />
               )}
 
