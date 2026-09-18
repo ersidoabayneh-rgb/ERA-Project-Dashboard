@@ -444,6 +444,44 @@ export function fetchExternalDashboardUsers(): Promise<any> {
     });
 }
 
+// Function to handle login to PHP API
+export async function loginUser(email: string, password: string): Promise<any> {
+  try {
+    const response = await fetch('https://eradashboard.com.et/api.php?action=login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      // MUST include this to save the PHP session cookie
+      credentials: 'include', 
+      body: JSON.stringify({ email: email, password: password })
+    });
+
+    const result = await response.json();
+
+    if (result.status === 'success') {
+      console.log("Logged in successfully!", result.user);
+      return result;
+    } else {
+      console.warn("PHP API Login notice:", result.message);
+      return result;
+    }
+  } catch (error) {
+    console.error("Error connecting to API:", error);
+    // Proxy fallback if direct client-side fetch is blocked by CORS/network policy
+    try {
+      const proxyRes = await fetch('/api/external/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      return await proxyRes.json();
+    } catch {
+      return { status: 'error', message: 'Error connecting to API' };
+    }
+  }
+}
+
 export async function safeFetchUsers(): Promise<AppUser[] | null> {
   // Trigger external ERA dashboard user sync
   fetchExternalDashboardUsers();

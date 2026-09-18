@@ -368,6 +368,26 @@ async function startServer() {
     }
   });
 
+  // POST /api/external/login - proxy login credentials to external PHP API
+  app.post('/api/external/login', async (req, res) => {
+    try {
+      const { email, password } = req.body;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      const response = await fetch('https://eradashboard.com.et/api.php?action=login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      const result = await response.json();
+      res.json(result);
+    } catch (err: any) {
+      res.json({ status: 'error', message: err.message || 'Error connecting to API' });
+    }
+  });
+
   // POST /api/users/sync - save / upsert users in database & broadcast real-time
   app.post('/api/users/sync', async (req, res) => {
     try {
