@@ -247,7 +247,16 @@ export async function safeSyncProject(proj: Project, isBackgroundQueueSync = fal
   // 2. Sync to MySQL database via Express API
   const apiRes = await apiPost('/api/projects/sync', { project: normalized });
 
-  safeDispatchCustomEvent('local_project_mutated');
+  safeDispatchCustomEvent('local_project_mutated', normalized);
+  safeDispatchCustomEvent('realtime_project_updated', normalized);
+
+  try {
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      const bc = new BroadcastChannel('era_broadcast_channel');
+      bc.postMessage({ type: 'PROJECT_UPDATED', project: normalized });
+      bc.close();
+    }
+  } catch (e) {}
 
   if (apiRes && apiRes.success !== false) {
     removeOfflineQueueItem(normalized.id);

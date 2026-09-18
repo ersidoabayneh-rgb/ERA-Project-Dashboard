@@ -558,6 +558,7 @@ export interface Project {
   hasForeignCurrency?: boolean;
   risks?: RiskItem[];
   issues?: IssueLogItem[];
+  rfis?: RfiItem[];
   aiChatHistory?: any[];
   documents?: ProjectDocument[];
   supervisionConsultant?: SupervisionConsultantInfo;
@@ -776,6 +777,29 @@ export interface ConsultantSubmittalKpi {
   }>;
 }
 
+export interface RfiItem {
+  id: string;
+  rfiNo: string;
+  subject: string;
+  category: 'Design Clarification' | 'Drawing Discrepancy' | 'Specification Query' | 'Constructability' | 'Site Condition' | 'Material & Testing' | 'Variation Request' | string;
+  discipline: 'Highways & Alignment' | 'Bridges & Structures' | 'Geotechnical & Soils' | 'Hydraulics & Drainage' | 'Pavement & Materials' | 'Utilities & ROW' | 'General' | string;
+  contractorRef?: string;
+  dateSubmitted: string;
+  drawingRefNo?: string;
+  stationKm?: string;
+  priority: 'Critical / Work Stop' | 'High' | 'Medium' | 'Low';
+  impactOnCost: boolean;
+  impactOnSchedule: boolean;
+  estimatedDelayDays?: number;
+  contractorQuery: string;
+  attachments?: string[];
+  consultantResponse?: string;
+  consultantResponder?: string;
+  responseDate?: string;
+  status: 'Submitted' | 'Under Review' | 'Answered / Clarified' | 'Pending Revision' | 'Closed';
+  slaDaysAllowed: number;
+}
+
 export interface ProjectDocument {
   id: string;
   name: string;
@@ -847,7 +871,8 @@ export const ALL_EDITABLE_PAGES: EditablePageOption[] = [
   { id: 'analysis', name: '📊 Performance Analysis', description: 'Financial & physical performance analytics' },
   { id: 'documentation', name: '📁 Project Documentation', description: 'Dossier files, monthly reports, contract upload library' },
   { id: 'consultant', name: '👔 Supervision Consultant', description: 'Consultant contract, fee invoices, and assigned personnel directory' },
-  { id: 'submittalLog', name: '📋 Submittal Log & RFI Tracking', description: 'Supervision consultant submittal review log, design approvals, and RFI tracking' },
+  { id: 'submittalLog', name: '📋 Submittal Log', description: 'Supervision consultant submittal review log and design approvals' },
+  { id: 'rfiLog', name: '✉️ RFI Register', description: 'Request for Information (RFI) log for contractor and consultant design clarifications' },
   { id: 'workspace', name: '☁️ Workspace Notes', description: 'Interactive collaborative scratchpad & design notes' }
 ];
 

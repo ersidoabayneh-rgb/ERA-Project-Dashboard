@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { getMySQLPool, initMySQLTables } from './mysql.js';
+import { defaultProjectTemplate } from '../data/defaultProject.js';
 
 export interface DatabaseRecord {
   projects: Record<string, { id: string; name: string; data: any; last_modified_at: string; updated_at: string }>;
@@ -82,6 +83,53 @@ export async function initServerDatabase(): Promise<void> {
         };
       }
       persistDbSync();
+    }
+
+    // Seed default project if empty so all connected devices share the exact same authoritative data
+    if (Object.keys(dbState.projects).length === 0) {
+      try {
+        const dp = defaultProjectTemplate();
+        if (dp && dp.id) {
+          dbState.projects[dp.id] = {
+            id: dp.id,
+            name: dp.name || 'Default Road Project',
+            data: dp,
+            last_modified_at: dp.lastModifiedAt || new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          };
+          persistDbSync();
+          console.log('✅ [Server DB] Seeded canonical default project template into server database');
+        }
+      } catch (err) {
+        console.warn('⚠️ [Server DB] Failed to seed default project template:', err);
+      }
+    }
+
+    // Seed default taxonomy / config if empty
+    if (Object.keys(dbState.config).length === 0) {
+      try {
+        const defaultPmos = [
+          'Central Region Directorate PMO',
+          'Northern Region Directorate PMO',
+          'Western Region Directorate PMO',
+          'Southern Region Directorate PMO',
+          'Eastern Region Directorate PMO',
+          'Expressway & Special Projects PMO'
+        ];
+        const defaultDirectorates = [
+          'Road Development Directorate',
+          'Road Maintenance & Asset Management Directorate',
+          'Planning & Program Management Directorate',
+          'Procurement & Contract Administration Directorate',
+          'Engineering Services & Quality Assurance Directorate'
+        ];
+        dbState.config['taxonomy'] = {
+          config_key: 'taxonomy',
+          data: { pmos: defaultPmos, directorates: defaultDirectorates },
+          updated_at: new Date().toISOString()
+        };
+        persistDbSync();
+      } catch (err) {}
     }
 
     // Try initializing MySQL tables & loading existing MySQL data

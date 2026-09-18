@@ -25,7 +25,23 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
   const server = http.createServer(app);
-  const wss = new WebSocketServer({ server });
+  const wss = new WebSocketServer({ noServer: true });
+
+  // Handle explicit HTTP upgrade to WebSocket for /ws and /api/ws endpoints
+  server.on('upgrade', (request, socket, head) => {
+    try {
+      const host = request.headers.host || 'localhost';
+      const parsedUrl = new URL(request.url || '', `http://${host}`);
+      const pathname = parsedUrl.pathname;
+      if (pathname === '/ws' || pathname === '/api/ws' || pathname === '/') {
+        wss.handleUpgrade(request, socket, head, (ws) => {
+          wss.emit('connection', ws, request);
+        });
+      }
+    } catch (err) {
+      socket.destroy();
+    }
+  });
 
   // Track active real-time WebSocket clients and SSE response streams
   const connectedClients = new Set<WebSocket>();
@@ -180,13 +196,18 @@ async function startServer() {
   app.get('/api/health', async (req, res) => {
     const isConn = await testMySQLConnection().catch(() => false);
     const stats = serverGetDbStats();
+    const rawHost = process.env.MYSQL_HOST || '';
+    const cleanHost = (rawHost && !rawHost.includes('ethiotelecom')) ? rawHost : 'Enterprise Cloud Server';
+    const rawDbName = process.env.MYSQL_DATABASE || '';
+    const cleanDbName = (rawDbName && !rawDbName.includes('eradash')) ? rawDbName : 'era_dashboard';
+
     res.json({
       status: 'ok',
       database: isConn ? 'mysql+server_db' : 'persistent_server_db',
       mysqlConnected: isConn,
-      serverHost: process.env.MYSQL_HOST || 'eradashboard.com.et',
-      serverProvider: 'Ethio Telecom (eradashboard.com.et)',
-      databaseName: process.env.MYSQL_DATABASE || 'era_dashboard',
+      serverHost: cleanHost,
+      serverProvider: 'Enterprise Central Database',
+      databaseName: cleanDbName,
       stats,
       realtimeClients: connectedClients.size + sseClients.size,
       timestamp: new Date().toISOString()
@@ -196,11 +217,16 @@ async function startServer() {
   // Dedicated sync status endpoint for rapid polling & delta detection
   app.get('/api/sync/status', (req, res) => {
     const stats = serverGetDbStats();
+    const rawHost = process.env.MYSQL_HOST || '';
+    const cleanHost = (rawHost && !rawHost.includes('ethiotelecom')) ? rawHost : 'Enterprise Cloud Server';
+    const rawDbName = process.env.MYSQL_DATABASE || '';
+    const cleanDbName = (rawDbName && !rawDbName.includes('eradash')) ? rawDbName : 'era_dashboard';
+
     res.json({
       status: 'active',
-      serverHost: process.env.MYSQL_HOST || 'eradashboard.com.et',
-      serverProvider: 'Ethio Telecom (eradashboard.com.et)',
-      databaseName: process.env.MYSQL_DATABASE || 'era_dashboard',
+      serverHost: cleanHost,
+      serverProvider: 'Enterprise Central Database',
+      databaseName: cleanDbName,
       stats,
       realtimeClients: connectedClients.size + sseClients.size,
       timestamp: new Date().toISOString()

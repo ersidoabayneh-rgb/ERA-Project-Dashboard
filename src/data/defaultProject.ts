@@ -7,6 +7,7 @@ import {
   KpiAllocatedItem,
   LinearData,
   RiskItem,
+  RfiItem,
   SupervisionConsultantInfo,
   MonthlyResourceRecord,
   MonthlyGradingRecord,
@@ -2174,6 +2175,95 @@ export function resolveProjectMonthlyGrading(project: Project): MonthlyGradingRe
   return ensureUniqueGradingRecords(baselineList);
 }
 
+export function defaultProjectRfis(): RfiItem[] {
+  return [
+    {
+      id: 'rfi_001',
+      rfiNo: 'RFI-CON-001',
+      subject: 'Abutment A1 Foundation Depth & Soil Bearing Capacity Clarification',
+      category: 'Site Condition',
+      discipline: 'Bridges & Structures',
+      contractorRef: 'CTR/MEMO/2024/042',
+      dateSubmitted: '2024-03-08',
+      drawingRefNo: 'DWG-BR-004 Rev A',
+      stationKm: 'Km 14+250',
+      priority: 'Critical / Work Stop',
+      impactOnCost: true,
+      impactOnSchedule: true,
+      estimatedDelayDays: 14,
+      contractorQuery: 'During excavation for Abutment A1, soft expansive clay was encountered down to 4.2m depth, whereas borehole BH-02 indicated rock at 2.0m. Request RE clarification on whether subgrade replacement with rockfill or piling is required.',
+      attachments: ['BH02_Lithology_Log.pdf', 'AbutmentA1_Excavation_Photos.jpg'],
+      consultantResponse: 'RE instructed excavation to 4.5m depth, backfill with compacted rockfill (300mm layers, 95% MDD) up to formation level as per Variation Order #03.',
+      consultantResponder: 'Eng. Solomon Taddesse (Senior Bridge Specialist)',
+      responseDate: '2024-03-14',
+      status: 'Answered / Clarified',
+      slaDaysAllowed: 7
+    },
+    {
+      id: 'rfi_002',
+      rfiNo: 'RFI-CON-002',
+      subject: 'Culvert Structure Type & Invert Elevation Discrepancy',
+      category: 'Drawing Discrepancy',
+      discipline: 'Hydraulics & Drainage',
+      contractorRef: 'CTR/MEMO/2024/089',
+      dateSubmitted: '2024-05-02',
+      drawingRefNo: 'DWG-DR-018 & DWG-AL-012',
+      stationKm: 'Km 28+400',
+      priority: 'High',
+      impactOnCost: false,
+      impactOnSchedule: true,
+      estimatedDelayDays: 5,
+      contractorQuery: 'Alignment drawing DWG-AL-012 indicates a 2x2.0m Pipe Culvert at Km 28+400, whereas Drainage Schedule DWG-DR-018 specifies a 3x3.0m Box Culvert. Please clarify correct culvert structure and invert level.',
+      attachments: ['Drawing_CrossSection_Overlap.pdf'],
+      consultantResponse: 'Drainage Schedule DWG-DR-018 governs. A 3x3.0m RC Box Culvert shall be constructed. Invert level at inlet is set at 1842.15m MSL.',
+      consultantResponder: 'Eng. Yohannes Worku (Resident Engineer)',
+      responseDate: '2024-05-07',
+      status: 'Answered / Clarified',
+      slaDaysAllowed: 7
+    },
+    {
+      id: 'rfi_003',
+      rfiNo: 'RFI-CON-003',
+      subject: 'Pavement Capping Layer Thickness Modification Request for Low-CBR Subgrade',
+      category: 'Design Clarification',
+      discipline: 'Pavement & Materials',
+      contractorRef: 'CTR/MEMO/2024/114',
+      dateSubmitted: '2024-08-10',
+      drawingRefNo: 'DWG-PV-002',
+      stationKm: 'Km 42+000 - 48+500',
+      priority: 'High',
+      impactOnCost: true,
+      impactOnSchedule: true,
+      estimatedDelayDays: 10,
+      contractorQuery: 'Subgrade soil testing between Km 42+000 and 48+500 yielded soaked CBR values of 2.5% - 3.2% (below specification minimum 5.0%). Contractor requests confirmation if a 250mm capped layer of selected rock material is required before subbase laying.',
+      attachments: ['Soil_Lab_CBR_TestReport_SeriesB.pdf'],
+      consultantResponse: 'Under Consultant evaluation with Materials Specialist. Joint site verification and trial pit sampling scheduled.',
+      consultantResponder: 'Eng. Kebede Bekele (Senior Materials Engineer)',
+      responseDate: undefined,
+      status: 'Under Review',
+      slaDaysAllowed: 14
+    },
+    {
+      id: 'rfi_004',
+      rfiNo: 'RFI-CON-004',
+      subject: 'Traffic Signal & Junction Layout Alignment at Town Section Km 62+100',
+      category: 'Constructability',
+      discipline: 'Highways & Alignment',
+      contractorRef: 'CTR/MEMO/2024/156',
+      dateSubmitted: '2024-09-01',
+      drawingRefNo: 'DWG-JN-005',
+      stationKm: 'Km 62+100',
+      priority: 'Medium',
+      impactOnCost: false,
+      impactOnSchedule: false,
+      contractorQuery: 'Proposed roundabout center island conflicts with existing municipal high-voltage power line pole at Km 62+110. Request revised junction radius or pole relocation approval.',
+      attachments: ['Junction_Site_Photo_OverheadLines.jpg'],
+      status: 'Submitted',
+      slaDaysAllowed: 10
+    }
+  ];
+}
+
 export function defaultProjectTemplate(): Project {
   return {
     id: 'proj_default',
@@ -2482,6 +2572,7 @@ export function defaultProjectTemplate(): Project {
     ],
     usdExchangeRate: 57.50,
     risks: defaultRoadRisks(),
+    rfis: defaultProjectRfis(),
     supervisionConsultant: defaultSupervisionConsultant()
   };
 }
@@ -2555,6 +2646,7 @@ export function blankProjectTemplate(): Project {
   d.images = [];
   d.history = [];
   d.risks = [];
+  d.rfis = [];
   d.supervisionConsultant = {
     firmName: '',
     associationType: 'Sole Consultant',

@@ -42,8 +42,8 @@ class RealtimeClientManager {
   private connectionStatus: 'connected' | 'reconnecting' | 'offline' = 'reconnecting';
   private lastSyncTime: string = new Date().toISOString();
   private lastKnownVersion = 0;
-  private serverHost = 'eradashboard.com.et';
-  private serverProvider = 'Ethio Telecom (eradashboard.com.et)';
+  private serverHost = typeof window !== 'undefined' ? window.location.host : 'Enterprise Cloud Server';
+  private serverProvider = 'Enterprise Real-Time Server';
   private pollingTimer: any = null;
   private watchdogTimer: any = null;
   private lastMessageReceivedAt = Date.now();
@@ -280,6 +280,25 @@ class RealtimeClientManager {
         if (uData && Array.isArray(uData.users) && uData.users.length > 0) {
           localStorage.setItem('era_users_v28', JSON.stringify(uData.users));
           window.dispatchEvent(new CustomEvent('realtime_users_updated', { detail: uData.users }));
+        }
+      }
+
+      // Also sync approvals
+      const apprRes = await fetch('/api/approvals');
+      if (apprRes.ok) {
+        const aData = await apprRes.json();
+        if (aData && Array.isArray(aData.approvals)) {
+          localStorage.setItem('era_appr_v28', JSON.stringify(aData.approvals));
+          window.dispatchEvent(new CustomEvent('realtime_approvals_updated', { detail: aData.approvals }));
+        }
+      }
+
+      // Also sync config
+      const configRes = await fetch('/api/config');
+      if (configRes.ok) {
+        const cData = await configRes.json();
+        if (cData && cData.config) {
+          window.dispatchEvent(new CustomEvent('realtime_config_updated', { detail: cData.config }));
         }
       }
 

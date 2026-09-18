@@ -237,7 +237,7 @@ export async function syncSingleQueueItem(
     await sleep(250);
 
     const projectToSync = normalizeProject(item.projectData);
-    report(30, 'Packaging payload for Ethio Telecom server (eradashboard.com.et:3306)...', 'syncing');
+    report(30, 'Packaging payload for central database...', 'syncing');
     await sleep(250);
 
     report(60, 'Transmitting project data via REST sync channel...', 'syncing');
@@ -257,10 +257,10 @@ export async function syncSingleQueueItem(
       throw new Error(data.message || 'Central database rejected payload');
     }
 
-    report(85, 'Verifying MySQL database checksum & transaction commit...', 'syncing');
+    report(85, 'Verifying central database checksum & transaction commit...', 'syncing');
     await sleep(200);
 
-    report(100, 'Synchronized successfully to Ethio Telecom server!', 'synced');
+    report(100, 'Synchronized successfully to central server!', 'synced');
     safeDispatchCustomEvent('local_project_mutated');
     return true;
   } catch (err: any) {

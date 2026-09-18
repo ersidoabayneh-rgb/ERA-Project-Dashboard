@@ -43,12 +43,7 @@ import {
   CustomScoringCriterion
 } from '../types';
 import { 
-  safeSyncScoringWeights,
-  fetchMySQLDiagnostics,
-  testMySQLServerConnection,
-  triggerMySQLBiDirectionalSync,
-  fetchMySQLSchemaSQL,
-  ClientMySQLDiagnostics
+  safeSyncScoringWeights
 } from '../lib/apiSync';
 import { realtimeManager, RealtimeSyncStatus } from '../lib/realtime';
 
@@ -160,103 +155,6 @@ export default function SettingsView({
     } finally {
       setIsSyncingNow(false);
     }
-  };
-
-  // Ethio Telecom Traditional MySQL Database States
-  const [mysqlDiag, setMysqlDiag] = useState<ClientMySQLDiagnostics | null>(null);
-  const [isLoadingMysql, setIsLoadingMysql] = useState(false);
-  const [isTestingMysql, setIsTestingMysql] = useState(false);
-  const [isSyncingMysql, setIsSyncingMysql] = useState(false);
-  const [mysqlNotice, setMysqlNotice] = useState<{ type: 'success' | 'error' | 'info'; text: string; recommendation?: string } | null>(null);
-  const [isSchemaModalOpen, setIsSchemaModalOpen] = useState(false);
-  const [schemaSqlText, setSchemaSqlText] = useState('');
-  const [hasCopiedSchema, setHasCopiedSchema] = useState(false);
-  const [showCpanelGuide, setShowCpanelGuide] = useState(false);
-
-  const loadMySQLDiagnostics = async () => {
-    setIsLoadingMysql(true);
-    try {
-      const diag = await fetchMySQLDiagnostics();
-      if (diag) setMysqlDiag(diag);
-    } catch {} finally {
-      setIsLoadingMysql(false);
-    }
-  };
-
-  React.useEffect(() => {
-    loadMySQLDiagnostics();
-  }, []);
-
-  const handleTestMySQL = async () => {
-    setIsTestingMysql(true);
-    setMysqlNotice(null);
-    try {
-      const res = await testMySQLServerConnection();
-      if (res.success && res.diagnostics) {
-        setMysqlDiag(res.diagnostics);
-        setMysqlNotice({
-          type: 'success',
-          text: `Connection verified! Ethio Telecom MySQL responded in ${res.diagnostics.latencyMs}ms.`
-        });
-      } else {
-        const diag = res.diagnostics || (await fetchMySQLDiagnostics());
-        if (diag) setMysqlDiag(diag);
-        setMysqlNotice({
-          type: 'error',
-          text: diag?.errorDetails || res.error || 'Connection to Ethio Telecom MySQL host is offline or blocked by firewall.',
-          recommendation: diag?.recommendation || 'Verify database credentials in cPanel and check Remote MySQL port 3306.'
-        });
-      }
-    } catch (e: any) {
-      setMysqlNotice({
-        type: 'error',
-        text: e?.message || 'Failed to ping Ethio Telecom MySQL host.'
-      });
-    } finally {
-      setIsTestingMysql(false);
-      setTimeout(() => setMysqlNotice(null), 12000);
-    }
-  };
-
-  const handleSyncMySQL = async () => {
-    setIsSyncingMysql(true);
-    setMysqlNotice(null);
-    try {
-      const res = await triggerMySQLBiDirectionalSync();
-      if (res.success) {
-        await loadMySQLDiagnostics();
-        setMysqlNotice({
-          type: 'success',
-          text: res.message || 'Bi-directional synchronization with Ethio Telecom MySQL database completed!'
-        });
-      } else {
-        setMysqlNotice({
-          type: 'error',
-          text: res.error || 'Failed to execute bi-directional MySQL sync. Verify database is reachable.'
-        });
-      }
-    } catch (e: any) {
-      setMysqlNotice({ type: 'error', text: e?.message || 'Sync operation encountered an error.' });
-    } finally {
-      setIsSyncingMysql(false);
-      setTimeout(() => setMysqlNotice(null), 12000);
-    }
-  };
-
-  const handleOpenSchemaModal = async () => {
-    setIsSchemaModalOpen(true);
-    if (!schemaSqlText) {
-      const sql = await fetchMySQLSchemaSQL();
-      setSchemaSqlText(sql);
-    }
-  };
-
-  const handleCopySchema = async () => {
-    try {
-      await navigator.clipboard.writeText(schemaSqlText);
-      setHasCopiedSchema(true);
-      setTimeout(() => setHasCopiedSchema(false), 2500);
-    } catch {}
   };
 
   const handleOpenModal = () => {
@@ -1021,93 +919,6 @@ export default function SettingsView({
                   );
                 })()}
               </div>
-            </div>
-          </motion.div>
-        </div>
-      )}
-
-      {/* ETHIO TELECOM MYSQL SCHEMA VIEWER MODAL */}
-      {isSchemaModalOpen && (
-        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl max-w-4xl w-full overflow-hidden flex flex-col max-h-[90vh]"
-          >
-            {/* Modal Header */}
-            <div className="bg-slate-900 text-white p-5 flex items-center justify-between border-b border-slate-800 shrink-0">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-emerald-500/20 text-emerald-400 rounded-xl border border-emerald-500/30">
-                  <Database className="w-5 h-5" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-base font-black tracking-tight">ethiotelecom_mysql_schema.sql</h3>
-                    <span className="text-[9px] font-black uppercase px-2 py-0.5 bg-emerald-500 text-slate-950 rounded font-mono">
-                      InnoDB / utf8mb4
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    Traditional DDL schema optimized for phpMyAdmin import on Ethio Telecom hosting (lin1.ethiotelecom.et).
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleCopySchema}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition cursor-pointer"
-                >
-                  {hasCopiedSchema ? (
-                    <>
-                      <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
-                      <span className="text-emerald-400">Copied!</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-3.5 h-3.5" />
-                      <span>Copy SQL</span>
-                    </>
-                  )}
-                </button>
-
-                <a
-                  href="/api/mysql/download-schema"
-                  download="ethiotelecom_mysql_schema.sql"
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition cursor-pointer"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Download</span>
-                </a>
-
-                <button
-                  onClick={() => setIsSchemaModalOpen(false)}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            {/* SQL Content Box */}
-            <div className="p-4 flex-1 overflow-auto bg-slate-950">
-              <pre className="text-[11px] font-mono text-emerald-400 leading-relaxed overflow-x-auto whitespace-pre p-2 select-all">
-                {schemaSqlText || '-- Fetching schema SQL from server...'}
-              </pre>
-            </div>
-
-            {/* Modal Footer */}
-            <div className="p-4 bg-slate-900 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400 shrink-0">
-              <div>
-                💡 <strong>phpMyAdmin Tip:</strong> Log in to cPanel, open phpMyAdmin, select your database, click <strong>Import</strong>, and upload this file.
-              </div>
-              <button
-                onClick={() => setIsSchemaModalOpen(false)}
-                className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-bold transition cursor-pointer"
-              >
-                Close
-              </button>
             </div>
           </motion.div>
         </div>

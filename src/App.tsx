@@ -120,9 +120,9 @@ export function canUserViewPage(user: User | null, pageId: string): boolean {
     return true;
   }
 
-  // Contractor Editor is allowed to edit and view the Submittal log page ONLY
+  // Contractor Editor is allowed to edit and view the Submittal log and RFI log pages
   if (user.role === 'contractor_editor') {
-    return pageId === 'submittalLog';
+    return pageId === 'submittalLog' || pageId === 'rfiLog';
   }
 
   // Consultant Approver or Editor are NOT allowed to view or access Performance KPIs & RFI SLA Evaluation, history page, setting page, KPIs page, progress comparison page and Issue log page
@@ -150,9 +150,9 @@ export function canUserEditPage(user: User | null, pageId: string): boolean {
     return false;
   }
 
-  // Contractor Editor is allowed to edit and view the Submittal log page ONLY
+  // Contractor Editor is allowed to edit and view the Submittal log and RFI log pages
   if (user.role === 'contractor_editor') {
-    return pageId === 'submittalLog';
+    return pageId === 'submittalLog' || pageId === 'rfiLog';
   }
 
   // Consultant Approver or Editor are NOT allowed to view or access forbidden pages
@@ -199,6 +199,7 @@ import ComprehensiveAnalysisView from './components/ComprehensiveAnalysisView';
 import DocumentationView from './components/DocumentationView';
 import SupervisionConsultantView from './components/SupervisionConsultantView';
 import SubmittalLogView from './components/SubmittalLogView';
+import RfiLogView from './components/RfiLogView';
 import HistoryView from './components/HistoryView';
 import SettingsView from './components/SettingsView';
 import WorkspaceView from './components/WorkspaceView';
@@ -212,7 +213,6 @@ import UserGuideManualModal from './components/UserGuideManualModal';
 import { UserProfileModal } from './components/UserProfileModal';
 import ApprovalWorkflowManager from './components/ApprovalWorkflowManager';
 import ThemeCustomizerModal, { ThemeConfig, DEFAULT_THEME_CONFIG } from './components/ThemeCustomizerModal';
-import { OfflineSyncStatusBar } from './components/OfflineSyncStatusBar';
 import eraLogo from './assets/logo.png';
 
 import { defaultProjectTemplate, blankProjectTemplate, generateKpiAllocated } from './data/defaultProject';
@@ -239,6 +239,7 @@ import {
   recordSyncLog,
   SyncLogEntry
 } from './lib/apiSync';
+import { realtimeManager, RealtimeSyncStatus } from './lib/realtime';
 import { getAccessToken } from './lib/auth';
 import { safeSetItem } from './lib/storage';
 import { updateMonthlyWithProgress, getLastActualProgress, getLiveActualValue, resolveCurrentMonthKey, ensureLiveRowForActual } from './lib/monthlySync';
@@ -1704,8 +1705,18 @@ let isBatchSyncRunning = false;
           safeSetItem('era_appr_v28', JSON.stringify(rawData));
         }
       } else if (typeStr === 'PROJECT_UPDATED' || typeStr === 'PROJECT_UPDATE') {
-        if (rawData && rawData.id) {
-          const incoming = syncProjectPayment(rawData);
+        if (Array.isArray(rawData)) {
+          const synced = rawData.map(syncProjectPayment);
+          setProjects(synced);
+          safeSetItem('era_proj_v28', JSON.stringify(synced));
+          setCurrentProject(prevProj => {
+            if (!prevProj) return synced[0] || null;
+            const match = synced.find(p => p.id === prevProj.id);
+            return match || synced[0] || null;
+          });
+        } else if (rawData && (rawData.id || (rawData.project && rawData.project.id))) {
+          const projObj = rawData.id ? rawData : rawData.project;
+          const incoming = syncProjectPayment(projObj);
           setProjects(prev => {
             const idx = prev.findIndex(p => p.id === incoming.id);
             let updated;
@@ -1726,6 +1737,17 @@ let isBatchSyncRunning = false;
             return prevProj;
           });
         }
+      } else if (typeStr === 'DATABASE_SYNCED' || typeStr === 'FORCE_REFRESH') {
+        safeFetchProjects().then(projs => {
+          if (projs && projs.length > 0) {
+            setProjects(projs);
+            setCurrentProject(prev => {
+              if (!prev) return projs[0] || null;
+              const match = projs.find(p => p.id === prev.id);
+              return match || projs[0] || null;
+            });
+          }
+        }).catch(() => {});
       } else if (typeStr === 'PROJECT_DELETED' || typeStr === 'PROJECT_DELETE') {
         const deletedId = rawData?.id || (typeof rawData === 'string' ? rawData : null);
         if (deletedId) {
@@ -1953,6 +1975,8 @@ let isBatchSyncRunning = false;
         eraChannel.onmessage = (event) => {
           if (event.data?.type === 'PROJECT_DELETED' && event.data.id) {
             applyGlobalProjectDeletions([event.data.id]);
+          } else if (event.data?.type === 'PROJECT_UPDATED' && (event.data.project || event.data.payload)) {
+            handleRealtimePayload({ type: 'PROJECT_UPDATED', payload: event.data.project || event.data.payload });
           } else if (event.data?.type === 'USER_REGISTRATION_SUBMITTED' || event.data?.type === 'USER_SIGNIN_APPROVAL_REQUESTED') {
             const user = event.data.user as User;
             if (user && user.username) {
@@ -2045,8 +2069,12 @@ let isBatchSyncRunning = false;
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    const handleRealtimeLocalMutated = () => {
-      reloadLocalState();
+    const handleRealtimeLocalMutated = (evt?: any) => {
+      if (evt && evt.detail && (evt.detail.id || Array.isArray(evt.detail))) {
+        handleRealtimePayload({ type: 'PROJECT_UPDATED', payload: evt.detail });
+      } else {
+        reloadLocalState();
+      }
     };
     window.addEventListener('local_project_mutated', handleRealtimeLocalMutated);
     window.addEventListener('realtime_project_updated', handleRealtimeLocalMutated);
@@ -2054,7 +2082,15 @@ let isBatchSyncRunning = false;
     window.addEventListener('realtime_approvals_updated', handleRealtimeLocalMutated);
     window.addEventListener('realtime_config_updated', handleRealtimeLocalMutated);
 
+    // Start real-time multi-device synchronization engine
+    initWebSocket();
+    initSSE();
+    const unsubRealtime = realtimeManager.subscribe((msg) => {
+      handleRealtimePayload(msg);
+    });
+
     // Run initial sync on mount
+    realtimeManager.forceSyncNow().catch(() => {});
 
     // Sync initial local users to backend so new installations share default users
     safeSyncUsers(usersListState).catch(() => {});
@@ -2083,6 +2119,7 @@ let isBatchSyncRunning = false;
       window.removeEventListener('realtime_users_updated', handleRealtimeLocalMutated);
       window.removeEventListener('realtime_approvals_updated', handleRealtimeLocalMutated);
       window.removeEventListener('realtime_config_updated', handleRealtimeLocalMutated);
+      try { unsubRealtime(); } catch (e) {}
       if (broadcastChannel) {
         try { broadcastChannel.close(); } catch (e) {}
       }
@@ -2360,10 +2397,20 @@ let isBatchSyncRunning = false;
 
           setProjects(filteredMerged);
           safeSetItem('era_proj_v28', JSON.stringify(filteredMerged));
+          setCurrentProject(prev => {
+            if (!prev) return filteredMerged[0] || null;
+            const match = filteredMerged.find(p => p.id === prev.id);
+            return match || filteredMerged[0] || null;
+          });
           console.log('Successfully merged and initialized active contracts with cloud authoritative database.');
         } else {
           setProjects(cleanLocal);
           safeSetItem('era_proj_v28', JSON.stringify(cleanLocal));
+          setCurrentProject(prev => {
+            if (!prev) return cleanLocal[0] || null;
+            const match = cleanLocal.find(p => p.id === prev.id);
+            return match || cleanLocal[0] || null;
+          });
         }
       } catch (err) {
         console.warn('Cloud database offline or table does not exist yet. Relying on localStorage:', err);
@@ -4679,6 +4726,7 @@ let isBatchSyncRunning = false;
                 { id: 'risks', label: '⚠️ Project Risks' },
                 { id: 'consultant', label: '👔 Supervision Consultant' },
                 { id: 'submittalLog', label: '📋 Submittal Log' },
+                { id: 'rfiLog', label: '✉️ RFI Log' },
                 { id: 'approvalWorkflow', label: '🛡️ Approvals' },
                 /* { id: 'workspace', label: '☁️ Workspace' }, */
                 { id: 'analysis', label: '📊 Comprehensive analysis' },
@@ -4975,6 +5023,17 @@ let isBatchSyncRunning = false;
               {activeTab === 'submittalLog' && (
                 <SubmittalLogView
                   project={currentProject}
+                  onProjectUpdate={handleProjectUpdate}
+                  isReadonly={currentUserObj?.role === 'viewer' && currentUserObj?.username !== 'proj_1781786415663'}
+                  currentUserObj={currentUserObj}
+                />
+              )}
+
+              {activeTab === 'rfiLog' && (
+                <RfiLogView
+                  project={currentProject}
+                  projects={projects}
+                  onSelectProject={(proj) => handleSelectProject(proj.id)}
                   onProjectUpdate={handleProjectUpdate}
                   isReadonly={currentUserObj?.role === 'viewer' && currentUserObj?.username !== 'proj_1781786415663'}
                   currentUserObj={currentUserObj}
@@ -7585,11 +7644,6 @@ let isBatchSyncRunning = false;
       <UserGuideManualModal 
         isOpen={isUserGuideOpen}
         onClose={() => setIsUserGuideOpen(false)}
-      />
-
-      {/* Dedicated Status Bar Component: Offline Sync Queue & Individual Project Updates Progress */}
-      <OfflineSyncStatusBar 
-        projects={projects}
       />
 
     </div>
