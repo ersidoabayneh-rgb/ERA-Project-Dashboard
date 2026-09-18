@@ -2369,6 +2369,39 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
                   )}
                 </>
               )}
+
+              {/* Change Log View / Hide Option for all users */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (!showChangeLog) {
+                    setShowChangeLog(true);
+                    setTimeout(() => {
+                      document.getElementById('evaluation-history')?.scrollIntoView({ behavior: 'smooth' });
+                    }, 50);
+                  } else {
+                    setShowChangeLog(false);
+                  }
+                }}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition cursor-pointer ${
+                  showChangeLog
+                    ? 'bg-purple-900/60 hover:bg-purple-800 text-purple-200 border-purple-700'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                }`}
+                title={showChangeLog ? "Hide Change Log" : "View Change Log"}
+              >
+                {showChangeLog ? (
+                  <>
+                    <EyeOff className="w-3.5 h-3.5 text-purple-300" />
+                    <span>Hide Change Log</span>
+                  </>
+                ) : (
+                  <>
+                    <Eye className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>View Change Log ({changeLog.length})</span>
+                  </>
+                )}
+              </button>
             </div>
 
             {!isReadonly && canEvaluate && (
