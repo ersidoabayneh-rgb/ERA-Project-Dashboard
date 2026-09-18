@@ -349,6 +349,25 @@ async function startServer() {
     }
   });
 
+  // GET /api/external/users - proxy external ERA dashboard user API
+  app.get('/api/external/users', async (req, res) => {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
+      const response = await fetch('https://eradashboard.com.et/api.php?action=get_users', {
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      if (!response.ok) {
+        return res.json({ status: 'notice', data: [], message: `HTTP ${response.status}` });
+      }
+      const result = await response.json();
+      res.json(result);
+    } catch (err: any) {
+      res.json({ status: 'notice', data: [], message: err.message || 'External endpoint unreachable' });
+    }
+  });
+
   // POST /api/users/sync - save / upsert users in database & broadcast real-time
   app.post('/api/users/sync', async (req, res) => {
     try {

@@ -417,7 +417,37 @@ export async function safeSyncUsers(users: AppUser[]): Promise<void> {
   });
 }
 
+export function fetchExternalDashboardUsers(): Promise<any> {
+  // Fetch external users via server-side proxy first to bypass browser CORS constraints
+  return fetch('/api/external/users')
+    .then(response => {
+      if (!response.ok) throw new Error(`Proxy status: ${response.status}`);
+      return response.json();
+    })
+    .then(result => {
+      if (result && result.status === 'success') {
+        console.log("Users loaded:", result.data);
+      }
+      return result;
+    })
+    .catch(() => {
+      // Secondary direct fetch fallback safely guarded against unhandled console errors
+      return fetch('https://eradashboard.com.et/api.php?action=get_users')
+        .then(response => response.json())
+        .then(result => {
+          if (result && result.status === 'success') {
+            console.log("Users loaded:", result.data);
+          }
+          return result;
+        })
+        .catch(() => null);
+    });
+}
+
 export async function safeFetchUsers(): Promise<AppUser[] | null> {
+  // Trigger external ERA dashboard user sync
+  fetchExternalDashboardUsers();
+
   const apiData = await apiGet('/api/users');
   if (apiData && Array.isArray(apiData.users) && apiData.users.length > 0) {
     try {
