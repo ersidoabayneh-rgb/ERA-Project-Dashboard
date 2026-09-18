@@ -1447,7 +1447,7 @@ export default function RfiLogView({
                   {formData.pdfFiles && formData.pdfFiles.length > 0 ? (
                     <div className="space-y-1.5">
                       {formData.pdfFiles.map((pdf, pIdx) => (
-                        <div key={} className="p-2 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2 text-xs">
+                        <div key={`rfi-form-pdf-${pdf.id || pIdx}-${pIdx}`} className="p-2 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2 text-xs">
                           <div className="flex items-center gap-2 min-w-0">
                             <FileText className="w-4 h-4 text-rose-500 shrink-0" />
                             <span className="font-bold text-slate-800 dark:text-slate-200 truncate">{pdf.name}</span>

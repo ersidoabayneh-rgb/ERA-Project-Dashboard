@@ -14,6 +14,7 @@ try {
     if (getApps().length === 0) {
       app = initializeApp({
         projectId: config.projectId,
+        databaseURL: config.databaseURL
       });
     } else {
       app = getApp();

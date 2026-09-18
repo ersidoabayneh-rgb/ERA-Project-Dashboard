@@ -965,11 +965,9 @@ export default function App() {
       console.warn('Failed to sync users to cloud:', err);
     });
 
-    if (globalWsRef.current && globalWsRef.current.readyState === WebSocket.OPEN) {
-      try {
-        globalWsRef.current.send(JSON.stringify({ type: 'users_update', data: deduped }));
-      } catch (e) {}
-    }
+    try {
+      realtimeManager.send('USERS_UPDATE', deduped);
+    } catch (e) {}
   };
 
   // User Access Administration draft state for pending changes
@@ -1700,10 +1698,7 @@ let isBatchSyncRunning = false;
       });
     };
 
-    // Handle real-time Open-Ended WebSocket connection and fallback SSE stream
-    let eventSource: EventSource | null = null;
-    let wsSocket: WebSocket | null = null;
-    let wsReconnectTimeout: any = null;
+
 
     const handleRealtimePayload = (message: any) => {
       if (!message || typeof message !== 'object') return;
@@ -1788,77 +1783,7 @@ let isBatchSyncRunning = false;
       }
     };
 
-    const initWebSocket = () => {
-      try {
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}/ws`;
-        wsSocket = new WebSocket(wsUrl);
-        globalWsRef.current = wsSocket;
 
-        wsSocket.onopen = () => {
-          console.log('[Real-Time WS] Open-ended WebSocket connected!');
-        };
-
-        wsSocket.onmessage = (event) => {
-          try {
-            const payload = JSON.parse(event.data);
-            handleRealtimePayload(payload);
-          } catch (e) {}
-        };
-
-        wsSocket.onerror = () => {
-          /* reconnect in onclose */
-        };
-
-        wsSocket.onclose = () => {
-          console.log('[Real-Time WS] WebSocket disconnected, reconnecting in 2s...');
-          globalWsRef.current = null;
-          clearTimeout(wsReconnectTimeout);
-          wsReconnectTimeout = setTimeout(initWebSocket, 2000);
-        };
-      } catch (err) {
-        console.warn('[Real-Time WS] WebSocket failed, relying on SSE:', err);
-      }
-    };
-
-    let sseReconnectTimeout: any = null;
-
-    const initSSE = () => {
-      try {
-        if (eventSource) {
-          try { eventSource.close(); } catch (e) {}
-          eventSource = null;
-        }
-
-        eventSource = new EventSource('/api/events');
-
-        eventSource.onopen = () => {
-          console.log('[Real-Time SSE] SSE event stream connected successfully.');
-        };
-
-        eventSource.onmessage = (event) => {
-          try {
-            if (!event.data) return;
-            const payload = JSON.parse(event.data);
-            handleRealtimePayload(payload);
-          } catch (err) {}
-        };
-
-        eventSource.onerror = () => {
-          if (eventSource && eventSource.readyState === EventSource.CLOSED) {
-            console.log('[Real-Time SSE] SSE connection closed. Retrying stream in 3s...');
-            try { eventSource.close(); } catch (e) {}
-            eventSource = null;
-            clearTimeout(sseReconnectTimeout);
-            sseReconnectTimeout = setTimeout(() => {
-              if (navigator.onLine) initSSE();
-            }, 3000);
-          }
-        };
-      } catch (e) {
-        console.warn('[Real-Time SSE] SSE initialization fallback error:', e);
-      }
-    };
 
     // Real-time synchronization powered directly by Cloud Firestore client listeners
     let unsubscribeUsersListener: (() => void) | null = null;
@@ -2102,8 +2027,6 @@ let isBatchSyncRunning = false;
     window.addEventListener('realtime_config_updated', handleRealtimeLocalMutated);
 
     // Start real-time multi-device synchronization engine
-    initWebSocket();
-    initSSE();
     const unsubRealtime = realtimeManager.subscribe((msg) => {
       handleRealtimePayload(msg);
     });
@@ -2145,12 +2068,6 @@ let isBatchSyncRunning = false;
       if (eraChannel) {
         try { eraChannel.close(); } catch (e) {}
       }
-      if (eventSource) {
-        try { eventSource.close(); } catch (e) {}
-      }
-      if (wsSocket) {
-        try { wsSocket.close(); } catch (e) {}
-      }
       if (unsubscribeDeletedProjectsListener) {
         try { unsubscribeDeletedProjectsListener(); } catch (e) {}
       }
@@ -2166,8 +2083,6 @@ let isBatchSyncRunning = false;
       if (unsubscribeConfigListener) {
         try { unsubscribeConfigListener(); } catch (e) {}
       }
-      clearTimeout(wsReconnectTimeout);
-      clearTimeout(sseReconnectTimeout);
       clearInterval(interval);
     };
   }, []);

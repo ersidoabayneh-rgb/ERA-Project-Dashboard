@@ -8256,13 +8256,19 @@ export default function GroupReportGenerator({
                       disabled={!isValid}
                       onClick={async () => {
                         if (!isValid) return;
-                        localStorage.setItem('era_contractor_scoring_weights', JSON.stringify(tempContractorWeights));
-                        localStorage.setItem('era_consultant_scoring_weights', JSON.stringify(tempConsultantWeights));
-                        setContractorWeights(tempContractorWeights);
-                        setConsultantWeights(tempConsultantWeights);
-                        await safeSyncScoringWeights(tempContractorWeights, tempConsultantWeights, currentUserObj?.username);
-                        setIsEditingWeightsModalOpen(false);
-                        alert(`✅ Master Admin Update Successful!\n\nAll criteria names, descriptions, and weight distribution for ${auditPerspective === 'contractor' ? 'Project Contractor' : 'Supervision Consultant'} scoring model have been saved to the database and applied across all reports.`);
+                        try {
+                          localStorage.setItem('era_contractor_scoring_weights', JSON.stringify(tempContractorWeights));
+                          localStorage.setItem('era_consultant_scoring_weights', JSON.stringify(tempConsultantWeights));
+                          setContractorWeights(tempContractorWeights);
+                          setConsultantWeights(tempConsultantWeights);
+                          await safeSyncScoringWeights(tempContractorWeights, tempConsultantWeights, currentUserObj?.username);
+                          setIsEditingWeightsModalOpen(false);
+                          alert(`✅ Master Admin Update Successful!\n\nAll criteria names, descriptions, and weight distribution for ${auditPerspective === 'contractor' ? 'Project Contractor' : 'Supervision Consultant'} scoring model have been saved to the database and applied across all reports.`);
+                        } catch (e: any) {
+                          console.error('Failed to sync scoring weights:', e);
+                          alert(`⚠️ Failed to synchronize scoring weights across devices, but local weights have been successfully updated: ${e?.message || 'Network error'}`);
+                          setIsEditingWeightsModalOpen(false);
+                        }
                       }}
                       className={`px-5 py-2 text-xs font-black rounded-xl transition flex items-center gap-2 cursor-pointer shadow-sm ${
                         isValid
