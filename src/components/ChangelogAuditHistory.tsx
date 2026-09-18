@@ -40,6 +40,11 @@ export default function ChangelogAuditHistory({
   const [selectedSectionFilter, setSelectedSectionFilter] = useState('ALL');
   const [selectedUserFilter, setSelectedUserFilter] = useState('ALL');
 
+  // Time period filter state
+  const [selectedTimePeriod, setSelectedTimePeriod] = useState('ALL'); // ALL, 24h, 7d, 30d, 90d, custom
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+
   // Set of individual item IDs/indices that have their detailed diffs expanded
   const [expandedItemIds, setExpandedItemIds] = useState<Record<string, boolean>>({});
   const [allExpanded, setAllExpanded] = useState(false);
@@ -77,6 +82,41 @@ export default function ChangelogAuditHistory({
         return false;
       }
 
+      // Time period filter
+      if (selectedTimePeriod !== 'ALL') {
+        const itemDate = new Date(item.timestamp);
+        if (!isNaN(itemDate.getTime())) {
+          const now = new Date();
+          const itemTime = itemDate.getTime();
+          const nowTime = now.getTime();
+
+          if (selectedTimePeriod === '24h') {
+            const oneDayAgo = nowTime - 24 * 60 * 60 * 1000;
+            if (itemTime < oneDayAgo) return false;
+          } else if (selectedTimePeriod === '7d') {
+            const sevenDaysAgo = nowTime - 7 * 24 * 60 * 60 * 1000;
+            if (itemTime < sevenDaysAgo) return false;
+          } else if (selectedTimePeriod === '30d') {
+            const thirtyDaysAgo = nowTime - 30 * 24 * 60 * 60 * 1000;
+            if (itemTime < thirtyDaysAgo) return false;
+          } else if (selectedTimePeriod === '90d') {
+            const ninetyDaysAgo = nowTime - 90 * 24 * 60 * 60 * 1000;
+            if (itemTime < ninetyDaysAgo) return false;
+          } else if (selectedTimePeriod === 'custom') {
+            if (startDate) {
+              const startOfDate = new Date(startDate);
+              startOfDate.setHours(0, 0, 0, 0);
+              if (itemTime < startOfDate.getTime()) return false;
+            }
+            if (endDate) {
+              const endOfDate = new Date(endDate);
+              endOfDate.setHours(23, 59, 59, 999);
+              if (itemTime > endOfDate.getTime()) return false;
+            }
+          }
+        }
+      }
+
       // Search query
       if (searchQuery.trim() !== '') {
         const query = searchQuery.toLowerCase();
@@ -98,7 +138,7 @@ export default function ChangelogAuditHistory({
 
       return true;
     });
-  }, [history, selectedSectionFilter, selectedUserFilter, searchQuery]);
+  }, [history, selectedSectionFilter, selectedUserFilter, searchQuery, selectedTimePeriod, startDate, endDate]);
 
   const toggleItemExpansion = (key: string) => {
     setExpandedItemIds(prev => ({
@@ -242,21 +282,42 @@ export default function ChangelogAuditHistory({
                   </div>
 
                   {/* User Filter */}
-                  {uniqueUsers.length > 1 && (
-                    <div className="flex items-center gap-1.5">
-                      <User className="w-3.5 h-3.5 text-slate-400" />
-                      <select
-                        value={selectedUserFilter}
-                        onChange={(e) => setSelectedUserFilter(e.target.value)}
-                        className="text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-700 dark:text-slate-200"
-                      >
-                        <option value="ALL">All Users ({uniqueUsers.length})</option>
-                        {uniqueUsers.map(u => (
-                          <option key={u} value={u}>{u}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
+                  <div className="flex items-center gap-1.5">
+                    <User className="w-3.5 h-3.5 text-slate-400" />
+                    <select
+                      value={selectedUserFilter}
+                      onChange={(e) => setSelectedUserFilter(e.target.value)}
+                      className="text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-700 dark:text-slate-200"
+                    >
+                      <option value="ALL">All Users ({uniqueUsers.length})</option>
+                      {uniqueUsers.map(u => (
+                        <option key={u} value={u}>{u}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Time Period Filter */}
+                  <div className="flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-slate-400" />
+                    <select
+                      value={selectedTimePeriod}
+                      onChange={(e) => {
+                        setSelectedTimePeriod(e.target.value);
+                        if (e.target.value !== 'custom') {
+                          setStartDate('');
+                          setEndDate('');
+                        }
+                      }}
+                      className="text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-700 dark:text-slate-200"
+                    >
+                      <option value="ALL">All Time</option>
+                      <option value="24h">Last 24 Hours</option>
+                      <option value="7d">Last 7 Days</option>
+                      <option value="30d">Last 30 Days</option>
+                      <option value="90d">Last 90 Days</option>
+                      <option value="custom">Custom Range...</option>
+                    </select>
+                  </div>
 
                   {/* Expand/Collapse All Items Button */}
                   {filteredHistory.length > 0 && (
@@ -303,11 +364,47 @@ export default function ChangelogAuditHistory({
                 </div>
               </div>
 
+              {/* Custom Date Range Picker */}
+              {selectedTimePeriod === 'custom' && (
+                <div className="flex flex-wrap items-center gap-3 bg-slate-100/50 dark:bg-slate-950/20 p-2.5 rounded-lg border border-slate-200/60 dark:border-slate-800/60 text-xs text-slate-700 dark:text-slate-300">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-medium text-slate-500">From:</span>
+                    <input
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                      className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-700 dark:text-slate-200"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-medium text-slate-500">To:</span>
+                    <input
+                      type="date"
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-700 dark:text-slate-200"
+                    />
+                  </div>
+                  {(startDate || endDate) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStartDate('');
+                        setEndDate('');
+                      }}
+                      className="text-2xs text-red-500 hover:text-red-600 underline font-medium"
+                    >
+                      Clear Range
+                    </button>
+                  )}
+                </div>
+              )}
+
               {/* Status counter bar */}
               <div className="flex items-center justify-between text-2xs text-slate-500 dark:text-slate-400 px-1">
                 <span>
                   Showing <strong>{Math.min(filteredHistory.length, displayLimit)}</strong> of <strong>{filteredHistory.length}</strong> changelog entries
-                  {(selectedSectionFilter !== 'ALL' || selectedUserFilter !== 'ALL' || searchQuery) && ' (Filtered)'}
+                  {(selectedSectionFilter !== 'ALL' || selectedUserFilter !== 'ALL' || searchQuery || selectedTimePeriod !== 'ALL') && ' (Filtered)'}
                 </span>
                 <span>Max retention: 100+ audit logs</span>
               </div>
@@ -437,13 +534,16 @@ export default function ChangelogAuditHistory({
                   <div className="text-center py-10 bg-slate-50 dark:bg-slate-950/30 rounded-xl border border-dashed border-slate-200 dark:border-slate-800 text-slate-400 font-medium text-xs space-y-1">
                     <FileText className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto mb-1" />
                     <div>No changelog entries match your criteria.</div>
-                    {(selectedSectionFilter !== 'ALL' || selectedUserFilter !== 'ALL' || searchQuery) && (
+                    {(selectedSectionFilter !== 'ALL' || selectedUserFilter !== 'ALL' || searchQuery || selectedTimePeriod !== 'ALL') && (
                       <button
                         type="button"
                         onClick={() => {
                           setSearchQuery('');
                           setSelectedSectionFilter('ALL');
                           setSelectedUserFilter('ALL');
+                          setSelectedTimePeriod('ALL');
+                          setStartDate('');
+                          setEndDate('');
                         }}
                         className="text-xs text-blue-500 underline hover:text-blue-600 mt-1"
                       >
