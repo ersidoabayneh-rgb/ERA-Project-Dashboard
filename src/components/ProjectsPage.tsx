@@ -170,6 +170,17 @@ export default function ProjectsPage({
     (currentUserObj?.username && currentUserObj.username.toLowerCase().includes('ersido'))
   );
 
+  const roleStr = String(currentUserObj?.role || '').toLowerCase();
+  const usernameStr = String(currentUserObj?.username || '').toLowerCase();
+  const isConsultantOrContractor = Boolean(
+    roleStr.includes('consultant') ||
+    roleStr.includes('contractor') ||
+    usernameStr.includes('consultant') ||
+    usernameStr.includes('contractor')
+  );
+
+  const canAccessGroupReport = !isConsultantOrContractor;
+
   const pendingUserSignupsCount = allUsers ? allUsers.filter(u => {
     if (!u.isPendingApproval) return false;
     if (isMasterAdmin) return true;
@@ -662,7 +673,7 @@ export default function ProjectsPage({
               </button>
             )}
 
-            {!hasNoProjects && isAdmin && (
+            {canAccessGroupReport && (
               <button 
                 onClick={() => {
                   setShowReportGenerator(!showReportGenerator);
@@ -813,9 +824,9 @@ export default function ProjectsPage({
 
         {/* Group Report Generator modular panel */}
         <AnimatePresence>
-          {isAdmin && showReportGenerator && (
+          {canAccessGroupReport && showReportGenerator && (
             <GroupReportGenerator
-              projects={projects.filter(isAccessible)}
+              projects={projects}
               currentUserObj={currentUserObj}
               programDirectorates={programDirectorates}
               pmos={pmos}

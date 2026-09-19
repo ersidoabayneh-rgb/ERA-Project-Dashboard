@@ -177,17 +177,18 @@ export default function GroupReportGenerator({
   pmos,
   onClose
 }: GroupReportGeneratorProps) {
-  const isAdmin = Boolean(
-    currentUserObj?.role === 'admin' ||
-    currentUserObj?.role === 'master_admin' ||
-    currentUserObj?.role === 'cpm_admin' ||
-    currentUserObj?.role === 'directorate_admin' ||
-    currentUserObj?.role === 'pmo_admin' ||
-    currentUserObj?.username === 'proj_1781786415663' ||
-    (currentUserObj?.username && currentUserObj.username.toLowerCase().includes('ersido'))
+  const roleStr = String(currentUserObj?.role || '').toLowerCase();
+  const usernameStr = String(currentUserObj?.username || '').toLowerCase();
+  const isConsultantOrContractor = Boolean(
+    roleStr.includes('consultant') ||
+    roleStr.includes('contractor') ||
+    usernameStr.includes('consultant') ||
+    usernameStr.includes('contractor')
   );
 
-  if (!isAdmin) {
+  const canAccessGroupReport = !isConsultantOrContractor;
+
+  if (!canAccessGroupReport) {
     return null;
   }
 
