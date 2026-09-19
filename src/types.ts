@@ -1094,6 +1094,7 @@ export interface ConsultantEvaluationCriterion {
   };
   eraFidicRef?: string;
   contractType?: 'DB' | 'DBB' | 'ALL';
+  evaluationSource?: 'auto' | 'auto_submittal' | 'auto_database' | 'user_evaluation';
 }
 
 export type ThemePresetId = 'light-slate' | 'deep-dark' | 'midnight-blue' | 'cyber-blueprint' | 'sepia-warmth';

@@ -55,6 +55,24 @@ interface RfiLogComponentProps {
   targetOverrides?: Record<string, number>;
 }
 
+export const RFI_INSPECTION_CATEGORIES = [
+  '1.1) Horizontal and Vertical Alignment Check',
+  '1.2) Subgrade Preparation',
+  '1.3) Compaction and Moisture Content Verification',
+  '1.4) Structural Formwork and Reinforcement Fixing',
+  '1.5) Concrete / Asphalt Material Temperature and Workability',
+  '1.6) Drainage and Structural Invert Level Compliance',
+  '1.7) Surface Protection',
+  '1.8) Traffic Management Integrity'
+] as const;
+
+export const RFI_INFORMATION_CATEGORIES = [
+  '2.1) Original Ground Line (OGL) Cross-Section & Topographical',
+  '2.2) Right-of-Way (ROW) Obstruction & Public Utility interferences',
+  '2.3) Material Suitability & Alternative Quarry/Borrow Pit approval',
+  '2.4) Variation Order (VO) Scope & Bill of Quantities (BOQ) Discrepancies'
+] as const;
+
 const RFI_DISCIPLINES = [
   'Structures & Bridges',
   'Highway Alignment & Geometry',
@@ -75,6 +93,14 @@ export default function RfiLogComponent({
   currentUserObj,
   targetOverrides = {}
 }: RfiLogComponentProps) {
+  // Check if current user has contractor credentials
+  const isContractorUser = Boolean(
+    (currentUserObj?.role as string) === 'contractor_editor' ||
+    (currentUserObj?.role as string) === 'contractor' ||
+    (typeof currentUserObj?.role === 'string' && currentUserObj.role.toLowerCase().includes('contractor')) ||
+    (typeof currentUserObj?.username === 'string' && currentUserObj.username.toLowerCase().includes('contractor'))
+  );
+
   // Extract all RFI items from submittals
   const rfiItems = useMemo(() => {
     return allSubmittals.filter(item => item.type === 'RFI');
@@ -86,7 +112,7 @@ export default function RfiLogComponent({
   const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
   const [selectedPriority, setSelectedPriority] = useState<string>('ALL');
   const [selectedImpact, setSelectedImpact] = useState<string>('ALL');
-  const [sortField, setSortField] = useState<'submittalNo' | 'submittedDate' | 'respondedDate' | 'actualDays' | 'priority' | 'status'>('submittedDate');
+  const [sortField, setSortField] = useState<'submittalNo' | 'submittedDate' | 'respondedDate' | 'actualDays' | 'priority' | 'status' | 'attachmentsCount'>('submittedDate');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [viewLayout, setViewLayout] = useState<'table' | 'cards'>('table');
 
@@ -94,13 +120,23 @@ export default function RfiLogComponent({
   const [activeRfi, setActiveRfi] = useState<ConsultantSubmittalKpi | null>(null);
   const [isThreadModalOpen, setIsThreadModalOpen] = useState(false);
 
+  // PDF Attachment Management Modal & Preview Modal
+  const [activeAttachmentModalRfi, setActiveAttachmentModalRfi] = useState<ConsultantSubmittalKpi | null>(null);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+  const [pdfPreviewTitle, setPdfPreviewTitle] = useState<string>('');
+
+  const handleViewPdf = (url: string, name: string) => {
+    setPdfPreviewUrl(url);
+    setPdfPreviewTitle(name);
+  };
+
   // New RFI Modal state
   const [isNewRfiModalOpen, setIsNewRfiModalOpen] = useState(false);
   const [newRfiForm, setNewRfiForm] = useState<Partial<ConsultantSubmittalKpi>>({
     submittalNo: `RFI-0${rfiItems.length + 14 < 10 ? '0' + (rfiItems.length + 14) : rfiItems.length + 14}`,
     type: 'RFI',
     title: '',
-    discipline: 'Structures & Bridges',
+    discipline: RFI_INSPECTION_CATEGORIES[0],
     stationKm: '',
     drawingRef: '',
     specificationRef: '',
@@ -113,7 +149,9 @@ export default function RfiLogComponent({
     rfiStatus: 'Awaiting Consultant Response',
     costImpact: 'None',
     scheduleImpact: 'None',
-    assignedEngineer: consultant.residentEngineerName || 'Resident Engineer'
+    assignedEngineer: consultant.residentEngineerName || 'Resident Engineer',
+    attachmentsCount: 0,
+    attachments: []
   });
 
   // Respond / Issue Clarification Modal state
@@ -139,6 +177,88 @@ export default function RfiLogComponent({
   const [replyAuthor, setReplyAuthor] = useState('');
   const [replyRole, setReplyRole] = useState('');
   const [replyStatusUpdate, setReplyStatusUpdate] = useState<string>('no_change');
+
+  // Process PDF files helper
+  const processPdfFiles = (files: FileList | null): File[] => {
+    if (!files || files.length === 0) return [];
+    const valid: File[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+        valid.push(file);
+      } else {
+        alert(`File "${file.name}" is not a PDF document. Please upload PDF files only.`);
+      }
+    }
+    return valid;
+  };
+
+  // Direct PDF upload for an RFI from the table or modal
+  const handleDirectPdfUpload = (targetRfi: ConsultantSubmittalKpi, e: React.ChangeEvent<HTMLInputElement>) => {
+    const validPdfs = processPdfFiles(e.target.files);
+    if (validPdfs.length === 0) return;
+
+    const newAttachments = validPdfs.map(file => {
+      const sizeMb = file.size / (1024 * 1024);
+      const formattedSize = sizeMb >= 0.1 ? `${sizeMb.toFixed(1)} MB` : `${Math.round(file.size / 1024)} KB`;
+      return {
+        id: `att_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        name: file.name,
+        size: formattedSize,
+        url: URL.createObjectURL(file),
+        uploadedAt: new Date().toISOString().split('T')[0]
+      };
+    });
+
+    const existingAtts = targetRfi.attachments || [];
+    const updatedAtts = [...existingAtts, ...newAttachments];
+
+    const updatedRfi: ConsultantSubmittalKpi = {
+      ...targetRfi,
+      attachments: updatedAtts,
+      attachmentsCount: updatedAtts.length
+    };
+
+    const updatedList = allSubmittals.map(s => s.id === updatedRfi.id ? updatedRfi : s);
+    onUpdateSubmittals(updatedList, `Uploaded ${validPdfs.length} PDF attachment(s) to RFI ${targetRfi.submittalNo}`);
+
+    if (activeRfi && activeRfi.id === targetRfi.id) {
+      setActiveRfi(updatedRfi);
+    }
+    if (activeAttachmentModalRfi && activeAttachmentModalRfi.id === targetRfi.id) {
+      setActiveAttachmentModalRfi(updatedRfi);
+    }
+    if (editingRfiDraft && editingRfiDraft.id === targetRfi.id) {
+      setEditingRfiDraft(updatedRfi);
+    }
+
+    e.target.value = '';
+  };
+
+  // Remove attachment from an RFI
+  const handleRemoveAttachment = (targetRfi: ConsultantSubmittalKpi, attachmentId: string) => {
+    const existingAtts = targetRfi.attachments || [];
+    const updatedAtts = existingAtts.filter(a => a.id !== attachmentId);
+
+    const updatedRfi: ConsultantSubmittalKpi = {
+      ...targetRfi,
+      attachments: updatedAtts,
+      attachmentsCount: updatedAtts.length
+    };
+
+    const updatedList = allSubmittals.map(s => s.id === updatedRfi.id ? updatedRfi : s);
+    onUpdateSubmittals(updatedList, `Removed attachment from RFI ${targetRfi.submittalNo}`);
+
+    if (activeRfi && activeRfi.id === targetRfi.id) {
+      setActiveRfi(updatedRfi);
+    }
+    if (activeAttachmentModalRfi && activeAttachmentModalRfi.id === targetRfi.id) {
+      setActiveAttachmentModalRfi(updatedRfi);
+    }
+    if (editingRfiDraft && editingRfiDraft.id === targetRfi.id) {
+      setEditingRfiDraft(updatedRfi);
+    }
+  };
 
   // KPI calculations for RFIs
   const rfiMetrics = useMemo(() => {
@@ -266,6 +386,10 @@ export default function RfiLogComponent({
         cmp = (pOrder[a.priority] || 0) - (pOrder[b.priority] || 0);
       } else if (sortField === 'status') {
         cmp = (a.rfiStatus || a.status).localeCompare(b.rfiStatus || b.status);
+      } else if (sortField === 'attachmentsCount') {
+        const countA = a.attachmentsCount ?? a.attachments?.length ?? 0;
+        const countB = b.attachmentsCount ?? b.attachments?.length ?? 0;
+        cmp = countA - countB;
       }
 
       return sortDirection === 'asc' ? cmp : -cmp;
@@ -463,8 +587,8 @@ export default function RfiLogComponent({
       scheduleImpact: newRfiForm.scheduleImpact || 'None',
       assignedEngineer: newRfiForm.assignedEngineer || consultant.residentEngineerName || '',
       notes: newRfiForm.notes || '',
-      attachmentsCount: 0,
-      attachments: [],
+      attachmentsCount: newRfiForm.attachments?.length || newRfiForm.attachmentsCount || 0,
+      attachments: newRfiForm.attachments || [],
       correspondenceThread: initialThread
     };
 
@@ -841,14 +965,20 @@ export default function RfiLogComponent({
                   <th className="p-3.5 text-center">SLA Turnaround</th>
                   <th className="p-3.5 text-center">Impacts</th>
                   <th className="p-3.5 text-center">Status</th>
+                  <th className="p-3.5 text-center cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/60" onClick={() => { setSortField('attachmentsCount'); setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc'); }}>
+                    <div className="flex items-center justify-center gap-1">
+                      <Paperclip className="w-3 h-3 text-slate-400" />
+                      <span>PDFs</span>
+                    </div>
+                  </th>
                   <th className="p-3.5 text-center">Thread</th>
-                  <th className="p-3.5 text-right">Actions</th>
+                  {!isContractorUser && <th className="p-3.5 text-right">Actions</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
                 {sortedRfis.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="p-8 text-center text-slate-400">
+                    <td colSpan={isContractorUser ? 11 : 12} className="p-8 text-center text-slate-400">
                       No Request for Information (RFI) records match your filter criteria.
                     </td>
                   </tr>
@@ -857,6 +987,7 @@ export default function RfiLogComponent({
                     const target = rfi.targetDays || targetOverrides['RFI'] || 7;
                     const delayInfo = checkSubmittalDelay(rfi, target);
                     const msgCount = rfi.correspondenceThread?.length || 0;
+                    const pdfCount = rfi.attachmentsCount ?? rfi.attachments?.length ?? 0;
                     const hasCost = rfi.costImpact && rfi.costImpact !== 'None';
                     const hasSched = rfi.scheduleImpact && rfi.scheduleImpact !== 'None';
 
@@ -1016,6 +1147,40 @@ export default function RfiLogComponent({
                           </span>
                         </td>
 
+                        {/* PDF Attachments */}
+                        <td className="p-3.5 text-center whitespace-nowrap">
+                          <div className="flex items-center justify-center gap-1.5">
+                            {pdfCount > 0 ? (
+                              <button
+                                onClick={() => setActiveAttachmentModalRfi(rfi)}
+                                className="px-2 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                                title="View & Manage Attached PDF Documents"
+                              >
+                                <Paperclip className="w-3 h-3 text-indigo-500" />
+                                <span>{pdfCount}</span>
+                              </button>
+                            ) : (
+                              <span className="text-slate-300 dark:text-slate-600 text-xs">-</span>
+                            )}
+
+                            {!isReadonly && !isContractorUser && (
+                              <label
+                                className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg cursor-pointer transition inline-flex items-center justify-center"
+                                title="Attach PDF file to this RFI"
+                              >
+                                <Upload className="w-3.5 h-3.5" />
+                                <input
+                                  type="file"
+                                  accept="application/pdf,.pdf"
+                                  multiple
+                                  onChange={(e) => handleDirectPdfUpload(rfi, e)}
+                                  className="hidden"
+                                />
+                              </label>
+                            )}
+                          </div>
+                        </td>
+
                         {/* Correspondence Thread Count */}
                         <td className="p-3.5 text-center whitespace-nowrap">
                           <button
@@ -1029,44 +1194,46 @@ export default function RfiLogComponent({
                         </td>
 
                         {/* Actions */}
-                        <td className="p-3.5 text-right whitespace-nowrap">
-                          <div className="flex items-center justify-end gap-1">
-                            {!isReadonly && !rfi.consultantResponse && (
+                        {!isContractorUser && (
+                          <td className="p-3.5 text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-1">
+                              {!isReadonly && !rfi.consultantResponse && (
+                                <button
+                                  onClick={() => handleOpenRespondModal(rfi)}
+                                  className="p-1.5 hover:bg-emerald-50 dark:hover:bg-emerald-950 text-emerald-600 dark:text-emerald-400 rounded-lg transition"
+                                  title="Issue Consultant Clarification Directive"
+                                >
+                                  <Send className="w-3.5 h-3.5" />
+                                </button>
+                              )}
                               <button
-                                onClick={() => handleOpenRespondModal(rfi)}
-                                className="p-1.5 hover:bg-emerald-50 dark:hover:bg-emerald-950 text-emerald-600 dark:text-emerald-400 rounded-lg transition"
-                                title="Issue Consultant Clarification Directive"
+                                onClick={() => handleOpenThread(rfi)}
+                                className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-lg transition"
+                                title="View Full RFI Details & Thread"
                               >
-                                <Send className="w-3.5 h-3.5" />
+                                <Eye className="w-3.5 h-3.5" />
                               </button>
-                            )}
-                            <button
-                              onClick={() => handleOpenThread(rfi)}
-                              className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-lg transition"
-                              title="View Full RFI Details & Thread"
-                            >
-                              <Eye className="w-3.5 h-3.5" />
-                            </button>
-                            {!isReadonly && (
-                              <>
-                                <button
-                                  onClick={() => handleOpenEditModal(rfi)}
-                                  className="p-1.5 hover:bg-indigo-50 dark:hover:bg-indigo-950 text-indigo-600 dark:text-indigo-400 rounded-lg transition"
-                                  title="Edit RFI Record"
-                                >
-                                  <Edit2 className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteRfi(rfi)}
-                                  className="p-1.5 hover:bg-rose-50 dark:hover:bg-rose-950 text-rose-500 rounded-lg transition"
-                                  title="Delete RFI"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        </td>
+                              {!isReadonly && (
+                                <>
+                                  <button
+                                    onClick={() => handleOpenEditModal(rfi)}
+                                    className="p-1.5 hover:bg-indigo-50 dark:hover:bg-indigo-950 text-indigo-600 dark:text-indigo-400 rounded-lg transition"
+                                    title="Edit RFI Record"
+                                  >
+                                    <Edit2 className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteRfi(rfi)}
+                                    className="p-1.5 hover:bg-rose-50 dark:hover:bg-rose-950 text-rose-500 rounded-lg transition"
+                                    title="Delete RFI"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        )}
                       </tr>
                     );
                   })
@@ -1587,15 +1754,27 @@ export default function RfiLogComponent({
                 </div>
 
                 <div>
-                  <label className="text-[10px] font-bold text-slate-500 uppercase">Discipline *</label>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Query / Inspection Category *</label>
                   <select
-                    value={newRfiForm.discipline || 'Structures & Bridges'}
+                    value={newRfiForm.discipline || RFI_INSPECTION_CATEGORIES[0]}
                     onChange={(e) => setNewRfiForm({ ...newRfiForm, discipline: e.target.value })}
                     className="w-full mt-1 px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-medium"
                   >
-                    {RFI_DISCIPLINES.map(d => (
-                      <option key={d} value={d}>{d}</option>
-                    ))}
+                    <optgroup label="Request for Inspection (RFI/IRB) Categories">
+                      {RFI_INSPECTION_CATEGORIES.map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Request for Information (Material / Design Query)">
+                      {RFI_INFORMATION_CATEGORIES.map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Standard Engineering Disciplines">
+                      {RFI_DISCIPLINES.map(d => (
+                        <option key={d} value={d}>{d}</option>
+                      ))}
+                    </optgroup>
                   </select>
                 </div>
 
@@ -1736,6 +1915,70 @@ export default function RfiLogComponent({
                     <option value="Minor Float Used">Minor Float Used</option>
                     <option value="Pending Assessment">Pending Assessment</option>
                   </select>
+                </div>
+
+                {/* PDF Attachments Uploader */}
+                <div className="sm:col-span-2 p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                      <Paperclip className="w-3.5 h-3.5 text-indigo-500" />
+                      Attach PDF Documents & Drawings ({newRfiForm.attachments?.length || 0})
+                    </span>
+                    <label className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold cursor-pointer transition">
+                      <Upload className="w-3 h-3" />
+                      <span>Select PDF File(s)</span>
+                      <input
+                        type="file"
+                        accept="application/pdf,.pdf"
+                        multiple
+                        onChange={(e) => {
+                          const files = processPdfFiles(e.target.files);
+                          if (files.length === 0) return;
+                          const newAtts = files.map(f => ({
+                            id: `att_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+                            name: f.name,
+                            size: f.size >= 1024 * 1024 ? `${(f.size / (1024 * 1024)).toFixed(1)} MB` : `${Math.round(f.size / 1024)} KB`,
+                            url: URL.createObjectURL(f),
+                            uploadedAt: new Date().toISOString().split('T')[0]
+                          }));
+                          setNewRfiForm(prev => ({
+                            ...prev,
+                            attachments: [...(prev.attachments || []), ...newAtts],
+                            attachmentsCount: (prev.attachments?.length || 0) + newAtts.length
+                          }));
+                          e.target.value = '';
+                        }}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                  {newRfiForm.attachments && newRfiForm.attachments.length > 0 ? (
+                    <div className="space-y-1.5 pt-1">
+                      {newRfiForm.attachments.map(att => (
+                        <div key={att.id} className="flex items-center justify-between p-2 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 text-xs">
+                          <div className="flex items-center gap-2 truncate">
+                            <Paperclip className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                            <span className="font-semibold text-slate-800 dark:text-slate-200 truncate">{att.name}</span>
+                            <span className="text-[10px] text-slate-400 font-mono">({att.size})</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setNewRfiForm(prev => {
+                                const next = (prev.attachments || []).filter(a => a.id !== att.id);
+                                return { ...prev, attachments: next, attachmentsCount: next.length };
+                              });
+                            }}
+                            className="p-1 hover:bg-rose-50 dark:hover:bg-rose-950 text-rose-500 rounded-lg cursor-pointer"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-slate-400 italic">Optional: Attach technical drawings, inspection sketches, or specification excerpts (PDF format).</p>
+                  )}
                 </div>
               </div>
 
@@ -1922,15 +2165,27 @@ export default function RfiLogComponent({
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-[10px] font-bold text-slate-500 uppercase">Discipline</label>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase">Query / Inspection Category</label>
                     <select
-                      value={editingRfiDraft.discipline || 'Structures & Bridges'}
+                      value={editingRfiDraft.discipline || '1.1 Structural Concrete Pre-Pour Inspection'}
                       onChange={(e) => setEditingRfiDraft({ ...editingRfiDraft, discipline: e.target.value })}
                       className="w-full mt-1 px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-medium"
                     >
-                      {RFI_DISCIPLINES.map(d => (
-                        <option key={d} value={d}>{d}</option>
-                      ))}
+                      <optgroup label="Request for Inspection (RFI/IRB) Categories">
+                        {RFI_INSPECTION_CATEGORIES.map(cat => (
+                          <option key={cat} value={cat}>{cat}</option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="Request for Information (Material / Design Query)">
+                        {RFI_INFORMATION_CATEGORIES.map(cat => (
+                          <option key={cat} value={cat}>{cat}</option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="Standard Engineering Disciplines">
+                        {RFI_DISCIPLINES.map(d => (
+                          <option key={d} value={d}>{d}</option>
+                        ))}
+                      </optgroup>
                     </select>
                   </div>
 
@@ -2053,6 +2308,82 @@ export default function RfiLogComponent({
                     </select>
                   </div>
                 </div>
+
+                {/* PDF Attachments in Edit Modal */}
+                <div className="p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                      <Paperclip className="w-3.5 h-3.5 text-indigo-500" />
+                      Attached Documents ({editingRfiDraft.attachments?.length || 0})
+                    </span>
+                    <label className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold cursor-pointer transition">
+                      <Upload className="w-3 h-3" />
+                      <span>Add PDF</span>
+                      <input
+                        type="file"
+                        accept="application/pdf,.pdf"
+                        multiple
+                        onChange={(e) => {
+                          const files = processPdfFiles(e.target.files);
+                          if (files.length === 0) return;
+                          const newAtts = files.map(f => ({
+                            id: `att_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+                            name: f.name,
+                            size: f.size >= 1024 * 1024 ? `${(f.size / (1024 * 1024)).toFixed(1)} MB` : `${Math.round(f.size / 1024)} KB`,
+                            url: URL.createObjectURL(f),
+                            uploadedAt: new Date().toISOString().split('T')[0]
+                          }));
+                          setEditingRfiDraft(prev => prev ? ({
+                            ...prev,
+                            attachments: [...(prev.attachments || []), ...newAtts],
+                            attachmentsCount: (prev.attachments?.length || 0) + newAtts.length
+                          }) : null);
+                          e.target.value = '';
+                        }}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+
+                  {editingRfiDraft.attachments && editingRfiDraft.attachments.length > 0 && (
+                    <div className="space-y-1.5 pt-1">
+                      {editingRfiDraft.attachments.map(att => (
+                        <div key={att.id} className="flex items-center justify-between p-2 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 text-xs">
+                          <div className="flex items-center gap-2 truncate">
+                            <Paperclip className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                            <span className="font-semibold text-slate-800 dark:text-slate-200 truncate">{att.name}</span>
+                            <span className="text-[10px] text-slate-400 font-mono">({att.size})</span>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            {att.url && (
+                              <button
+                                type="button"
+                                onClick={() => handleViewPdf(att.url, att.name)}
+                                className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-indigo-600 rounded-lg"
+                                title="Preview PDF"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingRfiDraft(prev => {
+                                  if (!prev) return null;
+                                  const next = (prev.attachments || []).filter(a => a.id !== att.id);
+                                  return { ...prev, attachments: next, attachmentsCount: next.length };
+                                });
+                              }}
+                              className="p-1 hover:bg-rose-50 dark:hover:bg-rose-950 text-rose-500 rounded-lg cursor-pointer"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
@@ -2068,6 +2399,179 @@ export default function RfiLogComponent({
                 >
                   Save Changes
                 </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* DEDICATED PDF ATTACHMENTS MANAGEMENT MODAL */}
+      <AnimatePresence>
+        {activeAttachmentModalRfi && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl p-6 w-full max-w-lg space-y-4"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+                <div className="flex items-center gap-2">
+                  <div className="w-9 h-9 rounded-xl bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                    <Paperclip className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                      RFI PDF Attachments
+                    </h3>
+                    <p className="text-[11px] font-mono text-indigo-600 dark:text-indigo-400 font-bold">
+                      {activeAttachmentModalRfi.submittalNo} • {activeAttachmentModalRfi.title}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setActiveAttachmentModalRfi(null)}
+                  className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Attachments List */}
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {activeAttachmentModalRfi.attachments && activeAttachmentModalRfi.attachments.length > 0 ? (
+                  activeAttachmentModalRfi.attachments.map(att => (
+                    <div
+                      key={att.id}
+                      className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800/80 rounded-2xl border border-slate-200 dark:border-slate-700 text-xs"
+                    >
+                      <div className="flex items-center gap-2.5 truncate">
+                        <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-950 text-indigo-600 flex items-center justify-center shrink-0">
+                          <Paperclip className="w-4 h-4" />
+                        </div>
+                        <div className="truncate">
+                          <p className="font-bold text-slate-900 dark:text-white truncate">{att.name}</p>
+                          <div className="flex items-center gap-2 text-[10px] text-slate-400 font-mono">
+                            {att.size && <span>{att.size}</span>}
+                            {att.uploadedAt && <span>• {att.uploadedAt}</span>}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                        {att.url && (
+                          <button
+                            onClick={() => handleViewPdf(att.url, att.name)}
+                            className="px-2.5 py-1.5 bg-indigo-50 dark:bg-indigo-950/70 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 font-bold rounded-xl text-xs flex items-center gap-1 transition"
+                            title="Preview PDF document"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>Preview</span>
+                          </button>
+                        )}
+                        {!isReadonly && !isContractorUser && (
+                          <button
+                            onClick={() => handleRemoveAttachment(activeAttachmentModalRfi, att.id)}
+                            className="p-1.5 hover:bg-rose-50 dark:hover:bg-rose-950 text-rose-500 rounded-xl transition"
+                            title="Remove attachment"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="p-8 text-center text-slate-400 bg-slate-50 dark:bg-slate-800/40 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700">
+                    <Paperclip className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                    <p className="text-xs font-medium">No PDF documents attached to this RFI yet.</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Upload New PDF in Modal */}
+              {!isReadonly && !isContractorUser && (
+                <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
+                  <label className="flex items-center justify-center gap-2 w-full p-3 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-950/80 border border-dashed border-indigo-300 dark:border-indigo-800 rounded-2xl text-indigo-700 dark:text-indigo-300 text-xs font-bold cursor-pointer transition">
+                    <Upload className="w-4 h-4" />
+                    <span>Upload & Attach New PDF File</span>
+                    <input
+                      type="file"
+                      accept="application/pdf,.pdf"
+                      multiple
+                      onChange={(e) => {
+                        handleDirectPdfUpload(activeAttachmentModalRfi, e);
+                        e.target.value = '';
+                      }}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end pt-2">
+                <button
+                  onClick={() => setActiveAttachmentModalRfi(null)}
+                  className="px-5 py-2 text-xs font-bold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl"
+                >
+                  Close
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* FULLSCREEN PDF PREVIEW MODAL */}
+      <AnimatePresence>
+        {pdfPreviewUrl && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl p-4 w-full max-w-4xl h-[85vh] flex flex-col"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800 shrink-0">
+                <div className="flex items-center gap-2 truncate">
+                  <div className="w-8 h-8 rounded-xl bg-indigo-100 dark:bg-indigo-950 text-indigo-600 flex items-center justify-center shrink-0">
+                    <Paperclip className="w-4 h-4" />
+                  </div>
+                  <div className="truncate">
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white truncate">
+                      {pdfPreviewTitle || 'PDF Document Viewer'}
+                    </h3>
+                    <p className="text-[10px] text-slate-400">PDF Document Preview</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <a
+                    href={pdfPreviewUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center gap-1.5"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>Open in New Tab</span>
+                  </a>
+                  <button
+                    onClick={() => {
+                      setPdfPreviewUrl(null);
+                      setPdfPreviewTitle('');
+                    }}
+                    className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex-1 mt-3 bg-slate-100 dark:bg-slate-950 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 flex items-center justify-center">
+                <iframe
+                  src={pdfPreviewUrl}
+                  title={pdfPreviewTitle || 'PDF Preview'}
+                  className="w-full h-full rounded-2xl"
+                />
               </div>
             </motion.div>
           </div>

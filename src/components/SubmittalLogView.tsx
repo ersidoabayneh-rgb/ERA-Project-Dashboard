@@ -46,7 +46,8 @@ import {
 import { DEFAULT_SUBMITTAL_KPIS, DEFAULT_SLA_TARGETS, calculateElapsedDays, checkSubmittalDelay } from './ConsultantPerformanceKpiWidget';
 import {
   autoEvaluateAllCriteria,
-  calculateComprehensiveEvaluationScore
+  calculateComprehensiveEvaluationScore,
+  getProjectConsultantEvaluation
 } from '../data/consultantEvaluationMatrix';
 import { Activity, Zap } from 'lucide-react';
 
@@ -201,8 +202,21 @@ export default function SubmittalLogView({
     };
   }, [submittalsList, targetOverrides]);
 
-  // View mode: 'submittals' (full submittal register) vs 'rfi_log' (dedicated RFI correspondence log)
+  // Contractor role detection
+  const isContractorUser = useMemo(() => {
+    if (!currentUserObj) return false;
+    const r = (currentUserObj.role || '').toLowerCase();
+    const u = (currentUserObj.username || '').toLowerCase();
+    return r === 'contractor' || r.includes('contractor') || u.includes('contractor');
+  }, [currentUserObj]);
+
+  // View mode: 'submittals' (technical submittals register) vs 'rfi_log' (dedicated RFI correspondence log)
   const [activeViewTab, setActiveViewTab] = useState<'submittals' | 'rfi_log'>('submittals');
+
+  // Pure technical submittals (excluding RFIs which are tracked exclusively in the RFI Log table)
+  const technicalSubmittalsList = useMemo(() => {
+    return submittalsList.filter(s => s.type !== 'RFI');
+  }, [submittalsList]);
 
   const rfiCount = useMemo(() => submittalsList.filter(s => s.type === 'RFI').length, [submittalsList]);
   const pendingRfiCount = useMemo(() => submittalsList.filter(s => s.type === 'RFI' && s.status !== 'Approved / Closed' && s.status !== 'Closed').length, [submittalsList]);
@@ -213,10 +227,10 @@ export default function SubmittalLogView({
   const [editingRowId, setEditingRowId] = useState<string | null>(null);
   const [editingRowDraft, setEditingRowDraft] = useState<ConsultantSubmittalKpi | null>(null);
 
-  // New submittal form
+  // New submittal form (Technical Submittals)
   const [newSubmittalForm, setNewSubmittalForm] = useState<Partial<ConsultantSubmittalKpi>>({
-    submittalNo: `RFI-0${submittalsList.length + 1}`,
-    type: 'RFI',
+    submittalNo: `SUB-0${technicalSubmittalsList.length + 1}`,
+    type: 'Material Approval',
     title: '',
     submittedDate: new Date().toISOString().split('T')[0],
     respondedDate: new Date().toISOString().split('T')[0],
@@ -234,30 +248,33 @@ export default function SubmittalLogView({
       ...consultant,
       submittalKpis: updatedList
     };
+    
+    // Auto-evaluate 105 criteria and calculate 5-dimension & Pillar I composite performance
     const autoEvaluations = autoEvaluateAllCriteria(project, tempConsultant, updatedList);
-    const res = calculateComprehensiveEvaluationScore(autoEvaluations);
+    const evalSummary = getProjectConsultantEvaluation(project, tempConsultant);
     const dimensionScores = {
-      A: { earnedScore: res.dimensionBreakdown.A.earned, maxScore: res.dimensionBreakdown.A.maxWeight, scorePct: res.dimensionBreakdown.A.percentage },
-      B: { earnedScore: res.dimensionBreakdown.B.earned, maxScore: res.dimensionBreakdown.B.maxWeight, scorePct: res.dimensionBreakdown.B.percentage },
-      C: { earnedScore: res.dimensionBreakdown.C.earned, maxScore: res.dimensionBreakdown.C.maxWeight, scorePct: res.dimensionBreakdown.C.percentage },
-      D: { earnedScore: res.dimensionBreakdown.D.earned, maxScore: res.dimensionBreakdown.D.maxWeight, scorePct: res.dimensionBreakdown.D.percentage },
-      E: { earnedScore: res.dimensionBreakdown.E.earned, maxScore: res.dimensionBreakdown.E.maxWeight, scorePct: res.dimensionBreakdown.E.percentage },
+      A: { earnedScore: evalSummary.dimensionBreakdown.A.earned, maxScore: evalSummary.dimensionBreakdown.A.maxWeight, scorePct: evalSummary.dimensionBreakdown.A.percentage },
+      B: { earnedScore: evalSummary.dimensionBreakdown.B.earned, maxScore: evalSummary.dimensionBreakdown.B.maxWeight, scorePct: evalSummary.dimensionBreakdown.B.percentage },
+      C: { earnedScore: evalSummary.dimensionBreakdown.C.earned, maxScore: evalSummary.dimensionBreakdown.C.maxWeight, scorePct: evalSummary.dimensionBreakdown.C.percentage },
+      D: { earnedScore: evalSummary.dimensionBreakdown.D.earned, maxScore: evalSummary.dimensionBreakdown.D.maxWeight, scorePct: evalSummary.dimensionBreakdown.D.percentage },
+      E: { earnedScore: evalSummary.dimensionBreakdown.E.earned, maxScore: evalSummary.dimensionBreakdown.E.maxWeight, scorePct: evalSummary.dimensionBreakdown.E.percentage },
     };
 
-    const performanceRatingLabel = res.overallScore >= 90 ? 'Outstanding' : res.overallScore >= 75 ? 'Satisfactory' : res.overallScore >= 60 ? 'Needs Improvement' : 'Critical';
+    const performanceRatingLabel: 'Outstanding' | 'Satisfactory' | 'Needs Improvement' | 'Critical' = 
+      evalSummary.overallScore >= 90 ? 'Outstanding' : evalSummary.overallScore >= 75 ? 'Satisfactory' : evalSummary.overallScore >= 60 ? 'Needs Improvement' : 'Critical';
 
     const updatedConsultant: SupervisionConsultantInfo = {
       ...tempConsultant,
       submittalKpis: updatedList,
       detailedEvaluations: autoEvaluations,
       dimensionScores: dimensionScores,
-      overallEvaluationScore: res.overallScore,
-      officialEvaluationGrade: res.officialGrade as any,
+      overallEvaluationScore: evalSummary.overallScore,
+      officialEvaluationGrade: evalSummary.officialGrade as any,
       performanceRating: performanceRatingLabel
     };
     onProjectUpdate({
       supervisionConsultant: updatedConsultant
-    }, `Submittal Log: ${actionDesc} (5-Dimension Score: ${res.overallScore.toFixed(1)}% ${res.officialGrade})`);
+    }, `Submittal Log: ${actionDesc} (Pillar I SLA: ${evalSummary.slaTurnaroundScore.toFixed(1)}% | 5-Dim: ${evalSummary.fiveDimScore.toFixed(1)}% | Grade: ${evalSummary.officialGrade})`);
   };
 
   const handleSaveNewSubmittal = () => {
@@ -271,12 +288,13 @@ export default function SubmittalLogView({
       }
     }
 
-    const target = Number(newSubmittalForm.targetDays) || targetOverrides[newSubmittalForm.type || 'RFI'] || 7;
+    const submittalType = newSubmittalForm.type && newSubmittalForm.type !== 'RFI' ? newSubmittalForm.type : 'Material Approval';
+    const target = Number(newSubmittalForm.targetDays) || targetOverrides[submittalType] || 7;
 
     const newRecord: ConsultantSubmittalKpi = {
       id: `sub_${Date.now()}`,
       submittalNo: newSubmittalForm.submittalNo,
-      type: (newSubmittalForm.type as any) || 'RFI',
+      type: submittalType as any,
       title: newSubmittalForm.title,
       submittedDate: newSubmittalForm.submittedDate || new Date().toISOString().split('T')[0],
       respondedDate: newSubmittalForm.respondedDate || undefined,
@@ -289,7 +307,7 @@ export default function SubmittalLogView({
     };
 
     const updatedList = [newRecord, ...submittalsList];
-    commitSubmittals(updatedList, `Added submittal ${newRecord.submittalNo}`);
+    commitSubmittals(updatedList, `Added technical submittal ${newRecord.submittalNo}`);
     setIsAddSubmittalModalOpen(false);
   };
 
@@ -452,15 +470,15 @@ export default function SubmittalLogView({
   };
 
   const handleInsertQuickRow = () => {
-    const nextNum = submittalsList.length + 1;
+    const nextNum = technicalSubmittalsList.length + 1;
     const newRecord: ConsultantSubmittalKpi = {
       id: `sub_${Date.now()}`,
-      submittalNo: `RFI-0${nextNum < 10 ? '0' + nextNum : nextNum}`,
-      type: 'RFI',
-      title: 'New Technical Clarification Inquiry / Submittal',
+      submittalNo: `SUB-0${nextNum < 10 ? '0' + nextNum : nextNum}`,
+      type: 'Material Approval',
+      title: 'New Technical Material Submittal / Method Statement',
       submittedDate: new Date().toISOString().split('T')[0],
       respondedDate: undefined,
-      targetDays: targetOverrides['RFI'] || 7,
+      targetDays: targetOverrides['Material Approval'] || 7,
       actualDays: undefined,
       status: 'Under Review',
       priority: 'High',
@@ -474,7 +492,7 @@ export default function SubmittalLogView({
   };
 
   const filteredSubmittals = useMemo(() => {
-    return submittalsList.filter(item => {
+    return technicalSubmittalsList.filter(item => {
       const matchesSearch = submittalSearch === '' || 
         item.submittalNo.toLowerCase().includes(submittalSearch.toLowerCase()) ||
         item.title.toLowerCase().includes(submittalSearch.toLowerCase()) ||
@@ -509,7 +527,7 @@ export default function SubmittalLogView({
 
       return matchesSearch && matchesType && matchesStatus;
     });
-  }, [submittalsList, submittalSearch, selectedTypeFilter, selectedStatusFilter, targetOverrides]);
+  }, [technicalSubmittalsList, submittalSearch, selectedTypeFilter, selectedStatusFilter, targetOverrides]);
 
   // Order/sort filtered submittals dynamically
   const sortedSubmittals = useMemo(() => {
@@ -623,13 +641,13 @@ export default function SubmittalLogView({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {!isReadonly && (
+          {!isReadonly && !isContractorUser && (
             <button
               onClick={handleInsertQuickRow}
               className="px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-xs flex items-center gap-1.5 transition cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              Add Submittal Item
+              Add Technical Submittal
             </button>
           )}
           <button
@@ -642,7 +660,7 @@ export default function SubmittalLogView({
         </div>
       </div>
 
-      {/* View Switcher: All Submittals Register vs Dedicated RFI & Clarifications Log */}
+      {/* View Switcher: Technical Submittals Register vs Dedicated RFI & Clarifications Log */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white dark:bg-slate-900 p-2 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
         <div className="flex items-center gap-2">
           <button
@@ -654,13 +672,13 @@ export default function SubmittalLogView({
             }`}
           >
             <FileText className="w-4 h-4" />
-            <span>All Submittals Register</span>
+            <span>Technical Submittals Register</span>
             <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${
               activeViewTab === 'submittals'
                 ? 'bg-white/20 text-white dark:text-slate-900 dark:bg-slate-900/20'
                 : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
             }`}>
-              {submittalsList.length}
+              {technicalSubmittalsList.length}
             </span>
           </button>
 
@@ -689,19 +707,12 @@ export default function SubmittalLogView({
 
         {activeViewTab === 'submittals' ? (
           <div className="flex items-center gap-2 px-2 text-xs text-slate-500">
-            <span className="hidden md:inline">RFI Quick Actions:</span>
-            <button
-              onClick={() => setSelectedTypeFilter('RFI')}
-              className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
-            >
-              Filter RFIs
-            </button>
-            <span>•</span>
+            <span className="hidden md:inline">Separate RFI Registry:</span>
             <button
               onClick={() => setActiveViewTab('rfi_log')}
               className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer flex items-center gap-1"
             >
-              Open Technical Clarification Threads →
+              Open Dedicated RFI Log ({rfiCount}) →
             </button>
           </div>
         ) : (
@@ -833,7 +844,6 @@ export default function SubmittalLogView({
               className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white font-medium cursor-pointer"
             >
               <option value="ALL">All Categories</option>
-              <option value="RFI">Technical RFI</option>
               <option value="Material Approval">Material Approval</option>
               <option value="IPC Review">IPC Review</option>
               <option value="Work Inspection (WIR)">Work Inspection (WIR)</option>
@@ -996,13 +1006,13 @@ export default function SubmittalLogView({
                   </div>
                 </th>
                 <th className="p-3.5">Assigned Engineer</th>
-                <th className="p-3.5 text-right">Actions</th>
+                {!isContractorUser && <th className="p-3.5 text-right">Actions</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
               {sortedSubmittals.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="p-8 text-center text-slate-400">
+                  <td colSpan={isContractorUser ? 10 : 11} className="p-8 text-center text-slate-400">
                     No submittal records match your filter criteria.
                   </td>
                 </tr>
@@ -1094,7 +1104,7 @@ export default function SubmittalLogView({
                               className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:border-indigo-400 dark:hover:border-indigo-600 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/30 text-[11px] transition font-medium cursor-pointer"
                               title="Click to attach PDF files"
                             >
-                              <Paperclip className="w-3 h-3 shrink-0" />
+                              <Paperclip className="w-3.5 h-3.5 shrink-0" />
                               <span>+ PDF</span>
                             </button>
                           )}
@@ -1144,44 +1154,46 @@ export default function SubmittalLogView({
                       <td className="p-3.5 text-slate-600 dark:text-slate-400">
                         {item.assignedEngineer || '-'}
                       </td>
-                      <td className="p-3.5 text-right whitespace-nowrap">
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            onClick={() => handleStartRowEdit(item)}
-                            title="Edit Submittal"
-                            className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition"
-                          >
-                            <Edit3 className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => handleDuplicateRow(item)}
-                            title="Duplicate Submittal"
-                            className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition"
-                          >
-                            <Copy className="w-3.5 h-3.5" />
-                          </button>
-                          {!isReadonly && (() => {
-                            const isApproved = item.status === 'Approved' || item.status === 'Approved / Closed' || item.status === 'Approved with Comment' || item.status === 'Approved with Comments' || item.status.toLowerCase().includes('approved');
-                            const isAdminUser = currentUserObj?.role === 'admin' || currentUserObj?.role === 'master_admin' || currentUserObj?.role === 'cpm_admin' || currentUserObj?.username === 'proj_1781786415663';
-                            if (isApproved && !isAdminUser) {
+                      {!isContractorUser && (
+                        <td className="p-3.5 text-right whitespace-nowrap">
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => handleStartRowEdit(item)}
+                              title="Edit Submittal"
+                              className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleDuplicateRow(item)}
+                              title="Duplicate Submittal"
+                              className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition"
+                            >
+                              <Copy className="w-3.5 h-3.5" />
+                            </button>
+                            {!isReadonly && (() => {
+                              const isApproved = item.status === 'Approved' || item.status === 'Approved / Closed' || item.status === 'Approved with Comment' || item.status === 'Approved with Comments' || item.status.toLowerCase().includes('approved');
+                              const isAdminUser = currentUserObj?.role === 'admin' || currentUserObj?.role === 'master_admin' || currentUserObj?.role === 'cpm_admin' || currentUserObj?.username === 'proj_1781786415663';
+                              if (isApproved && !isAdminUser) {
+                                return (
+                                  <span title="Approved submittals can only be deleted by Administrators" className="p-1.5 text-slate-300 dark:text-slate-700 cursor-not-allowed">
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </span>
+                                );
+                              }
                               return (
-                                <span title="Approved submittals can only be deleted by Administrators" className="p-1.5 text-slate-300 dark:text-slate-700 cursor-not-allowed">
+                                <button
+                                  onClick={() => handleDeleteRow(item.id)}
+                                  title="Delete Submittal"
+                                  className="p-1.5 rounded-lg hover:bg-rose-100 dark:hover:bg-rose-950/60 text-rose-600 dark:text-rose-400 transition"
+                                >
                                   <Trash2 className="w-3.5 h-3.5" />
-                                </span>
+                                </button>
                               );
-                            }
-                            return (
-                              <button
-                                onClick={() => handleDeleteRow(item.id)}
-                                title="Delete Submittal"
-                                className="p-1.5 rounded-lg hover:bg-rose-100 dark:hover:bg-rose-950/60 text-rose-600 dark:text-rose-400 transition"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            );
-                          })()}
-                        </div>
-                      </td>
+                            })()}
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   );
                 })
@@ -1196,7 +1208,7 @@ export default function SubmittalLogView({
             <span className="font-bold text-slate-800 dark:text-slate-200 font-mono">
               {sortedSubmittals.length}
             </span>
-            <span>of {submittalsList.length} submittal records visible</span>
+            <span>of {technicalSubmittalsList.length} submittal records visible</span>
             {submittalSearch && (
               <span className="text-[10px] bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-semibold px-2 py-0.5 rounded-full">
                 Filtered by search
@@ -1283,7 +1295,6 @@ export default function SubmittalLogView({
                       onChange={(e) => setEditingRowDraft({ ...editingRowDraft, type: e.target.value as any })}
                       className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-semibold"
                     >
-                      <option value="RFI">Technical RFI</option>
                       <option value="Material Approval">Material Approval</option>
                       <option value="IPC Review">IPC Review</option>
                       <option value="Work Inspection (WIR)">Work Inspection (WIR)</option>
@@ -1525,30 +1536,32 @@ export default function SubmittalLogView({
               )}
 
               {/* PDF Drag & Drop Upload Zone */}
-              <div className="p-4 border-2 border-dashed border-indigo-200 dark:border-indigo-800/80 rounded-2xl bg-indigo-50/40 dark:bg-indigo-950/20 text-center space-y-2">
-                <div className="w-10 h-10 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mx-auto">
-                  <Upload className="w-5 h-5" />
+              {!isContractorUser && (
+                <div className="p-4 border-2 border-dashed border-indigo-200 dark:border-indigo-800/80 rounded-2xl bg-indigo-50/40 dark:bg-indigo-950/20 text-center space-y-2">
+                  <div className="w-10 h-10 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mx-auto">
+                    <Upload className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                      Upload Submittal Documents
+                    </p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Select one or more PDF (.pdf) files requested for this submittal
+                    </p>
+                  </div>
+                  <label className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs cursor-pointer shadow-xs transition">
+                    <FileText className="w-3.5 h-3.5" />
+                    Browse PDF Files
+                    <input
+                      type="file"
+                      accept=".pdf,application/pdf"
+                      multiple
+                      className="hidden"
+                      onChange={(e) => handleDirectPdfUpload(e, activeAttachmentSubmittal)}
+                    />
+                  </label>
                 </div>
-                <div>
-                  <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                    Upload Submittal Documents
-                  </p>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                    Select one or more PDF (.pdf) files requested for this submittal
-                  </p>
-                </div>
-                <label className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs cursor-pointer shadow-xs transition">
-                  <FileText className="w-3.5 h-3.5" />
-                  Browse PDF Files
-                  <input
-                    type="file"
-                    accept=".pdf,application/pdf"
-                    multiple
-                    className="hidden"
-                    onChange={(e) => handleDirectPdfUpload(e, activeAttachmentSubmittal)}
-                  />
-                </label>
-              </div>
+              )}
 
               {/* List of Attached PDF Files */}
               <div className="space-y-2">
@@ -1594,20 +1607,22 @@ export default function SubmittalLogView({
                           ) : (
                             <span className="text-[10px] text-slate-400 italic px-2">Document Logged</span>
                           )}
-                          <button
-                            onClick={() => handleRemoveAttachment(activeAttachmentSubmittal, att.id)}
-                            className="p-1.5 hover:bg-rose-50 dark:hover:bg-rose-950 rounded-xl text-slate-400 hover:text-rose-600 dark:hover:text-rose-400"
-                            title="Remove PDF File"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          {!isContractorUser && (
+                            <button
+                              onClick={() => handleRemoveAttachment(activeAttachmentSubmittal, att.id)}
+                              className="p-1.5 hover:bg-rose-50 dark:hover:bg-rose-950 rounded-xl text-slate-400 hover:text-rose-600 dark:hover:text-rose-400"
+                              title="Remove PDF File"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
                   <div className="p-4 text-center text-xs text-slate-400 bg-slate-50 dark:bg-slate-800/40 rounded-2xl border border-slate-200/60 dark:border-slate-800">
-                    No PDF documents currently attached. Use the button above to upload files.
+                    No PDF documents currently attached.
                   </div>
                 )}
               </div>

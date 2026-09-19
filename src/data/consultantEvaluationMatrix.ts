@@ -1278,7 +1278,39 @@ export interface CriterionSourceInfo {
 
 // Maps each criterion to its quantitative calculation source (Submittal logs or Overall Project Database),
 // or marks it as requiring User Evaluation (human expert assessment).
-export function getCriterionSourceInfo(criterion: ConsultantEvaluationCriterion | { code: string }): CriterionSourceInfo {
+export function getCriterionSourceInfo(criterion: ConsultantEvaluationCriterion | { code: string; evaluationSource?: string }): CriterionSourceInfo {
+  const customSource = (criterion as any).evaluationSource;
+  
+  if (customSource === 'user_evaluation' || customSource === 'user') {
+    return {
+      source: 'user_evaluation',
+      label: 'User Evaluation Option',
+      sourceName: 'Qualitative Expert Assessment',
+      badgeColor: 'bg-amber-50 text-amber-700 dark:bg-amber-950/70 dark:text-amber-300 border-amber-200 dark:border-amber-800',
+      description: 'Qualitative supervisory performance criterion — evaluated and rated directly by the user/evaluator.'
+    };
+  }
+
+  if (customSource === 'auto_submittal' || customSource === 'submittals') {
+    return {
+      source: 'auto_submittal',
+      label: 'Submittals',
+      sourceName: 'Submittal Register & SLAs',
+      badgeColor: 'bg-blue-50 text-blue-700 dark:bg-blue-950/70 dark:text-blue-300 border-blue-200 dark:border-blue-800',
+      description: 'Calculated automatically from live RFI, WIR, Material, Design, and SLA turnaround records.'
+    };
+  }
+
+  if (customSource === 'auto_database' || customSource === 'project_db') {
+    return {
+      source: 'auto_database',
+      label: 'Project DB',
+      sourceName: 'Project Database Telemetry',
+      badgeColor: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
+      description: 'Calculated automatically from project database (IPCs, Physical SPI, Personnel, Invoices, ROW, Risks).'
+    };
+  }
+
   const code = criterion.code;
 
   // 1. Direct quantitative criteria gained from Submittal Logs (RFIs, WIRs, Material Tests, Design Reviews, Variations, Claims, SLAs)

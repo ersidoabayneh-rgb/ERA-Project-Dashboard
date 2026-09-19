@@ -40,7 +40,13 @@ import {
   Settings,
   ArrowLeft,
   Wrench,
-  Building2, Edit3, X
+  Building2, Edit3, X,
+  MessageSquare,
+  Maximize2,
+  Minimize2,
+  ChevronsUpDown,
+  CornerDownRight,
+  Tag
 } from 'lucide-react';
 import {
   SupervisionConsultantInfo,
@@ -148,6 +154,7 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
       metric: '',
       formula: '',
       dataSource: '',
+      evaluationSource: 'auto',
       benchmarks: {
         score5: '', score4: '', score3: '', score2: '', score1: ''
       }
@@ -159,6 +166,7 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
     setEditingCriterion(crit);
     setCriterionForm({
       ...crit,
+      evaluationSource: crit.evaluationSource || 'auto',
       benchmarks: crit.benchmarks ? { ...crit.benchmarks } : { score5: '', score4: '', score3: '', score2: '', score1: '' }
     });
     setShowCriterionModal(true);
@@ -195,6 +203,7 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
       metric: criterionForm.metric || '',
       formula: criterionForm.formula || '',
       dataSource: criterionForm.dataSource || '',
+      evaluationSource: criterionForm.evaluationSource || 'auto',
       benchmarks: {
         score5: criterionForm.benchmarks?.score5 || '',
         score4: criterionForm.benchmarks?.score4 || '',
@@ -241,6 +250,23 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
   // Evaluation Change Log state
   const [changeLog, setChangeLog] = useState(consultant.evaluationChangeLog || []);
   
+  // Historical Evaluation Comments & Change Log expansion states
+  const [expandAllComments, setExpandAllComments] = useState<boolean>(true);
+  const [expandedEntryIndices, setExpandedEntryIndices] = useState<Record<string, boolean>>({});
+  const [historySearchTerm, setHistorySearchTerm] = useState<string>('');
+  const [historyFilterType, setHistoryFilterType] = useState<'all' | 'with_comments'>('all');
+  const [newRemarkCriterion, setNewRemarkCriterion] = useState<string>('A1.1');
+  const [newRemarkText, setNewRemarkText] = useState<string>('');
+  const [isAddingRemark, setIsAddingRemark] = useState<boolean>(false);
+
+  const criterionMetadataMap = useMemo(() => {
+    const map: Record<string, { name: string; dimName: string; dim: string }> = {};
+    CONSULTANT_EVALUATION_CRITERIA.forEach(c => {
+      map[c.code] = { name: c.name, dimName: c.dimName, dim: c.dim };
+    });
+    return map;
+  }, []);
+
   const [showMetricsFeed, setShowMetricsFeed] = useState(false);
 
   // Evaluation scores state: map of criterion code to evaluation payload
@@ -583,8 +609,11 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
         criterionCode: criterionId,
         oldScore,
         newScore,
-        changedBy: currentUser?.name || currentUser?.username || 'Authorized Approver',
-        timestamp: new Date().toISOString()
+        changedBy: currentUser?.fullName || currentUser?.name || currentUser?.username || 'Authorized Evaluator',
+        timestamp: new Date().toISOString(),
+        comment: evaluations[criterionId]?.notes || (sourceInfo.source === 'user_evaluation'
+          ? `Qualitative score adjusted to ${newScore}/5`
+          : `Manual score override adjusted to ${newScore}/5`)
       }]);
     }
     
@@ -613,9 +642,82 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
         ...(prev[criterionId] || {}),
         score: prev[criterionId]?.score || 4,
         notes: newNotes,
-        evaluatedAt: new Date().toISOString()
+        evaluatedAt: new Date().toISOString(),
+        evaluator: currentUser?.fullName || currentUser?.name || currentUser?.username || 'ERA Evaluator'
       }
     }));
+  };
+
+  // Toggle individual comment card expansion
+  const toggleEntryExpansion = (id: string) => {
+    setExpandedEntryIndices(prev => ({
+      ...prev,
+      [id]: prev[id] !== undefined ? !prev[id] : !expandAllComments
+    }));
+  };
+
+  // Combined historical evaluation records (combining change log with criteria observations)
+  const combinedHistoryRecords = useMemo(() => {
+    const logItems = changeLog.map((entry, idx) => ({
+      id: `log-${idx}-${entry.timestamp}`,
+      criterionCode: entry.criterionCode,
+      oldScore: entry.oldScore,
+      newScore: entry.newScore,
+      changedBy: entry.changedBy,
+      timestamp: entry.timestamp,
+      comment: (entry as any).comment || (entry as any).notes || (evaluations[entry.criterionCode]?.notes),
+      type: 'score_change' as const
+    }));
+
+    const criteriaNotes = (Object.entries(evaluations) as [string, { score?: number; notes?: string; evaluatedAt?: string; evaluator?: string }][])
+      .filter(([code, val]) => val.notes && val.notes.trim().length > 0 && !logItems.some(l => l.criterionCode === code && l.comment === val.notes))
+      .map(([code, val], idx) => ({
+        id: `note-${code}-${idx}`,
+        criterionCode: code,
+        oldScore: val.score || 4,
+        newScore: val.score || 4,
+        changedBy: val.evaluator || currentUser?.fullName || currentUser?.name || currentUser?.username || 'ERA Evaluator',
+        timestamp: val.evaluatedAt || new Date().toISOString(),
+        comment: val.notes,
+        type: 'evaluator_note' as const
+      }));
+
+    const combined = [...logItems, ...criteriaNotes].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+    return combined.filter(item => {
+      if (historyFilterType === 'with_comments' && (!item.comment || item.comment.trim() === '')) {
+        return false;
+      }
+      if (historySearchTerm.trim() !== '') {
+        const q = historySearchTerm.toLowerCase();
+        const meta = criterionMetadataMap[item.criterionCode];
+        const titleMatch = meta?.name.toLowerCase().includes(q);
+        const codeMatch = item.criterionCode.toLowerCase().includes(q);
+        const commentMatch = item.comment?.toLowerCase().includes(q);
+        const userMatch = item.changedBy.toLowerCase().includes(q);
+        return Boolean(titleMatch || codeMatch || commentMatch || userMatch);
+      }
+      return true;
+    });
+  }, [changeLog, evaluations, historyFilterType, historySearchTerm, criterionMetadataMap, currentUser]);
+
+  // Handle adding an official audit remark
+  const handleAddOfficialRemark = () => {
+    if (!newRemarkText.trim()) return;
+    const criterionCode = newRemarkCriterion;
+    const currentScore = evaluations[criterionCode]?.score || 4;
+    const newEntry = {
+      criterionCode,
+      oldScore: currentScore,
+      newScore: currentScore,
+      changedBy: currentUser?.fullName || currentUser?.name || currentUser?.username || 'ERA Evaluator',
+      timestamp: new Date().toISOString(),
+      comment: newRemarkText.trim()
+    };
+    setChangeLog(prev => [newEntry, ...prev]);
+    handleNotesChange(criterionCode, newRemarkText.trim());
+    setNewRemarkText('');
+    setIsAddingRemark(false);
   };
 
   // Reset a specific criterion back to automatic quantitative evaluation
@@ -780,36 +882,293 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
         )}
       </AnimatePresence>
 
-      {/* Change Log Panel */}
+      {/* Historical Evaluation Comments & Change Log Panel */}
       <AnimatePresence>
         {showChangeLog && (
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-lg space-y-4"
+            className="evaluation-history p-5 md:p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl space-y-4"
           >
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-              <h4 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-wider flex items-center gap-2">
-                <Activity className="w-4 h-4 text-indigo-500" />
-                Evaluation Change Log
-              </h4>
-              <button onClick={() => setShowChangeLog(false)} className="text-slate-400 hover:text-slate-600">
-                <X className="w-4 h-4" />
-              </button>
+            {/* Header & Main Toggle Button */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/50 flex items-center justify-center shrink-0">
+                  <MessageSquare className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">
+                      Historical Evaluation Comments & Audit Log
+                    </h4>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-mono">
+                      {combinedHistoryRecords.length} records
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Track all evaluator comments, Likert rating adjustments, and qualitative justifications across criteria.
+                  </p>
+                </div>
+              </div>
+
+              {/* Action Controls in Header: Expand/Collapse All Comments Toggle */}
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  id="toggle-historical-comments-btn"
+                  onClick={() => setExpandAllComments(!expandAllComments)}
+                  className="px-3.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900 text-indigo-700 dark:text-indigo-300 text-xs font-black flex items-center gap-1.5 border border-indigo-200 dark:border-indigo-800 transition cursor-pointer shadow-3xs"
+                  title={expandAllComments ? 'Collapse comments for a compact view' : 'Expand full comments and qualitative notes for all records'}
+                >
+                  {expandAllComments ? (
+                    <>
+                      <Minimize2 className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>Collapse Comments</span>
+                    </>
+                  ) : (
+                    <>
+                      <Maximize2 className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>Expand Comments</span>
+                    </>
+                  )}
+                </button>
+
+                {!isReadonly && isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => setIsAddingRemark(!isAddingRemark)}
+                    className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold flex items-center gap-1.5 border border-slate-200 dark:border-slate-700 transition cursor-pointer"
+                  >
+                    <Edit3 className="w-3.5 h-3.5 text-slate-500" />
+                    <span>{isAddingRemark ? 'Cancel' : 'Add Remark'}</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setShowChangeLog(false)}
+                  className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                  title="Close History Panel"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             </div>
-            
-            <div className="max-h-64 overflow-y-auto space-y-2">
-              {changeLog.length > 0 ? changeLog.map((entry, idx) => (
-                <div key={idx} className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl flex items-start gap-3 text-xs">
-                  <div className="text-slate-400 pt-0.5"><Clock className="w-3 h-3" /></div>
-                  <div className="flex-1">
-                    <p className="text-slate-700 dark:text-slate-200">Criterion <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">{entry.criterionCode}</span> updated: <span className="font-bold">{entry.oldScore} → {entry.newScore}</span></p>
-                    <p className="text-slate-500 text-[10px]">Changed by: <span className="font-semibold">{entry.changedBy}</span> on {new Date(entry.timestamp).toLocaleString()}</p>
+
+            {/* Quick Add Evaluator Remark Modal/Drawer */}
+            {isAddingRemark && (
+              <div className="p-4 rounded-2xl bg-indigo-50/60 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-900/60 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black text-indigo-900 dark:text-indigo-200 uppercase tracking-wider flex items-center gap-1.5">
+                    <Award className="w-4 h-4 text-indigo-600" /> Log Official Supervisory Remark
+                  </span>
+                  <span className="text-[10px] text-indigo-500 font-mono">Will be stored in permanent audit history</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Target Criterion</label>
+                    <select
+                      value={newRemarkCriterion}
+                      onChange={(e) => setNewRemarkCriterion(e.target.value)}
+                      className="w-full px-2.5 py-1.5 text-xs rounded-xl bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 text-slate-800 dark:text-slate-200 font-bold"
+                    >
+                      {CONSULTANT_EVALUATION_CRITERIA.map(c => (
+                        <option key={c.code} value={c.code}>
+                          {c.code} - {c.name.slice(0, 45)}...
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Observation / Justification Note</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={newRemarkText}
+                        onChange={(e) => setNewRemarkText(e.target.value)}
+                        placeholder="Enter official supervision observation or justification..."
+                        className="w-full px-3 py-1.5 text-xs rounded-xl bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleAddOfficialRemark();
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleAddOfficialRemark}
+                        disabled={!newRemarkText.trim()}
+                        className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-bold transition cursor-pointer shrink-0"
+                      >
+                        Record
+                      </button>
+                    </div>
                   </div>
                 </div>
-              )) : (
-                <p className="text-slate-500 text-xs italic p-3">No changes recorded yet.</p>
+              </div>
+            )}
+
+            {/* Filter and Search Bar */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
+              <div className="flex items-center gap-2 flex-1 max-w-md">
+                <div className="relative w-full">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={historySearchTerm}
+                    onChange={(e) => setHistorySearchTerm(e.target.value)}
+                    placeholder="Search comments, criterion codes, evaluators..."
+                    className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-750 text-xs text-slate-800 dark:text-slate-200 outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
+                  {historySearchTerm && (
+                    <button
+                      type="button"
+                      onClick={() => setHistorySearchTerm('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase">Filter:</span>
+                <button
+                  type="button"
+                  onClick={() => setHistoryFilterType('all')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                    historyFilterType === 'all'
+                      ? 'bg-indigo-600 text-white shadow-3xs'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
+                  }`}
+                >
+                  All ({changeLog.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHistoryFilterType('with_comments')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
+                    historyFilterType === 'with_comments'
+                      ? 'bg-indigo-600 text-white shadow-3xs'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
+                  }`}
+                >
+                  <MessageSquare className="w-3 h-3" />
+                  With Comments
+                </button>
+              </div>
+            </div>
+
+            {/* Historical Entries Stream */}
+            <div className="max-h-80 overflow-y-auto space-y-2.5 pr-1">
+              {combinedHistoryRecords.length > 0 ? (
+                combinedHistoryRecords.map((entry) => {
+                  const isEntryExpanded = expandedEntryIndices[entry.id] !== undefined
+                    ? expandedEntryIndices[entry.id]
+                    : expandAllComments;
+                  const meta = criterionMetadataMap[entry.criterionCode];
+
+                  return (
+                    <div
+                      key={entry.id}
+                      className="p-3.5 bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100/80 dark:hover:bg-slate-800/80 rounded-2xl border border-slate-200/80 dark:border-slate-750 transition space-y-2"
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                        <div className="flex items-start gap-2.5">
+                          <div className="p-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5">
+                            <Clock className="w-3.5 h-3.5" />
+                          </div>
+                          <div>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="font-mono font-black text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/80 px-2 py-0.5 rounded-md text-[11px] border border-indigo-200/60 dark:border-indigo-800">
+                                {entry.criterionCode}
+                              </span>
+                              <span className="font-bold text-slate-800 dark:text-slate-100">
+                                {meta?.name || `Criterion ${entry.criterionCode}`}
+                              </span>
+                              {meta?.dim && (
+                                <span className="text-[10px] font-bold text-slate-400 uppercase">
+                                  • Dimension {meta.dim} ({meta.dimName})
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2 text-[10px] text-slate-500 mt-1">
+                              <span>By: <strong className="text-slate-700 dark:text-slate-300">{entry.changedBy}</strong></span>
+                              <span>•</span>
+                              <span>{new Date(entry.timestamp).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 self-start sm:self-center shrink-0">
+                          <div className="flex items-center gap-1 font-mono text-xs font-black">
+                            {entry.oldScore !== entry.newScore ? (
+                              <span className="px-2 py-0.5 rounded-lg bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border border-amber-300">
+                                {entry.oldScore} → {entry.newScore}/5
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-lg bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border border-emerald-300">
+                                Rating: {entry.newScore}/5
+                              </span>
+                            )}
+                          </div>
+
+                          {entry.comment && (
+                            <button
+                              type="button"
+                              onClick={() => toggleEntryExpansion(entry.id)}
+                              className="p-1 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 transition cursor-pointer"
+                              title={isEntryExpanded ? 'Collapse comment' : 'Expand comment'}
+                            >
+                              {isEntryExpanded ? (
+                                <ChevronUp className="w-3.5 h-3.5 text-indigo-600" />
+                              ) : (
+                                <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Historical Evaluation Comment / Observation Details */}
+                      {entry.comment && isEntryExpanded && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          className="pt-2 border-t border-slate-200/60 dark:border-slate-700/60"
+                        >
+                          <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-indigo-100 dark:border-indigo-900/40 text-xs text-slate-700 dark:text-slate-200 space-y-1">
+                            <div className="flex items-center gap-1.5 text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400">
+                              <MessageSquare className="w-3 h-3" />
+                              <span>Evaluator Observation & Justification:</span>
+                            </div>
+                            <p className="leading-relaxed font-sans pl-4 border-l-2 border-indigo-500/50 italic text-slate-800 dark:text-slate-200">
+                              "{entry.comment}"
+                            </p>
+                          </div>
+                        </motion.div>
+                      )}
+
+                      {/* Collapsed Comment Teaser */}
+                      {entry.comment && !isEntryExpanded && (
+                        <div
+                          onClick={() => toggleEntryExpansion(entry.id)}
+                          className="text-[11px] text-slate-500 dark:text-slate-400 italic truncate cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400 flex items-center gap-1 pt-1"
+                        >
+                          <MessageSquare className="w-3 h-3 text-slate-400 shrink-0" />
+                          <span className="truncate">"{entry.comment}"</span>
+                          <span className="text-[10px] text-indigo-500 not-italic font-bold shrink-0 ml-1">(Click to expand)</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="text-center py-8 text-slate-400 dark:text-slate-500 space-y-2">
+                  <MessageSquare className="w-8 h-8 mx-auto opacity-40 text-slate-400" />
+                  <p className="text-xs font-medium">No evaluation comments or change logs match the criteria.</p>
+                </div>
               )}
             </div>
           </motion.div>
@@ -1456,10 +1815,22 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
                   <button
                     type="button"
                     onClick={() => setShowChangeLog(!showChangeLog)}
-                    className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold flex items-center gap-1.5 border border-slate-200 dark:border-slate-700 transition cursor-pointer"
+                    className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition cursor-pointer ${
+                      showChangeLog
+                        ? 'bg-indigo-600 text-white border-indigo-500 shadow-sm'
+                        : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                    }`}
+                    title="Toggle historical evaluation comments, justifications, and change log"
                   >
-                    <Activity className="w-3.5 h-3.5 text-slate-500" />
-                    Change Log
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    <span>Evaluation History & Comments</span>
+                    {combinedHistoryRecords.length > 0 && (
+                      <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black font-mono ${
+                        showChangeLog ? 'bg-white/20 text-white' : 'bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300'
+                      }`}>
+                        {combinedHistoryRecords.length}
+                      </span>
+                    )}
                   </button>
 
                   <button
@@ -2225,6 +2596,78 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
                     className="w-full px-2 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs"
                     placeholder="e.g. RFI Log"
                   />
+                </div>
+              </div>
+
+              {/* Master Admin Evaluation Source Mode Option */}
+              <div className="bg-slate-50 dark:bg-slate-800/80 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700/80 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-black text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                    <span>⚙️</span>
+                    <span>Evaluation Source:</span>
+                  </label>
+                  <span className="text-[10px] uppercase font-mono font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-800">
+                    Master Admin Option
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-tight">
+                  Choose how this criterion score is determined: automatically calculated, pulled from submittals/project DB, or evaluated manually by the user.
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                  {[
+                    {
+                      id: 'auto',
+                      label: 'Auto-Calculated',
+                      badge: 'Smart Auto',
+                      desc: 'Smart automatic calculation using standard matrix baseline mapping'
+                    },
+                    {
+                      id: 'auto_submittal',
+                      label: 'Submittals',
+                      badge: 'Live Submittals & SLAs',
+                      desc: 'Derived from live submittals: RFIs, WIRs, Materials, Design reviews, SLAs'
+                    },
+                    {
+                      id: 'auto_database',
+                      label: 'Project DB',
+                      badge: 'Project DB Telemetry',
+                      desc: 'Derived from unified project DB: IPCs, SPI, Staff, Invoices, ROW, Risks'
+                    },
+                    {
+                      id: 'user_evaluation',
+                      label: 'User Evaluation Option',
+                      badge: 'Qualitative Assessment',
+                      desc: 'Direct evaluator rating (Likert 1-5) and supervisory engineering remarks'
+                    }
+                  ].map((opt) => {
+                    const isSelected = (criterionForm.evaluationSource || 'auto') === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setCriterionForm({ ...criterionForm, evaluationSource: opt.id as any })}
+                        className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer relative flex flex-col justify-between ${
+                          isSelected
+                            ? 'ring-2 ring-indigo-500 bg-indigo-50/90 dark:bg-indigo-950/60 border-indigo-500'
+                            : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="font-black text-xs text-slate-850 dark:text-white flex items-center gap-1.5">
+                            <span className={`w-2 h-2 rounded-full ${isSelected ? 'bg-indigo-600 dark:bg-indigo-400' : 'bg-slate-300 dark:bg-slate-600'}`}></span>
+                            {opt.label}
+                          </span>
+                          <span className="text-[9px] font-bold uppercase px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                            {opt.badge}
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400 leading-snug">
+                          {opt.desc}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 

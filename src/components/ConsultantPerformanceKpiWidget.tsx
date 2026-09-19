@@ -79,6 +79,12 @@ export default function ConsultantPerformanceKpiWidget({
   const [selectedTenureConsultantId, setSelectedTenureConsultantId] = useState<string>('current');
   const [livePillar2Score, setLivePillar2Score] = useState<number | null>(null);
 
+  const isEraUser = useMemo(() => {
+    if (!currentUser) return false;
+    const r = (currentUser.role || '').toLowerCase();
+    return r === 'era_editor' || r === 'era_approver' || r === 'era editor' || r === 'era approver';
+  }, [currentUser]);
+
   const isMasterAdminRole = useMemo(() => {
     if (isMasterAdmin !== undefined) return isMasterAdmin;
     if (!currentUser) return isAdmin;
@@ -464,16 +470,18 @@ export default function ConsultantPerformanceKpiWidget({
           </div>
 
           <h3 className="text-lg md:text-xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
-            Consultant SLA Response Performance & Weighted Evaluation Matrix
+            {isEraUser ? 'Supervision Consultant Performance Evaluation Matrix' : 'Consultant SLA Response Performance & Weighted Evaluation Matrix'}
           </h3>
           <p className="text-xs text-slate-500 dark:text-slate-400 max-w-3xl">
-            Real-time benchmarking of technical RFIs, material approvals, IPC verification, and design turnaround times against contract and Ethiopian Roads Administration targets. Performance marks and deductions are dynamically calculated from the evaluated Submittal Log.
+            {isEraUser
+              ? 'Authorized portal for Ethiopian Roads Administration evaluators and approvers. Rate, verify, and document qualitative and quantitative criteria across all 5 evaluation dimensions in Section 2.'
+              : 'Real-time benchmarking of technical RFIs, material approvals, IPC verification, and design turnaround times against contract and Ethiopian Roads Administration targets. Performance marks and deductions are dynamically calculated from the evaluated Submittal Log.'}
           </p>
         </div>
 
         {/* Action Controls */}
         <div className="flex flex-wrap items-center gap-2">
-          {!isReadonly && isAdmin && (
+          {!isReadonly && isAdmin && !isEraUser && (
             <button
               onClick={() => {
                 setEditCriteriaForm(evaluationCriteria);
@@ -487,7 +495,7 @@ export default function ConsultantPerformanceKpiWidget({
             </button>
           )}
 
-          {!isReadonly && (
+          {!isReadonly && !isEraUser && (
             <button
               onClick={handleResetToDefaults}
               title="Reset to standard contract benchmarks"
@@ -566,71 +574,116 @@ export default function ConsultantPerformanceKpiWidget({
 
       <div className="space-y-8">
         {/* Dynamic Dual-Pillar Composite Scorecard Banner */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-5 rounded-2xl bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/80 shadow-2xs">
-          {/* Pillar I Score Card */}
-          <div className="bg-white dark:bg-slate-950 p-4 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center justify-between">
-            <div className="space-y-1">
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
-                Pillar I: Submittal SLA
-              </span>
-              <div className="flex items-baseline gap-1.5">
-                <span className="text-2xl font-black text-slate-800 dark:text-zinc-100 font-mono">
-                  {pillar1ScoreValue.toFixed(1)}%
-                </span>
-                <span className="text-xs font-bold text-slate-400">score</span>
+        {isEraUser ? (
+          <div className="p-5 rounded-3xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-indigo-500/30 shadow-lg text-white space-y-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-indigo-800/40 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-300 shrink-0">
+                  <Award className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-black text-white uppercase tracking-wider">
+                      ERA Performance Evaluation Portal
+                    </h3>
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-indigo-500/30 text-indigo-200 border border-indigo-400/40 font-mono">
+                      {currentUser?.role === 'era_approver' ? '🏛️ ERA Approver' : '✏️ ERA Editor'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-indigo-200/80 mt-0.5">
+                    Authorized to evaluate, review, and score <strong>Section 2: Supervision Consultant Performance Evaluation Criteria</strong> across all 5 technical dimensions.
+                  </p>
+                </div>
               </div>
-            </div>
-            <div className="p-2.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400">
-              <Clock className="w-5 h-5" />
-            </div>
-          </div>
 
-          {/* Pillar II Score Card */}
-          <div className="bg-white dark:bg-slate-950 p-4 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center justify-between">
-            <div className="space-y-1">
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
-                Pillar II: Technical Audit
-              </span>
-              <div className="flex items-baseline gap-1.5">
-                <span className="text-2xl font-black text-slate-800 dark:text-zinc-100 font-mono">
-                  {pillar2ScoreValue.toFixed(1)}%
-                </span>
-                <span className="text-xs font-bold text-slate-400">score</span>
-              </div>
-            </div>
-            <div className="p-2.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400">
-              <Award className="w-5 h-5" />
-            </div>
-          </div>
-
-          {/* Combined Composite Overall Score */}
-          <div className="bg-indigo-950/30 dark:bg-indigo-950/60 p-4 rounded-xl border border-indigo-200/50 dark:border-indigo-900/60 flex items-center justify-between">
-            <div className="space-y-1">
-              <span className="text-[10px] font-black uppercase tracking-wider text-indigo-700 dark:text-indigo-300 block">
-                Combined Overall Score (Avg)
-              </span>
-              <div className="flex items-center gap-2">
-                <span className="text-3xl font-black text-indigo-900 dark:text-indigo-100 font-mono">
-                  {combinedAvgScoreValue.toFixed(1)}%
-                </span>
-                <div className="flex flex-col">
-                  <span className="text-[10px] px-1.5 py-0.5 rounded font-black bg-indigo-600 text-white leading-tight">
-                    Grade {combinedGradeInfo.grade}
+              <div className="flex items-center gap-4 bg-white/5 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-white/10 shrink-0 font-mono">
+                <div className="text-right">
+                  <span className="text-[9px] uppercase font-bold text-indigo-300 block">Section 2 Audit</span>
+                  <span className="text-2xl font-black text-emerald-400">
+                    {pillar2ScoreValue.toFixed(1)}%
                   </span>
-                  <span className="text-[9px] font-bold text-indigo-700 dark:text-indigo-300 leading-none mt-1">
-                    {combinedGradeInfo.standing}
+                </div>
+                <div className="h-8 w-px bg-white/10" />
+                <div className="text-left">
+                  <span className="text-[9px] uppercase font-bold text-indigo-300 block">Official Grade</span>
+                  <span className="text-xs font-black text-amber-300 block mt-0.5">
+                    Grade {combinedGradeInfo.grade}
                   </span>
                 </div>
               </div>
             </div>
-            <div className="p-2.5 rounded-lg bg-indigo-600 text-white shadow-xs">
-              <TrendingUp className="w-5 h-5" />
+            <div className="text-[11px] text-indigo-300/80 flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              Operational submittal logs and SLA turnaround (Pillar I) are managed by site supervision administration.
             </div>
           </div>
-        </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-5 rounded-2xl bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/80 shadow-2xs">
+            {/* Pillar I Score Card */}
+            <div className="bg-white dark:bg-slate-950 p-4 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <div className="space-y-1">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
+                  Pillar I: Submittal SLA
+                </span>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-2xl font-black text-slate-800 dark:text-zinc-100 font-mono">
+                    {pillar1ScoreValue.toFixed(1)}%
+                  </span>
+                  <span className="text-xs font-bold text-slate-400">score</span>
+                </div>
+              </div>
+              <div className="p-2.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400">
+                <Clock className="w-5 h-5" />
+              </div>
+            </div>
 
-        {/* Section 1: Submittal Log & Operational SLA Turnaround (19 Categories - Pillar I) */}
-        {!(currentUser?.role === 'era_editor' || currentUser?.role === 'era_approver') && (
+            {/* Pillar II Score Card */}
+            <div className="bg-white dark:bg-slate-950 p-4 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <div className="space-y-1">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
+                  Pillar II: Technical Audit
+                </span>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-2xl font-black text-slate-800 dark:text-zinc-100 font-mono">
+                    {pillar2ScoreValue.toFixed(1)}%
+                  </span>
+                  <span className="text-xs font-bold text-slate-400">score</span>
+                </div>
+              </div>
+              <div className="p-2.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400">
+                <Award className="w-5 h-5" />
+              </div>
+            </div>
+
+            {/* Combined Composite Overall Score */}
+            <div className="bg-indigo-950/30 dark:bg-indigo-950/60 p-4 rounded-xl border border-indigo-200/50 dark:border-indigo-900/60 flex items-center justify-between">
+              <div className="space-y-1">
+                <span className="text-[10px] font-black uppercase tracking-wider text-indigo-700 dark:text-indigo-300 block">
+                  Combined Overall Score (Avg)
+                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-3xl font-black text-indigo-900 dark:text-indigo-100 font-mono">
+                    {combinedAvgScoreValue.toFixed(1)}%
+                  </span>
+                  <div className="flex flex-col">
+                    <span className="text-[10px] px-1.5 py-0.5 rounded font-black bg-indigo-600 text-white leading-tight">
+                      Grade {combinedGradeInfo.grade}
+                    </span>
+                    <span className="text-[9px] font-bold text-indigo-700 dark:text-indigo-300 leading-none mt-1">
+                      {combinedGradeInfo.standing}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div className="p-2.5 rounded-lg bg-indigo-600 text-white shadow-xs">
+                <TrendingUp className="w-5 h-5" />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Section 1: Submittal Log & Operational SLA Turnaround (21 items - Pillar I) */}
+        {!isEraUser && (
         <div className="space-y-6 pb-8 border-b border-slate-100 dark:border-slate-800">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-2">
             <div className="flex items-center gap-2">
@@ -1026,7 +1079,7 @@ export default function ConsultantPerformanceKpiWidget({
             consultant={isViewingHistorical && historicalConsultant ? historicalConsultant : consultant}
             onUpdateConsultant={onUpdateConsultant}
             isReadonly={isReadonly}
-            isAdmin={isAdmin}
+            isAdmin={isAdmin || isEraUser}
             isMasterAdmin={isMasterAdminRole}
             currentUser={currentUser}
             submittalsList={submittalsList}
