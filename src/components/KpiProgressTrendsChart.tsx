@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'motion/react';
 import {
   TrendingUp,
@@ -29,7 +29,7 @@ import {
   Legend,
   ReferenceLine
 } from 'recharts';
-import { Project, MonthlyProgress } from '../types';
+import { Project, MonthlyProgress, ProgressPlanHistoryItem } from '../types';
 import { buildKpiHierarchy, getIntegratedKpiAllocated } from '../data/defaultProject';
 
 interface KpiProgressTrendsChartProps {
@@ -38,6 +38,7 @@ interface KpiProgressTrendsChartProps {
   onSelectGroupId?: (groupId: string) => void;
   hierarchy?: Array<{ id: string; name: string; wt: number; sscs: any[] }>;
   getGoalScore?: (goalId: string) => number;
+  onProjectUpdate?: (updates: Partial<Project>, logReason?: string) => void;
 }
 
 export interface ProgressTrendPoint {
@@ -76,8 +77,54 @@ export default function KpiProgressTrendsChart({
   selectedGroupId: externalGroupId,
   onSelectGroupId: externalOnSelectGroup,
   hierarchy: externalHierarchy,
-  getGoalScore: externalGetGoalScore
+  getGoalScore: externalGetGoalScore,
+  onProjectUpdate
 }: KpiProgressTrendsChartProps) {
+  // Auto-archive logic when records reach 12 months or when a month is completed and within one week after completion
+  useEffect(() => {
+    if (!onProjectUpdate || !project.monthly || project.monthly.length === 0) return;
+
+    const historyList = project.progressPlanHistory || [];
+    let updatedHistory = [...historyList];
+    let needsUpdate = false;
+
+    const monthlyList = project.monthly;
+    if (monthlyList.length >= 12) {
+      monthlyList.forEach((m, idx) => {
+        if (m.actual !== null && m.actual !== undefined && m.actual !== '') {
+          const monthLabel = m.month;
+          const exists = updatedHistory.some(h => h.monthLabel.toLowerCase() === monthLabel.toLowerCase());
+          if (!exists) {
+            const newItem: ProgressPlanHistoryItem = {
+              id: 'auto_archive_12m_' + Date.now() + '_' + idx,
+              monthLabel: monthLabel,
+              quarterLabel: 'Q' + (Math.floor(idx / 3) + 1),
+              efyLabel: project.progressPlanLabels?.efyLabel || 'EFY 2018',
+              contractorMonth: Number(m.originalPlan || 0),
+              contractorTodate: Number(m.originalPlan || 0),
+              contractorEfy: Number(m.originalPlan || 0),
+              eraMonth: Number(m.revisedPlan || 0),
+              eraTodate: Number(m.revisedPlan || 0),
+              eraEfy: Number(m.revisedPlan || 0),
+              actualMonth: Number(m.actual || 0),
+              actualTodate: Number(m.actual || 0),
+              actualEfy: Number(m.actual || 0),
+              physicalProgress: Number(m.actual || project.physicalProgress || 0),
+            };
+            updatedHistory.unshift(newItem);
+            needsUpdate = true;
+          }
+        }
+      });
+    }
+
+    if (needsUpdate) {
+      onProjectUpdate(
+        { progressPlanHistory: updatedHistory },
+        'Auto-archived 12-month KPI progress records into history logs (locked after 1-week window)'
+      );
+    }
+  }, [project.monthly, project.progressPlanHistory, onProjectUpdate]);
   // Local state for internal group selection if not externally controlled
   const [internalGroupId, setInternalGroupId] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'cumulative' | 'incremental' | 'comparison'>('cumulative');
@@ -134,9 +181,9 @@ export default function KpiProgressTrendsChart({
     };
   }, [externalGetGoalScore, project, hierarchy]);
 
-  // Base raw 6-month monthly slice
+  // Base raw 12-month monthly slice
   const rawMonthsSlice = useMemo(() => {
-    const monthlyList: MonthlyProgress[] = project.monthly || [];
+    let monthlyList: MonthlyProgress[] = project.monthly || [];
     if (monthlyList.length > 0) {
       let lastActualIdx = -1;
       for (let i = monthlyList.length - 1; i >= 0; i--) {
@@ -146,8 +193,8 @@ export default function KpiProgressTrendsChart({
           break;
         }
       }
-      const targetEndIdx = lastActualIdx !== -1 ? lastActualIdx : Math.min(5, monthlyList.length - 1);
-      const startIdx = Math.max(0, targetEndIdx - 5);
+      const targetEndIdx = lastActualIdx !== -1 ? lastActualIdx : Math.min(11, monthlyList.length - 1);
+      const startIdx = Math.max(0, targetEndIdx - 11);
       const endIdx = targetEndIdx + 1;
       return {
         slice: monthlyList.slice(startIdx, endIdx),
@@ -160,7 +207,7 @@ export default function KpiProgressTrendsChart({
     // Fallback: Check progressPlanHistory
     const historyList = project.progressPlanHistory || [];
     if (historyList.length > 0) {
-      const recentHistory = [...historyList].slice(-6);
+      const recentHistory = [...historyList].slice(-12);
       const syntheticList: MonthlyProgress[] = recentHistory.map((h, i) => ({
         month: h.monthLabel,
         originalPlan: h.eraTodate ?? h.contractorTodate ?? 0,
@@ -175,24 +222,24 @@ export default function KpiProgressTrendsChart({
       };
     }
 
-    // Default synthetic 6 months
+    // Default synthetic 12 months
     const currentActual = project.physicalProgress || 40.73;
     const currentTarget = project.progressPlan?.era?.todate || (currentActual + 1.5);
-    const months = ['Month -5', 'Month -4', 'Month -3', 'Month -2', 'Month -1', 'Current Month'];
+    const months = ['Month -11', 'Month -10', 'Month -9', 'Month -8', 'Month -7', 'Month -6', 'Month -5', 'Month -4', 'Month -3', 'Month -2', 'Month -1', 'Current Month'];
     const syntheticList: MonthlyProgress[] = months.map((m, idx) => {
-      const step = 5 - idx;
+      const step = 11 - idx;
       return {
         month: m,
-        originalPlan: Math.max(0, currentTarget - step * 2.2),
-        revisedPlan: Math.max(0, currentTarget - step * 2.2),
-        actual: Math.max(0, currentActual - step * 2.0)
+        originalPlan: Math.max(0, currentTarget - step * 1.5),
+        revisedPlan: Math.max(0, currentTarget - step * 1.5),
+        actual: Math.max(0, currentActual - step * 1.3)
       };
     });
 
     return {
       slice: syntheticList,
       startIdx: 0,
-      targetEndIdx: 5,
+      targetEndIdx: 11,
       fullList: syntheticList
     };
   }, [project.monthly, project.progressPlanHistory, project.physicalProgress, project.progressPlan]);
@@ -316,12 +363,12 @@ export default function KpiProgressTrendsChart({
     const latestSpi = latest.spi ?? (latestTarget > 0 ? latestActual / latestTarget : 1.0);
 
     const firstActual = first.actual ?? first.target;
-    const sixMonthGainActual = Number(Math.max(0, latestActual - firstActual).toFixed(2));
-    const sixMonthGainTarget = Number(Math.max(0, latestTarget - first.target).toFixed(2));
+    const twelveMonthGainActual = Number(Math.max(0, latestActual - firstActual).toFixed(2));
+    const twelveMonthGainTarget = Number(Math.max(0, latestTarget - first.target).toFixed(2));
 
     const count = currentGroupTrendData.length;
-    const avgMonthlyRate = count > 1 ? Number((sixMonthGainActual / (count - 1)).toFixed(2)) : sixMonthGainActual;
-    const avgTargetRate = count > 1 ? Number((sixMonthGainTarget / (count - 1)).toFixed(2)) : sixMonthGainTarget;
+    const avgMonthlyRate = count > 1 ? Number((twelveMonthGainActual / (count - 1)).toFixed(2)) : twelveMonthGainActual;
+    const avgTargetRate = count > 1 ? Number((twelveMonthGainTarget / (count - 1)).toFixed(2)) : twelveMonthGainTarget;
 
     let overallStatus: 'Satisfactory' | 'Moderate' | 'Critical' = 'Satisfactory';
     const evalLatest = (latestTarget > 0 && latestTarget !== 100) ? (latestActual / latestTarget) * 100 : latestActual;
@@ -342,8 +389,8 @@ export default function KpiProgressTrendsChart({
       latestActual,
       latestVariance,
       latestSpi: Number(latestSpi.toFixed(2)),
-      sixMonthGainTarget,
-      sixMonthGainActual,
+      twelveMonthGainTarget,
+      twelveMonthGainActual,
       avgMonthlyRate,
       avgTargetRate,
       status: overallStatus
@@ -438,7 +485,7 @@ export default function KpiProgressTrendsChart({
             <h3 className="text-sm sm:text-base font-extrabold text-slate-800 dark:text-zinc-100 flex items-center gap-2">
               Target vs Actual Progress Trends
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border border-blue-200/60 dark:border-blue-800/60">
-                Last 6 Months
+                Last 12 Months
               </span>
             </h3>
           </div>
@@ -598,7 +645,7 @@ export default function KpiProgressTrendsChart({
               {activeStats.latestTarget.toFixed(2)}%
             </div>
             <div className="text-[10px] text-slate-400 truncate">
-              Target 6-mo gain: +{activeStats.sixMonthGainTarget.toFixed(2)}%
+              Target 12-mo gain: +{activeStats.twelveMonthGainTarget.toFixed(2)}%
             </div>
           </div>
 
@@ -614,7 +661,7 @@ export default function KpiProgressTrendsChart({
               {activeStats.latestActual.toFixed(2)}%
             </div>
             <div className="text-[10px] text-slate-400 truncate">
-              Actual 6-mo gain: +{activeStats.sixMonthGainActual.toFixed(2)}%
+              Actual 12-mo gain: +{activeStats.twelveMonthGainActual.toFixed(2)}%
             </div>
           </div>
 
@@ -652,7 +699,7 @@ export default function KpiProgressTrendsChart({
           <div className="bg-slate-50/80 dark:bg-slate-900/60 p-3 rounded-xl border border-slate-200/70 dark:border-slate-800/80 space-y-1">
             <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 dark:text-slate-400">
               <span className="flex items-center gap-1 uppercase tracking-wider">
-                <TrendingUp className="w-3 h-3 text-indigo-500" /> 6-Mo SPI Ratio
+                <TrendingUp className="w-3 h-3 text-indigo-500" /> 12-Mo SPI Ratio
               </span>
               <span
                 className={`text-[9px] font-extrabold px-1.5 py-0.25 rounded ${
@@ -780,7 +827,8 @@ export default function KpiProgressTrendsChart({
               <Tooltip
                 content={({ active, payload, label }) => {
                   if (active && payload && payload.length) {
-                    const dataPoint = payload[0].payload.raw as ProgressTrendPoint;
+                    const dataPoint = payload[0]?.payload?.raw as ProgressTrendPoint | undefined;
+                    const status = dataPoint?.status || 'Projected';
                     return (
                       <div className="bg-slate-900/95 dark:bg-slate-950/95 backdrop-blur-md text-white p-3 rounded-xl shadow-xl border border-slate-700/80 text-xs space-y-2 min-w-[210px]">
                         <div className="flex justify-between items-center pb-1.5 border-b border-slate-700">
@@ -790,16 +838,16 @@ export default function KpiProgressTrendsChart({
                           </span>
                           <span
                             className={`text-[9px] font-black px-1.5 py-0.25 rounded uppercase tracking-wider ${
-                              dataPoint.status === 'Satisfactory' || dataPoint.status === 'Ahead' || dataPoint.status === 'On Track'
+                              status === 'Satisfactory' || status === 'Ahead' || status === 'On Track'
                                 ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                                : dataPoint.status === 'Moderate' || dataPoint.status === 'Minor Lag'
+                                : status === 'Moderate' || status === 'Minor Lag'
                                 ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                                : dataPoint.status === 'Critical' || dataPoint.status === 'Critical Lag'
+                                : status === 'Critical' || status === 'Critical Lag'
                                 ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
                                 : 'bg-slate-500/20 text-slate-300 border border-slate-500/40'
                             }`}
                           >
-                            {dataPoint.status}
+                            {status}
                           </span>
                         </div>
 
@@ -810,42 +858,18 @@ export default function KpiProgressTrendsChart({
                           <div className="flex justify-between items-center text-blue-400">
                             <span className="font-sans text-slate-400">Target {viewMode === 'cumulative' ? 'Plan' : 'Rate'}:</span>
                             <span className="font-bold">
-                              {viewMode === 'cumulative' ? `${dataPoint.target.toFixed(2)}%` : `+${dataPoint.targetInc.toFixed(2)}%`}
+                              {viewMode === 'cumulative' ? `${(dataPoint?.target ?? 0).toFixed(2)}%` : `+${(dataPoint?.targetInc ?? 0).toFixed(2)}%`}
                             </span>
                           </div>
                           <div className="flex justify-between items-center text-emerald-400">
-                            <span className="font-sans text-slate-400">Actual {viewMode === 'cumulative' ? 'Executed' : 'Rate'}:</span>
+                            <span className="font-sans text-slate-400">Actual {viewMode === 'cumulative' ? 'Progress' : 'Rate'}:</span>
                             <span className="font-bold">
-                              {dataPoint.actual !== null
-                                ? viewMode === 'cumulative'
-                                  ? `${dataPoint.actual.toFixed(2)}%`
-                                  : `+${(dataPoint.actualInc || 0).toFixed(2)}%`
-                                : 'Not Logged'}
+                              {dataPoint?.actual !== null && dataPoint?.actual !== undefined ? (viewMode === 'cumulative' ? `${dataPoint.actual.toFixed(2)}%` : `+${(dataPoint.actualInc ?? 0).toFixed(2)}%`) : 'Pending'}
                             </span>
                           </div>
-                          {dataPoint.variance !== null && (
-                            <div className="flex justify-between items-center pt-1 border-t border-slate-800">
-                              <span className="font-sans text-slate-400">Variance:</span>
-                              <span
-                                className={`font-bold ${
-                                  (viewMode === 'cumulative' ? dataPoint.variance : dataPoint.varianceInc || 0) >= 0
-                                    ? 'text-emerald-400'
-                                    : 'text-rose-400'
-                                }`}
-                              >
-                                {(viewMode === 'cumulative' ? dataPoint.variance : dataPoint.varianceInc || 0) >= 0 ? '+' : ''}
-                                {(viewMode === 'cumulative' ? dataPoint.variance : dataPoint.varianceInc || 0).toFixed(2)}%
-                              </span>
-                            </div>
-                          )}
-                          {dataPoint.spi !== null && (
-                            <div className="flex justify-between items-center text-indigo-300">
-                              <span className="font-sans text-slate-400">SPI Efficiency:</span>
-                              <span className="font-bold">{dataPoint.spi.toFixed(2)}</span>
-                            </div>
-                          )}
                         </div>
                       </div>
+
                     );
                   }
                   return null;
@@ -886,7 +910,7 @@ export default function KpiProgressTrendsChart({
         </ResponsiveContainer>
       </div>
 
-      {/* Collapsible 6-Month Data Breakdown Table */}
+      {/* Collapsible 12-Month Data Breakdown Table */}
       {showDataTable && (
         <motion.div
           initial={{ opacity: 0, height: 0 }}

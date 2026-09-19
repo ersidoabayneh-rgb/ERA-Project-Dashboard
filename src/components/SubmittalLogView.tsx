@@ -36,6 +36,7 @@ import {
   MoveVertical,
   MessageSquare
 } from 'lucide-react';
+import { jsPDF } from 'jspdf';
 import RfiLogComponent from './RfiLogComponent';
 import {
   Project,
@@ -244,6 +245,9 @@ export default function SubmittalLogView({
 
   const [showStatusManager, setShowStatusManager] = useState(false);
   const [newStatusName, setNewStatusName] = useState('');
+
+  // Selected submittals for export
+  const [selectedSubmittalNos, setSelectedSubmittalNos] = useState<string[]>([]);
 
   // View mode: 'submittals' (technical submittals register) vs 'rfi_log' (dedicated RFI correspondence log)
   const [activeViewTab, setActiveViewTab] = useState<'submittals' | 'rfi_log'>('submittals');
@@ -651,6 +655,289 @@ export default function SubmittalLogView({
     document.body.removeChild(link);
   };
 
+  const handleExportPdf = () => {
+    // Determine which records to export
+    const recordsToExport = selectedSubmittalNos.length > 0
+      ? sortedSubmittals.filter(s => selectedSubmittalNos.includes(s.submittalNo))
+      : sortedSubmittals;
+
+    if (recordsToExport.length === 0) {
+      alert('No submittal records available to export.');
+      return;
+    }
+
+    const doc = new jsPDF({
+      orientation: 'landscape',
+      unit: 'pt',
+      format: 'a4'
+    });
+
+    const pageWidth = doc.internal.pageSize.getWidth(); // 841.89 pt
+    const pageHeight = doc.internal.pageSize.getHeight(); // 595.28 pt
+    const margin = 36;
+    const contentWidth = pageWidth - (margin * 2); // 769.89 pt
+    let curY = 40;
+    let pageCount = 0;
+
+    const drawPageDecorations = () => {
+      pageCount++;
+      // Top colored border strip (Royal Indigo style)
+      doc.setFillColor(79, 70, 229);
+      doc.rect(margin, 20, contentWidth, 3, 'F');
+
+      // Bottom footer line
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      doc.setTextColor(148, 163, 184); // slate-400
+      doc.setDrawColor(226, 232, 240); // slate-200
+      doc.line(margin, pageHeight - 35, pageWidth - margin, pageHeight - 35);
+
+      // Footer texts
+      doc.text(
+        `ETHIOPIAN ROADS ADMINISTRATION • TECHNICAL SUBMITTAL REGISTER • ${project.name || 'ERA PROJECT'}`,
+        margin,
+        pageHeight - 22
+      );
+      doc.text(
+        `OFFLINE PROJECT DOCUMENTATION • Page ${pageCount}`,
+        pageWidth - margin,
+        pageHeight - 22,
+        { align: 'right' }
+      );
+    };
+
+    const checkSpace = (needed: number) => {
+      if (curY + needed > pageHeight - 50) {
+        doc.addPage();
+        curY = 45;
+        drawPageDecorations();
+      }
+    };
+
+    const truncateText = (text: string, widthInPt: number, fontSize: number = 7.5) => {
+      if (!text) return '-';
+      const charWidth = fontSize * 0.42;
+      const maxChars = Math.floor(widthInPt / charWidth);
+      if (text.length <= maxChars) return text;
+      return text.substring(0, maxChars - 3) + '...';
+    };
+
+    // Draw page 1 decorations
+    drawPageDecorations();
+
+    // Document Header Logo
+    doc.setFillColor(15, 23, 42); // dark slate-900
+    doc.roundedRect(margin, curY, 36, 36, 6, 6, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(245, 158, 11); // Amber
+    doc.text("E.R.A", margin + 18, curY + 18, { align: 'center' });
+    doc.setFontSize(4);
+    doc.setTextColor(255, 255, 255);
+    doc.text("ROADS", margin + 18, curY + 26, { align: 'center' });
+
+    // Header Title
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.setTextColor(15, 23, 42);
+    doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA)", margin + 46, curY + 12);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(79, 70, 229); // Indigo
+    doc.text("OFFICIAL TECHNICAL SUBMITTAL & CORRESPONDENCE LOG REGISTER", margin + 46, curY + 23);
+
+    // Metadata
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(100, 116, 139); // Slate
+    const generatedDateStr = new Date().toLocaleDateString('en-US', {
+      year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
+    });
+    doc.text(`PROJECT: ${project.name || 'CURRENT PROJECT'}   •   GENERATED: ${generatedDateStr}   •   SCOPE: ${selectedSubmittalNos.length > 0 ? 'SELECTED RECORDS ONLY' : 'ALL ACTIVE LOG RECORDS'}`, margin + 46, curY + 32);
+
+    curY += 46;
+
+    // Mini Executive Stats Summary Bar inside PDF
+    doc.setFillColor(248, 250, 252); // slate-50
+    doc.setDrawColor(226, 232, 240); // slate-200
+    doc.roundedRect(margin, curY, contentWidth, 34, 4, 4, 'DF');
+
+    const totalCount = recordsToExport.length;
+    const closedCount = recordsToExport.filter(s => s.status === 'Closed' || s.status === 'Approved / Closed' || s.status === 'Approved').length;
+    const pendingCount = totalCount - closedCount;
+    const avgDays = totalCount > 0 
+      ? Math.round(recordsToExport.reduce((acc, s) => acc + (s.actualDays || 0), 0) / totalCount)
+      : 0;
+
+    const colWidthKpi = contentWidth / 4;
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.5);
+    doc.setTextColor(100, 116, 139);
+    doc.text("EXPORTED RECORDS", margin + 12, curY + 12);
+    doc.setFontSize(9);
+    doc.setTextColor(15, 23, 42);
+    doc.text(`${totalCount} Submittals`, margin + 12, curY + 25);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.5);
+    doc.setTextColor(100, 116, 139);
+    doc.text("RESOLVED / CLOSED", margin + colWidthKpi + 12, curY + 12);
+    doc.setFontSize(9);
+    doc.setTextColor(16, 185, 129); // emerald-500
+    doc.text(`${closedCount} Records`, margin + colWidthKpi + 12, curY + 25);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.5);
+    doc.setTextColor(100, 116, 139);
+    doc.text("UNDER ACTIVE REVIEW", margin + (colWidthKpi * 2) + 12, curY + 12);
+    doc.setFontSize(9);
+    doc.setTextColor(245, 158, 11); // amber-500
+    doc.text(`${pendingCount} Records`, margin + (colWidthKpi * 2) + 12, curY + 25);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.5);
+    doc.setTextColor(100, 116, 139);
+    doc.text("AVG RESPONSE DAYS", margin + (colWidthKpi * 3) + 12, curY + 12);
+    doc.setFontSize(9);
+    doc.setTextColor(79, 70, 229); // indigo-600
+    doc.text(`${avgDays} Days`, margin + (colWidthKpi * 3) + 12, curY + 25);
+
+    curY += 46;
+
+    // Table Column Widths
+    const widths = {
+      subNo: 75,
+      category: 100,
+      title: 200,
+      submitted: 65,
+      responded: 65,
+      sla: 65,
+      status: 100,
+      engineer: 99
+    };
+
+    // Table Headers background
+    doc.setFillColor(15, 23, 42); // slate-900
+    doc.rect(margin, curY, contentWidth, 18, 'F');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(255, 255, 255);
+
+    let runningX = margin;
+    doc.text("SUBMITTAL #", runningX + 6, curY + 12); runningX += widths.subNo;
+    doc.text("CATEGORY", runningX + 6, curY + 12); runningX += widths.category;
+    doc.text("SUBJECT / DESCRIPTION", runningX + 6, curY + 12); runningX += widths.title;
+    doc.text("SUBMITTED", runningX + 6, curY + 12); runningX += widths.submitted;
+    doc.text("RESPONDED", runningX + 6, curY + 12); runningX += widths.responded;
+    doc.text("SLA (DAYS)", runningX + 6, curY + 12); runningX += widths.sla;
+    doc.text("STATUS", runningX + 6, curY + 12); runningX += widths.status;
+    doc.text("ASSIGNED RE", runningX + 6, curY + 12);
+
+    curY += 18;
+
+    // Table rows rendering loop
+    recordsToExport.forEach((item, index) => {
+      // Each row has a height of 20pt
+      checkSpace(20);
+
+      // Alternating row background
+      if (index % 2 === 0) {
+        doc.setFillColor(248, 250, 252); // slate-50
+      } else {
+        doc.setFillColor(255, 255, 255);
+      }
+      doc.rect(margin, curY, contentWidth, 20, 'F');
+
+      // Thin bottom gridline
+      doc.setDrawColor(241, 245, 249); // slate-100
+      doc.line(margin, curY + 20, margin + contentWidth, curY + 20);
+
+      // Submittal #
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(15, 23, 42); // slate-900
+      doc.text(item.submittalNo, margin + 6, curY + 13);
+
+      let colX = margin + widths.subNo;
+
+      // Category
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      doc.setTextColor(71, 85, 105); // slate-600
+      doc.text(truncateText(item.type, widths.category - 12), colX + 6, curY + 13);
+      colX += widths.category;
+
+      // Subject / Description
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7);
+      doc.setTextColor(15, 23, 42);
+      doc.text(truncateText(item.title, widths.title - 12), colX + 6, curY + 13);
+      colX += widths.title;
+
+      // Submitted Date
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      doc.setTextColor(71, 85, 105);
+      doc.text(item.submittedDate || '-', colX + 6, curY + 13);
+      colX += widths.submitted;
+
+      // Responded Date
+      doc.text(item.respondedDate || 'Awaiting', colX + 6, curY + 13);
+      colX += widths.responded;
+
+      // SLA (Target vs Actual)
+      const targetDays = item.targetDays || targetOverrides[item.type] || 7;
+      const actualStr = item.actualDays !== undefined ? `${item.actualDays}d` : '-';
+      doc.text(`${targetDays}d / ${actualStr}`, colX + 6, curY + 13);
+      colX += widths.sla;
+
+      // Status Badges
+      const lowerStatus = (item.status || '').toLowerCase();
+      let badgeColor = { r: 100, g: 116, b: 139 }; // default slate-500
+      let badgeBg = { r: 241, g: 245, b: 249 }; // slate-100
+      if (lowerStatus.includes('approved') || lowerStatus.includes('closed')) {
+        badgeColor = { r: 16, g: 124, b: 65 }; // emerald-700
+        badgeBg = { r: 209, g: 250, b: 229 }; // emerald-100
+      } else if (lowerStatus.includes('review')) {
+        badgeColor = { r: 180, g: 83, b: 9 }; // amber-700
+        badgeBg = { r: 254, g: 243, b: 199 }; // amber-100
+      } else if (lowerStatus.includes('reject') || lowerStatus.includes('resubmit')) {
+        badgeColor = { r: 190, g: 24, b: 74 }; // rose-700
+        badgeBg = { r: 255, g: 228, b: 230 }; // rose-100
+      } else if (lowerStatus.includes('overdue')) {
+        badgeColor = { r: 109, g: 40, b: 217 }; // purple-700
+        badgeBg = { r: 243, g: 232, b: 255 }; // purple-100
+      }
+
+      // Draw Badge background box
+      doc.setFillColor(badgeBg.r, badgeBg.g, badgeBg.b);
+      doc.roundedRect(colX + 6, curY + 4, widths.status - 18, 12, 2, 2, 'F');
+      
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.5);
+      doc.setTextColor(badgeColor.r, badgeColor.g, badgeColor.b);
+      doc.text(truncateText(item.status, widths.status - 24), colX + 11, curY + 12);
+      colX += widths.status;
+
+      // Assigned RE
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      doc.setTextColor(71, 85, 105);
+      doc.text(truncateText(item.assignedEngineer || '-', widths.engineer - 12), colX + 6, curY + 13);
+
+      curY += 20;
+    });
+
+    // Save generated PDF
+    const filename = selectedSubmittalNos.length > 0
+      ? `ERA_Selected_Submittal_Records_${new Date().toISOString().split('T')[0]}.pdf`
+      : `ERA_Complete_Submittal_Log_${new Date().toISOString().split('T')[0]}.pdf`;
+    doc.save(filename);
+  };
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto px-4 py-6">
       {/* Header Banner */}
@@ -691,6 +978,16 @@ export default function SubmittalLogView({
           >
             <Download className="w-4 h-4 text-emerald-600" />
             Export CSV
+          </button>
+          <button
+            onClick={handleExportPdf}
+            className="px-4 py-2 text-xs font-bold bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 rounded-xl flex items-center gap-1.5 transition cursor-pointer border border-indigo-200 dark:border-indigo-800"
+            title="Export selected submittal records (or all if none are selected) to a beautifully formatted PDF document."
+          >
+            <FileText className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+            {selectedSubmittalNos.length > 0 
+              ? `Export Selected (${selectedSubmittalNos.length}) PDF` 
+              : 'Export All PDF'}
           </button>
         </div>
       </div>
@@ -932,6 +1229,21 @@ export default function SubmittalLogView({
           <table className="w-full text-left border-collapse text-xs">
             <thead className="sticky top-0 z-20 bg-slate-100/95 dark:bg-slate-800/95 backdrop-blur-xs border-b border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-bold select-none shadow-2xs">
               <tr className="border-b border-slate-200 dark:border-slate-700">
+                <th className="p-3.5 w-12 text-center">
+                  <input
+                    type="checkbox"
+                    checked={sortedSubmittals.length > 0 && selectedSubmittalNos.length === sortedSubmittals.length}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedSubmittalNos(sortedSubmittals.map(s => s.submittalNo));
+                      } else {
+                        setSelectedSubmittalNos([]);
+                      }
+                    }}
+                    className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 cursor-pointer accent-indigo-600"
+                    title={selectedSubmittalNos.length === sortedSubmittals.length ? "Deselect All" : "Select All"}
+                  />
+                </th>
                 <th 
                   onClick={() => handleToggleHeaderSort('submittalNo')}
                   className="p-3.5 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/60 transition group"
@@ -1040,7 +1352,7 @@ export default function SubmittalLogView({
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
               {sortedSubmittals.length === 0 ? (
                 <tr>
-                  <td colSpan={isContractorUser ? 10 : 11} className="p-8 text-center text-slate-400">
+                  <td colSpan={isContractorUser ? 11 : 12} className="p-8 text-center text-slate-400">
                     No submittal records match your filter criteria.
                   </td>
                 </tr>
@@ -1053,8 +1365,22 @@ export default function SubmittalLogView({
                   return (
                     <tr 
                       key={`sublog-${item.id}-${idx}`}
-                      className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors"
+                      className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors ${selectedSubmittalNos.includes(item.submittalNo) ? 'bg-indigo-50/35 dark:bg-indigo-950/25' : ''}`}
                     >
+                      <td className="p-3.5 text-center">
+                        <input
+                          type="checkbox"
+                          checked={selectedSubmittalNos.includes(item.submittalNo)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedSubmittalNos(prev => [...prev, item.submittalNo]);
+                            } else {
+                              setSelectedSubmittalNos(prev => prev.filter(no => no !== item.submittalNo));
+                            }
+                          }}
+                          className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 cursor-pointer accent-indigo-600"
+                        />
+                      </td>
                       <td className="p-3.5 font-mono font-bold text-slate-900 dark:text-white">
                         {item.submittalNo}
                       </td>

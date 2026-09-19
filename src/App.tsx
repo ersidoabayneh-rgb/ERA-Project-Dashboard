@@ -128,7 +128,8 @@ export function isProjectApprover(user: User | null, projectId: string, project?
 
 export function canUserViewPage(user: User | null, pageId: string): boolean {
   if (!user) return false;
-  if (user.role === 'master_admin' || user.role === 'cpm_admin' || user.role === 'admin' || user.username === 'proj_1781786415663') {
+  const isAdmin = user.role === 'master_admin' || user.role === 'admin' || user.role === 'cpm_admin' || user.role === 'directorate_admin' || user.role === 'pmo_admin' || (user.role && user.role.includes('admin'));
+  if (isAdmin || user.username === 'proj_1781786415663') {
     return true;
   }
 
@@ -144,7 +145,11 @@ export function canUserViewPage(user: User | null, pageId: string): boolean {
     }
   }
 
-  if (pageId === 'history' || pageId === 'settings') {
+  if (pageId === 'history') {
+    return isAdmin;
+  }
+
+  if (pageId === 'settings') {
     return false;
   }
   if (user.assignedPages && Array.isArray(user.assignedPages) && user.assignedPages.length > 0) {
@@ -155,7 +160,8 @@ export function canUserViewPage(user: User | null, pageId: string): boolean {
 
 export function canUserEditPage(user: User | null, pageId: string): boolean {
   if (!user) return false;
-  if (user.role === 'master_admin' || user.role === 'cpm_admin' || user.role === 'admin' || user.username === 'proj_1781786415663') {
+  const isAdmin = user.role === 'master_admin' || user.role === 'admin' || user.role === 'cpm_admin' || user.role === 'directorate_admin' || user.role === 'pmo_admin' || (user.role && user.role.includes('admin'));
+  if (isAdmin || user.username === 'proj_1781786415663') {
     return true;
   }
   if (user.role === 'viewer') {
@@ -172,6 +178,10 @@ export function canUserEditPage(user: User | null, pageId: string): boolean {
     if (pageId === 'history' || pageId === 'settings' || pageId === 'kpiEditor' || pageId === 'progressPlanEditor' || pageId === 'issueLog') {
       return false;
     }
+  }
+
+  if (pageId === 'history') {
+    return isAdmin;
   }
 
   if (user.assignedPages && Array.isArray(user.assignedPages) && user.assignedPages.length > 0) {
@@ -3911,7 +3921,7 @@ let isBatchSyncRunning = false;
               currentUserObj.role === 'era_editor' || 
               currentUserObj.role === 'consultant_editor' || 
               currentUserObj.role === 'contractor_editor'
-            ) && currentProject && (
+            ) && currentProject && activeTab !== 'submittalLog' && (
               (() => {
                 const authorDrafts = privateDrafts.filter(d => 
                   d.projectId === currentProject.id && 
@@ -3984,7 +3994,7 @@ let isBatchSyncRunning = false;
               currentUserObj.role === 'era_editor' || 
               currentUserObj.role === 'consultant_editor' || 
               currentUserObj.role === 'contractor_editor'
-            ) && currentProject && (
+            ) && currentProject && activeTab !== 'submittalLog' && (
               (() => {
                 const submittedDrafts = privateDrafts.filter(d => 
                   d.projectId === currentProject.id && 

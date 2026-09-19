@@ -727,9 +727,7 @@ export default function RfiLogComponent({
               Contractor ⇄ Consultant Design Clarification Log
             </h2>
 
-            <p className="text-xs text-indigo-200/80 max-w-3xl leading-relaxed">
-              Formal technical correspondence tracking between Works Contractor <strong className="text-white font-bold">{project.contractor || 'Lead Contractor'}</strong> and Supervision Consultant <strong className="text-white font-bold">{consultant.firmName}</strong> for prompt resolution of drawing ambiguities, site discrepancies, structural details, and material specifications.
-            </p>
+
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5 shrink-0">
@@ -752,28 +750,7 @@ export default function RfiLogComponent({
           </div>
         </div>
 
-        {/* Stakeholder Identity Strip */}
-        <div className="mt-5 pt-4 border-t border-indigo-800/60 grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-          <div className="flex items-center gap-2.5 bg-black/20 p-2.5 rounded-xl border border-white/10">
-            <div className="w-7 h-7 rounded-lg bg-blue-500/30 text-blue-300 flex items-center justify-center font-black">
-              C
-            </div>
-            <div>
-              <span className="text-[10px] text-indigo-300 font-bold uppercase tracking-wider block">Originating Contractor</span>
-              <span className="font-bold text-white truncate block">{project.contractor || 'Works Contractor JV'}</span>
-            </div>
-          </div>
 
-          <div className="flex items-center gap-2.5 bg-black/20 p-2.5 rounded-xl border border-white/10">
-            <div className="w-7 h-7 rounded-lg bg-purple-500/30 text-purple-300 flex items-center justify-center font-black">
-              E
-            </div>
-            <div>
-              <span className="text-[10px] text-purple-300 font-bold uppercase tracking-wider block">Supervising Consultant & Engineer</span>
-              <span className="font-bold text-white truncate block">{consultant.firmName} ({consultant.residentEngineerName || 'Resident Engineer'})</span>
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* Live RFI KPI Metrics Strip */}

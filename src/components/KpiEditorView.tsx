@@ -1257,6 +1257,7 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
         onSelectGroupId={setSelectedGroupId}
         hierarchy={hierarchy}
         getGoalScore={getGoalScore}
+        onProjectUpdate={onProjectUpdate}
       />
       
       {/* CSS Injected styling for tooltip */}
