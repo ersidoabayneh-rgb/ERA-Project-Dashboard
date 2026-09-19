@@ -210,6 +210,10 @@ export default function SubmittalLogView({
     return r === 'contractor' || r.includes('contractor') || u.includes('contractor');
   }, [currentUserObj]);
 
+  const canContractorAddOrEdit = useMemo(() => {
+    return currentUserObj?.role === 'contractor_editor';
+  }, [currentUserObj]);
+
   // View mode: 'submittals' (technical submittals register) vs 'rfi_log' (dedicated RFI correspondence log)
   const [activeViewTab, setActiveViewTab] = useState<'submittals' | 'rfi_log'>('submittals');
 
@@ -641,7 +645,7 @@ export default function SubmittalLogView({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {!isReadonly && !isContractorUser && (
+          {!isReadonly && (!isContractorUser || canContractorAddOrEdit) && (
             <button
               onClick={handleInsertQuickRow}
               className="px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-xs flex items-center gap-1.5 transition cursor-pointer"
@@ -1536,7 +1540,7 @@ export default function SubmittalLogView({
               )}
 
               {/* PDF Drag & Drop Upload Zone */}
-              {!isContractorUser && (
+              {(!isContractorUser || canContractorAddOrEdit) && (
                 <div className="p-4 border-2 border-dashed border-indigo-200 dark:border-indigo-800/80 rounded-2xl bg-indigo-50/40 dark:bg-indigo-950/20 text-center space-y-2">
                   <div className="w-10 h-10 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mx-auto">
                     <Upload className="w-5 h-5" />
@@ -1607,7 +1611,7 @@ export default function SubmittalLogView({
                           ) : (
                             <span className="text-[10px] text-slate-400 italic px-2">Document Logged</span>
                           )}
-                          {!isContractorUser && (
+                          {(!isContractorUser || canContractorAddOrEdit) && (
                             <button
                               onClick={() => handleRemoveAttachment(activeAttachmentSubmittal, att.id)}
                               className="p-1.5 hover:bg-rose-50 dark:hover:bg-rose-950 rounded-xl text-slate-400 hover:text-rose-600 dark:hover:text-rose-400"
