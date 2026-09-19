@@ -76,16 +76,22 @@
         @keyframes spin { to { transform: rotate(360deg); } }
       </style>
       <script>
-        // If React doesn't mount within 4 seconds, show the GitHub Pages help panel
+        // If React doesn't mount within 6 seconds, show appropriate status/help panel
         setTimeout(function() {
           var root = document.getElementById('root');
           var help = document.getElementById('github-pages-help');
           var text = document.getElementById('app-loading-text');
           if (help && root && root.querySelector('#app-loading-fallback')) {
+            var isDocs = window.location.pathname.includes('/docs/');
+            if (isDocs) {
+              if (text) text.innerText = 'Application initialization is taking longer than expected.';
+              help.innerHTML = '<p style="font-weight: 700; color: #3b82f6; margin: 0 0 6px;">Loading System Components...</p><p style="margin: 0; color: #94a3b8; font-size: 12px; line-height: 1.5;">If the application does not load shortly, please check your internet connection or refresh the page.</p><div style="margin-top: 12px;"><button onclick="window.location.reload()" style="padding: 8px 16px; background: #2563eb; color: #ffffff; font-weight: 700; border: none; border-radius: 8px; cursor: pointer; font-size: 12px;">Reload Page</button></div>';
+            } else {
+              if (text) text.innerText = 'Taking longer than expected to load.';
+            }
             help.style.display = 'block';
-            if (text) text.innerText = 'Taking longer than expected to load.';
           }
-        }, 4000);
+        }, 6000);
       </script>
     </div>
     <script type="module" src="/src/main.tsx"></script>
