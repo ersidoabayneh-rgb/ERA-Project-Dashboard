@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && rm -rf docs && cp -r dist docs && touch docs/.nojekyll && cp dist/index.html docs/404.html",
+    "build": "vite build && node scripts/prepare-github-pages.cjs",
     "preview": "vite preview",
     "clean": "rm -rf dist docs",
     "lint": "tsc --noEmit"

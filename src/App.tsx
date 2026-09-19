@@ -45,10 +45,11 @@ import {
   Laptop,
   MapPin,
   Globe,
-  X
+  X,
+  Palette
 } from 'lucide-react';
 
-import { Project, User, ApprovalRequest, PrivateDraft, WorkflowAuditLogEntry, KpiAllocatedItem, SeriesItem, MonthlyProgress, LinearData, RowMetric, ProgressPlan, PaymentItem, AnnualItem, WorkProgramActivity, BondGuarantee, formatAccounting, ProjectDocument, ALL_EDITABLE_PAGES, EditablePageOption, ProjectLifecycleStatus, isProjectClosed, isCpmOrMasterAdmin, isRecentlyUpdated, formatRelativeTime, ContractorScoringWeights, ConsultantScoringWeights, DEFAULT_CONTRACTOR_SCORING_WEIGHTS, DEFAULT_CONSULTANT_SCORING_WEIGHTS, SupervisionConsultantInfo } from './types';
+import { Project, User, ApprovalRequest, PrivateDraft, WorkflowAuditLogEntry, KpiAllocatedItem, SeriesItem, MonthlyProgress, LinearData, RowMetric, ProgressPlan, PaymentItem, AnnualItem, WorkProgramActivity, BondGuarantee, formatAccounting, ProjectDocument, ALL_EDITABLE_PAGES, EditablePageOption, ProjectLifecycleStatus, isProjectClosed, isCpmOrMasterAdmin, isRecentlyUpdated, formatRelativeTime, ContractorScoringWeights, ConsultantScoringWeights, DEFAULT_CONTRACTOR_SCORING_WEIGHTS, DEFAULT_CONSULTANT_SCORING_WEIGHTS, SupervisionConsultantInfo, ThemeSettings, DEFAULT_THEME_SETTINGS } from './types';
 import { createProjectHistoryEntry } from './lib/projectAuditDiff';
 
 export function hasApprovalCredentials(user: User | null): boolean {
@@ -206,6 +207,7 @@ import DraftPlayground from './components/DraftPlayground';
 import ThreeDAnimatedBackground from './components/ThreeDAnimatedBackground';
 import AiAssistantChat from './components/AiAssistantChat';
 import UserGuideManualModal from './components/UserGuideManualModal';
+import ThemeCustomizerModal from './components/ThemeCustomizerModal';
 import { UserProfileModal } from './components/UserProfileModal';
 import ApprovalWorkflowManager from './components/ApprovalWorkflowManager';
 import eraLogo from './assets/logo.png';
@@ -363,6 +365,50 @@ export default function App() {
   const [customWordColor, setCustomWordColor] = useState(() => localStorage.getItem('era_custom_word') || '');
   const [customTxtBgColor, setCustomTxtBgColor] = useState(() => localStorage.getItem('era_custom_txt_bg') || '');
   const [customChartTooltipBgColor, setCustomChartTooltipBgColor] = useState(() => localStorage.getItem('era_custom_chart_tooltip_bg') || '');
+  
+  // Theme Settings & Customizer State
+  const [themeSettings, setThemeSettings] = useState<ThemeSettings>(() => {
+    try {
+      const saved = localStorage.getItem('era_theme_settings');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error('Error loading era_theme_settings:', e);
+    }
+    return DEFAULT_THEME_SETTINGS;
+  });
+  const [isThemeCustomizerOpen, setIsThemeCustomizerOpen] = useState(false);
+
+  const handleUpdateTheme = (newSettings: ThemeSettings) => {
+    setThemeSettings(newSettings);
+    try {
+      localStorage.setItem('era_theme_settings', JSON.stringify(newSettings));
+    } catch (e) {
+      console.error('Error saving era_theme_settings:', e);
+    }
+    if (newSettings.preset === 'deep-dark' || newSettings.preset === 'midnight-blue' || newSettings.preset === 'cyber-blueprint') {
+      setDarkMode(true);
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('era_dark_mode', 'true');
+    } else if (newSettings.preset === 'light-slate' || newSettings.preset === 'sepia-warmth') {
+      setDarkMode(false);
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('era_dark_mode', 'false');
+    }
+  };
+
+  const handleResetTheme = () => {
+    handleUpdateTheme(DEFAULT_THEME_SETTINGS);
+  };
+
+  useEffect(() => {
+    if (themeSettings.preset === 'deep-dark' || themeSettings.preset === 'midnight-blue' || themeSettings.preset === 'cyber-blueprint') {
+      setDarkMode(true);
+      document.documentElement.classList.add('dark');
+    } else if (themeSettings.preset === 'light-slate' || themeSettings.preset === 'sepia-warmth') {
+      setDarkMode(false);
+      document.documentElement.classList.remove('dark');
+    }
+  }, [themeSettings.preset]);
   
   // Database States
   const [projects, setProjects] = useState<Project[]>([]);
@@ -3263,11 +3309,74 @@ let isBatchSyncRunning = false;
     formatAccounting(v, '');
 
   return (
-    <div className="min-h-screen text-slate-800 dark:text-slate-100 flex flex-col font-sans transition-colors duration-300 relative bg-slate-50/50 dark:bg-slate-900/60 pb-12">
+    <div className={`min-h-screen text-slate-800 dark:text-slate-100 flex flex-col font-sans transition-colors duration-300 relative ${themeSettings.wallpaper ? 'bg-slate-50/75 dark:bg-slate-900/80 backdrop-blur-xs' : 'bg-slate-50/50 dark:bg-slate-900/60'} pb-12`}>
       
-      {/* Dynamic Style Injection for completely custom backgrounds and word colors */}
-      {customBgColor || customTxtColor || customWordColor || customTxtBgColor || customChartTooltipBgColor ? (
+      {/* Dynamic Style Injection for Theme Settings & custom color overrides */}
+      {(themeSettings.preset && themeSettings.preset !== 'light-slate') || themeSettings.accentColor || customBgColor || customTxtColor || customWordColor || customTxtBgColor || customChartTooltipBgColor ? (
         <style dangerouslySetInnerHTML={{__html: `
+          ${themeSettings.preset === 'midnight-blue' ? `
+            body, .min-h-screen {
+              background-color: #0b132b !important;
+            }
+            .bg-white, .dark\\:bg-slate-800, .bg-slate-900, .bg-slate-850, .dark\\:bg-slate-850 {
+              background-color: #1c2541 !important;
+              border-color: #2e3a59 !important;
+            }
+            .bg-slate-50, .bg-slate-100, .dark\\:bg-slate-900, .dark\\:bg-slate-950 {
+              background-color: #0b132b !important;
+            }
+          ` : ''}
+          ${themeSettings.preset === 'cyber-blueprint' ? `
+            body, .min-h-screen {
+              background-color: #02121d !important;
+            }
+            .bg-white, .dark\\:bg-slate-800, .bg-slate-900, .bg-slate-850, .dark\\:bg-slate-850 {
+              background-color: #002538 !important;
+              border-color: #004666 !important;
+            }
+            .bg-slate-50, .bg-slate-100, .dark\\:bg-slate-900, .dark\\:bg-slate-950 {
+              background-color: #02121d !important;
+            }
+          ` : ''}
+          ${themeSettings.preset === 'sepia-warmth' ? `
+            body, .min-h-screen {
+              background-color: #faf6ee !important;
+              color: #2d2621 !important;
+            }
+            .bg-white, .dark\\:bg-slate-800, .bg-slate-900, .bg-slate-850, .dark\\:bg-slate-850 {
+              background-color: #f4ede0 !important;
+              border-color: #e2d7c5 !important;
+            }
+            .bg-slate-50, .bg-slate-100, .dark\\:bg-slate-900, .dark\\:bg-slate-950 {
+              background-color: #faf6ee !important;
+            }
+            p, span, td, th {
+              color: #2d2621 !important;
+            }
+          ` : ''}
+          ${themeSettings.preset === 'deep-dark' ? `
+            body, .min-h-screen {
+              background-color: #090d16 !important;
+            }
+            .bg-white, .dark\\:bg-slate-800, .bg-slate-900, .bg-slate-850, .dark\\:bg-slate-850 {
+              background-color: #0f172a !important;
+              border-color: #1e293b !important;
+            }
+          ` : ''}
+          ${themeSettings.accentColor ? `
+            :root {
+              --era-theme-accent: ${themeSettings.accentColor};
+            }
+            .bg-blue-600, .hover\\:bg-blue-600:hover, .hover\\:bg-blue-700:hover {
+              background-color: ${themeSettings.accentColor} !important;
+            }
+            .text-blue-600, .dark\\:text-blue-400 {
+              color: ${themeSettings.accentColor} !important;
+            }
+            .border-blue-500, .border-blue-600 {
+              border-color: ${themeSettings.accentColor} !important;
+            }
+          ` : ''}
           ${customBgColor ? `
             body, .min-h-screen, .bg-slate-50, .bg-slate-50\\/50, .bg-slate-100, .bg-slate-50\\/40, .bg-slate-950\\/50 {
               background-color: ${customBgColor} !important;
@@ -3312,6 +3421,27 @@ let isBatchSyncRunning = false;
             }
           ` : ''}
         `}} />
+      ) : null}
+
+      {/* Dynamic Background Wallpaper with Blur & Opacity Contrast */}
+      {themeSettings.wallpaper ? (
+        <div 
+          className="fixed inset-0 pointer-events-none z-0 bg-cover bg-center bg-no-repeat transition-all duration-300"
+          style={{
+            backgroundImage: `url("${themeSettings.wallpaper}")`,
+            filter: (themeSettings.blur || 0) > 0 ? `blur(${themeSettings.blur}px)` : 'none',
+            transform: (themeSettings.blur || 0) > 0 ? 'scale(1.04)' : 'none',
+          }}
+        />
+      ) : null}
+
+      {themeSettings.wallpaper ? (
+        <div 
+          className="fixed inset-0 pointer-events-none z-0 bg-slate-950 transition-opacity duration-300"
+          style={{
+            opacity: (themeSettings.opacity ?? 30) / 100,
+          }}
+        />
       ) : null}
       
       {/* Interactive 3D constellation animation */}
@@ -3381,7 +3511,8 @@ let isBatchSyncRunning = false;
               }}
               onOpenDrafts={() => setShowDraftsPlayground(true)}
               onOpenUserGuide={() => setIsUserGuideOpen(true)}
-              onOpenSettings={() => setActiveTab('settings')}
+              onOpenSettings={() => setIsThemeCustomizerOpen(true)}
+              onOpenThemeCustomizer={() => setIsThemeCustomizerOpen(true)}
               onSaveToCloud={async () => {
                 try {
                   const isMasterAdmin = currentUserObj.role === 'admin' || currentUserObj.role === 'master_admin' || currentUserObj.username === 'proj_1781786415663';
@@ -3661,6 +3792,14 @@ let isBatchSyncRunning = false;
                 >
                   <BookOpen className="w-3.5 h-3.5" />
                   User Guide Manual
+                </button>
+                <button
+                  onClick={() => setIsThemeCustomizerOpen(true)}
+                  className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white p-2 rounded-full border border-indigo-500/40 flex items-center gap-1.5 text-[11px] font-extrabold px-3 py-1.5 transition shadow-sm cursor-pointer"
+                  title="Theme, Colors & Background Customizer"
+                >
+                  <Palette className="w-3.5 h-3.5" />
+                  <span>Theme Settings</span>
                 </button>
                 <button
                   onClick={() => window.print()}
@@ -4803,6 +4942,7 @@ let isBatchSyncRunning = false;
                   onUpdateCustomColors={handleUpdateCustomColors}
                   onResetCustomColors={handleResetCustomColors}
                   currentUser={currentUserObj}
+                  onOpenThemeCustomizer={() => setIsThemeCustomizerOpen(true)}
                   contractorWeights={contractorWeights}
                   consultantWeights={consultantWeights}
                   onUpdateScoringWeights={(cont, cons) => {
@@ -7452,6 +7592,15 @@ let isBatchSyncRunning = false;
       <UserGuideManualModal 
         isOpen={isUserGuideOpen}
         onClose={() => setIsUserGuideOpen(false)}
+      />
+
+      {/* Interactive Theme, Colors & Background Customizer Modal */}
+      <ThemeCustomizerModal
+        isOpen={isThemeCustomizerOpen}
+        onClose={() => setIsThemeCustomizerOpen(false)}
+        themeSettings={themeSettings}
+        onUpdateTheme={handleUpdateTheme}
+        onResetTheme={handleResetTheme}
       />
 
     </div>

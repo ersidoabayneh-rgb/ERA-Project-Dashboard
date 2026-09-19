@@ -21,7 +21,8 @@ import {
   Scale,
   Award,
   Plus,
-  Trash2
+  Trash2,
+  Palette
 } from 'lucide-react';
 import { 
   User, 
@@ -69,6 +70,7 @@ interface SettingsViewProps {
   onUpdateCustomColors: (bg: string, txt: string, word: string, txtBg: string, chartTooltipBg: string) => void;
   onResetCustomColors: () => void;
   currentUser?: User | null;
+  onOpenThemeCustomizer?: () => void;
   contractorWeights?: ContractorScoringWeights;
   consultantWeights?: ConsultantScoringWeights;
   onUpdateScoringWeights?: (contractorWeights: ContractorScoringWeights, consultantWeights: ConsultantScoringWeights) => Promise<void> | void;
@@ -93,6 +95,7 @@ export default function SettingsView({
   onUpdateCustomColors,
   onResetCustomColors,
   currentUser,
+  onOpenThemeCustomizer,
   contractorWeights = DEFAULT_CONTRACTOR_SCORING_WEIGHTS,
   consultantWeights = DEFAULT_CONSULTANT_SCORING_WEIGHTS,
   onUpdateScoringWeights,
@@ -327,6 +330,37 @@ export default function SettingsView({
               ))}
             </div>
           </div>
+        )}
+      </div>
+
+      {/* Direct Theme, Colors & Background Customizer launch banner */}
+      <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 p-5 rounded-2xl text-white shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3.5">
+          <div className="w-11 h-11 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center text-white shrink-0 shadow-inner">
+            <Palette className="w-6 h-6" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="font-black text-sm md:text-base text-white">
+                Theme, Colors & Background Customizer
+              </h3>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/20 text-white border border-white/30">
+                Interactive Modal
+              </span>
+            </div>
+            <p className="text-xs text-blue-100 max-w-xl">
+              Switch executive presets (Light Slate, Deep Dark, Midnight Blue, Cyber Blueprint, Sepia Warmth), select custom accent colors, infrastructure wallpapers, and fine-tune backdrop blur & opacity.
+            </p>
+          </div>
+        </div>
+        {onOpenThemeCustomizer && (
+          <button
+            onClick={onOpenThemeCustomizer}
+            className="px-4 py-2.5 bg-white hover:bg-blue-50 text-indigo-700 font-extrabold text-xs rounded-xl transition shadow-md cursor-pointer shrink-0 flex items-center justify-center gap-2"
+          >
+            <Palette className="w-4 h-4 text-indigo-600" />
+            Open Theme Customizer
+          </button>
         )}
       </div>
 

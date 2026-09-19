@@ -29,7 +29,8 @@ import {
   BookOpen,
   Archive,
   FolderArchive,
-  UserPlus
+  UserPlus,
+  Palette
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { Project, User, ApprovalRequest, ProjectLifecycleStatus, isProjectClosed, isCpmOrMasterAdmin, isRecentlyUpdated, formatRelativeTime } from '../types';
@@ -55,6 +56,7 @@ interface ProjectsPageProps {
   onOpenUserGuide?: () => void;
   onSaveToCloud?: () => void;
   onOpenSettings?: () => void;
+  onOpenThemeCustomizer?: () => void;
   onlineUsers: string[];
   programDirectorates?: string[];
   pmos?: string[];
@@ -78,6 +80,7 @@ export default function ProjectsPage({
   onOpenUserGuide,
   onSaveToCloud,
   onOpenSettings,
+  onOpenThemeCustomizer,
   onlineUsers,
   programDirectorates = ['Southern', 'North', 'East', 'West', 'Central', 'Expressway'],
   pmos = ['PMO 1', 'PMO 2', 'PMO 3'],
@@ -664,7 +667,7 @@ export default function ProjectsPage({
                 onClick={() => {
                   setShowReportGenerator(!showReportGenerator);
                 }}
-                className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
                   showReportGenerator
                     ? 'bg-indigo-600 text-white hover:bg-indigo-700'
                     : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-950/20 dark:text-indigo-400 dark:hover:bg-indigo-900/30'
@@ -675,10 +678,26 @@ export default function ProjectsPage({
               </button>
             )}
 
+            {/* Theme Settings button immediately next to Group Reports */}
+            <button
+              onClick={() => {
+                if (onOpenThemeCustomizer) {
+                  onOpenThemeCustomizer();
+                } else if (onOpenSettings) {
+                  onOpenSettings();
+                }
+              }}
+              className="flex items-center gap-1.5 bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:from-blue-700 hover:to-violet-700 text-white px-3 py-1.5 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer shrink-0"
+              title="Customize Theme, Colors, and Background Wallpaper"
+            >
+              <Palette className="w-3.5 h-3.5" />
+              <span>Theme Settings</span>
+            </button>
+
             {!hasNoProjects && (
               <button
                 onClick={onOpenSettings}
-                className="flex items-center gap-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 px-3 py-1.5 rounded-xl text-xs font-bold transition text-slate-700 dark:text-slate-300"
+                className="flex items-center gap-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 px-3 py-1.5 rounded-xl text-xs font-bold transition text-slate-700 dark:text-slate-300 cursor-pointer"
                 title="Open Settings to change themes, colors, and background"
               >
                 <Sliders className="w-3.5 h-3.5" />

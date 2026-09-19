@@ -11,16 +11,30 @@
     <!-- GitHub Pages Trailing Slash & SPA Path Resolver -->
     <script>
       (function() {
-        // 1. Ensure trailing slash on GitHub Pages repository root to preserve relative asset resolution
-        if (window.location.hostname.includes('github.io')) {
+        var isGH = window.location.hostname.includes('github.io') || window.location.hostname.includes('gitlab.io');
+
+        if (isGH) {
           var path = window.location.pathname;
+
+          /* GITHUB_PAGES_ROOT_REDIRECT_START */
+          // When GitHub Pages is configured to serve from repository root (Branch: main, Folder: / (root)),
+          // the uncompiled TypeScript /src/main.tsx cannot be executed by browsers.
+          // Instantly redirect to the pre-compiled production build inside /docs/
+          if (!path.includes('/docs/')) {
+            var targetDir = path.endsWith('/') ? path + 'docs/' : path + '/docs/';
+            window.location.replace(targetDir + window.location.search + window.location.hash);
+            return;
+          }
+          /* GITHUB_PAGES_ROOT_REDIRECT_END */
+
+          // Ensure trailing slash on directory URLs so relative ./assets/... resolve to the correct folder
           if (!path.endsWith('/') && !path.split('/').pop().includes('.')) {
             window.location.replace(path + '/' + window.location.search + window.location.hash);
             return;
           }
         }
 
-        // 2. Decode SPA deep links routed via 404.html
+        // Decode SPA deep links routed via 404.html
         var l = window.location;
         if (l.search[1] === '/') {
           var decoded = l.search.slice(1).split('&').map(function(s) { 
@@ -29,19 +43,6 @@
           window.history.replaceState(null, null,
             l.pathname.slice(0, -1) + decoded + l.hash
           );
-        }
-
-        // 3. Fallback for unbuilt root on GitHub Pages:
-        // If hosted on GitHub Pages and not inside /docs/, check if /docs/index.html exists and redirect
-        if (window.location.hostname.includes('github.io') && !window.location.pathname.includes('/docs/')) {
-          try {
-            var docsUrl = './docs/' + (window.location.search || '') + (window.location.hash || '');
-            fetch('./docs/index.html', { method: 'HEAD' }).then(function(res) {
-              if (res.ok) {
-                window.location.replace(docsUrl);
-              }
-            }).catch(function() {});
-          } catch(e) {}
         }
       })();
     </script>

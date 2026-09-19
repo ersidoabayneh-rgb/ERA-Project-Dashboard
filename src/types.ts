@@ -1095,3 +1095,24 @@ export interface ConsultantEvaluationCriterion {
   eraFidicRef?: string;
   contractType?: 'DB' | 'DBB' | 'ALL';
 }
+
+export type ThemePresetId = 'light-slate' | 'deep-dark' | 'midnight-blue' | 'cyber-blueprint' | 'sepia-warmth';
+
+export interface ThemeSettings {
+  preset: ThemePresetId;
+  accentColor: string;
+  wallpaper: string;
+  blur: number; // 0 - 20 px
+  opacity: number; // 0 - 90 %
+  customBgColor?: string;
+  customTxtColor?: string;
+}
+
+export const DEFAULT_THEME_SETTINGS: ThemeSettings = {
+  preset: 'light-slate',
+  accentColor: '#2563eb', // Royal Blue
+  wallpaper: '',
+  blur: 0,
+  opacity: 30,
+};
+
