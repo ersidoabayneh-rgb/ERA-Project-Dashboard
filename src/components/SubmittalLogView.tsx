@@ -214,6 +214,37 @@ export default function SubmittalLogView({
     return currentUserObj?.role === 'contractor_editor';
   }, [currentUserObj]);
 
+  // Dynamic custom categories list
+  const submittalCategories = useMemo<string[]>(() => {
+    return consultant.submittalCategories || [
+      'Material Approval',
+      'IPC Review',
+      'Work Inspection (WIR)',
+      'Variation Order',
+      'Design Review',
+      'Claim / Notice'
+    ];
+  }, [consultant.submittalCategories]);
+
+  const [showCategoryManager, setShowCategoryManager] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+
+  // Dynamic custom statuses list
+  const submittalStatuses = useMemo<string[]>(() => {
+    return consultant.submittalStatuses || [
+      'Approved',
+      'Closed',
+      'Approved with Comment',
+      'Under Review',
+      'Rejected',
+      'Resubmit',
+      'Overdue'
+    ];
+  }, [consultant.submittalStatuses]);
+
+  const [showStatusManager, setShowStatusManager] = useState(false);
+  const [newStatusName, setNewStatusName] = useState('');
+
   // View mode: 'submittals' (technical submittals register) vs 'rfi_log' (dedicated RFI correspondence log)
   const [activeViewTab, setActiveViewTab] = useState<'submittals' | 'rfi_log'>('submittals');
 
@@ -848,12 +879,9 @@ export default function SubmittalLogView({
               className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white font-medium cursor-pointer"
             >
               <option value="ALL">All Categories</option>
-              <option value="Material Approval">Material Approval</option>
-              <option value="IPC Review">IPC Review</option>
-              <option value="Work Inspection (WIR)">Work Inspection (WIR)</option>
-              <option value="Variation Order">Variation Order</option>
-              <option value="Design Review">Design Review</option>
-              <option value="Claim / Notice">Claim / Notice</option>
+              {submittalCategories.map(cat => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
             </select>
           </div>
 
@@ -865,13 +893,9 @@ export default function SubmittalLogView({
               className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white font-medium cursor-pointer"
             >
               <option value="ALL">All Statuses</option>
-              <option value="Approved">Approved</option>
-              <option value="Closed">Closed</option>
-              <option value="Approved with Comment">Approved with Comment</option>
-              <option value="Under Review">Under Review</option>
-              <option value="Rejected">Rejected</option>
-              <option value="Resubmit">Resubmit</option>
-              <option value="Overdue">Overdue</option>
+              {submittalStatuses.map(st => (
+                <option key={st} value={st}>{st}</option>
+              ))}
               <option value="PENDING">Pending Review</option>
               <option value="PENDING_OVERDUE">Pending Overdue</option>
             </select>
@@ -1293,19 +1317,103 @@ export default function SubmittalLogView({
                   </div>
 
                   <div>
-                    <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Category</label>
+                    <div className="flex justify-between items-center mb-1">
+                      <label className="block font-semibold text-slate-700 dark:text-slate-300">Category</label>
+                      <button
+                        type="button"
+                        onClick={() => setShowCategoryManager(!showCategoryManager)}
+                        className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline font-bold flex items-center gap-1 cursor-pointer"
+                      >
+                        ⚙️ {showCategoryManager ? 'Hide List' : 'Manage'}
+                      </button>
+                    </div>
                     <select
                       value={editingRowDraft.type}
                       onChange={(e) => setEditingRowDraft({ ...editingRowDraft, type: e.target.value as any })}
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-semibold"
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-semibold outline-none focus:ring-2 focus:ring-indigo-500"
                     >
-                      <option value="Material Approval">Material Approval</option>
-                      <option value="IPC Review">IPC Review</option>
-                      <option value="Work Inspection (WIR)">Work Inspection (WIR)</option>
-                      <option value="Variation Order">Variation Order</option>
-                      <option value="Design Review">Design Review</option>
-                      <option value="Claim / Notice">Claim / Notice</option>
+                      {submittalCategories.map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
                     </select>
+
+                    {showCategoryManager && (
+                      <div className="mt-2 p-3 bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/60 rounded-xl space-y-2.5">
+                        <div className="flex gap-1.5">
+                          <input
+                            type="text"
+                            placeholder="New category..."
+                            value={newCategoryName}
+                            onChange={(e) => setNewCategoryName(e.target.value)}
+                            className="flex-1 px-2.5 py-1 text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white font-medium focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const trimmed = newCategoryName.trim();
+                              if (!trimmed) return;
+                              if (submittalCategories.includes(trimmed)) {
+                                alert('Category already exists!');
+                                return;
+                              }
+                              const updated = [...submittalCategories, trimmed];
+                              onProjectUpdate?.({
+                                supervisionConsultant: {
+                                  ...consultant,
+                                  submittalCategories: updated
+                                }
+                              }, `Added custom category: "${trimmed}"`);
+                              setNewCategoryName('');
+                            }}
+                            className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg flex items-center gap-1 cursor-pointer transition"
+                          >
+                            <Plus className="w-3 h-3" /> Add
+                          </button>
+                        </div>
+
+                        {submittalCategories.length > 0 && (
+                          <div className="space-y-1">
+                            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mb-1">Current Categories (Click ✕ to Delete):</p>
+                            <div className="flex flex-wrap gap-1">
+                              {submittalCategories.map(cat => (
+                                <span
+                                  key={cat}
+                                  className="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-md text-[10px] font-semibold border border-slate-200 dark:border-slate-700"
+                                >
+                                  {cat}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (submittalCategories.length <= 1) {
+                                        alert('You must have at least one category!');
+                                        return;
+                                      }
+                                      if (confirm(`Are you sure you want to delete category "${cat}"?`)) {
+                                        const updated = submittalCategories.filter(c => c !== cat);
+                                        // If deleted currently active category, shift to the first remaining one
+                                        if (editingRowDraft.type === cat) {
+                                          setEditingRowDraft({ ...editingRowDraft, type: updated[0] as any });
+                                        }
+                                        onProjectUpdate?.({
+                                          supervisionConsultant: {
+                                            ...consultant,
+                                            submittalCategories: updated
+                                          }
+                                        }, `Deleted category: "${cat}"`);
+                                      }
+                                    }}
+                                    className="p-0.5 rounded-md hover:bg-rose-50 dark:hover:bg-rose-950 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition cursor-pointer"
+                                    title={`Delete "${cat}"`}
+                                  >
+                                    <X className="w-2.5 h-2.5" />
+                                  </button>
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1354,20 +1462,103 @@ export default function SubmittalLogView({
                   </div>
 
                   <div>
-                    <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Status</label>
+                    <div className="flex justify-between items-center mb-1">
+                      <label className="block font-semibold text-slate-700 dark:text-slate-300">Status</label>
+                      <button
+                        type="button"
+                        onClick={() => setShowStatusManager(!showStatusManager)}
+                        className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline font-bold flex items-center gap-1 cursor-pointer"
+                      >
+                        ⚙️ {showStatusManager ? 'Hide List' : 'Manage'}
+                      </button>
+                    </div>
                     <select
                       value={editingRowDraft.status}
                       onChange={(e) => setEditingRowDraft({ ...editingRowDraft, status: e.target.value as any })}
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-semibold"
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-semibold outline-none focus:ring-2 focus:ring-indigo-500"
                     >
-                      <option value="Approved">Approved</option>
-                      <option value="Closed">Closed</option>
-                      <option value="Approved with Comment">Approved with Comment</option>
-                      <option value="Under Review">Under Review</option>
-                      <option value="Rejected">Rejected</option>
-                      <option value="Resubmit">Resubmit</option>
-                      <option value="Overdue">Overdue</option>
+                      {submittalStatuses.map(st => (
+                        <option key={st} value={st}>{st}</option>
+                      ))}
                     </select>
+
+                    {showStatusManager && (
+                      <div className="mt-2 p-3 bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/60 rounded-xl space-y-2.5">
+                        <div className="flex gap-1.5">
+                          <input
+                            type="text"
+                            placeholder="New status..."
+                            value={newStatusName}
+                            onChange={(e) => setNewStatusName(e.target.value)}
+                            className="flex-1 px-2.5 py-1 text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white font-medium focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const trimmed = newStatusName.trim();
+                              if (!trimmed) return;
+                              if (submittalStatuses.includes(trimmed)) {
+                                alert('Status already exists!');
+                                return;
+                              }
+                              const updated = [...submittalStatuses, trimmed];
+                              onProjectUpdate?.({
+                                supervisionConsultant: {
+                                  ...consultant,
+                                  submittalStatuses: updated
+                                }
+                              }, `Added custom status: "${trimmed}"`);
+                              setNewStatusName('');
+                            }}
+                            className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg flex items-center gap-1 cursor-pointer transition"
+                          >
+                            <Plus className="w-3 h-3" /> Add
+                          </button>
+                        </div>
+
+                        {submittalStatuses.length > 0 && (
+                          <div className="space-y-1">
+                            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mb-1">Current Statuses (Click ✕ to Delete):</p>
+                            <div className="flex flex-wrap gap-1">
+                              {submittalStatuses.map(st => (
+                                <span
+                                  key={st}
+                                  className="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-md text-[10px] font-semibold border border-slate-200 dark:border-slate-700"
+                                >
+                                  {st}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (submittalStatuses.length <= 1) {
+                                        alert('You must have at least one status!');
+                                        return;
+                                      }
+                                      if (confirm(`Are you sure you want to delete status "${st}"?`)) {
+                                        const updated = submittalStatuses.filter(s => s !== st);
+                                        // If deleted currently active status, shift to the first remaining one
+                                        if (editingRowDraft.status === st) {
+                                          setEditingRowDraft({ ...editingRowDraft, status: updated[0] as any });
+                                        }
+                                        onProjectUpdate?.({
+                                          supervisionConsultant: {
+                                            ...consultant,
+                                            submittalStatuses: updated
+                                          }
+                                        }, `Deleted status: "${st}"`);
+                                      }
+                                    }}
+                                    className="p-0.5 rounded-md hover:bg-rose-50 dark:hover:bg-rose-950 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition cursor-pointer"
+                                    title={`Delete "${st}"`}
+                                  >
+                                    <X className="w-2.5 h-2.5" />
+                                  </button>
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
 

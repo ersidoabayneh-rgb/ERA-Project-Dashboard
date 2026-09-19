@@ -714,6 +714,8 @@ export interface SupervisionConsultantInfo {
   scopeOfServices?: string;
   performanceRating?: 'Outstanding' | 'Satisfactory' | 'Needs Improvement' | 'Critical';
   submittalKpis?: ConsultantSubmittalKpi[];
+  submittalCategories?: string[];
+  submittalStatuses?: string[];
   targetOverrides?: Record<string, number>;
   evaluationCriteria?: EvaluationCriteriaItem[];
   // Comprehensive 5-Dimension FIDIC & ERA Performance Evaluation records

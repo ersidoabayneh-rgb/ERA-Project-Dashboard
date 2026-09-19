@@ -3118,12 +3118,7 @@ let isBatchSyncRunning = false;
       setWorkflowAuditLogs(nextAuditLogs);
       safeSetItem('era_workflow_audit_logs_v1', JSON.stringify(nextAuditLogs));
 
-      alert(
-        '🔒 ISOLATED PRIVATE DRAFT RECORDED\n\n' +
-        `Your updates to "${draftSection}" have been securely recorded in your private draft workspace.\n\n` +
-        'In accordance with ERA governance rules, no Editor change affects the live database or becomes visible to other users until you explicitly submit it and an authorized Approver, PMO, or Directorate Admin certifies it.\n\n' +
-        'Go to "🛡️ Approval Workflow" to review or submit this draft.'
-      );
+      // No alert message as requested by the user
       return;
     }
 
@@ -3729,11 +3724,7 @@ let isBatchSyncRunning = false;
                       currentUserObj.role === 'consultant_editor' ||
                       currentUserObj.role === 'contractor_editor'
                     ) {
-                      alert(
-                        '🔒 ISOLATED PRIVATE DRAFT WORKSPACE\n\n' +
-                        `As a ${currentUserObj.role.toUpperCase().replace('_', ' ')}, you operate in an isolated private draft environment. Direct live database commits are restricted to maintain data governance.\n\n` +
-                        'Your changes are safely preserved in your private draft. To commit these changes to the live project, navigate to "🛡️ Approval Workflow" and submit your draft for review by an authorized Approver, PMO, or Directorate Admin.'
-                      );
+                      // No alert message as requested by user
                       setActiveTab('approvalWorkflow');
                       return;
                     }
