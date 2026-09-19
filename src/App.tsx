@@ -438,6 +438,26 @@ export default function App() {
     return null;
   });
 
+  // Keep currentProject in sync with real-time updates from the projects list (Firestore onSnapshot)
+  useEffect(() => {
+    if (currentProjectId) {
+      const found = projects.find(p => p.id === currentProjectId);
+      if (found) {
+        setCurrentProject(prev => {
+          if (!prev || prev.id !== found.id) {
+            return found;
+          }
+          const prevTime = prev.lastModifiedAt ? new Date(prev.lastModifiedAt).getTime() : 0;
+          const foundTime = found.lastModifiedAt ? new Date(found.lastModifiedAt).getTime() : 0;
+          if (foundTime > prevTime || JSON.stringify(prev) !== JSON.stringify(found)) {
+            return found;
+          }
+          return prev;
+        });
+      }
+    }
+  }, [projects, currentProjectId]);
+
   // User Guide Modal state
   const [isUserGuideOpen, setIsUserGuideOpen] = useState(false);
 
