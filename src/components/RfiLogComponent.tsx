@@ -101,6 +101,11 @@ export default function RfiLogComponent({
     (typeof currentUserObj?.username === 'string' && currentUserObj.username.toLowerCase().includes('contractor'))
   );
 
+  const canContractorAddOrEdit = useMemo(() => {
+    const r = (currentUserObj?.role as string) || '';
+    return r === 'contractor_editor' || r === 'contractor' || r.toLowerCase().includes('contractor');
+  }, [currentUserObj]);
+
   // Extract all RFI items from submittals
   const rfiItems = useMemo(() => {
     return allSubmittals.filter(item => item.type === 'RFI');
@@ -949,13 +954,13 @@ export default function RfiLogComponent({
                     </div>
                   </th>
                   <th className="p-3.5 text-center">Thread</th>
-                  {!isContractorUser && <th className="p-3.5 text-right">Actions</th>}
+                  {(!isContractorUser || canContractorAddOrEdit) && <th className="p-3.5 text-right">Actions</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
                 {sortedRfis.length === 0 ? (
                   <tr>
-                    <td colSpan={isContractorUser ? 11 : 12} className="p-8 text-center text-slate-400">
+                    <td colSpan={(!isContractorUser || canContractorAddOrEdit) ? 12 : 11} className="p-8 text-center text-slate-400">
                       No Request for Information (RFI) records match your filter criteria.
                     </td>
                   </tr>
@@ -1140,7 +1145,7 @@ export default function RfiLogComponent({
                               <span className="text-slate-300 dark:text-slate-600 text-xs">-</span>
                             )}
 
-                            {!isReadonly && !isContractorUser && (
+                            {!isReadonly && (!isContractorUser || canContractorAddOrEdit) && (
                               <label
                                 className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg cursor-pointer transition inline-flex items-center justify-center"
                                 title="Attach PDF file to this RFI"
@@ -1171,7 +1176,7 @@ export default function RfiLogComponent({
                         </td>
 
                         {/* Actions */}
-                        {!isContractorUser && (
+                        {(!isContractorUser || canContractorAddOrEdit) && (
                           <td className="p-3.5 text-right whitespace-nowrap">
                             <div className="flex items-center justify-end gap-1">
                               {!isReadonly && !rfi.consultantResponse && (
@@ -2446,7 +2451,7 @@ export default function RfiLogComponent({
                             <span>Preview</span>
                           </button>
                         )}
-                        {!isReadonly && !isContractorUser && (
+                        {!isReadonly && (!isContractorUser || canContractorAddOrEdit) && (
                           <button
                             onClick={() => handleRemoveAttachment(activeAttachmentModalRfi, att.id)}
                             className="p-1.5 hover:bg-rose-50 dark:hover:bg-rose-950 text-rose-500 rounded-xl transition"
@@ -2467,7 +2472,7 @@ export default function RfiLogComponent({
               </div>
 
               {/* Upload New PDF in Modal */}
-              {!isReadonly && !isContractorUser && (
+              {!isReadonly && (!isContractorUser || canContractorAddOrEdit) && (
                 <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
                   <label className="flex items-center justify-center gap-2 w-full p-3 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-950/80 border border-dashed border-indigo-300 dark:border-indigo-800 rounded-2xl text-indigo-700 dark:text-indigo-300 text-xs font-bold cursor-pointer transition">
                     <Upload className="w-4 h-4" />

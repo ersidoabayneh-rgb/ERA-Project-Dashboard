@@ -26,7 +26,8 @@ import {
   Info,
   PieChart as PieChartIcon,
   BarChart3,
-  BarChart2
+  BarChart2,
+  Bell
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -1824,6 +1825,100 @@ export default function DashboardView({
           </div>
         </div>
       )}
+
+      {/* Project Completion & Performance Slippage Notification System */}
+      {(() => {
+        const evmMetrics = calculateProjectEvm(project);
+        const startDateObj = new Date(project.startDate);
+        const totalDurationDays = project.origDays + (project.eotDays || 0) + (project.interimEotDays || 0);
+        const estimatedCompletionDate = new Date(startDateObj.getTime() + totalDurationDays * 86400000);
+        const daysToCompletion = Math.ceil((estimatedCompletionDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+        
+        const isNearingCompletionAlert = !isClosed && daysToCompletion <= 60 && daysToCompletion >= -180;
+        const physicalSlippageVal = evmMetrics.plannedPct - evmMetrics.actualPct;
+        const hasSignificantPhysicalSlippage = physicalSlippageVal > 15;
+        const hasSignificantFinancialSlippage = costOverrun > 15 || evmMetrics.CPI < 0.85;
+
+        if (!isNearingCompletionAlert && !hasSignificantPhysicalSlippage && !hasSignificantFinancialSlippage) {
+          return null;
+        }
+
+        return (
+          <div className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/25 dark:to-orange-950/25 border-l-4 border-amber-500 rounded-2xl p-5 shadow-sm space-y-3">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex items-start gap-2.5">
+                <div className="p-2 bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 rounded-xl mt-0.5 animate-bounce">
+                  <Bell className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-black text-amber-900 dark:text-amber-300 uppercase tracking-wide">
+                    Project Performance & Completion Alert System
+                  </h4>
+                  <p className="text-xs text-amber-700/90 dark:text-amber-400/90 mt-0.5">
+                    Automated flags detected for project <strong className="font-bold underline">{project.name}</strong>:
+                  </p>
+                </div>
+              </div>
+              <span className="self-start md:self-auto text-[10px] font-extrabold uppercase bg-amber-200/80 dark:bg-amber-950 text-amber-900 dark:text-amber-300 px-3 py-1 rounded-full border border-amber-300 dark:border-amber-800">
+                ACTIVE NOTIFICATIONS
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
+              {isNearingCompletionAlert && (
+                <div className="bg-white/90 dark:bg-slate-900/80 border border-amber-200 dark:border-amber-900/50 p-3.5 rounded-xl flex items-start gap-3 shadow-xs">
+                  <div className="p-2 bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400 rounded-lg shrink-0 mt-0.5">
+                    <Calendar className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-black uppercase text-amber-700 dark:text-amber-400 tracking-wider">Nearing Completion</span>
+                    <p className="text-xs font-bold text-slate-800 dark:text-slate-100 mt-0.5">
+                      {daysToCompletion <= 0 ? `Completion date reached (${Math.abs(daysToCompletion)} days overdue)` : `Estimated completion in ${daysToCompletion} days`}
+                    </p>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                      Scheduled End: {estimatedCompletionDate.toLocaleDateString()}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {hasSignificantPhysicalSlippage && (
+                <div className="bg-white/90 dark:bg-slate-900/80 border border-orange-200 dark:border-orange-900/50 p-3.5 rounded-xl flex items-start gap-3 shadow-xs">
+                  <div className="p-2 bg-orange-50 dark:bg-orange-950 text-orange-600 dark:text-orange-400 rounded-lg shrink-0 mt-0.5">
+                    <TrendingDown className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-black uppercase text-orange-700 dark:text-orange-400 tracking-wider">Physical Slippage &gt; 15%</span>
+                    <p className="text-xs font-bold text-slate-800 dark:text-slate-100 mt-0.5">
+                      Lagging by {physicalSlippageVal.toFixed(1)}% vs Plan
+                    </p>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                      Actual: {project.physicalProgress.toFixed(1)}% | Planned: {evmMetrics.plannedPct.toFixed(1)}%
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {hasSignificantFinancialSlippage && (
+                <div className="bg-white/90 dark:bg-slate-900/80 border border-rose-200 dark:border-rose-900/50 p-3.5 rounded-xl flex items-start gap-3 shadow-xs">
+                  <div className="p-2 bg-rose-50 dark:bg-rose-950 text-rose-600 dark:text-rose-400 rounded-lg shrink-0 mt-0.5">
+                    <DollarSign className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-black uppercase text-rose-700 dark:text-rose-400 tracking-wider">Financial Slippage &gt; 15%</span>
+                    <p className="text-xs font-bold text-slate-800 dark:text-slate-100 mt-0.5">
+                      Cost Variance / Overrun: {costOverrun.toFixed(1)}%
+                    </p>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                      Cost Performance Index (CPI): {evmMetrics.CPI.toFixed(2)}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Three prominent Master Gauges */}
       <section className="grid grid-cols-1 md:grid-cols-3 gap-4">

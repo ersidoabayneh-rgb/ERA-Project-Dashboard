@@ -1346,13 +1346,13 @@ export default function SubmittalLogView({
                   </div>
                 </th>
                 <th className="p-3.5">Assigned Engineer</th>
-                {!isContractorUser && <th className="p-3.5 text-right">Actions</th>}
+                {(!isContractorUser || canContractorAddOrEdit) && <th className="p-3.5 text-right">Actions</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
               {sortedSubmittals.length === 0 ? (
                 <tr>
-                  <td colSpan={isContractorUser ? 11 : 12} className="p-8 text-center text-slate-400">
+                  <td colSpan={(!isContractorUser || canContractorAddOrEdit) ? 12 : 11} className="p-8 text-center text-slate-400">
                     No submittal records match your filter criteria.
                   </td>
                 </tr>
@@ -1508,7 +1508,7 @@ export default function SubmittalLogView({
                       <td className="p-3.5 text-slate-600 dark:text-slate-400">
                         {item.assignedEngineer || '-'}
                       </td>
-                      {!isContractorUser && (
+                      {(!isContractorUser || canContractorAddOrEdit) && (
                         <td className="p-3.5 text-right whitespace-nowrap">
                           <div className="flex items-center justify-end gap-1">
                             <button
