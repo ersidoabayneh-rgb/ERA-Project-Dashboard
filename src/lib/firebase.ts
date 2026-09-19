@@ -8,6 +8,7 @@ import {
   persistentMultipleTabManager,
   setLogLevel
 } from 'firebase/firestore';
+import { getDatabase } from 'firebase/database';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 // Suppress internal Firestore connection debug/warning noise in sandboxed/iframe preview environments
@@ -48,6 +49,11 @@ function createFirestoreInstance() {
 }
 
 export const db = createFirestoreInstance();
+
+// Export Realtime Database instance dynamically if databaseURL config is present
+export const rtdb = (isValidConfig && (firebaseConfig as any).databaseURL)
+  ? getDatabase(app)
+  : null;
 
 // Catch and handle transient browser IndexedDB tab-closing / visibility state / offline / connection rejections
 if (typeof window !== 'undefined') {
