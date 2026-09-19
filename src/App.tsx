@@ -69,6 +69,20 @@ export function hasApprovalCredentials(user: User | null): boolean {
   );
 }
 
+export function canUpdateProjectInfo(user: User | null): boolean {
+  if (!user) return false;
+  const isMaster = user.role === 'admin' || 
+                   user.role === 'master_admin' || 
+                   user.role === 'cpm_admin' ||
+                   user.username === 'proj_1781786415663' ||
+                   Boolean(user.username && user.username.toLowerCase().includes('ersido'));
+                   
+  if (isMaster) return true;
+
+  const allowedRoles = ['era_editor', 'approver', 'era_approver', 'pmo_admin'];
+  return allowedRoles.includes(user.role);
+}
+
 export function isProjectApprover(user: User | null, projectId: string, project?: Project | null): boolean {
   if (!user || !projectId) return false;
 
@@ -3220,6 +3234,10 @@ let isBatchSyncRunning = false;
 
   const handleSaveDossier = () => {
     if (!currentProject) return;
+    if (!canUpdateProjectInfo(currentUserObj)) {
+      alert('🔒 ACCESS RESTRICTED: Project information can only be updated by an ERA Editor, Approver, or PMO Admin.');
+      return;
+    }
     const trimmedConsultant = editConsultant.trim();
     const fields: Partial<Project> = {
       client: editClient,
@@ -4092,7 +4110,7 @@ let isBatchSyncRunning = false;
               {isDossierExpanded && (
                 <div className="border-t border-slate-100 dark:border-slate-800/80 pt-4 space-y-4">
                   <div className="flex justify-end">
-                    {currentUserObj.role !== 'viewer' && (
+                    {canUpdateProjectInfo(currentUserObj) && (
                       <div className="flex items-center gap-2">
                         {!isEditingDossier ? (
                           <button
