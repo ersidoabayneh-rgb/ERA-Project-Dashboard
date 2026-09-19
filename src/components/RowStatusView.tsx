@@ -12,7 +12,11 @@ import {
   TrendingUp, 
   AlertCircle,
   Zap,
-  Wrench
+  Wrench,
+  Target,
+  Clock,
+  ArrowRight,
+  Scale
 } from 'lucide-react';
 import { Project, RowMetric, RowCompensationItem, UtilityCompensationItem, RowStatusItem, formatAccounting } from '../types';
 import { defaultZeroRowMetrics, defaultProjectTemplate } from '../data/defaultProject';
@@ -255,6 +259,16 @@ export default function RowStatusView({
     onUpdateRowStatus(rowStatusItems.filter((_, i) => i !== idx));
   };
 
+  // Section 1: Right-of-Way (ROW) Key Evaluation Metrics
+  // Official comparison for any ROW evaluation is strictly between ROW Request By Contractor and ROW Obstruction free Section
+  const rowRequestedObj = metrics.find(m => m.name === 'ROW Request By Contractor');
+  const rowClearedObj = metrics.find(m => m.name === 'ROW Obstruction free Section');
+
+  const requestedKm = rowRequestedObj ? (Number(rowRequestedObj.value) || 0) : 0;
+  const clearedKm = rowClearedObj ? (Number(rowClearedObj.value) || 0) : 0;
+  const pendingKm = Math.max(0, requestedKm - clearedKm);
+  const clearanceRate = requestedKm > 0 ? (clearedKm / requestedKm) * 100 : 0;
+
   return (
     <div className="space-y-6">
       {/* SECTION 1: Right-Of-Way Clearance & Technical Relocation Metrics */}
@@ -264,8 +278,11 @@ export default function RowStatusView({
           <div>
             <h2 className="text-lg font-bold text-slate-800 dark:text-zinc-100 mb-1 flex items-center gap-2">
               <ShieldCheck className="w-5 h-5 text-blue-500" />
-              Right‑of‑Way (ROW) & Utilities Relocation Status
+              Right‑of‑Way (ROW) &amp; Utilities Relocation Status
             </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Corridor possession tracking and utilities removal. Evaluation is calculated between <strong>ROW Request By Contractor</strong> and <strong>ROW Obstruction free Section</strong>.
+            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-1.5 self-start md:self-auto">
@@ -284,6 +301,110 @@ export default function RowStatusView({
               Remove Last
             </button>
           </div>
+        </div>
+
+        {/* ROW Evaluation KPI Cards: Direct Comparison between ROW Request By Contractor and ROW Obstruction free Section */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 p-4 rounded-xl shadow-sm flex items-center justify-between">
+            <div className="space-y-0.5">
+              <span className="text-slate-400 dark:text-slate-500 text-[10px] font-bold uppercase tracking-wider block">ROW Request By Contractor</span>
+              <span className="text-base font-black text-indigo-600 dark:text-indigo-400 font-mono">{requestedKm.toFixed(2)} Km</span>
+              <span className="text-[10px] text-slate-400 block">Baseline Contractor Demand</span>
+            </div>
+            <div className="p-2 rounded-lg bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400">
+              <Target className="w-5 h-5" />
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 p-4 rounded-xl shadow-sm flex items-center justify-between">
+            <div className="space-y-0.5">
+              <span className="text-slate-400 dark:text-slate-500 text-[10px] font-bold uppercase tracking-wider block">ROW Obstruction free Section</span>
+              <span className="text-base font-black text-emerald-600 dark:text-emerald-400 font-mono">{clearedKm.toFixed(2)} Km</span>
+              <span className="text-[10px] text-slate-400 block">Corridor Site Handover</span>
+            </div>
+            <div className="p-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400">
+              <ShieldCheck className="w-5 h-5" />
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 p-4 rounded-xl shadow-sm flex items-center justify-between">
+            <div className="space-y-0.5">
+              <span className="text-slate-400 dark:text-slate-500 text-[10px] font-bold uppercase tracking-wider block">Pending Uncleared Corridor</span>
+              <span className={`text-base font-black font-mono ${pendingKm > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-700 dark:text-zinc-200'}`}>
+                {pendingKm.toFixed(2)} Km
+              </span>
+              <span className="text-[10px] text-slate-400 block">Requested but Uncleared</span>
+            </div>
+            <div className={`p-2 rounded-lg ${pendingKm > 0 ? 'bg-amber-50 dark:bg-amber-950/20 text-amber-600 dark:text-amber-400' : 'bg-slate-100 dark:bg-slate-700/40 text-slate-500'}`}>
+              <AlertCircle className="w-5 h-5" />
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 p-4 rounded-xl shadow-sm flex items-center justify-between">
+            <div className="space-y-0.5">
+              <span className="text-slate-400 dark:text-slate-500 text-[10px] font-bold uppercase tracking-wider block">Clearance Handover Ratio</span>
+              <span className={`text-base font-black font-mono ${clearanceRate >= 80 ? 'text-emerald-600 dark:text-emerald-400' : clearanceRate >= 50 ? 'text-amber-600 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                {clearanceRate.toFixed(1)}%
+              </span>
+              <span className="text-[10px] text-slate-400 block">
+                {clearanceRate >= 100 ? '100% Cleared' : clearanceRate >= 80 ? 'Substantial (Low Risk)' : clearanceRate >= 50 ? 'Trailing Handover' : 'High Claim Exposure'}
+              </span>
+            </div>
+            <div className={`p-2 rounded-lg ${clearanceRate >= 80 ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600' : clearanceRate >= 50 ? 'bg-amber-50 dark:bg-amber-950/20 text-amber-600' : 'bg-rose-50 dark:bg-rose-950/20 text-rose-600'}`}>
+              <Scale className="w-5 h-5" />
+            </div>
+          </div>
+        </div>
+
+        {/* Evaluation Comparison Progress Bar & FIDIC Note */}
+        <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-5 rounded-2xl shadow-sm space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-700/50 pb-2.5">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-4 bg-blue-600 rounded-xs" />
+              <h3 className="text-xs font-black uppercase text-slate-800 dark:text-zinc-100 tracking-wider">
+                ROW Evaluation: Clearance Ratio vs. Contractor Demand
+              </h3>
+            </div>
+            <span className="text-xs font-mono font-bold text-slate-500 dark:text-slate-400">
+              Evaluation Formula: <strong className="text-emerald-600 dark:text-emerald-400">[ROW Obstruction free Section]</strong> ÷ <strong className="text-indigo-600 dark:text-indigo-400">[ROW Request By Contractor]</strong>
+            </span>
+          </div>
+
+          <div className="space-y-1.5">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-mono">
+              <span className="text-slate-600 dark:text-slate-300 font-bold flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" />
+                Cleared: <strong className="text-emerald-600 dark:text-emerald-400">{clearedKm.toFixed(2)} Km</strong>
+              </span>
+              <span className="text-slate-600 dark:text-slate-300 font-bold flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block" />
+                Pending: <strong className="text-amber-600 dark:text-amber-400">{pendingKm.toFixed(2)} Km</strong>
+              </span>
+              <span className="text-slate-600 dark:text-slate-300 font-bold flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 inline-block" />
+                Total Demand: <strong className="text-indigo-600 dark:text-indigo-400">{requestedKm.toFixed(2)} Km</strong> ({clearanceRate.toFixed(1)}%)
+              </span>
+            </div>
+
+            <div className="w-full h-3.5 bg-slate-100 dark:bg-slate-900 rounded-full overflow-hidden p-0.5 border border-slate-200/60 dark:border-slate-700/60 flex">
+              <div
+                className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-l-full transition-all duration-500"
+                style={{ width: `${Math.min(100, clearanceRate)}%` }}
+                title={`Obstruction-Free Cleared: ${clearedKm.toFixed(2)} Km (${clearanceRate.toFixed(1)}%)`}
+              />
+              {pendingKm > 0 && requestedKm > 0 && (
+                <div
+                  className="h-full bg-gradient-to-r from-amber-400 to-rose-400 rounded-r-full transition-all duration-500"
+                  style={{ width: `${Math.max(0, 100 - Math.min(100, clearanceRate))}%` }}
+                  title={`Pending Handover: ${pendingKm.toFixed(2)} Km`}
+                />
+              )}
+            </div>
+          </div>
+
+          <p className="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
+            <strong className="text-slate-700 dark:text-slate-300">Contractual Evaluation Standard:</strong> In accordance with Ethiopian Roads Administration (ERA) specifications and FIDIC Clause 2.1 (Right of Access to the Site), progress evaluation is benchmarked strictly between <em>ROW Request By Contractor ({requestedKm.toFixed(2)} Km)</em> and <em>ROW Obstruction free Section ({clearedKm.toFixed(2)} Km)</em>. Current possession provides <em>{clearedKm.toFixed(2)} Km</em> ({clearanceRate.toFixed(1)}% clearance rate), leaving <em>{pendingKm.toFixed(2)} Km</em> pending corridor handover.
+          </p>
         </div>
 
         {/* Spreadsheet Tables */}
@@ -311,12 +432,24 @@ export default function RowStatusView({
                     <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/10">
                       <td className="p-3 text-center font-bold text-slate-400 font-mono">{idx + 1}</td>
                       <td className="p-3 font-semibold text-slate-750 dark:text-slate-350">
-                        <input
-                          type="text"
-                          value={m.name}
-                          onChange={(e) => handleFieldChange(idx, 'name', e.target.value)}
-                          className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-xs font-semibold focus:outline-none focus:border-blue-500"
-                        />
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={m.name}
+                            onChange={(e) => handleFieldChange(idx, 'name', e.target.value)}
+                            className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-xs font-semibold focus:outline-none focus:border-blue-500"
+                          />
+                          {m.name === 'ROW Request By Contractor' && (
+                            <span className="shrink-0 px-2 py-0.5 rounded text-[10px] font-black uppercase font-mono bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                              Evaluation Demand
+                            </span>
+                          )}
+                          {m.name === 'ROW Obstruction free Section' && (
+                            <span className="shrink-0 px-2 py-0.5 rounded text-[10px] font-black uppercase font-mono bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                              Evaluation Cleared
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="p-3 text-center">
                         <input
@@ -351,7 +484,7 @@ export default function RowStatusView({
           </div>
         </div>
       </div>
-
+      
       {/* SECTION 2: Right-Of-Way Compensation Payment Breakdown */}
       <div className="space-y-4 pt-4 border-t border-slate-100 dark:border-slate-700/50">
         {/* ROW Compensation Payment Header */}

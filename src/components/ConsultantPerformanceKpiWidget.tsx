@@ -61,6 +61,7 @@ export interface ConsultantPerformanceKpiWidgetProps {
   isReadonly?: boolean;
   compact?: boolean;
   isAdmin?: boolean;
+  isMasterAdmin?: boolean;
   currentUser?: any;
 }
 
@@ -71,11 +72,23 @@ export default function ConsultantPerformanceKpiWidget({
   isReadonly = false,
   compact = false,
   isAdmin = true,
+  isMasterAdmin,
   currentUser
 }: ConsultantPerformanceKpiWidgetProps) {
   // Consultant Tenure & Succession selection state ('current' or historical consultant id)
   const [selectedTenureConsultantId, setSelectedTenureConsultantId] = useState<string>('current');
   const [livePillar2Score, setLivePillar2Score] = useState<number | null>(null);
+
+  const isMasterAdminRole = useMemo(() => {
+    if (isMasterAdmin !== undefined) return isMasterAdmin;
+    if (!currentUser) return isAdmin;
+    return (
+      currentUser.role === 'master_admin' ||
+      currentUser.role === 'admin' ||
+      currentUser.role === 'cpm_admin' ||
+      isAdmin
+    );
+  }, [isMasterAdmin, isAdmin, currentUser]);
 
   const calculatedEvaluation = useMemo(() => {
     return getProjectConsultantEvaluation(project, consultant);
@@ -617,6 +630,7 @@ export default function ConsultantPerformanceKpiWidget({
         </div>
 
         {/* Section 1: Submittal Log & Operational SLA Turnaround (19 Categories - Pillar I) */}
+        {!(currentUser?.role === 'era_editor' || currentUser?.role === 'era_approver') && (
         <div className="space-y-6 pb-8 border-b border-slate-100 dark:border-slate-800">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-2">
             <div className="flex items-center gap-2">
@@ -997,6 +1011,7 @@ export default function ConsultantPerformanceKpiWidget({
         </div>
       )}
         </div>
+      )}
 
         {/* Section 2 Supervision Consultant Performance Evaluation Criteria */}
         <div className="space-y-4 pt-8">
@@ -1012,7 +1027,7 @@ export default function ConsultantPerformanceKpiWidget({
             onUpdateConsultant={onUpdateConsultant}
             isReadonly={isReadonly}
             isAdmin={isAdmin}
-            isMasterAdmin={isAdmin}
+            isMasterAdmin={isMasterAdminRole}
             currentUser={currentUser}
             submittalsList={submittalsList}
             onScoreChange={setLivePillar2Score}

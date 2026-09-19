@@ -399,9 +399,11 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     setIsRecordGradingModalOpen(true);
   };
 
-  // Right-of-Way metrics
+  // Right-of-Way metrics: Comparison for any evaluation is between ROW Request By Contractor and ROW Obstruction free Section
   const rowClearMetric = (p.rowMetrics || []).find(m => m.name === 'ROW Obstruction free Section')?.value || 0;
-  const rowImpediment = Math.max(0, p.lengthKm - rowClearMetric);
+  const rowRequestedMetric = (p.rowMetrics || []).find(m => m.name === 'ROW Request By Contractor')?.value || 0;
+  const rowEvaluationDenominator = rowRequestedMetric > 0 ? rowRequestedMetric : p.lengthKm;
+  const rowImpediment = Math.max(0, rowEvaluationDenominator - rowClearMetric);
   
   // Total Remaining Budget (In millions of Birr)
   const remainingBudget = Math.max(0, p.origAmount - (AC / 1_000_000));
@@ -4218,7 +4220,9 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
               </div>
             </div>
             <p className="text-[9.5px] leading-snug text-slate-400">
-              {rowClearMetric.toFixed(2)} Km ({((rowClearMetric / p.lengthKm) * 100).toFixed(2)}%) obstruction-free.
+              {rowRequestedMetric > 0 
+                ? `${rowClearMetric.toFixed(2)} Km of ${rowRequestedMetric.toFixed(2)} Km requested (${((rowClearMetric / rowRequestedMetric) * 100).toFixed(1)}% cleared).`
+                : `${rowClearMetric.toFixed(2)} Km (${((rowClearMetric / p.lengthKm) * 100).toFixed(1)}%) obstruction-free.`}
             </p>
           </div>
 

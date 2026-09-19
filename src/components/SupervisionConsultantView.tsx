@@ -2394,6 +2394,7 @@ export default function SupervisionConsultantView({
           onUpdateConsultant={saveConsultantData}
           isReadonly={isReadonly}
           isAdmin={isAdmin}
+          isMasterAdmin={isMasterAdmin}
           currentUser={currentUser}
         />
       )}

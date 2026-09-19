@@ -669,6 +669,14 @@ export default function App() {
   const [showDraftsPlayground, setShowDraftsPlayground] = useState(false);
   const [showProjectApprovalBanner, setShowProjectApprovalBanner] = useState(true);
 
+  // Compute total pending approval requests across all projects for the current user
+  const totalUserPendingApprovals = useMemo(() => {
+    return pendingApprovals.filter(a =>
+      a.status === 'pending' &&
+      canUserApproveRequest(currentUserObj, a, projects)
+    );
+  }, [pendingApprovals, currentUserObj, projects]);
+
   // Compute pending approval requests specifically scoped to the currently opened project
   const currentProjectPendingApprovals = useMemo(() => {
     if (!currentProject) return [];
@@ -3373,6 +3381,7 @@ let isBatchSyncRunning = false;
               }}
               onOpenDrafts={() => setShowDraftsPlayground(true)}
               onOpenUserGuide={() => setIsUserGuideOpen(true)}
+              onOpenSettings={() => setActiveTab('settings')}
               onSaveToCloud={async () => {
                 try {
                   const isMasterAdmin = currentUserObj.role === 'admin' || currentUserObj.role === 'master_admin' || currentUserObj.username === 'proj_1781786415663';
@@ -4408,13 +4417,18 @@ let isBatchSyncRunning = false;
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`px-3 py-2 rounded-xl transition duration-150 whitespace-nowrap ${
+                  className={`px-3 py-2 rounded-xl transition duration-150 whitespace-nowrap relative ${
                     activeTab === tab.id
                       ? 'bg-blue-600 dark:bg-blue-500 text-white shadow-sm'
                       : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500'
                   }`}
                 >
                   {tab.label}
+                  {tab.id === 'dash' && totalUserPendingApprovals.length > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-rose-600 text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center animate-pulse">
+                      {totalUserPendingApprovals.length}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>

@@ -390,13 +390,42 @@ export const DEFAULT_SUBMITTAL_KPIS: ConsultantSubmittalKpi[] = [
     targetDays: 7,
     actualDays: 4,
     status: 'Approved / Closed',
+    rfiStatus: 'Closed / Agreed',
     priority: 'High',
+    discipline: 'Structures & Bridges',
+    stationKm: 'Km 18+450',
+    drawingRef: 'DWG-STR-BC-08 (Sheet 3 of 5)',
+    specificationRef: 'ERA Standard Technical Specification Clause 3204 & 3405',
+    contractorContact: 'Eng. Mengistu Tadesse (Lead Structural Engineer)',
+    contractorInquiry: 'Discrepancy noted between Drawing DWG-STR-BC-08 showing T16@150mm vertical reinforcement in wingwalls vs. bar bending schedule listing T16@200mm. Also, please clarify clear concrete cover requirement for soil-contact faces.',
+    consultantResponder: 'Eng. Birhanu Kebede (Senior Bridge Engineer)',
     assignedEngineer: 'Eng. Birhanu Kebede (Structural)',
+    consultantResponse: 'Provide T16@150mm c/c spacing as indicated on drawing section details to accommodate earth pressure surcharge. Clear cover to reinforcement on all earth-retaining faces shall be strictly 50mm in accordance with ERA Bridge Design Manual 2013 Table 4.2.',
+    costImpact: 'None',
+    scheduleImpact: 'None',
     notes: 'Clarification provided in 4 days. Structural drawing detail confirmed with standard ERA culvert manual.',
     attachmentsCount: 2,
     attachments: [
       { id: 'a1_1', name: 'Culvert_KM18_Detail_Drawing.pdf', size: '2.4 MB' },
       { id: 'a1_2', name: 'Rebar_Schedule_Revision_A.pdf', size: '1.1 MB' }
+    ],
+    correspondenceThread: [
+      {
+        id: 'cor_14_1',
+        timestamp: '2025-11-04 09:30',
+        sender: 'Contractor',
+        authorName: 'Eng. Mengistu Tadesse',
+        role: 'Contractor Senior Highway/Structural Eng',
+        message: 'Contractor submits formal RFI regarding discrepancy between Drawing DWG-STR-BC-08 wingwall detail (T16@150) and Rebar Schedule (T16@200). Requesting urgent engineering clarification prior to wingwall shuttering and rebar bending on site.'
+      },
+      {
+        id: 'cor_14_2',
+        timestamp: '2025-11-08 14:15',
+        sender: 'Consultant',
+        authorName: 'Eng. Birhanu Kebede',
+        role: 'Consultant Bridge/Structural Specialist',
+        message: 'Consultant has verified design calculations. Drawing detail governs: maintain T16@150mm c/c with minimum 50mm clear cover against backfill. Revised Bar Bending Schedule Revision A is approved and attached.'
+      }
     ]
   },
   {
@@ -409,14 +438,51 @@ export const DEFAULT_SUBMITTAL_KPIS: ConsultantSubmittalKpi[] = [
     targetDays: 7,
     actualDays: 5,
     status: 'Approved / Closed',
+    rfiStatus: 'Clarification Issued',
     priority: 'Critical',
+    discipline: 'Geotechnical & Earthworks',
+    stationKm: 'Km 24+100 - Km 25+300',
+    drawingRef: 'Typical Cross-Section TS-02 & Soil Profile SP-14',
+    specificationRef: 'ERA Standard Technical Specs Division 2000 (Earthworks)',
+    contractorContact: 'Ato Henok Bekele (Project Manager)',
+    contractorInquiry: 'Field sampling reveals highly expansive black cotton clay with Plasticity Index (PI) exceeding 55% and Free Swell Index > 85% between Km 24+100 and Km 25+300. Tender drawings indicate standard 150mm capping. Contractor proposes 300mm rock-fill / coarse granular capping over non-woven geotextile separator to prevent seasonal subgrade heave.',
+    consultantResponder: 'Ato Solomon Mengistu (Senior Materials Engineer)',
     assignedEngineer: 'Ato Solomon Mengistu (Materials)',
+    consultantResponse: 'Proposal concurred. Contractor is instructed to excavate 450mm of expansive clay, place class 1 non-woven geotextile filter (minimum 250 g/m²), and backfill with 300mm approved rock-fill capping topped with 150mm selected granular subgrade (CBR > 15%). Formal Variation Order will be processed for rock-fill volume.',
+    costImpact: 'Potential Additional Cost',
+    scheduleImpact: 'Minor Float Used',
     notes: 'Approved 300mm rock-fill capping replacement after soil swell index validation.',
     attachmentsCount: 3,
     attachments: [
       { id: 'a2_1', name: 'Geotechnical_Soil_Test_Report.pdf', size: '4.8 MB' },
       { id: 'a2_2', name: 'Free_Swell_Index_Analysis.xlsx', size: '520 KB' },
       { id: 'a2_3', name: 'Rockfill_Capping_CrossSection.pdf', size: '1.9 MB' }
+    ],
+    correspondenceThread: [
+      {
+        id: 'cor_15_1',
+        timestamp: '2025-11-12 11:00',
+        sender: 'Contractor',
+        authorName: 'Ato Henok Bekele',
+        role: 'Contractor Project Manager',
+        message: 'Contractor notifies Resident Engineer of unexpected high-plasticity clay encountered. Attached lab test reports confirm high swelling potential. Work in this section is paused awaiting technical directive.'
+      },
+      {
+        id: 'cor_15_2',
+        timestamp: '2025-11-14 16:20',
+        sender: 'Consultant',
+        authorName: 'Ato Solomon Mengistu',
+        role: 'Consultant Materials Engineer',
+        message: 'Joint site inspection completed with Contractor Laboratory team. Additional trial pit samples confirmed swell index. Consultant finalizing technical recommendation for Resident Engineer endorsement.'
+      },
+      {
+        id: 'cor_15_3',
+        timestamp: '2025-11-17 10:45',
+        sender: 'Consultant',
+        authorName: 'Eng. Resident Engineer',
+        role: 'Consultant Resident Engineer',
+        message: 'Formal directive issued approving 300mm rockfill capping on geotextile separator. Quantity measurement will be verified on joint survey sheets.'
+      }
     ]
   },
   {
@@ -429,12 +495,41 @@ export const DEFAULT_SUBMITTAL_KPIS: ConsultantSubmittalKpi[] = [
     targetDays: 7,
     actualDays: 5,
     status: 'Approved / Closed',
+    rfiStatus: 'Closed / Agreed',
     priority: 'High',
+    discipline: 'Structures & Bridges',
+    stationKm: 'Km 34+820 (Wabe River Bridge)',
+    drawingRef: 'DWG-BR-02-FND Sheet 2',
+    specificationRef: 'ERA Bridge Design Manual Clause 6.4 (Spread Footings on Rock)',
+    contractorContact: 'Eng. Mengistu Tadesse (Structural Lead)',
+    contractorInquiry: 'Open excavation for Pier #2 footing reached tender founding elevation +1642.50m, encountering highly weathered fractured tuff rather than sound basalt rock depicted in borehole log BH-02. Requesting confirmation on whether to deepen footing or conduct plate load testing.',
+    consultantResponder: 'Eng. Birhanu Kebede (Structural)',
     assignedEngineer: 'Eng. Birhanu Kebede (Structural)',
+    consultantResponse: 'Excavation shall be lowered by an additional 1.20m to founding elevation +1641.30m into moderately weathered basalt bedrock. Plate bearing test conducted on 2025-12-06 verified allowable bearing capacity of 385 kPa, well exceeding design demand of 300 kPa. Place 100mm C-15 blinding concrete immediately.',
+    costImpact: 'Potential Additional Cost',
+    scheduleImpact: 'None',
     notes: 'Bearing capacity verified at 350 kPa on basalt bedrock.',
     attachmentsCount: 1,
     attachments: [
       { id: 'a3_1', name: 'Borehole_Log_BH02_Stratigraphy.pdf', size: '3.1 MB' }
+    ],
+    correspondenceThread: [
+      {
+        id: 'cor_16_1',
+        timestamp: '2025-12-02 14:00',
+        sender: 'Contractor',
+        authorName: 'Eng. Mengistu Tadesse',
+        role: 'Contractor Structural Lead',
+        message: 'Contractor alerts Consultant that exposed geological strata at Pier #2 differs from design borehole report. Work halted at +1642.50m pending inspection.'
+      },
+      {
+        id: 'cor_16_2',
+        timestamp: '2025-12-07 17:30',
+        sender: 'Consultant',
+        authorName: 'Eng. Birhanu Kebede',
+        role: 'Senior Structural Engineer',
+        message: 'Footing depth lowered by 1.2m into sound basalt bedrock. Bearing test passed. Concur to proceed with blinding concrete.'
+      }
     ]
   },
   {
@@ -447,8 +542,19 @@ export const DEFAULT_SUBMITTAL_KPIS: ConsultantSubmittalKpi[] = [
     targetDays: 7,
     actualDays: 3,
     status: 'Approved / Closed',
+    rfiStatus: 'Closed / Agreed',
     priority: 'Medium',
+    discipline: 'Drainage & Culverts',
+    stationKm: 'Km 0+650 - Km 0+920',
+    drawingRef: 'DWG-DRN-URB-03',
+    specificationRef: 'ERA Standard Drainage Manual Chapter 5',
+    contractorContact: 'Eng. Dawit Alemayehu (Site Engineer)',
+    contractorInquiry: 'Existing urban municipal drainage at Daye Market outlet is clogged and lower than highway ditch invert by 400mm. Requesting revised outfall chute detail or drop structure design to avoid localized ponding.',
+    consultantResponder: 'Eng. Yohannes Tadesse (Highway)',
     assignedEngineer: 'Eng. Yohannes Tadesse (Highway)',
+    consultantResponse: 'Construct standard stone masonry stepped drop structure with 3 drops of 300mm each leading into the municipal collector. Cross section drawing SD-DRN-14 is issued and approved.',
+    costImpact: 'None',
+    scheduleImpact: 'None',
     notes: 'Standard stone masonry trapezoidal lined ditch approved.'
   },
   {
@@ -461,8 +567,19 @@ export const DEFAULT_SUBMITTAL_KPIS: ConsultantSubmittalKpi[] = [
     targetDays: 7,
     actualDays: 8,
     status: 'Approved / Closed',
+    rfiStatus: 'Closed / Agreed',
     priority: 'Medium',
+    discipline: 'Geotechnical & Earthworks',
+    stationKm: 'Km 12+300 - Km 12+800',
+    drawingRef: 'Slope Stabilization Cross-Section SS-04',
+    specificationRef: 'ERA Standard Specs Clause 2108 (Geotextiles)',
+    contractorContact: 'Ato Henok Bekele (Project Manager)',
+    contractorInquiry: 'Clarification requested regarding acceptable tensile strength grade (Class 1 vs Class 2) for non-woven geotextile beneath stone pitching on 1:1.5 embankment slopes exceeding 8m height.',
+    consultantResponder: 'Ato Solomon Mengistu (Materials)',
     assignedEngineer: 'Ato Solomon Mengistu (Materials)',
+    consultantResponse: 'Class 1 non-woven geotextile with minimum grab tensile strength of 900 N and CBR puncture resistance >= 2200 N is mandatory due to embankment height > 8m. Submittal approved based on verified laboratory test certificate.',
+    costImpact: 'None',
+    scheduleImpact: 'None',
     notes: 'Slight 1-day delay due to manufacturer lab test verification. Approved.',
     attachmentsCount: 1,
     attachments: [
@@ -668,9 +785,43 @@ export const DEFAULT_SUBMITTAL_KPIS: ConsultantSubmittalKpi[] = [
     targetDays: 7,
     actualDays: 4,
     status: 'Approved / Closed',
+    rfiStatus: 'Closed / Agreed',
     priority: 'High',
+    discipline: 'Right-of-Way & Utilities',
+    stationKm: 'Km 52+100 - Km 53+400',
+    drawingRef: 'ROW-UTL-GR-05 & Plan Profile Sheet 18',
+    specificationRef: 'ERA Standard Specifications Clause 1204 (Protection of Utilities)',
+    contractorContact: 'Ato Henok Bekele (Project Manager)',
+    contractorInquiry: 'Local water supply pipe and 15kV electric poles at Girja Town market conflict with the outer edge of proposed roadside masonry drain. Contractor requests clarification on whether centerline should be shifted 1.5m to the mountain side or wait for Ethiopian Electric Utility (EEU) relocation.',
+    consultantResponder: 'Ato Daniel Haile (Senior Surveyor)',
     assignedEngineer: 'Ato Daniel Haile (Senior Surveyor)',
-    notes: 'Joint survey demarcation drawing issued.'
+    consultantResponse: 'Approved minor 1.2m centerline adjustment towards the mountain cut within standard design curvature limits. Eliminates need to dismantle 8 electric poles and prevents 3-month utility relocation delay. Joint survey demarcation drawing issued.',
+    costImpact: 'Cost Saving',
+    scheduleImpact: 'None',
+    notes: 'Joint survey demarcation drawing issued.',
+    attachmentsCount: 2,
+    attachments: [
+      { id: 'a20_1', name: 'Girja_Town_Utility_Conflict_Survey.pdf', size: '2.8 MB' },
+      { id: 'a20_2', name: 'Approved_Shift_Alignment_P18.pdf', size: '3.4 MB' }
+    ],
+    correspondenceThread: [
+      {
+        id: 'cor_20_1',
+        timestamp: '2026-02-10 10:00',
+        sender: 'Contractor',
+        authorName: 'Ato Henok Bekele',
+        role: 'Contractor Project Manager',
+        message: 'Contractor reports critical obstruction from EEU power poles at Km 52+300. Work on storm drain paused. Suggesting slight alignment shift to avoid protracted utility relocation.'
+      },
+      {
+        id: 'cor_20_2',
+        timestamp: '2026-02-14 15:30',
+        sender: 'Consultant',
+        authorName: 'Ato Daniel Haile',
+        role: 'Senior Highway Surveyor / Engineer',
+        message: 'Joint field survey confirmed alignment shift is geotechnically feasible. Approved revised demarcation attached. Work may proceed immediately.'
+      }
+    ]
   },
   {
     id: 'sub_20',
@@ -680,9 +831,78 @@ export const DEFAULT_SUBMITTAL_KPIS: ConsultantSubmittalKpi[] = [
     submittedDate: '2026-02-22',
     targetDays: 7,
     status: 'Under Review',
+    rfiStatus: 'Under Technical Review',
     priority: 'Medium',
+    discipline: 'Traffic & Road Safety',
+    stationKm: 'Km 38+200 - Km 39+100',
+    drawingRef: 'Standard Drawing SD-SAF-02 (W-Beam Guardrail)',
+    specificationRef: 'ERA Standard Specifications Clause 6302 (Metal Beam Guardrail)',
+    contractorContact: 'Eng. Mengistu Tadesse (Structural Lead)',
+    contractorInquiry: 'Standard drawing SD-SAF-02 requires 1100mm soil driving depth for galvanized W-beam steel I-posts. At rock cut section Km 38+200 - 39+100, solid basalt bedrock is encountered at 250mm depth. Contractor proposes core drilling 400mm deep holes, placing posts, and grouting with non-shrink structural cement mortar (50 MPa).',
     assignedEngineer: 'Eng. Birhanu Kebede (Structural)',
-    notes: 'Currently under laboratory anchor pull-out test evaluation.'
+    consultantResponder: 'Eng. Birhanu Kebede (Structural)',
+    consultantResponse: 'Proposal is under technical evaluation. Trial anchor pull-out test of 4 grouted sample posts has been witnessed on site. Detailed calculation of dynamic impact resistance is being cross-checked against AASHTO MASH TL-3 specifications.',
+    costImpact: 'Pending Assessment',
+    scheduleImpact: 'None',
+    notes: 'Currently under laboratory anchor pull-out test evaluation.',
+    attachmentsCount: 1,
+    attachments: [
+      { id: 'a21_1', name: 'Anchor_Pullout_Test_Protocol.pdf', size: '1.2 MB' }
+    ],
+    correspondenceThread: [
+      {
+        id: 'cor_21_1',
+        timestamp: '2026-02-22 11:15',
+        sender: 'Contractor',
+        authorName: 'Eng. Mengistu Tadesse',
+        role: 'Contractor Structural Lead',
+        message: 'Contractor submits formal RFI requesting alternative base anchoring detail for steel guardrail posts in shallow hard bedrock.'
+      },
+      {
+        id: 'cor_21_2',
+        timestamp: '2026-02-25 09:40',
+        sender: 'Consultant',
+        authorName: 'Eng. Birhanu Kebede',
+        role: 'Consultant Structural Specialist',
+        message: 'Field pull-out test witnessed. Pull-out capacity exceeded 65 kN. Awaiting final compressive test cylinder breaks before issuing formal approval order.'
+      }
+    ]
+  },
+  {
+    id: 'sub_21',
+    submittalNo: 'RFI-022',
+    type: 'RFI',
+    title: 'Culvert Invert Level Elevation Conflict with Irrigation Canal at Km 32+180',
+    submittedDate: '2026-03-01',
+    targetDays: 7,
+    status: 'Under Review',
+    rfiStatus: 'Awaiting Consultant Response',
+    priority: 'Critical',
+    discipline: 'Drainage & Culverts',
+    stationKm: 'Km 32+180',
+    drawingRef: 'DWG-CUL-14 & Drainage Schedule DS-07',
+    specificationRef: 'ERA Standard Drainage Manual Section 4.5',
+    contractorContact: 'Eng. Dawit Alemayehu (Site Engineer)',
+    contractorInquiry: 'Field setting out of 2x2m RC box culvert at Km 32+180 indicates that the design outlet invert level (+1810.40m) discharges 600mm lower than the existing traditional community irrigation canal intake (+1811.00m). If constructed per design, local farmland water supply will be cut off. Contractor urgently requests revised invert profile or an inverted siphon design.',
+    assignedEngineer: 'Eng. Yohannes Tadesse (Highway/Hydrology)',
+    costImpact: 'Potential Additional Cost',
+    scheduleImpact: 'Potential Delay (Critical Path)',
+    notes: 'Urgent clarification required to prevent work stoppage on embankment filling at Km 32.',
+    attachmentsCount: 2,
+    attachments: [
+      { id: 'a22_1', name: 'Irrigation_Canal_Level_Survey.pdf', size: '1.7 MB' },
+      { id: 'a22_2', name: 'Site_Photographs_Km32_Canal.pdf', size: '4.2 MB' }
+    ],
+    correspondenceThread: [
+      {
+        id: 'cor_22_1',
+        timestamp: '2026-03-01 08:30',
+        sender: 'Contractor',
+        authorName: 'Eng. Dawit Alemayehu',
+        role: 'Contractor Drainage Engineer',
+        message: 'Formal design clarification submitted: Design culvert outlet invert is in direct vertical conflict with community irrigation furrow. Immediate Resident Engineer intervention requested as embankment earthwork is approaching station.'
+      }
+    ]
   }
 ];
 

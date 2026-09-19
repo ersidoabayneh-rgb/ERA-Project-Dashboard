@@ -420,12 +420,18 @@ export default function DashboardView({
     const val = Number(rowMetricObj ? rowMetricObj.value : 0);
     const totalKm = Number(project.lengthKm || 65);
     const isTotalLengthMetric = activeRowMetric.toLowerCase().includes('project length');
-    const remainingKm = isTotalLengthMetric ? 0 : Math.max(0, totalKm - val);
-    const pct = totalKm > 0 ? ((val / totalKm) * 100).toFixed(1) : '0';
+    const isRowClearMetric = activeRowMetric === 'ROW Obstruction free Section';
+    const rowReqMetric = availableRowMetrics.find(m => m.name === 'ROW Request By Contractor');
+    const evaluationBenchmark = (isRowClearMetric && rowReqMetric && Number(rowReqMetric.value) > 0)
+      ? Number(rowReqMetric.value)
+      : totalKm;
+
+    const remainingKm = isTotalLengthMetric ? 0 : Math.max(0, evaluationBenchmark - val);
+    const pct = evaluationBenchmark > 0 ? ((val / evaluationBenchmark) * 100).toFixed(1) : '0';
 
     const unitStr = rowMetricObj?.unit || 'Km';
     const mainKey = `${activeRowMetric} (${unitStr})`;
-    const remKey = `Remaining Section (${unitStr})`;
+    const remKey = isRowClearMetric ? `Pending Contractor Request (${unitStr})` : `Remaining Section (${unitStr})`;
 
     rowChartData = [{
       name: '',
@@ -434,13 +440,15 @@ export default function DashboardView({
     }];
 
     rowLegendSeries = [
-      { key: mainKey, name: mainKey, fill: '#3b82f6' },
-      ...(remainingKm > 0 ? [{ key: remKey, name: remKey, fill: '#94a3b8' }] : [])
+      { key: mainKey, name: mainKey, fill: isRowClearMetric ? '#10b981' : '#3b82f6' },
+      ...(remainingKm > 0 ? [{ key: remKey, name: remKey, fill: isRowClearMetric ? '#f59e0b' : '#94a3b8' }] : [])
     ];
 
     rowBadgeSummary = isTotalLengthMetric 
       ? `Total Project Length: ${val.toFixed(2)} Km`
-      : `Achieved: ${val.toFixed(2)} Km / ${totalKm.toFixed(2)} Km (${pct}%)`;
+      : isRowClearMetric
+        ? `Cleared: ${val.toFixed(2)} Km / Requested by Contractor: ${evaluationBenchmark.toFixed(2)} Km (${pct}%)`
+        : `Achieved: ${val.toFixed(2)} Km / ${totalKm.toFixed(2)} Km (${pct}%)`;
   }
 
   // Charts mapping for Quantities: Plan vs Completed
@@ -1104,7 +1112,10 @@ export default function DashboardView({
   const withinMaturityUnpaidCombined = withinMaturityUnpaidEtbSum + (withinMaturityUnpaidUsdSum * rateIpc);
 
   const rowClearMetric = (project.rowMetrics || []).find(m => m.name === 'ROW Obstruction free Section')?.value || 0;
-  const rowImpediment = Math.max(0, project.lengthKm - rowClearMetric);
+  const rowRequestedMetric = (project.rowMetrics || []).find(m => m.name === 'ROW Request By Contractor')?.value || 0;
+  // Official comparison for any ROW evaluation is between ROW Request By Contractor and ROW Obstruction free Section
+  const rowEvaluationDenominator = rowRequestedMetric > 0 ? rowRequestedMetric : project.lengthKm;
+  const rowImpediment = Math.max(0, rowEvaluationDenominator - rowClearMetric);
 
   // Compile active warning alerts list
   const healthAlerts: { type: 'critical' | 'warning' | 'info'; title: string; desc: string; field: string }[] = [];

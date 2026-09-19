@@ -539,18 +539,26 @@ export default function CpmLinearComparison({ project }: CpmLinearComparisonProp
               const BAC = project.revisedContractAmountEtb || project.contractAmountEtb || ((project.origAmount || 0) * 1_000_000) || 0;
               const finalBacPct = BAC > 0 && totalCertifiedUnpaidCombinedEtb > 0 ? ((totalCertifiedUnpaidCombinedEtb / BAC) * 100).toFixed(2) : '0.00';
 
-              // Project-specific ROW calculation
+              // Project-specific ROW calculation: Comparison between ROW Request By Contractor and ROW Obstruction free Section
               const rowObstructionMetric = (project.rowMetrics || []).find(m => 
+                m.name === 'ROW Obstruction free Section' ||
                 m.name.toLowerCase().includes('obstruction free') || 
                 m.name.toLowerCase().includes('free section') ||
                 m.name.toLowerCase().includes('site possession') || 
                 m.name.toLowerCase().includes('row cleared')
               );
+              const rowRequestedMetric = (project.rowMetrics || []).find(m => 
+                m.name === 'ROW Request By Contractor' ||
+                (m.name.toLowerCase().includes('row request') && m.name.toLowerCase().includes('contractor'))
+              );
               const rowSectionVal = rowObstructionMetric 
                 ? (Number(rowObstructionMetric.value) || 0) 
                 : (project.lengthKm || 0);
-              const calcRowClearPct = project.lengthKm && project.lengthKm > 0 
-                ? Math.min(100, Math.max(0, (rowSectionVal / project.lengthKm) * 100)) 
+              const rowDenominator = (rowRequestedMetric && Number(rowRequestedMetric.value) > 0)
+                ? Number(rowRequestedMetric.value)
+                : (project.lengthKm || 0);
+              const calcRowClearPct = rowDenominator > 0 
+                ? Math.min(100, Math.max(0, (rowSectionVal / rowDenominator) * 100)) 
                 : 100;
               const finalRowClearPct = calcRowClearPct.toFixed(2);
 
@@ -732,7 +740,7 @@ export default function CpmLinearComparison({ project }: CpmLinearComparisonProp
                         <p>
                           <strong>Right-Of-Way Impediments:</strong> Clearance status:{' '}
                           <span className="text-blue-500 font-bold font-mono">
-                            {finalRowClearPct}% clear ({rowSectionVal.toFixed(2)} Km of {projectLength.toFixed(2)} Km)
+                            {finalRowClearPct}% clear ({rowSectionVal.toFixed(2)} Km of {rowDenominator.toFixed(2)} Km {rowRequestedMetric && Number(rowRequestedMetric.value) > 0 ? 'requested' : 'total length'})
                           </span>
                           <br />
                           {calcRowClearPct >= 100 

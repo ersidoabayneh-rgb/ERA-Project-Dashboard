@@ -237,6 +237,10 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
     }
     return overrides;
   });
+  
+  // Evaluation Change Log state
+  const [changeLog, setChangeLog] = useState(consultant.evaluationChangeLog || []);
+  
   const [showMetricsFeed, setShowMetricsFeed] = useState(false);
 
   // Evaluation scores state: map of criterion code to evaluation payload
@@ -571,6 +575,19 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
     if (isAuto) {
       setManualOverrides(prev => ({ ...prev, [criterionId]: true }));
     }
+    
+    // Add to Change Log
+    const oldScore = evaluations[criterionId]?.score || 0;
+    if (oldScore !== newScore) {
+      setChangeLog(prev => [...prev, {
+        criterionCode: criterionId,
+        oldScore,
+        newScore,
+        changedBy: currentUser?.name || currentUser?.username || 'Authorized Approver',
+        timestamp: new Date().toISOString()
+      }]);
+    }
+    
     setEvaluations(prev => ({
       ...prev,
       [criterionId]: {
@@ -689,6 +706,7 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
       ...consultant,
       customCriterionWeights,
       detailedEvaluations: evaluations,
+      evaluationChangeLog: changeLog,
       dimensionScores: evaluationResult.dimensionScores,
       overallEvaluationScore: evaluationResult.totalScore,
       officialEvaluationGrade: evaluationResult.officialGrade,
@@ -718,6 +736,7 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
   };
 
   const overriddenCount = Object.keys(manualOverrides).length;
+  const [showChangeLog, setShowChangeLog] = useState(false);
 
   const renderDimensionIcon = (id: string, className = "w-4 h-4") => {
     switch (id) {
@@ -756,6 +775,42 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
             <Sparkles className="w-4 h-4 text-indigo-500 shrink-0 animate-pulse" />
             <div className="flex-1">
               Recalculated all {autoEvaluatedCount} evaluation criteria using live project metrics! Click 'Save & Record Official Score' below to persist changes.
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Change Log Panel */}
+      <AnimatePresence>
+        {showChangeLog && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-lg space-y-4"
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <h4 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-wider flex items-center gap-2">
+                <Activity className="w-4 h-4 text-indigo-500" />
+                Evaluation Change Log
+              </h4>
+              <button onClick={() => setShowChangeLog(false)} className="text-slate-400 hover:text-slate-600">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            
+            <div className="max-h-64 overflow-y-auto space-y-2">
+              {changeLog.length > 0 ? changeLog.map((entry, idx) => (
+                <div key={idx} className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl flex items-start gap-3 text-xs">
+                  <div className="text-slate-400 pt-0.5"><Clock className="w-3 h-3" /></div>
+                  <div className="flex-1">
+                    <p className="text-slate-700 dark:text-slate-200">Criterion <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">{entry.criterionCode}</span> updated: <span className="font-bold">{entry.oldScore} → {entry.newScore}</span></p>
+                    <p className="text-slate-500 text-[10px]">Changed by: <span className="font-semibold">{entry.changedBy}</span> on {new Date(entry.timestamp).toLocaleString()}</p>
+                  </div>
+                </div>
+              )) : (
+                <p className="text-slate-500 text-xs italic p-3">No changes recorded yet.</p>
+              )}
             </div>
           </motion.div>
         )}
@@ -1396,6 +1451,15 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
                   >
                     <Zap className="w-3.5 h-3.5 text-blue-400" />
                     Auto-Calculate ({autoCounts.autoTotal})
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowChangeLog(!showChangeLog)}
+                    className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold flex items-center gap-1.5 border border-slate-200 dark:border-slate-700 transition cursor-pointer"
+                  >
+                    <Activity className="w-3.5 h-3.5 text-slate-500" />
+                    Change Log
                   </button>
 
                   <button

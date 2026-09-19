@@ -33,8 +33,10 @@ import {
   Upload,
   Eye,
   ExternalLink,
-  MoveVertical
+  MoveVertical,
+  MessageSquare
 } from 'lucide-react';
+import RfiLogComponent from './RfiLogComponent';
 import {
   Project,
   SupervisionConsultantInfo,
@@ -198,6 +200,12 @@ export default function SubmittalLogView({
       avgDays
     };
   }, [submittalsList, targetOverrides]);
+
+  // View mode: 'submittals' (full submittal register) vs 'rfi_log' (dedicated RFI correspondence log)
+  const [activeViewTab, setActiveViewTab] = useState<'submittals' | 'rfi_log'>('submittals');
+
+  const rfiCount = useMemo(() => submittalsList.filter(s => s.type === 'RFI').length, [submittalsList]);
+  const pendingRfiCount = useMemo(() => submittalsList.filter(s => s.type === 'RFI' && s.status !== 'Approved / Closed' && s.status !== 'Closed').length, [submittalsList]);
 
   // Modal states
   const [isAddSubmittalModalOpen, setIsAddSubmittalModalOpen] = useState(false);
@@ -634,6 +642,87 @@ export default function SubmittalLogView({
         </div>
       </div>
 
+      {/* View Switcher: All Submittals Register vs Dedicated RFI & Clarifications Log */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white dark:bg-slate-900 p-2 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setActiveViewTab('submittals')}
+            className={`px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+              activeViewTab === 'submittals'
+                ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+            }`}
+          >
+            <FileText className="w-4 h-4" />
+            <span>All Submittals Register</span>
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${
+              activeViewTab === 'submittals'
+                ? 'bg-white/20 text-white dark:text-slate-900 dark:bg-slate-900/20'
+                : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+            }`}>
+              {submittalsList.length}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveViewTab('rfi_log')}
+            className={`px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer relative ${
+              activeViewTab === 'rfi_log'
+                ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-sm'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+            }`}
+          >
+            <MessageSquare className="w-4 h-4 text-blue-300" />
+            <span>RFI Log (Contractor ⇄ Consultant Correspondence)</span>
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${
+              activeViewTab === 'rfi_log'
+                ? 'bg-white/20 text-white'
+                : 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
+            }`}>
+              {rfiCount} RFIs
+            </span>
+            {pendingRfiCount > 0 && (
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" title={`${pendingRfiCount} RFIs awaiting consultant response`} />
+            )}
+          </button>
+        </div>
+
+        {activeViewTab === 'submittals' ? (
+          <div className="flex items-center gap-2 px-2 text-xs text-slate-500">
+            <span className="hidden md:inline">RFI Quick Actions:</span>
+            <button
+              onClick={() => setSelectedTypeFilter('RFI')}
+              className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+            >
+              Filter RFIs
+            </button>
+            <span>•</span>
+            <button
+              onClick={() => setActiveViewTab('rfi_log')}
+              className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer flex items-center gap-1"
+            >
+              Open Technical Clarification Threads →
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 px-2 text-xs text-slate-500">
+            <span>Tracking design inquiries & technical directives</span>
+          </div>
+        )}
+      </div>
+
+      {activeViewTab === 'rfi_log' ? (
+        <RfiLogComponent
+          project={project}
+          consultant={consultant}
+          allSubmittals={submittalsList}
+          onUpdateSubmittals={(updatedList, desc) => commitSubmittals(updatedList, desc)}
+          isReadonly={isReadonly}
+          currentUserObj={currentUserObj}
+          targetOverrides={targetOverrides}
+        />
+      ) : (
+        <>
       {/* KPI & Evaluation Live Metrics Strip */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-2xl shadow-xs">
@@ -932,9 +1021,20 @@ export default function SubmittalLogView({
                         {item.submittalNo}
                       </td>
                       <td className="p-3.5">
-                        <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px] font-bold block w-max">
-                          {item.type}
-                        </span>
+                        {item.type === 'RFI' ? (
+                          <button
+                            onClick={() => setActiveViewTab('rfi_log')}
+                            className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/80 dark:hover:bg-blue-900/80 text-blue-700 dark:text-blue-300 text-[11px] font-bold inline-flex items-center gap-1.5 transition cursor-pointer border border-blue-200 dark:border-blue-800 shadow-2xs"
+                            title="Click to open full correspondence thread in RFI Log"
+                          >
+                            <MessageSquare className="w-3 h-3 text-blue-500" />
+                            <span>Technical RFI</span>
+                          </button>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px] font-bold block w-max">
+                            {item.type}
+                          </span>
+                        )}
                       </td>
                       <td className="p-3.5 max-w-xs">
                         <div className="font-bold text-slate-900 dark:text-white truncate" title={item.title}>
@@ -1138,6 +1238,8 @@ export default function SubmittalLogView({
           </div>
         </div>
       </div>
+      </>
+      )}
 
       {/* EDIT / ADD MODAL */}
       <AnimatePresence>

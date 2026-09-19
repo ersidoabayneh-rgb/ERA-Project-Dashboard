@@ -730,6 +730,29 @@ export interface SupervisionConsultantInfo {
   personnelAuditLog?: PersonnelAuditLogEntry[]; // Action audit log tracking timestamps and admin user identifiers
   invoices: ConsultantInvoice[];
   previousConsultants?: HistoricalSupervisionConsultant[]; // Archive of predecessor supervision consultants
+  evaluationChangeLog?: Array<{
+    criterionCode: string;
+    oldScore: number;
+    newScore: number;
+    changedBy: string;
+    timestamp: string;
+  }>;
+}
+
+export interface RfiCorrespondenceMessage {
+  id: string;
+  timestamp: string;
+  sender: 'Contractor' | 'Consultant' | 'Employer / ERA';
+  authorName: string;
+  role?: string;
+  message: string;
+  attachments?: Array<{
+    id: string;
+    name: string;
+    size?: string;
+    url?: string;
+    uploadedAt?: string;
+  }>;
 }
 
 export interface ConsultantSubmittalKpi {
@@ -753,6 +776,20 @@ export interface ConsultantSubmittalKpi {
     url?: string;
     uploadedAt?: string;
   }>;
+  // Design clarification & RFI correspondence tracking fields
+  discipline?: 'Structures & Bridges' | 'Highway Alignment & Geometry' | 'Drainage & Culverts' | 'Geotechnical & Earthworks' | 'Pavement & Materials' | 'Traffic & Road Safety' | 'Right-of-Way & Utilities' | 'General & Specifications' | string;
+  stationKm?: string;
+  drawingRef?: string;
+  specificationRef?: string;
+  contractorInquiry?: string;
+  contractorContact?: string;
+  contractorCompany?: string;
+  consultantResponse?: string;
+  consultantResponder?: string;
+  costImpact?: 'None' | 'Potential Additional Cost' | 'Cost Saving' | 'Pending Assessment' | string;
+  scheduleImpact?: 'None' | 'Potential Delay (Critical Path)' | 'Minor Float Used' | 'Pending Assessment' | string;
+  rfiStatus?: 'Awaiting Consultant Response' | 'Under Technical Review' | 'Clarification Issued' | 'Closed / Agreed' | 'Resubmit / Revision Required' | 'Void / Withdrawn' | string;
+  correspondenceThread?: RfiCorrespondenceMessage[];
 }
 
 export interface ProjectDocument {

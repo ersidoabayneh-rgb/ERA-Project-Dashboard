@@ -525,12 +525,12 @@ export function buildKpiHierarchy(ct: 'DB' | 'DBB', project?: Project) {
   goals.push({
     id: 'G10', name: 'ROW Management', wt: 100, sscs: [
       { id: 'SC10.1', name: 'ROW Clearance', wt: 50, items: [
-          { id: 'RW-1', desc: 'Km cleared of obstructions vs total km', unit: '%', wt: 100, max: 100, type: 'auto' }
+          { id: 'RW-1', desc: 'ROW Obstruction free Section vs ROW Request By Contractor', unit: '%', wt: 100, max: 100, type: 'auto' }
         ] },
       { id: 'SC10.2', name: 'Compensation', wt: 30, items: [
           { id: 'RW-2A', desc: 'Properties identified, measured, evaluated', unit: '%', wt: 40, max: 100, type: 'pct' },
           { id: 'RW-2B', desc: 'Compensation paid to owners', unit: '%', wt: 30, max: 100, type: 'pct' },
-          { id: 'RW-2C', desc: 'Compensated properties removed', unit: '%', wt: 30, max: 100, type: 'pct' }
+          { id: 'RW-2C', desc: 'ROW Obstruction free Section vs ROW Request By Contractor', unit: '%', wt: 30, max: 100, type: 'pct' }
         ] },
       { id: 'SC10.3', name: 'ROW Reporting', wt: 20, items: [
           { id: 'RW-3', desc: 'Monthly ROW report completeness', unit: '%', wt: 100, max: 100, type: 'pct' }
@@ -781,7 +781,10 @@ export function getIntegratedKpiAllocated(project: Project): KpiAllocatedItem[] 
   const projectLengthVal = project.lengthKm > 0 ? project.lengthKm : 1;
 
   const rowClearMetric = rowMetricsList.find(m => m.name === 'ROW Obstruction free Section')?.value || 0;
-  const rowPercent = (rowClearMetric / projectLengthVal) * 100;
+  const rowRequestedMetric = rowMetricsList.find(m => m.name === 'ROW Request By Contractor')?.value || 0;
+  // Comparison for any ROW evaluation is strictly between ROW Request By Contractor and ROW Obstruction free Section
+  const rowEvaluationDenominator = rowRequestedMetric > 0 ? rowRequestedMetric : projectLengthVal;
+  const rowPercent = (rowClearMetric / rowEvaluationDenominator) * 100;
 
   const measureMetricObj = rowMetricsList.find(m => {
     const n = m.name.toLowerCase();

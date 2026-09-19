@@ -54,6 +54,7 @@ interface ProjectsPageProps {
   onOpenDrafts: () => void;
   onOpenUserGuide?: () => void;
   onSaveToCloud?: () => void;
+  onOpenSettings?: () => void;
   onlineUsers: string[];
   programDirectorates?: string[];
   pmos?: string[];
@@ -76,6 +77,7 @@ export default function ProjectsPage({
   onOpenDrafts,
   onOpenUserGuide,
   onSaveToCloud,
+  onOpenSettings,
   onlineUsers,
   programDirectorates = ['Southern', 'North', 'East', 'West', 'Central', 'Expressway'],
   pmos = ['PMO 1', 'PMO 2', 'PMO 3'],
@@ -670,6 +672,17 @@ export default function ProjectsPage({
               >
                 <FileText className="w-3.5 h-3.5" />
                 Group Reports
+              </button>
+            )}
+
+            {!hasNoProjects && (
+              <button
+                onClick={onOpenSettings}
+                className="flex items-center gap-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 px-3 py-1.5 rounded-xl text-xs font-bold transition text-slate-700 dark:text-slate-300"
+                title="Open Settings to change themes, colors, and background"
+              >
+                <Sliders className="w-3.5 h-3.5" />
+                Settings
               </button>
             )}
 
