@@ -1150,7 +1150,7 @@ export default function DashboardView({
       type: 'warning',
       field: 'Progress Deviation Map',
       title: 'Major Physical S-Curve Lag',
-      desc: `Project physical progress of ${project.physicalProgress.toFixed(2)}% is lagging the original planned milestone of ${plannedPct.toFixed(2)}% by a gap of ${(plannedPct - project.physicalProgress).toFixed(2)}%.`
+      desc: `Project physical progress of ${project.physicalProgress.toFixed(2)}% is lagging the ${evm.planLabel || 'planned'} milestone of ${plannedPct.toFixed(2)}% by a gap of ${(plannedPct - project.physicalProgress).toFixed(2)}%.`
     });
   }
   if (criticalBonds.length > 0) {
@@ -1890,10 +1890,13 @@ export default function DashboardView({
                   <div>
                     <span className="text-[10px] font-black uppercase text-orange-700 dark:text-orange-400 tracking-wider">Physical Slippage &gt; 15%</span>
                     <p className="text-xs font-bold text-slate-800 dark:text-slate-100 mt-0.5">
-                      Lagging by {physicalSlippageVal.toFixed(1)}% vs Plan
+                      Lagging by {physicalSlippageVal.toFixed(1)}% vs {evmMetrics.planLabel || 'Plan'}
                     </p>
                     <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
-                      Actual: {project.physicalProgress.toFixed(1)}% | Planned: {evmMetrics.plannedPct.toFixed(1)}%
+                      Actual: {project.physicalProgress.toFixed(1)}% | {evmMetrics.planLabel || 'Plan'}: {evmMetrics.plannedPct.toFixed(1)}%
+                    </p>
+                    <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">
+                      S-curve tracking: Evaluated against active {evmMetrics.planLabel || 'Plan'} (not original plan)
                     </p>
                   </div>
                 </div>
