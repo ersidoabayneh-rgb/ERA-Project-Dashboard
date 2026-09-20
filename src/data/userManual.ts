@@ -1,4 +1,5 @@
 import { jsPDF } from 'jspdf';
+import { drawEraLogo } from '../lib/pdfReportEngine';
 
 /**
  * Ethiopian Roads Administration (ERA) ERP Dashboard - Official User Manual Generator
@@ -60,6 +61,11 @@ export function downloadUserManual() {
   // Running Header & Footer for pages 2+
   const addPageHeaderFooter = (pageNo: number, title: string = 'ERA ERP Dashboard Official User Manual v1.1 Expanded Edition') => {
     doc.setPage(pageNo);
+
+    // Outer page border
+    setDrawHex(colors.borderLight);
+    doc.setLineWidth(0.75);
+    doc.roundedRect(margin - 8, 8, contentWidth + 16, pageHeight - 16, 4, 4, 'S');
     
     // Top Bar
     setFillHex(colors.navy);
@@ -69,10 +75,18 @@ export function downloadUserManual() {
     setFillHex(colors.gold);
     doc.rect(0, 28, pageWidth, 2, 'F');
 
+    // Official ERA Logo in header
+    drawEraLogo(doc, margin, 3, 22, {
+      withContainer: true,
+      containerBg: [255, 255, 255],
+      containerBorder: [226, 232, 240],
+      borderRadius: 2
+    });
+
     setTextHex(colors.white);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
-    doc.text('ETHIOPIAN ROADS ADMINISTRATION (ERA) • ENTERPRISE ERP', margin, 18);
+    doc.text('ETHIOPIAN ROADS ADMINISTRATION (ERA) • ENTERPRISE ERP', margin + 26, 18);
     doc.setFont('helvetica', 'normal');
     doc.text(title, pageWidth - margin, 18, { align: 'right' });
 
@@ -183,13 +197,13 @@ export function downloadUserManual() {
   setFillHex(colors.gold);
   doc.rect(0, 230, pageWidth, 6, 'F');
 
-  // ERA Emblem Box
-  setFillHex(colors.gold);
-  doc.roundedRect(margin, 35, 48, 48, 8, 8, 'F');
-  setTextHex(colors.navy);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(20);
-  doc.text('ERA', margin + 6, 66);
+  // Official ERA Logo
+  drawEraLogo(doc, margin, 35, 48, {
+    withContainer: true,
+    containerBg: [255, 255, 255],
+    containerBorder: [226, 232, 240],
+    borderRadius: 8
+  });
 
   // Cover Titles
   setTextHex(colors.white);

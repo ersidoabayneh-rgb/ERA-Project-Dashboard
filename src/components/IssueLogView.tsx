@@ -8,6 +8,7 @@ import {
   Hash, ShieldCheck, Activity, Fingerprint, FileCode, FileClock, MoreVertical
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
+import { drawEraLogo, drawStandardDocumentHeader } from '../lib/pdfReportEngine';
 import { 
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, CartesianGrid, AreaChart, Area 
 } from 'recharts';
@@ -843,6 +844,11 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
       doc.setFillColor(124, 58, 237);
       doc.rect(margin, 20, contentWidth, 3, 'F');
 
+      // Page border
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.75);
+      doc.roundedRect(margin - 10, 14, contentWidth + 20, pageHeight - 28, 3, 3, 'S');
+
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7);
       doc.setTextColor(148, 163, 184);
@@ -862,43 +868,32 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
       );
     };
 
-    const checkSpace = (needed: number) => {
+    let drawTableHeader = () => {};
+
+    const checkSpace = (needed: number, isTableContext: boolean = false) => {
       if (curY + needed > pageHeight - 50) {
         doc.addPage();
         curY = 45;
         drawPageDecorations();
+        if (isTableContext) {
+          drawTableHeader();
+        }
       }
     };
 
     drawPageDecorations();
 
-    // Document Header
-    doc.setFillColor(15, 23, 42);
-    doc.roundedRect(margin, curY, 36, 36, 6, 6, 'F');
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    doc.setTextColor(245, 158, 11);
-    doc.text("E.R.A", margin + 18, curY + 18, { align: 'center' });
-    doc.setFontSize(4);
-    doc.setTextColor(255, 255, 255);
-    doc.text("ROADS", margin + 18, curY + 26, { align: 'center' });
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
-    doc.setTextColor(15, 23, 42);
-    doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA)", margin + 46, curY + 12);
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9);
-    doc.setTextColor(124, 58, 237);
-    doc.text("OFFICIAL SYSTEM TRACEABILITY & USER ACTION AUDIT LOG REPORT", margin + 46, curY + 24);
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
-    doc.setTextColor(100, 116, 139);
-    doc.text(`PROJECT: ${project.name}   •   GENERATED: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`, margin + 46, curY + 34);
-
-    curY += 48;
+    // Standard Document Header: Official ERA Logo, Standard Title & Aligned Date Stamp
+    curY = drawStandardDocumentHeader(doc, {
+      margin,
+      curY,
+      contentWidth,
+      documentTitle: "OFFICIAL SYSTEM TRACEABILITY & USER ACTION AUDIT LOG REPORT",
+      subtitle: `PROJECT: ${project.name}`,
+      referenceNo: project.id || 'AUDIT-LOG',
+      titleColor: [124, 58, 237], // Purple
+      statusBadge: 'TRACEABILITY AUDIT',
+    });
 
     // Executive Summary Box
     doc.setFillColor(248, 250, 252);
@@ -949,93 +944,158 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
     curY += 12;
 
     const tableCols = [
-      { title: "Timestamp & Hash", width: 110 },
-      { title: "User / Officer", width: 100 },
-      { title: "Action & Target Issue", width: 120 },
-      { title: "Department / Status", width: 90 },
-      { title: "Audit Details & Notes", width: 102 }
+      { title: "Timestamp & Hash", width: 105 },
+      { title: "User / Officer", width: 98 },
+      { title: "Action & Target Issue", width: 110 },
+      { title: "Department / Status", width: 85 },
+      { title: "Audit Details & Notes", width: 125 }
     ];
 
-    doc.setFillColor(30, 41, 59);
-    doc.rect(margin, curY, contentWidth, 18, 'F');
+    drawTableHeader = () => {
+      doc.setFillColor(30, 41, 59);
+      doc.rect(margin, curY, contentWidth, 18, 'F');
 
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7);
-    doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7);
+      doc.setTextColor(255, 255, 255);
 
-    let tx = margin + 5;
-    tableCols.forEach(col => {
-      doc.text(col.title, tx, curY + 12);
-      tx += col.width;
-    });
+      let tx = margin;
+      tableCols.forEach((col, cIdx) => {
+        doc.text(col.title, tx + 4, curY + 12);
+        tx += col.width;
+        if (cIdx < tableCols.length - 1) {
+          doc.setDrawColor(71, 85, 105);
+          doc.setLineWidth(0.5);
+          doc.line(tx, curY, tx, curY + 18);
+        }
+      });
 
-    curY += 18;
+      doc.setDrawColor(30, 41, 59);
+      doc.rect(margin, curY, contentWidth, 18, 'S');
+
+      curY += 18;
+    };
+
+    drawTableHeader();
 
     filteredAuditLogs.forEach((item, idx) => {
-      const noteLines = doc.splitTextToSize(item.notes || 'Action logged in system', 98);
-      const rowHeight = Math.max(30, (noteLines.length * 8) + 18);
+      const timeLines = doc.splitTextToSize(item.timestamp || '-', tableCols[0].width - 8);
+      const hashLines = doc.splitTextToSize(item.traceabilityHash || '-', tableCols[0].width - 8);
+      
+      const userLines = doc.splitTextToSize(item.user || 'Unknown', tableCols[1].width - 8);
+      const roleLines = doc.splitTextToSize(item.userRole || 'Authorized Officer', tableCols[1].width - 8);
 
-      checkSpace(rowHeight + 5);
+      const codeLines = doc.splitTextToSize(`[${item.issueCode || 'N/A'}]`, tableCols[2].width - 8);
+      const actionLines = doc.splitTextToSize(item.changeType || 'Modified', tableCols[2].width - 8);
+
+      const statusText = item.newStatus || item.previousStatus || 'Updated';
+      const statusLines = doc.splitTextToSize(statusText, tableCols[3].width - 8);
+      const deptLines = doc.splitTextToSize(item.department || 'N/A', tableCols[3].width - 8);
+
+      const noteLines = doc.splitTextToSize(item.notes || 'Action logged in system', tableCols[4].width - 8);
+
+      const col0H = (timeLines.length * 8.5) + (hashLines.length * 7.5) + 2;
+      const col1H = (userLines.length * 8.5) + (roleLines.length * 7.5) + 2;
+      const col2H = (codeLines.length * 8.5) + (actionLines.length * 8) + 2;
+      const col3H = (statusLines.length * 8.5) + (deptLines.length * 7.5) + 2;
+      const col4H = noteLines.length * 8;
+      const maxContentH = Math.max(col0H, col1H, col2H, col3H, col4H);
+      const rowHeight = Math.max(28, maxContentH + 10);
+
+      checkSpace(rowHeight + 4, true);
 
       if (idx % 2 === 0) {
         doc.setFillColor(248, 250, 252);
         doc.rect(margin, curY, contentWidth, rowHeight, 'F');
       }
+
+      // Cell borderlines
       doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.5);
       doc.line(margin, curY + rowHeight, margin + contentWidth, curY + rowHeight);
+      doc.line(margin, curY, margin, curY + rowHeight);
+      doc.line(margin + contentWidth, curY, margin + contentWidth, curY + rowHeight);
 
-      let rx = margin + 5;
+      // Vertical column dividers
+      let divX = margin;
+      tableCols.slice(0, -1).forEach(col => {
+        divX += col.width;
+        doc.line(divX, curY, divX, curY + rowHeight);
+      });
 
-      // Col 1: Timestamp & Hash
+      let rx = margin;
+
+      // Col 0: Timestamp & Hash
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(6.5);
       doc.setTextColor(15, 23, 42);
-      doc.text(item.timestamp, rx, curY + 11);
+      timeLines.forEach((tl: string, ti: number) => {
+        doc.text(tl, rx + 4, curY + 10 + (ti * 8.5));
+      });
       doc.setFont('courier', 'bold');
       doc.setFontSize(6);
       doc.setTextColor(124, 58, 237);
-      doc.text(item.traceabilityHash, rx, curY + 21);
+      const hashStartY = curY + 10 + (timeLines.length * 8.5) + 1;
+      hashLines.forEach((hl: string, hi: number) => {
+        doc.text(hl, rx + 4, hashStartY + (hi * 7.5));
+      });
       rx += tableCols[0].width;
 
-      // Col 2: User
+      // Col 1: User / Officer
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(7);
       doc.setTextColor(30, 41, 59);
-      doc.text(item.user, rx, curY + 11);
+      userLines.forEach((ul: string, ui: number) => {
+        doc.text(ul, rx + 4, curY + 10 + (ui * 8.5));
+      });
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(6);
       doc.setTextColor(100, 116, 139);
-      doc.text(item.userRole || 'Authorized Officer', rx, curY + 21);
+      const roleStartY = curY + 10 + (userLines.length * 8.5) + 1;
+      roleLines.forEach((rl: string, ri: number) => {
+        doc.text(rl, rx + 4, roleStartY + (ri * 7.5));
+      });
       rx += tableCols[1].width;
 
-      // Col 3: Action & Target
+      // Col 2: Action & Target Issue
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(7);
       doc.setTextColor(37, 99, 235);
-      doc.text(`[${item.issueCode}]`, rx, curY + 11);
+      codeLines.forEach((cl: string, ci: number) => {
+        doc.text(cl, rx + 4, curY + 10 + (ci * 8.5));
+      });
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(6.5);
       doc.setTextColor(15, 23, 42);
-      doc.text(item.changeType, rx, curY + 21);
+      const actionStartY = curY + 10 + (codeLines.length * 8.5) + 1;
+      actionLines.forEach((al: string, ai: number) => {
+        doc.text(al, rx + 4, actionStartY + (ai * 8));
+      });
       rx += tableCols[2].width;
 
-      // Col 4: Dept / Status
+      // Col 3: Department / Status
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(6.5);
       doc.setTextColor(15, 23, 42);
-      doc.text(item.newStatus || item.previousStatus || 'Updated', rx, curY + 11);
+      statusLines.forEach((sl: string, si: number) => {
+        doc.text(sl, rx + 4, curY + 10 + (si * 8.5));
+      });
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(6);
       doc.setTextColor(100, 116, 139);
-      const deptSplit = doc.splitTextToSize(item.department || 'N/A', tableCols[3].width - 5);
-      doc.text(deptSplit[0], rx, curY + 21);
+      const deptStartY = curY + 10 + (statusLines.length * 8.5) + 1;
+      deptLines.forEach((dl: string, di: number) => {
+        doc.text(dl, rx + 4, deptStartY + (di * 7.5));
+      });
       rx += tableCols[3].width;
 
-      // Col 5: Notes & Changed columns
+      // Col 4: Audit Details & Notes
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(6);
+      doc.setFontSize(6.5);
       doc.setTextColor(51, 65, 85);
-      doc.text(noteLines.slice(0, 3), rx, curY + 11);
+      noteLines.forEach((nl: string, ni: number) => {
+        doc.text(nl, rx + 4, curY + 10 + (ni * 8));
+      });
 
       curY += rowHeight;
     });
@@ -2150,6 +2210,11 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
       doc.setFillColor(37, 99, 235);
       doc.rect(margin, 20, contentWidth, 3, 'F');
 
+      // Page border
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.75);
+      doc.roundedRect(margin - 10, 14, contentWidth + 20, pageHeight - 28, 3, 3, 'S');
+
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7);
       doc.setTextColor(148, 163, 184);
@@ -2191,33 +2256,17 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
 
     drawPageDecorations();
 
-    // Document Header & ERA Logo Emblem
-    doc.setFillColor(15, 23, 42);
-    doc.roundedRect(margin, curY, 36, 36, 6, 6, 'F');
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    doc.setTextColor(245, 158, 11);
-    doc.text("E.R.A", margin + 18, curY + 18, { align: 'center' });
-    doc.setFontSize(4);
-    doc.setTextColor(255, 255, 255);
-    doc.text("ROADS", margin + 18, curY + 26, { align: 'center' });
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
-    doc.setTextColor(15, 23, 42);
-    doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA)", margin + 46, curY + 12);
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9);
-    doc.setTextColor(37, 99, 235);
-    doc.text("PROJECT ISSUE ESCALATION & TEAM TRANSFER DOSSIER", margin + 46, curY + 24);
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
-    doc.setTextColor(100, 116, 139);
-    doc.text(`DOSSIER NO: ${item.issueCode}   •   GENERATED: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}`, margin + 46, curY + 34);
-
-    curY += 46;
+    // Standard Document Header: Official ERA Logo, Standard Title & Aligned Date Stamp
+    curY = drawStandardDocumentHeader(doc, {
+      margin,
+      curY,
+      contentWidth,
+      documentTitle: "PROJECT ISSUE ESCALATION & TEAM TRANSFER DOSSIER",
+      subtitle: `PROJECT: ${project.name}`,
+      referenceNo: item.issueCode,
+      titleColor: [37, 99, 235], // Blue
+      statusBadge: `STATUS: ${item.currentStatus}`,
+    });
 
     // Project Info Card
     doc.setFillColor(248, 250, 252);
@@ -2237,17 +2286,21 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
     curY += 44;
 
     // Issue Title Banner
+    const titleLines = doc.splitTextToSize(`ISSUE: ${item.title}`, contentWidth - 20);
+    const titleBannerH = Math.max(34, (titleLines.length * 11) + 14);
+    checkSpace(titleBannerH + 8);
     doc.setFillColor(238, 242, 255);
     doc.setDrawColor(199, 210, 254);
-    doc.roundedRect(margin, curY, contentWidth, 38, 4, 4, 'DF');
+    doc.roundedRect(margin, curY, contentWidth, titleBannerH, 4, 4, 'DF');
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9.5);
     doc.setTextColor(30, 27, 75);
-    const titleLines = doc.splitTextToSize(`ISSUE: ${item.title}`, contentWidth - 20);
-    doc.text(titleLines.slice(0, 2), margin + 10, curY + 16);
+    titleLines.forEach((tl: string, tli: number) => {
+      doc.text(tl, margin + 10, curY + 15 + (tli * 11));
+    });
 
-    curY += 48;
+    curY += titleBannerH + 10;
 
     // 1. Key Particulars
     drawSectionHeader("1. Key Particulars & Financial/Time Impact");
@@ -2260,11 +2313,15 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
       { label: "CLAUSE REF", val: item.clauseReference || 'N/A', color: [15, 23, 42] },
     ];
 
+    const keyBoxLines = keyBoxes.map(b => doc.splitTextToSize(b.val, colWidth - 12));
+    const maxKeyBoxLines = Math.max(...keyBoxLines.map(lines => lines.length));
+    const keyBoxH = Math.max(32, (maxKeyBoxLines * 9) + 18);
+
     keyBoxes.forEach((box, i) => {
       const x = margin + i * (colWidth + 5);
       doc.setFillColor(248, 250, 252);
       doc.setDrawColor(226, 232, 240);
-      doc.roundedRect(x, curY, colWidth, 32, 4, 4, 'DF');
+      doc.roundedRect(x, curY, colWidth, keyBoxH, 4, 4, 'DF');
 
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(6.5);
@@ -2272,13 +2329,15 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
       doc.text(box.label, x + 8, curY + 11);
 
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8);
+      doc.setFontSize(7.5);
       doc.setTextColor(box.color[0], box.color[1], box.color[2]);
-      const splitVal = doc.splitTextToSize(box.val, colWidth - 12);
-      doc.text(splitVal[0], x + 8, curY + 23);
+      const lines = keyBoxLines[i];
+      lines.forEach((l: string, li: number) => {
+        doc.text(l, x + 8, curY + 22 + (li * 9));
+      });
     });
 
-    curY += 38;
+    curY += keyBoxH + 8;
 
     // Impact Row
     const halfWidth = (contentWidth - 8) / 2;
@@ -2304,7 +2363,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
     doc.setFontSize(9);
     doc.text(item.timeImpactDays ? `${item.timeImpactDays} Calendar Days` : '0 Days (No EOT Claimed)', margin + halfWidth + 18, curY + 24);
 
-    curY += 42;
+    curY += 40;
 
     // 2. Initial Description
     drawSectionHeader("2. Initial Issue Description & Context");
@@ -2332,10 +2391,15 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
     // 3. Current Stage & Bottleneck
     drawSectionHeader("3. Current Milestone Stage & Active Bottlenecks", [16, 185, 129]);
 
-    checkSpace(55);
+    const progressLines = doc.splitTextToSize(`Progress Summary: ${item.latestProgressSummary || 'N/A'}`, contentWidth - 20);
+    const bottleLines = item.currentBottleneck 
+      ? doc.splitTextToSize(`Bottleneck: ${item.currentBottleneck}`, contentWidth - 20) 
+      : [];
+    const stageCardH = Math.max(48, 20 + (progressLines.length * 9.5) + (bottleLines.length > 0 ? (bottleLines.length * 9.5) + 6 : 0) + 6);
+    checkSpace(stageCardH + 10);
     doc.setFillColor(240, 253, 244);
     doc.setDrawColor(187, 247, 208);
-    doc.roundedRect(margin, curY, contentWidth, 50, 4, 4, 'DF');
+    doc.roundedRect(margin, curY, contentWidth, stageCardH, 4, 4, 'DF');
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
@@ -2345,17 +2409,21 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7.5);
     doc.setTextColor(51, 65, 85);
-    const progressLines = doc.splitTextToSize(`Progress Summary: ${item.latestProgressSummary || 'N/A'}`, contentWidth - 20);
-    doc.text(progressLines.slice(0, 2), margin + 10, curY + 26);
+    let cardInnerY = curY + 26;
+    progressLines.forEach((pl: string, pli: number) => {
+      doc.text(pl, margin + 10, cardInnerY + (pli * 9.5));
+    });
+    cardInnerY += (progressLines.length * 9.5) + 4;
 
-    if (item.currentBottleneck) {
+    if (bottleLines.length > 0) {
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(185, 28, 28);
-      const bottleLines = doc.splitTextToSize(`Bottleneck: ${item.currentBottleneck}`, contentWidth - 20);
-      doc.text(bottleLines[0], margin + 10, curY + 41);
+      bottleLines.forEach((bl: string, bli: number) => {
+        doc.text(bl, margin + 10, cardInnerY + (bli * 9.5));
+      });
     }
 
-    curY += 62;
+    curY += stageCardH + 12;
 
     // 4. Team Transfer Log
     drawSectionHeader("4. Chronological Team Transfer & Handover Audit Log", [147, 51, 234]);
@@ -2544,6 +2612,11 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
       doc.setFillColor(37, 99, 235);
       doc.rect(margin, 20, contentWidth, 3, 'F');
 
+      // Page border
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.75);
+      doc.roundedRect(margin - 10, 14, contentWidth + 20, pageHeight - 28, 3, 3, 'S');
+
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7);
       doc.setTextColor(148, 163, 184);
@@ -2563,43 +2636,30 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
       );
     };
 
-    const checkSpace = (needed: number) => {
+    const checkSpace = (needed: number, isTableContext: boolean = false) => {
       if (curY + needed > pageHeight - 50) {
         doc.addPage();
         curY = 45;
         drawPageDecorations();
+        if (isTableContext) {
+          drawTableHeader();
+        }
       }
     };
 
     drawPageDecorations();
 
-    // Header Logo & Branding
-    doc.setFillColor(15, 23, 42);
-    doc.roundedRect(margin, curY, 36, 36, 6, 6, 'F');
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    doc.setTextColor(245, 158, 11);
-    doc.text("E.R.A", margin + 18, curY + 18, { align: 'center' });
-    doc.setFontSize(4);
-    doc.setTextColor(255, 255, 255);
-    doc.text("ROADS", margin + 18, curY + 26, { align: 'center' });
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
-    doc.setTextColor(15, 23, 42);
-    doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA)", margin + 46, curY + 12);
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9);
-    doc.setTextColor(37, 99, 235);
-    doc.text("MASTER PROJECT ISSUE REGISTRY & CLAIMS MONITORING REPORT", margin + 46, curY + 24);
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
-    doc.setTextColor(100, 116, 139);
-    doc.text(`PROJECT: ${project.name}   •   DATE: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`, margin + 46, curY + 34);
-
-    curY += 48;
+    // Standard Document Header: Official ERA Logo, Standard Title & Aligned Date Stamp
+    curY = drawStandardDocumentHeader(doc, {
+      margin,
+      curY,
+      contentWidth,
+      documentTitle: "MASTER PROJECT ISSUE REGISTRY & CLAIMS MONITORING REPORT",
+      subtitle: `PROJECT: ${project.name}`,
+      referenceNo: project.id || 'MASTER-REGISTRY',
+      titleColor: [37, 99, 235], // Blue
+      statusBadge: 'OFFICIAL CLAIMS REGISTRY',
+    });
 
     // Executive Summary Box
     const totalFinancial = filteredIssues.reduce((acc, curr) => acc + (curr.financialImpactEtb || 0), 0);
@@ -2655,91 +2715,164 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
     curY += 12;
 
     const tableCols = [
-      { title: "Code", width: 85 },
-      { title: "Category & Description", width: 175 },
-      { title: "Clause", width: 60 },
-      { title: "Financial (ETB)", width: 80 },
-      { title: "EOT", width: 45 },
-      { title: "Priority / Status", width: 78 }
+      { title: "Code", width: 68 },
+      { title: "Category & Description", width: 192 },
+      { title: "Clause", width: 65 },
+      { title: "Financial (ETB)", width: 75 },
+      { title: "EOT", width: 38 },
+      { title: "Priority / Status", width: 85 }
     ];
 
-    doc.setFillColor(30, 41, 59);
-    doc.rect(margin, curY, contentWidth, 18, 'F');
+    const drawTableHeader = () => {
+      doc.setFillColor(30, 41, 59);
+      doc.rect(margin, curY, contentWidth, 18, 'F');
 
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7);
-    doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7);
+      doc.setTextColor(255, 255, 255);
 
-    let tx = margin + 5;
-    tableCols.forEach(col => {
-      doc.text(col.title, tx, curY + 12);
-      tx += col.width;
-    });
+      let tx = margin;
+      tableCols.forEach((col, cIdx) => {
+        doc.text(col.title, tx + 4, curY + 12);
+        tx += col.width;
+        if (cIdx < tableCols.length - 1) {
+          doc.setDrawColor(71, 85, 105);
+          doc.setLineWidth(0.5);
+          doc.line(tx, curY, tx, curY + 18);
+        }
+      });
 
-    curY += 18;
+      doc.setDrawColor(30, 41, 59);
+      doc.rect(margin, curY, contentWidth, 18, 'S');
+
+      curY += 18;
+    };
+
+    drawTableHeader();
 
     filteredIssues.forEach((issue, idx) => {
-      const titleLines = doc.splitTextToSize(issue.title, 165);
-      const rowHeight = Math.max(26, (titleLines.length * 9) + 14);
+      // Wrap all text fields strictly to column boundaries with padding
+      const codeLines = doc.splitTextToSize(issue.issueCode || '-', tableCols[0].width - 8);
+      const titleLines = doc.splitTextToSize(issue.title || 'Untitled Issue', tableCols[1].width - 8);
+      const catLines = doc.splitTextToSize(`[${issue.category || 'General'}]`, tableCols[1].width - 8);
+      
+      const clauseText = issue.clauseReference && issue.clauseReference.trim() ? issue.clauseReference : 'N/A';
+      const clauseLines = doc.splitTextToSize(clauseText, tableCols[2].width - 8);
 
-      checkSpace(rowHeight + 5);
+      const finText = formatAccounting(issue.financialImpactEtb || 0, '');
+      const finLines = doc.splitTextToSize(finText, tableCols[3].width - 8);
 
+      const timeText = issue.timeImpactDays ? `${issue.timeImpactDays} d` : '0 d';
+      const timeLines = doc.splitTextToSize(timeText, tableCols[4].width - 6);
+
+      const priorityLines = doc.splitTextToSize(issue.priority || 'Normal', tableCols[5].width - 8);
+      const statusLines = doc.splitTextToSize(issue.currentStatus || 'Open', tableCols[5].width - 8);
+
+      // Compute dynamic row height so wording never overflows or cuts off
+      const col0H = codeLines.length * 8.5;
+      const col1H = (titleLines.length * 8.5) + (catLines.length * 7.5) + 3;
+      const col2H = clauseLines.length * 8;
+      const col3H = finLines.length * 8.5;
+      const col4H = timeLines.length * 8.5;
+      const col5H = (priorityLines.length * 8) + (statusLines.length * 7.5) + 3;
+      const maxContentH = Math.max(col0H, col1H, col2H, col3H, col4H, col5H);
+      const rowHeight = Math.max(26, maxContentH + 10);
+
+      // Page break check with table header continuation
+      checkSpace(rowHeight + 4, true);
+
+      // Row zebra background
       if (idx % 2 === 0) {
         doc.setFillColor(248, 250, 252);
         doc.rect(margin, curY, contentWidth, rowHeight, 'F');
       }
+
+      // Cell borderlines
       doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.5);
       doc.line(margin, curY + rowHeight, margin + contentWidth, curY + rowHeight);
+      doc.line(margin, curY, margin, curY + rowHeight);
+      doc.line(margin + contentWidth, curY, margin + contentWidth, curY + rowHeight);
 
-      let rx = margin + 5;
+      // Vertical column dividers
+      let divX = margin;
+      tableCols.slice(0, -1).forEach(col => {
+        divX += col.width;
+        doc.line(divX, curY, divX, curY + rowHeight);
+      });
 
+      let rx = margin;
+
+      // Col 0: Issue Code (wrapped)
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(7);
       doc.setTextColor(37, 99, 235);
-      doc.text(issue.issueCode, rx, curY + 12);
+      codeLines.forEach((line: string, li: number) => {
+        doc.text(line, rx + 4, curY + 10 + (li * 8.5));
+      });
       rx += tableCols[0].width;
 
+      // Col 1: Title & Category (wrapped)
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(7);
       doc.setTextColor(15, 23, 42);
-      doc.text(titleLines.slice(0, 2), rx, curY + 12);
-      
+      titleLines.forEach((line: string, li: number) => {
+        doc.text(line, rx + 4, curY + 10 + (li * 8.5));
+      });
+
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(6);
       doc.setTextColor(100, 116, 139);
-      doc.text(`[${issue.category}]`, rx, curY + 12 + (Math.min(2, titleLines.length) * 8.5));
+      const catStartY = curY + 10 + (titleLines.length * 8.5) + 1;
+      catLines.forEach((line: string, li: number) => {
+        doc.text(line, rx + 4, catStartY + (li * 7.5));
+      });
       rx += tableCols[1].width;
 
+      // Col 2: Clause Reference (wrapped)
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(6.5);
       doc.setTextColor(71, 85, 105);
-      doc.text(issue.clauseReference || 'N/A', rx, curY + 12);
+      clauseLines.forEach((line: string, li: number) => {
+        doc.text(line, rx + 4, curY + 10 + (li * 8));
+      });
       rx += tableCols[2].width;
 
+      // Col 3: Financial Impact (wrapped)
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(7);
       doc.setTextColor(225, 29, 72);
-      doc.text(formatAccounting(issue.financialImpactEtb || 0, ''), rx, curY + 12);
+      finLines.forEach((line: string, li: number) => {
+        doc.text(line, rx + 4, curY + 10 + (li * 8.5));
+      });
       rx += tableCols[3].width;
 
+      // Col 4: EOT Days (wrapped)
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(7);
       doc.setTextColor(217, 119, 6);
-      doc.text(issue.timeImpactDays ? `${issue.timeImpactDays} d` : '0 d', rx, curY + 12);
+      timeLines.forEach((line: string, li: number) => {
+        doc.text(line, rx + 4, curY + 10 + (li * 8.5));
+      });
       rx += tableCols[4].width;
 
+      // Col 5: Priority & Status (wrapped)
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(6.5);
       if (issue.priority === 'Critical') doc.setTextColor(225, 29, 72);
       else if (issue.priority === 'High') doc.setTextColor(217, 119, 6);
       else doc.setTextColor(37, 99, 235);
-      doc.text(`${issue.priority}`, rx, curY + 11);
+      priorityLines.forEach((line: string, li: number) => {
+        doc.text(line, rx + 4, curY + 10 + (li * 8));
+      });
 
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(6);
       doc.setTextColor(100, 116, 139);
-      const statusSplit = doc.splitTextToSize(issue.currentStatus, tableCols[5].width - 5);
-      doc.text(statusSplit[0], rx, curY + 21);
+      const statStartY = curY + 10 + (priorityLines.length * 8) + 1;
+      statusLines.forEach((line: string, li: number) => {
+        doc.text(line, rx + 4, statStartY + (li * 7.5));
+      });
 
       curY += rowHeight;
     });
@@ -2757,24 +2890,32 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
     filteredIssues.forEach((issue) => {
       if (!issue.currentBottleneck && issue.transfers.length === 0) return;
 
-      checkSpace(38);
+      const bTitleLines = doc.splitTextToSize(`[${issue.issueCode}] ${issue.title}`, contentWidth - 16);
+      const btext = issue.currentBottleneck ? `Bottleneck: ${issue.currentBottleneck}` : `Latest Stage: ${issue.currentStage}`;
+      const bLines = doc.splitTextToSize(btext, contentWidth - 16);
+      const cardHeight = Math.max(34, (bTitleLines.length * 8.5) + (bLines.length * 8) + 14);
+
+      checkSpace(cardHeight + 6);
       doc.setFillColor(255, 255, 255);
       doc.setDrawColor(226, 232, 240);
-      doc.roundedRect(margin, curY, contentWidth, 32, 4, 4, 'DF');
+      doc.roundedRect(margin, curY, contentWidth, cardHeight, 4, 4, 'DF');
 
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(7.5);
       doc.setTextColor(37, 99, 235);
-      doc.text(`[${issue.issueCode}] ${issue.title.substring(0, 65)}${issue.title.length > 65 ? '...' : ''}`, margin + 8, curY + 12);
+      bTitleLines.forEach((tLine: string, ti: number) => {
+        doc.text(tLine, margin + 8, curY + 11 + (ti * 8.5));
+      });
 
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7);
       doc.setTextColor(71, 85, 105);
-      const btext = issue.currentBottleneck ? `Bottleneck: ${issue.currentBottleneck}` : `Latest Stage: ${issue.currentStage}`;
-      const bLines = doc.splitTextToSize(btext, contentWidth - 16);
-      doc.text(bLines[0], margin + 8, curY + 24);
+      const bStartY = curY + 11 + (bTitleLines.length * 8.5) + 3;
+      bLines.forEach((bLine: string, bi: number) => {
+        doc.text(bLine, margin + 8, bStartY + (bi * 8));
+      });
 
-      curY += 38;
+      curY += cardHeight + 6;
     });
 
     curY += 10;
@@ -2787,31 +2928,31 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
     doc.text("Official Registry Verification & Report Approval", margin, curY);
     curY += 14;
 
-    const sigWidth = (contentWidth - 20) / 3;
     const sigTitles = [
-      "Prepared By: Resident Engineer",
-      "Reviewed By: ERA Directorate Director",
-      "Approved By: PMO & Claims Committee"
+      "Reviewed By: PMO Project Manager",
+      "Approved By: ERA Directorate Director"
     ];
+    const sigGap = 16;
+    const sigWidth = (contentWidth - sigGap) / sigTitles.length;
 
     sigTitles.forEach((stitle, sIdx) => {
-      const sx = margin + sIdx * (sigWidth + 10);
+      const sx = margin + sIdx * (sigWidth + sigGap);
       doc.setFillColor(255, 255, 255);
       doc.setDrawColor(203, 213, 225);
       doc.roundedRect(sx, curY, sigWidth, 50, 4, 4, 'DF');
 
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(6.5);
+      doc.setFontSize(7);
       doc.setTextColor(30, 41, 59);
-      doc.text(stitle, sx + 6, curY + 12);
+      doc.text(stitle, sx + 8, curY + 13);
 
       doc.setDrawColor(226, 232, 240);
-      doc.line(sx + 6, curY + 36, sx + sigWidth - 6, curY + 36);
+      doc.line(sx + 8, curY + 36, sx + sigWidth - 8, curY + 36);
 
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(5.5);
+      doc.setFontSize(6);
       doc.setTextColor(148, 163, 184);
-      doc.text("Signature & Official Stamp", sx + 6, curY + 44);
+      doc.text("Signature & Official Stamp", sx + 8, curY + 44);
     });
 
     const filename = `ERA_${project.name.replace(/[^a-zA-Z0-9-]/g, '_')}_Master_Issue_Registry.pdf`;

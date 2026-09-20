@@ -54,6 +54,7 @@ import {
   User 
 } from '../types';
 import jsPDF from 'jspdf';
+import { drawEraLogo } from '../lib/pdfReportEngine';
 import WorkloadReportModal from './WorkloadReportModal';
 import ConsultantPerformanceKpiWidget, { DEFAULT_SUBMITTAL_KPIS, DEFAULT_SLA_TARGETS } from './ConsultantPerformanceKpiWidget';
 import ConsultantPerformanceMiniChart from './ConsultantPerformanceMiniChart';
@@ -1349,24 +1350,84 @@ export default function SupervisionConsultantView({
     try {
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
       const margin = 14;
       let y = 16;
+      let pageNum = 1;
+
+      const drawPageFrame = (currPage: number) => {
+        // Page border
+        doc.setDrawColor(226, 232, 240);
+        doc.setLineWidth(0.3);
+        doc.roundedRect(margin - 4, 6, pageWidth - (margin * 2) + 8, pageHeight - 12, 2, 2, 'S');
+
+        // Running Footer
+        doc.setFontSize(6.5);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(148, 163, 184);
+        doc.setDrawColor(226, 232, 240);
+        doc.line(margin, pageHeight - 10, pageWidth - margin, pageHeight - 10);
+        doc.text(`ETHIOPIAN ROADS ADMINISTRATION • SUPERVISION CONSULTANT AUDIT • ${project.name || 'Project'}`, margin, pageHeight - 7);
+        doc.text(`Page ${currPage}`, pageWidth - margin, pageHeight - 7, { align: 'right' });
+      };
+
+      drawPageFrame(pageNum);
 
       // Header Banner
       doc.setFillColor(15, 23, 42); // slate-900
-      doc.rect(0, 0, pageWidth, 26, 'F');
+      doc.roundedRect(margin, 8, pageWidth - (margin * 2), 24, 3, 3, 'F');
       
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(14);
-      doc.setFont('helvetica', 'bold');
-      doc.text('ETHIOPIAN ROADS ADMINISTRATION', margin, 11);
-      
-      doc.setFontSize(9);
-      doc.setFont('helvetica', 'normal');
-      doc.text(`SUPERVISION CONSULTANT & STAFFING DOSSIER | ${project.name || 'Project'}`, margin, 18);
-      doc.text(`Generated: ${new Date().toLocaleDateString()}`, pageWidth - margin - 35, 18);
+      drawEraLogo(doc, margin + 2, 9, 22, {
+        withContainer: true,
+        containerBg: [255, 255, 255],
+        containerBorder: [226, 232, 240],
+        borderRadius: 2
+      });
 
-      y = 34;
+      // Official Date Stamp (Top-Right, aligned with ERA Logo)
+      const dsWidth = 42;
+      const dsX = pageWidth - margin - dsWidth - 2;
+      doc.setFillColor(30, 41, 59); // slate-800
+      doc.setDrawColor(71, 85, 105);
+      doc.setLineWidth(0.3);
+      doc.roundedRect(dsX, 10, dsWidth, 20, 2, 2, 'DF');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(5);
+      doc.setTextColor(148, 163, 184);
+      doc.text("OFFICIAL DATE STAMP", dsX + 3, 14.5);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(255, 255, 255);
+      const dsStr = new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' });
+      doc.text(dsStr, dsX + 3, 20);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(5);
+      doc.setTextColor(203, 213, 225);
+      doc.text("STATUS: OFFICIAL DOSSIER", dsX + 3, 26);
+
+      // Title & Subtitle aligned between ERA Logo and Date Stamp
+      const titleMaxW = dsX - (margin + 27) - 3;
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      doc.text('ETHIOPIAN ROADS ADMINISTRATION (ERA)', margin + 27, 16.5);
+      
+      doc.setFontSize(7);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(245, 158, 11); // Amber
+      const titleLines = doc.splitTextToSize("SUPERVISION CONSULTANT & STAFFING DOSSIER", titleMaxW);
+      doc.text(titleLines[0], margin + 27, 21.5);
+
+      doc.setFontSize(6.5);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(203, 213, 225);
+      const projSub = doc.splitTextToSize(`PROJECT: ${(project.name || 'Project').slice(0, 35)} • FIRM: ${(consultant.firmName || 'Consultant').slice(0, 25)}`, titleMaxW);
+      doc.text(projSub[0], margin + 27, 26.5);
+
+      y = 38;
 
       // Consultant Basic Details Box
       doc.setFillColor(248, 250, 252);
@@ -1417,6 +1478,8 @@ export default function SupervisionConsultantView({
       (consultant.personnel || []).forEach((p, idx) => {
         if (y > 270) {
           doc.addPage();
+          pageNum++;
+          drawPageFrame(pageNum);
           y = 20;
         }
         doc.setFontSize(7);
@@ -1436,6 +1499,8 @@ export default function SupervisionConsultantView({
       y += 8;
       if (y > 240) {
         doc.addPage();
+        pageNum++;
+        drawPageFrame(pageNum);
         y = 20;
       }
 
@@ -1466,6 +1531,8 @@ export default function SupervisionConsultantView({
       (consultant.invoices || []).forEach((inv) => {
         if (y > 270) {
           doc.addPage();
+          pageNum++;
+          drawPageFrame(pageNum);
           y = 20;
         }
         doc.setFontSize(7);

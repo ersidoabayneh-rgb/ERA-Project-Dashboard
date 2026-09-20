@@ -42,6 +42,7 @@ import {
   RefreshCcw
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
+import { drawEraLogo } from '../lib/pdfReportEngine';
 import { Project, User, formatAccounting, isProjectClosed, ContractorScoringWeights, DEFAULT_CONTRACTOR_SCORING_WEIGHTS, ConsultantScoringWeights, DEFAULT_CONSULTANT_SCORING_WEIGHTS, CustomScoringCriterion, SupervisionConsultantInfo } from '../types';
 import { buildKpiHierarchy, getIntegratedKpiAllocated } from '../data/defaultProject';
 import { QtyItem } from '../types';
@@ -2191,26 +2192,60 @@ export default function GroupReportGenerator({
     let pageCount = 1;
 
     const drawHeaderFooter = () => {
+      // Clean page border
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.75);
+      doc.roundedRect(30, 16, pageWidth - 60, pageHeight - 32, 4, 4, 'S');
+
       // Elegant gold / bronze colored accent header line
       doc.setDrawColor(194, 120, 3); // Gold primary accent
       doc.setLineWidth(3);
       doc.line(40, 25, pageWidth - 40, 25);
 
+      // Official ERA Logo
+      drawEraLogo(doc, 40, 28, 26, {
+        withContainer: true,
+        containerBg: [255, 255, 255],
+        containerBorder: [226, 232, 240],
+        borderRadius: 3
+      });
+
+      // Official Date Stamp Container (Top-Right, aligned with ERA Logo)
+      const dsW = 130;
+      const dsX = pageWidth - 40 - dsW;
+      doc.setFillColor(248, 250, 252);
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.75);
+      doc.roundedRect(dsX, 28, dsW, 26, 3, 3, 'DF');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(5.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text("OFFICIAL DATE STAMP", dsX + 6, 35);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(15, 23, 42);
+      doc.text(new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' }), dsX + 6, 43);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(5.5);
+      doc.setTextColor(71, 85, 105);
+      doc.text(`TIME: ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • OFFICIAL`, dsX + 6, 50);
+
       // Title & Metadata Block
+      const maxTitleW = dsX - 72 - 12;
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(11);
       doc.setTextColor(15, 23, 42); // slate-900
-      doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA)", 40, 42);
+      doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA)", 72, 40);
       
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8);
       doc.setTextColor(100, 116, 139); // slate-500
       const headerMetaStr = `CMS - CONTRACT MONITORING & EXECUTIVE REPORTING SYSTEM • GENERATOR: ${currentUserObj.username.toUpperCase()}`;
-      const wrappedHeaderMeta = doc.splitTextToSize(headerMetaStr, pageWidth - 310);
-      doc.text(wrappedHeaderMeta, 40, 54);
-
-      const dStr = new Date().toLocaleString();
-      doc.text(`REPORT EXPORT DATE: ${dStr}`, pageWidth - 260, 42);
+      const wrappedHeaderMeta = doc.splitTextToSize(headerMetaStr, maxTitleW);
+      doc.text(wrappedHeaderMeta[0] || headerMetaStr, 72, 51);
 
       // Footer line
       doc.setLineWidth(0.75);
@@ -2786,24 +2821,60 @@ export default function GroupReportGenerator({
     let pageCount = 1;
 
     const drawHeaderFooter = () => {
+      // Clean page border
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.75);
+      doc.roundedRect(30, 16, pageWidth - 60, pageHeight - 32, 4, 4, 'S');
+
       // Elegant Crimson / Indigo Audit Accent line
       doc.setDrawColor(isConsultantAudit ? 99 : 220, isConsultantAudit ? 102 : 38, isConsultantAudit ? 241 : 38); // Indigo/Red compliance accent
       doc.setLineWidth(3);
       doc.line(40, 25, pageWidth - 40, 25);
 
-      // Title & Metadata Block
+      // Official ERA Logo
+      drawEraLogo(doc, 40, 28, 26, {
+        withContainer: true,
+        containerBg: [255, 255, 255],
+        containerBorder: [226, 232, 240],
+        borderRadius: 3
+      });
+
+      // Official Date Stamp Container (Top-Right, aligned with ERA Logo)
+      const dsW2 = 130;
+      const dsX2 = pageWidth - 40 - dsW2;
+      doc.setFillColor(248, 250, 252);
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.75);
+      doc.roundedRect(dsX2, 28, dsW2, 26, 3, 3, 'DF');
+
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(11);
+      doc.setFontSize(5.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text("OFFICIAL DATE STAMP", dsX2 + 6, 35);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(15, 23, 42);
+      doc.text(new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' }), dsX2 + 6, 43);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(5.5);
+      doc.setTextColor(71, 85, 105);
+      doc.text(`TIME: ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • OFFICIAL`, dsX2 + 6, 50);
+
+      // Title & Metadata Block
+      const maxTitleW2 = dsX2 - 72 - 12;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10.5);
       doc.setTextColor(15, 23, 42); // slate-900
-      doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA) • COMPLIANCE & PERFORMANCE AUDITING OFFICE", 40, 42);
+      doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA) • AUDITING OFFICE", 72, 40);
       
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8);
+      doc.setFontSize(7.5);
       doc.setTextColor(100, 116, 139); // slate-500
-      doc.text(`CMS - ${isConsultantAudit ? 'SUPERVISION CONSULTANT PERFORMANCE & QUALITY OVERSIGHT' : 'CONTRACT COMPLIANCE & PERFORMANCE AUDIT'} BOARD • AUDITOR: ${currentUserObj.username.toUpperCase()}`, 40, 54);
-
-      const dStr = new Date().toLocaleString();
-      doc.text(`AUDIT GENERATION DATE: ${dStr}`, pageWidth - 260, 42);
+      const auditMetaStr = `CMS - ${isConsultantAudit ? 'SUPERVISION CONSULTANT PERFORMANCE & QUALITY OVERSIGHT' : 'CONTRACT COMPLIANCE & PERFORMANCE AUDIT'} BOARD • AUDITOR: ${currentUserObj.username.toUpperCase()}`;
+      const wrappedAuditMeta = doc.splitTextToSize(auditMetaStr, maxTitleW2);
+      doc.text(wrappedAuditMeta[0] || auditMetaStr, 72, 51);
 
       // Footer line
       doc.setLineWidth(0.75);
@@ -3997,24 +4068,60 @@ export default function GroupReportGenerator({
     let pageCount = 1;
 
     const drawHeaderFooter = () => {
+      // Clean page border
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.75);
+      doc.roundedRect(30, 16, pageWidth - 60, pageHeight - 32, 4, 4, 'S');
+
       // Elegant blue compliance accent line
       doc.setDrawColor(37, 99, 235); // Blue bond accent
       doc.setLineWidth(3);
       doc.line(40, 25, pageWidth - 40, 25);
 
-      // Title & Metadata Block
+      // Official ERA Logo
+      drawEraLogo(doc, 40, 28, 26, {
+        withContainer: true,
+        containerBg: [255, 255, 255],
+        containerBorder: [226, 232, 240],
+        borderRadius: 3
+      });
+
+      // Official Date Stamp Container (Top-Right, aligned with ERA Logo)
+      const dsW3 = 130;
+      const dsX3 = pageWidth - 40 - dsW3;
+      doc.setFillColor(248, 250, 252);
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.75);
+      doc.roundedRect(dsX3, 28, dsW3, 26, 3, 3, 'DF');
+
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(11);
+      doc.setFontSize(5.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text("OFFICIAL DATE STAMP", dsX3 + 6, 35);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(15, 23, 42);
+      doc.text(new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' }), dsX3 + 6, 43);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(5.5);
+      doc.setTextColor(71, 85, 105);
+      doc.text(`TIME: ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • OFFICIAL`, dsX3 + 6, 50);
+
+      // Title & Metadata Block
+      const maxTitleW3 = dsX3 - 72 - 12;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10.5);
       doc.setTextColor(15, 23, 42); // slate-900
-      doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA) • FINANCIAL & LEGAL COMPLIANCE", 40, 42);
+      doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA) • FINANCIAL & LEGAL COMPLIANCE", 72, 40);
       
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8);
       doc.setTextColor(100, 116, 139); // slate-500
-      doc.text(`CMS - SECURITIES & BANK GUARANTEES AUDIT REPORT • AUDITOR: ${currentUserObj.username.toUpperCase()}`, 40, 54);
-
-      const dStr = new Date().toLocaleString();
-      doc.text(`AUDIT GENERATION DATE: ${dStr}`, pageWidth - 260, 42);
+      const bondMetaStr = `CMS - SECURITIES & BANK GUARANTEES AUDIT REPORT • AUDITOR: ${currentUserObj.username.toUpperCase()}`;
+      const wrappedBondMeta = doc.splitTextToSize(bondMetaStr, maxTitleW3);
+      doc.text(wrappedBondMeta[0] || bondMetaStr, 72, 51);
 
       // Page numbers
       doc.setFont('helvetica', 'bold');
@@ -4296,29 +4403,60 @@ export default function GroupReportGenerator({
     let pageCount = 1;
 
     const drawHeaderFooter = () => {
+      // Clean page border
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.75);
+      doc.roundedRect(30, 16, pageWidth - 60, pageHeight - 32, 4, 4, 'S');
+
       // Elegant Emerald compliance accent line
       doc.setDrawColor(16, 185, 129); // Emerald payment accent
       doc.setLineWidth(3);
       doc.line(40, 25, pageWidth - 40, 25);
 
+      // Official ERA Logo
+      drawEraLogo(doc, 40, 28, 26, {
+        withContainer: true,
+        containerBg: [255, 255, 255],
+        containerBorder: [226, 232, 240],
+        borderRadius: 3
+      });
+
+      // Official Date Stamp Container (Top-Right, aligned with ERA Logo)
+      const dsW4 = 130;
+      const dsX4 = pageWidth - 40 - dsW4;
+      doc.setFillColor(248, 250, 252);
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.75);
+      doc.roundedRect(dsX4, 28, dsW4, 26, 3, 3, 'DF');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(5.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text("OFFICIAL DATE STAMP", dsX4 + 6, 35);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(15, 23, 42);
+      doc.text(new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' }), dsX4 + 6, 43);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(5.5);
+      doc.setTextColor(71, 85, 105);
+      doc.text(`TIME: ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • OFFICIAL`, dsX4 + 6, 50);
+
       // Title & Metadata Block
+      const maxTitleW4 = dsX4 - 72 - 12;
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(10.5);
       doc.setTextColor(15, 23, 42); // slate-900
-      doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA) • FINANCIAL MONITORING OFFICE", 40, 42);
+      doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA) • FINANCIAL MONITORING", 72, 40);
       
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7.5);
       doc.setTextColor(100, 116, 139); // slate-500
       const subTitleStr = `CMS - CONTRACT MONITORING & OUTSTANDING IPC CLAIMS AUDIT • AUDITOR: ${currentUserObj.username.toUpperCase()}`;
-      const wrappedSubTitle = doc.splitTextToSize(subTitleStr, 500);
-      doc.text(wrappedSubTitle[0] || subTitleStr, 40, 53);
-
-      const dStr = new Date().toLocaleString();
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7.5);
-      doc.setTextColor(100, 116, 139);
-      doc.text(`AUDIT GENERATION DATE: ${dStr}`, pageWidth - 40, 42, { align: 'right' });
+      const wrappedSubTitle = doc.splitTextToSize(subTitleStr, maxTitleW4);
+      doc.text(wrappedSubTitle[0] || subTitleStr, 72, 51);
 
       // Footer line
       doc.setLineWidth(0.75);
@@ -4332,7 +4470,7 @@ export default function GroupReportGenerator({
       doc.setFontSize(7);
       doc.setTextColor(148, 163, 184); // slate-400
       doc.text(`CONFIDENTIALITY CLAUSE: RESTRICTED TO GOVERNANCE & FINANCE RECONCILIATION TEAMS ONLY`, 40, pageHeight - 24);
-      doc.text(`Page ${pageCount}`, pageWidth - 40, pageHeight - 24, { align: 'right' });
+      doc.text(`Page ${pageCount}`, pageWidth - 60, pageHeight - 24);
     };
 
     drawHeaderFooter();
@@ -5147,24 +5285,60 @@ export default function GroupReportGenerator({
     let pageCount = 1;
 
     const drawHeaderFooter = () => {
+      // Clean page border
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.75);
+      doc.roundedRect(30, 16, pageWidth - 60, pageHeight - 32, 4, 4, 'S');
+
       // Purple / Indigo supervision accent line
       doc.setDrawColor(99, 102, 241); // indigo-500
       doc.setLineWidth(3);
       doc.line(40, 25, pageWidth - 40, 25);
 
-      // Title & Metadata Block
+      // Official ERA Logo
+      drawEraLogo(doc, 40, 28, 26, {
+        withContainer: true,
+        containerBg: [255, 255, 255],
+        containerBorder: [226, 232, 240],
+        borderRadius: 3
+      });
+
+      // Official Date Stamp Container (Top-Right, aligned with ERA Logo)
+      const dsW5 = 130;
+      const dsX5 = pageWidth - 40 - dsW5;
+      doc.setFillColor(248, 250, 252);
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.75);
+      doc.roundedRect(dsX5, 28, dsW5, 26, 3, 3, 'DF');
+
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(11);
+      doc.setFontSize(5.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text("OFFICIAL DATE STAMP", dsX5 + 6, 35);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(15, 23, 42);
+      doc.text(new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' }), dsX5 + 6, 43);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(5.5);
+      doc.setTextColor(71, 85, 105);
+      doc.text(`TIME: ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • OFFICIAL`, dsX5 + 6, 50);
+
+      // Title & Metadata Block
+      const maxTitleW5 = dsX5 - 72 - 12;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10.5);
       doc.setTextColor(15, 23, 42); // slate-900
-      doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA) • ENGINEERING CONSULTANCY AUDIT", 40, 42);
+      doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA) • ENGINEERING CONSULTANCY AUDIT", 72, 40);
       
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8);
       doc.setTextColor(100, 116, 139); // slate-500
-      doc.text(`CMS - SUPERVISION PERSONNEL WORKLOAD & STAFFING STATUS • AUDITOR: ${currentUserObj.username.toUpperCase()}`, 40, 54);
-
-      const dStr = new Date().toLocaleString();
-      doc.text(`AUDIT GENERATION DATE: ${dStr}`, pageWidth - 260, 42);
+      const supMetaStr = `CMS - SUPERVISION PERSONNEL WORKLOAD & STAFFING STATUS • AUDITOR: ${currentUserObj.username.toUpperCase()}`;
+      const wrappedSupMeta = doc.splitTextToSize(supMetaStr, maxTitleW5);
+      doc.text(wrappedSupMeta[0] || supMetaStr, 72, 51);
 
       // Page numbers
       doc.setFont('helvetica', 'bold');

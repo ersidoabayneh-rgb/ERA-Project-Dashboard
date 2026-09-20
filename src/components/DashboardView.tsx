@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
+import { drawEraLogo, drawSafeText } from '../lib/pdfReportEngine';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Building, 
@@ -1196,20 +1197,79 @@ export default function DashboardView({
     const pageHeight = doc.internal.pageSize.getHeight();
     const p = project;
 
+    const drawPageBordersAndFooter = (pageNo: number, total: number = 4) => {
+      // Clean page boundary border
+      doc.setDrawColor(226, 232, 240); // slate-200
+      doc.setLineWidth(0.75);
+      doc.roundedRect(30, 30, pageWidth - 60, pageHeight - 60, 4, 4, 'S');
+
+      // Bottom footer line and text
+      doc.setDrawColor(226, 232, 240);
+      doc.line(40, pageHeight - 45, pageWidth - 40, pageHeight - 45);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      doc.setTextColor(148, 163, 184); // slate-400
+      doc.text("CONFIDENTIAL • ETHIOPIAN ROADS ADMINISTRATION • OFFICIAL EXECUTIVE AUDIT DOSSIER", 40, pageHeight - 32);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`Page ${pageNo} of ${total}`, pageWidth - 40, pageHeight - 32, { align: 'right' });
+    };
+
     // --- PAGE 1: EXECUTIVE COVERSHEET & META AUDIT ---
+    drawPageBordersAndFooter(1, 4);
+
     doc.setFillColor(15, 23, 42); // slate-900 (deep charcoal)
-    doc.rect(40, 40, pageWidth - 80, 70, 'F');
+    doc.roundedRect(40, 40, pageWidth - 80, 72, 4, 4, 'F');
     
+    // Add official ERA logo to top header
+    drawEraLogo(doc, 48, 46, 60, {
+      withContainer: true,
+      containerBg: [255, 255, 255],
+      containerBorder: [226, 232, 240],
+      borderRadius: 4
+    });
+
+    // Official Date Stamp (Top-Right, aligned with ERA Logo)
+    const dsW1 = 126;
+    const dsX1 = pageWidth - 40 - dsW1 - 8;
+    doc.setFillColor(30, 41, 59);
+    doc.setDrawColor(71, 85, 105);
+    doc.setLineWidth(0.75);
+    doc.roundedRect(dsX1, 46, dsW1, 60, 4, 4, 'DF');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6);
+    doc.setTextColor(148, 163, 184);
+    doc.text("OFFICIAL DATE STAMP", dsX1 + 8, 58);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(255, 255, 255);
+    doc.text(new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' }), dsX1 + 8, 70);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(203, 213, 225);
+    doc.text(`TIME: ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`, dsX1 + 8, 82);
+    doc.text("STATUS: OFFICIAL AUDIT", dsX1 + 8, 94);
+
+    const headerTextX = 120;
+    const maxTitleW = dsX1 - headerTextX - 10;
     doc.setTextColor(255, 255, 255);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(14);
-    doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA)", pageWidth / 2, 65, { align: 'center' });
+    doc.setFontSize(13);
+    doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA)", headerTextX, 64);
     
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(217, 119, 6); // gold / amber
+    const subTitleExecutive = doc.splitTextToSize("FEDERAL EXECUTIVE PMO - PORTAL PERFORMANCE AUDIT", maxTitleW);
+    doc.text(subTitleExecutive[0], headerTextX, 79);
+
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
+    doc.setFontSize(7.5);
     doc.setTextColor(148, 163, 184); // slate-400
-    doc.text("FEDERAL EXECUTIVE PMO - PORTAL PERFORMANCE AUDIT", pageWidth / 2, 80, { align: 'center' });
-    doc.text(`GENERATED ON: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })} at ${new Date().toLocaleTimeString()}`, pageWidth / 2, 95, { align: 'center' });
+    const metaExecutive = doc.splitTextToSize(`PROJECT: ${(p.name || '').slice(0, 30)} • EXECUTIVE PERFORMANCE REVIEW`, maxTitleW);
+    doc.text(metaExecutive[0], headerTextX, 93);
     
     // Project Metadata Profile Box
     doc.setFillColor(248, 250, 252); // slate-50
@@ -1344,28 +1404,60 @@ export default function DashboardView({
 
     // --- PAGE 2: WORK PROGRAM & CRITICAL PATH SUMMARY ---
     doc.addPage();
-    
+    drawPageBordersAndFooter(2, 4);
+
     doc.setFillColor(15, 23, 42); // slate-900
-    doc.rect(40, 40, pageWidth - 80, 5, 'F');
+    doc.roundedRect(40, 40, pageWidth - 80, 44, 4, 4, 'F');
     
-    doc.setTextColor(15, 23, 42);
+    // ERA Logo
+    drawEraLogo(doc, 46, 44, 36, {
+      withContainer: true,
+      containerBg: [255, 255, 255],
+      containerBorder: [226, 232, 240],
+      borderRadius: 4
+    });
+
+    // Date Stamp
+    const dsW2 = 105;
+    const dsX2 = pageWidth - 40 - dsW2 - 6;
+    doc.setFillColor(30, 41, 59);
+    doc.setDrawColor(71, 85, 105);
+    doc.setLineWidth(0.75);
+    doc.roundedRect(dsX2, 44, dsW2, 36, 3, 3, 'DF');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(5.5);
+    doc.setTextColor(148, 163, 184);
+    doc.text("OFFICIAL DATE STAMP", dsX2 + 6, 54);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(255, 255, 255);
+    doc.text(new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' }), dsX2 + 6, 64);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(5.5);
+    doc.setTextColor(203, 213, 225);
+    doc.text("PMO EXECUTIVE AUDIT", dsX2 + 6, 73);
+
+    doc.setTextColor(255, 255, 255);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(11);
-    doc.text("SECTION 2: WORK PROGRAM & CRITICAL PATH METHOD (CPM) SUMMARY", 40, 65);
+    doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA)", 90, 58);
 
-    // Header separator line
-    doc.setLineWidth(0.5);
-    doc.setDrawColor(203, 213, 225);
-    doc.line(40, 72, pageWidth - 40, 72);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(203, 213, 225);
+    doc.text("SECTION 2: WORK PROGRAM & CRITICAL PATH METHOD (CPM) SUMMARY", 90, 71);
     
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     doc.setTextColor(71, 85, 105);
     const cpParagraph = "Critical Path Method (CPM) lists structural sequencing limits. Zero-float tasks represent absolute bottlenecks on construction duration milestones under FIDIC Sub-clause 8.2:";
-    doc.text(cpParagraph, 40, 80, { maxWidth: pageWidth - 80 });
+    doc.text(cpParagraph, 40, 96, { maxWidth: pageWidth - 80 });
 
     const tasksList = p.workProgram || [];
-    let ty = 98;
+    let ty = 112;
     
     // Header Table
     doc.setFillColor(51, 65, 85); // slate-700
@@ -1470,26 +1562,60 @@ export default function DashboardView({
 
     // --- PAGE 3: PHYSICAL PROGRESS, PAYMENTS & ROW METRICS ---
     doc.addPage();
+    drawPageBordersAndFooter(3, 4);
+
     doc.setFillColor(15, 23, 42); // slate-900
-    doc.rect(40, 40, pageWidth - 80, 5, 'F');
+    doc.roundedRect(40, 40, pageWidth - 80, 44, 4, 4, 'F');
     
-    doc.setTextColor(15, 23, 42);
+    // ERA Logo
+    drawEraLogo(doc, 46, 44, 36, {
+      withContainer: true,
+      containerBg: [255, 255, 255],
+      containerBorder: [226, 232, 240],
+      borderRadius: 4
+    });
+
+    // Date Stamp
+    const dsW3 = 105;
+    const dsX3 = pageWidth - 40 - dsW3 - 6;
+    doc.setFillColor(30, 41, 59);
+    doc.setDrawColor(71, 85, 105);
+    doc.setLineWidth(0.75);
+    doc.roundedRect(dsX3, 44, dsW3, 36, 3, 3, 'DF');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(5.5);
+    doc.setTextColor(148, 163, 184);
+    doc.text("OFFICIAL DATE STAMP", dsX3 + 6, 54);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(255, 255, 255);
+    doc.text(new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' }), dsX3 + 6, 64);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(5.5);
+    doc.setTextColor(203, 213, 225);
+    doc.text("PMO EXECUTIVE AUDIT", dsX3 + 6, 73);
+
+    doc.setTextColor(255, 255, 255);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(11);
-    doc.text("SECTION 3: FINANCIAL DISBURSEMENT & LAND ROW SEGREGATIONS", 40, 65);
+    doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA)", 90, 58);
 
-    // Header separator line
-    doc.setLineWidth(0.5);
-    doc.setDrawColor(203, 213, 225);
-    doc.line(40, 72, pageWidth - 40, 72);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(203, 213, 225);
+    doc.text("SECTION 3: FINANCIAL DISBURSEMENT & LAND ROW SEGREGATIONS", 90, 71);
 
     // Payments certified list
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
-    doc.text("REGISTERED CERTIFIED INTERIM PAYMENT CERTIFICATES (IPC)", 40, 85);
+    doc.setTextColor(15, 23, 42);
+    doc.text("REGISTERED CERTIFIED INTERIM PAYMENT CERTIFICATES (IPC)", 40, 98);
     
     const paymentList = p.payment || [];
-    let py = 100;
+    let py = 110;
     
     doc.setFillColor(51, 65, 85);
     doc.rect(40, py, pageWidth - 80, 16, 'F');
@@ -1592,28 +1718,61 @@ export default function DashboardView({
 
     // --- PAGE 4: QUANTITIES COMPLIANCE ---
     doc.addPage();
+    drawPageBordersAndFooter(4, 4);
+
     doc.setFillColor(15, 23, 42); // slate-900
-    doc.rect(40, 40, pageWidth - 80, 5, 'F');
+    doc.roundedRect(40, 40, pageWidth - 80, 44, 4, 4, 'F');
     
-    doc.setTextColor(15, 23, 42);
+    // ERA Logo
+    drawEraLogo(doc, 46, 44, 36, {
+      withContainer: true,
+      containerBg: [255, 255, 255],
+      containerBorder: [226, 232, 240],
+      borderRadius: 4
+    });
+
+    // Date Stamp
+    const dsW4 = 105;
+    const dsX4 = pageWidth - 40 - dsW4 - 6;
+    doc.setFillColor(30, 41, 59);
+    doc.setDrawColor(71, 85, 105);
+    doc.setLineWidth(0.75);
+    doc.roundedRect(dsX4, 44, dsW4, 36, 3, 3, 'DF');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(5.5);
+    doc.setTextColor(148, 163, 184);
+    doc.text("OFFICIAL DATE STAMP", dsX4 + 6, 54);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(255, 255, 255);
+    doc.text(new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' }), dsX4 + 6, 64);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(5.5);
+    doc.setTextColor(203, 213, 225);
+    doc.text("PMO EXECUTIVE AUDIT", dsX4 + 6, 73);
+
+    doc.setTextColor(255, 255, 255);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(11);
-    doc.text("SECTION 4: QUANTITIES COMPLIANCE", 40, 65);
+    doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA)", 90, 58);
 
-    // Header separator line
-    doc.setLineWidth(0.5);
-    doc.setDrawColor(203, 213, 225);
-    doc.line(40, 72, pageWidth - 40, 72);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(203, 213, 225);
+    doc.text("SECTION 4: QUANTITIES COMPLIANCE", 90, 71);
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     doc.setTextColor(71, 85, 105);
-    doc.text("This section evaluates project bill-of-quantities (BOQ) by their specific unit of measurement (M3, Km, Ha, No.), performing a detailed variance and slippage audit:", 40, 80);
+    doc.text("This section evaluates project bill-of-quantities (BOQ) by their specific unit of measurement (M3, Km, Ha, No.), performing a detailed variance and slippage audit:", 40, 96, { maxWidth: pageWidth - 80 });
 
     const evaluation = evaluateEngineeringQuantities(p.quantities || []);
 
     // Draw grid headers
-    let qy = 100;
+    let qy = 112;
     doc.setFillColor(51, 65, 85);
     doc.rect(40, qy, pageWidth - 80, 18, 'F');
     

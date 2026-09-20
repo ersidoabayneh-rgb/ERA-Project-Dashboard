@@ -32,7 +32,6 @@ import {
   UserPlus,
   Palette
 } from 'lucide-react';
-import { jsPDF } from 'jspdf';
 import { Project, User, ApprovalRequest, ProjectLifecycleStatus, isProjectClosed, isCpmOrMasterAdmin, isRecentlyUpdated, formatRelativeTime } from '../types';
 import { canUserApproveRequest, hasApprovalCredentials } from '../App';
 import eraLogo from '../assets/logo.png';

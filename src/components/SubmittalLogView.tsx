@@ -37,6 +37,7 @@ import {
   MessageSquare
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
+import { drawEraLogo, drawStandardDocumentHeader } from '../lib/pdfReportEngine';
 import RfiLogComponent from './RfiLogComponent';
 import {
   Project,
@@ -685,6 +686,11 @@ export default function SubmittalLogView({
       doc.setFillColor(79, 70, 229);
       doc.rect(margin, 20, contentWidth, 3, 'F');
 
+      // Clean page border
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.75);
+      doc.roundedRect(margin - 10, 14, contentWidth + 20, pageHeight - 28, 3, 3, 'S');
+
       // Bottom footer line
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7);
@@ -706,57 +712,33 @@ export default function SubmittalLogView({
       );
     };
 
-    const checkSpace = (needed: number) => {
+    let drawTableHeader = () => {};
+
+    const checkSpace = (needed: number, isTableContext: boolean = false) => {
       if (curY + needed > pageHeight - 50) {
         doc.addPage();
         curY = 45;
         drawPageDecorations();
+        if (isTableContext) {
+          drawTableHeader();
+        }
       }
-    };
-
-    const truncateText = (text: string, widthInPt: number, fontSize: number = 7.5) => {
-      if (!text) return '-';
-      const charWidth = fontSize * 0.42;
-      const maxChars = Math.floor(widthInPt / charWidth);
-      if (text.length <= maxChars) return text;
-      return text.substring(0, maxChars - 3) + '...';
     };
 
     // Draw page 1 decorations
     drawPageDecorations();
 
-    // Document Header Logo
-    doc.setFillColor(15, 23, 42); // dark slate-900
-    doc.roundedRect(margin, curY, 36, 36, 6, 6, 'F');
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    doc.setTextColor(245, 158, 11); // Amber
-    doc.text("E.R.A", margin + 18, curY + 18, { align: 'center' });
-    doc.setFontSize(4);
-    doc.setTextColor(255, 255, 255);
-    doc.text("ROADS", margin + 18, curY + 26, { align: 'center' });
-
-    // Header Title
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(11);
-    doc.setTextColor(15, 23, 42);
-    doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA)", margin + 46, curY + 12);
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8.5);
-    doc.setTextColor(79, 70, 229); // Indigo
-    doc.text("OFFICIAL TECHNICAL SUBMITTAL & CORRESPONDENCE LOG REGISTER", margin + 46, curY + 23);
-
-    // Metadata
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7);
-    doc.setTextColor(100, 116, 139); // Slate
-    const generatedDateStr = new Date().toLocaleDateString('en-US', {
-      year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
+    // Standard Document Header: Official ERA Logo, Standard Title & Aligned Date Stamp
+    curY = drawStandardDocumentHeader(doc, {
+      margin,
+      curY,
+      contentWidth,
+      documentTitle: "OFFICIAL TECHNICAL SUBMITTAL & CORRESPONDENCE LOG REGISTER",
+      subtitle: `PROJECT: ${project.name || 'CURRENT PROJECT'} • SCOPE: ${selectedSubmittalNos.length > 0 ? 'SELECTED RECORDS ONLY' : 'ALL ACTIVE LOG RECORDS'}`,
+      titleColor: [79, 70, 229], // Indigo
+      referenceNo: project.id || 'SUBMITTAL-LOG',
+      statusBadge: 'TECHNICAL REGISTER',
     });
-    doc.text(`PROJECT: ${project.name || 'CURRENT PROJECT'}   •   GENERATED: ${generatedDateStr}   •   SCOPE: ${selectedSubmittalNos.length > 0 ? 'SELECTED RECORDS ONLY' : 'ALL ACTIVE LOG RECORDS'}`, margin + 46, curY + 32);
-
-    curY += 46;
 
     // Mini Executive Stats Summary Bar inside PDF
     doc.setFillColor(248, 250, 252); // slate-50
@@ -807,128 +789,183 @@ export default function SubmittalLogView({
     curY += 46;
 
     // Table Column Widths
-    const widths = {
-      subNo: 75,
-      category: 100,
-      title: 200,
-      submitted: 65,
-      responded: 65,
-      sla: 65,
-      status: 100,
-      engineer: 99
+    const tableCols = [
+      { id: 'subNo', title: "SUBMITTAL #", width: 68 },
+      { id: 'category', title: "CATEGORY", width: 86 },
+      { id: 'title', title: "SUBJECT / DESCRIPTION", width: 216 },
+      { id: 'submitted', title: "SUBMITTED", width: 64 },
+      { id: 'responded', title: "RESPONDED", width: 64 },
+      { id: 'sla', title: "SLA (DAYS)", width: 58 },
+      { id: 'status', title: "STATUS", width: 105 },
+      { id: 'engineer', title: "ASSIGNED RE", width: 108 }
+    ];
+
+    drawTableHeader = () => {
+      doc.setFillColor(15, 23, 42); // slate-900
+      doc.rect(margin, curY, contentWidth, 18, 'F');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7);
+      doc.setTextColor(255, 255, 255);
+
+      let tx = margin;
+      tableCols.forEach((col, cIdx) => {
+        doc.text(col.title, tx + 4, curY + 12);
+        tx += col.width;
+        if (cIdx < tableCols.length - 1) {
+          doc.setDrawColor(51, 65, 85);
+          doc.setLineWidth(0.5);
+          doc.line(tx, curY, tx, curY + 18);
+        }
+      });
+
+      doc.setDrawColor(15, 23, 42);
+      doc.rect(margin, curY, contentWidth, 18, 'S');
+
+      curY += 18;
     };
 
-    // Table Headers background
-    doc.setFillColor(15, 23, 42); // slate-900
-    doc.rect(margin, curY, contentWidth, 18, 'F');
+    drawTableHeader();
 
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7.5);
-    doc.setTextColor(255, 255, 255);
-
-    let runningX = margin;
-    doc.text("SUBMITTAL #", runningX + 6, curY + 12); runningX += widths.subNo;
-    doc.text("CATEGORY", runningX + 6, curY + 12); runningX += widths.category;
-    doc.text("SUBJECT / DESCRIPTION", runningX + 6, curY + 12); runningX += widths.title;
-    doc.text("SUBMITTED", runningX + 6, curY + 12); runningX += widths.submitted;
-    doc.text("RESPONDED", runningX + 6, curY + 12); runningX += widths.responded;
-    doc.text("SLA (DAYS)", runningX + 6, curY + 12); runningX += widths.sla;
-    doc.text("STATUS", runningX + 6, curY + 12); runningX += widths.status;
-    doc.text("ASSIGNED RE", runningX + 6, curY + 12);
-
-    curY += 18;
-
-    // Table rows rendering loop
+    // Table rows rendering loop with full word-wrapping
     recordsToExport.forEach((item, index) => {
-      // Each row has a height of 20pt
-      checkSpace(20);
+      const subNoLines = doc.splitTextToSize(item.submittalNo || '-', tableCols[0].width - 8);
+      const catLines = doc.splitTextToSize(item.type || '-', tableCols[1].width - 8);
+      const titleLines = doc.splitTextToSize(item.title || '-', tableCols[2].width - 8);
+      const subDateLines = doc.splitTextToSize(item.submittedDate || '-', tableCols[3].width - 8);
+      const respDateLines = doc.splitTextToSize(item.respondedDate || 'Awaiting', tableCols[4].width - 8);
+      
+      const targetDays = item.targetDays || targetOverrides[item.type] || 7;
+      const actualStr = item.actualDays !== undefined ? `${item.actualDays}d` : '-';
+      const slaLines = doc.splitTextToSize(`${targetDays}d / ${actualStr}`, tableCols[5].width - 8);
+
+      const statusLines = doc.splitTextToSize(item.status || '-', tableCols[6].width - 12);
+      const engLines = doc.splitTextToSize(item.assignedEngineer || '-', tableCols[7].width - 8);
+
+      const maxLines = Math.max(
+        subNoLines.length,
+        catLines.length,
+        titleLines.length,
+        subDateLines.length,
+        respDateLines.length,
+        slaLines.length,
+        statusLines.length,
+        engLines.length
+      );
+      const rowHeight = Math.max(22, (maxLines * 8.5) + 8);
+
+      checkSpace(rowHeight + 4, true);
 
       // Alternating row background
       if (index % 2 === 0) {
-        doc.setFillColor(248, 250, 252); // slate-50
+        doc.setFillColor(248, 250, 252);
       } else {
         doc.setFillColor(255, 255, 255);
       }
-      doc.rect(margin, curY, contentWidth, 20, 'F');
+      doc.rect(margin, curY, contentWidth, rowHeight, 'F');
 
-      // Thin bottom gridline
-      doc.setDrawColor(241, 245, 249); // slate-100
-      doc.line(margin, curY + 20, margin + contentWidth, curY + 20);
+      // Grid lines
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.5);
+      doc.line(margin, curY + rowHeight, margin + contentWidth, curY + rowHeight);
+      doc.line(margin, curY, margin, curY + rowHeight);
+      doc.line(margin + contentWidth, curY, margin + contentWidth, curY + rowHeight);
 
-      // Submittal #
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7.5);
-      doc.setTextColor(15, 23, 42); // slate-900
-      doc.text(item.submittalNo, margin + 6, curY + 13);
+      let divX = margin;
+      tableCols.slice(0, -1).forEach(col => {
+        divX += col.width;
+        doc.line(divX, curY, divX, curY + rowHeight);
+      });
 
-      let colX = margin + widths.subNo;
+      let rx = margin;
 
-      // Category
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7);
-      doc.setTextColor(71, 85, 105); // slate-600
-      doc.text(truncateText(item.type, widths.category - 12), colX + 6, curY + 13);
-      colX += widths.category;
-
-      // Subject / Description
+      // Col 0: Submittal #
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(7);
       doc.setTextColor(15, 23, 42);
-      doc.text(truncateText(item.title, widths.title - 12), colX + 6, curY + 13);
-      colX += widths.title;
+      subNoLines.forEach((line: string, li: number) => {
+        doc.text(line, rx + 4, curY + 10 + (li * 8.5));
+      });
+      rx += tableCols[0].width;
 
-      // Submitted Date
+      // Col 1: Category
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7);
+      doc.setFontSize(6.5);
       doc.setTextColor(71, 85, 105);
-      doc.text(item.submittedDate || '-', colX + 6, curY + 13);
-      colX += widths.submitted;
+      catLines.forEach((line: string, li: number) => {
+        doc.text(line, rx + 4, curY + 10 + (li * 8.5));
+      });
+      rx += tableCols[1].width;
 
-      // Responded Date
-      doc.text(item.respondedDate || 'Awaiting', colX + 6, curY + 13);
-      colX += widths.responded;
+      // Col 2: Subject / Description
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7);
+      doc.setTextColor(15, 23, 42);
+      titleLines.forEach((line: string, li: number) => {
+        doc.text(line, rx + 4, curY + 10 + (li * 8.5));
+      });
+      rx += tableCols[2].width;
 
-      // SLA (Target vs Actual)
-      const targetDays = item.targetDays || targetOverrides[item.type] || 7;
-      const actualStr = item.actualDays !== undefined ? `${item.actualDays}d` : '-';
-      doc.text(`${targetDays}d / ${actualStr}`, colX + 6, curY + 13);
-      colX += widths.sla;
+      // Col 3: Submitted Date
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.5);
+      doc.setTextColor(71, 85, 105);
+      subDateLines.forEach((line: string, li: number) => {
+        doc.text(line, rx + 4, curY + 10 + (li * 8.5));
+      });
+      rx += tableCols[3].width;
 
-      // Status Badges
+      // Col 4: Responded Date
+      respDateLines.forEach((line: string, li: number) => {
+        doc.text(line, rx + 4, curY + 10 + (li * 8.5));
+      });
+      rx += tableCols[4].width;
+
+      // Col 5: SLA (Target vs Actual)
+      slaLines.forEach((line: string, li: number) => {
+        doc.text(line, rx + 4, curY + 10 + (li * 8.5));
+      });
+      rx += tableCols[5].width;
+
+      // Col 6: Status Badges
       const lowerStatus = (item.status || '').toLowerCase();
-      let badgeColor = { r: 100, g: 116, b: 139 }; // default slate-500
-      let badgeBg = { r: 241, g: 245, b: 249 }; // slate-100
+      let badgeColor = { r: 100, g: 116, b: 139 };
+      let badgeBg = { r: 241, g: 245, b: 249 };
       if (lowerStatus.includes('approved') || lowerStatus.includes('closed')) {
-        badgeColor = { r: 16, g: 124, b: 65 }; // emerald-700
-        badgeBg = { r: 209, g: 250, b: 229 }; // emerald-100
+        badgeColor = { r: 16, g: 124, b: 65 };
+        badgeBg = { r: 209, g: 250, b: 229 };
       } else if (lowerStatus.includes('review')) {
-        badgeColor = { r: 180, g: 83, b: 9 }; // amber-700
-        badgeBg = { r: 254, g: 243, b: 199 }; // amber-100
+        badgeColor = { r: 180, g: 83, b: 9 };
+        badgeBg = { r: 254, g: 243, b: 199 };
       } else if (lowerStatus.includes('reject') || lowerStatus.includes('resubmit')) {
-        badgeColor = { r: 190, g: 24, b: 74 }; // rose-700
-        badgeBg = { r: 255, g: 228, b: 230 }; // rose-100
+        badgeColor = { r: 190, g: 24, b: 74 };
+        badgeBg = { r: 255, g: 228, b: 230 };
       } else if (lowerStatus.includes('overdue')) {
-        badgeColor = { r: 109, g: 40, b: 217 }; // purple-700
-        badgeBg = { r: 243, g: 232, b: 255 }; // purple-100
+        badgeColor = { r: 109, g: 40, b: 217 };
+        badgeBg = { r: 243, g: 232, b: 255 };
       }
 
-      // Draw Badge background box
+      const badgeBoxH = Math.max(14, (statusLines.length * 8) + 4);
       doc.setFillColor(badgeBg.r, badgeBg.g, badgeBg.b);
-      doc.roundedRect(colX + 6, curY + 4, widths.status - 18, 12, 2, 2, 'F');
+      doc.roundedRect(rx + 4, curY + 3, tableCols[6].width - 8, badgeBoxH, 2, 2, 'F');
       
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(6.5);
       doc.setTextColor(badgeColor.r, badgeColor.g, badgeColor.b);
-      doc.text(truncateText(item.status, widths.status - 24), colX + 11, curY + 12);
-      colX += widths.status;
+      statusLines.forEach((line: string, li: number) => {
+        doc.text(line, rx + 7, curY + 10 + (li * 8));
+      });
+      rx += tableCols[6].width;
 
-      // Assigned RE
+      // Col 7: Assigned RE
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7);
+      doc.setFontSize(6.5);
       doc.setTextColor(71, 85, 105);
-      doc.text(truncateText(item.assignedEngineer || '-', widths.engineer - 12), colX + 6, curY + 13);
+      engLines.forEach((line: string, li: number) => {
+        doc.text(line, rx + 4, curY + 10 + (li * 8.5));
+      });
 
-      curY += 20;
+      curY += rowHeight;
     });
 
     // Save generated PDF

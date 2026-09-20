@@ -25,6 +25,7 @@ import {
 import { calculateProjectEvm } from '../lib/evmCalculations';
 import { getProjectConsultantEvaluation } from '../data/consultantEvaluationMatrix';
 import eraLogo from '../assets/logo.png';
+import { drawEraLogo } from '../lib/pdfReportEngine';
 import ChangelogAuditHistory from './ChangelogAuditHistory';
 
 export interface InconsistencyAlert {
@@ -918,13 +919,22 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     const drawPageDecorations = () => {
       // Running Header (from page 2 onwards)
       if (pageCount > 1) {
-        doc.setFont('helvetica', 'normal');
+        drawEraLogo(doc, 40, 24, 18, { withContainer: true, borderRadius: 2 });
+        doc.setFont('helvetica', 'bold');
         doc.setFontSize(7);
-        doc.setTextColor(148, 163, 184); // slate-400
-        doc.text("ETHIOPIAN ROADS ADMINISTRATION • CONTRACT COMPLIANCE & PERFORMANCE AUDIT", 40, 35);
+        doc.setTextColor(15, 23, 42); // slate-900
+        doc.text("ETHIOPIAN ROADS ADMINISTRATION", 64, 34);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(100, 116, 139); // slate-500
+        doc.text("• CONTRACT COMPLIANCE & PERFORMANCE AUDIT", 205, 34);
         doc.setDrawColor(226, 232, 240); // slate-200
-        doc.line(40, 42, pageWidth - 40, 42);
+        doc.line(40, 44, pageWidth - 40, 44);
       }
+
+      // Page border
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.75);
+      doc.roundedRect(30, 18, pageWidth - 60, pageHeight - 36, 3, 3, 'S');
 
       // Running Footer
       doc.setFont('helvetica', 'normal');
@@ -960,80 +970,56 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     // Draw first page header
     drawPageDecorations(); // Initializes pageCount to 1, sets up first footer
 
-    // Attempt to grab the same logo image as the login logo from the DOM
-    let logoDrawn = false;
-    const logoImgEls = Array.from(document.querySelectorAll('img'));
-    const eraLogoImg = logoImgEls.find(img => 
-      img.src && (
-        img.src.includes('irams.era.gov.et') || 
-        img.src.includes('mui.gov.et') ||
-        img.alt?.toLowerCase().includes('roads') ||
-        img.alt?.toLowerCase().includes('era')
-      )
-    );
+    // Draw official ERA Logo
+    drawEraLogo(doc, 40, 46, 36, {
+      withContainer: true,
+      containerBg: [255, 255, 255],
+      containerBorder: [226, 232, 240],
+      borderRadius: 4
+    });
 
-    if (eraLogoImg && eraLogoImg.complete && eraLogoImg.naturalWidth > 0) {
-      try {
-        // Draw elegant white container frame for the logo
-        doc.setFillColor(255, 255, 255);
-        doc.roundedRect(40, 46, 36, 36, 4, 4, 'F');
-        doc.setDrawColor(226, 232, 240);
-        doc.roundedRect(40, 46, 36, 36, 4, 4, 'S');
-        
-        doc.addImage(eraLogoImg, 'PNG', 42, 48, 32, 32);
-        logoDrawn = true;
-      } catch (err) {
-        console.warn("Failed to direct-draw DOM logo into PDF, trying canvas conversion:", err);
-        try {
-          const canvas = document.createElement('canvas');
-          canvas.width = eraLogoImg.naturalWidth || 120;
-          canvas.height = eraLogoImg.naturalHeight || 120;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(eraLogoImg, 0, 0);
-            const dataUrl = canvas.toDataURL('image/png');
-            doc.setFillColor(255, 255, 255);
-            doc.roundedRect(40, 46, 36, 36, 4, 4, 'F');
-            doc.setDrawColor(226, 232, 240);
-            doc.roundedRect(40, 46, 36, 36, 4, 4, 'S');
-            
-            doc.addImage(dataUrl, 'PNG', 42, 48, 32, 32);
-            logoDrawn = true;
-          }
-        } catch (canvasErr) {
-          console.warn("Canvas-based CORS block for logo image, falling back to vector emblem:", canvasErr);
-        }
-      }
-    }
+    // Official Date Stamp Container (Top-Right, aligned with ERA Logo)
+    const dateStampW = 120;
+    const dateStampX = pageWidth - 40 - dateStampW;
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.75);
+    doc.roundedRect(dateStampX, 46, dateStampW, 36, 4, 4, 'DF');
 
-    if (!logoDrawn) {
-      // Elegant Badge logo/emblem
-      doc.setFillColor(15, 23, 42); // slate-900
-      doc.roundedRect(40, 48, 32, 32, 6, 6, 'F');
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7);
-      doc.setTextColor(245, 158, 11); // amber-500
-      doc.text("E.R.A", 56, 64, { align: 'center' });
-      doc.setFontSize(3.5);
-      doc.setTextColor(255, 255, 255);
-      doc.text("ROADS", 56, 72, { align: 'center' });
-    }
+    const auditDateStr = new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' });
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6);
+    doc.setTextColor(100, 116, 139);
+    doc.text("OFFICIAL DATE STAMP", dateStampX + 8, 56);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(15, 23, 42);
+    doc.text(auditDateStr, dateStampX + 8, 66);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6);
+    doc.setTextColor(71, 85, 105);
+    doc.text(`REF: ERA-AUD-${new Date().getFullYear()} • OFFICIAL`, dateStampX + 8, 75);
 
     // Header Title Text matching print layout precisely
+    const titleMaxWidth = dateStampX - 85 - 10;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(11);
     doc.setTextColor(15, 23, 42);
-    doc.text("ETHIOPIAN ROADS ADMINISTRATION", 85, 58);
+    doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA)", 85, 57);
 
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
+    doc.setFontSize(8.5);
     doc.setTextColor(37, 99, 235); // blue-600
-    doc.text("FEDERAL ROAD PROJECT COMPLIANCE & PERFORMANCE AUDIT REPORT", 85, 71);
+    const splitTitle = doc.splitTextToSize("FEDERAL ROAD PROJECT COMPLIANCE & PERFORMANCE AUDIT REPORT", titleMaxWidth);
+    doc.text(splitTitle[0], 85, 68);
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7);
-    doc.setTextColor(100, 116, 139); // slate-505
-    doc.text(`REPORT ID: ERA-AUD-${new Date().getFullYear()}   •   DATE: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`, 85, 83);
+    doc.setTextColor(100, 116, 139); // slate-500
+    const subTitleProj = doc.splitTextToSize(`PROJECT: ${(p.name || 'Untitled').slice(0, 45)}   •   STATUS: OFFICIAL AUDIT`, titleMaxWidth);
+    doc.text(subTitleProj[0], 85, 78);
 
     // Solid border partition below main header
     doc.setFillColor(30, 41, 59); // slate-800
@@ -1636,23 +1622,62 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     doc.setFillColor(15, 23, 42); // slate-900
     doc.roundedRect(margin, curY, usableWidth, 54, 4, 4, 'F');
     
+    // Official ERA Logo
+    drawEraLogo(doc, margin + 8, curY + 7, 40, {
+      withContainer: true,
+      containerBg: [255, 255, 255],
+      containerBorder: [226, 232, 240],
+      borderRadius: 4
+    });
+
+    // Official Date Stamp Container (Top-Right, aligned with ERA Logo)
+    const dateStampW = 122;
+    const dateStampX = margin + usableWidth - dateStampW - 8;
+    doc.setFillColor(30, 41, 59); // slate-800
+    doc.setDrawColor(71, 85, 105); // slate-600
+    doc.setLineWidth(0.75);
+    doc.roundedRect(dateStampX, curY + 7, dateStampW, 40, 4, 4, 'DF');
+
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
+    doc.setFontSize(6);
+    doc.setTextColor(148, 163, 184); // slate-400
+    doc.text("OFFICIAL DATE STAMP", dateStampX + 8, curY + 17);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
     doc.setTextColor(255, 255, 255);
-    doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA)", margin + 12, curY + 20);
+    const dateStr1 = new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' });
+    doc.text(dateStr1, dateStampX + 8, curY + 28);
 
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
+    doc.setFontSize(6);
     doc.setTextColor(203, 213, 225);
+    doc.text("STATUS: OFFICIAL LEDGER", dateStampX + 8, curY + 38);
+
+    const textOffset = margin + 56;
+    const textMaxW = dateStampX - textOffset - 10;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.setTextColor(255, 255, 255);
+    doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA)", textOffset, curY + 18);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(245, 158, 11); // Amber
     const headerTitleText = customSemesterTitle 
       ? `CONTRACTOR 6-MONTH CUMULATIVE PERFORMANCE REPORT (${customSemesterTitle.toUpperCase()})`
       : (selectedSemesterFilter !== 'All' 
           ? `CONTRACTOR 6-MONTH CUMULATIVE PERFORMANCE REPORT (${selectedSemesterFilter.toUpperCase()})`
           : (selectedStartMonthFilter !== 'All' || selectedEndMonthFilter !== 'All'
-              ? `CONTRACTOR PERFORMANCE REPORT (DATE RANGE: ${selectedStartMonthFilter !== 'All' ? selectedStartMonthFilter : 'START'} TO ${selectedEndMonthFilter !== 'All' ? selectedEndMonthFilter : 'LATEST'})`
+              ? `CONTRACTOR PERFORMANCE REPORT (${selectedStartMonthFilter !== 'All' ? selectedStartMonthFilter : 'START'} TO ${selectedEndMonthFilter !== 'All' ? selectedEndMonthFilter : 'LATEST'})`
               : "CONTRACTOR MONTHLY PERFORMANCE & SCHEDULE EXECUTION LEDGER"));
-    doc.text(headerTitleText, margin + 12, curY + 34);
-    doc.text(`AUDIT DATE: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`, margin + 12, curY + 45);
+    const splitTitle1 = doc.splitTextToSize(headerTitleText, textMaxW);
+    doc.text(splitTitle1[0], textOffset, curY + 30);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(203, 213, 225);
+    doc.text(`PROJECT: ${(p.name || 'Project').slice(0, 36)} • REF: ${p.id || 'N/A'}`, textOffset, curY + 42);
 
     curY += 62;
 
@@ -1883,23 +1908,62 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     doc.setFillColor(30, 41, 59); // slate-800
     doc.roundedRect(margin, curY, usableWidth, 54, 4, 4, 'F');
     
+    // Official ERA Logo
+    drawEraLogo(doc, margin + 8, curY + 7, 40, {
+      withContainer: true,
+      containerBg: [255, 255, 255],
+      containerBorder: [226, 232, 240],
+      borderRadius: 4
+    });
+
+    // Official Date Stamp Container (Top-Right, aligned with ERA Logo)
+    const dateStampW2 = 122;
+    const dateStampX2 = margin + usableWidth - dateStampW2 - 8;
+    doc.setFillColor(15, 23, 42); // slate-900
+    doc.setDrawColor(71, 85, 105); // slate-600
+    doc.setLineWidth(0.75);
+    doc.roundedRect(dateStampX2, curY + 7, dateStampW2, 40, 4, 4, 'DF');
+
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
+    doc.setFontSize(6);
+    doc.setTextColor(148, 163, 184); // slate-400
+    doc.text("OFFICIAL DATE STAMP", dateStampX2 + 8, curY + 17);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
     doc.setTextColor(255, 255, 255);
-    doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA)", margin + 12, curY + 20);
+    const dateStr2 = new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' });
+    doc.text(dateStr2, dateStampX2 + 8, curY + 28);
 
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
+    doc.setFontSize(6);
     doc.setTextColor(203, 213, 225);
+    doc.text("STATUS: OFFICIAL LEDGER", dateStampX2 + 8, curY + 38);
+
+    const textOffset = margin + 56;
+    const textMaxW2 = dateStampX2 - textOffset - 10;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.setTextColor(255, 255, 255);
+    doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA)", textOffset, curY + 18);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(147, 197, 253); // Blue-300
     const headerTitleText = customSemesterTitle 
       ? `SUPERVISION CONSULTANT 6-MONTH CUMULATIVE PERFORMANCE REPORT (${customSemesterTitle.toUpperCase()})`
       : (selectedSemesterFilter !== 'All' 
           ? `SUPERVISION CONSULTANT 6-MONTH CUMULATIVE PERFORMANCE REPORT (${selectedSemesterFilter.toUpperCase()})`
           : (selectedStartMonthFilter !== 'All' || selectedEndMonthFilter !== 'All'
-              ? `SUPERVISION CONSULTANT PERFORMANCE REPORT (DATE RANGE: ${selectedStartMonthFilter !== 'All' ? selectedStartMonthFilter : 'START'} TO ${selectedEndMonthFilter !== 'All' ? selectedEndMonthFilter : 'LATEST'})`
+              ? `SUPERVISION CONSULTANT PERFORMANCE REPORT (${selectedStartMonthFilter !== 'All' ? selectedStartMonthFilter : 'START'} TO ${selectedEndMonthFilter !== 'All' ? selectedEndMonthFilter : 'LATEST'})`
               : "SUPERVISION CONSULTANT MONTHLY DUAL-PILLAR GRADING & SLA AUDIT LEDGER"));
-    doc.text(headerTitleText, margin + 12, curY + 34);
-    doc.text(`AUDIT DATE: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`, margin + 12, curY + 45);
+    const splitTitle2 = doc.splitTextToSize(headerTitleText, textMaxW2);
+    doc.text(splitTitle2[0], textOffset, curY + 30);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(203, 213, 225);
+    doc.text(`PROJECT: ${(p.name || 'Project').slice(0, 36)} • CONSULTANT: ${(p.consultant || 'N/A').slice(0, 20)}`, textOffset, curY + 42);
 
     curY += 62;
 
@@ -2135,23 +2199,62 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     doc.setFillColor(15, 23, 42); // slate-900
     doc.roundedRect(margin, curY, usableWidth, 54, 4, 4, 'F');
     
+    // Official ERA Logo
+    drawEraLogo(doc, margin + 8, curY + 7, 40, {
+      withContainer: true,
+      containerBg: [255, 255, 255],
+      containerBorder: [226, 232, 240],
+      borderRadius: 4
+    });
+
+    // Official Date Stamp Container (Top-Right, aligned with ERA Logo)
+    const dateStampW3 = 122;
+    const dateStampX3 = margin + usableWidth - dateStampW3 - 8;
+    doc.setFillColor(30, 41, 59); // slate-800
+    doc.setDrawColor(71, 85, 105); // slate-600
+    doc.setLineWidth(0.75);
+    doc.roundedRect(dateStampX3, curY + 7, dateStampW3, 40, 4, 4, 'DF');
+
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
+    doc.setFontSize(6);
+    doc.setTextColor(148, 163, 184); // slate-400
+    doc.text("OFFICIAL DATE STAMP", dateStampX3 + 8, curY + 17);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
     doc.setTextColor(255, 255, 255);
-    doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA)", margin + 12, curY + 20);
+    const dateStr3 = new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' });
+    doc.text(dateStr3, dateStampX3 + 8, curY + 28);
 
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
+    doc.setFontSize(6);
     doc.setTextColor(203, 213, 225);
+    doc.text("STATUS: OFFICIAL LEDGER", dateStampX3 + 8, curY + 38);
+
+    const textOffset = margin + 56;
+    const textMaxW3 = dateStampX3 - textOffset - 10;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.setTextColor(255, 255, 255);
+    doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA)", textOffset, curY + 18);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(245, 158, 11); // Amber
     const headerTitleText = customSemesterTitle
       ? `CONSOLIDATED DUAL GRADING LEDGER (${customSemesterTitle.toUpperCase()})`
       : (selectedSemesterFilter !== 'All'
           ? `CONSOLIDATED DUAL GRADING LEDGER (${selectedSemesterFilter.toUpperCase()})`
           : (selectedStartMonthFilter !== 'All' || selectedEndMonthFilter !== 'All'
-              ? `CONSOLIDATED GRADING LEDGER (DATE RANGE: ${selectedStartMonthFilter !== 'All' ? selectedStartMonthFilter : 'START'} TO ${selectedEndMonthFilter !== 'All' ? selectedEndMonthFilter : 'LATEST'})`
+              ? `CONSOLIDATED GRADING LEDGER (${selectedStartMonthFilter !== 'All' ? selectedStartMonthFilter : 'START'} TO ${selectedEndMonthFilter !== 'All' ? selectedEndMonthFilter : 'LATEST'})`
               : "CONSOLIDATED MONTHLY CONTRACTOR & SUPERVISION CONSULTANT GRADING LEDGER"));
-    doc.text(headerTitleText, margin + 12, curY + 34);
-    doc.text(`AUDIT DATE: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`, margin + 12, curY + 45);
+    const splitTitle3 = doc.splitTextToSize(headerTitleText, textMaxW3);
+    doc.text(splitTitle3[0], textOffset, curY + 30);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(203, 213, 225);
+    doc.text(`PROJECT: ${(p.name || 'Project').slice(0, 36)} • REF: ${p.id || 'N/A'}`, textOffset, curY + 42);
 
     curY += 62;
 
