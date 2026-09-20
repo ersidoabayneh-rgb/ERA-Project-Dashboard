@@ -1837,9 +1837,8 @@ export default function DashboardView({
         const isNearingCompletionAlert = !isClosed && daysToCompletion <= 60 && daysToCompletion >= -180;
         const physicalSlippageVal = evmMetrics.plannedPct - evmMetrics.actualPct;
         const hasSignificantPhysicalSlippage = physicalSlippageVal > 15;
-        const hasSignificantFinancialSlippage = costOverrun > 15 || evmMetrics.CPI < 0.85;
 
-        if (!isNearingCompletionAlert && !hasSignificantPhysicalSlippage && !hasSignificantFinancialSlippage) {
+        if (!isNearingCompletionAlert && !hasSignificantPhysicalSlippage) {
           return null;
         }
 
@@ -1864,56 +1863,50 @@ export default function DashboardView({
               </span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
+            <div className={`grid grid-cols-1 ${isNearingCompletionAlert && hasSignificantPhysicalSlippage ? 'sm:grid-cols-2' : 'grid-cols-1'} gap-3 pt-1`}>
               {isNearingCompletionAlert && (
-                <div className="bg-white/90 dark:bg-slate-900/80 border border-amber-200 dark:border-amber-900/50 p-3.5 rounded-xl flex items-start gap-3 shadow-xs">
-                  <div className="p-2 bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400 rounded-lg shrink-0 mt-0.5">
-                    <Calendar className="w-4 h-4" />
+                <div className="bg-white/90 dark:bg-slate-900/80 border border-amber-200 dark:border-amber-900/50 p-4 rounded-xl flex items-start gap-3.5 shadow-xs">
+                  <div className="p-2.5 bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400 rounded-lg shrink-0 mt-0.5">
+                    <Calendar className="w-5 h-5" />
                   </div>
-                  <div>
-                    <span className="text-[10px] font-black uppercase text-amber-700 dark:text-amber-400 tracking-wider">Nearing Completion</span>
-                    <p className="text-xs font-bold text-slate-800 dark:text-slate-100 mt-0.5">
+                  <div className="flex-1 min-w-0">
+                    <span className="text-[10px] font-black uppercase text-amber-700 dark:text-amber-400 tracking-wider">
+                      Contract Milestone / Timeline Warning
+                    </span>
+                    <p className="text-sm font-extrabold text-slate-800 dark:text-slate-100 mt-0.5">
                       {daysToCompletion <= 0 ? `Completion date reached (${Math.abs(daysToCompletion)} days overdue)` : `Estimated completion in ${daysToCompletion} days`}
                     </p>
-                    <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
-                      Scheduled End: {estimatedCompletionDate.toLocaleDateString()}
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      Scheduled End Date: <span className="font-semibold text-slate-700 dark:text-slate-300">{estimatedCompletionDate.toLocaleDateString()}</span>
                     </p>
                   </div>
                 </div>
               )}
 
               {hasSignificantPhysicalSlippage && (
-                <div className="bg-white/90 dark:bg-slate-900/80 border border-orange-200 dark:border-orange-900/50 p-3.5 rounded-xl flex items-start gap-3 shadow-xs">
-                  <div className="p-2 bg-orange-50 dark:bg-orange-950 text-orange-600 dark:text-orange-400 rounded-lg shrink-0 mt-0.5">
-                    <TrendingDown className="w-4 h-4" />
+                <div className="bg-white/95 dark:bg-slate-900/90 border-2 border-orange-300 dark:border-orange-700/60 p-4 rounded-xl flex items-start gap-3.5 shadow-xs">
+                  <div className="p-2.5 bg-orange-100 dark:bg-orange-950/70 text-orange-600 dark:text-orange-400 rounded-xl shrink-0 mt-0.5">
+                    <TrendingDown className="w-5 h-5" />
                   </div>
-                  <div>
-                    <span className="text-[10px] font-black uppercase text-orange-700 dark:text-orange-400 tracking-wider">Physical Slippage &gt; 15%</span>
-                    <p className="text-xs font-bold text-slate-800 dark:text-slate-100 mt-0.5">
-                      Lagging by {physicalSlippageVal.toFixed(1)}% vs {evmMetrics.planLabel || 'Plan'}
+                  <div className="flex-1 min-w-0 space-y-1">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <span className="text-[10px] font-black uppercase text-orange-700 dark:text-orange-400 tracking-wider bg-orange-100 dark:bg-orange-950/60 px-2 py-0.5 rounded-md border border-orange-200 dark:border-orange-800">
+                        Critical Slippage &gt; 15% Alert
+                      </span>
+                      <span className="text-xs font-black text-rose-600 dark:text-rose-400">
+                        -{physicalSlippageVal.toFixed(1)}% Gap
+                      </span>
+                    </div>
+                    <p className="text-sm font-black text-slate-900 dark:text-slate-100">
+                      Physical Execution Lagging by {physicalSlippageVal.toFixed(1)}% vs {evmMetrics.planLabel || 'Plan'}
                     </p>
-                    <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
-                      Actual: {project.physicalProgress.toFixed(1)}% | {evmMetrics.planLabel || 'Plan'}: {evmMetrics.plannedPct.toFixed(1)}%
-                    </p>
-                    <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">
-                      S-curve tracking: Evaluated against active {evmMetrics.planLabel || 'Plan'} (not original plan)
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {hasSignificantFinancialSlippage && (
-                <div className="bg-white/90 dark:bg-slate-900/80 border border-rose-200 dark:border-rose-900/50 p-3.5 rounded-xl flex items-start gap-3 shadow-xs">
-                  <div className="p-2 bg-rose-50 dark:bg-rose-950 text-rose-600 dark:text-rose-400 rounded-lg shrink-0 mt-0.5">
-                    <DollarSign className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <span className="text-[10px] font-black uppercase text-rose-700 dark:text-rose-400 tracking-wider">Financial Slippage &gt; 15%</span>
-                    <p className="text-xs font-bold text-slate-800 dark:text-slate-100 mt-0.5">
-                      Cost Variance / Overrun: {costOverrun.toFixed(1)}%
-                    </p>
-                    <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
-                      Cost Performance Index (CPI): {evmMetrics.CPI.toFixed(2)}
+                    <div className="flex items-center gap-4 text-xs font-medium text-slate-600 dark:text-slate-300 pt-0.5">
+                      <span>Actual: <strong className="font-bold text-slate-900 dark:text-white">{project.physicalProgress.toFixed(1)}%</strong></span>
+                      <span className="text-slate-300 dark:text-slate-600">•</span>
+                      <span>S-Curve {evmMetrics.planLabel || 'Plan'}: <strong className="font-bold text-orange-600 dark:text-orange-400">{evmMetrics.plannedPct.toFixed(1)}%</strong></span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 dark:text-slate-500 italic pt-0.5">
+                      S-curve tracking: Evaluated strictly between active {evmMetrics.planLabel || 'Plan'} and actual physical completion.
                     </p>
                   </div>
                 </div>
