@@ -2940,12 +2940,31 @@ export default function DashboardView({
                   {annualChartData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={index % 2 === 0 ? '#10b981' : '#3b82f6'} />
                   ))}
-                  <LabelList dataKey="Progress (%)" position="top" formatter={((v: any, index: number) => {
-                    const item = annualChartData[index];
-                    const parsedPct = parseFloat(String(v));
-                    const kmVal = item ? item['Accomplished (Km)'] : undefined;
-                    return `${kmVal !== undefined ? kmVal : '0'} Km (${isNaN(parsedPct) ? '0.00' : parsedPct.toFixed(2)}%)`;
-                  }) as any} style={{ fontSize: '7.5px', fill: '#64748b', fontWeight: 'bold' }} />
+                  <LabelList 
+                    dataKey="Progress (%)" 
+                    content={(props: any) => {
+                      const { x, y, width, index, value } = props;
+                      const item = props.payload || (index !== undefined ? annualChartData[index] : null);
+                      if (!item) return null;
+                      
+                      const kmVal = item['Accomplished (Km)'];
+                      const pctVal = item['Progress (%)'] !== undefined ? item['Progress (%)'] : value;
+                      const parsedPct = parseFloat(String(pctVal));
+                      const labelStr = `${kmVal !== undefined ? kmVal : '0'} Km (${isNaN(parsedPct) ? '0.00' : parsedPct.toFixed(2)}%)`;
+                      
+                      return (
+                        <text 
+                          x={x + width / 2} 
+                          y={y - 6} 
+                          textAnchor="middle" 
+                          className="fill-slate-600 dark:fill-slate-300 font-sans font-extrabold"
+                          style={{ fontSize: '8px' }}
+                        >
+                          {labelStr}
+                        </text>
+                      );
+                    }}
+                  />
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
