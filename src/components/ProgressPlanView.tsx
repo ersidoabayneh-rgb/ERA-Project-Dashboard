@@ -217,6 +217,16 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
   const handleUpdateLoadedHistoryItem = () => {
     if (!activeLoadedRecordId) return;
 
+    const targetMonthLower = (newMonthLabel.trim() || labels.monthLabel).toLowerCase();
+    const duplicateExists = historyList.some(
+      item => item.id !== activeLoadedRecordId && item.monthLabel.trim().toLowerCase() === targetMonthLower
+    );
+
+    if (duplicateExists) {
+      showToast(`Cannot update: A record for "${newMonthLabel.trim() || labels.monthLabel}" already exists in the system!`, 'info');
+      return;
+    }
+
     const actualKm = plan.actual.todate || plan.actual.month;
     const computedPhysProgress = project.lengthKm > 0 
       ? Number(((actualKm / project.lengthKm) * 100).toFixed(2))
@@ -296,9 +306,12 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
       physicalProgress: computedPhysProgress,
     };
 
-    // Filter out duplicate month & EFY combos if user intentionally saves
+    // Filter out any duplicate month to guarantee no duplication in the system
+    const targetMonthLower = newItem.monthLabel.trim().toLowerCase();
+    const duplicateExists = historyList.some(item => item.monthLabel.trim().toLowerCase() === targetMonthLower);
+
     const filteredHistory = historyList.filter(
-      item => !(item.monthLabel.toLowerCase() === newItem.monthLabel.toLowerCase() && item.efyLabel === newItem.efyLabel)
+      item => item.monthLabel.trim().toLowerCase() !== targetMonthLower
     );
 
     const updatedHistory = sortProgressPlanHistoryDescending([newItem, ...filteredHistory]);
@@ -306,7 +319,12 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
     if (onProjectUpdate) {
       onProjectUpdate({ progressPlanHistory: updatedHistory }, `Archived milestone record for ${newItem.monthLabel} (EFY ${newItem.efyLabel})`);
     }
-    showToast(`Archived milestone snapshot for ${newItem.monthLabel} (EFY ${newItem.efyLabel})`);
+    
+    if (duplicateExists) {
+      showToast(`Overwrote existing record for ${newItem.monthLabel} to prevent duplication!`);
+    } else {
+      showToast(`Archived milestone snapshot for ${newItem.monthLabel} (EFY ${newItem.efyLabel})`);
+    }
   };
 
   const handleDeleteHistoryItem = (id: string) => {
@@ -406,6 +424,16 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
 
   // 3. Save direct edits from the Edit Modal
   const handleSaveModalEdit = (edited: ProgressPlanHistoryItem) => {
+    const targetMonthLower = (edited.monthLabel || '').trim().toLowerCase();
+    const duplicateExists = historyList.some(
+      item => item.id !== edited.id && item.monthLabel.trim().toLowerCase() === targetMonthLower
+    );
+
+    if (duplicateExists) {
+      showToast(`Cannot save edit: A record for "${edited.monthLabel.trim()}" already exists in the archive!`, 'info');
+      return;
+    }
+
     const actualKm = edited.actualTodate !== undefined ? edited.actualTodate : edited.actualMonth;
     const computedPhysProgress = project.lengthKm > 0 
       ? Number(((actualKm / project.lengthKm) * 100).toFixed(2))
