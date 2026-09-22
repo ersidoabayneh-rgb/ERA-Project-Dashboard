@@ -86,22 +86,35 @@ export function getLocalSyncLogs(): SyncLogEntry[] {
   return [];
 }
 
+async function fastFetchJson<T = any>(url: string, options?: RequestInit, timeoutMs = 500): Promise<T | null> {
+  if (typeof window === 'undefined') return null;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal }).catch(() => null);
+    clearTimeout(timer);
+    if (res && res.ok && res.headers.get('content-type')?.includes('application/json')) {
+      return await res.json().catch(() => null);
+    }
+  } catch {
+    clearTimeout(timer);
+  }
+  return null;
+}
+
 /**
  * Fetches sync logs from local repository and attempts remote sync without noisy warnings.
  */
 export async function safeFetchSyncLogs(): Promise<SyncLogEntry[]> {
   let logs = getLocalSyncLogs();
   try {
-    const res = await fetch('/api/sync-logs').catch(() => null);
-    if (res && res.ok && res.headers.get('content-type')?.includes('application/json')) {
-      const json = await res.json().catch(() => null);
-      if (json && json.success && Array.isArray(json.logs)) {
-        const map = new Map<string, SyncLogEntry>();
-        logs.forEach(l => map.set(l.id, l));
-        json.logs.forEach((l: SyncLogEntry) => map.set(l.id, l));
-        logs = Array.from(map.values()).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 100);
-        localStorage.setItem(SYNC_LOGS_STORAGE_KEY, JSON.stringify(logs));
-      }
+    const json = await fastFetchJson<any>('/api/sync-logs', undefined, 400);
+    if (json && json.success && Array.isArray(json.logs)) {
+      const map = new Map<string, SyncLogEntry>();
+      logs.forEach(l => map.set(l.id, l));
+      json.logs.forEach((l: SyncLogEntry) => map.set(l.id, l));
+      logs = Array.from(map.values()).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 100);
+      localStorage.setItem(SYNC_LOGS_STORAGE_KEY, JSON.stringify(logs));
     }
   } catch {}
 
@@ -498,17 +511,14 @@ export async function safeFetchProjects(): Promise<Project[] | null> {
 
   let fetched: Project[] | null = null;
   try {
-    const response = await fetch('/api/projects/sync', {
+    const json = await fastFetchJson<any>('/api/projects/sync', {
       headers: { 'Accept': 'application/json' }
-    });
-    if (response.ok && response.headers.get('content-type')?.includes('application/json')) {
-      const json = await response.json();
-      if (json && json.success && Array.isArray(json.data) && json.data.length > 0) {
-        console.log('Successfully fetched projects from backend REST API');
-        fetched = json.data
-          .filter((p: any) => p && p.id && !deletedSet.has(p.id))
-          .map((p: any) => normalizeProject(p));
-      }
+    }, 400);
+    if (json && json.success && Array.isArray(json.data) && json.data.length > 0) {
+      console.log('Successfully fetched projects from backend REST API');
+      fetched = json.data
+        .filter((p: any) => p && p.id && !deletedSet.has(p.id))
+        .map((p: any) => normalizeProject(p));
     }
   } catch (err: any) {
     // Optional backend REST disabled/not present
@@ -633,20 +643,21 @@ export async function safeSyncUsers(users: AppUser[]): Promise<void> {
   }
 
   try {
-    const response = await fetch('/api/users/sync', {
+    fastFetchJson('/api/users/sync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify(users)
-    });
-    if (response.ok && response.headers.get('content-type')?.includes('application/json')) {
-      console.log('Users successfully synchronized with backend REST API');
-      recordSyncLog({
-        recordType: 'user',
-        recordId: `${users.length} users`,
-        status: 'synced',
-        details: `Synchronized ${users.length} users with backend database`
-      });
-    }
+    }, 400).then(res => {
+      if (res) {
+        console.log('Users successfully synchronized with backend REST API');
+        recordSyncLog({
+          recordType: 'user',
+          recordId: `${users.length} users`,
+          status: 'synced',
+          details: `Synchronized ${users.length} users with backend database`
+        });
+      }
+    }).catch(() => {});
   } catch (err: any) {}
 }
 
@@ -656,15 +667,12 @@ export async function safeSyncUsers(users: AppUser[]): Promise<void> {
 export async function safeFetchUsers(): Promise<AppUser[] | null> {
   let fetched: AppUser[] | null = null;
   try {
-    const response = await fetch('/api/users/sync', {
+    const json = await fastFetchJson<any>('/api/users/sync', {
       headers: { 'Accept': 'application/json' }
-    });
-    if (response.ok && response.headers.get('content-type')?.includes('application/json')) {
-      const json = await response.json();
-      if (json && json.success && Array.isArray(json.data) && json.data.length > 0) {
-        console.log('Successfully fetched users from backend REST API');
-        fetched = json.data;
-      }
+    }, 400);
+    if (json && json.success && Array.isArray(json.data) && json.data.length > 0) {
+      console.log('Successfully fetched users from backend REST API');
+      fetched = json.data;
     }
   } catch (err: any) {}
 
@@ -727,20 +735,21 @@ export async function safeSyncApprovals(approvals: ApprovalRequest[]): Promise<v
   }
 
   try {
-    const response = await fetch('/api/approvals/sync', {
+    fastFetchJson('/api/approvals/sync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify(approvals)
-    });
-    if (response.ok && response.headers.get('content-type')?.includes('application/json')) {
-      console.log('Approvals successfully synchronized with backend REST API');
-      recordSyncLog({
-        recordType: 'approval',
-        recordId: `${approvals.length} requests`,
-        status: 'synced',
-        details: `Synchronized ${approvals.length} approvals with backend database`
-      });
-    }
+    }, 400).then(res => {
+      if (res) {
+        console.log('Approvals successfully synchronized with backend REST API');
+        recordSyncLog({
+          recordType: 'approval',
+          recordId: `${approvals.length} requests`,
+          status: 'synced',
+          details: `Synchronized ${approvals.length} approvals with backend database`
+        });
+      }
+    }).catch(() => {});
   } catch (err: any) {}
 }
 
@@ -750,15 +759,12 @@ export async function safeSyncApprovals(approvals: ApprovalRequest[]): Promise<v
 export async function safeFetchApprovals(): Promise<ApprovalRequest[] | null> {
   let fetched: ApprovalRequest[] | null = null;
   try {
-    const response = await fetch('/api/approvals/sync', {
+    const json = await fastFetchJson<any>('/api/approvals/sync', {
       headers: { 'Accept': 'application/json' }
-    });
-    if (response.ok && response.headers.get('content-type')?.includes('application/json')) {
-      const json = await response.json();
-      if (json && json.success && Array.isArray(json.data) && json.data.length > 0) {
-        console.log('Successfully fetched approvals from backend REST API');
-        fetched = json.data;
-      }
+    }, 400);
+    if (json && json.success && Array.isArray(json.data) && json.data.length > 0) {
+      console.log('Successfully fetched approvals from backend REST API');
+      fetched = json.data;
     }
   } catch (err: any) {}
 
@@ -812,19 +818,20 @@ export async function safeSyncConfig(pmos: string[], directorates: string[]): Pr
   }
 
   try {
-    const response = await fetch('/api/config/sync', {
+    fastFetchJson('/api/config/sync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify({ pmos, directorates })
-    });
-    if (response.ok && response.headers.get('content-type')?.includes('application/json')) {
-      console.log('Config successfully synchronized with backend REST API');
-      recordSyncLog({
-        recordType: 'config',
-        status: 'synced',
-        details: `Config taxonomy synchronized with backend database`
-      });
-    }
+    }, 400).then(res => {
+      if (res) {
+        console.log('Config successfully synchronized with backend REST API');
+        recordSyncLog({
+          recordType: 'config',
+          status: 'synced',
+          details: `Config taxonomy synchronized with backend database`
+        });
+      }
+    }).catch(() => {});
   } catch (err: any) {}
 }
 
@@ -834,15 +841,12 @@ export async function safeSyncConfig(pmos: string[], directorates: string[]): Pr
 export async function safeFetchConfig(): Promise<{ pmos: string[], directorates: string[] } | null> {
   let fetched: { pmos: string[], directorates: string[] } | null = null;
   try {
-    const response = await fetch('/api/config/sync', {
+    const json = await fastFetchJson<any>('/api/config/sync', {
       headers: { 'Accept': 'application/json' }
-    });
-    if (response.ok && response.headers.get('content-type')?.includes('application/json')) {
-      const json = await response.json();
-      if (json && json.success && json.data) {
-        console.log('Successfully fetched config from backend REST API');
-        fetched = json.data;
-      }
+    }, 400);
+    if (json && json.success && json.data) {
+      console.log('Successfully fetched config from backend REST API');
+      fetched = json.data;
     }
   } catch (err: any) {}
 

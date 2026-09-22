@@ -2356,16 +2356,20 @@ let isBatchSyncRunning = false;
     const normalizedLocal = projList.map(syncProjectPayment);
     setProjects(normalizedLocal);
 
-    // Dynamic asynchronous initialization from Cloud Databases
+    // Dynamic asynchronous initialization from Cloud Databases (parallelized for zero delay)
     const initCloudDatabase = async () => {
       try {
-        const deletedIds = await safeFetchDeletedProjectIds();
-        const delSet = new Set(deletedIds);
+        const [deletedIds, cloudData, cloudUsers, cloudApprovals, cloudConfig] = await Promise.all([
+          safeFetchDeletedProjectIds(),
+          safeFetchProjects(),
+          safeFetchUsers(),
+          safeFetchApprovals(),
+          safeFetchConfig()
+        ]);
 
-        // Filter local projects immediately so deleted projects never flash or reappear
+        const delSet = new Set(deletedIds || []);
         const cleanLocal = normalizedLocal.filter(p => !delSet.has(p.id));
 
-        const cloudData = await safeFetchProjects();
         if (cloudData && cloudData.length > 0) {
           const normalizedCloud = cloudData.filter(p => !delSet.has(p.id)).map(syncProjectPayment);
           
@@ -2387,38 +2391,26 @@ let isBatchSyncRunning = false;
 
           const filteredMerged = merged.filter(p => !delSet.has(p.id));
 
-          // Sync back local-only projects to the Cloud Databases (only non-deleted ones)
+          // Sync back local-only projects in the background without blocking UI
           const projectsToSyncBack = filteredMerged.filter(p => !normalizedCloud.some(cp => cp.id === p.id));
-          projectsToSyncBack.forEach(p => {
-            safeSyncProject(p).catch(err => console.warn('Failed to sync back local-only project:', err));
-          });
+          if (projectsToSyncBack.length > 0) {
+            setTimeout(() => {
+              projectsToSyncBack.forEach(p => {
+                safeSyncProject(p).catch(() => {});
+              });
+            }, 1500);
+          }
 
           setProjects(filteredMerged);
           safeSetItem('era_proj_v28', JSON.stringify(filteredMerged));
-          console.log('Successfully merged and initialized active contracts with cloud authoritative database.');
         } else {
           setProjects(cleanLocal);
           safeSetItem('era_proj_v28', JSON.stringify(cleanLocal));
         }
-      } catch (err) {
-        console.warn('Cloud database offline or table does not exist yet. Relying on localStorage:', err);
-      }
-
-      // Sync additional inputs and configurations from server database
-      try {
-        const [cloudUsers, cloudApprovals, cloudConfig] = await Promise.all([
-          safeFetchUsers(),
-          safeFetchApprovals(),
-          safeFetchConfig()
-        ]);
 
         if (cloudUsers && cloudUsers.length > 0) {
           setUsersListState(cloudUsers);
           safeSetItem('era_users_v28', JSON.stringify(cloudUsers));
-        } else {
-          // No users in DB yet, seed initial users
-          const initialUsers = getUsers();
-          await safeSyncUsers(initialUsers);
         }
 
         if (cloudApprovals && cloudApprovals.length > 0) {
@@ -2435,12 +2427,9 @@ let isBatchSyncRunning = false;
             setProgramDirectorates(cloudConfig.directorates);
             safeSetItem('era_directorates_v1', JSON.stringify(cloudConfig.directorates));
           }
-        } else {
-          // No config in DB, seed it
-          await safeSyncConfig(pmos, programDirectorates);
         }
       } catch (err) {
-        console.warn('Failed to sync configs/users/approvals from cloud:', err);
+        console.warn('Cloud database sync notice:', err);
       }
     };
 

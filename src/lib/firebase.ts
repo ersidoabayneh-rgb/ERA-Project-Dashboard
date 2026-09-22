@@ -35,7 +35,6 @@ const dbId = (firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreData
 function createFirestoreInstance() {
   try {
     const settings = {
-      experimentalAutoDetectLongPolling: true,
       localCache: persistentLocalCache({
         tabManager: persistentMultipleTabManager()
       })
