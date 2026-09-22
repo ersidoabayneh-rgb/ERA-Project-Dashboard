@@ -87,6 +87,8 @@ export default function ProjectsPage({
 }: ProjectsPageProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDirectorate, setSelectedDirectorate] = useState('All');
+  const [selectedClassification, setSelectedClassification] = useState('All');
+  const [selectedContractor, setSelectedContractor] = useState('All');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState('All');
   const [logoError, setLogoError] = useState(false);
   const [showCollab, setShowCollab] = useState(false);
@@ -100,6 +102,19 @@ export default function ProjectsPage({
   const [sortBy, setSortBy] = useState<'name' | 'id' | 'directorate' | 'bondWarnings' | 'progress' | 'budget' | 'length'>('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [filterPendingApprovalsOnly, setFilterPendingApprovalsOnly] = useState(false);
+
+  const searchInputRef = React.useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.key === '/' || (e.key === 'k' && (e.metaKey || e.ctrlKey))) && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Group report generator toggle state
   const [showReportGenerator, setShowReportGenerator] = useState(false);
@@ -266,12 +281,43 @@ export default function ProjectsPage({
     return accessibleProjects.filter(p => p.status === 'Archived').length;
   }, [accessibleProjects]);
 
+  const availableClassifications = useMemo(() => {
+    const set = new Set<string>();
+    projects.forEach(p => {
+      if (p.classification && p.classification.trim()) {
+        set.add(p.classification.trim());
+      }
+    });
+    if (set.size === 0) {
+      ['Expressway', 'DS-1', 'DS-2', 'DS-3', 'DS-4', 'DS-5'].forEach(c => set.add(c));
+    }
+    return Array.from(set).sort();
+  }, [projects]);
+
+  const availableContractors = useMemo(() => {
+    const set = new Set<string>();
+    projects.forEach(p => {
+      if (p.contractor && p.contractor.trim()) {
+        set.add(p.contractor.trim());
+      }
+    });
+    return Array.from(set).sort();
+  }, [projects]);
+
   const filteredProjects = useMemo(() => {
     return projects
       .filter(isAccessible)
       .filter(p => {
         if (selectedDirectorate === 'All') return true;
         return (p.programDirectorate || 'Southern') === selectedDirectorate;
+      })
+      .filter(p => {
+        if (selectedClassification === 'All') return true;
+        return p.classification === selectedClassification;
+      })
+      .filter(p => {
+        if (selectedContractor === 'All') return true;
+        return p.contractor === selectedContractor;
       })
       .filter(p => {
         if (selectedStatusFilter === 'All') {
@@ -289,15 +335,19 @@ export default function ProjectsPage({
       .filter(p => {
         if (!searchQuery.trim()) return true;
         const q = searchQuery.toLowerCase().trim();
-        return (
-          (p.name && p.name.toLowerCase().includes(q)) || 
-          (p.id && p.id.toLowerCase().includes(q)) ||
-          (p.programDirectorate && p.programDirectorate.toLowerCase().includes(q)) ||
-          (p.pmo && p.pmo.toLowerCase().includes(q)) ||
-          (p.client && p.client.toLowerCase().includes(q)) ||
-          (p.contractor && p.contractor.toLowerCase().includes(q)) ||
-          (p.consultant && p.consultant.toLowerCase().includes(q))
-        );
+        const tokens = q.split(/\s+/).filter(Boolean);
+
+        return tokens.every(token => (
+          (p.name && p.name.toLowerCase().includes(token)) || 
+          (p.id && p.id.toLowerCase().includes(token)) ||
+          (p.contractor && p.contractor.toLowerCase().includes(token)) ||
+          (p.classification && p.classification.toLowerCase().includes(token)) ||
+          (p.programDirectorate && p.programDirectorate.toLowerCase().includes(token)) ||
+          (p.pmo && p.pmo.toLowerCase().includes(token)) ||
+          (p.client && p.client.toLowerCase().includes(token)) ||
+          (p.consultant && p.consultant.toLowerCase().includes(token)) ||
+          (p.contractType && p.contractType.toLowerCase().includes(token))
+        ));
       })
       .filter(p => {
         if (similarityFilter.type === 'none') return true;
@@ -313,7 +363,19 @@ export default function ProjectsPage({
           a => a.projectId === p.id && a.status === 'pending' && canUserApproveRequest(currentUserObj, a, projects)
         );
       });
-  }, [projects, isMasterAdmin, currentUserObj, selectedDirectorate, selectedStatusFilter, searchQuery, similarityFilter, filterPendingApprovalsOnly, pendingApprovals]);
+  }, [
+    projects, 
+    isMasterAdmin, 
+    currentUserObj, 
+    selectedDirectorate, 
+    selectedClassification, 
+    selectedContractor, 
+    selectedStatusFilter, 
+    searchQuery, 
+    similarityFilter, 
+    filterPendingApprovalsOnly, 
+    pendingApprovals
+  ]);
 
   const sortedProjects = useMemo(() => {
     return [...filteredProjects].sort((a, b) => {
@@ -837,33 +899,82 @@ export default function ProjectsPage({
         {/* Search & Sort & Directorate Panel */}
         {!hasNoProjects && (
           <div className="space-y-3">
+            {/* Primary Search Bar */}
             <div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center">
-              <div className="relative flex-1">
-                <Search className="absolute left-3.5 top-3 w-4 h-4 text-slate-400 dark:text-slate-500" />
+              <div className="relative flex-1 group">
+                <Search className="absolute left-3.5 top-3 w-4 h-4 text-slate-400 dark:text-slate-500 group-focus-within:text-blue-500 transition" />
                 <input
+                  ref={searchInputRef}
                   type="text"
-                  placeholder="Search by contract name, ID, Directorate, client, contractor..."
+                  placeholder="Search projects by name, contractor, classification (e.g. DS-4), ID..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 rounded-2xl py-2.5 pl-11 pr-10 text-sm text-slate-800 dark:text-slate-100 shadow-sm outline-none focus:ring-2 focus:ring-blue-500/10 transition"
+                  className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/80 rounded-2xl py-2.5 pl-11 pr-24 text-sm font-medium text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 shadow-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 dark:focus:border-blue-400 transition"
                 />
-                {searchQuery && (
-                  <button
-                    onClick={() => setSearchQuery('')}
-                    className="absolute right-3.5 top-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition cursor-pointer"
-                    title="Clear search query"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                )}
+                <div className="absolute right-2.5 top-2 flex items-center gap-1.5">
+                  {searchQuery ? (
+                    <button
+                      onClick={() => {
+                        setSearchQuery('');
+                        searchInputRef.current?.focus();
+                      }}
+                      className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition cursor-pointer"
+                      title="Clear search query"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  ) : (
+                    <kbd className="hidden sm:inline-flex items-center gap-0.5 px-2 py-0.5 text-[10px] font-mono font-bold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-700/60 border border-slate-200 dark:border-slate-600 rounded-md select-none">
+                      /
+                    </kbd>
+                  )}
+                </div>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
+                {/* Classification Filter Dropdown */}
+                <div className="flex items-center gap-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/80 p-1.5 rounded-2xl shadow-sm shrink-0">
+                  <span className="text-[10px] font-extrabold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider pl-2 pr-0.5">
+                    Class:
+                  </span>
+                  <select
+                    value={selectedClassification}
+                    onChange={(e) => setSelectedClassification(e.target.value)}
+                    className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-xs font-bold outline-none text-slate-700 dark:text-zinc-200 focus:border-indigo-500 transition cursor-pointer"
+                  >
+                    <option value="All">🛣️ All Classifications</option>
+                    {availableClassifications.map((cls) => (
+                      <option key={`filter-cls-${cls}`} value={cls}>
+                        {cls}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Contractor Filter Dropdown */}
+                <div className="flex items-center gap-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/80 p-1.5 rounded-2xl shadow-sm shrink-0">
+                  <span className="text-[10px] font-extrabold text-amber-600 dark:text-amber-400 uppercase tracking-wider pl-2 pr-0.5">
+                    Contractor:
+                  </span>
+                  <select
+                    value={selectedContractor}
+                    onChange={(e) => setSelectedContractor(e.target.value)}
+                    className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-xs font-bold outline-none text-slate-700 dark:text-zinc-200 focus:border-amber-500 transition cursor-pointer max-w-[170px] truncate"
+                  >
+                    <option value="All">🚜 All Contractors</option>
+                    {availableContractors.map((cName) => (
+                      <option key={`filter-contractor-${cName}`} value={cName}>
+                        {cName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 {/* Program Directorate selector */}
                 {isDirAdmin ? (
                   <div className="flex items-center gap-2 bg-indigo-50/90 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 px-3 py-1.5 rounded-2xl shadow-sm shrink-0">
                     <span className="text-[10px] font-extrabold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
-                      Directorate Scope:
+                      Directorate:
                     </span>
                     <span className="text-xs font-black text-indigo-900 dark:text-indigo-200">
                       🏢 {currentUserObj.assignedDirectorate || 'Southern'}
@@ -872,15 +983,15 @@ export default function ProjectsPage({
                 ) : isPmoAdmin ? (
                   <div className="flex items-center gap-2 bg-blue-50/90 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/60 px-3 py-1.5 rounded-2xl shadow-sm shrink-0">
                     <span className="text-[10px] font-extrabold text-blue-600 dark:text-blue-400 uppercase tracking-wider">
-                      PMO Scope:
+                      PMO:
                     </span>
                     <span className="text-xs font-black text-blue-900 dark:text-blue-200">
-                      📁 {currentUserObj.assignedPmo || 'PMO 1'} ({currentUserObj.assignedDirectorate || 'Directorate'})
+                      📁 {currentUserObj.assignedPmo || 'PMO 1'}
                     </span>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-2 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 p-1.5 rounded-2xl shadow-sm shrink-0">
-                    <span className="text-[10px] font-extrabold text-indigo-500 uppercase tracking-wider pl-2.5 pr-1">
+                  <div className="flex items-center gap-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/80 p-1.5 rounded-2xl shadow-sm shrink-0">
+                    <span className="text-[10px] font-extrabold text-indigo-500 uppercase tracking-wider pl-2 pr-0.5">
                       Directorate:
                     </span>
                     <select
@@ -907,7 +1018,7 @@ export default function ProjectsPage({
                         : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                     }`}
                   >
-                    <span>💼 Active Portfolio</span>
+                    <span>💼 Active</span>
                     <span className="bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 text-[10px] px-1.5 py-0.2 rounded-md font-bold">
                       {activeContractsCount}
                     </span>
@@ -930,8 +1041,8 @@ export default function ProjectsPage({
                 </div>
 
                 {/* Status Filter selector */}
-                <div className="flex items-center gap-2 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 p-1.5 rounded-2xl shadow-sm shrink-0">
-                  <span className="text-[10px] font-extrabold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider pl-2.5 pr-1">
+                <div className="flex items-center gap-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/80 p-1.5 rounded-2xl shadow-sm shrink-0">
+                  <span className="text-[10px] font-extrabold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider pl-2 pr-0.5">
                     Status:
                   </span>
                   <select
@@ -939,22 +1050,22 @@ export default function ProjectsPage({
                     onChange={(e) => setSelectedStatusFilter(e.target.value)}
                     className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-xs font-bold outline-none text-slate-700 dark:text-zinc-200 focus:border-emerald-500 transition cursor-pointer"
                   >
-                    <option value="All">🌐 Active Portfolio (Excl. Archived)</option>
+                    <option value="All">🌐 Active Portfolio</option>
                     <option value="In Progress">🟢 In Progress</option>
                     <option value="Completed">✅ Completed</option>
                     <option value="Completed and Closed">🔒 Completed & Closed</option>
                     <option value="Suspended">⏸️ Suspended</option>
                     <option value="Terminated">🛑 Terminated</option>
                     <option value="Terminated and Closed">🔒 Terminated & Closed</option>
-                    <option value="Archived">📦 Archived (Historical Archive)</option>
-                    <option value="All_With_Archived">📁 All Contracts (Including Archived)</option>
+                    <option value="Archived">📦 Archived</option>
+                    <option value="All_With_Archived">📁 All (Incl. Archived)</option>
                   </select>
                 </div>
 
                 {/* Sort Panel */}
-                <div className="flex items-center gap-2 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 p-1.5 rounded-2xl shadow-sm shrink-0">
-                  <span className="text-[10px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-wider pl-2.5 pr-1">
-                    Sort By:
+                <div className="flex items-center gap-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/80 p-1.5 rounded-2xl shadow-sm shrink-0">
+                  <span className="text-[10px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-wider pl-2 pr-0.5">
+                    Sort:
                   </span>
                   <select
                     value={sortBy}
@@ -969,24 +1080,67 @@ export default function ProjectsPage({
                     }}
                     className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-xs font-bold outline-none text-slate-700 dark:text-zinc-200 focus:border-blue-500 transition cursor-pointer"
                   >
-                    <option value="name">🔤 Contract Name</option>
-                    <option value="id">🆔 Contract ID</option>
+                    <option value="name">🔤 Name</option>
+                    <option value="id">🆔 ID</option>
                     <option value="directorate">🏢 Directorate</option>
-                    <option value="progress">📊 Physical Progress</option>
-                    <option value="budget">💰 Budget Amount</option>
-                    <option value="length">🛣️ Corridor Length</option>
+                    <option value="progress">📊 Progress</option>
+                    <option value="budget">💰 Budget</option>
+                    <option value="length">🛣️ Length</option>
                     <option value="bondWarnings">⚠️ Bond Warning</option>
                   </select>
 
                   <button
                     onClick={() => setSortOrder(o => o === 'asc' ? 'desc' : 'asc')}
-                    className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 dark:bg-slate-900 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-black text-blue-600 dark:text-blue-400 transition flex items-center gap-1 shrink-0 cursor-pointer"
+                    className="px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100 dark:bg-slate-900 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-black text-blue-600 dark:text-blue-400 transition flex items-center gap-1 shrink-0 cursor-pointer"
                     title="Toggle sort direction asc / desc"
                   >
-                    {sortOrder === 'asc' ? '▲ ASC' : '▼ DESC'}
+                    {sortOrder === 'asc' ? '▲' : '▼'}
                   </button>
                 </div>
               </div>
+            </div>
+
+            {/* Quick Classification Filter Chips Row */}
+            <div className="flex items-center gap-1.5 overflow-x-auto scroller-none py-0.5 text-xs font-semibold">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 shrink-0 mr-1 flex items-center gap-1">
+                <span>🛣️ Quick Classification:</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setSelectedClassification('All')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+                  selectedClassification === 'All'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-750'
+                }`}
+              >
+                All ({accessibleProjects.length})
+              </button>
+              {availableClassifications.map((cls) => {
+                const count = accessibleProjects.filter(p => p.classification === cls).length;
+                const isSelected = selectedClassification === cls;
+                return (
+                  <button
+                    key={`quick-cls-pill-${cls}`}
+                    type="button"
+                    onClick={() => setSelectedClassification(isSelected ? 'All' : cls)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
+                      isSelected
+                        ? 'bg-indigo-600 text-white shadow-xs ring-2 ring-indigo-400/40'
+                        : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-600 hover:text-indigo-600 dark:hover:text-indigo-400'
+                    }`}
+                  >
+                    <span>{cls}</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded font-black ${
+                      isSelected
+                        ? 'bg-indigo-700 text-white'
+                        : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                    }`}>
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
 
             {/* Filter Status & Count summary bar */}
@@ -1009,6 +1163,18 @@ export default function ProjectsPage({
                   <span className="bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/50 px-2 py-0.5 rounded-md font-semibold text-[11px] flex items-center gap-1">
                     Search: "{searchQuery}"
                     <button onClick={() => setSearchQuery('')} className="hover:text-blue-900 dark:hover:text-white cursor-pointer ml-0.5">✕</button>
+                  </span>
+                )}
+                {selectedClassification !== 'All' && (
+                  <span className="bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/50 px-2 py-0.5 rounded-md font-semibold text-[11px] flex items-center gap-1">
+                    Classification: {selectedClassification}
+                    <button onClick={() => setSelectedClassification('All')} className="hover:text-indigo-900 dark:hover:text-white cursor-pointer ml-0.5">✕</button>
+                  </span>
+                )}
+                {selectedContractor !== 'All' && (
+                  <span className="bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/50 px-2 py-0.5 rounded-md font-semibold text-[11px] flex items-center gap-1">
+                    Contractor: {selectedContractor}
+                    <button onClick={() => setSelectedContractor('All')} className="hover:text-amber-900 dark:hover:text-white cursor-pointer ml-0.5">✕</button>
                   </span>
                 )}
                 {selectedDirectorate !== 'All' && (
@@ -1037,10 +1203,12 @@ export default function ProjectsPage({
                 )}
               </div>
 
-              {(searchQuery || selectedDirectorate !== 'All' || selectedStatusFilter !== 'All' || similarityFilter.type !== 'none' || filterPendingApprovalsOnly) && (
+              {(searchQuery || selectedClassification !== 'All' || selectedContractor !== 'All' || selectedDirectorate !== 'All' || selectedStatusFilter !== 'All' || similarityFilter.type !== 'none' || filterPendingApprovalsOnly) && (
                 <button
                   onClick={() => {
                     setSearchQuery('');
+                    setSelectedClassification('All');
+                    setSelectedContractor('All');
                     setSelectedDirectorate('All');
                     setSelectedStatusFilter('All');
                     setSimilarityFilter({ type: 'none', value: null });

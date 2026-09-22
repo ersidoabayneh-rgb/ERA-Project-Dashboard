@@ -4,19 +4,163 @@ import {
   SeriesItem, 
   WorkProgramActivity, 
   RowMetric, 
-  KpiAllocatedItem,
-  LinearData,
-  RiskItem,
-  SupervisionConsultantInfo,
-  MonthlyResourceRecord,
-  MonthlyGradingRecord,
-  isProjectClosed
+  KpiAllocatedItem, 
+  LinearData, 
+  RiskItem, 
+  DailyActivityRecord, 
+  SupervisionConsultantInfo, 
+  MonthlyResourceRecord, 
+  MonthlyGradingRecord, 
+  isProjectClosed 
 } from '../types';
 import { calculateProjectEvm } from '../lib/evmCalculations';
 import { resolveCurrentMonthKey, isSameMonth } from '../lib/monthlySync';
 import { getProjectConsultantEvaluation } from './consultantEvaluationMatrix';
 
 export const MILLION = 1_000_000;
+
+export const defaultDailyActivities = (): DailyActivityRecord[] => [
+  {
+    id: 'act_1',
+    date: '2026-05-18',
+    shift: 'Day Shift (Standard)',
+    activityType: 'Earthworks & Clearing',
+    activityName: 'Subgrade Compaction & In-situ Density Testing (Layer 2)',
+    description: 'Spreading, watering, and heavy vibratory compaction of selected granular fill for subgrade layer 2. Field density test (FDT) samples taken.',
+    startStationKm: '14+200',
+    endStationKm: '14+800',
+    side: 'Full Width / Carriageway',
+    specificLocation: 'Section Km 14+200 - 14+800 (Chainage Pass)',
+    sectionName: 'Lot 1 - Main Carriageway',
+    quantityExecuted: 600,
+    unit: 'lm',
+    cumulativeQuantityToDate: 14200,
+    linkedSubmittalId: 'sub_wir_01',
+    linkedSubmittalNo: 'WIR-2026-042',
+    linkedSubmittalTitle: 'Work Inspection Request: Subgrade Layer 2 Compaction',
+    linkedSubmittalStatus: 'Approved / Passed Inspection',
+    qcStatus: 'Approved / Passed Inspection',
+    inspectorName: 'Eng. Solomon Haile (Materials Inspector)',
+    inspectionTime: '14:30',
+    wirReference: 'WIR-2026-042',
+    drawingRef: 'ERA-DWG-RD-044-REV2',
+    specificationRef: 'ERA Standard Technical Spec Section 2300',
+    weatherCondition: 'Sunny / Dry',
+    workingHours: 8.5,
+    equipmentList: [
+      { id: 'eq_1', name: 'Motor Grader (Cat 140K)', count: 2, status: 'Operating' },
+      { id: 'eq_2', name: 'Vibratory Single Drum Roller 15T', count: 2, status: 'Operating' },
+      { id: 'eq_3', name: 'Water Bowser 18,000L', count: 2, status: 'Operating' },
+      { id: 'eq_4', name: 'Dump Truck 20m³', count: 6, status: 'Operating' }
+    ],
+    laborSummary: [
+      { category: 'Project Manager / Engineers', count: 2 },
+      { category: 'Site Foremen / Supervisors', count: 2 },
+      { category: 'Heavy Equipment Operators', count: 12 },
+      { category: 'Skilled Labor / Masons', count: 4 },
+      { category: 'Unskilled Labor / Flagmen', count: 8 }
+    ],
+    remarks: 'Field density test passed with 96.5% MDD (exceeds 95% AASHTO T-180 requirement). Ready for capping layer.',
+    contractorSiteAgent: 'Eng. Tesfaye Kebede',
+    consultantResidentEngineer: 'Eng. Yohannes Bekele',
+    recordedBy: 'Site Quality Team',
+    createdAt: '2026-05-18T16:00:00.000Z'
+  },
+  {
+    id: 'act_2',
+    date: '2026-05-18',
+    shift: 'Day Shift (Standard)',
+    activityType: 'Drainage & Culverts',
+    activityName: 'Cast-in-place Reinforced Concrete Pipe Culvert Ø1200mm',
+    description: 'Invert concrete blinding, bedding casting, and placement of reinforced concrete pipe culvert ring sections including headwall formwork.',
+    startStationKm: '16+350',
+    endStationKm: '16+350',
+    side: 'Cross Drainage',
+    specificLocation: 'Culvert #18 @ Km 16+350',
+    sectionName: 'Lot 1 - Cross Drainage Structures',
+    quantityExecuted: 14.5,
+    unit: 'lm',
+    cumulativeQuantityToDate: 450,
+    linkedSubmittalId: 'sub_rfi_02',
+    linkedSubmittalNo: 'RFI-018',
+    linkedSubmittalTitle: 'Invert Level Discrepancy & Catchment Slope Clarification',
+    linkedSubmittalStatus: 'Clarification Issued',
+    linkedRfiId: 'sub_rfi_02',
+    linkedRfiNo: 'RFI-018',
+    linkedRfiSubject: 'Invert level adjusted by -25cm to match natural river bed outfall',
+    qcStatus: 'Approved / Passed Inspection',
+    inspectorName: 'Eng. Abebe Tsegaye (Structural Inspector)',
+    inspectionTime: '11:15',
+    wirReference: 'WIR-2026-043',
+    drawingRef: 'ERA-DWG-DR-018-REV1',
+    specificationRef: 'ERA Standard Technical Spec Section 3200',
+    weatherCondition: 'Sunny / Dry',
+    workingHours: 8.0,
+    equipmentList: [
+      { id: 'eq_5', name: 'Mobile Crane 25T', count: 1, status: 'Operating' },
+      { id: 'eq_6', name: 'Transit Concrete Mixer 6m³', count: 2, status: 'Operating' },
+      { id: 'eq_7', name: 'Poker Vibrator', count: 3, status: 'Operating' }
+    ],
+    laborSummary: [
+      { category: 'Project Manager / Engineers', count: 1 },
+      { category: 'Site Foremen / Supervisors', count: 1 },
+      { category: 'Heavy Equipment Operators', count: 3 },
+      { category: 'Skilled Labor / Masons', count: 6 },
+      { category: 'Unskilled Labor / Flagmen', count: 5 }
+    ],
+    remarks: 'Outfall channel lined with riprap pitching to mitigate scouring as per Consultant RFI clarification.',
+    contractorSiteAgent: 'Eng. Tesfaye Kebede',
+    consultantResidentEngineer: 'Eng. Yohannes Bekele',
+    recordedBy: 'Site Structures Engineer',
+    createdAt: '2026-05-18T16:30:00.000Z'
+  },
+  {
+    id: 'act_3',
+    date: '2026-05-19',
+    shift: 'Day Shift (Standard)',
+    activityType: 'Pavement & Surfacing',
+    activityName: 'Crushed Stone Base Course (CSB 0/37.5) Laying & Compaction',
+    description: 'Hauling, dumping with mechanical aggregate spreader, continuous moisture conditioning, and tandem static/vibratory rolling to 150mm thickness.',
+    startStationKm: '11+000',
+    endStationKm: '11+650',
+    side: 'LHS (Left Hand Side)',
+    specificLocation: 'Km 11+000 - 11+650 LHS',
+    sectionName: 'Lot 1 - Pavement Works',
+    quantityExecuted: 650,
+    unit: 'lm',
+    cumulativeQuantityToDate: 8900,
+    linkedSubmittalId: 'sub_mat_01',
+    linkedSubmittalNo: 'MAT-024',
+    linkedSubmittalTitle: 'Material Approval: Crushed Rock Aggregate CSB Grade 1',
+    linkedSubmittalStatus: 'Approved',
+    qcStatus: 'Pending Consultant WIR Inspection',
+    inspectorName: 'Eng. Solomon Haile',
+    inspectionTime: '16:00',
+    wirReference: 'WIR-2026-045',
+    drawingRef: 'ERA-DWG-PV-012',
+    specificationRef: 'ERA Standard Technical Spec Section 4200',
+    weatherCondition: 'Partly Cloudy',
+    workingHours: 8.0,
+    equipmentList: [
+      { id: 'eq_8', name: 'Asphalt/Base Aggregate Paver', count: 1, status: 'Operating' },
+      { id: 'eq_9', name: 'Heavy Tandem Roller 12T', count: 2, status: 'Operating' },
+      { id: 'eq_10', name: 'Pneumatic Tire Roller (PTR) 20T', count: 1, status: 'Operating' },
+      { id: 'eq_11', name: 'Dump Truck 20m³', count: 8, status: 'Operating' }
+    ],
+    laborSummary: [
+      { category: 'Project Manager / Engineers', count: 2 },
+      { category: 'Site Foremen / Supervisors', count: 2 },
+      { category: 'Heavy Equipment Operators', count: 12 },
+      { category: 'Skilled Labor / Masons', count: 4 },
+      { category: 'Unskilled Labor / Flagmen', count: 6 }
+    ],
+    remarks: 'LHS completed and covered with curing tarp. Joint compaction scheduled for RHS connection tomorrow.',
+    contractorSiteAgent: 'Eng. Tesfaye Kebede',
+    consultantResidentEngineer: 'Eng. Yohannes Bekele',
+    recordedBy: 'Pavement Supervisor',
+    createdAt: '2026-05-19T17:00:00.000Z'
+  }
+];
 
 export const defaultRoadRisks = (): RiskItem[] => [
   {
@@ -2410,6 +2554,7 @@ export function defaultProjectTemplate(): Project {
     ],
     usdExchangeRate: 57.50,
     risks: defaultRoadRisks(),
+    dailyActivities: defaultDailyActivities(),
     supervisionConsultant: defaultSupervisionConsultant()
   };
 }
@@ -2466,6 +2611,7 @@ export function blankProjectTemplate(): Project {
   d.revisedContractAmountEtb = 0;
   d.bonds = [];
   d.issues = [];
+  d.dailyActivities = [];
   d.lengthKm = 0;
   d.spurRoadLengthKm = 0;
   d.linear = generateEmptyLinearData();

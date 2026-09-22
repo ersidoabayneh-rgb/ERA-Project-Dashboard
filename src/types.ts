@@ -558,9 +558,92 @@ export interface Project {
   hasForeignCurrency?: boolean;
   risks?: RiskItem[];
   issues?: IssueLogItem[];
+  dailyActivities?: DailyActivityRecord[];
   aiChatHistory?: any[];
   documents?: ProjectDocument[];
   supervisionConsultant?: SupervisionConsultantInfo;
+}
+
+export interface DailyActivityEquipmentItem {
+  id: string;
+  name: string;
+  count: number;
+  status: 'Operating' | 'Standby' | 'Breakdown' | 'Maintenance';
+}
+
+export interface DailyActivityLaborItem {
+  category: 'Project Manager / Engineers' | 'Site Foremen / Supervisors' | 'Heavy Equipment Operators' | 'Skilled Labor / Masons' | 'Unskilled Labor / Flagmen' | string;
+  count: number;
+}
+
+export interface DailyActivityRecord {
+  id: string;
+  date: string; // YYYY-MM-DD
+  shift?: 'Day Shift (Standard)' | 'Night Shift' | 'Extended / Overtime' | string;
+  
+  // Activity Category & Work Item
+  activityType: 'Earthworks & Clearing' | 'Drainage & Culverts' | 'Pavement & Surfacing' | 'Structures & Bridges' | 'Materials & Quality Testing' | 'Right-of-Way & Utilities' | 'Traffic & Safety' | 'Environmental & Safety' | string;
+  activityName: string; // Specific work (e.g., Subgrade Compaction Layer 2, Box Culvert Concrete Pouring)
+  description?: string; // Technical scope, specifications, or methodology
+  
+  // Road Project Location Details
+  startStationKm: string; // e.g. '12+400' or 'Km 12+400'
+  endStationKm?: string; // e.g. '13+200' or 'Km 13+200'
+  side: 'LHS (Left Hand Side)' | 'RHS (Right Hand Side)' | 'Full Width / Carriageway' | 'Median' | 'Cross Drainage' | 'Off-Site / Quarry / Plant' | string;
+  specificLocation?: string; // e.g., 'Culvert #14 @ Km 12+850', 'Bridge #2 Abutment A', 'Borrow Pit #3'
+  sectionName?: string; // e.g., 'Lot 1 - Mountain Pass Section'
+  
+  // Executed Quantities
+  quantityExecuted: number;
+  unit: 'm³' | 'm²' | 'lm' | 'ton' | 'No.' | 'pcs' | 'km' | '%' | string;
+  cumulativeQuantityToDate?: number;
+  
+  // Direct Link to Submittal and RFI Log
+  linkedSubmittalId?: string; // References ConsultantSubmittalKpi.id (WIR, Material Approval, Design Approval)
+  linkedSubmittalNo?: string; // e.g., 'WIR-2026-042', 'MAT-088'
+  linkedSubmittalTitle?: string;
+  linkedSubmittalStatus?: string;
+  linkedRfiId?: string; // References ConsultantSubmittalKpi.id for technical RFIs
+  linkedRfiNo?: string; // e.g., 'RFI-018'
+  linkedRfiSubject?: string;
+  rfiClarificationNote?: string;
+  
+  // Quality & Inspection Status (WIR)
+  qcStatus: 'Approved / Passed Inspection' | 'Approved with Comments' | 'Pending Consultant WIR Inspection' | 'Inspection Scheduled' | 'Punch List / Rectification' | 'Rejected / Re-work Required' | string;
+  inspectorName?: string; // Resident Engineer / Quality Inspector
+  inspectionTime?: string;
+  wirReference?: string; // Work Inspection Request reference code
+  drawingRef?: string;
+  specificationRef?: string;
+  
+  // Weather & Site Conditions
+  weatherCondition: 'Sunny / Dry' | 'Partly Cloudy' | 'Light Rain (Work Continued)' | 'Heavy Rain (Work Suspended)' | 'Flooding / Saturated Ground' | 'Dusty / High Winds' | string;
+  workingHours: number; // e.g., 8.0
+  lostHoursRainOrObstruction?: number;
+  
+  // Machinery and Labor Deployment
+  equipmentList?: DailyActivityEquipmentItem[];
+  laborSummary?: DailyActivityLaborItem[];
+  
+  // Remarks, Delays & Bottlenecks
+  delayOrObstructionNotes?: string;
+  remarks?: string;
+  
+  // Site Photos & Attachments
+  photos?: Array<{
+    id: string;
+    caption: string;
+    url?: string;
+    uploadedAt?: string;
+    stationKm?: string;
+  }>;
+  
+  // Governance & Sign-off
+  contractorSiteAgent?: string;
+  consultantResidentEngineer?: string;
+  recordedBy?: string;
+  createdAt: string;
+  updatedAt?: string;
 }
 
 export interface ConsultantPersonnel {
@@ -866,6 +949,7 @@ export const ALL_EDITABLE_PAGES: EditablePageOption[] = [
   { id: 'documentation', name: '📁 Project Documentation', description: 'Dossier files, monthly reports, contract upload library' },
   { id: 'consultant', name: '👔 Supervision Consultant', description: 'Consultant contract, fee invoices, and assigned personnel directory' },
   { id: 'submittalLog', name: '📋 Submittal Log & RFI Tracking', description: 'Supervision consultant submittal review log, design approvals, and RFI tracking' },
+  { id: 'dailyActivities', name: '🚜 Daily Activities & Site Work Log', description: 'Daily road construction activities, station locations, WIR inspections, and Submittal/RFI links' },
   { id: 'workspace', name: '☁️ Workspace Notes', description: 'Interactive collaborative scratchpad & design notes' }
 ];
 

@@ -133,9 +133,9 @@ export function canUserViewPage(user: User | null, pageId: string): boolean {
     return true;
   }
 
-  // Contractor Editor is allowed to edit and view the Submittal log page ONLY
+  // Contractor Editor is allowed to edit and view the Submittal log and Daily Activities pages
   if (user.role === 'contractor_editor') {
-    return pageId === 'submittalLog';
+    return pageId === 'submittalLog' || pageId === 'dailyActivities';
   }
 
   // Consultant Approver or Editor are NOT allowed to view or access Performance KPIs & RFI SLA Evaluation, history page, setting page, KPIs page, progress comparison page and Issue log page
@@ -168,9 +168,9 @@ export function canUserEditPage(user: User | null, pageId: string): boolean {
     return false;
   }
 
-  // Contractor Editor is allowed to edit and view the Submittal log page ONLY
+  // Contractor Editor is allowed to edit and view the Submittal log and Daily Activities pages
   if (user.role === 'contractor_editor') {
-    return pageId === 'submittalLog';
+    return pageId === 'submittalLog' || pageId === 'dailyActivities';
   }
 
   // Consultant Approver or Editor are NOT allowed to view or access forbidden pages
@@ -221,6 +221,7 @@ import ComprehensiveAnalysisView from './components/ComprehensiveAnalysisView';
 import DocumentationView from './components/DocumentationView';
 import SupervisionConsultantView from './components/SupervisionConsultantView';
 import SubmittalLogView from './components/SubmittalLogView';
+import DailyActivitiesView from './components/DailyActivitiesView';
 import HistoryView from './components/HistoryView';
 import SettingsView from './components/SettingsView';
 import WorkspaceView from './components/WorkspaceView';
@@ -4573,6 +4574,7 @@ let isBatchSyncRunning = false;
                 { id: 'risks', label: '⚠️ Project Risks' },
                 { id: 'consultant', label: '👔 Supervision Consultant' },
                 { id: 'submittalLog', label: '📋 Submittal Log' },
+                { id: 'dailyActivities', label: '🚜 Daily Activities' },
                 /* { id: 'workspace', label: '☁️ Workspace' }, */
                 { id: 'analysis', label: '📊 Comprehensive analysis' },
                 { id: 'documentation', label: '📁 Documentation' },
@@ -4854,6 +4856,17 @@ let isBatchSyncRunning = false;
                   project={currentProject}
                   onProjectUpdate={handleProjectUpdate}
                   isAdmin={currentUserObj?.role === 'admin' || currentUserObj?.role === 'master_admin' || currentUserObj?.username === 'proj_1781786415663'}
+                  currentUserObj={currentUserObj}
+                />
+              )}
+
+              {activeTab === 'dailyActivities' && (
+                <DailyActivitiesView
+                  project={currentProject}
+                  onUpdateProject={(updProj, actionDesc) => {
+                    handleProjectUpdate(updProj, actionDesc);
+                  }}
+                  isReadonly={currentUserObj?.role === 'viewer' && currentUserObj?.username !== 'proj_1781786415663'}
                   currentUserObj={currentUserObj}
                 />
               )}
