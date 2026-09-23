@@ -700,29 +700,134 @@ export default function CpmLinearComparison({ project }: CpmLinearComparisonProp
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {/* Recommendation card */}
                     <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-4 rounded-xl shadow-xs space-y-2.5">
-                      <h3 className="font-extrabold text-sm text-slate-800 dark:text-zinc-150 flex items-center gap-1.5 border-b pb-1.5">
-                        <Award className="w-4 h-4 text-amber-500" />
-                        FIDIC Contractual Action Directives
-                      </h3>
+                      <div className="flex justify-between items-center border-b pb-1.5">
+                        <h3 className="font-extrabold text-sm text-slate-800 dark:text-zinc-150 flex items-center gap-1.5">
+                          <Award className="w-4 h-4 text-amber-500" />
+                          FIDIC Contractual Action Directives
+                        </h3>
+                        <span className="px-2 py-0.5 bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 text-[9px] font-black uppercase rounded-lg">
+                          {project.contractType === 'DB' ? 'Design-Build (DB)' : 'Design-Bid-Build (DBB)'}
+                        </span>
+                      </div>
                       
-                      <div className="space-y-2 text-2xs leading-relaxed">
-                        <p>
-                          <strong>Employer (Ethiopian Roads Administration):</strong><br />
-                          Issue official notice to Contractor under FIDIC Sub-Clause 8.6 (Rate of Progress). Require immediate deployment of additional workforce and equipment to recover delay.
-                        </p>
-                        <p>
-                          <strong>Engineer (Supervising Consultant):</strong><br />
-                          Instruct Contractor to submit a revised Program of Works under FIDIC Sub-Clause 8.3 reflecting actual resources. Conduct strict safety audits on critical path activities.
-                        </p>
+                      <div className="space-y-2 text-2xs leading-relaxed text-slate-600 dark:text-slate-350">
+                        {(() => {
+                          const fBook = project.fidicContractType || (project.contractType === 'DB' ? 'FIDIC Yellow Book (Plant & Design-Build)' : 'FIDIC Red Book (Construction / DBB)');
+                          const isSilver = fBook.toLowerCase().includes('silver');
+                          const isGold = fBook.toLowerCase().includes('gold');
+                          const isEmerald = fBook.toLowerCase().includes('emerald');
+                          const isPink = fBook.toLowerCase().includes('pink');
+                          const isRed = fBook.toLowerCase().includes('red') || fBook.toLowerCase().includes('era') || (!isSilver && !isGold && !isEmerald && !isPink && project.contractType !== 'DB');
+                          const isYellow = fBook.toLowerCase().includes('yellow') || (!isSilver && !isGold && !isEmerald && !isPink && project.contractType === 'DB');
+
+                          if (isSilver) {
+                            return (
+                              <>
+                                <p>
+                                  <strong>Employer Notice (Ethiopian Roads Administration):</strong><br />
+                                  Under the selected <strong>{fBook}</strong> (EPC/Turnkey Conditions), notice that the Employer has higher authority with direct contract administration under <strong>Clause 3 (The Employer's Administration)</strong>. Accelerate Right-of-Way possession under <strong>Sub-Clause 2.1</strong> to minimize the Contractor's EOT entitlement under <strong>Sub-Clause 8.4</strong>.
+                                </p>
+                                <p>
+                                  <strong>Employer's Representative:</strong><br />
+                                  Execute rigorous design reviews of structural submittals under <strong>Sub-Clause 5.2 (Review of Contractor's Documents)</strong> within the strict contract timelines. Audit design-build integration and monitor the fast-track critical path under <strong>Sub-Clause 8.3 Programme</strong>.
+                                </p>
+                                <p>
+                                  <strong>Contractor (EPC Turnkey Contractor):</strong><br />
+                                  The Contractor carries high responsibility for the accuracy of Employer's Requirements under <strong>Sub-Clause 5.1</strong>. Issue formal updates, expedite work rate under <strong>Sub-Clause 8.6 (Rate of Progress)</strong>, and deploy critical paving resources immediately.
+                                </p>
+                              </>
+                            );
+                          }
+
+                          if (isGold) {
+                            return (
+                              <>
+                                <p>
+                                  <strong>Employer Notice (Ethiopian Roads Administration):</strong><br />
+                                  Under <strong>{fBook}</strong> (DBO Conditions), maintain the long-term asset-lifecycle perspective. Monitor design-build quality to safeguard the subsequent 20-year operation period under <strong>Clause 10 (Operation Service)</strong>.
+                                </p>
+                                <p>
+                                  <strong>Employer's Representative / Auditing Engineer:</strong><br />
+                                  Ensure that materials comply with operational durability specifications. Monitor the integrated design-build-operate progress under <strong>Sub-Clause 8.3 Programme</strong> and audit geotechnical/materials standards.
+                                </p>
+                                <p>
+                                  <strong>Contractor (DBO Operator):</strong><br />
+                                  Coordinate design and construction with operation requirements. Mobilize subgrade/pavement resources immediately under <strong>Sub-Clause 8.6</strong> to meet the Asset Provision milestones.
+                                </p>
+                              </>
+                            );
+                          }
+
+                          if (isEmerald) {
+                            return (
+                              <>
+                                <p>
+                                  <strong>Employer Notice (Ethiopian Roads Administration):</strong><br />
+                                  Under the underground specialized <strong>{fBook}</strong> (Tunnelling Conditions), actively manage subsurface geotechnical risk using the <strong>Geotechnical Baseline Report (GBR)</strong> parameters to prevent massive contract claims under <strong>Clause 13 (Variations and Adjustments)</strong>.
+                                </p>
+                                <p>
+                                  <strong>Engineer (Supervising Consultant):</strong><br />
+                                  Administer physical work inspections and track physical excavation rates compared to the GBR baseline. Issue directives under <strong>Sub-Clause 8.6</strong> if alignment works slip.
+                                </p>
+                                <p>
+                                  <strong>Contractor (Underground Specialist):</strong><br />
+                                  Utilize specialized equipment for excavation and support works. Register daily physical progress logs, structures, and WIR logs promptly.
+                                </p>
+                              </>
+                            );
+                          }
+
+                          if (isYellow) {
+                            return (
+                              <>
+                                <p>
+                                  <strong>Employer Notice (Ethiopian Roads Administration):</strong><br />
+                                  Under <strong>{fBook}</strong>, ensure that the Employer's Representative monitors and expedites design reviews under <strong>Sub-Clause 5.2 (Review of Contractor's Documents)</strong>. Accelerate row clearances under <strong>Sub-Clause 2.1</strong> to protect the design-builder's fast-tracked schedule.
+                                </p>
+                                <p>
+                                  <strong>Engineer (Supervising Consultant):</strong><br />
+                                  Enforce strict integration of design and construction phases in the Contractor's <strong>Sub-Clause 8.3 Programme</strong>. Audit design-build dependencies and issue formal notices under <strong>Sub-Clause 8.6 (Rate of Progress)</strong> if asphalt paving slips behind design approvals.
+                                </p>
+                                <p>
+                                  <strong>Contractor (Design-Builder):</strong><br />
+                                  Submit comprehensive design packages and trial mixes concurrently. Maintain sole design liability under <strong>Sub-Clause 5.1</strong>, and increase equipment on critical path workfronts to match the accelerated plan.
+                                </p>
+                              </>
+                            );
+                          }
+
+                          // Default Red/Pink/DBB/Construction Books
+                          return (
+                            <>
+                              <p>
+                                <strong>Employer Notice (Ethiopian Roads Administration):</strong><br />
+                                Under <strong>{fBook}</strong>, fulfill the primary obligation to grant unobstructed Site Possession under <strong>Sub-Clause 2.1 (Right of Access to the Site)</strong> to mitigate contractor claims for idle resources under <strong>Sub-Clause 8.4 (EOT)</strong>.
+                              </p>
+                              <p>
+                                <strong>Engineer (Supervising Consultant):</strong><br />
+                                Administer strict physical Work Inspection Requests (WIR) and material sampling. Enforce physical quality conformance and issue Notice to Correct under <strong>Sub-Clause 15.1</strong> if quality criteria fail. Review the physical program of works under <strong>Sub-Clause 8.3</strong>.
+                              </p>
+                              <p>
+                                <strong>Contractor (Works Contractor):</strong><br />
+                                Mobilize earthwork and pavement machinery to all cleared chainage segments immediately. Expedite subgrade and subbase daily activities with daily WIR submissions to prevent critical path delays under <strong>Sub-Clause 8.6</strong>.
+                              </p>
+                            </>
+                          );
+                        })()}
                       </div>
                     </div>
 
                     {/* Risk Assessment Column card */}
                     <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-4 rounded-xl shadow-xs space-y-2.5">
-                      <h3 className="font-extrabold text-sm text-slate-800 dark:text-zinc-150 flex items-center gap-1.5 border-b pb-1.5">
-                        <ShieldAlert className="w-4 h-4 text-rose-500" />
-                        Vulnerability Audit Report (EVM &amp; ROW)
-                      </h3>
+                      <div className="flex justify-between items-center border-b pb-1.5">
+                        <h3 className="font-extrabold text-sm text-slate-800 dark:text-zinc-150 flex items-center gap-1.5">
+                          <ShieldAlert className="w-4 h-4 text-rose-500" />
+                          Vulnerability Audit Report (EVM &amp; ROW)
+                        </h3>
+                        <span className="px-2 py-0.5 bg-slate-100 dark:bg-slate-900/50 text-slate-700 dark:text-slate-300 text-[9px] font-black uppercase rounded-lg">
+                          {project.fidicContractType ? project.fidicContractType.split(' ')[0] : 'FIDIC'} Book
+                        </span>
+                      </div>
 
                       <div className="space-y-2 text-2xs leading-relaxed">
                         <p>
@@ -732,10 +837,10 @@ export default function CpmLinearComparison({ project }: CpmLinearComparisonProp
                           </span>
                           <br />
                           {hasVariation && variationPct > 15 
-                            ? 'HIGH CONTRACT VARIATION. Revised contract amount exceeds original baseline by over 15%.'
+                            ? `HIGH CONTRACT VARIATION. Revised contract amount exceeds original baseline by over 15%, requiring executive authorization under Ethiopian Procurement Directives.`
                             : hasVariation && variationPct > 0 
-                              ? 'MODERATE VARIATION. Revised contract amount accounts for approved scope modifications.'
-                              : 'LOW VULNERABILITY. Cost adjustments align within baseline limits.'}
+                              ? `MODERATE VARIATION. Approved scope modifications remain within standard 15% limits, managed under FIDIC Clause 13.`
+                              : `LOW VULNERABILITY. Financial outlays conform to original contract pricing baseline.`}
                         </p>
                         <p>
                           <strong>Right-Of-Way Impediments:</strong> Clearance status:{' '}
@@ -745,7 +850,7 @@ export default function CpmLinearComparison({ project }: CpmLinearComparisonProp
                           <br />
                           {calcRowClearPct >= 100 
                             ? 'Corridor possession is 100% unobstructed across the entire highway length.' 
-                            : 'Ensure community representatives finalize compensation logs for remaining sections to prevent contractor idle-time claims under Sub-Clause 2.1.'}
+                            : `Ensure community representatives finalize compensation logs for remaining sections to prevent contractor idle-time claims under FIDIC Sub-Clause 2.1.`}
                         </p>
                       </div>
                     </div>

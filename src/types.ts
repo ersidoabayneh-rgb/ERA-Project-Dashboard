@@ -512,6 +512,7 @@ export interface Project {
   classification: string;
   contractorGrade?: string;
   contractType: 'DB' | 'DBB';
+  fidicContractType?: string;
   programDirectorate?: string;
   pmo?: string;
   physicalProgress: number;
@@ -562,6 +563,13 @@ export interface Project {
   aiChatHistory?: any[];
   documents?: ProjectDocument[];
   supervisionConsultant?: SupervisionConsultantInfo;
+  segmentNotes?: Record<string, {
+    notes?: string;
+    structures?: string;
+    status?: string;
+    lastUpdated?: string;
+    updatedBy?: string;
+  }>;
 }
 
 export interface DailyActivityEquipmentItem {

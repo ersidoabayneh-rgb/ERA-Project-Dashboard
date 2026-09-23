@@ -1711,7 +1711,7 @@ export default function SupervisionConsultantView({
         </div>
 
         {/* Supervision Time Assigned Completed / Expiration Alert Banner */}
-        {scheduleStatus.effectiveCompletionDate && (scheduleStatus.isTimeExpired || scheduleStatus.daysRemaining <= 45) && (
+        {scheduleStatus.effectiveCompletionDate && (scheduleStatus.isTimeExpired || scheduleStatus.daysRemaining <= 180) && (
           <div className={`mt-5 p-4 rounded-2xl border flex flex-col md:flex-row md:items-center justify-between gap-4 ${
             scheduleStatus.isTimeExpired 
               ? 'bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-900 text-rose-900 dark:text-rose-200'
@@ -1728,7 +1728,7 @@ export default function SupervisionConsultantView({
                   <h4 className="font-bold text-sm">
                     {scheduleStatus.isTimeExpired 
                       ? 'Supervision Service Period Completed (Including All Extensions)' 
-                      : `Supervision Contract Concluding Soon (${scheduleStatus.daysRemaining} Days Remaining)`}
+                      : `Supervision Contract Concluding Soon (Less than Six Months Remaining: ${scheduleStatus.daysRemaining} Days)`}
                   </h4>
                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold font-mono ${
                     scheduleStatus.isTimeExpired ? 'bg-rose-200 dark:bg-rose-800 text-rose-800 dark:text-rose-100' : 'bg-amber-200 dark:bg-amber-800 text-amber-800 dark:text-amber-100'
@@ -1739,7 +1739,7 @@ export default function SupervisionConsultantView({
                 <p className="text-xs opacity-90 leading-relaxed max-w-3xl">
                   {scheduleStatus.isTimeExpired
                     ? `The allocated contract duration for ${consultant.firmName} has reached its completion date (${scheduleStatus.daysOverdue} days past effective completion). You can archive this consultant's record and seamlessly assign a new consultant firm as continuation of supervision services.`
-                    : `The contract service duration for ${consultant.firmName} is concluding on ${scheduleStatus.effectiveCompletionDate}. Review contract extension approvals or prepare transition for service continuation.`
+                    : `⚠️ ATTENTION: Less than six months remain for the Revised / Approved Completion Date of the consultancy services for ${consultant.firmName}. Procurement actions or contract assignments must be initiated immediately to select/change the consultant and ensure continuous supervision coverage.`
                   }
                 </p>
               </div>
@@ -1755,7 +1755,7 @@ export default function SupervisionConsultantView({
                 }`}
               >
                 <ArrowRightLeft className="w-4 h-4" />
-                Assign New Consultant (Continuation of Service)
+                Assign Successor Consultant
               </button>
             )}
           </div>

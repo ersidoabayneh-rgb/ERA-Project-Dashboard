@@ -205,6 +205,29 @@ export function canUserApproveRequest(user: User | null, req: ApprovalRequest, p
   const project = projectsList ? projectsList.find(p => p.id === req.projectId) : null;
   return isProjectApprover(user, req.projectId, project);
 }
+
+export function getFidicOptions(deliveryMethod: 'DB' | 'DBB' | string) {
+  if (deliveryMethod === 'DB') {
+    return [
+      'FIDIC 2017 Yellow Book (Plant & Design-Build)',
+      'FIDIC 1999 Yellow Book (Plant & Design-Build)',
+      'FIDIC 2017 Silver Book (EPC/Turnkey)',
+      'FIDIC 1999 Silver Book (EPC/Turnkey)',
+      'FIDIC Gold Book (Design, Build & Operate)',
+      'Other Design-Build Conditions'
+    ];
+  } else {
+    return [
+      'FIDIC 2017 Red Book (Construction / DBB)',
+      'FIDIC 1999 Red Book (Construction / DBB)',
+      'FIDIC Pink Book (MDB Harmonised)',
+      'FIDIC 2017 Emerald Book (Underground Works)',
+      'ERA Standard Conditions of Contract (DBB)',
+      'Other Red Book Conditions'
+    ];
+  }
+}
+
 import LoginPage from './components/LoginPage';
 import ProjectsPage from './components/ProjectsPage';
 import DashboardView from './components/DashboardView';
@@ -559,6 +582,7 @@ export default function App() {
   const [editContractType, setEditContractType] = useState<'DB' | 'DBB'>('DBB');
   const [editProgramDirectorate, setEditProgramDirectorate] = useState('');
   const [editPmo, setEditPmo] = useState('');
+  const [editFidicContractType, setEditFidicContractType] = useState('');
 
   const [programDirectorates, setProgramDirectorates] = useState<string[]>(() => {
     try {
@@ -603,6 +627,7 @@ export default function App() {
       setEditContractType(currentProject.contractType || 'DBB');
       setEditProgramDirectorate(currentProject.programDirectorate || 'Southern');
       setEditPmo(currentProject.pmo || 'PMO 1');
+      setEditFidicContractType(currentProject.fidicContractType || '');
     }
   }, [currentProject?.id, currentProject?.lastModifiedAt, currentProject?.consultant, currentProject?.supervisionConsultant?.firmName]);
 
@@ -3255,7 +3280,8 @@ let isBatchSyncRunning = false;
       classification: editClassification,
       contractType: editContractType,
       programDirectorate: editProgramDirectorate,
-      pmo: editPmo
+      pmo: editPmo,
+      fidicContractType: editFidicContractType
     };
     handleProjectUpdate(fields, 'Contract Specifications Dossier configured');
     setIsEditingDossier(false);
@@ -4137,6 +4163,7 @@ let isBatchSyncRunning = false;
                                 setEditContractType(currentProject.contractType);
                                 setEditProgramDirectorate(currentProject.programDirectorate || 'Southern');
                                 setEditPmo(currentProject.pmo || 'PMO 1');
+                                setEditFidicContractType(currentProject.fidicContractType || '');
                               }}
                               className="text-[10px] uppercase font-extrabold bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 border border-slate-200 dark:border-slate-650 px-2.5 py-1 rounded-lg text-slate-600 dark:text-slate-350 transition cursor-pointer"
                             >
@@ -4298,10 +4325,13 @@ let isBatchSyncRunning = false;
 
                         <div className="space-y-1">
                           <div className="flex items-center gap-1.5 mb-0.5">
-                            <span className="text-[9px] text-slate-400 block font-sans font-bold">Project Delivery Method</span>
+                            <span className="text-[9px] text-slate-400 block font-sans font-bold">Project Delivery & FIDIC Contract</span>
                           </div>
                           <span className="text-blue-600 dark:text-blue-400 block font-bold">
                             {currentProject.contractType === 'DB' ? 'Design-Build (DB)' : 'Design-Bid-Build (DBB)'}
+                          </span>
+                          <span className="text-slate-800 dark:text-zinc-150 block text-[11px] font-bold mt-1">
+                            📕 {currentProject.fidicContractType || 'FIDIC 2017 Red Book'}
                           </span>
                         </div>
                       </div>
@@ -4541,11 +4571,31 @@ let isBatchSyncRunning = false;
                           <label className="text-[9px] text-slate-400 block font-mono">ORIGINAL CONTRACT TYPE</label>
                           <select
                             value={editContractType}
-                            onChange={(e) => setEditContractType(e.target.value as 'DB' | 'DBB')}
+                            onChange={(e) => {
+                              const nextVal = e.target.value as 'DB' | 'DBB';
+                              setEditContractType(nextVal);
+                              const opts = getFidicOptions(nextVal);
+                              if (!opts.includes(editFidicContractType)) {
+                                setEditFidicContractType(opts[0]);
+                              }
+                            }}
                             className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-705 px-2 py-1 rounded-lg text-slate-850 dark:text-zinc-100 outline-none font-bold"
                           >
                             <option value="DB">Design-Build (DB)</option>
                             <option value="DBB">Design-Bid-Build (DBB)</option>
+                          </select>
+                        </div>
+
+                        <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
+                          <label className="text-[9px] text-slate-400 block font-mono">FIDIC CONTRACT TYPE</label>
+                          <select
+                            value={editFidicContractType || getFidicOptions(editContractType)[0]}
+                            onChange={(e) => setEditFidicContractType(e.target.value)}
+                            className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-705 px-2 py-1 rounded-lg text-slate-850 dark:text-zinc-100 outline-none font-bold"
+                          >
+                            {getFidicOptions(editContractType).map((opt) => (
+                              <option key={opt} value={opt}>{opt}</option>
+                            ))}
                           </select>
                         </div>
                       </div>

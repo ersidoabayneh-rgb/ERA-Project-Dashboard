@@ -201,7 +201,7 @@ export default function DailyActivitiesView({
   const [selectedStationFilter, setSelectedStationFilter] = useState<string>('all');
   const [selectedSubmittalFilter, setSelectedSubmittalFilter] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
-  const [showChainageMap, setShowChainageMap] = useState<boolean>(true);
+  const [showChainageMap, setShowChainageMap] = useState<boolean>(false);
 
   // Modal states
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -219,6 +219,25 @@ export default function DailyActivitiesView({
   const [isCapturing, setIsCapturing] = useState(false);
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
   const [targetActivityForQuickUpload, setTargetActivityForQuickUpload] = useState<DailyActivityRecord | null>(null);
+
+  // Segment-specific notes and status state
+  const [segStructures, setSegStructures] = useState<string>('');
+  const [segStatus, setSegStatus] = useState<string>('Not Started');
+  const [segNotes, setSegNotes] = useState<string>('');
+
+  // Sync segment local states with selected segment
+  React.useEffect(() => {
+    if (selectedStationFilter && selectedStationFilter !== 'all') {
+      const saved = project.segmentNotes?.[selectedStationFilter];
+      setSegStructures(saved?.structures || '');
+      setSegStatus(saved?.status || 'Not Started');
+      setSegNotes(saved?.notes || '');
+    } else {
+      setSegStructures('');
+      setSegStatus('Not Started');
+      setSegNotes('');
+    }
+  }, [selectedStationFilter, project.segmentNotes]);
 
   // Hidden File & Camera Input Refs
   const cameraInputRef = React.useRef<HTMLInputElement>(null);
@@ -854,6 +873,52 @@ export default function DailyActivitiesView({
     }
   };
 
+  // Save specific notes and structures for individual kilometer segments
+  const handleSaveSegmentNotes = () => {
+    if (!selectedStationFilter || selectedStationFilter === 'all') return;
+
+    const updatedNotes = {
+      ...(project.segmentNotes || {}),
+      [selectedStationFilter]: {
+        structures: segStructures,
+        status: segStatus,
+        notes: segNotes,
+        lastUpdated: new Date().toISOString(),
+        updatedBy: currentUserObj?.fullName || currentUserObj?.username || 'Site Engineer'
+      }
+    };
+
+    const updatedProj: Project = {
+      ...project,
+      segmentNotes: updatedNotes,
+      lastModifiedAt: new Date().toISOString(),
+      lastModifiedBy: currentUserObj?.username || 'User'
+    };
+
+    onUpdateProject(updatedProj, `Updated segment details & notes for segment: Km ${selectedStationFilter}`);
+  };
+
+  // Clear specific notes and structures for individual kilometer segments
+  const handleClearSegmentNotes = () => {
+    if (!selectedStationFilter || selectedStationFilter === 'all') return;
+    if (!window.confirm(`Are you sure you want to clear all notes and status details for segment Km ${selectedStationFilter}?`)) return;
+
+    const updatedNotes = { ...(project.segmentNotes || {}) };
+    delete updatedNotes[selectedStationFilter];
+
+    const updatedProj: Project = {
+      ...project,
+      segmentNotes: updatedNotes,
+      lastModifiedAt: new Date().toISOString(),
+      lastModifiedBy: currentUserObj?.username || 'User'
+    };
+
+    onUpdateProject(updatedProj, `Cleared segment details & notes for segment: Km ${selectedStationFilter}`);
+    setSegStructures('');
+    setSegStatus('Not Started');
+    setSegNotes('');
+  };
+
   // Delete photo during modal editing
   const handleDeletePhotoInModal = (photoId: string) => {
     if (!editingActivity) return;
@@ -1276,42 +1341,33 @@ export default function DailyActivitiesView({
       </div>
 
       {/* Interactive Road Chainage Map / Strip Visualizer (Collapsible & Viewable with Button) */}
-      <div className="bg-white dark:bg-slate-850 p-4 sm:p-5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-3 transition-all">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 min-w-0">
-            <MapPin className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
-            <span className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200 truncate">
-              Interactive Road Chainage Strip Map (Km 00+000 to Km {Math.floor(totalLengthKm)}+{Math.round((totalLengthKm % 1) * 1000)})
-            </span>
-            {selectedStationFilter !== 'all' && (
-              <span className="px-2 py-0.5 bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 text-[10px] font-bold rounded-lg shrink-0">
-                Filtered: {selectedStationFilter}
+      {showChainageMap && (
+        <div className="bg-white dark:bg-slate-850 p-4 sm:p-5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-3 transition-all animate-fadeIn">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <MapPin className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+              <span className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200 truncate">
+                Interactive Road Chainage Strip Map (Km 00+000 to Km {Math.floor(totalLengthKm)}+{Math.round((totalLengthKm % 1) * 1000)})
               </span>
-            )}
-          </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              onClick={() => setShowChainageMap(!showChainageMap)}
-              className="px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
-            >
-              {showChainageMap ? (
-                <>
-                  <EyeOff className="w-3.5 h-3.5 text-slate-500" />
-                  <span>Hide Strip Map</span>
-                </>
-              ) : (
-                <>
-                  <Eye className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                  <span>View Strip Map</span>
-                </>
+              {selectedStationFilter !== 'all' && (
+                <span className="px-2 py-0.5 bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 text-[10px] font-bold rounded-lg shrink-0">
+                  Filtered: {selectedStationFilter}
+                </span>
               )}
-            </button>
-          </div>
-        </div>
+            </div>
 
-        {/* Chainage Segments Grid (shown when showChainageMap is true) */}
-        {showChainageMap && (
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => setShowChainageMap(false)}
+                className="px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+              >
+                <EyeOff className="w-3.5 h-3.5 text-slate-500" />
+                <span>Hide Strip Map</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Chainage Segments Grid */}
           <div className="space-y-2 pt-1 border-t border-slate-100 dark:border-slate-800/80">
             <div className="text-[11px] text-slate-500 font-medium">
               Click any station block below to filter activities by road chainage location:
@@ -1329,32 +1385,152 @@ export default function DailyActivitiesView({
                 <div className="text-[10px] opacity-80">{activities.length} logs</div>
               </button>
 
-              {chainageSegments.map(seg => (
-                <button
-                  key={seg.key}
-                  onClick={() => setSelectedStationFilter(seg.key === selectedStationFilter ? 'all' : seg.key)}
-                  className={`p-2 rounded-xl text-center text-xs font-bold transition cursor-pointer border relative ${
-                    selectedStationFilter === seg.key
-                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                      : seg.count > 0
-                      ? 'bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/50 text-blue-900 dark:text-blue-200 border-blue-200 dark:border-blue-800'
-                      : 'bg-slate-50 dark:bg-slate-800/40 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-800'
-                  }`}
-                >
-                  <div className="font-mono text-[11px]">{seg.label}</div>
-                  <div className="text-[10px] mt-0.5 flex items-center justify-center gap-1">
-                    {seg.count > 0 ? (
-                      <span className="font-extrabold text-blue-600 dark:text-blue-400">{seg.count} logs</span>
-                    ) : (
-                      <span>0</span>
+              {chainageSegments.map(seg => {
+                const segData = project.segmentNotes?.[seg.key];
+                const hasNotes = !!(segData?.notes || segData?.structures || (segData?.status && segData?.status !== 'Not Started'));
+                const segStatusValue = segData?.status || 'Not Started';
+
+                return (
+                  <button
+                    key={seg.key}
+                    onClick={() => setSelectedStationFilter(seg.key === selectedStationFilter ? 'all' : seg.key)}
+                    className={`p-2 rounded-xl text-center text-xs font-bold transition cursor-pointer border relative flex flex-col justify-between min-h-[64px] ${
+                      selectedStationFilter === seg.key
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                        : seg.count > 0
+                        ? 'bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/50 text-blue-900 dark:text-blue-200 border-blue-200 dark:border-blue-800'
+                        : 'bg-slate-50 dark:bg-slate-800/40 hover:bg-slate-100 dark:hover:bg-slate-800/60 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-800'
+                    }`}
+                  >
+                    {hasNotes && (
+                      <span 
+                        className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[9px] text-white font-extrabold shadow-sm"
+                        title={`Segment Notes: ${segData.notes || ''} ${segData.structures ? `| Structures: ${segData.structures}` : ''}`}
+                      >
+                        📝
+                      </span>
                     )}
-                  </div>
-                </button>
-              ))}
+
+                    <div className="font-mono text-[11px] self-center">{seg.label}</div>
+                    
+                    <div className="text-[9px] mt-1 flex flex-col items-center justify-center gap-0.5 w-full">
+                      <div className="opacity-80">
+                        {seg.count > 0 ? (
+                          <span className="font-extrabold text-blue-600 dark:text-blue-400">{seg.count} logs</span>
+                        ) : (
+                          <span>0 logs</span>
+                        )}
+                      </div>
+
+                      {segStatusValue !== 'Not Started' && (
+                        <span className={`text-[8px] px-1 py-0.5 rounded-md font-sans font-bold leading-none scale-90 truncate max-w-full ${
+                          segStatusValue === 'Completed'
+                            ? 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300'
+                            : 'bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300'
+                        }`}>
+                          {segStatusValue}
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
-        )}
-      </div>
+
+          {/* Segment-specific details panel shown when a segment is selected */}
+          {selectedStationFilter !== 'all' && (
+            <div className="mt-4 p-4 bg-slate-50 dark:bg-slate-900 border border-slate-150 dark:border-slate-800/60 rounded-2xl space-y-3 animate-fadeIn">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-200 dark:border-slate-800">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                  <span className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                    <span className="p-1 bg-indigo-100 dark:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 rounded-lg">📝</span>
+                    Segment Km {selectedStationFilter} Construction details
+                  </span>
+                  {project.segmentNotes?.[selectedStationFilter]?.lastUpdated && (
+                    <span className="text-[10px] text-slate-400 font-medium">
+                      (Last updated on {new Date(project.segmentNotes[selectedStationFilter].lastUpdated!).toLocaleDateString()} by {project.segmentNotes[selectedStationFilter].updatedBy})
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 text-[10px] text-slate-500 font-bold bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-lg">
+                  Active logs in this segment: {activities.filter(a => {
+                    const [minKm, maxKm] = selectedStationFilter.split('-').map(Number);
+                    const aStart = parseStationNumber(a.startStationKm);
+                    const aEnd = a.endStationKm ? parseStationNumber(a.endStationKm) : aStart;
+                    return aStart <= maxKm && aEnd >= minKm;
+                  }).length} records
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+                {/* 1. Structures, Bridges & Drainage Details */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] text-slate-400 dark:text-slate-500 font-black uppercase tracking-wider block">Bridges, Culverts &amp; Structures</label>
+                  <input
+                    type="text"
+                    value={segStructures}
+                    onChange={(e) => setSegStructures(e.target.value)}
+                    disabled={isReadonly}
+                    placeholder="e.g. Bridge at Km 12+400, Culvert completed..."
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-blue-500 focus:outline-none dark:text-white disabled:opacity-60"
+                  />
+                </div>
+
+                {/* 2. Construction Status Layer select */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] text-slate-400 dark:text-slate-500 font-black uppercase tracking-wider block">Segment Layer Status</label>
+                  <select
+                    value={segStatus}
+                    onChange={(e) => setSegStatus(e.target.value)}
+                    disabled={isReadonly}
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold focus:ring-2 focus:ring-blue-500 focus:outline-none dark:text-white disabled:opacity-60 cursor-pointer"
+                  >
+                    <option value="Not Started">Not Started</option>
+                    <option value="Clearing &amp; Earthworks">Clearing &amp; Earthworks</option>
+                    <option value="Subgrade Leveling">Subgrade Leveling</option>
+                    <option value="Subbase Layering">Subbase Layering</option>
+                    <option value="Basecourse Layering">Basecourse Layering</option>
+                    <option value="Asphalt Surfacing">Asphalt Surfacing</option>
+                    <option value="Completed">Completed / Passed Inspection</option>
+                  </select>
+                </div>
+
+                {/* 3. Detailed Supervision Notes */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] text-slate-400 dark:text-slate-500 font-black uppercase tracking-wider block">Supervision / Geo-Notes</label>
+                  <textarea
+                    rows={1}
+                    value={segNotes}
+                    onChange={(e) => setSegNotes(e.target.value)}
+                    disabled={isReadonly}
+                    placeholder="e.g. Soil tests passed, compaction at 98%..."
+                    className="w-full px-3 py-1.5 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none dark:text-white disabled:opacity-60 resize-none"
+                  />
+                </div>
+              </div>
+
+              {/* Action Buttons for Segment Details */}
+              {!isReadonly && (
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200 dark:border-slate-800/50">
+                  <button
+                    onClick={handleClearSegmentNotes}
+                    className="px-3.5 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/20 dark:hover:bg-rose-950/40 text-rose-600 dark:text-rose-400 text-xs font-bold rounded-xl transition cursor-pointer"
+                  >
+                    Clear Notes
+                  </button>
+                  <button
+                    onClick={handleSaveSegmentNotes}
+                    className="px-4.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl shadow-sm hover:shadow-md transition cursor-pointer"
+                  >
+                    Save Segment Details
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Filter & Control Bar */}
       <div className="bg-white dark:bg-slate-850 p-4 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
