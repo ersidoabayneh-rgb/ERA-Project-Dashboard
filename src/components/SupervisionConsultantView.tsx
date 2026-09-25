@@ -98,10 +98,11 @@ export default function SupervisionConsultantView({
   // Check whether current user is Master Admin
   const isMasterAdmin = useMemo(() => {
     if (!currentUser) return false;
+    const r = (currentUser.role || '').toLowerCase().trim();
     return (
-      currentUser.role === 'master_admin' ||
-      currentUser.role === 'admin' ||
-      currentUser.role === 'cpm_admin' ||
+      r === 'master_admin' ||
+      r === 'master admin' ||
+      (r === 'admin' && !r.includes('cpm') && !r.includes('pmo') && !r.includes('directorate')) ||
       currentUser.username === 'proj_1781786415663' ||
       Boolean(currentUser.username && currentUser.username.toLowerCase().includes('ersido'))
     );
@@ -169,20 +170,12 @@ export default function SupervisionConsultantView({
 
   const isConsultantUser = currentUser?.role === 'consultant_approver' || currentUser?.role === 'consultant_editor';
 
-  const isPerformanceEvaluator = useMemo(() => {
-    if (!currentUser) return false;
-    const r = currentUser.role;
-    return r === 'master_admin' || r === 'cpm_admin' || r === 'directorate_admin';
-  }, [currentUser]);
-
   useEffect(() => {
     const canAccessKpis = isAdmin || isEraUser;
-    if (activeTab === 'kpis' && !isPerformanceEvaluator) {
-      setActiveTab('personnel');
-    } else if ((!canAccessKpis || isConsultantUser) && (activeTab === 'personnel_audit' || activeTab === 'history')) {
+    if ((!canAccessKpis || isConsultantUser) && (activeTab === 'personnel_audit' || activeTab === 'kpis' || activeTab === 'history')) {
       setActiveTab('personnel');
     }
-  }, [isAdmin, isEraUser, isConsultantUser, isPerformanceEvaluator, activeTab]);
+  }, [isAdmin, isEraUser, isConsultantUser, activeTab]);
 
   // Search & Filter States for Personnel
   const [personnelSearch, setPersonnelSearch] = useState('');
@@ -1879,7 +1872,7 @@ export default function SupervisionConsultantView({
           </span>
         </button>
 
-        {isPerformanceEvaluator && (
+        {(isAdmin || isEraUser) && !isConsultantUser && (
           <button
             onClick={() => setActiveTab('kpis')}
             className={`px-4 py-2 rounded-2xl text-xs md:text-sm font-bold flex items-center gap-2 transition ${
@@ -1889,11 +1882,11 @@ export default function SupervisionConsultantView({
             }`}
           >
             <Clock className="w-4 h-4" />
-            Supervision Consultant Performance Evaluation
+            {isEraUser ? 'Supervision Consultant Performance Evaluation' : 'Performance KPIs & RFI SLA Evaluation'}
             <span className={`px-2 py-0.5 rounded-full text-xs font-mono ${
               activeTab === 'kpis' ? 'bg-purple-700 text-white' : 'bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-300 font-bold'
             }`}>
-              Section 2 Matrix
+              {isEraUser ? 'Section 2 Matrix' : `${consultant.submittalKpis?.length || 0} items`}
             </span>
           </button>
         )}
@@ -2470,14 +2463,14 @@ export default function SupervisionConsultantView({
       )}
 
       {/* TAB: PERFORMANCE KPIS & RFI SLA EVALUATION (ADMIN & ERA ROLES) */}
-      {isPerformanceEvaluator && activeTab === 'kpis' && (
+      {(isAdmin || isEraUser) && activeTab === 'kpis' && (
         <ConsultantPerformanceKpiWidget
           project={project}
           consultant={consultant}
           onUpdateConsultant={saveConsultantData}
           isReadonly={isReadonly}
-          isAdmin={isPerformanceEvaluator}
-          isMasterAdmin={currentUser?.role === 'master_admin'}
+          isAdmin={isAdmin || isEraUser}
+          isMasterAdmin={isMasterAdmin}
           currentUser={currentUser}
         />
       )}

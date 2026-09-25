@@ -80,17 +80,7 @@ export default function ConsultantPerformanceKpiWidget({
   const [selectedTenureConsultantId, setSelectedTenureConsultantId] = useState<string>('current');
   const [livePillar2Score, setLivePillar2Score] = useState<number | null>(null);
 
-  const userRole = (currentUser?.role || '').toLowerCase();
-
-  const isMasterAdminRole = useMemo(() => {
-    if (isMasterAdmin === true) return true;
-    if (!currentUser) return isAdmin;
-    return (
-      userRole === 'master_admin' ||
-      userRole === 'master admin' ||
-      userRole === 'admin'
-    );
-  }, [isMasterAdmin, isAdmin, currentUser, userRole]);
+  const userRole = (currentUser?.role || '').toLowerCase().trim();
 
   const isCpmOrDirectorateAdmin = useMemo(() => {
     return (
@@ -108,6 +98,16 @@ export default function ConsultantPerformanceKpiWidget({
   const isEraUser = useMemo(() => {
     return userRole === 'era_editor' || userRole === 'era_approver' || userRole === 'era editor' || userRole === 'era approver';
   }, [userRole]);
+
+  const isMasterAdminRole = useMemo(() => {
+    if (isCpmOrDirectorateAdmin || isPmoAdmin || isEraUser) return false;
+    if (isMasterAdmin === true) return true;
+    return (
+      userRole === 'master_admin' ||
+      userRole === 'master admin' ||
+      (userRole === 'admin' && !userRole.includes('cpm') && !userRole.includes('pmo') && !userRole.includes('directorate'))
+    );
+  }, [isCpmOrDirectorateAdmin, isPmoAdmin, isEraUser, isMasterAdmin, userRole]);
 
   // Executive Summary Header & Scorecards visibility
   const showHeaderAndScorecards = useMemo(() => {
@@ -494,7 +494,7 @@ export default function ConsultantPerformanceKpiWidget({
         userRole={currentUser?.role}
         isMasterAdmin={isMasterAdminRole}
         isAdmin={isAdmin}
-        executiveSummary={
+        executiveSummary={(flags) => (
           <>
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
               <div className="space-y-1">
@@ -521,12 +521,42 @@ export default function ConsultantPerformanceKpiWidget({
                 </p>
               </div>
 
-              <button
-                onClick={() => setIsExpanded(!isExpanded)}
-                className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition flex items-center gap-1 text-xs font-bold self-start md:self-auto"
-              >
-                {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-              </button>
+              {/* Action Controls in Header */}
+              <div className="flex flex-wrap items-center gap-2 self-start md:self-auto">
+                {flags.canViewCriteria && (
+                  <button
+                    onClick={() => {
+                      setEditCriteriaForm(evaluationCriteria);
+                      setIsTargetSettingsOpen(true);
+                    }}
+                    title={flags.canEditCriteria ? "Configure Evaluation Criteria, Target Days & Weightages" : "View Contract Evaluation Criteria & Weightages"}
+                    className="px-3.5 py-2 text-xs font-bold rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center gap-1.5 transition shadow-xs cursor-pointer"
+                  >
+                    <Settings2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                    Criteria & Weights
+                  </button>
+                )}
+
+                {!isReadonly && flags.canEditCriteria && (
+                  <button
+                    onClick={handleResetToDefaults}
+                    title="Reset to standard contract benchmarks"
+                    className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 transition text-xs font-bold cursor-pointer"
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                  </button>
+                )}
+
+                {flags.showSection1SubmittalLog && (
+                  <button
+                    onClick={() => setIsExpanded(!isExpanded)}
+                    title={isExpanded ? "Collapse Section 1 SLA Turnaround Table" : "Expand Section 1 SLA Turnaround Table"}
+                    className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition flex items-center gap-1 text-xs font-bold cursor-pointer"
+                  >
+                    {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Consultant Evaluation Scope & Succession History Bar */}
@@ -696,34 +726,7 @@ export default function ConsultantPerformanceKpiWidget({
               </div>
             )}
           </>
-        }
-        actionControls={
-          <div className="flex flex-wrap items-center gap-2">
-            {!isReadonly && isMasterAdminRole && (
-              <button
-                onClick={() => {
-                  setEditCriteriaForm(evaluationCriteria);
-                  setIsTargetSettingsOpen(true);
-                }}
-                title="Configure Evaluation Criteria, Target Days & Weightages"
-                className="px-3.5 py-2 text-xs font-bold rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center gap-1.5 transition shadow-xs cursor-pointer"
-              >
-                <Settings2 className="w-4 h-4 text-indigo-600" />
-                Criteria & Weights
-              </button>
-            )}
-
-            {!isReadonly && isMasterAdminRole && (
-              <button
-                onClick={handleResetToDefaults}
-                title="Reset to standard contract benchmarks"
-                className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 transition text-xs font-bold"
-              >
-                <RotateCcw className="w-4 h-4" />
-              </button>
-            )}
-          </div>
-        }
+        )}
         submittalLog={
           <div className="space-y-6 pb-8 border-b border-slate-100 dark:border-slate-800">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-2">
@@ -1094,7 +1097,7 @@ export default function ConsultantPerformanceKpiWidget({
           </div>
         }
         evaluationMatrix={
-          <div className="space-y-4 pt-4">
+          <div className="space-y-4">
             <div className="flex items-center gap-2 mb-2">
               <Award className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
               <h4 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">
@@ -1128,9 +1131,11 @@ export default function ConsultantPerformanceKpiWidget({
             >
               <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
                 <div className="flex items-center gap-2">
-                  <Settings2 className="w-5 h-5 text-indigo-600" />
+                  <Settings2 className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                   <h4 className="text-base font-bold text-slate-900 dark:text-white">
-                    Consultant Evaluation Criteria & Target SLA Weights
+                    {isMasterAdminRole && !isReadonly
+                      ? 'Consultant Evaluation Criteria & Target SLA Weights'
+                      : 'Consultant Evaluation Criteria & Target SLA Weights (Contract Benchmark)'}
                   </h4>
                 </div>
                 <button
@@ -1142,7 +1147,9 @@ export default function ConsultantPerformanceKpiWidget({
               </div>
 
               <p className="text-xs text-slate-500">
-                Configure baseline response deadlines (in calendar days) and percentage weight distribution for consultant evaluation. The sum of all weights should equal 100%.
+                {isMasterAdminRole && !isReadonly
+                  ? 'Configure baseline response deadlines (in calendar days) and percentage weight distribution for consultant evaluation. The sum of all weights should equal 100%.'
+                  : 'Official contract response deadlines (in calendar days) and percentage weight distribution for consultant evaluation benchmarked across PMBOK project supervision domains.'}
               </p>
 
               {/* Weight Distribution Balance Bar */}
@@ -1175,6 +1182,7 @@ export default function ConsultantPerformanceKpiWidget({
                         type="number"
                         min="1"
                         max="90"
+                        disabled={!isMasterAdminRole || isReadonly}
                         value={crit.targetDays}
                         onChange={(e) => {
                           const val = parseInt(e.target.value) || 1;
@@ -1182,7 +1190,9 @@ export default function ConsultantPerformanceKpiWidget({
                           updated[idx] = { ...updated[idx], targetDays: val };
                           setEditCriteriaForm(updated);
                         }}
-                        className="w-14 px-1.5 py-1 text-center bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg font-mono font-bold text-xs"
+                        className={`w-14 px-1.5 py-1 text-center bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg font-mono font-bold text-xs ${
+                          !isMasterAdminRole || isReadonly ? 'opacity-70 cursor-not-allowed' : ''
+                        }`}
                       />
                       <span className="text-slate-400 text-[10px]">days</span>
                     </div>
@@ -1193,6 +1203,7 @@ export default function ConsultantPerformanceKpiWidget({
                         type="number"
                         min="0"
                         max="100"
+                        disabled={!isMasterAdminRole || isReadonly}
                         value={crit.weightPct}
                         onChange={(e) => {
                           const val = parseInt(e.target.value) || 0;
@@ -1200,12 +1211,14 @@ export default function ConsultantPerformanceKpiWidget({
                           updated[idx] = { ...updated[idx], weightPct: val };
                           setEditCriteriaForm(updated);
                         }}
-                        className="w-14 px-1.5 py-1 text-center bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg font-mono font-bold text-xs"
+                        className={`w-14 px-1.5 py-1 text-center bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg font-mono font-bold text-xs ${
+                          !isMasterAdminRole || isReadonly ? 'opacity-70 cursor-not-allowed' : ''
+                        }`}
                       />
                       <span className="text-slate-400 text-[10px]">%</span>
                     </div>
 
-                    {editCriteriaForm.length > 1 && (
+                    {isMasterAdminRole && !isReadonly && editCriteriaForm.length > 1 && (
                       <button
                         type="button"
                         onClick={() => {
@@ -1220,65 +1233,67 @@ export default function ConsultantPerformanceKpiWidget({
                   </div>
                 ))}
 
-                {/* Add New Criterion Row */}
-                <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-2">
-                  <div className="text-[11px] font-bold text-slate-500">Add Custom Submittal Type:</div>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      placeholder="e.g. Environmental Clearance"
-                      value={newCritName}
-                      onChange={(e) => setNewCritName(e.target.value)}
-                      className="flex-1 px-2.5 py-1.5 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl"
-                    />
-                    <div className="flex items-center gap-1">
+                {/* Add New Criterion Row (Master Admin Only) */}
+                {isMasterAdminRole && !isReadonly && (
+                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-2">
+                    <div className="text-[11px] font-bold text-slate-500">Add Custom Submittal Type:</div>
+                    <div className="flex items-center gap-2">
                       <input
-                        type="number"
-                        min="1"
-                        max="90"
-                        placeholder="Days"
-                        value={newCritTarget}
-                        onChange={(e) => setNewCritTarget(parseInt(e.target.value) || 1)}
-                        className="w-14 px-1.5 py-1.5 text-center bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl font-mono text-xs"
+                        type="text"
+                        placeholder="e.g. Environmental Clearance"
+                        value={newCritName}
+                        onChange={(e) => setNewCritName(e.target.value)}
+                        className="flex-1 px-2.5 py-1.5 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl"
                       />
-                      <span className="text-slate-400 text-[11px]">d</span>
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="number"
+                          min="1"
+                          max="90"
+                          placeholder="Days"
+                          value={newCritTarget}
+                          onChange={(e) => setNewCritTarget(parseInt(e.target.value) || 1)}
+                          className="w-14 px-1.5 py-1.5 text-center bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl font-mono text-xs"
+                        />
+                        <span className="text-slate-400 text-[11px]">d</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          placeholder="Weight"
+                          value={newCritWeight}
+                          onChange={(e) => setNewCritWeight(parseInt(e.target.value) || 0)}
+                          className="w-14 px-1.5 py-1.5 text-center bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl font-mono text-xs"
+                        />
+                        <span className="text-slate-400 text-[11px]">%</span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1">
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        placeholder="Weight"
-                        value={newCritWeight}
-                        onChange={(e) => setNewCritWeight(parseInt(e.target.value) || 0)}
-                        className="w-14 px-1.5 py-1.5 text-center bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl font-mono text-xs"
-                      />
-                      <span className="text-slate-400 text-[11px]">%</span>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!newCritName.trim()) {
+                          alert('Please enter a valid criterion name.');
+                          return;
+                        }
+                        const newItem: EvaluationCriteriaItem = {
+                          id: `crit_${Date.now()}`,
+                          name: newCritName.trim(),
+                          targetDays: newCritTarget,
+                          weightPct: newCritWeight
+                        };
+                        setEditCriteriaForm([...editCriteriaForm, newItem]);
+                        setNewCritName('');
+                        setNewCritTarget(7);
+                        setNewCritWeight(10);
+                      }}
+                      className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition shadow-xs cursor-pointer"
+                    >
+                      Add Criterion to Evaluation Matrix
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!newCritName.trim()) {
-                        alert('Please enter a valid criterion name.');
-                        return;
-                      }
-                      const newItem: EvaluationCriteriaItem = {
-                        id: `crit_${Date.now()}`,
-                        name: newCritName.trim(),
-                        targetDays: newCritTarget,
-                        weightPct: newCritWeight
-                      };
-                      setEditCriteriaForm([...editCriteriaForm, newItem]);
-                      setNewCritName('');
-                      setNewCritTarget(7);
-                      setNewCritWeight(10);
-                    }}
-                    className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition shadow-xs cursor-pointer"
-                  >
-                    Add Criterion to Evaluation Matrix
-                  </button>
-                </div>
+                )}
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
@@ -1287,29 +1302,31 @@ export default function ConsultantPerformanceKpiWidget({
                   onClick={() => setIsTargetSettingsOpen(false)}
                   className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl cursor-pointer"
                 >
-                  Cancel
+                  {isMasterAdminRole && !isReadonly ? 'Cancel' : 'Close'}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const updatedOverrides: Record<string, number> = {};
-                    editCriteriaForm.forEach(c => {
-                      updatedOverrides[c.name] = c.targetDays;
-                    });
-                    const updatedConsultant: SupervisionConsultantInfo = {
-                      ...consultant,
-                      evaluationCriteria: editCriteriaForm,
-                      targetOverrides: updatedOverrides
-                    };
-                    if (onUpdateConsultant) {
-                      onUpdateConsultant(updatedConsultant, 'Updated evaluation criteria, target SLA days, and weightage percentages');
-                    }
-                    setIsTargetSettingsOpen(false);
-                  }}
-                  className="px-5 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-xs cursor-pointer"
-                >
-                  Save Criteria & Weightages
-                </button>
+                {isMasterAdminRole && !isReadonly && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const updatedOverrides: Record<string, number> = {};
+                      editCriteriaForm.forEach(c => {
+                        updatedOverrides[c.name] = c.targetDays;
+                      });
+                      const updatedConsultant: SupervisionConsultantInfo = {
+                        ...consultant,
+                        evaluationCriteria: editCriteriaForm,
+                        targetOverrides: updatedOverrides
+                      };
+                      if (onUpdateConsultant) {
+                        onUpdateConsultant(updatedConsultant, 'Updated evaluation criteria, target SLA days, and weightage percentages');
+                      }
+                      setIsTargetSettingsOpen(false);
+                    }}
+                    className="px-5 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-xs cursor-pointer"
+                  >
+                    Save Criteria & Weightages
+                  </button>
+                )}
               </div>
             </motion.div>
           </div>

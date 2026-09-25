@@ -5,6 +5,7 @@ export interface RoleVisibilityFlags {
   showSection1SubmittalLog: boolean;
   showSection2EvaluationMatrix: boolean;
   canEditCriteria: boolean;
+  canViewCriteria: boolean;
 }
 
 /**
@@ -23,12 +24,6 @@ export function getRoleVisibilityFlags(
 ): RoleVisibilityFlags {
   const r = (role || '').toLowerCase().trim();
 
-  const isMasterAdminRole =
-    isMasterAdminOverride === true ||
-    r === 'master_admin' ||
-    r === 'master admin' ||
-    (r === 'admin' && !r.includes('cpm') && !r.includes('pmo') && !r.includes('directorate'));
-
   const isCpmOrDirectorateAdmin =
     r === 'cpm_admin' ||
     r === 'cpm admin' ||
@@ -43,25 +38,39 @@ export function getRoleVisibilityFlags(
     r === 'era editor' ||
     r === 'era approver';
 
-  // Executive Summary Header & Scorecards visibility
+  // Master Admin role check: CPM Admin, Directorate Admin, PMO Admin, and ERA users are NEVER Master Admin
+  const isMasterAdminRole =
+    !isCpmOrDirectorateAdmin &&
+    !isPmoAdmin &&
+    !isEraUser &&
+    (isMasterAdminOverride === true ||
+      r === 'master_admin' ||
+      r === 'master admin' ||
+      (r === 'admin' && !r.includes('cpm') && !r.includes('pmo') && !r.includes('directorate')));
+
+  // Executive Summary Header & Scorecards visibility: Hidden for PMO Admin; Visible for Master Admin, CPM Admin, Directorate Admin, ERA
   const showHeaderAndScorecards = !isPmoAdmin;
 
-  // Section 1: Submittal Log & SLA Turnaround (Pillar I)
+  // Section 1: Submittal Log & SLA Turnaround (Pillar I): Visible for Master Admin and PMO Admin; Hidden for CPM, Directorate Admin, and ERA
   const showSection1SubmittalLog =
-    isMasterAdminRole || isPmoAdmin || (!isCpmOrDirectorateAdmin && !isEraUser);
+    isMasterAdminRole || isPmoAdmin || (!isCpmOrDirectorateAdmin && !isEraUser && !r.includes('directorate'));
 
-  // Section 2: Supervision Consultant Performance Evaluation Criteria (Pillar II)
+  // Section 2: Supervision Consultant Performance Evaluation Criteria (Pillar II): Visible for Master Admin, PMO Admin, and ERA users; Hidden for CPM & Directorate Admin
   const showSection2EvaluationMatrix =
-    isMasterAdminRole || isPmoAdmin || isEraUser || (!isCpmOrDirectorateAdmin && !isEraUser && !isPmoAdmin);
+    isMasterAdminRole || isPmoAdmin || isEraUser || (!isCpmOrDirectorateAdmin && !isEraUser && !isPmoAdmin && !r.includes('directorate'));
 
-  // Action controls (editing criteria, reset defaults)
+  // Action controls: Editing & updating criteria is strictly for Master Admin
   const canEditCriteria = isMasterAdminRole;
+
+  // Criteria viewing: Master Admin can edit, CPM Admin & Directorate Admin can view
+  const canViewCriteria = isMasterAdminRole || isCpmOrDirectorateAdmin;
 
   return {
     showHeaderAndScorecards,
     showSection1SubmittalLog,
     showSection2EvaluationMatrix,
     canEditCriteria,
+    canViewCriteria,
   };
 }
 
@@ -73,13 +82,11 @@ export interface ConsultantPerformanceRoleWrapperProps {
   /** Optional override for general admin status */
   isAdmin?: boolean;
   /** Component content for the Executive Summary Header & KPI Scorecards */
-  executiveSummary: React.ReactNode;
+  executiveSummary: React.ReactNode | ((flags: RoleVisibilityFlags) => React.ReactNode);
   /** Component content for Section 1: Submittal Log & SLA Turnaround */
   submittalLog: React.ReactNode;
   /** Component content for Section 2: Supervision Consultant Performance Evaluation Criteria */
   evaluationMatrix: React.ReactNode;
-  /** Optional action controls (e.g. Manage Targets, Reset to Defaults) visible to Master Admins */
-  actionControls?: React.ReactNode;
   /** Optional container CSS classes */
   className?: string;
 }
@@ -95,7 +102,6 @@ export const ConsultantPerformanceRoleWrapper: React.FC<ConsultantPerformanceRol
   executiveSummary,
   submittalLog,
   evaluationMatrix,
-  actionControls,
   className = '',
 }) => {
   const flags = useMemo(
@@ -103,24 +109,19 @@ export const ConsultantPerformanceRoleWrapper: React.FC<ConsultantPerformanceRol
     [userRole, isMasterAdmin, isAdmin]
   );
 
+  const hasOperationalSections = flags.showSection1SubmittalLog || flags.showSection2EvaluationMatrix;
+
   return (
     <div className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-6 ${className}`}>
       {/* Executive Summary Header & Scorecards */}
       {flags.showHeaderAndScorecards && (
-        <div className="space-y-6 border-b border-slate-100 dark:border-slate-800 pb-6">
-          {executiveSummary}
-        </div>
-      )}
-
-      {/* Action Controls for Master Admin */}
-      {flags.canEditCriteria && actionControls && (
-        <div className="flex flex-wrap items-center justify-end gap-2 border-b border-slate-100 dark:border-slate-800 pb-4">
-          {actionControls}
+        <div className={`space-y-6 ${hasOperationalSections ? 'border-b border-slate-100 dark:border-slate-800 pb-6' : ''}`}>
+          {typeof executiveSummary === 'function' ? executiveSummary(flags) : executiveSummary}
         </div>
       )}
 
       {/* Operational Sections Container */}
-      {(flags.showSection1SubmittalLog || flags.showSection2EvaluationMatrix) && (
+      {hasOperationalSections && (
         <div className="space-y-8">
           {/* Section 1: Submittal Log & Operational SLA Turnaround (Pillar I) */}
           {flags.showSection1SubmittalLog && submittalLog}
