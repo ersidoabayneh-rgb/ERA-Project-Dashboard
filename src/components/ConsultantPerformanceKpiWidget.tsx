@@ -81,43 +81,56 @@ export default function ConsultantPerformanceKpiWidget({
 
   const userRole = (currentUser?.role || '').toLowerCase();
 
+  const isMasterAdminRole = useMemo(() => {
+    if (isMasterAdmin === true) return true;
+    if (!currentUser) return isAdmin;
+    return (
+      userRole === 'master_admin' ||
+      userRole === 'master admin' ||
+      userRole === 'admin'
+    );
+  }, [isMasterAdmin, isAdmin, currentUser, userRole]);
+
+  const isCpmOrDirectorateAdmin = useMemo(() => {
+    return (
+      userRole === 'cpm_admin' ||
+      userRole === 'cpm admin' ||
+      userRole === 'directorate_admin' ||
+      userRole === 'directorate admin'
+    );
+  }, [userRole]);
+
+  const isPmoAdmin = useMemo(() => {
+    return userRole === 'pmo_admin' || userRole === 'pmo admin';
+  }, [userRole]);
+
   const isEraUser = useMemo(() => {
     return userRole === 'era_editor' || userRole === 'era_approver' || userRole === 'era editor' || userRole === 'era approver';
   }, [userRole]);
 
-  const isMasterOrCpmOrDirectorateAdmin = useMemo(() => {
-    return (
-      userRole === 'master_admin' ||
-      userRole === 'master admin' ||
-      userRole === 'cpm_admin' ||
-      userRole === 'cpm admin' ||
-      userRole === 'directorate_admin' ||
-      userRole === 'directorate admin' ||
-      userRole === 'admin'
-    );
-  }, [userRole]);
+  // Executive Summary Header & Scorecards visibility
+  const showHeaderAndScorecards = useMemo(() => {
+    if (isPmoAdmin) return false; // PMO Admin hides Executive Summary Header & Scorecards
+    return true; // Master Admin, CPM Admin, Directorate Admin, ERA users, etc. show Header & Scorecards
+  }, [isPmoAdmin]);
 
+  // Section 1: Submittal Log & Operational SLA Turnaround (Pillar I)
   const showSection1 = useMemo(() => {
-    if (isMasterOrCpmOrDirectorateAdmin) return false;
-    if (isEraUser) return false;
-    return true; // Visible for PMO Admin and other operational roles
-  }, [isMasterOrCpmOrDirectorateAdmin, isEraUser]);
+    if (isMasterAdminRole) return true; // Master Admin sees everything
+    if (isCpmOrDirectorateAdmin) return false; // CPM & Directorate Admin hide Section 1
+    if (isEraUser) return false; // ERA User hides Section 1
+    if (isPmoAdmin) return true; // PMO Admin shows Section 1
+    return true;
+  }, [isMasterAdminRole, isCpmOrDirectorateAdmin, isEraUser, isPmoAdmin]);
 
+  // Section 2: Supervision Consultant Performance Evaluation Criteria
   const showSection2 = useMemo(() => {
-    if (isMasterOrCpmOrDirectorateAdmin) return false;
-    return true; // Visible for PMO Admin, ERA approvers/editors, and other evaluation roles
-  }, [isMasterOrCpmOrDirectorateAdmin]);
-
-  const isMasterAdminRole = useMemo(() => {
-    if (isMasterAdmin !== undefined) return isMasterAdmin;
-    if (!currentUser) return isAdmin;
-    return (
-      userRole === 'master_admin' ||
-      userRole === 'admin' ||
-      userRole === 'cpm_admin' ||
-      isAdmin
-    );
-  }, [isMasterAdmin, isAdmin, userRole]);
+    if (isMasterAdminRole) return true; // Master Admin sees everything
+    if (isCpmOrDirectorateAdmin) return false; // CPM & Directorate Admin hide Section 2
+    if (isPmoAdmin) return true; // PMO Admin shows Section 2
+    if (isEraUser) return true; // ERA User shows Section 2
+    return true;
+  }, [isMasterAdminRole, isCpmOrDirectorateAdmin, isPmoAdmin, isEraUser]);
 
   const calculatedEvaluation = useMemo(() => {
     return getProjectConsultantEvaluation(project, consultant);
@@ -477,7 +490,9 @@ export default function ConsultantPerformanceKpiWidget({
   return (
     <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-6">
       {/* Top Banner / Widget Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
+      {showHeaderAndScorecards && (
+        <>
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
         <div className="space-y-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
@@ -504,7 +519,7 @@ export default function ConsultantPerformanceKpiWidget({
 
         {/* Action Controls */}
         <div className="flex flex-wrap items-center gap-2">
-          {!isReadonly && isAdmin && !isEraUser && (
+          {!isReadonly && isMasterAdminRole && (
             <button
               onClick={() => {
                 setEditCriteriaForm(evaluationCriteria);
@@ -518,7 +533,7 @@ export default function ConsultantPerformanceKpiWidget({
             </button>
           )}
 
-          {!isReadonly && !isEraUser && (
+          {!isReadonly && isMasterAdminRole && (
             <button
               onClick={handleResetToDefaults}
               title="Reset to standard contract benchmarks"
@@ -595,8 +610,7 @@ export default function ConsultantPerformanceKpiWidget({
         </div>
       )}
 
-      <div className="space-y-8">
-        {/* Dynamic Dual-Pillar Composite Scorecard Banner */}
+      {/* Dynamic Dual-Pillar Composite Scorecard Banner */}
         {isEraUser ? (
           <div className="p-5 rounded-3xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-indigo-500/30 shadow-lg text-white space-y-4">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-indigo-800/40 pb-4">
@@ -704,9 +718,14 @@ export default function ConsultantPerformanceKpiWidget({
             </div>
           </div>
         )}
+      </>
+      )}
 
-        {/* Section 1: Submittal Log & Operational SLA Turnaround (21 items - Pillar I) */}
-        {showSection1 && (
+      {/* Operational Sections (Section 1 & Section 2) */}
+      {(showSection1 || showSection2) && (
+        <div className="space-y-8">
+          {/* Section 1: Submittal Log & Operational SLA Turnaround (21 items - Pillar I) */}
+          {showSection1 && (
         <div className="space-y-6 pb-8 border-b border-slate-100 dark:border-slate-800">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-2">
             <div className="flex items-center gap-2">
@@ -1111,7 +1130,8 @@ export default function ConsultantPerformanceKpiWidget({
             />
           </div>
         )}
-      </div>
+        </div>
+      )}
 
       {/* Target Settings & Weightages Modal */}
       <AnimatePresence>
