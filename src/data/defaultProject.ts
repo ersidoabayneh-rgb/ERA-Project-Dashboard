@@ -170,6 +170,7 @@ export const defaultRoadRisks = (): RiskItem[] => [
     probability: 4,
     impact: 5,
     mitigation: 'Proactive liaison with regional utility departments (EEU, Tele) and pre-disbursed compensation funds.',
+    mitigationAction: 'Initiate contact with EEU and Ethio Telecom representatives for relocations.',
     status: 'Active'
   },
   {
@@ -179,6 +180,7 @@ export const defaultRoadRisks = (): RiskItem[] => [
     probability: 3,
     impact: 4,
     mitigation: 'Early completion of masonry retaining walls, proper cross-drainage culverts, and suspension of wet earthworks during peak rainfall.',
+    mitigationAction: 'Pre-order gabion wires and mobilize stone masonry teams to vulnerable locations.',
     status: 'Active'
   },
   {
@@ -188,6 +190,7 @@ export const defaultRoadRisks = (): RiskItem[] => [
     probability: 3,
     impact: 3,
     mitigation: 'Establish a secondary quarry crushing site, contract external aggregate suppliers, and secure regional community agreements early.',
+    mitigationAction: 'Draft alternative supplier agreement and coordinate community leader meetings.',
     status: 'Active'
   },
   {
@@ -197,6 +200,7 @@ export const defaultRoadRisks = (): RiskItem[] => [
     probability: 4,
     impact: 3,
     mitigation: 'Thorough laboratory testing of borrow areas, replacement with high-quality granular capping, or lime/cement stabilization.',
+    mitigationAction: 'Authorize cement stabilization test mix and procure lime additives.',
     status: 'Mitigated'
   },
   {
@@ -206,6 +210,7 @@ export const defaultRoadRisks = (): RiskItem[] => [
     probability: 2,
     impact: 4,
     mitigation: 'Enforce equipment mobilisation schedules under FIDIC Sub-clause 4.17 and establish partner repair workshops in neighboring hubs.',
+    mitigationAction: 'Issue 14-day notice under Sub-clause 15.1 if equipment is not mobilized.',
     status: 'Active'
   },
   {
@@ -215,6 +220,7 @@ export const defaultRoadRisks = (): RiskItem[] => [
     probability: 5,
     impact: 4,
     mitigation: 'Process regular price adjustment certificates under Sub-clause 13.8 and request early forex priority allocation.',
+    mitigationAction: 'Incorporate latest indices into IPC-14 calculations for review.',
     status: 'Active'
   }
 ];
@@ -1399,7 +1405,7 @@ export const defaultSupervisionConsultant = (): SupervisionConsultantInfo => ({
       foreignCurrencyCode: 'USD',
       status: 'Certified',
       paymentReference: 'ERA-PV-20260320-77',
-      remarks: 'Certified by ERA Project Management Directorate; awaiting Ministry treasury disbursement.',
+      remarks: 'Certified by ERA Project Management Directorate; awaiting Ministry budget disbursement.',
       attachmentName: 'Consultant_Invoice_04_Certified.pdf'
     },
     {

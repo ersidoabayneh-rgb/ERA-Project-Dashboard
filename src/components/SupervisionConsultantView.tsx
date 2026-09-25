@@ -2259,7 +2259,7 @@ export default function SupervisionConsultantView({
                 {formatAccounting(financialSummary.totalCertifiedPendingEtb, 'ETB')}
               </div>
               <div className="text-[10px] text-amber-500 font-semibold mt-0.5">
-                Approved, awaiting treasury transfer
+                Approved, awaiting bank transfer
               </div>
             </div>
 

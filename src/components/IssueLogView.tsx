@@ -323,8 +323,8 @@ const defaultSampleIssues: IssueLogItem[] = [
     timeImpactDays: 28,
     priority: 'High',
     currentStatus: 'Submitted / Under Review',
-    currentStage: 'Stage 1: Initial Payment Audit & Treasury Release',
-    latestProgressSummary: 'Audit verified certificate calculations. Treasury transfer queue currently processing budget disbursement batch.',
+    currentStage: 'Stage 1: Initial Payment Audit & Fund Release',
+    latestProgressSummary: 'Audit verified certificate calculations. Payment queue currently processing budget disbursement batch.',
     currentBottleneck: 'Awaiting Ministry of Finance quarterly budget release transfer to ERA project account.',
     history: [
       {

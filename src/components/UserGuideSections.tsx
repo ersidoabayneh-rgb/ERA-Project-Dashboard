@@ -3110,7 +3110,7 @@ export default function UserGuideSections({ onScrollToSection, onDownloadPdf }: 
         </div>
         <h2 className="text-xl font-black text-slate-900 dark:text-white">Multi-Year Financial Commitments & Fiscal Budget Allocation</h2>
         <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">
-          Maps contractual outlays against Ethiopian Fiscal Year (EFY) budgetary envelopes, treasury disbursements, donor co-financing quotas (AfDB, World Bank, JICA), and multi-year commitment forecasts.
+          Maps contractual outlays against Ethiopian Fiscal Year (EFY) budgetary envelopes, government disbursements, donor co-financing quotas (AfDB, World Bank, JICA), and multi-year commitment forecasts.
         </p>
 
         {/* Screen Mockup: Figure 26.1 Fiscal Allocation Matrix */}
@@ -3142,7 +3142,7 @@ export default function UserGuideSections({ onScrollToSection, onDownloadPdf }: 
         </ScreenMockup>
 
         <p className="text-2xs text-slate-500 dark:text-slate-400 italic">
-          <strong>Figure 26.1 — Multi-Year Ethiopian Fiscal Year (EFY) Budget Allocation Matrix:</strong> Tracks state treasury allocations, co-financier drawdowns, and expenditure projections across Ethiopian fiscal cycles.
+          <strong>Figure 26.1 — Multi-Year Ethiopian Fiscal Year (EFY) Budget Allocation Matrix:</strong> Tracks state budget allocations, co-financier drawdowns, and expenditure projections across Ethiopian fiscal cycles.
         </p>
 
         {/* Step-by-Step Instructions */}

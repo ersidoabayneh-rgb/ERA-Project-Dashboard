@@ -48,6 +48,7 @@ export default function ProjectRisksView({
   const [newProbability, setNewProbability] = useState<number>(3);
   const [newImpact, setNewImpact] = useState<number>(3);
   const [newMitigation, setNewMitigation] = useState('');
+  const [newMitigationAction, setNewMitigationAction] = useState('');
   const [newStatus, setNewStatus] = useState<'Active' | 'Mitigated' | 'Retired'>('Active');
   const [formError, setFormError] = useState('');
 
@@ -86,6 +87,10 @@ export default function ProjectRisksView({
       setFormError('Please define a mitigation or contingency plan.');
       return;
     }
+    if (!newMitigationAction.trim()) {
+      setFormError('Please define a specific mitigation action or status update.');
+      return;
+    }
 
     const item: RiskItem = {
       id: 'risk_' + Date.now(),
@@ -94,6 +99,7 @@ export default function ProjectRisksView({
       probability: newProbability,
       impact: newImpact,
       mitigation: newMitigation.trim(),
+      mitigationAction: newMitigationAction.trim(),
       status: newStatus
     };
 
@@ -103,6 +109,7 @@ export default function ProjectRisksView({
     // Reset Form
     setNewDescription('');
     setNewMitigation('');
+    setNewMitigationAction('');
     setNewProbability(3);
     setNewImpact(3);
     setFormError('');
@@ -850,13 +857,24 @@ export default function ProjectRisksView({
                 </select>
               </div>
 
-              <div className="md:col-span-6 space-y-1">
-                <label className="text-[10px] text-slate-400 uppercase tracking-wide">Mitigation & Action Protocol</label>
+              <div className="md:col-span-4 space-y-1">
+                <label className="text-[10px] text-slate-400 uppercase tracking-wide">Mitigation Protocol / Plan</label>
                 <input
                   type="text"
                   placeholder="e.g., Construct permanent stone masonry revetment walls and elevate asphalt grade early."
                   value={newMitigation}
                   onChange={(e) => setNewMitigation(e.target.value)}
+                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-705 py-2 px-3 rounded-xl text-slate-700 dark:text-slate-300 font-bold outline-none"
+                />
+              </div>
+
+              <div className="md:col-span-4 space-y-1">
+                <label className="text-[10px] text-slate-400 uppercase tracking-wide">Mitigation Action</label>
+                <input
+                  type="text"
+                  placeholder="e.g., Mobilize mason team & execute revetment foundation works."
+                  value={newMitigationAction}
+                  onChange={(e) => setNewMitigationAction(e.target.value)}
                   className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-705 py-2 px-3 rounded-xl text-slate-700 dark:text-slate-300 font-bold outline-none"
                 />
               </div>
@@ -1149,7 +1167,7 @@ export default function ProjectRisksView({
                       {/* Mitigation / Matrix Score adjustments */}
                       <div className="pt-2 border-t border-slate-100 dark:border-slate-800 grid grid-cols-1 md:grid-cols-12 gap-2 text-[10px] font-semibold text-slate-500 dark:text-slate-400">
                         
-                        <div className="md:col-span-8 flex flex-col gap-0.5">
+                        <div className="md:col-span-4 flex flex-col gap-0.5">
                           <span className="text-[8px] text-slate-400 font-mono uppercase tracking-wide">Mitigation Protocol</span>
                           {isReadonly ? (
                             <p className="text-slate-700 dark:text-slate-300 font-medium">
@@ -1160,6 +1178,23 @@ export default function ProjectRisksView({
                               type="text"
                               value={r.mitigation}
                               onChange={(e) => handleUpdateField(r.id, 'mitigation', e.target.value)}
+                              className="bg-transparent border-none text-slate-700 dark:text-slate-300 font-bold w-full outline-none focus:bg-slate-100/55 dark:focus:bg-slate-800/60 p-0.5 rounded"
+                            />
+                          )}
+                        </div>
+
+                        <div className="md:col-span-4 flex flex-col gap-0.5">
+                          <span className="text-[8px] text-slate-400 font-mono uppercase tracking-wide">Mitigation Action</span>
+                          {isReadonly ? (
+                            <p className="text-slate-700 dark:text-slate-300 font-medium">
+                              {r.mitigationAction || 'No action defined'}
+                            </p>
+                          ) : (
+                            <input
+                              type="text"
+                              value={r.mitigationAction || ''}
+                              onChange={(e) => handleUpdateField(r.id, 'mitigationAction', e.target.value)}
+                              placeholder="No action defined"
                               className="bg-transparent border-none text-slate-700 dark:text-slate-300 font-bold w-full outline-none focus:bg-slate-100/55 dark:focus:bg-slate-800/60 p-0.5 rounded"
                             />
                           )}

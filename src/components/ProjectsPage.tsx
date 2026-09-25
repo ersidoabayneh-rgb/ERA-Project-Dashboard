@@ -34,10 +34,9 @@ import {
   Landmark
 } from 'lucide-react';
 import { Project, User, ApprovalRequest, ProjectLifecycleStatus, isProjectClosed, isCpmOrMasterAdmin, isRecentlyUpdated, formatRelativeTime } from '../types';
-import { canUserApproveRequest, hasApprovalCredentials, canAccessTreasuryPay } from '../App';
+import { canUserApproveRequest, hasApprovalCredentials } from '../App';
 import eraLogo from '../assets/logo.png';
 import GroupReportGenerator from './GroupReportGenerator';
-import { TreasuryPayView } from './TreasuryPay/TreasuryPayView';
 import { downloadUserManual } from '../data/userManual';
 
 interface ProjectsPageProps {
@@ -120,8 +119,6 @@ export default function ProjectsPage({
 
   // Group report generator toggle state
   const [showReportGenerator, setShowReportGenerator] = useState(false);
-  // TreasuryPay Real-Time Gateway toggle state
-  const [showTreasuryPay, setShowTreasuryPay] = useState(false);
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [newProjectId, setNewProjectId] = useState('');
@@ -754,26 +751,6 @@ export default function ProjectsPage({
               </button>
             )}
 
-            {/* TreasuryPay Real-Time Gateway & Financial Management Button (Restricted to Department Head, Finance Director, Director General) */}
-            {canAccessTreasuryPay(currentUserObj) && (
-              <button
-                onClick={() => setShowTreasuryPay(!showTreasuryPay)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shadow-xs ${
-                  showTreasuryPay
-                    ? 'bg-emerald-600 text-white hover:bg-emerald-700 ring-2 ring-emerald-400/40'
-                    : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100 dark:bg-emerald-950/30 dark:text-emerald-300 dark:hover:bg-emerald-900/40 border border-emerald-200/80 dark:border-emerald-800/60'
-                }`}
-                title="Financial Management & Real-Time Bank Gateway Application (TreasuryPay) — Restricted Access"
-              >
-                <Landmark className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                <span>TreasuryPay</span>
-                <span className="flex h-2 w-2 relative">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                </span>
-              </button>
-            )}
-
             {/* Theme Settings button immediately next to Group Reports */}
             <button
               onClick={() => {
@@ -917,18 +894,6 @@ export default function ProjectsPage({
               pmos={pmos}
               onClose={() => setShowReportGenerator(false)}
             />
-          )}
-        </AnimatePresence>
-
-        {/* TreasuryPay Real-Time Gateway & Financial Management View */}
-        <AnimatePresence>
-          {canAccessTreasuryPay(currentUserObj) && showTreasuryPay && (
-            <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/70 backdrop-blur-xs">
-              <TreasuryPayView 
-                onClose={() => setShowTreasuryPay(false)} 
-                currentUser={currentUserObj}
-              />
-            </div>
           )}
         </AnimatePresence>
 

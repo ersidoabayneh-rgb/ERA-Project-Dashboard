@@ -73,31 +73,6 @@ export function hasApprovalCredentials(user: User | null): boolean {
   );
 }
 
-export function canAccessTreasuryPay(user: User | null): boolean {
-  if (!user) return false;
-  const role = (user.role || '').toLowerCase();
-  const uname = (user.username || '').toLowerCase();
-
-  // Strict Governance RBAC: ONLY Department Head, Finance Director, and Director General can see & access the TreasuryPay button
-  // 1. Department Head
-  if (role === 'department_head' || uname === 'dept_head' || uname === 'depthead' || uname === 'department_head') {
-    return true;
-  }
-
-  // 2. Finance Director
-  if (role === 'finance_director' || uname === 'finance_director' || uname === 'financedirector' || uname === 'berhanu_zeleke') {
-    return true;
-  }
-
-  // 3. Director General
-  if (role === 'director_general' || uname === 'director_general' || uname === 'directorgeneral' || uname === 'habtamu_tegegne') {
-    return true;
-  }
-
-  // All other users (master admin, editors, viewers, approvers, contractors, consultants) cannot see or access the TreasuryPay button
-  return false;
-}
-
 export function canUpdateProjectInfo(user: User | null): boolean {
   if (!user) return false;
   const isMaster = user.role === 'admin' || 
@@ -290,7 +265,6 @@ import UserGuideManualModal from './components/UserGuideManualModal';
 import ThemeCustomizerModal from './components/ThemeCustomizerModal';
 import { UserProfileModal } from './components/UserProfileModal';
 import ApprovalWorkflowManager from './components/ApprovalWorkflowManager';
-import { TreasuryPayView } from './components/TreasuryPay/TreasuryPayView';
 import eraLogo from './assets/logo.png';
 
 import { defaultProjectTemplate, blankProjectTemplate, generateKpiAllocated } from './data/defaultProject';
@@ -815,7 +789,6 @@ export default function App() {
   const [selectedAdminUser, setSelectedAdminUser] = useState<string | null>(null);
   const [selectedAdminTab, setSelectedAdminTab] = useState<'projects' | 'credentials' | 'activities'>('projects');
   const [showApprovals, setShowApprovals] = useState(false);
-  const [showTreasuryPay, setShowTreasuryPay] = useState(false);
   const [showDraftsPlayground, setShowDraftsPlayground] = useState(false);
   const [showProjectApprovalBanner, setShowProjectApprovalBanner] = useState(true);
 
@@ -3887,20 +3860,6 @@ let isBatchSyncRunning = false;
                   >
                     <UserPlus className="w-3.5 h-3.5" />
                     <span>Approve Credentials ({usersListState.filter(u => u && u.isPendingApproval).length})</span>
-                  </button>
-                )}
-                {canAccessTreasuryPay(currentUserObj) && (
-                  <button
-                    onClick={() => setShowTreasuryPay(!showTreasuryPay)}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white p-2 rounded-full border border-emerald-500/40 flex items-center gap-1.5 text-[11px] font-extrabold px-3 py-1.5 transition shadow-sm cursor-pointer"
-                    title="TreasuryPay Financial Management & Real-Time Gateway — Restricted Access"
-                  >
-                    <Landmark className="w-3.5 h-3.5 text-emerald-200" />
-                    <span>TreasuryPay</span>
-                    <span className="flex h-2 w-2 relative">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-300 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
-                    </span>
                   </button>
                 )}
                 <button
@@ -7772,48 +7731,6 @@ let isBatchSyncRunning = false;
         onUpdateTheme={handleUpdateTheme}
         onResetTheme={handleResetTheme}
       />
-
-      {/* TreasuryPay Financial Gateway Modal (Restricted Access) */}
-      {showTreasuryPay && canAccessTreasuryPay(currentUserObj) && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 animate-in fade-in duration-200">
-          <div className="w-full max-w-7xl max-h-[96vh] flex flex-col bg-white dark:bg-slate-900 rounded-3xl shadow-2xl overflow-hidden border border-slate-200 dark:border-slate-800">
-            <div className="p-3 bg-slate-900 dark:bg-slate-950 text-white flex justify-between items-center border-b border-slate-800">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-emerald-500/20 rounded-xl border border-emerald-500/30">
-                  <Landmark className="w-5 h-5 text-emerald-400" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
-                    <span>ERA TreasuryPay — Real-Time Financial Management</span>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                      {currentUserObj?.role === 'director_general' ? 'Director General Mandate' : currentUserObj?.role === 'finance_director' ? 'Finance Director Release' : 'Dept Head Valuation'}
-                    </span>
-                  </h3>
-                  <p className="text-[11px] text-slate-400">Restricted Multi-Tier Treasury Governance & Settlement Portal</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowTreasuryPay(false)}
-                className="p-2 hover:bg-slate-800 rounded-full transition text-slate-400 hover:text-white cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50 dark:bg-slate-900/50">
-              <TreasuryPayView 
-                currentUserRole={
-                  currentUserObj?.role === 'director_general' 
-                    ? 'director_general' 
-                    : currentUserObj?.role === 'finance_director' 
-                      ? 'finance_director' 
-                      : 'department_head'
-                }
-                currentUserName={currentUserObj?.fullName || currentUserObj?.username || 'Authorized Officer'}
-              />
-            </div>
-          </div>
-        </div>
-      )}
 
     </div>
   );

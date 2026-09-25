@@ -563,6 +563,8 @@ export interface Project {
   aiChatHistory?: any[];
   documents?: ProjectDocument[];
   supervisionConsultant?: SupervisionConsultantInfo;
+  approvedClaimsCostSum?: number;
+  variationClaimSettings?: any;
   segmentNotes?: Record<string, {
     notes?: string;
     structures?: string;
@@ -905,6 +907,7 @@ export interface RiskItem {
   probability: number; // 1-5
   impact: number;      // 1-5
   mitigation: string;
+  mitigationAction?: string;
   status: 'Active' | 'Mitigated' | 'Retired';
 }
 
