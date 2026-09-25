@@ -25,10 +25,9 @@ export function getRoleVisibilityFlags(
 
   const isMasterAdminRole =
     isMasterAdminOverride === true ||
-    isAdminOverride === true ||
     r === 'master_admin' ||
     r === 'master admin' ||
-    r === 'admin';
+    (r === 'admin' && !r.includes('cpm') && !r.includes('pmo') && !r.includes('directorate'));
 
   const isCpmOrDirectorateAdmin =
     r === 'cpm_admin' ||
