@@ -1746,7 +1746,7 @@ export default function RfiLogComponent({
                               <span className="text-slate-300 dark:text-slate-600 text-xs">-</span>
                             )}
 
-                            {!isReadonly && (!isContractorUser || canContractorAddOrEdit) && (
+                            {!isReadonly && isSupervisionConsultantApprover && (
                               <label
                                 className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg cursor-pointer transition inline-flex items-center justify-center"
                                 title="Attach PDF file to this RFI"
@@ -1931,7 +1931,7 @@ export default function RfiLogComponent({
                       <span className="font-semibold flex items-center gap-1.5">
                         <Clock className="w-3.5 h-3.5" /> Awaiting Consultant Clarification
                       </span>
-                      {!isReadonly && (
+                      {!isReadonly && isSupervisionConsultantApprover && (
                         <button
                           onClick={() => handleOpenRespondModal(rfi)}
                           className="px-2.5 py-1 text-[11px] font-bold bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition"
@@ -2076,13 +2076,13 @@ export default function RfiLogComponent({
                         <p className="text-xs text-amber-600 dark:text-amber-400 font-semibold">
                           Formal technical clarification directive is pending from the Resident Engineer.
                         </p>
-                        {!isReadonly && (
+                        {!isReadonly && isSupervisionConsultantApprover && (
                           <button
                             onClick={() => {
                               setIsThreadModalOpen(false);
                               handleOpenRespondModal(activeRfi);
                             }}
-                            className="px-4 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-xs transition"
+                            className="px-4 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-xs transition cursor-pointer"
                           >
                             Draft Directive Now
                           </button>
