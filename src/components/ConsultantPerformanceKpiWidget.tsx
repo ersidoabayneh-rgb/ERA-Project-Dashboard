@@ -109,6 +109,25 @@ export default function ConsultantPerformanceKpiWidget({
     );
   }, [isCpmOrDirectorateAdmin, isPmoAdmin, isEraUser, isMasterAdmin, userRole]);
 
+  // Master Director and CPM Admin role verification
+  const isMasterDirectorOrCpmAdmin = useMemo(() => {
+    if (!currentUser) return false;
+    const role = (currentUser.role || '').toLowerCase().trim();
+    const username = (currentUser.username || '').toLowerCase().trim();
+    const email = (currentUser.email || '').toLowerCase().trim();
+    return (
+      role === 'master_admin' ||
+      role === 'master admin' ||
+      role === 'cpm_admin' ||
+      role === 'cpm admin' ||
+      role === 'director_general' ||
+      role === 'directorgeneral' ||
+      username === 'proj_1781786415663' ||
+      username.includes('ersido') ||
+      email.includes('ersido')
+    );
+  }, [currentUser]);
+
   // Executive Summary Header & Scorecards visibility
   const showHeaderAndScorecards = useMemo(() => {
     if (isPmoAdmin) return false; // PMO Admin hides Executive Summary Header & Scorecards
@@ -647,13 +666,17 @@ export default function ConsultantPerformanceKpiWidget({
                         {pillar2ScoreValue.toFixed(1)}%
                       </span>
                     </div>
-                    <div className="h-8 w-px bg-white/10" />
-                    <div className="text-left">
-                      <span className="text-[9px] uppercase font-bold text-indigo-300 block">Official Grade</span>
-                      <span className="text-xs font-black text-amber-300 block mt-0.5">
-                        Grade {combinedGradeInfo.grade}
-                      </span>
-                    </div>
+                    {isMasterDirectorOrCpmAdmin && (
+                      <>
+                        <div className="h-8 w-px bg-white/10" />
+                        <div className="text-left">
+                          <span className="text-[9px] uppercase font-bold text-indigo-300 block">Official Grade</span>
+                          <span className="text-xs font-black text-amber-300 block mt-0.5">
+                            Grade {combinedGradeInfo.grade}
+                          </span>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
                 <div className="text-[11px] text-indigo-300/80 flex items-center gap-2">
@@ -709,14 +732,16 @@ export default function ConsultantPerformanceKpiWidget({
                       <span className="text-3xl font-black text-indigo-900 dark:text-indigo-100 font-mono">
                         {combinedAvgScoreValue.toFixed(1)}%
                       </span>
-                      <div className="flex flex-col">
-                        <span className="text-[10px] px-1.5 py-0.5 rounded font-black bg-indigo-600 text-white leading-tight">
-                          Grade {combinedGradeInfo.grade}
-                        </span>
-                        <span className="text-[9px] font-bold text-indigo-700 dark:text-indigo-300 leading-none mt-1">
-                          {combinedGradeInfo.standing}
-                        </span>
-                      </div>
+                      {isMasterDirectorOrCpmAdmin && (
+                        <div className="flex flex-col">
+                          <span className="text-[10px] px-1.5 py-0.5 rounded font-black bg-indigo-600 text-white leading-tight">
+                            Grade {combinedGradeInfo.grade}
+                          </span>
+                          <span className="text-[9px] font-bold text-indigo-700 dark:text-indigo-300 leading-none mt-1">
+                            {combinedGradeInfo.standing}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div className="p-2.5 rounded-lg bg-indigo-600 text-white shadow-xs">
@@ -812,15 +837,17 @@ export default function ConsultantPerformanceKpiWidget({
                     <CheckCircle2 className="w-3.5 h-3.5" />
                     Evaluation Score
                   </span>
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide border ${
-                    overallMetrics.totalEarnedScore >= 85
-                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
-                      : overallMetrics.totalEarnedScore >= 70
-                      ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border-amber-300 dark:border-amber-700'
-                      : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 border-rose-300 dark:border-rose-700'
-                  }`}>
-                    {overallMetrics.gradeLabel}
-                  </span>
+                  {isMasterDirectorOrCpmAdmin && (
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide border ${
+                      overallMetrics.totalEarnedScore >= 85
+                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
+                        : overallMetrics.totalEarnedScore >= 70
+                        ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border-amber-300 dark:border-amber-700'
+                        : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 border-rose-300 dark:border-rose-700'
+                    }`}>
+                      {overallMetrics.gradeLabel}
+                    </span>
+                  )}
                 </div>
 
                 <div className="flex items-baseline justify-between gap-2">

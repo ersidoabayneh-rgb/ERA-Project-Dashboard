@@ -108,6 +108,25 @@ export default function SupervisionConsultantView({
     );
   }, [currentUser]);
 
+  // Master Director and CPM Admin role verification
+  const isMasterDirectorOrCpmAdmin = useMemo(() => {
+    if (!currentUser) return false;
+    const role = (currentUser.role || '').toLowerCase().trim();
+    const username = (currentUser.username || '').toLowerCase().trim();
+    const email = (currentUser.email || '').toLowerCase().trim();
+    return (
+      role === 'master_admin' ||
+      role === 'master admin' ||
+      role === 'cpm_admin' ||
+      role === 'cpm admin' ||
+      role === 'director_general' ||
+      role === 'directorgeneral' ||
+      username === 'proj_1781786415663' ||
+      username.includes('ersido') ||
+      email.includes('ersido')
+    );
+  }, [currentUser]);
+
   // Extract or initialize supervision consultant data (bidirectionally linked with project.consultant)
   const consultant: SupervisionConsultantInfo = useMemo(() => {
     const linkedFirmName = project.supervisionConsultant?.firmName || project.consultant || 'Supervision Consultant JV';
@@ -4664,9 +4683,11 @@ export default function SupervisionConsultantView({
                     <span className="text-slate-400 text-[10px] uppercase font-bold block">Evaluation Score</span>
                     <div className="text-base font-black text-indigo-600 dark:text-indigo-400 mt-0.5 flex items-center gap-1.5">
                       <span>{selectedHistoricalConsultant.evaluationScore || 80}%</span>
-                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-extrabold border border-indigo-200">
-                        Grade {selectedHistoricalConsultant.officialGrade || 'B'}
-                      </span>
+                      {isMasterDirectorOrCpmAdmin && (
+                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-extrabold border border-indigo-200">
+                          Grade {selectedHistoricalConsultant.officialGrade || 'B'}
+                        </span>
+                      )}
                     </div>
                   </div>
 

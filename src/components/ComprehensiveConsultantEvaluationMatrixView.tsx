@@ -120,6 +120,25 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
     );
   }, [isMasterAdmin, currentUser, isAdmin]);
 
+  // Master Director and CPM Admin role verification
+  const isMasterDirectorOrCpmAdmin = useMemo(() => {
+    if (!currentUser) return false;
+    const role = (currentUser.role || '').toLowerCase().trim();
+    const username = (currentUser.username || '').toLowerCase().trim();
+    const email = (currentUser.email || '').toLowerCase().trim();
+    return (
+      role === 'master_admin' ||
+      role === 'master admin' ||
+      role === 'cpm_admin' ||
+      role === 'cpm admin' ||
+      role === 'director_general' ||
+      role === 'directorgeneral' ||
+      username === 'proj_1781786415663' ||
+      username.includes('ersido') ||
+      email.includes('ersido')
+    );
+  }, [currentUser]);
+
   // Editable criterion weights state for Master Admin
   const [customCriterionWeights, setCustomCriterionWeights] = useState<Record<string, number>>(() => {
     return consultant.customCriterionWeights || {};
@@ -815,7 +834,10 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
       performanceRating: evaluationResult.totalScore
     };
     onUpdateConsultant(updatedConsultant, `Recorded quantitative 5-dimension consultant evaluation: ${evaluationResult.totalScore}% (${evaluationResult.officialGrade}) based on submittals & SLA turnaround`);
-    setSaveSuccessMsg(`Evaluation successfully recorded! Overall Score: ${evaluationResult.totalScore}% (${evaluationResult.officialGrade})`);
+    const msg = isMasterDirectorOrCpmAdmin
+      ? `Evaluation successfully recorded! Overall Score: ${evaluationResult.totalScore}% (${evaluationResult.officialGrade})`
+      : `Evaluation successfully recorded! Overall Score: ${evaluationResult.totalScore}%`;
+    setSaveSuccessMsg(msg);
     setTimeout(() => setSaveSuccessMsg(null), 4000);
   };
 
@@ -1194,9 +1216,15 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
               <ShieldCheck className="w-6 h-6 text-indigo-400 shrink-0" />
               Supervision Consultant Performance Evaluation
             </h2>
-            <p className="text-xs text-indigo-200/80 max-w-3xl leading-relaxed">
-              Overall Scoring Formula: <span className="font-mono font-bold text-amber-300">S = (0.30×A) + (0.25×B) + (0.20×C) + (0.15×D) + (0.10×E)</span>. Scoring standard: Highest Likert rating (5.00) delivers the superior performance score value. Artificial auto-caps to 2.00 disabled.
-            </p>
+            {isMasterDirectorOrCpmAdmin ? (
+              <p className="text-xs text-indigo-200/80 max-w-3xl leading-relaxed">
+                Overall Scoring Formula: <span className="font-mono font-bold text-amber-300">S = (0.30×A) + (0.25×B) + (0.20×C) + (0.15×D) + (0.10×E)</span>. Scoring standard: Highest Likert rating (5.00) delivers the superior performance score value. Artificial auto-caps to 2.00 disabled.
+              </p>
+            ) : (
+              <p className="text-xs text-indigo-200/80 max-w-3xl leading-relaxed">
+                Performance Evaluation: Evaluation standard based on Likert ratings across evaluated dimensions.
+              </p>
+            )}
           </div>
 
           {/* Master Score Dial */}
@@ -1210,13 +1238,17 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
                 ({evaluationResult.overallScore1To5.toFixed(2)} / 5.00)
               </span>
             </div>
-            <div className="h-10 w-px bg-white/10" />
-            <div className="text-left">
-              <span className="text-[9px] uppercase font-bold text-indigo-300 block">Official Grade</span>
-              <span className={`inline-block mt-1 px-3 py-1 rounded-xl text-xs font-black border ${evaluationResult.gradeBadgeStyle}`}>
-                {evaluationResult.officialGrade}
-              </span>
-            </div>
+            {isMasterDirectorOrCpmAdmin && (
+              <>
+                <div className="h-10 w-px bg-white/10" />
+                <div className="text-left">
+                  <span className="text-[9px] uppercase font-bold text-indigo-300 block">Official Grade</span>
+                  <span className={`inline-block mt-1 px-3 py-1 rounded-xl text-xs font-black border ${evaluationResult.gradeBadgeStyle}`}>
+                    {evaluationResult.officialGrade}
+                  </span>
+                </div>
+              </>
+            )}
           </div>
         </div>
 
@@ -1319,13 +1351,17 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
                     {evaluationResult.compositeScore.toFixed(1)}%
                   </div>
                 </div>
-                <div className="h-10 w-px bg-white/10" />
-                <div className="text-left">
-                  <span className="text-[9px] uppercase font-bold text-indigo-300 block">Performance Tier</span>
-                  <span className={`inline-block mt-1 px-2.5 py-0.5 rounded-lg text-xs font-black border ${evaluationResult.gradeBadgeStyle}`}>
-                    {evaluationResult.gradeLabel}
-                  </span>
-                </div>
+                {isMasterDirectorOrCpmAdmin && (
+                  <>
+                    <div className="h-10 w-px bg-white/10" />
+                    <div className="text-left">
+                      <span className="text-[9px] uppercase font-bold text-indigo-300 block">Performance Tier</span>
+                      <span className={`inline-block mt-1 px-2.5 py-0.5 rounded-lg text-xs font-black border ${evaluationResult.gradeBadgeStyle}`}>
+                        {evaluationResult.gradeLabel}
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -1537,176 +1573,178 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
           </div>
 
           {/* Qualitative Grading Scale & Threshold Rules */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
-              <div>
-                <h3 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
-                  <Sliders className="w-4 h-4 text-purple-500" />
-                  Qualitative Grading Scale & Standing Rules
-                </h3>
-                <p className="text-xs text-slate-400">The corporate standing guidelines based on the final composite evaluation score</p>
+          {isMasterDirectorOrCpmAdmin && (
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
+                <div>
+                  <h3 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
+                    <Sliders className="w-4 h-4 text-purple-500" />
+                    Qualitative Grading Scale & Standing Rules
+                  </h3>
+                  <p className="text-xs text-slate-400">The corporate standing guidelines based on the final composite evaluation score</p>
+                </div>
+
+                {isMasterAdminUser && !isReadonly && (
+                  <button
+                    type="button"
+                    onClick={() => setShowThresholdsConfig(!showThresholdsConfig)}
+                    className="px-3 py-1.5 rounded-xl bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 hover:bg-purple-100 text-xs font-bold transition flex items-center gap-1.5 border border-purple-200 dark:border-purple-800 cursor-pointer"
+                  >
+                    <Settings className="w-3.5 h-3.5" />
+                    {showThresholdsConfig ? 'Hide Thresholds Config' : 'Configure Grading Thresholds'}
+                  </button>
+                )}
               </div>
 
-              {isMasterAdminUser && !isReadonly && (
-                <button
-                  type="button"
-                  onClick={() => setShowThresholdsConfig(!showThresholdsConfig)}
-                  className="px-3 py-1.5 rounded-xl bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 hover:bg-purple-100 text-xs font-bold transition flex items-center gap-1.5 border border-purple-200 dark:border-purple-800 cursor-pointer"
-                >
-                  <Settings className="w-3.5 h-3.5" />
-                  {showThresholdsConfig ? 'Hide Thresholds Config' : 'Configure Grading Thresholds'}
-                </button>
-              )}
-            </div>
-
-            {/* Threshold Editor (Visible to Master Admins) */}
-            <AnimatePresence>
-              {showThresholdsConfig && isMasterAdminUser && !isReadonly && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="overflow-hidden space-y-3 bg-purple-50/40 dark:bg-purple-950/20 p-4 rounded-xl border border-purple-100 dark:border-purple-900/40 text-xs"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-purple-900 dark:text-purple-200">Qualitative Grading Configuration Matrix (Master Admin)</span>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={handleResetThresholds}
-                        className="text-purple-600 dark:text-purple-400 hover:underline font-bold"
-                      >
-                        Reset Defaults
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleAddThresholdTier}
-                        className="px-2 py-1 rounded bg-purple-600 text-white font-bold hover:bg-purple-700 flex items-center gap-1"
-                      >
-                        <Plus className="w-3 h-3" /> Add Tier
-                      </button>
+              {/* Threshold Editor (Visible to Master Admins) */}
+              <AnimatePresence>
+                {showThresholdsConfig && isMasterAdminUser && !isReadonly && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="overflow-hidden space-y-3 bg-purple-50/40 dark:bg-purple-950/20 p-4 rounded-xl border border-purple-100 dark:border-purple-900/40 text-xs"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-purple-900 dark:text-purple-200">Qualitative Grading Configuration Matrix (Master Admin)</span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleResetThresholds}
+                          className="text-purple-600 dark:text-purple-400 hover:underline font-bold"
+                        >
+                          Reset Defaults
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleAddThresholdTier}
+                          className="px-2 py-1 rounded bg-purple-600 text-white font-bold hover:bg-purple-700 flex items-center gap-1"
+                        >
+                          <Plus className="w-3 h-3" /> Add Tier
+                        </button>
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="space-y-2 max-h-60 overflow-y-auto">
-                    {customThresholds.map((tier, index) => (
-                      <div key={`thresh-edit-${tier.id || 'tier'}-${index}`} className="grid grid-cols-1 sm:grid-cols-5 gap-2 items-center bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-purple-100 dark:border-purple-950/80">
-                        <div className="flex items-center gap-1">
-                          <span className="text-[10px] font-bold text-slate-400 font-mono">#{index+1}</span>
+                    <div className="space-y-2 max-h-60 overflow-y-auto">
+                      {customThresholds.map((tier, index) => (
+                        <div key={`thresh-edit-${tier.id || 'tier'}-${index}`} className="grid grid-cols-1 sm:grid-cols-5 gap-2 items-center bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-purple-100 dark:border-purple-950/80">
+                          <div className="flex items-center gap-1">
+                            <span className="text-[10px] font-bold text-slate-400 font-mono">#{index+1}</span>
+                            <input
+                              type="text"
+                              value={tier.grade}
+                              onChange={(e) => handleUpdateThreshold(index, 'grade', e.target.value)}
+                              className="w-full px-1.5 py-0.5 font-bold border border-slate-200 dark:border-slate-800 rounded bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 text-xs"
+                              placeholder="Grade A"
+                            />
+                          </div>
                           <input
                             type="text"
-                            value={tier.grade}
-                            onChange={(e) => handleUpdateThreshold(index, 'grade', e.target.value)}
-                            className="w-full px-1.5 py-0.5 font-bold border border-slate-200 dark:border-slate-800 rounded bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 text-xs"
-                            placeholder="Grade A"
+                            value={tier.label}
+                            onChange={(e) => handleUpdateThreshold(index, 'label', e.target.value)}
+                            className="w-full px-1.5 py-0.5 border border-slate-200 dark:border-slate-800 rounded bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 text-xs"
+                            placeholder="High Compliance"
                           />
-                        </div>
-                        <input
-                          type="text"
-                          value={tier.label}
-                          onChange={(e) => handleUpdateThreshold(index, 'label', e.target.value)}
-                          className="w-full px-1.5 py-0.5 border border-slate-200 dark:border-slate-800 rounded bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 text-xs"
-                          placeholder="High Compliance"
-                        />
-                        <div className="flex items-center gap-1 font-mono text-[10px]">
+                          <div className="flex items-center gap-1 font-mono text-[10px]">
+                            <input
+                              type="number"
+                              value={tier.minScore}
+                              onChange={(e) => handleUpdateThreshold(index, 'minScore', e.target.value)}
+                              className="w-12 px-1.5 py-0.5 border border-slate-200 dark:border-slate-800 rounded text-center text-xs"
+                              placeholder="90"
+                            />
+                            <span>to</span>
+                            <input
+                              type="number"
+                              value={tier.maxScore}
+                              onChange={(e) => handleUpdateThreshold(index, 'maxScore', e.target.value)}
+                              className="w-12 px-1.5 py-0.5 border border-slate-200 dark:border-slate-800 rounded text-center text-xs"
+                              placeholder="100"
+                            />
+                          </div>
                           <input
-                            type="number"
-                            value={tier.minScore}
-                            onChange={(e) => handleUpdateThreshold(index, 'minScore', e.target.value)}
-                            className="w-12 px-1.5 py-0.5 border border-slate-200 dark:border-slate-800 rounded text-center text-xs"
-                            placeholder="90"
+                            type="text"
+                            value={tier.standing}
+                            onChange={(e) => handleUpdateThreshold(index, 'standing', e.target.value)}
+                            className="w-full px-1.5 py-0.5 border border-slate-200 dark:border-slate-800 rounded bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 text-[10px]"
+                            placeholder="Performance standing narrative"
                           />
-                          <span>to</span>
-                          <input
-                            type="number"
-                            value={tier.maxScore}
-                            onChange={(e) => handleUpdateThreshold(index, 'maxScore', e.target.value)}
-                            className="w-12 px-1.5 py-0.5 border border-slate-200 dark:border-slate-800 rounded text-center text-xs"
-                            placeholder="100"
-                          />
+                          <div className="flex items-center justify-end gap-2">
+                            <select
+                              value={tier.color}
+                              onChange={(e) => handleUpdateThreshold(index, 'color', e.target.value as any)}
+                              className="px-1.5 py-0.5 border border-slate-200 dark:border-slate-800 rounded bg-slate-50 dark:bg-slate-900 text-[10px]"
+                            >
+                              <option value="emerald">Emerald</option>
+                              <option value="blue">Blue</option>
+                              <option value="amber">Amber</option>
+                              <option value="orange">Orange</option>
+                              <option value="rose">Rose</option>
+                            </select>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteThresholdTier(index)}
+                              disabled={customThresholds.length <= 1}
+                              className="text-rose-500 hover:text-rose-600 disabled:opacity-40"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
-                        <input
-                          type="text"
-                          value={tier.standing}
-                          onChange={(e) => handleUpdateThreshold(index, 'standing', e.target.value)}
-                          className="w-full px-1.5 py-0.5 border border-slate-200 dark:border-slate-800 rounded bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 text-[10px]"
-                          placeholder="Performance standing narrative"
-                        />
-                        <div className="flex items-center justify-end gap-2">
-                          <select
-                            value={tier.color}
-                            onChange={(e) => handleUpdateThreshold(index, 'color', e.target.value as any)}
-                            className="px-1.5 py-0.5 border border-slate-200 dark:border-slate-800 rounded bg-slate-50 dark:bg-slate-900 text-[10px]"
-                          >
-                            <option value="emerald">Emerald</option>
-                            <option value="blue">Blue</option>
-                            <option value="amber">Amber</option>
-                            <option value="orange">Orange</option>
-                            <option value="rose">Rose</option>
-                          </select>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteThresholdTier(index)}
-                            disabled={customThresholds.length <= 1}
-                            className="text-rose-500 hover:text-rose-600 disabled:opacity-40"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="flex justify-end pt-1">
-                    <button
-                      type="button"
-                      onClick={handleSaveThresholds}
-                      className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-bold flex items-center gap-1"
-                    >
-                      <Save className="w-3.5 h-3.5" /> Save Grading System
-                    </button>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            <div className="space-y-2.5">
-              {customThresholds.map((tier, tierIdx) => {
-                const isCurrent = evaluationResult.compositeScore >= tier.minScore && evaluationResult.compositeScore <= tier.maxScore;
-                return (
-                  <div
-                    key={`thresh-view-${tier.id || 'tier'}-${tierIdx}`}
-                    className={`p-3.5 rounded-xl border flex flex-col sm:flex-row sm:items-center gap-3 justify-between transition ${
-                      isCurrent
-                        ? 'bg-indigo-50/50 dark:bg-indigo-950/20 border-indigo-400 dark:border-indigo-800 shadow-3xs'
-                        : 'bg-slate-50/40 dark:bg-slate-900/20 border-slate-200 dark:border-slate-800 opacity-70'
-                    }`}
-                  >
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className={`px-2 py-0.5 rounded-md text-xs font-black uppercase font-mono border ${
-                          tier.color === 'emerald' ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-400/40' :
-                          tier.color === 'blue' ? 'bg-blue-500/20 text-blue-700 dark:text-blue-300 border-blue-400/40' :
-                          tier.color === 'amber' ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-400/40' :
-                          tier.color === 'orange' ? 'bg-orange-500/20 text-orange-700 dark:text-orange-300 border-orange-400/40' :
-                          'bg-rose-500/20 text-rose-700 dark:text-rose-300 border-rose-400/40'
-                        }`}>
-                          {tier.grade} — {tier.label}
-                        </span>
-                        <span className="text-xs font-mono font-bold text-slate-400">({tier.minScore}–{tier.maxScore}%)</span>
-                        {isCurrent && (
-                          <span className="px-1.5 py-0.2 rounded bg-indigo-600 text-white font-black text-[9px] uppercase tracking-wide">
-                            Active Rank
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">{tier.standing}</p>
+                      ))}
                     </div>
-                  </div>
-                );
-              })}
+
+                    <div className="flex justify-end pt-1">
+                      <button
+                        type="button"
+                        onClick={handleSaveThresholds}
+                        className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-bold flex items-center gap-1"
+                      >
+                        <Save className="w-3.5 h-3.5" /> Save Grading System
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <div className="space-y-2.5">
+                {customThresholds.map((tier, tierIdx) => {
+                  const isCurrent = evaluationResult.compositeScore >= tier.minScore && evaluationResult.compositeScore <= tier.maxScore;
+                  return (
+                    <div
+                      key={`thresh-view-${tier.id || 'tier'}-${tierIdx}`}
+                      className={`p-3.5 rounded-xl border flex flex-col sm:flex-row sm:items-center gap-3 justify-between transition ${
+                        isCurrent
+                          ? 'bg-indigo-50/50 dark:bg-indigo-950/20 border-indigo-400 dark:border-indigo-800 shadow-3xs'
+                          : 'bg-slate-50/40 dark:bg-slate-900/20 border-slate-200 dark:border-slate-800 opacity-70'
+                      }`}
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className={`px-2 py-0.5 rounded-md text-xs font-black uppercase font-mono border ${
+                            tier.color === 'emerald' ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-400/40' :
+                            tier.color === 'blue' ? 'bg-blue-500/20 text-blue-700 dark:text-blue-300 border-blue-400/40' :
+                            tier.color === 'amber' ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-400/40' :
+                            tier.color === 'orange' ? 'bg-orange-500/20 text-orange-700 dark:text-orange-300 border-orange-400/40' :
+                            'bg-rose-500/20 text-rose-700 dark:text-rose-300 border-rose-400/40'
+                          }`}>
+                            {tier.grade} — {tier.label}
+                          </span>
+                          <span className="text-xs font-mono font-bold text-slate-400">({tier.minScore}–{tier.maxScore}%)</span>
+                          {isCurrent && (
+                            <span className="px-1.5 py-0.2 rounded bg-indigo-600 text-white font-black text-[9px] uppercase tracking-wide">
+                              Active Rank
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">{tier.standing}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Contract Type Evaluation Criteria Mode Banner (DB vs DBB) */}
           <div className="bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-900/50 rounded-2xl p-5 shadow-3xs space-y-3">
