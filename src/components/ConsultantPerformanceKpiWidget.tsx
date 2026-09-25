@@ -33,6 +33,7 @@ import {
   Project
 } from '../types';
 import ComprehensiveConsultantEvaluationMatrixView from './ComprehensiveConsultantEvaluationMatrixView';
+import ConsultantPerformanceRoleWrapper from './ConsultantPerformanceRoleWrapper';
 import { 
   getProjectConsultantEvaluation, 
   evaluateQualitativeGrade, 
@@ -488,629 +489,612 @@ export default function ConsultantPerformanceKpiWidget({
   }, [combinedAvgScoreValue, consultant.customGradeThresholds]);
 
   return (
-    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-6">
-      {/* Top Banner / Widget Header */}
-      {showHeaderAndScorecards && (
-        <>
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
-        <div className="space-y-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
-              <Clock className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-              Supervision Consultant Performance KPI & SLA Evaluation
-            </span>
-            <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 font-mono">
-              {overallMetrics.complianceRate.toFixed(1)}% On-Time SLA
-            </span>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 dark:bg-purple-950/50 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
-              📋 {submittalsList.length} Evaluated Submittal Records
-            </span>
-          </div>
-
-          <h3 className="text-lg md:text-xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
-            {isEraUser ? 'Supervision Consultant Performance Evaluation Matrix' : 'Consultant SLA Response Performance & Weighted Evaluation Matrix'}
-          </h3>
-          <p className="text-xs text-slate-500 dark:text-slate-400 max-w-3xl">
-            {isEraUser
-              ? 'Authorized portal for Ethiopian Roads Administration evaluators and approvers. Rate, verify, and document qualitative and quantitative criteria across all 5 evaluation dimensions in Section 2.'
-              : 'Real-time benchmarking of technical RFIs, material approvals, IPC verification, and design turnaround times against contract and Ethiopian Roads Administration targets. Performance marks and deductions are dynamically calculated from the evaluated Submittal Log.'}
-          </p>
-        </div>
-
-        {/* Action Controls */}
-        <div className="flex flex-wrap items-center gap-2">
-          {!isReadonly && isMasterAdminRole && (
-            <button
-              onClick={() => {
-                setEditCriteriaForm(evaluationCriteria);
-                setIsTargetSettingsOpen(true);
-              }}
-              title="Configure Evaluation Criteria, Target Days & Weightages"
-              className="px-3.5 py-2 text-xs font-bold rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center gap-1.5 transition shadow-xs cursor-pointer"
-            >
-              <Settings2 className="w-4 h-4 text-indigo-600" />
-              Criteria & Weights
-            </button>
-          )}
-
-          {!isReadonly && isMasterAdminRole && (
-            <button
-              onClick={handleResetToDefaults}
-              title="Reset to standard contract benchmarks"
-              className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 transition text-xs font-bold"
-            >
-              <RotateCcw className="w-4 h-4" />
-            </button>
-          )}
-
-          <button
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition flex items-center gap-1 text-xs font-bold"
-          >
-            {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-          </button>
-        </div>
-      </div>
-
-      {/* Consultant Evaluation Scope & Succession History Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-3 rounded-2xl bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/50">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-black uppercase text-indigo-700 dark:text-indigo-300 flex items-center gap-1.5">
-            <Users className="w-4 h-4" /> Evaluation Scope:
-          </span>
-          <span className="text-xs font-extrabold text-slate-800 dark:text-zinc-100">
-            {isViewingHistorical ? historicalConsultant?.firmName : consultant.firmName}
-          </span>
-          <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
-            {isViewingHistorical 
-              ? `Archived Term: ${historicalConsultant?.commencementDate || 'Start'} to ${historicalConsultant?.handoverDate || 'Archived'}`
-              : `Active Term: Since ${consultant.commencementDate || 'Assignment'}`}
-          </span>
-        </div>
-
-        {consultant.previousConsultants && consultant.previousConsultants.length > 0 && (
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-bold text-slate-500 flex items-center gap-1">
-              <History className="w-3.5 h-3.5" /> Consultant History:
-            </span>
-            <select
-              value={selectedTenureConsultantId}
-              onChange={(e) => setSelectedTenureConsultantId(e.target.value)}
-              aria-label="Select Consultant Evaluation Term"
-              className="px-2.5 py-1 text-xs font-bold rounded-lg border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-zinc-100 shadow-2xs focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value="current">
-                🟢 Current: {consultant.firmName} (Since {consultant.commencementDate || 'Assignment'})
-              </option>
-              {consultant.previousConsultants.map((hist) => (
-                <option key={hist.id} value={hist.id}>
-                  📜 Predecessor: {hist.firmName} ({hist.commencementDate || 'Start'} — {hist.handoverDate || 'Archived'})
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-      </div>
-
-      {/* Historical View Active Banner */}
-      {isViewingHistorical && (
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-xs">
-          <div className="flex items-center gap-2">
-            <History className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
-            <span className="text-amber-900 dark:text-amber-200 font-medium">
-              Displaying archived performance evaluation for predecessor <strong>{historicalConsultant?.firmName}</strong> (Tenure: {historicalConsultant?.commencementDate || 'Start'} to {historicalConsultant?.handoverDate || 'Archived'}).
-            </span>
-          </div>
-          <button
-            onClick={() => setSelectedTenureConsultantId('current')}
-            className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-amber-200/80 hover:bg-amber-300 dark:bg-amber-900 dark:hover:bg-amber-800 text-amber-900 dark:text-amber-100 transition shrink-0 cursor-pointer"
-          >
-            Switch to Active Consultant
-          </button>
-        </div>
-      )}
-
-      {/* Dynamic Dual-Pillar Composite Scorecard Banner */}
-        {isEraUser ? (
-          <div className="p-5 rounded-3xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-indigo-500/30 shadow-lg text-white space-y-4">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-indigo-800/40 pb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-300 shrink-0">
-                  <Award className="w-5 h-5" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-black text-white uppercase tracking-wider">
-                      ERA Performance Evaluation Portal
-                    </h3>
-                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-indigo-500/30 text-indigo-200 border border-indigo-400/40 font-mono">
-                      {currentUser?.role === 'era_approver' ? '🏛️ ERA Approver' : '✏️ ERA Editor'}
-                    </span>
-                  </div>
-                  <p className="text-xs text-indigo-200/80 mt-0.5">
-                    Authorized to evaluate, review, and score <strong>Section 2: Supervision Consultant Performance Evaluation Criteria</strong> across all 5 technical dimensions.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-4 bg-white/5 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-white/10 shrink-0 font-mono">
-                <div className="text-right">
-                  <span className="text-[9px] uppercase font-bold text-indigo-300 block">Section 2 Audit</span>
-                  <span className="text-2xl font-black text-emerald-400">
-                    {pillar2ScoreValue.toFixed(1)}%
-                  </span>
-                </div>
-                <div className="h-8 w-px bg-white/10" />
-                <div className="text-left">
-                  <span className="text-[9px] uppercase font-bold text-indigo-300 block">Official Grade</span>
-                  <span className="text-xs font-black text-amber-300 block mt-0.5">
-                    Grade {combinedGradeInfo.grade}
-                  </span>
-                </div>
-              </div>
-            </div>
-            <div className="text-[11px] text-indigo-300/80 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              Operational submittal logs and SLA turnaround (Pillar I) are managed by site supervision administration.
-            </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-5 rounded-2xl bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/80 shadow-2xs">
-            {/* Pillar I Score Card */}
-            <div className="bg-white dark:bg-slate-950 p-4 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center justify-between">
+    <>
+      <ConsultantPerformanceRoleWrapper
+        userRole={currentUser?.role}
+        isMasterAdmin={isMasterAdminRole}
+        isAdmin={isAdmin}
+        executiveSummary={
+          <>
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
               <div className="space-y-1">
-                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
-                  Pillar I: Submittal SLA
-                </span>
-                <div className="flex items-baseline gap-1.5">
-                  <span className="text-2xl font-black text-slate-800 dark:text-zinc-100 font-mono">
-                    {pillar1ScoreValue.toFixed(1)}%
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                    <Clock className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                    Supervision Consultant Performance KPI & SLA Evaluation
                   </span>
-                  <span className="text-xs font-bold text-slate-400">score</span>
+                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 font-mono">
+                    {overallMetrics.complianceRate.toFixed(1)}% On-Time SLA
+                  </span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 dark:bg-purple-950/50 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                    📋 {submittalsList.length} Evaluated Submittal Records
+                  </span>
                 </div>
+
+                <h3 className="text-lg md:text-xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+                  {isEraUser ? 'Supervision Consultant Performance Evaluation Matrix' : 'Consultant SLA Response Performance & Weighted Evaluation Matrix'}
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 max-w-3xl">
+                  {isEraUser
+                    ? 'Authorized portal for Ethiopian Roads Administration evaluators and approvers. Rate, verify, and document qualitative and quantitative criteria across all 5 evaluation dimensions in Section 2.'
+                    : 'Real-time benchmarking of technical RFIs, material approvals, IPC verification, and design turnaround times against contract and Ethiopian Roads Administration targets. Performance marks and deductions are dynamically calculated from the evaluated Submittal Log.'}
+                </p>
               </div>
-              <div className="p-2.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400">
-                <Clock className="w-5 h-5" />
-              </div>
+
+              <button
+                onClick={() => setIsExpanded(!isExpanded)}
+                className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition flex items-center gap-1 text-xs font-bold self-start md:self-auto"
+              >
+                {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </button>
             </div>
 
-            {/* Pillar II Score Card */}
-            <div className="bg-white dark:bg-slate-950 p-4 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center justify-between">
-              <div className="space-y-1">
-                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
-                  Pillar II: Technical Audit
+            {/* Consultant Evaluation Scope & Succession History Bar */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-3 rounded-2xl bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/50">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-black uppercase text-indigo-700 dark:text-indigo-300 flex items-center gap-1.5">
+                  <Users className="w-4 h-4" /> Evaluation Scope:
                 </span>
-                <div className="flex items-baseline gap-1.5">
-                  <span className="text-2xl font-black text-slate-800 dark:text-zinc-100 font-mono">
-                    {pillar2ScoreValue.toFixed(1)}%
-                  </span>
-                  <span className="text-xs font-bold text-slate-400">score</span>
-                </div>
+                <span className="text-xs font-extrabold text-slate-800 dark:text-zinc-100">
+                  {isViewingHistorical ? historicalConsultant?.firmName : consultant.firmName}
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
+                  {isViewingHistorical 
+                    ? `Archived Term: ${historicalConsultant?.commencementDate || 'Start'} to ${historicalConsultant?.handoverDate || 'Archived'}`
+                    : `Active Term: Since ${consultant.commencementDate || 'Assignment'}`}
+                </span>
               </div>
-              <div className="p-2.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400">
-                <Award className="w-5 h-5" />
-              </div>
-            </div>
 
-            {/* Combined Composite Overall Score */}
-            <div className="bg-indigo-950/30 dark:bg-indigo-950/60 p-4 rounded-xl border border-indigo-200/50 dark:border-indigo-900/60 flex items-center justify-between">
-              <div className="space-y-1">
-                <span className="text-[10px] font-black uppercase tracking-wider text-indigo-700 dark:text-indigo-300 block">
-                  Combined Overall Score (Avg)
-                </span>
+              {consultant.previousConsultants && consultant.previousConsultants.length > 0 && (
                 <div className="flex items-center gap-2">
-                  <span className="text-3xl font-black text-indigo-900 dark:text-indigo-100 font-mono">
-                    {combinedAvgScoreValue.toFixed(1)}%
+                  <span className="text-[11px] font-bold text-slate-500 flex items-center gap-1">
+                    <History className="w-3.5 h-3.5" /> Consultant History:
                   </span>
-                  <div className="flex flex-col">
-                    <span className="text-[10px] px-1.5 py-0.5 rounded font-black bg-indigo-600 text-white leading-tight">
-                      Grade {combinedGradeInfo.grade}
+                  <select
+                    value={selectedTenureConsultantId}
+                    onChange={(e) => setSelectedTenureConsultantId(e.target.value)}
+                    aria-label="Select Consultant Evaluation Term"
+                    className="px-2.5 py-1 text-xs font-bold rounded-lg border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-zinc-100 shadow-2xs focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="current">
+                      🟢 Current: {consultant.firmName} (Since {consultant.commencementDate || 'Assignment'})
+                    </option>
+                    {consultant.previousConsultants.map((hist) => (
+                      <option key={hist.id} value={hist.id}>
+                        📜 Predecessor: {hist.firmName} ({hist.commencementDate || 'Start'} — {hist.handoverDate || 'Archived'})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            {/* Historical View Active Banner */}
+            {isViewingHistorical && (
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-xs">
+                <div className="flex items-center gap-2">
+                  <History className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                  <span className="text-amber-900 dark:text-amber-200 font-medium">
+                    Displaying archived performance evaluation for predecessor <strong>{historicalConsultant?.firmName}</strong> (Tenure: {historicalConsultant?.commencementDate || 'Start'} to {historicalConsultant?.handoverDate || 'Archived'}).
+                  </span>
+                </div>
+                <button
+                  onClick={() => setSelectedTenureConsultantId('current')}
+                  className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-amber-200/80 hover:bg-amber-300 dark:bg-amber-900 dark:hover:bg-amber-800 text-amber-900 dark:text-amber-100 transition shrink-0 cursor-pointer"
+                >
+                  Switch to Active Consultant
+                </button>
+              </div>
+            )}
+
+            {/* Dynamic Dual-Pillar Composite Scorecard Banner */}
+            {isEraUser ? (
+              <div className="p-5 rounded-3xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-indigo-500/30 shadow-lg text-white space-y-4">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-indigo-800/40 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-300 shrink-0">
+                      <Award className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-sm font-black text-white uppercase tracking-wider">
+                          ERA Performance Evaluation Portal
+                        </h3>
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-indigo-500/30 text-indigo-200 border border-indigo-400/40 font-mono">
+                          {currentUser?.role === 'era_approver' ? '🏛️ ERA Approver' : '✏️ ERA Editor'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-indigo-200/80 mt-0.5">
+                        Authorized to evaluate, review, and score <strong>Section 2: Supervision Consultant Performance Evaluation Criteria</strong> across all 5 technical dimensions.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-4 bg-white/5 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-white/10 shrink-0 font-mono">
+                    <div className="text-right">
+                      <span className="text-[9px] uppercase font-bold text-indigo-300 block">Section 2 Audit</span>
+                      <span className="text-2xl font-black text-emerald-400">
+                        {pillar2ScoreValue.toFixed(1)}%
+                      </span>
+                    </div>
+                    <div className="h-8 w-px bg-white/10" />
+                    <div className="text-left">
+                      <span className="text-[9px] uppercase font-bold text-indigo-300 block">Official Grade</span>
+                      <span className="text-xs font-black text-amber-300 block mt-0.5">
+                        Grade {combinedGradeInfo.grade}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <div className="text-[11px] text-indigo-300/80 flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                  Operational submittal logs and SLA turnaround (Pillar I) are managed by site supervision administration.
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-5 rounded-2xl bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/80 shadow-2xs">
+                {/* Pillar I Score Card */}
+                <div className="bg-white dark:bg-slate-950 p-4 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
+                      Pillar I: Submittal SLA
                     </span>
-                    <span className="text-[9px] font-bold text-indigo-700 dark:text-indigo-300 leading-none mt-1">
-                      {combinedGradeInfo.standing}
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="text-2xl font-black text-slate-800 dark:text-zinc-100 font-mono">
+                        {pillar1ScoreValue.toFixed(1)}%
+                      </span>
+                      <span className="text-xs font-bold text-slate-400">score</span>
+                    </div>
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400">
+                    <Clock className="w-5 h-5" />
+                  </div>
+                </div>
+
+                {/* Pillar II Score Card */}
+                <div className="bg-white dark:bg-slate-950 p-4 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
+                      Pillar II: Technical Audit
                     </span>
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="text-2xl font-black text-slate-800 dark:text-zinc-100 font-mono">
+                        {pillar2ScoreValue.toFixed(1)}%
+                      </span>
+                      <span className="text-xs font-bold text-slate-400">score</span>
+                    </div>
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400">
+                    <Award className="w-5 h-5" />
+                  </div>
+                </div>
+
+                {/* Combined Composite Overall Score */}
+                <div className="bg-indigo-950/30 dark:bg-indigo-950/60 p-4 rounded-xl border border-indigo-200/50 dark:border-indigo-900/60 flex items-center justify-between">
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-indigo-700 dark:text-indigo-300 block">
+                      Combined Overall Score (Avg)
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-3xl font-black text-indigo-900 dark:text-indigo-100 font-mono">
+                        {combinedAvgScoreValue.toFixed(1)}%
+                      </span>
+                      <div className="flex flex-col">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded font-black bg-indigo-600 text-white leading-tight">
+                          Grade {combinedGradeInfo.grade}
+                        </span>
+                        <span className="text-[9px] font-bold text-indigo-700 dark:text-indigo-300 leading-none mt-1">
+                          {combinedGradeInfo.standing}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-indigo-600 text-white shadow-xs">
+                    <TrendingUp className="w-5 h-5" />
                   </div>
                 </div>
               </div>
-              <div className="p-2.5 rounded-lg bg-indigo-600 text-white shadow-xs">
-                <TrendingUp className="w-5 h-5" />
+            )}
+          </>
+        }
+        actionControls={
+          <div className="flex flex-wrap items-center gap-2">
+            {!isReadonly && isMasterAdminRole && (
+              <button
+                onClick={() => {
+                  setEditCriteriaForm(evaluationCriteria);
+                  setIsTargetSettingsOpen(true);
+                }}
+                title="Configure Evaluation Criteria, Target Days & Weightages"
+                className="px-3.5 py-2 text-xs font-bold rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center gap-1.5 transition shadow-xs cursor-pointer"
+              >
+                <Settings2 className="w-4 h-4 text-indigo-600" />
+                Criteria & Weights
+              </button>
+            )}
+
+            {!isReadonly && isMasterAdminRole && (
+              <button
+                onClick={handleResetToDefaults}
+                title="Reset to standard contract benchmarks"
+                className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 transition text-xs font-bold"
+              >
+                <RotateCcw className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        }
+        submittalLog={
+          <div className="space-y-6 pb-8 border-b border-slate-100 dark:border-slate-800">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-2">
+              <div className="flex items-center gap-2">
+                <Clock className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                <h4 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">
+                  ⚡ I. Submittal Log & Operational SLA Turnaround ({submittalsList.length} items - Pillar I)
+                </h4>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsExpanded(!isExpanded)}
+                className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-black transition flex items-center gap-1.5 cursor-pointer border border-slate-200 dark:border-slate-700 shadow-3xs"
+              >
+                {isExpanded ? (
+                  <>
+                    <ChevronUp className="w-4 h-4 text-indigo-600" /> Hide SLA Turnaround Table
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="w-4 h-4 text-indigo-600" /> Show SLA Turnaround Table
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Summary Highlight Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {/* Avg RFI Response Time Card */}
+              <div className="p-3.5 rounded-2xl bg-gradient-to-br from-indigo-50 to-blue-50/50 dark:from-indigo-950/40 dark:to-slate-900 border border-indigo-100 dark:border-indigo-900/60 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300 flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5" />
+                    Avg RFI Response Time
+                  </span>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide border ${
+                    overallMetrics.rfiStat.isComplying
+                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
+                      : 'bg-rose-100 text-rose-800 dark:bg-rose-950/70 dark:text-rose-300 border-rose-300 dark:border-rose-700'
+                  }`}>
+                    {overallMetrics.rfiStat.isComplying ? '✓ Complying' : '✕ Not Complying'}
+                  </span>
+                </div>
+
+                <div className="flex items-baseline justify-between gap-2">
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-2xl font-black font-mono text-indigo-950 dark:text-white">
+                      {overallMetrics.avgRfiDays}
+                    </span>
+                    <span className="text-xs text-slate-500 font-semibold">days</span>
+                    <span className="text-[11px] text-slate-400 font-mono">/ {overallMetrics.rfiTarget}d target</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-xs font-black font-mono text-indigo-700 dark:text-indigo-300">
+                      {overallMetrics.rfiStat.earnedScore.toFixed(1)} / {overallMetrics.rfiStat.weightPct} pts
+                    </span>
+                  </div>
+                </div>
+
+                <div className="pt-1 border-t border-indigo-100/80 dark:border-indigo-900/40 flex items-center justify-between text-[10px]">
+                  <span className="text-slate-600 dark:text-slate-400">
+                    {overallMetrics.rfiStat.deduction === 0 ? (
+                      <span className="text-emerald-600 dark:text-emerald-400 font-bold">★ Full Mark (0 delayed)</span>
+                    ) : (
+                      <span className="text-rose-600 dark:text-rose-400 font-bold">
+                        -{overallMetrics.rfiStat.deduction.toFixed(2)} pts ({overallMetrics.rfiStat.delayedCount}/{overallMetrics.rfiStat.totalSubmittals} delayed)
+                      </span>
+                    )}
+                  </span>
+                  <span className="font-mono text-indigo-600 dark:text-indigo-400 font-bold">
+                    {overallMetrics.rfiEfficiencyPct >= 0 
+                      ? `${Math.abs(overallMetrics.rfiEfficiencyPct).toFixed(0)}% faster` 
+                      : `${Math.abs(overallMetrics.rfiEfficiencyPct).toFixed(0)}% over SLA`}
+                  </span>
+                </div>
+              </div>
+
+              {/* Total Consultant Evaluation Score Card */}
+              <div className="p-3.5 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50/50 dark:from-emerald-950/40 dark:to-slate-900 border border-emerald-100 dark:border-emerald-900/60 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300 flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Evaluation Score
+                  </span>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide border ${
+                    overallMetrics.totalEarnedScore >= 85
+                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
+                      : overallMetrics.totalEarnedScore >= 70
+                      ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border-amber-300 dark:border-amber-700'
+                      : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 border-rose-300 dark:border-rose-700'
+                  }`}>
+                    {overallMetrics.gradeLabel}
+                  </span>
+                </div>
+
+                <div className="flex items-baseline justify-between gap-2">
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-2xl font-black font-mono text-emerald-950 dark:text-white">
+                      {overallMetrics.totalEarnedScore.toFixed(1)}
+                    </span>
+                    <span className="text-xs text-slate-500 font-semibold">/ {overallMetrics.totalWeight} pts</span>
+                  </div>
+                  <span className="text-[11px] font-bold font-mono text-emerald-600 dark:text-emerald-400">
+                    {((overallMetrics.totalEarnedScore / (overallMetrics.totalWeight || 100)) * 100).toFixed(1)}% Net
+                  </span>
+                </div>
+
+                <div className="pt-1 border-t border-emerald-100/80 dark:border-emerald-900/40 flex items-center justify-between text-[10px]">
+                  <span className="text-slate-600 dark:text-slate-400">
+                    {overallMetrics.totalDeductions === 0 ? (
+                      <span className="text-emerald-600 dark:text-emerald-400 font-bold">100% Full SLA Marks</span>
+                    ) : (
+                      <span className="text-amber-600 dark:text-amber-400 font-bold">
+                        Deductions: -{overallMetrics.totalDeductions.toFixed(2)} pts ({overallMetrics.totalDelayedSubmittals} delayed items)
+                      </span>
+                    )}
+                  </span>
+                  <span className="font-mono text-emerald-700 dark:text-emerald-300 font-semibold">
+                    {overallMetrics.complianceRate.toFixed(0)}% On-Time
+                  </span>
+                </div>
+              </div>
+
+              {/* Total Submittals Processed */}
+              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
+                    <FileText className="w-3.5 h-3.5" />
+                    Processed Submittals
+                  </span>
+                  <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-mono">
+                    {overallMetrics.complianceRate.toFixed(0)}% SLA
+                  </span>
+                </div>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-2xl font-black font-mono text-slate-900 dark:text-white">
+                    {overallMetrics.resolvedCount}
+                  </span>
+                  <span className="text-xs text-slate-400 font-normal">/ {overallMetrics.totalCount} logged</span>
+                  <span className="text-[11px] font-bold font-mono text-emerald-600 dark:text-emerald-400 ml-auto">
+                    {overallMetrics.totalCount - overallMetrics.totalDelayedSubmittals} on-time
+                  </span>
+                </div>
+                <div className="text-[10px] text-slate-500 font-medium flex items-center justify-between">
+                  <span>Avg: <strong className="font-mono text-slate-700 dark:text-slate-300">{overallMetrics.avgOverallDays} days</strong></span>
+                  <span className="text-slate-400 font-normal">Completed reviews</span>
+                </div>
+              </div>
+
+              {/* Pending Queue / In Review */}
+              <div className="p-3.5 rounded-2xl bg-amber-50/60 dark:bg-amber-950/30 border border-amber-100 dark:border-amber-900/50 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300 flex items-center gap-1">
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    Active Review Queue
+                  </span>
+                  <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-200 dark:bg-amber-900/60 text-amber-800 dark:text-amber-200 font-mono">
+                    {overallMetrics.pendingOverdueCount > 0 ? `${overallMetrics.pendingOverdueCount} Overdue` : 'On Track'}
+                  </span>
+                </div>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-2xl font-black font-mono text-amber-900 dark:text-amber-200">
+                    {overallMetrics.pendingCount}
+                  </span>
+                  <span className="text-xs text-amber-600 dark:text-amber-400 font-semibold">in review</span>
+                  <span className="text-[11px] font-bold font-mono text-amber-700 dark:text-amber-300 ml-auto">
+                    {overallMetrics.totalPendingDelayedSubmittals} delayed past target
+                  </span>
+                </div>
+                <div className="text-[10px] text-amber-700 dark:text-amber-400 font-medium flex items-center justify-between">
+                  <span>Pending Engineer certification</span>
+                  <span className="text-amber-700 dark:text-amber-300 font-semibold">Active processing</span>
+                </div>
               </div>
             </div>
-          </div>
-        )}
-      </>
-      )}
 
-      {/* Operational Sections (Section 1 & Section 2) */}
-      {(showSection1 || showSection2) && (
-        <div className="space-y-8">
-          {/* Section 1: Submittal Log & Operational SLA Turnaround (21 items - Pillar I) */}
-          {showSection1 && (
-        <div className="space-y-6 pb-8 border-b border-slate-100 dark:border-slate-800">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-2">
-            <div className="flex items-center gap-2">
-              <Clock className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-              <h4 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">
-                ⚡ I. Submittal Log & Operational SLA Turnaround ({submittalsList.length} items - Pillar I)
-              </h4>
-            </div>
+            {/* Expanded Interactive Body */}
+            {isExpanded && (
+              <div className="space-y-4 pt-2">
+                <div className="overflow-x-auto max-h-[550px] overflow-y-auto rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs scroll-smooth">
+                  <table className="w-full text-left text-xs">
+                    <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold border-b border-slate-200 dark:border-slate-800 shadow-2xs">
+                      <tr>
+                        <th className="py-2.5 px-3.5">Submittal Criteria</th>
+                        <th className="py-2.5 px-3 text-center">
+                          Target SLA
+                          <span className="text-[9px] font-normal text-indigo-500 block">Editable</span>
+                        </th>
+                        <th className="py-2.5 px-3 text-center">Actual Avg</th>
+                        <th className="py-2.5 px-3.5 text-center">Compliance Status</th>
+                        <th className="py-2.5 px-3 text-center">Submitted / Delayed</th>
+                        <th className="py-2.5 px-2.5 text-center">Weight</th>
+                        <th className="py-2.5 px-3 text-center">Deductions</th>
+                        <th className="py-2.5 px-3.5 text-center">Evaluation Mark</th>
+                        <th className="py-2.5 px-3 text-center">On-Time Rate</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-800 dark:text-slate-200">
+                      {categoryKpiStats.map((stat, sIdx) => (
+                        <tr key={`stat-cat-${stat.category}-${sIdx}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
+                          <td className="py-2.5 px-3.5 font-bold">
+                            <div className="flex flex-col gap-0.5">
+                              <div className="flex items-center gap-2">
+                                <span className={`w-2 h-2 rounded-full shrink-0 ${
+                                  stat.isComplying ? 'bg-indigo-600' : 'bg-rose-500'
+                                }`}></span>
+                                <span className="text-slate-900 dark:text-white font-semibold">
+                                  {stat.category}
+                                </span>
+                              </div>
+                              {stat.pmbokDomain && (
+                                <div className="flex flex-wrap items-center gap-1.5 pl-4 text-[10px] font-normal text-slate-500 dark:text-slate-400">
+                                  <span className="bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 px-1.5 py-0.2 rounded border border-emerald-100 dark:border-emerald-900/50 font-medium">
+                                    {stat.pmbokDomain}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          </td>
 
-            <button
-              type="button"
-              onClick={() => setIsExpanded(!isExpanded)}
-              className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-black transition flex items-center gap-1.5 cursor-pointer border border-slate-200 dark:border-slate-700 shadow-3xs"
-            >
-              {isExpanded ? (
-                <>
-                  <ChevronUp className="w-4 h-4 text-indigo-600" /> Hide SLA Turnaround Table
-                </>
-              ) : (
-                <>
-                  <ChevronDown className="w-4 h-4 text-indigo-600" /> Show SLA Turnaround Table
-                </>
-              )}
-            </button>
-          </div>
+                          <td className="py-2.5 px-3 text-center font-mono font-semibold">
+                            {!isReadonly ? (
+                              <div className="inline-flex items-center justify-center gap-1">
+                                <input
+                                  type="number"
+                                  min="1"
+                                  max="90"
+                                  value={targetOverrides[stat.category] !== undefined ? targetOverrides[stat.category] : stat.targetDays}
+                                  onChange={(e) => {
+                                    const val = parseInt(e.target.value) || 1;
+                                    const newOverrides = { ...targetOverrides, [stat.category]: val };
+                                    const updatedConsultant: SupervisionConsultantInfo = {
+                                      ...consultant,
+                                      targetOverrides: newOverrides
+                                    };
+                                    if (onUpdateConsultant) {
+                                      onUpdateConsultant(updatedConsultant, `Updated ${stat.category} target SLA to ${val} days`);
+                                    }
+                                  }}
+                                  className="w-12 px-1 py-0.5 text-center bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-md font-bold text-slate-900 dark:text-white text-xs"
+                                />
+                                <span className="text-slate-400 text-[11px]">d</span>
+                              </div>
+                            ) : (
+                              <span className="text-slate-500">{stat.targetDays}d</span>
+                            )}
+                          </td>
 
-          {/* Summary Highlight Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        {/* Avg RFI Response Time Card */}
-        <div className="p-3.5 rounded-2xl bg-gradient-to-br from-indigo-50 to-blue-50/50 dark:from-indigo-950/40 dark:to-slate-900 border border-indigo-100 dark:border-indigo-900/60 space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300 flex items-center gap-1">
-              <Clock className="w-3.5 h-3.5" />
-              Avg RFI Response Time
-            </span>
-            <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide border ${
-              overallMetrics.rfiStat.isComplying
-                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
-                : 'bg-rose-100 text-rose-800 dark:bg-rose-950/70 dark:text-rose-300 border-rose-300 dark:border-rose-700'
-            }`}>
-              {overallMetrics.rfiStat.isComplying ? '✓ Complying' : '✕ Not Complying'}
-            </span>
-          </div>
+                          <td className="py-2.5 px-3 text-center font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                            {stat.actualDays}d
+                          </td>
 
-          <div className="flex items-baseline justify-between gap-2">
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-2xl font-black font-mono text-indigo-950 dark:text-white">
-                {overallMetrics.avgRfiDays}
-              </span>
-              <span className="text-xs text-slate-500 font-semibold">days</span>
-              <span className="text-[11px] text-slate-400 font-mono">/ {overallMetrics.rfiTarget}d target</span>
-            </div>
-            <div className="text-right">
-              <span className="text-xs font-black font-mono text-indigo-700 dark:text-indigo-300">
-                {overallMetrics.rfiStat.earnedScore.toFixed(1)} / {overallMetrics.rfiStat.weightPct} pts
-              </span>
-            </div>
-          </div>
-
-          <div className="pt-1 border-t border-indigo-100/80 dark:border-indigo-900/40 flex items-center justify-between text-[10px]">
-            <span className="text-slate-600 dark:text-slate-400">
-              {overallMetrics.rfiStat.deduction === 0 ? (
-                <span className="text-emerald-600 dark:text-emerald-400 font-bold">★ Full Mark (0 delayed)</span>
-              ) : (
-                <span className="text-rose-600 dark:text-rose-400 font-bold">
-                  -{overallMetrics.rfiStat.deduction.toFixed(2)} pts ({overallMetrics.rfiStat.delayedCount}/{overallMetrics.rfiStat.totalSubmittals} delayed)
-                </span>
-              )}
-            </span>
-            <span className="font-mono text-indigo-600 dark:text-indigo-400 font-bold">
-              {overallMetrics.rfiEfficiencyPct >= 0 
-                ? `${Math.abs(overallMetrics.rfiEfficiencyPct).toFixed(0)}% faster` 
-                : `${Math.abs(overallMetrics.rfiEfficiencyPct).toFixed(0)}% over SLA`}
-            </span>
-          </div>
-        </div>
-
-        {/* Total Consultant Evaluation Score Card */}
-        <div className="p-3.5 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50/50 dark:from-emerald-950/40 dark:to-slate-900 border border-emerald-100 dark:border-emerald-900/60 space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300 flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              Evaluation Score
-            </span>
-            <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide border ${
-              overallMetrics.totalEarnedScore >= 85
-                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
-                : overallMetrics.totalEarnedScore >= 70
-                ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border-amber-300 dark:border-amber-700'
-                : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 border-rose-300 dark:border-rose-700'
-            }`}>
-              {overallMetrics.gradeLabel}
-            </span>
-          </div>
-
-          <div className="flex items-baseline justify-between gap-2">
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-2xl font-black font-mono text-emerald-950 dark:text-white">
-                {overallMetrics.totalEarnedScore.toFixed(1)}
-              </span>
-              <span className="text-xs text-slate-500 font-semibold">/ {overallMetrics.totalWeight} pts</span>
-            </div>
-            <span className="text-[11px] font-bold font-mono text-emerald-600 dark:text-emerald-400">
-              {((overallMetrics.totalEarnedScore / (overallMetrics.totalWeight || 100)) * 100).toFixed(1)}% Net
-            </span>
-          </div>
-
-          <div className="pt-1 border-t border-emerald-100/80 dark:border-emerald-900/40 flex items-center justify-between text-[10px]">
-            <span className="text-slate-600 dark:text-slate-400">
-              {overallMetrics.totalDeductions === 0 ? (
-                <span className="text-emerald-600 dark:text-emerald-400 font-bold">100% Full SLA Marks</span>
-              ) : (
-                <span className="text-amber-600 dark:text-amber-400 font-bold">
-                  Deductions: -{overallMetrics.totalDeductions.toFixed(2)} pts ({overallMetrics.totalDelayedSubmittals} delayed items)
-                </span>
-              )}
-            </span>
-            <span className="font-mono text-emerald-700 dark:text-emerald-300 font-semibold">
-              {overallMetrics.complianceRate.toFixed(0)}% On-Time
-            </span>
-          </div>
-        </div>
-
-        {/* Total Submittals Processed */}
-        <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 space-y-1.5">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
-              <FileText className="w-3.5 h-3.5" />
-              Processed Submittals
-            </span>
-            <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-mono">
-              {overallMetrics.complianceRate.toFixed(0)}% SLA
-            </span>
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-black font-mono text-slate-900 dark:text-white">
-              {overallMetrics.resolvedCount}
-            </span>
-            <span className="text-xs text-slate-400 font-normal">/ {overallMetrics.totalCount} logged</span>
-            <span className="text-[11px] font-bold font-mono text-emerald-600 dark:text-emerald-400 ml-auto">
-              {overallMetrics.totalCount - overallMetrics.totalDelayedSubmittals} on-time
-            </span>
-          </div>
-          <div className="text-[10px] text-slate-500 font-medium flex items-center justify-between">
-            <span>Avg: <strong className="font-mono text-slate-700 dark:text-slate-300">{overallMetrics.avgOverallDays} days</strong></span>
-            <span className="text-slate-400 font-normal">Completed reviews</span>
-          </div>
-        </div>
-
-        {/* Pending Queue / In Review */}
-        <div className="p-3.5 rounded-2xl bg-amber-50/60 dark:bg-amber-950/30 border border-amber-100 dark:border-amber-900/50 space-y-1.5">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300 flex items-center gap-1">
-              <AlertTriangle className="w-3.5 h-3.5" />
-              Active Review Queue
-            </span>
-            <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-200 dark:bg-amber-900/60 text-amber-800 dark:text-amber-200 font-mono">
-              {overallMetrics.pendingOverdueCount > 0 ? `${overallMetrics.pendingOverdueCount} Overdue` : 'On Track'}
-            </span>
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-black font-mono text-amber-900 dark:text-amber-200">
-              {overallMetrics.pendingCount}
-            </span>
-            <span className="text-xs text-amber-600 dark:text-amber-400 font-semibold">in review</span>
-            <span className="text-[11px] font-bold font-mono text-amber-700 dark:text-amber-300 ml-auto">
-              {overallMetrics.totalPendingDelayedSubmittals} delayed past target
-            </span>
-          </div>
-          <div className="text-[10px] text-amber-700 dark:text-amber-400 font-medium flex items-center justify-between">
-            <span>Pending Engineer certification</span>
-            <span className="text-amber-700 dark:text-amber-300 font-semibold">Active processing</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Expanded Interactive Body */}
-      {isExpanded && (
-        <div className="space-y-4 pt-2">
-          {/* Formula & Rule Guidance Banner - Hidden by user request */}
-
-          {/* Detailed Performance Metric Table with editable target SLAs & weighted evaluation marks */}
-          <div className="overflow-x-auto max-h-[550px] overflow-y-auto rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs scroll-smooth">
-            <table className="w-full text-left text-xs">
-              <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold border-b border-slate-200 dark:border-slate-800 shadow-2xs">
-                <tr>
-                  <th className="py-2.5 px-3.5">Submittal Criteria</th>
-                  <th className="py-2.5 px-3 text-center">
-                    Target SLA
-                    <span className="text-[9px] font-normal text-indigo-500 block">Editable</span>
-                  </th>
-                  <th className="py-2.5 px-3 text-center">Actual Avg</th>
-                  <th className="py-2.5 px-3.5 text-center">Compliance Status</th>
-                  <th className="py-2.5 px-3 text-center">Submitted / Delayed</th>
-                  <th className="py-2.5 px-2.5 text-center">Weight</th>
-                  <th className="py-2.5 px-3 text-center">Deductions</th>
-                  <th className="py-2.5 px-3.5 text-center">Evaluation Mark</th>
-                  <th className="py-2.5 px-3 text-center">On-Time Rate</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-800 dark:text-slate-200">
-                {categoryKpiStats.map((stat, sIdx) => (
-                  <tr key={`stat-cat-${stat.category}-${sIdx}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
-                    {/* Submittal Criteria Name */}
-                    <td className="py-2.5 px-3.5 font-bold">
-                      <div className="flex flex-col gap-0.5">
-                        <div className="flex items-center gap-2">
-                          <span className={`w-2 h-2 rounded-full shrink-0 ${
-                            stat.isComplying ? 'bg-indigo-600' : 'bg-rose-500'
-                          }`}></span>
-                          <span className="text-slate-900 dark:text-white font-semibold">
-                            {stat.category}
-                          </span>
-                        </div>
-                        {stat.pmbokDomain && (
-                          <div className="flex flex-wrap items-center gap-1.5 pl-4 text-[10px] font-normal text-slate-500 dark:text-slate-400">
-                            <span className="bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 px-1.5 py-0.2 rounded border border-emerald-100 dark:border-emerald-900/50 font-medium">
-                              {stat.pmbokDomain}
+                          <td className="py-2.5 px-3.5 text-center">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold font-mono inline-flex items-center gap-1 border ${
+                              stat.isComplying
+                                ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                                : 'bg-rose-50 text-rose-700 dark:bg-rose-950/70 dark:text-rose-300 border-rose-200 dark:border-rose-800'
+                            }`}>
+                              {stat.isComplying ? '✓ Complying' : '✕ Not Complying'}
                             </span>
-                          </div>
-                        )}
-                      </div>
-                    </td>
+                          </td>
 
-                    {/* Target SLA (Editable) */}
-                    <td className="py-2.5 px-3 text-center font-mono font-semibold">
-                      {!isReadonly ? (
-                        <div className="inline-flex items-center justify-center gap-1">
-                          <input
-                            type="number"
-                            min="1"
-                            max="90"
-                            value={targetOverrides[stat.category] !== undefined ? targetOverrides[stat.category] : stat.targetDays}
-                            onChange={(e) => {
-                              const val = parseInt(e.target.value) || 1;
-                              const newOverrides = { ...targetOverrides, [stat.category]: val };
-                              const updatedConsultant: SupervisionConsultantInfo = {
-                                ...consultant,
-                                targetOverrides: newOverrides
-                              };
-                              if (onUpdateConsultant) {
-                                onUpdateConsultant(updatedConsultant, `Updated ${stat.category} target SLA to ${val} days`);
-                              }
-                            }}
-                            className="w-12 px-1 py-0.5 text-center bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-md font-bold text-slate-900 dark:text-white text-xs"
-                          />
-                          <span className="text-slate-400 text-[11px]">d</span>
-                        </div>
-                      ) : (
-                        <span className="text-slate-500">{stat.targetDays}d</span>
-                      )}
-                    </td>
+                          <td className="py-2.5 px-3 text-center font-mono text-[11px]">
+                            <span className="font-bold text-slate-800 dark:text-slate-200">{stat.totalSubmittals}</span>
+                            <span className="text-slate-400 mx-1">/</span>
+                            <span className={stat.delayedCount > 0 ? 'text-rose-600 dark:text-rose-400 font-bold' : 'text-emerald-600 dark:text-emerald-400 font-semibold'}>
+                              {stat.delayedCount} delayed
+                            </span>
+                          </td>
 
-                    {/* Actual Average */}
-                    <td className="py-2.5 px-3 text-center font-mono font-bold text-indigo-600 dark:text-indigo-400">
-                      {stat.actualDays}d
-                    </td>
+                          <td className="py-2.5 px-2.5 text-center font-mono font-semibold text-slate-600 dark:text-slate-300">
+                            {stat.weightPct}%
+                          </td>
 
-                    {/* Compliance Status */}
-                    <td className="py-2.5 px-3.5 text-center">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold font-mono inline-flex items-center gap-1 border ${
-                        stat.isComplying
-                          ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
-                          : 'bg-rose-50 text-rose-700 dark:bg-rose-950/70 dark:text-rose-300 border-rose-200 dark:border-rose-800'
-                      }`}>
-                        {stat.isComplying ? '✓ Complying' : '✕ Not Complying'}
-                      </span>
-                    </td>
+                          <td className="py-2.5 px-3 text-center font-mono">
+                            {stat.deduction > 0 ? (
+                              <span 
+                                title={`Deduction formula: (${stat.delayedCount} delayed ÷ ${stat.totalSubmittals} submitted) × ${stat.weightPct}% = -${stat.deduction.toFixed(2)} pts`}
+                                className="text-rose-600 dark:text-rose-400 font-bold bg-rose-50 dark:bg-rose-950/50 px-1.5 py-0.5 rounded border border-rose-200 dark:border-rose-900 cursor-help"
+                              >
+                                -{stat.deduction.toFixed(2)}
+                              </span>
+                            ) : (
+                              <span className="text-emerald-600 dark:text-emerald-400 font-semibold text-[11px]">
+                                0.00 (Full)
+                              </span>
+                            )}
+                          </td>
 
-                    {/* Submitted vs Delayed */}
-                    <td className="py-2.5 px-3 text-center font-mono text-[11px]">
-                      <span className="font-bold text-slate-800 dark:text-slate-200">{stat.totalSubmittals}</span>
-                      <span className="text-slate-400 mx-1">/</span>
-                      <span className={stat.delayedCount > 0 ? 'text-rose-600 dark:text-rose-400 font-bold' : 'text-emerald-600 dark:text-emerald-400 font-semibold'}>
-                        {stat.delayedCount} delayed
-                      </span>
-                    </td>
+                          <td className="py-2.5 px-3.5 text-center font-mono font-black text-xs">
+                            <span className={`${
+                              stat.earnedScore === stat.weightPct
+                                ? 'text-emerald-600 dark:text-emerald-400'
+                                : stat.earnedScore >= stat.weightPct * 0.75
+                                ? 'text-indigo-600 dark:text-indigo-400'
+                                : 'text-amber-600 dark:text-amber-400'
+                            }`}>
+                              {stat.earnedScore.toFixed(2)}
+                            </span>
+                            <span className="text-slate-400 text-[10px] font-normal"> / {stat.weightPct}</span>
+                          </td>
 
-                    {/* Weightage */}
-                    <td className="py-2.5 px-2.5 text-center font-mono font-semibold text-slate-600 dark:text-slate-300">
-                      {stat.weightPct}%
-                    </td>
+                          <td className="py-2.5 px-3 text-center font-bold">
+                            <div className="flex items-center justify-center gap-1.5">
+                              <div className="w-12 bg-slate-200 dark:bg-slate-700 rounded-full h-1.5 overflow-hidden">
+                                <div 
+                                  className={`h-1.5 rounded-full ${
+                                    stat.onTimePct >= 90 ? 'bg-emerald-500' : stat.onTimePct >= 70 ? 'bg-indigo-500' : 'bg-rose-500'
+                                  }`}
+                                  style={{ width: `${stat.onTimePct}%` }}
+                                />
+                              </div>
+                              <span className="font-mono text-[11px] text-slate-700 dark:text-slate-300">
+                                {stat.onTimePct.toFixed(0)}%
+                              </span>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
 
-                    {/* Deductions */}
-                    <td className="py-2.5 px-3 text-center font-mono">
-                      {stat.deduction > 0 ? (
-                        <span 
-                          title={`Deduction formula: (${stat.delayedCount} delayed ÷ ${stat.totalSubmittals} submitted) × ${stat.weightPct}% = -${stat.deduction.toFixed(2)} pts`}
-                          className="text-rose-600 dark:text-rose-400 font-bold bg-rose-50 dark:bg-rose-950/50 px-1.5 py-0.5 rounded border border-rose-200 dark:border-rose-900 cursor-help"
-                        >
-                          -{stat.deduction.toFixed(2)}
-                        </span>
-                      ) : (
-                        <span className="text-emerald-600 dark:text-emerald-400 font-semibold text-[11px]">
-                          0.00 (Full)
-                        </span>
-                      )}
-                    </td>
-
-                    {/* Evaluation Mark Earned */}
-                    <td className="py-2.5 px-3.5 text-center font-mono font-black text-xs">
-                      <span className={`${
-                        stat.earnedScore === stat.weightPct
-                          ? 'text-emerald-600 dark:text-emerald-400'
-                          : stat.earnedScore >= stat.weightPct * 0.75
-                          ? 'text-indigo-600 dark:text-indigo-400'
-                          : 'text-amber-600 dark:text-amber-400'
-                      }`}>
-                        {stat.earnedScore.toFixed(2)}
-                      </span>
-                      <span className="text-slate-400 text-[10px] font-normal"> / {stat.weightPct}</span>
-                    </td>
-
-                    {/* On-Time Rate */}
-                    <td className="py-2.5 px-3 text-center font-bold">
-                      <div className="flex items-center justify-center gap-1.5">
-                        <div className="w-12 bg-slate-200 dark:bg-slate-700 rounded-full h-1.5 overflow-hidden">
-                          <div 
-                            className={`h-1.5 rounded-full ${
-                              stat.onTimePct >= 90 ? 'bg-emerald-500' : stat.onTimePct >= 70 ? 'bg-indigo-500' : 'bg-rose-500'
-                            }`}
-                            style={{ width: `${stat.onTimePct}%` }}
-                          />
-                        </div>
-                        <span className="font-mono text-[11px] text-slate-700 dark:text-slate-300">
-                          {stat.onTimePct.toFixed(0)}%
-                        </span>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-
-              {/* Summary / Totals Footer Row */}
-              <tfoot className="bg-slate-100/90 dark:bg-slate-800/95 font-bold border-t-2 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white">
-                <tr>
-                  <td className="py-3 px-3.5 font-black uppercase text-[11px] text-slate-900 dark:text-white">
-                    Total / Performance Matrix
-                  </td>
-                  <td className="py-3 px-3 text-center font-mono text-slate-500">
-                    —
-                  </td>
-                  <td className="py-3 px-3 text-center font-mono font-black text-indigo-600 dark:text-indigo-400">
-                    {overallMetrics.avgOverallDays}d avg
-                  </td>
-                  <td className="py-3 px-3.5 text-center">
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-black font-mono uppercase tracking-wide border ${
-                      overallMetrics.totalEarnedScore >= 80
-                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border-emerald-300'
-                        : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border-amber-300'
-                    }`}>
-                      {overallMetrics.totalEarnedScore >= 80 ? '✓ Compliant Portfolio' : '⚠ Attention Required'}
-                    </span>
-                  </td>
-                  <td className="py-3 px-3 text-center font-mono text-xs">
-                    <span className="text-slate-900 dark:text-white font-bold">{overallMetrics.totalCount}</span>
-                    <span className="text-slate-400 mx-1">/</span>
-                    <span className={overallMetrics.totalDelayedSubmittals > 0 ? 'text-rose-600 dark:text-rose-400 font-bold' : 'text-emerald-600'}>
-                      {overallMetrics.totalDelayedSubmittals} delayed
-                    </span>
-                  </td>
-                  <td className="py-3 px-2.5 text-center font-mono font-bold text-slate-800 dark:text-slate-100">
-                    {overallMetrics.totalWeight}%
-                  </td>
-                  <td className="py-3 px-3 text-center font-mono font-black text-rose-600 dark:text-rose-400">
-                    -{overallMetrics.totalDeductions.toFixed(2)} pts
-                  </td>
-                  <td className="py-3 px-3.5 text-center font-mono font-black text-sm text-emerald-600 dark:text-emerald-400">
-                    {overallMetrics.totalEarnedScore.toFixed(2)} / {overallMetrics.totalWeight}
-                  </td>
-                  <td className="py-3 px-3 text-center font-mono font-bold text-slate-800 dark:text-slate-200">
-                    {overallMetrics.complianceRate.toFixed(1)}%
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
+                    <tfoot className="bg-slate-100/90 dark:bg-slate-800/95 font-bold border-t-2 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white">
+                      <tr>
+                        <td className="py-3 px-3.5 font-black uppercase text-[11px] text-slate-900 dark:text-white">
+                          Total / Performance Matrix
+                        </td>
+                        <td className="py-3 px-3 text-center font-mono text-slate-500">
+                          —
+                        </td>
+                        <td className="py-3 px-3 text-center font-mono font-black text-indigo-600 dark:text-indigo-400">
+                          {overallMetrics.avgOverallDays}d avg
+                        </td>
+                        <td className="py-3 px-3.5 text-center">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-black font-mono uppercase tracking-wide border ${
+                            overallMetrics.totalEarnedScore >= 80
+                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border-emerald-300'
+                              : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border-amber-300'
+                          }`}>
+                            {overallMetrics.totalEarnedScore >= 80 ? '✓ Compliant Portfolio' : '⚠ Attention Required'}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 text-center font-mono text-xs">
+                          <span className="text-slate-900 dark:text-white font-bold">{overallMetrics.totalCount}</span>
+                          <span className="text-slate-400 mx-1">/</span>
+                          <span className={overallMetrics.totalDelayedSubmittals > 0 ? 'text-rose-600 dark:text-rose-400 font-bold' : 'text-emerald-600'}>
+                            {overallMetrics.totalDelayedSubmittals} delayed
+                          </span>
+                        </td>
+                        <td className="py-3 px-2.5 text-center font-mono font-bold text-slate-800 dark:text-slate-100">
+                          {overallMetrics.totalWeight}%
+                        </td>
+                        <td className="py-3 px-3 text-center font-mono font-black text-rose-600 dark:text-rose-400">
+                          -{overallMetrics.totalDeductions.toFixed(2)} pts
+                        </td>
+                        <td className="py-3 px-3.5 text-center font-mono font-black text-sm text-emerald-600 dark:text-emerald-400">
+                          {overallMetrics.totalEarnedScore.toFixed(2)} / {overallMetrics.totalWeight}
+                        </td>
+                        <td className="py-3 px-3 text-center font-mono font-bold text-slate-800 dark:text-slate-200">
+                          {overallMetrics.complianceRate.toFixed(1)}%
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
-        </div>
-      )}
-        </div>
-      )}
-
-        {/* Section 2 Supervision Consultant Performance Evaluation Criteria */}
-        {showSection2 && (
-          <div className="space-y-4 pt-8">
+        }
+        evaluationMatrix={
+          <div className="space-y-4 pt-4">
             <div className="flex items-center gap-2 mb-2">
               <Award className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
               <h4 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">
@@ -1129,9 +1113,8 @@ export default function ConsultantPerformanceKpiWidget({
               onScoreChange={setLivePillar2Score}
             />
           </div>
-        )}
-        </div>
-      )}
+        }
+      />
 
       {/* Target Settings & Weightages Modal */}
       <AnimatePresence>
@@ -1332,6 +1315,6 @@ export default function ConsultantPerformanceKpiWidget({
           </div>
         )}
       </AnimatePresence>
-    </div>
+    </>
   );
 }
