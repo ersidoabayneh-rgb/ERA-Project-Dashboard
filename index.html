@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Ethiopian Roads Administration ERP Dashboard</title>
-    <meta name="description" content="A comprehensive responsive road construction project dashboard aligning with PMBOK 8th edition, EVM, and FIDIC standards for the Ethiopian Roads Administration." />
-    <meta property="og:title" content="Ethiopian Roads Administration ERP Dashboard" />
-    <meta property="og:description" content="A comprehensive responsive road construction project dashboard aligning with PMBOK 8th edition, EVM, and FIDIC standards for the Ethiopian Roads Administration." />
+    <title>TreasuryPay - Financial Payment Management & Bank Gateway System</title>
+    <meta name="description" content="Enterprise Financial Management Application featuring Dual-Role Authorization (Director General & Financial Management Director), Bank Gateway Integration (Adyen/Yapily Open Banking), and Real-Time Webhook Status Synchronization." />
+    <meta property="og:title" content="TreasuryPay - Financial Payment Management & Bank Gateway System" />
+    <meta property="og:description" content="Enterprise Financial Management Application featuring Dual-Role Authorization (Director General & Financial Management Director), Bank Gateway Integration (Adyen/Yapily Open Banking), and Real-Time Webhook Status Synchronization." />
 
     <!-- GitHub Pages Trailing Slash & SPA Path Resolver -->
     <script>
@@ -17,9 +17,6 @@
           var path = window.location.pathname;
 
           /* GITHUB_PAGES_ROOT_REDIRECT_START */
-          // When GitHub Pages is configured to serve from repository root (Branch: main, Folder: / (root)),
-          // the uncompiled TypeScript /src/main.tsx cannot be executed by browsers.
-          // Instantly redirect to the pre-compiled production build inside /docs/
           if (!path.includes('/docs/')) {
             var targetDir = path.endsWith('/') ? path + 'docs/' : path + '/docs/';
             window.location.replace(targetDir + window.location.search + window.location.hash);
@@ -27,14 +24,12 @@
           }
           /* GITHUB_PAGES_ROOT_REDIRECT_END */
 
-          // Ensure trailing slash on directory URLs so relative ./assets/... resolve to the correct folder
           if (!path.endsWith('/') && !path.split('/').pop().includes('.')) {
             window.location.replace(path + '/' + window.location.search + window.location.hash);
             return;
           }
         }
 
-        // Decode SPA deep links routed via 404.html
         var l = window.location;
         if (l.search[1] === '/') {
           var decoded = l.search.slice(1).split('&').map(function(s) { 
@@ -49,12 +44,12 @@
   </head>
   <body class="bg-slate-900 text-slate-100">
     <div id="root">
-      <!-- Loading placeholder that gets replaced as soon as React mounts -->
+      <!-- Loading fallback -->
       <div id="app-loading-fallback" style="min-height: 100vh; display: flex; align-items: center; justify-content: center; background: #0f172a; color: #f8fafc; font-family: system-ui, -apple-system, sans-serif; padding: 20px;">
         <div style="text-align: center; max-width: 540px; padding: 32px; background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(51, 65, 85, 0.8); border-radius: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.4);">
           <div style="width: 48px; height: 48px; border: 4px solid #334155; border-top-color: #3b82f6; border-radius: 50%; margin: 0 auto 16px; animation: spin 1s linear infinite;"></div>
-          <h2 style="font-size: 18px; font-weight: 800; margin-bottom: 8px; letter-spacing: -0.02em;">Ethiopian Roads Administration ERP</h2>
-          <p id="app-loading-text" style="font-size: 13px; color: #94a3b8; line-height: 1.5; margin: 0;">Initializing ERP Dashboard components...</p>
+          <h2 style="font-size: 18px; font-weight: 800; margin-bottom: 8px; letter-spacing: -0.02em;">TreasuryPay Financial Platform</h2>
+          <p id="app-loading-text" style="font-size: 13px; color: #94a3b8; line-height: 1.5; margin: 0;">Initializing Financial Management & Bank Webhook Engine...</p>
 
           <div id="loading-timeout-action" style="display: none; margin-top: 24px; text-align: center;">
             <p style="margin: 0 0 14px; color: #94a3b8; font-size: 12px; line-height: 1.5;">
@@ -70,7 +65,6 @@
         @keyframes spin { to { transform: rotate(360deg); } }
       </style>
       <script>
-        // If React doesn't mount within 7 seconds, display a friendly reload option
         setTimeout(function() {
           var root = document.getElementById('root');
           var text = document.getElementById('app-loading-text');
@@ -85,4 +79,3 @@
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-

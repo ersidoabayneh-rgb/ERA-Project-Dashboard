@@ -914,7 +914,7 @@ export interface User {
   email?: string;
   phone?: string;
   password?: string;
-  role: 'master_admin' | 'cpm_admin' | 'directorate_admin' | 'pmo_admin' | 'admin' | 'editor' | 'viewer' | 'approver' | 'era_approver' | 'era_editor' | 'consultant_approver' | 'consultant_editor' | 'contractor_editor';
+  role: 'master_admin' | 'cpm_admin' | 'directorate_admin' | 'pmo_admin' | 'admin' | 'editor' | 'viewer' | 'approver' | 'era_approver' | 'era_editor' | 'consultant_approver' | 'consultant_editor' | 'contractor_editor' | 'director_general' | 'finance_director' | 'department_head';
   accessibleProjects: string[]; // Project IDs
   assignedPages?: string[]; // Tab/Page IDs this user is authorized to edit
   hasApprovalCredential?: boolean; // Whether user has approval authority before data incorporation
@@ -941,6 +941,7 @@ export interface EditablePageOption {
 
 export const ALL_EDITABLE_PAGES: EditablePageOption[] = [
   { id: 'dash', name: '📊 Dashboard Overview', description: 'Main project KPIs, physical progress slider, field photos' },
+  { id: 'variationClaim', name: '🚧 Variation Order & Claims', description: 'Interactive FIDIC Clause 13 variation orders, claims log, dynamic budget summary' },
   { id: 'seriesEditor', name: '📋 Financial BOQ & Payment Schedules', description: 'Division series items, bill of quantities, payment schedules' },
   { id: 'issueLog', name: '🚩 Issue & Claims Log', description: 'Contractual claims, bottleneck tracking, transfer histories' },
   { id: 'linear', name: '📏 Linear Elevation Diagram', description: 'Chainage segment progress elevation mapping' },

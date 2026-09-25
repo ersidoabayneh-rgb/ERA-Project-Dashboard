@@ -46,7 +46,8 @@ import {
   MapPin,
   Globe,
   X,
-  Palette
+  Palette,
+  Landmark
 } from 'lucide-react';
 
 import { Project, User, ApprovalRequest, PrivateDraft, WorkflowAuditLogEntry, KpiAllocatedItem, SeriesItem, MonthlyProgress, LinearData, RowMetric, ProgressPlan, PaymentItem, AnnualItem, WorkProgramActivity, BondGuarantee, formatAccounting, ProjectDocument, ALL_EDITABLE_PAGES, EditablePageOption, ProjectLifecycleStatus, isProjectClosed, isCpmOrMasterAdmin, isRecentlyUpdated, formatRelativeTime, ContractorScoringWeights, ConsultantScoringWeights, DEFAULT_CONTRACTOR_SCORING_WEIGHTS, DEFAULT_CONSULTANT_SCORING_WEIGHTS, SupervisionConsultantInfo, ThemeSettings, DEFAULT_THEME_SETTINGS } from './types';
@@ -63,10 +64,38 @@ export function hasApprovalCredentials(user: User | null): boolean {
     user.role === 'approver' ||
     user.role === 'era_approver' ||
     user.role === 'consultant_approver' ||
+    user.role === 'director_general' ||
+    user.role === 'finance_director' ||
+    user.role === 'department_head' ||
     user.hasApprovalCredential === true ||
     user.username === 'proj_1781786415663' ||
     Boolean(user.username && user.username.toLowerCase().includes('ersido'))
   );
+}
+
+export function canAccessTreasuryPay(user: User | null): boolean {
+  if (!user) return false;
+  const role = (user.role || '').toLowerCase();
+  const uname = (user.username || '').toLowerCase();
+
+  // Strict Governance RBAC: ONLY Department Head, Finance Director, and Director General can see & access the TreasuryPay button
+  // 1. Department Head
+  if (role === 'department_head' || uname === 'dept_head' || uname === 'depthead' || uname === 'department_head') {
+    return true;
+  }
+
+  // 2. Finance Director
+  if (role === 'finance_director' || uname === 'finance_director' || uname === 'financedirector' || uname === 'berhanu_zeleke') {
+    return true;
+  }
+
+  // 3. Director General
+  if (role === 'director_general' || uname === 'director_general' || uname === 'directorgeneral' || uname === 'habtamu_tegegne') {
+    return true;
+  }
+
+  // All other users (master admin, editors, viewers, approvers, contractors, consultants) cannot see or access the TreasuryPay button
+  return false;
 }
 
 export function canUpdateProjectInfo(user: User | null): boolean {
@@ -209,6 +238,7 @@ export function canUserApproveRequest(user: User | null, req: ApprovalRequest, p
 export function getFidicOptions(deliveryMethod: 'DB' | 'DBB' | string) {
   if (deliveryMethod === 'DB') {
     return [
+      'FIDIC 1987 Yellow Book (3rd Edition, Reprinted 1992)',
       'FIDIC 2017 Yellow Book (Plant & Design-Build)',
       'FIDIC 1999 Yellow Book (Plant & Design-Build)',
       'FIDIC 2017 Silver Book (EPC/Turnkey)',
@@ -218,6 +248,7 @@ export function getFidicOptions(deliveryMethod: 'DB' | 'DBB' | string) {
     ];
   } else {
     return [
+      'FIDIC 1987 Red Book (4th Edition, Reprinted 1992)',
       'FIDIC 2017 Red Book (Construction / DBB)',
       'FIDIC 1999 Red Book (Construction / DBB)',
       'FIDIC Pink Book (MDB Harmonised)',
@@ -240,6 +271,7 @@ import RowStatusView from './components/RowStatusView';
 import ProgressPlanView from './components/ProgressPlanView';
 import QuantityEditorView from './components/QuantityEditorView';
 import BondsGuaranteeView from './components/BondsGuaranteeView';
+import VariationAndClaimView from './components/VariationAndClaimView';
 import ComprehensiveAnalysisView from './components/ComprehensiveAnalysisView';
 import DocumentationView from './components/DocumentationView';
 import SupervisionConsultantView from './components/SupervisionConsultantView';
@@ -258,6 +290,7 @@ import UserGuideManualModal from './components/UserGuideManualModal';
 import ThemeCustomizerModal from './components/ThemeCustomizerModal';
 import { UserProfileModal } from './components/UserProfileModal';
 import ApprovalWorkflowManager from './components/ApprovalWorkflowManager';
+import { TreasuryPayView } from './components/TreasuryPay/TreasuryPayView';
 import eraLogo from './assets/logo.png';
 
 import { defaultProjectTemplate, blankProjectTemplate, generateKpiAllocated } from './data/defaultProject';
@@ -782,6 +815,7 @@ export default function App() {
   const [selectedAdminUser, setSelectedAdminUser] = useState<string | null>(null);
   const [selectedAdminTab, setSelectedAdminTab] = useState<'projects' | 'credentials' | 'activities'>('projects');
   const [showApprovals, setShowApprovals] = useState(false);
+  const [showTreasuryPay, setShowTreasuryPay] = useState(false);
   const [showDraftsPlayground, setShowDraftsPlayground] = useState(false);
   const [showProjectApprovalBanner, setShowProjectApprovalBanner] = useState(true);
 
@@ -870,6 +904,9 @@ export default function App() {
     }
 
     const defaultRoleUsers: User[] = [
+      { username: 'dept_head', password: 'DeptHead@2026!', role: 'department_head', fullName: 'Eng. Scott Wilson (Civil Works Department Head)', hasApprovalCredential: true, accessibleProjects: [], status: 'Active' },
+      { username: 'finance_director', password: 'FinanceDir@2026!', role: 'finance_director', fullName: 'Ato Berhanu Zeleke (Financial Management Director)', hasApprovalCredential: true, accessibleProjects: [], status: 'Active' },
+      { username: 'director_general', password: 'DirectorGen@2026!', role: 'director_general', fullName: 'Eng. Habtamu Tegegne (Director General)', hasApprovalCredential: true, accessibleProjects: [], status: 'Active' },
       { username: 'era_approver', password: 'password123', role: 'era_approver', fullName: 'ERA Approver', hasApprovalCredential: true, accessibleProjects: [] },
       { username: 'era_editor', password: 'password123', role: 'era_editor', fullName: 'ERA Editor', accessibleProjects: [] },
       { username: 'consultant_approver', password: 'password123', role: 'consultant_approver', fullName: 'Consultant Approver', hasApprovalCredential: true, accessibleProjects: [] },
@@ -878,7 +915,11 @@ export default function App() {
     ];
 
     for (const dru of defaultRoleUsers) {
-      if (!rawList.some((x: any) => x?.username?.toLowerCase() === dru.username.toLowerCase())) {
+      const existingIdx = rawList.findIndex((x: any) => x?.username?.toLowerCase() === dru.username.toLowerCase());
+      if (existingIdx !== -1) {
+        // Ensure credentials and role are up to date
+        rawList[existingIdx] = { ...rawList[existingIdx], ...dru };
+      } else {
         rawList.push(dru);
       }
     }
@@ -3287,6 +3328,14 @@ let isBatchSyncRunning = false;
     setIsEditingDossier(false);
   };
 
+  const getApprovedClaimsCostSum = (proj: Project) => {
+    if (proj.approvedClaimsCostSum !== undefined) return proj.approvedClaimsCostSum;
+    if (!(proj as any).contractClaimsList) return 0;
+    return ((proj as any).contractClaimsList || [])
+      .filter((c: any) => c.status?.toLowerCase() === 'approved')
+      .reduce((sum: number, c: any) => sum + (c.costApproved || 0), 0);
+  };
+
   const getRevisedCompletionDateStr = (startDateStr: string, origDays: number, eotDays: number, interimEotDays: number = 0) => {
     if (!startDateStr) return 'N/A';
     try {
@@ -3840,6 +3889,20 @@ let isBatchSyncRunning = false;
                     <span>Approve Credentials ({usersListState.filter(u => u && u.isPendingApproval).length})</span>
                   </button>
                 )}
+                {canAccessTreasuryPay(currentUserObj) && (
+                  <button
+                    onClick={() => setShowTreasuryPay(!showTreasuryPay)}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white p-2 rounded-full border border-emerald-500/40 flex items-center gap-1.5 text-[11px] font-extrabold px-3 py-1.5 transition shadow-sm cursor-pointer"
+                    title="TreasuryPay Financial Management & Real-Time Gateway — Restricted Access"
+                  >
+                    <Landmark className="w-3.5 h-3.5 text-emerald-200" />
+                    <span>TreasuryPay</span>
+                    <span className="flex h-2 w-2 relative">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-300 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
+                    </span>
+                  </button>
+                )}
                 <button
                   onClick={() => setIsUserGuideOpen(true)}
                   className="bg-emerald-600 hover:bg-emerald-700 p-2 rounded-full border border-emerald-700 flex items-center gap-1.5 text-[11px] font-extrabold text-white px-3 py-1.5 transition shadow-sm"
@@ -4280,19 +4343,26 @@ let isBatchSyncRunning = false;
 
 
 
-                        <div className="space-y-1">
+                         <div className="space-y-1">
                           <span className="text-[9px] text-slate-400 block font-sans font-bold">Approved Variations</span>
                           <span className="text-emerald-600 dark:text-emerald-400 block font-mono font-black text-2xs bg-emerald-50 dark:bg-emerald-950/20 px-1 py-0.5 rounded max-w-max">
                             <AnimatedCounter value={currentProject.variation || 0} prefix="Br. " />
                           </span>
                         </div>
 
+                        <div className="space-y-1">
+                          <span className="text-[9px] text-slate-400 block font-sans font-bold">Cost Claim (Approved)</span>
+                          <span className="text-rose-600 dark:text-rose-400 block font-mono font-black text-2xs bg-rose-50 dark:bg-rose-950/20 px-1 py-0.5 rounded max-w-max">
+                            <AnimatedCounter value={getApprovedClaimsCostSum(currentProject)} prefix="Br. " />
+                          </span>
+                        </div>
+
                         <div className="space-y-1 border-t border-dashed border-slate-200 dark:border-slate-800 pt-2.5 mt-2.5">
                           <span className="text-[9px] text-slate-400 block font-sans font-bold">Revised Contract Amount</span>
                           <span className="text-emerald-600 dark:text-emerald-400 block font-mono font-black text-2xs">
-                            <AnimatedCounter value={(currentProject.origAmount * 1_000_000) + (currentProject.variation || 0)} prefix="Br. " />
+                            <AnimatedCounter value={(currentProject.origAmount * 1_000_000) + (currentProject.variation || 0) + getApprovedClaimsCostSum(currentProject)} prefix="Br. " />
                           </span>
-                          <span className="text-[8px] text-slate-400 block font-sans font-normal mt-0.5">Calculating Original Contract Amount plus Approved Variations</span>
+                          <span className="text-[8px] text-slate-400 block font-sans font-normal mt-0.5">Calculating Original Contract Amount plus Approved Variations and Cost Claims</span>
                         </div>
 
                         <div className="space-y-1 border-t border-dashed border-slate-200 dark:border-slate-800 pt-2 mt-2">
@@ -4331,7 +4401,7 @@ let isBatchSyncRunning = false;
                             {currentProject.contractType === 'DB' ? 'Design-Build (DB)' : 'Design-Bid-Build (DBB)'}
                           </span>
                           <span className="text-slate-800 dark:text-zinc-150 block text-[11px] font-bold mt-1">
-                            📕 {currentProject.fidicContractType || 'FIDIC 2017 Red Book'}
+                            📕 {currentProject.fidicContractType || getFidicOptions(currentProject.contractType)[0]}
                           </span>
                         </div>
                       </div>
@@ -4612,6 +4682,7 @@ let isBatchSyncRunning = false;
                 { id: 'dash', label: '📊 Dashboard' },
                 { id: 'seriesEditor', label: '📋 Financial Data' },
                 { id: 'issueLog', label: '🚩 Issue Log' },
+                { id: 'variationClaim', label: '🚧 Variation & Claim' },
                 { id: 'linear', label: '📏 Linear diagram' },
                 { id: 'rowEditor', label: '🛣️ Utilities & ROW' },
                 { id: 'progressPlanEditor', label: '📈 Progress Comparisons' },
@@ -4777,6 +4848,14 @@ let isBatchSyncRunning = false;
                   onSwitchTab={setActiveTab}
                   onDeleteProject={handleDeleteProject}
                   onUpdateProjectStatus={handleUpdateProjectStatus}
+                />
+              )}
+
+              {activeTab === 'variationClaim' && (
+                <VariationAndClaimView
+                  project={currentProject}
+                  onProjectUpdate={handleProjectUpdate}
+                  currentUserObj={currentUserObj}
                 />
               )}
 
@@ -7693,6 +7772,48 @@ let isBatchSyncRunning = false;
         onUpdateTheme={handleUpdateTheme}
         onResetTheme={handleResetTheme}
       />
+
+      {/* TreasuryPay Financial Gateway Modal (Restricted Access) */}
+      {showTreasuryPay && canAccessTreasuryPay(currentUserObj) && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 animate-in fade-in duration-200">
+          <div className="w-full max-w-7xl max-h-[96vh] flex flex-col bg-white dark:bg-slate-900 rounded-3xl shadow-2xl overflow-hidden border border-slate-200 dark:border-slate-800">
+            <div className="p-3 bg-slate-900 dark:bg-slate-950 text-white flex justify-between items-center border-b border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-emerald-500/20 rounded-xl border border-emerald-500/30">
+                  <Landmark className="w-5 h-5 text-emerald-400" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
+                    <span>ERA TreasuryPay — Real-Time Financial Management</span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                      {currentUserObj?.role === 'director_general' ? 'Director General Mandate' : currentUserObj?.role === 'finance_director' ? 'Finance Director Release' : 'Dept Head Valuation'}
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-slate-400">Restricted Multi-Tier Treasury Governance & Settlement Portal</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowTreasuryPay(false)}
+                className="p-2 hover:bg-slate-800 rounded-full transition text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50 dark:bg-slate-900/50">
+              <TreasuryPayView 
+                currentUserRole={
+                  currentUserObj?.role === 'director_general' 
+                    ? 'director_general' 
+                    : currentUserObj?.role === 'finance_director' 
+                      ? 'finance_director' 
+                      : 'department_head'
+                }
+                currentUserName={currentUserObj?.fullName || currentUserObj?.username || 'Authorized Officer'}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

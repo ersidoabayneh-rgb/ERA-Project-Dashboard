@@ -4,8 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "tsx server.ts",
     "build": "vite build && node scripts/prepare-github-pages.cjs",
+    "start": "tsx server.ts",
     "preview": "vite preview",
     "clean": "rm -rf dist docs",
     "lint": "tsc --noEmit"
@@ -21,6 +22,7 @@
     "jspdf": "^4.2.1",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
+    "qrcode.react": "^4.2.0",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "recharts": "^3.8.1",

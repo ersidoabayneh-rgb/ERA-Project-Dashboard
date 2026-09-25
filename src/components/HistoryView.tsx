@@ -24,6 +24,11 @@ import {
 } from '../data/defaultProject';
 import { calculateProjectEvm } from '../lib/evmCalculations';
 import { getProjectConsultantEvaluation } from '../data/consultantEvaluationMatrix';
+import { 
+  getFidicContractInfo, 
+  generateFidicContractualAnalysis, 
+  getFidicRecommendations 
+} from '../lib/fidicClauseEngine';
 import eraLogo from '../assets/logo.png';
 import { drawEraLogo } from '../lib/pdfReportEngine';
 import ChangelogAuditHistory from './ChangelogAuditHistory';
@@ -532,6 +537,11 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
   };
 
   const kpiGroupsScores = getKpiScores();
+
+  // FIDIC Contract Clause & Project Delivery Method Engine
+  const fidicInfo = useMemo(() => getFidicContractInfo(p), [p]);
+  const fidicAnalysis = useMemo(() => generateFidicContractualAnalysis(p), [p]);
+  const fidicRecommendations = useMemo(() => getFidicRecommendations(p), [p]);
 
   // Elapsed progress calculation
   const elapsed = (() => {
@@ -1538,20 +1548,23 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     drawSectionHeader("6. Recommended Audit Interventions & Directives");
     const overdueCount = consultantEval.metrics?.rfis?.overdue ?? 0;
     const isDb = p.contractType === 'DB';
-    const fBook = p.fidicContractType || (isDb ? 'FIDIC Yellow Book' : 'FIDIC Red Book');
+    const fInfo = getFidicContractInfo(p);
+    const fBook = fInfo.fidicName;
     const lagStr = lagging.length > 0 ? lagging.map(l => `Series ${l.code}`).join(', ') : 'Series A (Earthworks)';
 
+    const rowClauseText = fInfo.editionYear === '1987' ? 'Clause 42.1 (Possession of Site)' : 'Sub-Clause 2.1 (Right of Access to the Site)';
+
     const actionDirects = isDb ? [
-      { step: "01", body: `Issue formal Warning Notice under ${fBook} Sub-Clause 8.6 (Rate of Progress) regarding the physical delays in ${lagStr}.` },
-      { step: "02", body: `Instruct the Supervision Consultant to accelerate design reviews under Sub-Clause 5.2 (Review of Contractor's Documents) to prevent engineering design-build blockages.` },
-      { step: "03", body: `Accelerate Right-of-Way clearances under Sub-Clause 2.1 to protect the Design-Builder's scheduled workfront milestones and prevent idle claims.` },
+      { step: "01", body: `Issue formal Warning Notice under ${fBook} ${fInfo.clauses.progressRate} regarding the physical delays in ${lagStr}.` },
+      { step: "02", body: `Instruct the Supervision Consultant to accelerate design reviews under ${fInfo.clauses.designReview} to prevent engineering design-build blockages.` },
+      { step: "03", body: `Accelerate Right-of-Way clearances under ${rowClauseText} to protect the Design-Builder's scheduled workfront milestones and prevent idle claims.` },
       ...((overdueCount > 0) ? [{
         step: "04",
         body: `Direct Supervision Consultant (${consultantEval.firmName}) to resolve ${overdueCount} overdue technical design/material submittals under FIDIC Cl. 3 / ERA Guidelines.`
       }] : [])
     ] : [
-      { step: "01", body: `Issue formal Notice to Correct under ${fBook} Sub-Clause 15.1 regarding the physical lag evaluated in ${lagStr}, warning under Sub-Clause 8.6.` },
-      { step: "02", body: `Fulfill Employer obligation to grant continuous physical site possession under Sub-Clause 2.1 (Right of Access to the Site) to prevent contractor idle EOT claims.` },
+      { step: "01", body: `Issue formal Notice to Correct under ${fBook} ${fInfo.clauses.noticeToCorrect} regarding the physical lag evaluated in ${lagStr}, warning under ${fInfo.clauses.progressRate}.` },
+      { step: "02", body: `Fulfill Employer obligation to grant continuous physical site possession under ${rowClauseText} to prevent contractor idle EOT claims.` },
       { step: "03", body: `Direct Supervision Consultant (${consultantEval.firmName}) to perform strict material and Work Inspection Requests (WIR) reviews under Clause 3 to eliminate layer stacking anomalies.` },
       ...((overdueCount > 0) ? [{
         step: "04",
@@ -4909,136 +4922,37 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                 <div className="flex items-center justify-between">
                   <h3 className="text-xs font-black uppercase text-slate-900 dark:text-white flex items-center gap-1.5">
                     <span className="w-1.5 h-3 bg-blue-600 rounded-xs" />
-                    6. Recommended Audit Interventions & Directives
+                    6. FIDIC Clausal Interventions & Legal Audit Directives
                   </h3>
-                  <span className="px-2 py-0.5 bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 text-[9px] font-black uppercase rounded-lg">
-                    {p.contractType === 'DB' ? 'DB' : 'DBB'} • {p.fidicContractType ? p.fidicContractType.split(' (')[0] : (p.contractType === 'DB' ? 'FIDIC Yellow' : 'FIDIC Red')}
+                  <span className="px-2 py-0.5 bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 text-[9px] font-black uppercase rounded-lg font-mono">
+                    {p.contractType === 'DB' ? 'Design-Build (DB)' : 'Design-Bid-Build (DBB)'} • {fidicInfo.fidicName.split(' (')[0]}
                   </span>
                 </div>
-                <div className="border border-slate-200/60 dark:border-slate-700/60 p-4 rounded-xl bg-white dark:bg-slate-900/50 text-[11px] space-y-2.5 font-semibold">
-                  {(() => {
-                    const fBook = p.fidicContractType || (p.contractType === 'DB' ? 'FIDIC Yellow Book (Plant & Design-Build)' : 'FIDIC Red Book (Construction / DBB)');
-                    const isSilver = fBook.toLowerCase().includes('silver');
-                    const isGold = fBook.toLowerCase().includes('gold');
-                    const isEmerald = fBook.toLowerCase().includes('emerald');
-                    const isPink = fBook.toLowerCase().includes('pink');
-                    const isRed = fBook.toLowerCase().includes('red') || fBook.toLowerCase().includes('era') || (!isSilver && !isGold && !isEmerald && !isPink && p.contractType !== 'DB');
-                    const isYellow = fBook.toLowerCase().includes('yellow') || (!isSilver && !isGold && !isEmerald && !isPink && p.contractType === 'DB');
-                    
-                    const lagStr = lagging.length > 0 ? lagging.map(l => `Series ${l.code}`).join(', ') : 'Series A (Earthworks)';
-
-                    if (isSilver) {
-                      return (
-                        <>
-                          <div className="flex items-start gap-2 text-slate-700 dark:text-slate-300">
-                            <span className="bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 px-1.5 py-0.5 rounded text-[9px] font-mono shrink-0">01</span>
-                            <p className="text-[10px] leading-relaxed">
-                              Issue formal Warning Notice under <strong>{fBook} Sub-Clause 8.6 (Rate of Progress)</strong> regarding physical progress delays in <strong className="text-slate-900 dark:text-white">{lagStr}</strong>.
-                            </p>
-                          </div>
-                          <div className="flex items-start gap-2 text-slate-700 dark:text-slate-300">
-                            <span className="bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 px-1.5 py-0.5 rounded text-[9px] font-mono shrink-0">02</span>
-                            <p className="text-[10px] leading-relaxed">
-                              Instruct the Employer's Representative to expedite design document reviews under <strong>Sub-Clause 5.2 (Review of Contractor's Documents)</strong> to prevent EPC fast-track engineering delays on structures.
-                            </p>
-                          </div>
-                          <div className="flex items-start gap-2 text-slate-700 dark:text-slate-300">
-                            <span className="bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 px-1.5 py-0.5 rounded text-[9px] font-mono shrink-0">03</span>
-                            <p className="text-[10px] leading-relaxed">
-                              Fulfill Employer Site Access under <strong>Sub-Clause 2.1</strong> to protect the Contractor's strict design-build path and prevent claims for idle resources under <strong>Sub-Clause 8.4</strong>.
-                            </p>
-                          </div>
-                        </>
-                      );
-                    }
-
-                    if (isGold) {
-                      return (
-                        <>
-                          <div className="flex items-start gap-2 text-slate-700 dark:text-slate-300">
-                            <span className="bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 px-1.5 py-0.5 rounded text-[9px] font-mono shrink-0">01</span>
-                            <p className="text-[10px] leading-relaxed">
-                              Issue Warning under <strong>{fBook} Sub-Clause 8.6 (Rate of Progress)</strong> regarding physical progress delays in <strong className="text-slate-900 dark:text-white">{lagStr}</strong>.
-                            </p>
-                          </div>
-                          <div className="flex items-start gap-2 text-slate-700 dark:text-slate-300">
-                            <span className="bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 px-1.5 py-0.5 rounded text-[9px] font-mono shrink-0">02</span>
-                            <p className="text-[10px] leading-relaxed">
-                              Perform Asset durability reviews under <strong>Clause 10 (Operation Service)</strong> to guarantee design conforms to the subsequent 20-year operation lifecycle.
-                            </p>
-                          </div>
-                        </>
-                      );
-                    }
-
-                    if (isEmerald) {
-                      return (
-                        <>
-                          <div className="flex items-start gap-2 text-slate-700 dark:text-slate-300">
-                            <span className="bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 px-1.5 py-0.5 rounded text-[9px] font-mono shrink-0">01</span>
-                            <p className="text-[10px] leading-relaxed">
-                              Issue Warning Notice under <strong>{fBook} Sub-Clause 8.6</strong> regarding physical excavation rate slips in <strong className="text-slate-900 dark:text-white">{lagStr}</strong>.
-                            </p>
-                          </div>
-                          <div className="flex items-start gap-2 text-slate-700 dark:text-slate-300">
-                            <span className="bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 px-1.5 py-0.5 rounded text-[9px] font-mono shrink-0">02</span>
-                            <p className="text-[10px] leading-relaxed">
-                              Audit subsurface conditions against the <strong>Geotechnical Baseline Report (GBR)</strong> to actively mitigate risk under <strong>Clause 13 (Variations)</strong>.
-                            </p>
-                          </div>
-                        </>
-                      );
-                    }
-
-                    if (isYellow) {
-                      return (
-                        <>
-                          <div className="flex items-start gap-2 text-slate-700 dark:text-slate-300">
-                            <span className="bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 px-1.5 py-0.5 rounded text-[9px] font-mono shrink-0">01</span>
-                            <p className="text-[10px] leading-relaxed">
-                              Issue formal Warning Notice under <strong>{fBook} Sub-Clause 8.6 (Rate of Progress)</strong> regarding physical progress delays in <strong className="text-slate-900 dark:text-white">{lagStr}</strong>.
-                            </p>
-                          </div>
-                          <div className="flex items-start gap-2 text-slate-700 dark:text-slate-300">
-                            <span className="bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 px-1.5 py-0.5 rounded text-[9px] font-mono shrink-0">02</span>
-                            <p className="text-[10px] leading-relaxed">
-                              Instruct the Supervision Consultant (Engineer) to accelerate the design documentation review process under <strong>Sub-Clause 5.2 (Review of Contractor's Documents)</strong> to ensure that design-build approvals do not cause critical-path bottlenecks.
-                            </p>
-                          </div>
-                          <div className="flex items-start gap-2 text-slate-700 dark:text-slate-300">
-                            <span className="bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 px-1.5 py-0.5 rounded text-[9px] font-mono shrink-0">03</span>
-                            <p className="text-[10px] leading-relaxed">
-                              Fulfill Employer obligations under <strong>Sub-Clause 2.1</strong> by clearing Right-of-Way bottlenecks promptly, and instruct Design-Builder to submit an integrated Design &amp; Construction <strong>Sub-Clause 8.3 Programme</strong>.
-                            </p>
-                          </div>
-                        </>
-                      );
-                    }
-
-                    // Default Red/Pink/ERA/DBB (Works Contracts)
-                    return (
-                      <>
-                        <div className="flex items-start gap-2 text-slate-700 dark:text-slate-300">
-                          <span className="bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 px-1.5 py-0.5 rounded text-[9px] font-mono shrink-0">01</span>
-                          <p className="text-[10px] leading-relaxed">
-                            Issue formal Notice to Correct under <strong>{fBook} Sub-Clause 15.1</strong> regarding physical lag in <strong className="text-slate-900 dark:text-white">{lagStr}</strong>, warning under <strong>Sub-Clause 8.6</strong>.
-                          </p>
+                <div className="border border-slate-200/60 dark:border-slate-700/60 p-4 rounded-xl bg-white dark:bg-slate-900/50 text-[11px] space-y-3 font-semibold">
+                  <div className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
+                    Mandatory directives mapped to {fidicInfo.fidicName} conditions of contract:
+                  </div>
+                  {fidicRecommendations.map((rec, idx) => (
+                    <div key={idx} className="flex items-start gap-2 text-slate-700 dark:text-slate-300 border-b border-dashed border-slate-100 dark:border-slate-800/80 pb-2.5 last:border-none last:pb-0">
+                      <span className="bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 px-1.5 py-0.5 rounded text-[9px] font-mono shrink-0 font-bold">
+                        0{idx + 1}
+                      </span>
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <strong className="text-slate-900 dark:text-white text-[10.5px]">{rec.title}</strong>
+                          <span className="text-[8.5px] font-mono px-1.5 py-0.2 rounded bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/40 font-extrabold">
+                            {rec.subClause}
+                          </span>
+                          <span className="text-[8.5px] font-mono px-1.5 py-0.2 rounded bg-amber-50 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 font-bold">
+                            Target: {rec.stakeholder}
+                          </span>
                         </div>
-                        <div className="flex items-start gap-2 text-slate-700 dark:text-slate-300">
-                          <span className="bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 px-1.5 py-0.5 rounded text-[9px] font-mono shrink-0">02</span>
-                          <p className="text-[10px] leading-relaxed">
-                            Fulfill Employer obligation to grant continuous physical site possession under <strong>Sub-Clause 2.1 (Right of Access to the Site)</strong> to prevent contractor idle EOT claims.
-                          </p>
-                        </div>
-                        <div className="flex items-start gap-2 text-slate-700 dark:text-slate-300">
-                          <span className="bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 px-1.5 py-0.5 rounded text-[9px] font-mono shrink-0">03</span>
-                          <p className="text-[10px] leading-relaxed">
-                            Direct the Supervision Consultant ({consultantEval.firmName}) to perform strict material and Work Inspection Requests (WIR) reviews under Clause 3 to eliminate construction layer stacking anomalies.
-                          </p>
-                        </div>
-                      </>
-                    );
-                  })()}
+                        <p className="text-[10px] leading-relaxed text-slate-600 dark:text-slate-300">
+                          {rec.actionableStep}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
 

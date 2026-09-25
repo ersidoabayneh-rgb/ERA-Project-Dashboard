@@ -23,6 +23,11 @@
         "pmo": { "type": "string", "maxLength": 100 },
         "physicalProgress": { "type": "string", "maxLength": 50 },
         "provisionalSum": { "type": "string", "maxLength": 50 },
+        "variationOrdersList": { "type": "array", "description": "Dynamic log list of variation orders" },
+        "contractClaimsList": { "type": "array", "description": "Dynamic log list of contract claims" },
+        "customWorkflowStages": { "type": "array", "description": "Customized user defined workflow stages" },
+        "variationClaimSettings": { "type": "object", "description": "Baseline settings and adjustments customization metrics" },
+        "approvedClaimsCostSum": { "type": "number", "description": "Sum of all approved contractual claims cost compensation" },
         "updatedAt": { "type": "string", "maxLength": 100 }
       },
       "required": ["id", "name", "client"]
