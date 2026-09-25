@@ -1,6 +1,6 @@
 {
-  "name": "TreasuryPay - Financial Payment Management & Bank Gateway System",
-  "description": "Enterprise Financial Management Application featuring Dual-Role Authorization (Director General & Financial Management Director), Bank Gateway Integration (Adyen/Yapily Open Banking), and Real-Time Webhook Status Synchronization.",
+  "name": "Ethiopian Roads Administration ERP Dashboard",
+  "description": "Ethiopian Roads Administration ERP Dashboard.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
