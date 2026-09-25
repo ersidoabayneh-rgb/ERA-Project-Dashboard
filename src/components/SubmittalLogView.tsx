@@ -1112,64 +1112,66 @@ export default function SubmittalLogView({
       ) : (
         <>
       {/* KPI & Evaluation Live Metrics Strip */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-2xl shadow-xs">
-          <div className="flex items-center justify-between text-slate-400 text-xs font-bold uppercase tracking-wider">
-            <span>Total Submittals</span>
-            <FileText className="w-4 h-4 text-purple-500" />
+      {!isContractorEditor && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-2xl shadow-xs">
+            <div className="flex items-center justify-between text-slate-400 text-xs font-bold uppercase tracking-wider">
+              <span>Total Submittals</span>
+              <FileText className="w-4 h-4 text-purple-500" />
+            </div>
+            <div className="text-2xl font-black text-slate-900 dark:text-white font-mono mt-1">
+              {metricsSummary.total}
+            </div>
+            <div className="text-[11px] text-slate-500 font-semibold mt-0.5">
+              {metricsSummary.closedCount} resolved / closed
+            </div>
           </div>
-          <div className="text-2xl font-black text-slate-900 dark:text-white font-mono mt-1">
-            {metricsSummary.total}
-          </div>
-          <div className="text-[11px] text-slate-500 font-semibold mt-0.5">
-            {metricsSummary.closedCount} resolved / closed
-          </div>
-        </div>
 
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-2xl shadow-xs">
-          <div className="flex items-center justify-between text-slate-400 text-xs font-bold uppercase tracking-wider">
-            <span>SLA Compliance</span>
-            <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-2xl shadow-xs">
+            <div className="flex items-center justify-between text-slate-400 text-xs font-bold uppercase tracking-wider">
+              <span>SLA Compliance</span>
+              <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+            </div>
+            <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 font-mono mt-1">
+              {metricsSummary.complianceRate}%
+            </div>
+            <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold mt-0.5">
+              {metricsSummary.onTimeCount} on-time vs target SLA
+            </div>
           </div>
-          <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 font-mono mt-1">
-            {metricsSummary.complianceRate}%
-          </div>
-          <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold mt-0.5">
-            {metricsSummary.onTimeCount} on-time vs target SLA
-          </div>
-        </div>
 
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-2xl shadow-xs">
-          <div className="flex items-center justify-between text-slate-400 text-xs font-bold uppercase tracking-wider">
-            <span>Avg Turnaround</span>
-            <Clock className="w-4 h-4 text-blue-500" />
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-2xl shadow-xs">
+            <div className="flex items-center justify-between text-slate-400 text-xs font-bold uppercase tracking-wider">
+              <span>Avg Turnaround</span>
+              <Clock className="w-4 h-4 text-blue-500" />
+            </div>
+            <div className="text-2xl font-black text-blue-600 dark:text-blue-400 font-mono mt-1">
+              {metricsSummary.avgDays} <span className="text-xs font-normal text-slate-400">days</span>
+            </div>
+            <div className="text-[11px] text-slate-500 font-semibold mt-0.5">
+              Average response time
+            </div>
           </div>
-          <div className="text-2xl font-black text-blue-600 dark:text-blue-400 font-mono mt-1">
-            {metricsSummary.avgDays} <span className="text-xs font-normal text-slate-400">days</span>
-          </div>
-          <div className="text-[11px] text-slate-500 font-semibold mt-0.5">
-            Average response time
-          </div>
-        </div>
 
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-2xl shadow-xs">
-          <div className="flex items-center justify-between text-slate-400 text-xs font-bold uppercase tracking-wider">
-            <span>Pending & Overdue</span>
-            <AlertTriangle className="w-4 h-4 text-amber-500" />
-          </div>
-          <div className="text-2xl font-black font-mono mt-1 flex items-baseline gap-1.5">
-            <span className={metricsSummary.delayedCount > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-white'}>
-              {metricsSummary.delayedCount}
-            </span>
-            <span className="text-xs font-normal text-slate-400">
-              delayed / {metricsSummary.pendingCount} open
-            </span>
-          </div>
-          <div className="text-[11px] text-slate-500 font-semibold mt-0.5">
-            Active SLA monitoring
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-2xl shadow-xs">
+            <div className="flex items-center justify-between text-slate-400 text-xs font-bold uppercase tracking-wider">
+              <span>Pending & Overdue</span>
+              <AlertTriangle className="w-4 h-4 text-amber-500" />
+            </div>
+            <div className="text-2xl font-black font-mono mt-1 flex items-baseline gap-1.5">
+              <span className={metricsSummary.delayedCount > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-white'}>
+                {metricsSummary.delayedCount}
+              </span>
+              <span className="text-xs font-normal text-slate-400">
+                delayed / {metricsSummary.pendingCount} open
+              </span>
+            </div>
+            <div className="text-[11px] text-slate-500 font-semibold mt-0.5">
+              Active SLA monitoring
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Search & Filter Toolbar */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-2xl shadow-sm flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4">
@@ -1361,21 +1363,23 @@ export default function SubmittalLogView({
                     )}
                   </div>
                 </th>
-                <th className="p-3.5 text-center">Target SLA</th>
-                <th 
-                  onClick={() => handleToggleHeaderSort('actualDays')}
-                  className="p-3.5 text-center cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/60 transition group"
-                  title="Click to sort by Actual Turnaround"
-                >
-                  <div className="flex items-center justify-center gap-1">
-                    <span>Actual Turnaround</span>
-                    {sortField === 'actualDays' ? (
-                      sortDirection === 'asc' ? <ArrowUp className="w-3 h-3 text-purple-600 dark:text-purple-400" /> : <ArrowDown className="w-3 h-3 text-purple-600 dark:text-purple-400" />
-                    ) : (
-                      <ArrowUpDown className="w-3 h-3 text-slate-300 opacity-0 group-hover:opacity-100 transition" />
-                    )}
-                  </div>
-                </th>
+                {!isContractorEditor && <th className="p-3.5 text-center">Target SLA</th>}
+                {!isContractorEditor && (
+                  <th 
+                    onClick={() => handleToggleHeaderSort('actualDays')}
+                    className="p-3.5 text-center cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/60 transition group"
+                    title="Click to sort by Actual Turnaround"
+                  >
+                    <div className="flex items-center justify-center gap-1">
+                      <span>Actual Turnaround</span>
+                      {sortField === 'actualDays' ? (
+                        sortDirection === 'asc' ? <ArrowUp className="w-3 h-3 text-purple-600 dark:text-purple-400" /> : <ArrowDown className="w-3 h-3 text-purple-600 dark:text-purple-400" />
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 text-slate-300 opacity-0 group-hover:opacity-100 transition" />
+                      )}
+                    </div>
+                  </th>
+                )}
                 <th 
                   onClick={() => handleToggleHeaderSort('status')}
                   className="p-3.5 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/60 transition group"
@@ -1397,7 +1401,7 @@ export default function SubmittalLogView({
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
               {sortedSubmittals.length === 0 ? (
                 <tr>
-                  <td colSpan={!isContractorEditor ? 12 : 11} className="p-8 text-center text-slate-400">
+                  <td colSpan={!isContractorEditor ? 12 : 9} className="p-8 text-center text-slate-400">
                     No submittal records match your filter criteria.
                   </td>
                 </tr>
@@ -1515,20 +1519,24 @@ export default function SubmittalLogView({
                       <td className="p-3.5 font-mono text-slate-600 dark:text-slate-400 whitespace-nowrap">
                         {item.respondedDate || <span className="text-amber-500 font-semibold italic">Pending</span>}
                       </td>
-                      <td className="p-3.5 text-center font-mono font-bold text-slate-700 dark:text-slate-300">
-                        {target}d
-                      </td>
-                      <td className="p-3.5 text-center font-mono">
-                        {delayInfo.isResolved ? (
-                          <span className={`font-bold ${delayInfo.isDelayed ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                            {delayInfo.elapsedDays}d
-                          </span>
-                        ) : (
-                          <span className="text-amber-600 dark:text-amber-400 font-semibold">
-                            {delayInfo.elapsedDays}d <span className="text-[9px] opacity-80">(Elapsed)</span>
-                          </span>
-                        )}
-                      </td>
+                      {!isContractorEditor && (
+                        <td className="p-3.5 text-center font-mono font-bold text-slate-700 dark:text-slate-300">
+                          {target}d
+                        </td>
+                      )}
+                      {!isContractorEditor && (
+                        <td className="p-3.5 text-center font-mono">
+                          {delayInfo.isResolved ? (
+                            <span className={`font-bold ${delayInfo.isDelayed ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                              {delayInfo.elapsedDays}d
+                            </span>
+                          ) : (
+                            <span className="text-amber-600 dark:text-amber-400 font-semibold">
+                              {delayInfo.elapsedDays}d <span className="text-[9px] opacity-80">(Elapsed)</span>
+                            </span>
+                          )}
+                        </td>
+                      )}
                       <td className="p-3.5">
                         <div className="flex flex-col gap-1">
                           <span className={`inline-flex px-2 py-0.5 rounded-md text-[10px] font-bold w-fit ${

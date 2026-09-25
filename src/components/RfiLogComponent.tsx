@@ -105,6 +105,18 @@ export default function RfiLogComponent({
     (typeof currentUserObj?.username === 'string' && currentUserObj.username.toLowerCase().includes('contractor'))
   );
 
+  const isContractorEditor = useMemo(() => {
+    if (!currentUserObj) return false;
+    const r = (currentUserObj.role || '').toLowerCase();
+    const u = (currentUserObj.username || '').toLowerCase();
+    return (
+      r === 'contractor_editor' ||
+      u === 'contractor_editor' ||
+      r.includes('contractor_editor') ||
+      u.includes('contractor_editor')
+    );
+  }, [currentUserObj]);
+
   const canContractorAddOrEdit = useMemo(() => {
     const r = (currentUserObj?.role as string) || '';
     return r === 'contractor_editor' || r === 'contractor' || r.toLowerCase().includes('contractor');
@@ -1101,85 +1113,87 @@ export default function RfiLogComponent({
       </div>
 
       {/* Live RFI KPI Metrics Strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3.5 rounded-2xl shadow-xs">
-          <div className="flex items-center justify-between text-slate-400 text-[10px] font-bold uppercase tracking-wider">
-            <span>Total RFIs</span>
-            <FileText className="w-3.5 h-3.5 text-blue-500" />
+      {!isContractorEditor && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3.5 rounded-2xl shadow-xs">
+            <div className="flex items-center justify-between text-slate-400 text-[10px] font-bold uppercase tracking-wider">
+              <span>Total RFIs</span>
+              <FileText className="w-3.5 h-3.5 text-blue-500" />
+            </div>
+            <div className="text-xl font-black text-slate-900 dark:text-white font-mono mt-1">
+              {rfiMetrics.total}
+            </div>
+            <div className="text-[10px] text-slate-500 font-medium mt-0.5">
+              Design inquiries logged
+            </div>
           </div>
-          <div className="text-xl font-black text-slate-900 dark:text-white font-mono mt-1">
-            {rfiMetrics.total}
-          </div>
-          <div className="text-[10px] text-slate-500 font-medium mt-0.5">
-            Design inquiries logged
-          </div>
-        </div>
 
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3.5 rounded-2xl shadow-xs">
-          <div className="flex items-center justify-between text-slate-400 text-[10px] font-bold uppercase tracking-wider">
-            <span>Awaiting Review</span>
-            <Clock className="w-3.5 h-3.5 text-amber-500" />
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3.5 rounded-2xl shadow-xs">
+            <div className="flex items-center justify-between text-slate-400 text-[10px] font-bold uppercase tracking-wider">
+              <span>Awaiting Review</span>
+              <Clock className="w-3.5 h-3.5 text-amber-500" />
+            </div>
+            <div className="text-xl font-black text-amber-600 dark:text-amber-400 font-mono mt-1">
+              {rfiMetrics.awaitingResponseCount}
+            </div>
+            <div className="text-[10px] text-amber-600 dark:text-amber-400 font-medium mt-0.5">
+              Pending consultant reply
+            </div>
           </div>
-          <div className="text-xl font-black text-amber-600 dark:text-amber-400 font-mono mt-1">
-            {rfiMetrics.awaitingResponseCount}
-          </div>
-          <div className="text-[10px] text-amber-600 dark:text-amber-400 font-medium mt-0.5">
-            Pending consultant reply
-          </div>
-        </div>
 
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3.5 rounded-2xl shadow-xs">
-          <div className="flex items-center justify-between text-slate-400 text-[10px] font-bold uppercase tracking-wider">
-            <span>Clarified / Closed</span>
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3.5 rounded-2xl shadow-xs">
+            <div className="flex items-center justify-between text-slate-400 text-[10px] font-bold uppercase tracking-wider">
+              <span>Clarified / Closed</span>
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+            </div>
+            <div className="text-xl font-black text-emerald-600 dark:text-emerald-400 font-mono mt-1">
+              {rfiMetrics.closedCount}
+            </div>
+            <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium mt-0.5">
+              Directives finalized
+            </div>
           </div>
-          <div className="text-xl font-black text-emerald-600 dark:text-emerald-400 font-mono mt-1">
-            {rfiMetrics.closedCount}
-          </div>
-          <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium mt-0.5">
-            Directives finalized
-          </div>
-        </div>
 
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3.5 rounded-2xl shadow-xs">
-          <div className="flex items-center justify-between text-slate-400 text-[10px] font-bold uppercase tracking-wider">
-            <span>Overdue SLA</span>
-            <AlertTriangle className="w-3.5 h-3.5 text-rose-500" />
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3.5 rounded-2xl shadow-xs">
+            <div className="flex items-center justify-between text-slate-400 text-[10px] font-bold uppercase tracking-wider">
+              <span>Overdue SLA</span>
+              <AlertTriangle className="w-3.5 h-3.5 text-rose-500" />
+            </div>
+            <div className={`text-xl font-black font-mono mt-1 ${rfiMetrics.delayedCount > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-white'}`}>
+              {rfiMetrics.delayedCount}
+            </div>
+            <div className="text-[10px] text-slate-500 font-medium mt-0.5">
+              &gt; 7 days turnaround
+            </div>
           </div>
-          <div className={`text-xl font-black font-mono mt-1 ${rfiMetrics.delayedCount > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-white'}`}>
-            {rfiMetrics.delayedCount}
-          </div>
-          <div className="text-[10px] text-slate-500 font-medium mt-0.5">
-            &gt; 7 days turnaround
-          </div>
-        </div>
 
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3.5 rounded-2xl shadow-xs">
-          <div className="flex items-center justify-between text-slate-400 text-[10px] font-bold uppercase tracking-wider">
-            <span>Cost Impact</span>
-            <DollarSign className="w-3.5 h-3.5 text-indigo-500" />
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3.5 rounded-2xl shadow-xs">
+            <div className="flex items-center justify-between text-slate-400 text-[10px] font-bold uppercase tracking-wider">
+              <span>Cost Impact</span>
+              <DollarSign className="w-3.5 h-3.5 text-indigo-500" />
+            </div>
+            <div className="text-xl font-black text-indigo-600 dark:text-indigo-400 font-mono mt-1">
+              {rfiMetrics.costImpactCount}
+            </div>
+            <div className="text-[10px] text-slate-500 font-medium mt-0.5">
+              Potential variations
+            </div>
           </div>
-          <div className="text-xl font-black text-indigo-600 dark:text-indigo-400 font-mono mt-1">
-            {rfiMetrics.costImpactCount}
-          </div>
-          <div className="text-[10px] text-slate-500 font-medium mt-0.5">
-            Potential variations
-          </div>
-        </div>
 
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3.5 rounded-2xl shadow-xs">
-          <div className="flex items-center justify-between text-slate-400 text-[10px] font-bold uppercase tracking-wider">
-            <span>Avg Turnaround</span>
-            <Sparkles className="w-3.5 h-3.5 text-purple-500" />
-          </div>
-          <div className="text-xl font-black text-purple-600 dark:text-purple-400 font-mono mt-1">
-            {rfiMetrics.avgTurnaround} <span className="text-xs font-normal text-slate-400">d</span>
-          </div>
-          <div className="text-[10px] text-slate-500 font-medium mt-0.5">
-            {rfiMetrics.complianceRate}% SLA rate
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3.5 rounded-2xl shadow-xs">
+            <div className="flex items-center justify-between text-slate-400 text-[10px] font-bold uppercase tracking-wider">
+              <span>Avg Turnaround</span>
+              <Sparkles className="w-3.5 h-3.5 text-purple-500" />
+            </div>
+            <div className="text-xl font-black text-purple-600 dark:text-purple-400 font-mono mt-1">
+              {rfiMetrics.avgTurnaround} <span className="text-xs font-normal text-slate-400">d</span>
+            </div>
+            <div className="text-[10px] text-slate-500 font-medium mt-0.5">
+              {rfiMetrics.complianceRate}% SLA rate
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Filter & Search Toolbar */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-2xl shadow-xs flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
@@ -1477,7 +1491,7 @@ export default function RfiLogComponent({
                   <th className="p-3.5">Contractor Inquiry / Technical Question</th>
                   <th className="p-3.5">Consultant Directive / Decision</th>
                   <th className="p-3.5 text-center">Submitted / Responded</th>
-                  <th className="p-3.5 text-center">SLA Turnaround</th>
+                  {!isContractorEditor && <th className="p-3.5 text-center">SLA Turnaround</th>}
                   <th className="p-3.5 text-center">Impacts</th>
                   <th className="p-3.5 text-center">Status</th>
                   <th className="p-3.5 text-center cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/60" onClick={() => { setSortField('attachmentsCount'); setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc'); }}>
@@ -1493,7 +1507,7 @@ export default function RfiLogComponent({
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
                 {sortedRfis.length === 0 ? (
                   <tr>
-                    <td colSpan={isSupervisionConsultantApprover ? 13 : 11} className="p-8 text-center text-slate-400">
+                    <td colSpan={(isSupervisionConsultantApprover ? 2 : 0) + (!isContractorEditor ? 1 : 0) + 10} className="p-8 text-center text-slate-400">
                       No Request for Information (RFI) records match your filter criteria.
                     </td>
                   </tr>
@@ -1623,27 +1637,29 @@ export default function RfiLogComponent({
                         </td>
 
                         {/* SLA Turnaround */}
-                        <td className="p-3.5 text-center whitespace-nowrap">
-                          <div className="flex flex-col items-center gap-1">
-                            <span className="text-[11px] font-mono font-bold text-slate-900 dark:text-white">
-                              {delayInfo.elapsedDays !== undefined ? `${delayInfo.elapsedDays} d` : '-'}
-                              <span className="text-[9px] text-slate-400 font-normal"> / {target}d SLA</span>
-                            </span>
-                            {delayInfo.isDelayed ? (
-                              <span className="px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300 text-[9px] font-bold">
-                                Delayed
+                        {!isContractorEditor && (
+                          <td className="p-3.5 text-center whitespace-nowrap">
+                            <div className="flex flex-col items-center gap-1">
+                              <span className="text-[11px] font-mono font-bold text-slate-900 dark:text-white">
+                                {delayInfo.elapsedDays !== undefined ? `${delayInfo.elapsedDays} d` : '-'}
+                                <span className="text-[9px] text-slate-400 font-normal"> / {target}d SLA</span>
                               </span>
-                            ) : delayInfo.isResolved ? (
-                              <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 text-[9px] font-bold">
-                                On Time
-                              </span>
-                            ) : (
-                              <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 text-[9px] font-bold">
-                                Within SLA
-                              </span>
-                            )}
-                          </div>
-                        </td>
+                              {delayInfo.isDelayed ? (
+                                <span className="px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300 text-[9px] font-bold">
+                                  Delayed
+                                </span>
+                              ) : delayInfo.isResolved ? (
+                                <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 text-[9px] font-bold">
+                                  On Time
+                                </span>
+                              ) : (
+                                <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 text-[9px] font-bold">
+                                  Within SLA
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                        )}
 
                         {/* Impacts */}
                         <td className="p-3.5 text-center whitespace-nowrap">
