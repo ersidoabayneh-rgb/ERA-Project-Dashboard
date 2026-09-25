@@ -79,22 +79,45 @@ export default function ConsultantPerformanceKpiWidget({
   const [selectedTenureConsultantId, setSelectedTenureConsultantId] = useState<string>('current');
   const [livePillar2Score, setLivePillar2Score] = useState<number | null>(null);
 
+  const userRole = (currentUser?.role || '').toLowerCase();
+
   const isEraUser = useMemo(() => {
-    if (!currentUser) return false;
-    const r = (currentUser.role || '').toLowerCase();
-    return r === 'era_editor' || r === 'era_approver' || r === 'era editor' || r === 'era approver';
-  }, [currentUser]);
+    return userRole === 'era_editor' || userRole === 'era_approver' || userRole === 'era editor' || userRole === 'era approver';
+  }, [userRole]);
+
+  const isMasterOrCpmOrDirectorateAdmin = useMemo(() => {
+    return (
+      userRole === 'master_admin' ||
+      userRole === 'master admin' ||
+      userRole === 'cpm_admin' ||
+      userRole === 'cpm admin' ||
+      userRole === 'directorate_admin' ||
+      userRole === 'directorate admin' ||
+      userRole === 'admin'
+    );
+  }, [userRole]);
+
+  const showSection1 = useMemo(() => {
+    if (isMasterOrCpmOrDirectorateAdmin) return false;
+    if (isEraUser) return false;
+    return true; // Visible for PMO Admin and other operational roles
+  }, [isMasterOrCpmOrDirectorateAdmin, isEraUser]);
+
+  const showSection2 = useMemo(() => {
+    if (isMasterOrCpmOrDirectorateAdmin) return false;
+    return true; // Visible for PMO Admin, ERA approvers/editors, and other evaluation roles
+  }, [isMasterOrCpmOrDirectorateAdmin]);
 
   const isMasterAdminRole = useMemo(() => {
     if (isMasterAdmin !== undefined) return isMasterAdmin;
     if (!currentUser) return isAdmin;
     return (
-      currentUser.role === 'master_admin' ||
-      currentUser.role === 'admin' ||
-      currentUser.role === 'cpm_admin' ||
+      userRole === 'master_admin' ||
+      userRole === 'admin' ||
+      userRole === 'cpm_admin' ||
       isAdmin
     );
-  }, [isMasterAdmin, isAdmin, currentUser]);
+  }, [isMasterAdmin, isAdmin, userRole]);
 
   const calculatedEvaluation = useMemo(() => {
     return getProjectConsultantEvaluation(project, consultant);
@@ -683,7 +706,7 @@ export default function ConsultantPerformanceKpiWidget({
         )}
 
         {/* Section 1: Submittal Log & Operational SLA Turnaround (21 items - Pillar I) */}
-        {!isEraUser && (
+        {showSection1 && (
         <div className="space-y-6 pb-8 border-b border-slate-100 dark:border-slate-800">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-2">
             <div className="flex items-center gap-2">
@@ -1067,25 +1090,27 @@ export default function ConsultantPerformanceKpiWidget({
       )}
 
         {/* Section 2 Supervision Consultant Performance Evaluation Criteria */}
-        <div className="space-y-4 pt-8">
-          <div className="flex items-center gap-2 mb-2">
-            <Award className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-            <h4 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">
-              🏆 Section 2 Supervision Consultant Performance Evaluation Criteria
-            </h4>
+        {showSection2 && (
+          <div className="space-y-4 pt-8">
+            <div className="flex items-center gap-2 mb-2">
+              <Award className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+              <h4 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">
+                🏆 Section 2 Supervision Consultant Performance Evaluation Criteria
+              </h4>
+            </div>
+            <ComprehensiveConsultantEvaluationMatrixView
+              project={project}
+              consultant={isViewingHistorical && historicalConsultant ? historicalConsultant : consultant}
+              onUpdateConsultant={onUpdateConsultant}
+              isReadonly={isReadonly}
+              isAdmin={isAdmin || isEraUser}
+              isMasterAdmin={isMasterAdminRole}
+              currentUser={currentUser}
+              submittalsList={submittalsList}
+              onScoreChange={setLivePillar2Score}
+            />
           </div>
-          <ComprehensiveConsultantEvaluationMatrixView
-            project={project}
-            consultant={isViewingHistorical && historicalConsultant ? historicalConsultant : consultant}
-            onUpdateConsultant={onUpdateConsultant}
-            isReadonly={isReadonly}
-            isAdmin={isAdmin || isEraUser}
-            isMasterAdmin={isMasterAdminRole}
-            currentUser={currentUser}
-            submittalsList={submittalsList}
-            onScoreChange={setLivePillar2Score}
-          />
-        </div>
+        )}
       </div>
 
       {/* Target Settings & Weightages Modal */}
