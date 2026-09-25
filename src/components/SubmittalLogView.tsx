@@ -212,8 +212,16 @@ export default function SubmittalLogView({
     return r === 'contractor' || r.includes('contractor') || u.includes('contractor');
   }, [currentUserObj]);
 
-  const canContractorAddOrEdit = useMemo(() => {
-    return currentUserObj?.role === 'contractor_editor';
+  const isContractorEditor = useMemo(() => {
+    if (!currentUserObj) return false;
+    const r = (currentUserObj.role || '').toLowerCase();
+    const u = (currentUserObj.username || '').toLowerCase();
+    return (
+      r === 'contractor_editor' ||
+      u === 'contractor_editor' ||
+      r.includes('contractor_editor') ||
+      u.includes('contractor_editor')
+    );
   }, [currentUserObj]);
 
   // Dynamic custom categories list
@@ -1000,7 +1008,7 @@ export default function SubmittalLogView({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {!isReadonly && (!isContractorUser || canContractorAddOrEdit) && (
+          {!isReadonly && !isContractorEditor && (
             <button
               onClick={handleInsertQuickRow}
               className="px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-xs flex items-center gap-1.5 transition cursor-pointer"
@@ -1383,13 +1391,13 @@ export default function SubmittalLogView({
                   </div>
                 </th>
                 <th className="p-3.5">Assigned Engineer</th>
-                {(!isContractorUser || canContractorAddOrEdit) && <th className="p-3.5 text-right">Actions</th>}
+                {!isContractorEditor && <th className="p-3.5 text-right">Actions</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
               {sortedSubmittals.length === 0 ? (
                 <tr>
-                  <td colSpan={(!isContractorUser || canContractorAddOrEdit) ? 12 : 11} className="p-8 text-center text-slate-400">
+                  <td colSpan={!isContractorEditor ? 12 : 11} className="p-8 text-center text-slate-400">
                     No submittal records match your filter criteria.
                   </td>
                 </tr>
@@ -1545,7 +1553,7 @@ export default function SubmittalLogView({
                       <td className="p-3.5 text-slate-600 dark:text-slate-400">
                         {item.assignedEngineer || '-'}
                       </td>
-                      {(!isContractorUser || canContractorAddOrEdit) && (
+                      {!isContractorEditor && (
                         <td className="p-3.5 text-right whitespace-nowrap">
                           <div className="flex items-center justify-end gap-1">
                             <button
@@ -2094,7 +2102,7 @@ export default function SubmittalLogView({
               )}
 
               {/* PDF Drag & Drop Upload Zone */}
-              {(!isContractorUser || canContractorAddOrEdit) && (
+              {!isContractorEditor && (
                 <div className="p-4 border-2 border-dashed border-indigo-200 dark:border-indigo-800/80 rounded-2xl bg-indigo-50/40 dark:bg-indigo-950/20 text-center space-y-2">
                   <div className="w-10 h-10 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mx-auto">
                     <Upload className="w-5 h-5" />
@@ -2165,7 +2173,7 @@ export default function SubmittalLogView({
                           ) : (
                             <span className="text-[10px] text-slate-400 italic px-2">Document Logged</span>
                           )}
-                          {(!isContractorUser || canContractorAddOrEdit) && (
+                          {!isContractorEditor && (
                             <button
                               onClick={() => handleRemoveAttachment(activeAttachmentSubmittal, att.id)}
                               className="p-1.5 hover:bg-rose-50 dark:hover:bg-rose-950 rounded-xl text-slate-400 hover:text-rose-600 dark:hover:text-rose-400"
