@@ -34,7 +34,11 @@ import {
   ChevronRight,
   Sparkles,
   ExternalLink,
-  Upload
+  Upload,
+  ListChecks,
+  CheckCheck,
+  CheckSquare,
+  FileSpreadsheet
 } from 'lucide-react';
 import {
   Project,
@@ -106,6 +110,26 @@ export default function RfiLogComponent({
     return r === 'contractor_editor' || r === 'contractor' || r.toLowerCase().includes('contractor');
   }, [currentUserObj]);
 
+  // Check if user has Supervision Consultant Approver authority
+  const isSupervisionConsultantApprover = useMemo(() => {
+    if (!currentUserObj) return false;
+    const r = (currentUserObj.role || '').toLowerCase();
+    const u = (currentUserObj.username || '').toLowerCase();
+    return (
+      r === 'consultant_approver' ||
+      r === 'approver' ||
+      r === 'era_approver' ||
+      r === 'master_admin' ||
+      r === 'cpm_admin' ||
+      r === 'admin' ||
+      r === 'director_general' ||
+      r === 'department_head' ||
+      currentUserObj.hasApprovalCredential === true ||
+      r.includes('consultant_approver') ||
+      u.includes('consultant_approver')
+    );
+  }, [currentUserObj]);
+
   // Extract all RFI items from submittals
   const rfiItems = useMemo(() => {
     return allSubmittals.filter(item => item.type === 'RFI');
@@ -120,6 +144,15 @@ export default function RfiLogComponent({
   const [sortField, setSortField] = useState<'submittalNo' | 'submittedDate' | 'respondedDate' | 'actualDays' | 'priority' | 'status' | 'attachmentsCount'>('submittedDate');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [viewLayout, setViewLayout] = useState<'table' | 'cards'>('table');
+
+  // Multi-select & Bulk Operations State (for Consultant Approver)
+  const [selectedRfiIds, setSelectedRfiIds] = useState<string[]>([]);
+  const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+  const [bulkTargetStatus, setBulkTargetStatus] = useState<string>('Approved');
+  const [bulkDirectiveNote, setBulkDirectiveNote] = useState<string>('');
+  const [bulkCostImpact, setBulkCostImpact] = useState<string>('keep');
+  const [bulkScheduleImpact, setBulkScheduleImpact] = useState<string>('keep');
+  const [isBulkActionMenuOpen, setIsBulkActionMenuOpen] = useState(false);
 
   // Interactive Drawer / Modal state for detailed correspondence
   const [activeRfi, setActiveRfi] = useState<ConsultantSubmittalKpi | null>(null);
@@ -278,8 +311,16 @@ export default function RfiLogComponent({
     let daysWithDuration = 0;
 
     rfiItems.forEach(rfi => {
-      const isClosed = rfi.status === 'Approved / Closed' || rfi.status === 'Closed' || rfi.rfiStatus === 'Closed / Agreed';
-      if (isClosed) {
+      const isApprovedOrClosed =
+        rfi.status === 'Approved' ||
+        rfi.status === 'Approved / Closed' ||
+        rfi.status === 'Approved with Comments' ||
+        rfi.status === 'Approved with Comment' ||
+        rfi.status === 'Closed' ||
+        rfi.rfiStatus === 'Approved' ||
+        rfi.rfiStatus === 'Approved with Comments' ||
+        rfi.rfiStatus === 'Closed / Agreed';
+      if (isApprovedOrClosed) {
         closedCount++;
       } else if (rfi.rfiStatus === 'Awaiting Consultant Response' || !rfi.respondedDate) {
         awaitingResponseCount++;
@@ -346,10 +387,33 @@ export default function RfiLogComponent({
       const delayInfo = checkSubmittalDelay(rfi, target);
       
       let matchesStatus = true;
-      if (selectedStatus === 'CLOSED') {
+      if (selectedStatus === 'ALL') {
+        matchesStatus = true;
+      } else if (selectedStatus === 'PENDING' || selectedStatus === 'Pending') {
+        matchesStatus = (
+          rfi.status === 'Under Review' ||
+          rfi.status === 'Pending' ||
+          rfi.rfiStatus === 'Awaiting Consultant Response' ||
+          rfi.rfiStatus === 'Under Technical Review' ||
+          (!rfi.respondedDate && rfi.status !== 'Approved' && rfi.status !== 'Approved / Closed' && rfi.status !== 'Closed' && rfi.status !== 'Approved with Comments')
+        );
+      } else if (selectedStatus === 'Approved') {
+        matchesStatus = rfi.status === 'Approved' || rfi.rfiStatus === 'Approved' || (rfi.status === 'Approved / Closed' && !rfi.rfiStatus?.includes('Comment'));
+      } else if (selectedStatus === 'Approved with Comments') {
+        matchesStatus = rfi.status === 'Approved with Comments' || rfi.status === 'Approved with Comment' || rfi.rfiStatus === 'Approved with Comments' || rfi.rfiStatus === 'Approved with Comment';
+      } else if (selectedStatus === 'REJECTED' || selectedStatus === 'Rejected') {
+        matchesStatus = (
+          rfi.status === 'Rejected' ||
+          rfi.status === 'Rejected / Resubmit' ||
+          rfi.status === 'Resubmit' ||
+          rfi.rfiStatus === 'Resubmit / Revision Required' ||
+          rfi.rfiStatus === 'Rejected / Resubmit' ||
+          (rfi.rfiStatus ? rfi.rfiStatus.toLowerCase().includes('resubmit') || rfi.rfiStatus.toLowerCase().includes('reject') : false)
+        );
+      } else if (selectedStatus === 'CLOSED' || selectedStatus === 'Closed') {
         matchesStatus = rfi.status === 'Approved / Closed' || rfi.status === 'Closed' || rfi.rfiStatus === 'Closed / Agreed';
-      } else if (selectedStatus === 'AWAITING') {
-        matchesStatus = rfi.rfiStatus === 'Awaiting Consultant Response' || (!rfi.respondedDate && rfi.status !== 'Approved / Closed');
+      } else if (selectedStatus === 'Clarification Issued') {
+        matchesStatus = rfi.rfiStatus === 'Clarification Issued' || rfi.status === 'Clarification Issued';
       } else if (selectedStatus === 'OVERDUE') {
         matchesStatus = delayInfo.isDelayed;
       } else if (selectedStatus !== 'ALL') {
@@ -401,6 +465,126 @@ export default function RfiLogComponent({
     });
   }, [filteredRfis, sortField, sortDirection]);
 
+  // Multi-select helper computed states
+  const isAllSelected = useMemo(() => {
+    if (sortedRfis.length === 0) return false;
+    return sortedRfis.every(rfi => selectedRfiIds.includes(rfi.id));
+  }, [sortedRfis, selectedRfiIds]);
+
+  const isSomeSelected = useMemo(() => {
+    if (sortedRfis.length === 0) return false;
+    const count = sortedRfis.filter(rfi => selectedRfiIds.includes(rfi.id)).length;
+    return count > 0 && count < sortedRfis.length;
+  }, [sortedRfis, selectedRfiIds]);
+
+  const toggleSelectAll = () => {
+    if (isAllSelected) {
+      const visibleIdSet = new Set(sortedRfis.map(r => r.id));
+      setSelectedRfiIds(prev => prev.filter(id => !visibleIdSet.has(id)));
+    } else {
+      const visibleIds = sortedRfis.map(r => r.id);
+      setSelectedRfiIds(prev => Array.from(new Set([...prev, ...visibleIds])));
+    }
+  };
+
+  const toggleSelectRfi = (id: string) => {
+    setSelectedRfiIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
+  const clearSelection = () => {
+    setSelectedRfiIds([]);
+    setIsBulkActionMenuOpen(false);
+  };
+
+  // Selected RFI objects for modal display
+  const selectedRfiObjects = useMemo(() => {
+    return allSubmittals.filter(s => selectedRfiIds.includes(s.id));
+  }, [allSubmittals, selectedRfiIds]);
+
+  // Execute Bulk Status Update
+  const executeBulkStatusChange = (
+    status: string,
+    customNote?: string,
+    cost?: string,
+    sched?: string
+  ) => {
+    if (selectedRfiIds.length === 0) return;
+
+    let overallStatus = 'Under Review';
+    if (status === 'Approved') {
+      overallStatus = 'Approved';
+    } else if (status === 'Approved with Comments') {
+      overallStatus = 'Approved with Comments';
+    } else if (
+      status === 'Clarification Issued' ||
+      status === 'Closed / Agreed' ||
+      status === 'Approved as Proposed'
+    ) {
+      overallStatus = 'Approved / Closed';
+    } else if (status.includes('Resubmit') || status.includes('Revision')) {
+      overallStatus = 'Rejected / Resubmit';
+    } else if (status === 'Void / Withdrawn') {
+      overallStatus = 'Closed';
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+    const responder =
+      currentUserObj?.fullName ||
+      currentUserObj?.username ||
+      consultant.residentEngineerName ||
+      'Resident Engineer';
+
+    const shouldSetRespondedDate =
+      status === 'Approved' ||
+      status === 'Approved with Comments' ||
+      status === 'Clarification Issued' ||
+      status === 'Closed / Agreed';
+
+    const updatedList = allSubmittals.map(item => {
+      if (!selectedRfiIds.includes(item.id)) return item;
+
+      let updatedThread = item.correspondenceThread ? [...item.correspondenceThread] : [];
+      if (customNote && customNote.trim()) {
+        const newMsg: RfiCorrespondenceMessage = {
+          id: `msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          sender: 'Consultant',
+          authorName: responder,
+          role: 'Supervision Consultant Approver',
+          message: customNote.trim(),
+          timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16)
+        };
+        updatedThread = [...updatedThread, newMsg];
+      }
+
+      return {
+        ...item,
+        status: overallStatus,
+        rfiStatus: status,
+        respondedDate: shouldSetRespondedDate ? (item.respondedDate || today) : item.respondedDate,
+        consultantResponder: item.consultantResponder || responder,
+        consultantResponse:
+          customNote && customNote.trim()
+            ? customNote.trim()
+            : item.consultantResponse || `Status certified to "${status}" by Approver`,
+        costImpact: cost && cost !== 'keep' ? cost : item.costImpact,
+        scheduleImpact: sched && sched !== 'keep' ? sched : item.scheduleImpact,
+        correspondenceThread: updatedThread
+      };
+    });
+
+    onUpdateSubmittals(
+      updatedList,
+      `Bulk updated ${selectedRfiIds.length} RFI(s) to status "${status}"`
+    );
+
+    setSelectedRfiIds([]);
+    setIsBulkModalOpen(false);
+    setBulkDirectiveNote('');
+    setIsBulkActionMenuOpen(false);
+  };
+
   // Open Detailed Correspondence Thread
   const handleOpenThread = (rfi: ConsultantSubmittalKpi) => {
     setActiveRfi(rfi);
@@ -435,7 +619,27 @@ export default function RfiLogComponent({
     let updatedConsultantResponder = activeRfi.consultantResponder;
 
     if (replyStatusUpdate !== 'no_change') {
-      if (replyStatusUpdate === 'Clarification Issued') {
+      if (replyStatusUpdate === 'Approved') {
+        updatedStatus = 'Approved';
+        updatedRfiStatus = 'Approved';
+        if (!updatedRespondedDate) {
+          updatedRespondedDate = new Date().toISOString().split('T')[0];
+        }
+        if (replySender === 'Consultant') {
+          updatedConsultantResponse = replyMessage.trim() || 'Supervision Consultant certified RFI with formal Approval.';
+          updatedConsultantResponder = replyAuthor.trim() || consultant.residentEngineerName;
+        }
+      } else if (replyStatusUpdate === 'Approved with Comments') {
+        updatedStatus = 'Approved with Comments';
+        updatedRfiStatus = 'Approved with Comments';
+        if (!updatedRespondedDate) {
+          updatedRespondedDate = new Date().toISOString().split('T')[0];
+        }
+        if (replySender === 'Consultant') {
+          updatedConsultantResponse = replyMessage.trim() || 'Supervision Consultant certified RFI with Approval with Comments.';
+          updatedConsultantResponder = replyAuthor.trim() || consultant.residentEngineerName;
+        }
+      } else if (replyStatusUpdate === 'Clarification Issued') {
         updatedStatus = 'Approved / Closed';
         updatedRfiStatus = 'Clarification Issued';
         if (!updatedRespondedDate) {
@@ -636,7 +840,15 @@ export default function RfiLogComponent({
 
   // Delete RFI with admin guard
   const handleDeleteRfi = (rfi: ConsultantSubmittalKpi) => {
-    const isApproved = rfi.status === 'Approved / Closed' || rfi.status === 'Closed' || rfi.rfiStatus === 'Closed / Agreed';
+    const isApproved =
+      rfi.status === 'Approved' ||
+      rfi.status === 'Approved / Closed' ||
+      rfi.status === 'Approved with Comments' ||
+      rfi.status === 'Approved with Comment' ||
+      rfi.status === 'Closed' ||
+      rfi.rfiStatus === 'Approved' ||
+      rfi.rfiStatus === 'Approved with Comments' ||
+      rfi.rfiStatus === 'Closed / Agreed';
     const isAdminUser = currentUserObj?.role === 'admin' || currentUserObj?.role === 'master_admin' || currentUserObj?.role === 'cpm_admin';
 
     if (isApproved && !isAdminUser) {
@@ -654,58 +866,187 @@ export default function RfiLogComponent({
     }
   };
 
-  // Export RFI CSV
-  const handleExportRfiCsv = () => {
+  // Export Filtered RFIs to CSV or Excel File for Professional Reporting
+  const handleExportRfi = (format: 'csv' | 'excel' = 'csv') => {
+    if (sortedRfis.length === 0) {
+      alert('No RFI records match the current filter criteria to export.');
+      return;
+    }
+
+    const exportDate = new Date().toISOString().split('T')[0];
+    const projectTitle = project.name || 'Highway Project';
+    const consultantName = consultant.firmName || 'Supervision Consultant';
+    const contractorName = project.contractor || 'Main Contractor';
+
+    if (format === 'excel') {
+      // Professional HTML/XML based Excel Table report format
+      const tableRowsHtml = sortedRfis.map((r, idx) => {
+        const target = r.targetDays || targetOverrides['RFI'] || 7;
+        const delayInfo = checkSubmittalDelay(r, target);
+        const slaStatus = delayInfo.isDelayed ? 'Delayed (> SLA)' : delayInfo.isResolved ? 'Resolved On-Time' : 'Within SLA';
+        const curStatus = r.rfiStatus || r.status;
+        const pdfCount = r.attachmentsCount ?? r.attachments?.length ?? 0;
+        const msgCount = r.correspondenceThread?.length || 0;
+
+        return `
+          <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
+            <td style="border: 1px solid #cbd5e1; padding: 6px; font-family: monospace; font-weight: bold;">${r.submittalNo}</td>
+            <td style="border: 1px solid #cbd5e1; padding: 6px;">${r.discipline || 'General'}</td>
+            <td style="border: 1px solid #cbd5e1; padding: 6px; font-weight: 600;">${(r.title || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</td>
+            <td style="border: 1px solid #cbd5e1; padding: 6px;">${r.stationKm || '-'}</td>
+            <td style="border: 1px solid #cbd5e1; padding: 6px;">${r.drawingRef || '-'}</td>
+            <td style="border: 1px solid #cbd5e1; padding: 6px;">${r.specificationRef || '-'}</td>
+            <td style="border: 1px solid #cbd5e1; padding: 6px;">${(r.contractorInquiry || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br/>')}</td>
+            <td style="border: 1px solid #cbd5e1; padding: 6px; text-align: center;">${r.submittedDate || '-'}</td>
+            <td style="border: 1px solid #cbd5e1; padding: 6px; color: #047857; font-weight: 500;">${(r.consultantResponse || 'Pending directive').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br/>')}</td>
+            <td style="border: 1px solid #cbd5e1; padding: 6px;">${r.consultantResponder || r.assignedEngineer || '-'}</td>
+            <td style="border: 1px solid #cbd5e1; padding: 6px; text-align: center;">${r.respondedDate || 'Pending'}</td>
+            <td style="border: 1px solid #cbd5e1; padding: 6px; text-align: center; font-weight: bold;">${delayInfo.elapsedDays !== undefined ? delayInfo.elapsedDays : '-'}</td>
+            <td style="border: 1px solid #cbd5e1; padding: 6px; text-align: center;">${target}</td>
+            <td style="border: 1px solid #cbd5e1; padding: 6px; text-align: center; font-weight: bold; color: ${delayInfo.isDelayed ? '#dc2626' : '#16a34a'};">${slaStatus}</td>
+            <td style="border: 1px solid #cbd5e1; padding: 6px; text-align: center; font-weight: bold;">${curStatus}</td>
+            <td style="border: 1px solid #cbd5e1; padding: 6px; text-align: center;">${r.priority}</td>
+            <td style="border: 1px solid #cbd5e1; padding: 6px; text-align: center;">${r.costImpact || 'None'}</td>
+            <td style="border: 1px solid #cbd5e1; padding: 6px; text-align: center;">${r.scheduleImpact || 'None'}</td>
+            <td style="border: 1px solid #cbd5e1; padding: 6px; text-align: center;">${pdfCount}</td>
+            <td style="border: 1px solid #cbd5e1; padding: 6px; text-align: center;">${msgCount}</td>
+          </tr>
+        `;
+      }).join('');
+
+      const excelHtml = `
+        <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+        <head>
+          <meta http-equiv="content-type" content="application/vnd.ms-excel; charset=UTF-8"/>
+          <!--[if gte mso 9]>
+          <xml>
+            <x:ExcelWorkbook>
+              <x:ExcelWorksheets>
+                <x:ExcelWorksheet>
+                  <x:Name>RFI Register</x:Name>
+                  <x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>
+                </x:ExcelWorksheet>
+              </x:ExcelWorksheets>
+            </x:ExcelWorkbook>
+          </xml>
+          <![endif]-->
+        </head>
+        <body style="font-family: Arial, sans-serif; font-size: 11px;">
+          <h2 style="color: #1e3a8a; margin-bottom: 4px;">ETHIOPIAN ROADS ADMINISTRATION (ERA)</h2>
+          <h3 style="color: #0f172a; margin-top: 0; margin-bottom: 8px;">REQUEST FOR INFORMATION (RFI) &amp; DESIGN CLARIFICATION LOG</h3>
+          <table style="margin-bottom: 12px; font-size: 11px;">
+            <tr><td><strong>Project:</strong></td><td>${projectTitle}</td><td><strong>Export Date:</strong></td><td>${exportDate}</td></tr>
+            <tr><td><strong>Supervision Consultant:</strong></td><td>${consultantName}</td><td><strong>Filtered Records:</strong></td><td>${sortedRfis.length} of ${rfiItems.length}</td></tr>
+            <tr><td><strong>Contractor:</strong></td><td>${contractorName}</td><td><strong>Active Filters:</strong></td><td>Status: ${selectedStatus} | Discipline: ${selectedDiscipline} | Priority: ${selectedPriority}</td></tr>
+          </table>
+          <table style="border-collapse: collapse; width: 100%; font-size: 11px;">
+            <thead>
+              <tr style="background-color: #1e3a8a; color: #ffffff; text-align: left;">
+                <th style="border: 1px solid #cbd5e1; padding: 8px;">RFI No</th>
+                <th style="border: 1px solid #cbd5e1; padding: 8px;">Discipline</th>
+                <th style="border: 1px solid #cbd5e1; padding: 8px;">Subject / Title</th>
+                <th style="border: 1px solid #cbd5e1; padding: 8px;">Station / Location</th>
+                <th style="border: 1px solid #cbd5e1; padding: 8px;">Drawing Ref</th>
+                <th style="border: 1px solid #cbd5e1; padding: 8px;">Specification Ref</th>
+                <th style="border: 1px solid #cbd5e1; padding: 8px;">Contractor Technical Inquiry</th>
+                <th style="border: 1px solid #cbd5e1; padding: 8px; text-align: center;">Submitted Date</th>
+                <th style="border: 1px solid #cbd5e1; padding: 8px;">Consultant Directive / Decision</th>
+                <th style="border: 1px solid #cbd5e1; padding: 8px;">Consultant Responder</th>
+                <th style="border: 1px solid #cbd5e1; padding: 8px; text-align: center;">Responded Date</th>
+                <th style="border: 1px solid #cbd5e1; padding: 8px; text-align: center;">Turnaround (Days)</th>
+                <th style="border: 1px solid #cbd5e1; padding: 8px; text-align: center;">Target SLA (Days)</th>
+                <th style="border: 1px solid #cbd5e1; padding: 8px; text-align: center;">SLA Compliance</th>
+                <th style="border: 1px solid #cbd5e1; padding: 8px; text-align: center;">Current Status</th>
+                <th style="border: 1px solid #cbd5e1; padding: 8px; text-align: center;">Priority</th>
+                <th style="border: 1px solid #cbd5e1; padding: 8px; text-align: center;">Cost Impact</th>
+                <th style="border: 1px solid #cbd5e1; padding: 8px; text-align: center;">Schedule Impact</th>
+                <th style="border: 1px solid #cbd5e1; padding: 8px; text-align: center;">PDFs</th>
+                <th style="border: 1px solid #cbd5e1; padding: 8px; text-align: center;">Thread Messages</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRowsHtml}
+            </tbody>
+          </table>
+        </body>
+        </html>
+      `;
+
+      const blob = new Blob([excelHtml], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', `RFI_Filtered_Log_${project.id || 'export'}_${exportDate}.xls`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      return;
+    }
+
+    // Standard RFC-4180 CSV with UTF-8 BOM
     const headers = [
       'RFI No',
       'Discipline',
       'Subject / Title',
-      'Station / Chainage',
+      'Station / Chainage Location',
       'Drawing Ref',
       'Specification Ref',
-      'Contractor Inquiry',
+      'Contractor Technical Inquiry',
       'Submitted Date',
-      'Consultant Clarification Directive',
+      'Consultant Directive / Decision',
+      'Consultant Responder',
       'Responded Date',
-      'Target Days',
-      'Actual Days',
-      'Status',
+      'SLA Turnaround (Days)',
+      'Target SLA (Days)',
+      'SLA Compliance',
+      'Current Status',
       'Priority',
       'Cost Impact',
       'Schedule Impact',
-      'Assigned Engineer',
+      'PDF Attachments Count',
       'Correspondence Messages Count'
     ];
 
-    const rows = sortedRfis.map(r => [
-      `"${r.submittalNo}"`,
-      `"${r.discipline || 'General'}"`,
-      `"${(r.title || '').replace(/"/g, '""')}"`,
-      `"${(r.stationKm || '').replace(/"/g, '""')}"`,
-      `"${(r.drawingRef || '').replace(/"/g, '""')}"`,
-      `"${(r.specificationRef || '').replace(/"/g, '""')}"`,
-      `"${(r.contractorInquiry || '').replace(/"/g, '""')}"`,
-      `"${r.submittedDate}"`,
-      `"${(r.consultantResponse || '').replace(/"/g, '""')}"`,
-      `"${r.respondedDate || ''}"`,
-      r.targetDays,
-      r.actualDays !== undefined ? r.actualDays : '',
-      `"${r.rfiStatus || r.status}"`,
-      `"${r.priority}"`,
-      `"${r.costImpact || 'None'}"`,
-      `"${r.scheduleImpact || 'None'}"`,
-      `"${(r.assignedEngineer || r.consultantResponder || '').replace(/"/g, '""')}"`,
-      r.correspondenceThread?.length || 0
-    ]);
+    const rows = sortedRfis.map(r => {
+      const target = r.targetDays || targetOverrides['RFI'] || 7;
+      const delayInfo = checkSubmittalDelay(r, target);
+      const slaStatus = delayInfo.isDelayed ? 'Delayed (> SLA)' : delayInfo.isResolved ? 'Resolved On-Time' : 'Within SLA';
 
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
+      return [
+        `"${r.submittalNo}"`,
+        `"${r.discipline || 'General'}"`,
+        `"${(r.title || '').replace(/"/g, '""')}"`,
+        `"${(r.stationKm || '').replace(/"/g, '""')}"`,
+        `"${(r.drawingRef || '').replace(/"/g, '""')}"`,
+        `"${(r.specificationRef || '').replace(/"/g, '""')}"`,
+        `"${(r.contractorInquiry || '').replace(/"/g, '""')}"`,
+        `"${r.submittedDate || ''}"`,
+        `"${(r.consultantResponse || '').replace(/"/g, '""')}"`,
+        `"${(r.consultantResponder || r.assignedEngineer || '').replace(/"/g, '""')}"`,
+        `"${r.respondedDate || ''}"`,
+        delayInfo.elapsedDays !== undefined ? delayInfo.elapsedDays : '',
+        target,
+        `"${slaStatus}"`,
+        `"${r.rfiStatus || r.status}"`,
+        `"${r.priority}"`,
+        `"${r.costImpact || 'None'}"`,
+        `"${r.scheduleImpact || 'None'}"`,
+        r.attachmentsCount ?? r.attachments?.length ?? 0,
+        r.correspondenceThread?.length || 0
+      ];
+    });
+
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `RFI_Design_Clarification_Log_${project.id || 'export'}.csv`);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `RFI_Filtered_Log_${project.id || 'export'}_${exportDate}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -746,11 +1087,12 @@ export default function RfiLogComponent({
               </button>
             )}
             <button
-              onClick={handleExportRfiCsv}
+              onClick={() => handleExportRfi('csv')}
               className="px-4 py-2.5 text-xs font-bold bg-white/10 hover:bg-white/20 text-white rounded-xl border border-white/20 flex items-center gap-2 transition cursor-pointer"
+              title="Export all currently filtered RFI records to CSV"
             >
               <Download className="w-4 h-4 text-emerald-400" />
-              Export RFI Register (CSV)
+              Export Register (CSV)
             </button>
           </div>
         </div>
@@ -872,10 +1214,12 @@ export default function RfiLogComponent({
             className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-medium text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
           >
             <option value="ALL">All Statuses</option>
-            <option value="AWAITING">Awaiting Response</option>
-            <option value="Under Technical Review">Under Review</option>
+            <option value="PENDING">Pending / Under Review</option>
+            <option value="Approved">Approved</option>
+            <option value="Approved with Comments">Approved with Comments</option>
+            <option value="REJECTED">Rejected / Resubmit Required</option>
             <option value="Clarification Issued">Clarification Issued</option>
-            <option value="CLOSED">Closed & Agreed</option>
+            <option value="CLOSED">Closed / Agreed</option>
             <option value="OVERDUE">Overdue SLA</option>
           </select>
 
@@ -904,6 +1248,29 @@ export default function RfiLogComponent({
             <option value="NEUTRAL">No Cost/Schedule Impact</option>
           </select>
 
+          {/* Export Filtered Records (CSV & Excel) */}
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => handleExportRfi('csv')}
+              className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300/80 dark:border-emerald-800 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+              title={`Export ${sortedRfis.length} filtered RFI records to CSV for spreadsheet reporting`}
+            >
+              <Download className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span>Export CSV</span>
+              <span className="px-1.5 py-0.2 bg-emerald-200/80 dark:bg-emerald-900 rounded-md text-[10px] font-mono font-bold">
+                {sortedRfis.length}
+              </span>
+            </button>
+            <button
+              onClick={() => handleExportRfi('excel')}
+              className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+              title={`Export ${sortedRfis.length} filtered RFI records to professional formatted Excel report (.xls)`}
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span>Excel Report</span>
+            </button>
+          </div>
+
           {/* View Toggle: Table vs Cards */}
           <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-xl border border-slate-200 dark:border-slate-700">
             <button
@@ -926,6 +1293,156 @@ export default function RfiLogComponent({
         </div>
       </div>
 
+      {/* BULK ACTION BAR FOR SUPERVISION CONSULTANT APPROVER */}
+      {isSupervisionConsultantApprover && selectedRfiIds.length > 0 && (
+        <div className="bg-gradient-to-r from-indigo-900 via-indigo-800 to-slate-900 text-white p-3.5 rounded-2xl shadow-lg border border-indigo-700/60 flex flex-wrap items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center font-black text-sm shadow-xs border border-indigo-400/40">
+              {selectedRfiIds.length}
+            </div>
+            <div>
+              <div className="font-bold text-sm flex items-center gap-2">
+                <span>{selectedRfiIds.length} RFI{selectedRfiIds.length > 1 ? 's' : ''} Selected</span>
+                <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-semibold border border-emerald-500/30">
+                  Consultant Approver Bulk Mode
+                </span>
+              </div>
+              <p className="text-[11px] text-indigo-200">
+                Perform bulk approval certification or status directives
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center flex-wrap gap-2">
+            {/* Quick Bulk Approve */}
+            <button
+              onClick={() => executeBulkStatusChange('Approved')}
+              className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+              title="Instantly bulk certify and approve all selected RFIs"
+            >
+              <Check className="w-3.5 h-3.5" />
+              <span>Bulk Approve</span>
+            </button>
+
+            {/* Bulk Approve with Comments */}
+            <button
+              onClick={() => {
+                setBulkTargetStatus('Approved with Comments');
+                setIsBulkModalOpen(true);
+              }}
+              className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+              title="Approve with remarks or conditions"
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              <span>Approve w/ Comments...</span>
+            </button>
+
+            {/* Action Menu Dropdown / Modal Trigger */}
+            <div className="relative">
+              <button
+                onClick={() => setIsBulkActionMenuOpen(prev => !prev)}
+                className="px-3.5 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border border-white/20"
+              >
+                <ListChecks className="w-3.5 h-3.5" />
+                <span>Bulk Action Menu</span>
+                <ChevronRight className={`w-3.5 h-3.5 transition-transform ${isBulkActionMenuOpen ? 'rotate-90' : ''}`} />
+              </button>
+
+              {isBulkActionMenuOpen && (
+                <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 py-2 z-40 text-slate-800 dark:text-slate-200">
+                  <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-100 dark:border-slate-700">
+                    Bulk Status Actions
+                  </div>
+                  <button
+                    onClick={() => {
+                      executeBulkStatusChange('Approved');
+                      setIsBulkActionMenuOpen(false);
+                    }}
+                    className="w-full px-3 py-2 text-left hover:bg-emerald-50 dark:hover:bg-emerald-950/50 text-xs font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-2 cursor-pointer"
+                  >
+                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>✓ Set Status: Approved</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setBulkTargetStatus('Approved with Comments');
+                      setIsBulkModalOpen(true);
+                      setIsBulkActionMenuOpen(false);
+                    }}
+                    className="w-full px-3 py-2 text-left hover:bg-blue-50 dark:hover:bg-blue-950/50 text-xs font-bold text-blue-700 dark:text-blue-300 flex items-center gap-2 cursor-pointer"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5 text-blue-600" />
+                    <span>📝 Set: Approved with Comments...</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setBulkTargetStatus('Clarification Issued');
+                      setIsBulkModalOpen(true);
+                      setIsBulkActionMenuOpen(false);
+                    }}
+                    className="w-full px-3 py-2 text-left hover:bg-cyan-50 dark:hover:bg-cyan-950/50 text-xs font-bold text-cyan-700 dark:text-cyan-300 flex items-center gap-2 cursor-pointer"
+                  >
+                    <Send className="w-3.5 h-3.5 text-cyan-600" />
+                    <span>Set: Clarification Issued...</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      executeBulkStatusChange('Closed / Agreed');
+                      setIsBulkActionMenuOpen(false);
+                    }}
+                    className="w-full px-3 py-2 text-left hover:bg-emerald-50 dark:hover:bg-emerald-950/50 text-xs font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-2 cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Set: Closed / Agreed</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setBulkTargetStatus('Resubmit / Revision Required');
+                      setIsBulkModalOpen(true);
+                      setIsBulkActionMenuOpen(false);
+                    }}
+                    className="w-full px-3 py-2 text-left hover:bg-rose-50 dark:hover:bg-rose-950/50 text-xs font-bold text-rose-600 dark:text-rose-400 flex items-center gap-2 cursor-pointer"
+                  >
+                    <AlertTriangle className="w-3.5 h-3.5 text-rose-500" />
+                    <span>Set: Resubmit Required...</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      executeBulkStatusChange('Under Technical Review');
+                      setIsBulkActionMenuOpen(false);
+                    }}
+                    className="w-full px-3 py-2 text-left hover:bg-slate-100 dark:hover:bg-slate-700/60 text-xs font-medium text-slate-700 dark:text-slate-300 flex items-center gap-2 cursor-pointer"
+                  >
+                    <Clock className="w-3.5 h-3.5 text-amber-500" />
+                    <span>Set: Under Technical Review</span>
+                  </button>
+                  <div className="border-t border-slate-100 dark:border-slate-700 my-1"></div>
+                  <button
+                    onClick={() => {
+                      setIsBulkModalOpen(true);
+                      setIsBulkActionMenuOpen(false);
+                    }}
+                    className="w-full px-3 py-2 text-left hover:bg-indigo-50 dark:hover:bg-indigo-950/50 text-xs font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-2 cursor-pointer"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Open Bulk Directive Editor...</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Clear Selection */}
+            <button
+              onClick={clearSelection}
+              className="p-1.5 text-indigo-200 hover:text-white hover:bg-white/10 rounded-xl transition cursor-pointer"
+              title="Clear selection"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* RFI Table or Card View */}
       {viewLayout === 'table' ? (
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-xs flex flex-col">
@@ -933,6 +1450,22 @@ export default function RfiLogComponent({
             <table className="w-full text-left border-collapse text-xs">
               <thead className="bg-slate-50 dark:bg-slate-800/90 border-b border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-bold select-none">
                 <tr>
+                  {isSupervisionConsultantApprover && (
+                    <th className="p-3.5 w-10 text-center">
+                      <div className="flex items-center justify-center">
+                        <input
+                          type="checkbox"
+                          checked={isAllSelected}
+                          ref={(el) => {
+                            if (el) el.indeterminate = isSomeSelected;
+                          }}
+                          onChange={toggleSelectAll}
+                          className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500 cursor-pointer accent-indigo-600"
+                          title={isAllSelected ? "Deselect all visible RFIs" : "Select all visible RFIs"}
+                        />
+                      </div>
+                    </th>
+                  )}
                   <th className="p-3.5 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/60" onClick={() => { setSortField('submittalNo'); setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc'); }}>
                     <div className="flex items-center gap-1">
                       <span>RFI #</span>
@@ -954,18 +1487,19 @@ export default function RfiLogComponent({
                     </div>
                   </th>
                   <th className="p-3.5 text-center">Thread</th>
-                  {(!isContractorUser || canContractorAddOrEdit) && <th className="p-3.5 text-right">Actions</th>}
+                  {isSupervisionConsultantApprover && <th className="p-3.5 text-right">Actions</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
                 {sortedRfis.length === 0 ? (
                   <tr>
-                    <td colSpan={(!isContractorUser || canContractorAddOrEdit) ? 12 : 11} className="p-8 text-center text-slate-400">
+                    <td colSpan={isSupervisionConsultantApprover ? 13 : 11} className="p-8 text-center text-slate-400">
                       No Request for Information (RFI) records match your filter criteria.
                     </td>
                   </tr>
                 ) : (
                   sortedRfis.map((rfi, idx) => {
+                    const isSelected = selectedRfiIds.includes(rfi.id);
                     const target = rfi.targetDays || targetOverrides['RFI'] || 7;
                     const delayInfo = checkSubmittalDelay(rfi, target);
                     const msgCount = rfi.correspondenceThread?.length || 0;
@@ -976,8 +1510,24 @@ export default function RfiLogComponent({
                     return (
                       <tr
                         key={`rfi-row-${rfi.id}-${idx}`}
-                        className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors"
+                        className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors ${
+                          isSelected ? 'bg-indigo-50/70 dark:bg-indigo-950/40' : ''
+                        }`}
                       >
+                        {/* Multi-Select Checkbox Column (Approvers only) */}
+                        {isSupervisionConsultantApprover && (
+                          <td className="p-3.5 text-center" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-center">
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => toggleSelectRfi(rfi.id)}
+                                className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500 cursor-pointer accent-indigo-600"
+                                title={`Select ${rfi.submittalNo}`}
+                              />
+                            </div>
+                          </td>
+                        )}
                         {/* RFI No & Priority */}
                         <td className="p-3.5 font-mono font-bold">
                           <button
@@ -1116,17 +1666,68 @@ export default function RfiLogComponent({
 
                         {/* Status */}
                         <td className="p-3.5 text-center whitespace-nowrap">
-                          <span className={`px-2 py-1 rounded-full text-[10px] font-bold inline-block ${
-                            (rfi.status === 'Approved / Closed' || rfi.rfiStatus === 'Closed / Agreed')
-                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
-                              : rfi.rfiStatus === 'Clarification Issued'
-                              ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
-                              : delayInfo.isDelayed
-                              ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300'
-                              : 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
-                          }`}>
-                            {rfi.rfiStatus || rfi.status}
-                          </span>
+                          {(() => {
+                            const curStatus = rfi.rfiStatus || rfi.status;
+                            const isApprovedOnly = curStatus === 'Approved' || (rfi.status === 'Approved' && !curStatus.includes('Comment'));
+                            const isApprovedWithComments = curStatus === 'Approved with Comments' || curStatus === 'Approved with Comment' || rfi.status === 'Approved with Comments' || rfi.status === 'Approved with Comment';
+                            const isClosedOrAgreed = curStatus === 'Closed / Agreed' || rfi.status === 'Approved / Closed' || rfi.status === 'Closed';
+                            const isClarification = curStatus === 'Clarification Issued';
+
+                            if (isApprovedOnly) {
+                              return (
+                                <span className="px-2.5 py-1 rounded-full text-[10px] font-bold inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-300/60 dark:border-emerald-800">
+                                  <Check className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                                  Approved
+                                </span>
+                              );
+                            }
+                            if (isApprovedWithComments) {
+                              return (
+                                <span className="px-2.5 py-1 rounded-full text-[10px] font-bold inline-flex items-center gap-1 bg-blue-100 text-blue-800 dark:bg-blue-950/80 dark:text-blue-300 border border-blue-300/60 dark:border-blue-800">
+                                  <MessageSquare className="w-3 h-3 text-blue-600 dark:text-blue-400" />
+                                  Approved w/ Comments
+                                </span>
+                              );
+                            }
+                            if (isClarification) {
+                              return (
+                                <span className="px-2.5 py-1 rounded-full text-[10px] font-bold inline-flex items-center gap-1 bg-cyan-100 text-cyan-800 dark:bg-cyan-950/80 dark:text-cyan-300 border border-cyan-300/60 dark:border-cyan-800">
+                                  <Send className="w-3 h-3 text-cyan-600 dark:text-cyan-400" />
+                                  Clarification Issued
+                                </span>
+                              );
+                            }
+                            if (isClosedOrAgreed) {
+                              return (
+                                <span className="px-2.5 py-1 rounded-full text-[10px] font-bold inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-300/60 dark:border-emerald-800">
+                                  <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                                  Closed / Agreed
+                                </span>
+                              );
+                            }
+                            if (curStatus === 'Resubmit / Revision Required' || curStatus === 'Rejected / Resubmit') {
+                              return (
+                                <span className="px-2.5 py-1 rounded-full text-[10px] font-bold inline-flex items-center gap-1 bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-300 border border-rose-300/60 dark:border-rose-800">
+                                  <AlertTriangle className="w-3 h-3 text-rose-600 dark:text-rose-400" />
+                                  Resubmit Required
+                                </span>
+                              );
+                            }
+                            if (delayInfo.isDelayed) {
+                              return (
+                                <span className="px-2.5 py-1 rounded-full text-[10px] font-bold inline-flex items-center gap-1 bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-300 border border-rose-300/60 dark:border-rose-800">
+                                  <Clock className="w-3 h-3 text-rose-600 dark:text-rose-400" />
+                                  Overdue SLA
+                                </span>
+                              );
+                            }
+                            return (
+                              <span className="px-2.5 py-1 rounded-full text-[10px] font-bold inline-flex items-center gap-1 bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 border border-amber-300/60 dark:border-amber-800">
+                                <Clock className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+                                {curStatus}
+                              </span>
+                            );
+                          })()}
                         </td>
 
                         {/* PDF Attachments */}
@@ -1176,7 +1777,7 @@ export default function RfiLogComponent({
                         </td>
 
                         {/* Actions */}
-                        {(!isContractorUser || canContractorAddOrEdit) && (
+                        {isSupervisionConsultantApprover && (
                           <td className="p-3.5 text-right whitespace-nowrap">
                             <div className="flex items-center justify-end gap-1">
                               {!isReadonly && !rfi.consultantResponse && (
@@ -1256,13 +1857,37 @@ export default function RfiLogComponent({
                       </h4>
                     </div>
 
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap shrink-0 ${
-                      rfi.status === 'Approved / Closed' || rfi.rfiStatus === 'Closed / Agreed'
-                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
-                        : 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
-                    }`}>
-                      {rfi.rfiStatus || rfi.status}
-                    </span>
+                    {(() => {
+                      const curStatus = rfi.rfiStatus || rfi.status;
+                      const isApprovedOnly = curStatus === 'Approved' || (rfi.status === 'Approved' && !curStatus.includes('Comment'));
+                      const isApprovedWithComments = curStatus === 'Approved with Comments' || curStatus === 'Approved with Comment' || rfi.status === 'Approved with Comments' || rfi.status === 'Approved with Comment';
+
+                      if (isApprovedOnly) {
+                        return (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap shrink-0 bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-300/60 dark:border-emerald-800 flex items-center gap-1">
+                            <Check className="w-3 h-3" />
+                            Approved
+                          </span>
+                        );
+                      }
+                      if (isApprovedWithComments) {
+                        return (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap shrink-0 bg-blue-100 text-blue-800 dark:bg-blue-950/80 dark:text-blue-300 border border-blue-300/60 dark:border-blue-800 flex items-center gap-1">
+                            <MessageSquare className="w-3 h-3" />
+                            Approved w/ Comments
+                          </span>
+                        );
+                      }
+                      return (
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap shrink-0 ${
+                          rfi.status === 'Approved / Closed' || rfi.rfiStatus === 'Closed / Agreed'
+                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+                            : 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
+                        }`}>
+                          {rfi.rfiStatus || rfi.status}
+                        </span>
+                      );
+                    })()}
                   </div>
 
                   {/* Metadata Chips */}
@@ -1366,7 +1991,11 @@ export default function RfiLogComponent({
                       {activeRfi.discipline || 'General'}
                     </span>
                     <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                      activeRfi.status === 'Approved / Closed' || activeRfi.rfiStatus === 'Closed / Agreed'
+                      (activeRfi.status === 'Approved' || activeRfi.rfiStatus === 'Approved')
+                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-300/60 dark:border-emerald-800'
+                        : (activeRfi.status === 'Approved with Comments' || activeRfi.status === 'Approved with Comment' || activeRfi.rfiStatus === 'Approved with Comments')
+                        ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/80 dark:text-blue-300 border border-blue-300/60 dark:border-blue-800'
+                        : (activeRfi.status === 'Approved / Closed' || activeRfi.rfiStatus === 'Closed / Agreed')
                         ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
                         : 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
                     }`}>
@@ -1636,17 +2265,30 @@ export default function RfiLogComponent({
                       </div>
 
                       <div>
-                        <label className="text-[10px] font-bold text-slate-500 uppercase">Update Status (Optional)</label>
+                        <div className="flex items-center justify-between">
+                          <label className="text-[10px] font-bold text-slate-500 uppercase">Update Status (Optional)</label>
+                          {isSupervisionConsultantApprover && (
+                            <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400">
+                              👔 Approver
+                            </span>
+                          )}
+                        </div>
                         <select
                           value={replyStatusUpdate}
                           onChange={(e) => setReplyStatusUpdate(e.target.value)}
                           className="w-full mt-1 px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-900 dark:text-white outline-none"
                         >
                           <option value="no_change">Keep Current Status</option>
-                          <option value="Clarification Issued">Mark: Clarification Issued</option>
-                          <option value="Closed / Agreed">Mark: Closed / Agreed</option>
-                          <option value="Under Technical Review">Mark: Under Technical Review</option>
-                          <option value="Resubmit / Revision Required">Mark: Resubmit Required</option>
+                          <optgroup label="Approval Statuses">
+                            <option value="Approved">✓ Mark: Approved</option>
+                            <option value="Approved with Comments">📝 Mark: Approved with Comments</option>
+                          </optgroup>
+                          <optgroup label="Consultant Clarification & Review">
+                            <option value="Clarification Issued">Mark: Clarification Issued</option>
+                            <option value="Closed / Agreed">Mark: Closed / Agreed</option>
+                            <option value="Under Technical Review">Mark: Under Technical Review</option>
+                            <option value="Resubmit / Revision Required">Mark: Resubmit Required</option>
+                          </optgroup>
                         </select>
                       </div>
                     </div>
@@ -2066,13 +2708,26 @@ export default function RfiLogComponent({
                     <label className="text-[10px] font-bold text-slate-500 uppercase">Clarification Outcome</label>
                     <select
                       value={responseForm.newRfiStatus}
-                      onChange={(e) => setResponseForm({ ...responseForm, newRfiStatus: e.target.value, newStatus: 'Approved / Closed' })}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        let finalStatus = 'Approved / Closed';
+                        if (val === 'Approved') finalStatus = 'Approved';
+                        else if (val === 'Approved with Comments') finalStatus = 'Approved with Comments';
+                        else if (val.includes('Resubmit')) finalStatus = 'Rejected / Resubmit';
+                        setResponseForm({ ...responseForm, newRfiStatus: val, newStatus: finalStatus });
+                      }}
                       className="w-full mt-1 px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-medium"
                     >
-                      <option value="Clarification Issued">Clarification Issued</option>
-                      <option value="Closed / Agreed">Closed / Agreed</option>
-                      <option value="Approved as Proposed">Approved as Proposed</option>
-                      <option value="Resubmit / Revision Required">Resubmit Required</option>
+                      <optgroup label="Approval Statuses">
+                        <option value="Approved">✓ Approved</option>
+                        <option value="Approved with Comments">📝 Approved with Comments</option>
+                      </optgroup>
+                      <optgroup label="Standard Clarifications & Outcomes">
+                        <option value="Clarification Issued">Clarification Issued</option>
+                        <option value="Closed / Agreed">Closed / Agreed</option>
+                        <option value="Approved as Proposed">Approved as Proposed</option>
+                        <option value="Resubmit / Revision Required">Resubmit Required</option>
+                      </optgroup>
                     </select>
                   </div>
 
@@ -2123,9 +2778,19 @@ export default function RfiLogComponent({
               className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl p-6 w-full max-w-xl space-y-4 max-h-[90vh] overflow-y-auto"
             >
               <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-                <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                  Edit RFI: {editingRfiDraft.submittalNo}
-                </h3>
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                    <Edit2 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                      Edit RFI: {editingRfiDraft.submittalNo}
+                    </h3>
+                    <p className="text-[11px] text-slate-500">
+                      Update RFI details, technical directives, and formal status
+                    </p>
+                  </div>
+                </div>
                 <button
                   onClick={() => setIsEditRfiModalOpen(false)}
                   className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-slate-400"
@@ -2133,6 +2798,71 @@ export default function RfiLogComponent({
                   <X className="w-4 h-4" />
                 </button>
               </div>
+
+              {/* Supervision Consultant Approver Authority Banner */}
+              {isSupervisionConsultantApprover && (
+                <div className="p-3 bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/80 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                      <ShieldCheck className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <span className="font-bold text-emerald-950 dark:text-emerald-200 flex items-center gap-1.5">
+                        Supervision Consultant Approver Credentials
+                      </span>
+                      <span className="text-[11px] text-emerald-700 dark:text-emerald-400">
+                        Choose formal certification status for this RFI:
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const today = new Date().toISOString().split('T')[0];
+                        setEditingRfiDraft(prev => prev ? ({
+                          ...prev,
+                          status: 'Approved',
+                          rfiStatus: 'Approved',
+                          respondedDate: prev.respondedDate || today,
+                          consultantResponder: prev.consultantResponder || currentUserObj?.fullName || currentUserObj?.username || consultant.residentEngineerName || 'Resident Engineer'
+                        }) : null);
+                      }}
+                      className={`px-3 py-1.5 rounded-xl font-bold text-xs transition flex items-center gap-1 cursor-pointer ${
+                        (editingRfiDraft.rfiStatus === 'Approved' || editingRfiDraft.status === 'Approved')
+                          ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-400'
+                          : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-800 dark:bg-emerald-900/70 dark:text-emerald-200'
+                      }`}
+                      title="Set RFI status to Approved"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      Approve
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const today = new Date().toISOString().split('T')[0];
+                        setEditingRfiDraft(prev => prev ? ({
+                          ...prev,
+                          status: 'Approved with Comments',
+                          rfiStatus: 'Approved with Comments',
+                          respondedDate: prev.respondedDate || today,
+                          consultantResponder: prev.consultantResponder || currentUserObj?.fullName || currentUserObj?.username || consultant.residentEngineerName || 'Resident Engineer'
+                        }) : null);
+                      }}
+                      className={`px-3 py-1.5 rounded-xl font-bold text-xs transition flex items-center gap-1 cursor-pointer ${
+                        (editingRfiDraft.rfiStatus === 'Approved with Comments' || editingRfiDraft.status === 'Approved with Comments')
+                          ? 'bg-blue-600 text-white shadow-sm ring-2 ring-blue-400'
+                          : 'bg-blue-100 hover:bg-blue-200 text-blue-800 dark:bg-blue-900/70 dark:text-blue-200'
+                      }`}
+                      title="Set RFI status to Approved with Comments"
+                    >
+                      <MessageSquare className="w-3.5 h-3.5" />
+                      Approve w/ Comments
+                    </button>
+                  </div>
+                </div>
+              )}
 
               <div className="space-y-3 text-xs">
                 <div>
@@ -2248,17 +2978,62 @@ export default function RfiLogComponent({
 
                 <div className="grid grid-cols-3 gap-3">
                   <div>
-                    <label className="text-[10px] font-bold text-slate-500 uppercase">Status</label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase">Status</label>
+                      {isSupervisionConsultantApprover && (
+                        <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-1 py-0.2 rounded border border-emerald-200 dark:border-emerald-800">
+                          Approver
+                        </span>
+                      )}
+                    </div>
                     <select
                       value={editingRfiDraft.rfiStatus || editingRfiDraft.status}
-                      onChange={(e) => setEditingRfiDraft({ ...editingRfiDraft, rfiStatus: e.target.value, status: e.target.value.includes('Closed') || e.target.value.includes('Issued') ? 'Approved / Closed' : 'Under Review' })}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        let finalStatus = 'Under Review';
+                        if (val === 'Approved') {
+                          finalStatus = 'Approved';
+                        } else if (val === 'Approved with Comments' || val === 'Approved with Comment') {
+                          finalStatus = 'Approved with Comments';
+                        } else if (val.includes('Closed') || val.includes('Issued') || val === 'Approved as Proposed') {
+                          finalStatus = 'Approved / Closed';
+                        } else if (val.includes('Resubmit') || val.includes('Revision')) {
+                          finalStatus = 'Rejected / Resubmit';
+                        }
+
+                        const today = new Date().toISOString().split('T')[0];
+                        const newRespondedDate = (val === 'Approved' || val === 'Approved with Comments' || val === 'Clarification Issued' || val === 'Closed / Agreed') && !editingRfiDraft.respondedDate
+                          ? today
+                          : editingRfiDraft.respondedDate;
+
+                        setEditingRfiDraft({
+                          ...editingRfiDraft,
+                          rfiStatus: val,
+                          status: finalStatus,
+                          respondedDate: newRespondedDate,
+                          consultantResponder: editingRfiDraft.consultantResponder || (isSupervisionConsultantApprover ? (currentUserObj?.fullName || currentUserObj?.username || consultant.residentEngineerName) : editingRfiDraft.consultantResponder)
+                        });
+                      }}
                       className="w-full mt-1 px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-medium"
                     >
-                      <option value="Awaiting Consultant Response">Awaiting Consultant Response</option>
-                      <option value="Under Technical Review">Under Technical Review</option>
-                      <option value="Clarification Issued">Clarification Issued</option>
-                      <option value="Closed / Agreed">Closed / Agreed</option>
-                      <option value="Resubmit / Revision Required">Resubmit Required</option>
+                      <optgroup label="Approval Statuses">
+                        <option value="Approved">
+                          ✓ Approved
+                        </option>
+                        <option value="Approved with Comments">
+                          📝 Approved with Comments
+                        </option>
+                      </optgroup>
+                      <optgroup label="Consultant Clarification & Directives">
+                        <option value="Clarification Issued">Clarification Issued</option>
+                        <option value="Closed / Agreed">Closed / Agreed</option>
+                        <option value="Resubmit / Revision Required">Resubmit Required</option>
+                      </optgroup>
+                      <optgroup label="Workflow & Review Statuses">
+                        <option value="Awaiting Consultant Response">Awaiting Consultant Response</option>
+                        <option value="Under Technical Review">Under Technical Review</option>
+                        <option value="Void / Withdrawn">Void / Withdrawn</option>
+                      </optgroup>
                     </select>
                   </div>
 
@@ -2380,6 +3155,159 @@ export default function RfiLogComponent({
                   className="px-5 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-xs"
                 >
                   Save Changes
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* BULK STATUS UPDATE MODAL */}
+      <AnimatePresence>
+        {isBulkModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl p-6 w-full max-w-xl space-y-4 max-h-[90vh] overflow-y-auto"
+            >
+              {/* Modal Header */}
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-xs">
+                    <ListChecks className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                      Bulk Update RFI Status
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      Apply certification status & directive notes to {selectedRfiIds.length} selected RFI{selectedRfiIds.length > 1 ? 's' : ''}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsBulkModalOpen(false)}
+                  className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Selected RFIs Badge Strip */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                  Selected RFIs ({selectedRfiObjects.length})
+                </label>
+                <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-2 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700">
+                  {selectedRfiObjects.map(item => (
+                    <span
+                      key={item.id}
+                      className="px-2 py-0.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-md font-mono text-[11px] font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1 shadow-2xs"
+                    >
+                      <span>{item.submittalNo}</span>
+                      <button
+                        type="button"
+                        onClick={() => toggleSelectRfi(item.id)}
+                        className="text-slate-400 hover:text-rose-500 cursor-pointer"
+                        title="Remove from batch"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* Target Status Selector */}
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase">
+                  New Status for Selected RFIs
+                </label>
+                <select
+                  value={bulkTargetStatus}
+                  onChange={(e) => setBulkTargetStatus(e.target.value)}
+                  className="w-full mt-1 px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-bold text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <optgroup label="Approval Statuses">
+                    <option value="Approved">✓ Approved</option>
+                    <option value="Approved with Comments">📝 Approved with Comments</option>
+                  </optgroup>
+                  <optgroup label="Clarification Directives">
+                    <option value="Clarification Issued">Clarification Issued</option>
+                    <option value="Closed / Agreed">Closed / Agreed</option>
+                    <option value="Resubmit / Revision Required">Resubmit Required</option>
+                  </optgroup>
+                  <optgroup label="Workflow Statuses">
+                    <option value="Under Technical Review">Under Technical Review</option>
+                    <option value="Awaiting Consultant Response">Awaiting Consultant Response</option>
+                    <option value="Void / Withdrawn">Void / Withdrawn</option>
+                  </optgroup>
+                </select>
+              </div>
+
+              {/* Directive / Remarks Note */}
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase">
+                  Bulk Consultant Directive / Remarks Note (Optional)
+                </label>
+                <textarea
+                  rows={3}
+                  value={bulkDirectiveNote}
+                  onChange={(e) => setBulkDirectiveNote(e.target.value)}
+                  placeholder="Enter common clarification remarks, directive instructions, or approval conditions to record for all selected RFIs..."
+                  className="w-full mt-1 px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-xs font-medium outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              {/* Cost & Schedule Impact Overrides */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Cost Impact</label>
+                  <select
+                    value={bulkCostImpact}
+                    onChange={(e) => setBulkCostImpact(e.target.value)}
+                    className="w-full mt-1 px-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-xs font-medium"
+                  >
+                    <option value="keep">Keep Existing Impact</option>
+                    <option value="None">None (No Cost)</option>
+                    <option value="Potential Additional Cost">Potential Additional Cost</option>
+                    <option value="Cost Saving">Cost Saving</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Schedule Impact</label>
+                  <select
+                    value={bulkScheduleImpact}
+                    onChange={(e) => setBulkScheduleImpact(e.target.value)}
+                    className="w-full mt-1 px-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-xs font-medium"
+                  >
+                    <option value="keep">Keep Existing Impact</option>
+                    <option value="None">None (No Delay)</option>
+                    <option value="Critical Path Delay Risk">Critical Path Delay Risk</option>
+                    <option value="Minor Float Consumption">Minor Float Consumption</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsBulkModalOpen(false)}
+                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => executeBulkStatusChange(bulkTargetStatus, bulkDirectiveNote, bulkCostImpact, bulkScheduleImpact)}
+                  className="px-5 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Apply to {selectedRfiIds.length} RFI{selectedRfiIds.length > 1 ? 's' : ''}</span>
                 </button>
               </div>
             </motion.div>
