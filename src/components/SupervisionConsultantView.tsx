@@ -169,12 +169,20 @@ export default function SupervisionConsultantView({
 
   const isConsultantUser = currentUser?.role === 'consultant_approver' || currentUser?.role === 'consultant_editor';
 
+  const isPerformanceEvaluator = useMemo(() => {
+    if (!currentUser) return false;
+    const r = currentUser.role;
+    return r === 'master_admin' || r === 'cpm_admin' || r === 'directorate_admin';
+  }, [currentUser]);
+
   useEffect(() => {
     const canAccessKpis = isAdmin || isEraUser;
-    if ((!canAccessKpis || isConsultantUser) && (activeTab === 'personnel_audit' || activeTab === 'kpis' || activeTab === 'history')) {
+    if (activeTab === 'kpis' && !isPerformanceEvaluator) {
+      setActiveTab('personnel');
+    } else if ((!canAccessKpis || isConsultantUser) && (activeTab === 'personnel_audit' || activeTab === 'history')) {
       setActiveTab('personnel');
     }
-  }, [isAdmin, isEraUser, isConsultantUser, activeTab]);
+  }, [isAdmin, isEraUser, isConsultantUser, isPerformanceEvaluator, activeTab]);
 
   // Search & Filter States for Personnel
   const [personnelSearch, setPersonnelSearch] = useState('');
@@ -1871,7 +1879,7 @@ export default function SupervisionConsultantView({
           </span>
         </button>
 
-        {(isAdmin || isEraUser) && !isConsultantUser && (
+        {isPerformanceEvaluator && (
           <button
             onClick={() => setActiveTab('kpis')}
             className={`px-4 py-2 rounded-2xl text-xs md:text-sm font-bold flex items-center gap-2 transition ${
@@ -1881,11 +1889,11 @@ export default function SupervisionConsultantView({
             }`}
           >
             <Clock className="w-4 h-4" />
-            {isEraUser ? 'Supervision Consultant Performance Evaluation' : 'Performance KPIs & RFI SLA Evaluation'}
+            Supervision Consultant Performance Evaluation
             <span className={`px-2 py-0.5 rounded-full text-xs font-mono ${
               activeTab === 'kpis' ? 'bg-purple-700 text-white' : 'bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-300 font-bold'
             }`}>
-              {isEraUser ? 'Section 2 Matrix' : `${consultant.submittalKpis?.length || 0} items`}
+              Section 2 Matrix
             </span>
           </button>
         )}
@@ -2462,14 +2470,14 @@ export default function SupervisionConsultantView({
       )}
 
       {/* TAB: PERFORMANCE KPIS & RFI SLA EVALUATION (ADMIN & ERA ROLES) */}
-      {(isAdmin || isEraUser) && activeTab === 'kpis' && (
+      {isPerformanceEvaluator && activeTab === 'kpis' && (
         <ConsultantPerformanceKpiWidget
           project={project}
           consultant={consultant}
           onUpdateConsultant={saveConsultantData}
           isReadonly={isReadonly}
-          isAdmin={isAdmin || isEraUser}
-          isMasterAdmin={isMasterAdmin}
+          isAdmin={isPerformanceEvaluator}
+          isMasterAdmin={currentUser?.role === 'master_admin'}
           currentUser={currentUser}
         />
       )}
