@@ -28,7 +28,8 @@ import {
   PieChart as PieChartIcon,
   BarChart3,
   BarChart2,
-  Bell
+  Bell,
+  Download
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -1286,15 +1287,15 @@ export default function DashboardView({
     doc.setFontSize(8.5);
     doc.setTextColor(71, 85, 105); // slate-600
     doc.text(`Consulting Engineer: ${p.consultant}`, 55, 165);
-    doc.text(`Erecting Contractor: ${p.contractor}`, 300, 165);
+    doc.text(`Contractor: ${p.contractor}`, 300, 165);
     
     doc.text(`Original Cost Base: Br. ${p.origAmount.toFixed(2)} Million`, 55, 185);
     doc.text(`Approved Variation Orders: Br. ${Number(p.variation || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 300, 185);
     
     doc.text(`Contract Construction Period: ${p.origDays} Calendar Days`, 55, 205);
     doc.text(`Revised Time Extension (EOT): ${p.eotDays} Calendar Days`, 300, 205);
-    doc.text(`Section Total Length: ${p.lengthKm} Kilometers`, 55, 222);
-    doc.text(`Fiduciary Contract Type: ${p.contractType || 'DBB'} (${p.classification})`, 300, 222);
+    doc.text(`Project Total Length: ${p.lengthKm} Kilometers`, 55, 222);
+    doc.text(`Contract Type: ${p.contractType || 'DBB'} (${p.classification})`, 300, 222);
 
     // Dynamic Earned Value metric box
     doc.setFillColor(241, 245, 249); // slate-100
@@ -1508,9 +1509,9 @@ export default function DashboardView({
         doc.setFontSize(7.5);
         
         doc.text(t.id, 50, ty + 13);
-        doc.text(t.name, 90, ty + 13);
+        doc.text(t.name, 90, ty + 13, { maxWidth: 175 });
         doc.text(t.duration.toString(), 270, ty + 13);
-        doc.text(t.predecessors || 'None', 345, ty + 13);
+        doc.text(t.predecessors || 'None', 345, ty + 13, { maxWidth: 65 });
         doc.text(typeof t.float === 'number' ? `${t.float} Days` : '0 Days', 415, ty + 13);
         
         if (t.critical) {
@@ -1637,7 +1638,7 @@ export default function DashboardView({
       doc.setTextColor(30, 41, 59);
       doc.setFont('helvetica', 'normal');
       
-      doc.text(pay.item, 50, py + 12);
+      doc.text(pay.item, 50, py + 12, { maxWidth: 190 });
       doc.text(`Br. ${formattedMoney(pay.amount)}`, 250, py + 12);
       doc.text(`${pay.percent.toFixed(2)} %`, 370, py + 12);
       
@@ -1677,7 +1678,7 @@ export default function DashboardView({
       
       doc.setTextColor(30, 41, 59);
       doc.setFont('helvetica', 'normal');
-      doc.text(rm.name, 50, ry + 11);
+      doc.text(rm.name, 50, ry + 11, { maxWidth: 380 });
       
       doc.setFont('helvetica', 'bold');
       doc.text(rm.value.toString(), 450, ry + 11);
@@ -1699,12 +1700,12 @@ export default function DashboardView({
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7.5);
     doc.setTextColor(71, 85, 105);
-    doc.text("Formulated Panel: PMO Lead Consultant Representative", 40, finalSignY + 15);
-    doc.text("Inspected & Decided: Ethiopian Roads Administration Inspectorate Board", 310, finalSignY + 15);
+    doc.text("Report Generator: Program Director", 40, finalSignY + 15);
+    doc.text("Approver: CPM DDG", 310, finalSignY + 15);
     
     doc.setFont('helvetica', 'normal');
-    doc.text("STAMP, REGISTERED OFFICIAL SEAL", 40, finalSignY + 55);
-    doc.text("REGULATORY AUTHENTICATION SEAL & TIME STAMP", 310, finalSignY + 55);
+    doc.text("OFFICIAL PROGRAM DIRECTORATE SIGN-OFF", 40, finalSignY + 55);
+    doc.text("OFFICIAL CPM DDG AUTHENTICATION SEAL", 310, finalSignY + 55);
 
     // Footer separator
     doc.setLineWidth(0.5);
@@ -1797,7 +1798,7 @@ export default function DashboardView({
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(30, 41, 59);
       doc.setFontSize(7.5);
-      doc.text(item.name, 48, qy + 12);
+      doc.text(item.name, 48, qy + 12, { maxWidth: 165 });
       doc.text(item.unit, 220, qy + 12);
       doc.text(item.designValue.toLocaleString(), 280, qy + 12);
       doc.text(item.plannedValue.toLocaleString(), 360, qy + 12);
@@ -1846,7 +1847,17 @@ export default function DashboardView({
           </h1>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          <button
+            onClick={handleExportDashboardPDF}
+            disabled={isExporting}
+            className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-sm transition cursor-pointer"
+            title="Export a comprehensive PDF report summarizing all project metrics, milestones, and financial status for the currently selected project"
+          >
+            <Download className="w-4 h-4" />
+            <span>{isExporting ? 'Generating PDF...' : 'Export Comprehensive Project PDF'}</span>
+          </button>
+
           {/* Status selector / badge */}
           <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-3 py-1.5 rounded-xl">
             <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">

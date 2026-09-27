@@ -2714,7 +2714,7 @@ export default function GroupReportGenerator({
 
     // Sign line 2
     doc.line(pageWidth - 220, curY, pageWidth - 40, curY);
-    doc.text("Approved By: Program Director / Regional Manager", pageWidth - 220, curY + 12);
+    doc.text("Approved By: Program Director / CPM DDG", pageWidth - 220, curY + 12);
 
     // Ensure page counts are correct in footer for all pages
     for (let j = 1; j <= pageCount; j++) {
@@ -3621,96 +3621,6 @@ export default function GroupReportGenerator({
     });
 
 
-
-    // SECTION B: CRITICAL ENGINEERING QUANTITIES & UNIT OF MEASUREMENT (UoM) VALIDATION
-    doc.addPage();
-    pageCount++;
-    curY = 82;
-    drawHeaderFooter();
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10.5);
-    doc.setTextColor(30, 41, 59);
-    doc.text("SECTION B: QUANTITIES COMPLIANCE", 40, curY);
-    
-    // Header bottom thin divider line
-    doc.setLineWidth(0.5);
-    doc.setDrawColor(203, 213, 225);
-    doc.line(40, curY + 6, pageWidth - 40, curY + 6);
-    curY += 22;
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7);
-    doc.setTextColor(100, 116, 139);
-    doc.text("This section performs a critical, rigorous evaluation of bill-of-quantities (BOQ) metrics by their specific unit of measurement (M3, Km, Ha, No.) and identifies execution slippages and variances.", 40, curY);
-    curY += 18;
-
-    processedProjects.forEach((p, idx) => {
-      const evaluation = evaluateEngineeringQuantities(p.quantities || []);
-      const itemsCount = evaluation.items.length;
-      
-      const blockHeight = 45 + itemsCount * 13.5 + 15;
-      if (curY + blockHeight > pageHeight - 55) {
-        doc.addPage();
-        pageCount++;
-        curY = 75;
-        drawHeaderFooter();
-      }
-
-      // Card Container
-      doc.setFillColor(248, 250, 252);
-      doc.rect(40, curY, pageWidth - 80, blockHeight, 'F');
-      doc.setDrawColor(203, 213, 225);
-      doc.rect(40, curY, pageWidth - 80, blockHeight, 'S');
-
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8.5);
-      doc.setTextColor(15, 23, 42);
-      doc.text(`${idx + 1}. QUANTITIES COMPLIANCE & LINEAR ACTIVITIES: ${p.name.toUpperCase()}`, 52, curY + 16);
-
-      // Draw grid headers
-      let gridY = curY + 28;
-      doc.setFillColor(51, 65, 85);
-      doc.rect(52, gridY, pageWidth - 104, 15, 'F');
-      
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7);
-      doc.setTextColor(255, 255, 255);
-      doc.text("Quantity Description / Linear Activity", 58, gridY + 10.5);
-      doc.text("UoM", 300, gridY + 10.5);
-      doc.text("Contract Design", 380, gridY + 10.5);
-      doc.text("Scheduled Plan", 470, gridY + 10.5);
-      doc.text("Actual Executed", 560, gridY + 10.5);
-      doc.text("Variance", 650, gridY + 10.5);
-
-      gridY += 15;
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(51, 65, 85);
-
-      // Render all items without slicing
-      evaluation.items.forEach((item) => {
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(51, 65, 85);
-        doc.text(item.name, 58, gridY + 10.5);
-        doc.text(item.unit, 300, gridY + 10.5);
-        doc.text(item.designValue.toLocaleString(), 380, gridY + 10.5);
-        doc.text(item.plannedValue.toLocaleString(), 470, gridY + 10.5);
-        
-        // Color actual values based on ratio
-        if (item.variance < 0) {
-          doc.setTextColor(220, 38, 38); // Red
-        } else {
-          doc.setTextColor(22, 163, 74); // Green
-        }
-        doc.text(item.actualValue.toLocaleString(), 560, gridY + 10.5);
-        doc.text((item.variance >= 0 ? "+" : "") + item.variance.toLocaleString(), 650, gridY + 10.5);
-
-        gridY += 13.5;
-      });
-
-      curY += blockHeight + 15;
-    });
-
     // Final Page Sign-off section
     if (curY + 90 > pageHeight - 55) {
       doc.addPage();
@@ -3739,7 +3649,7 @@ export default function GroupReportGenerator({
 
     // Sign line 2
     doc.line(pageWidth - 220, curY, pageWidth - 40, curY);
-    doc.text("Approved By: Chief Auditor / Regional PMO Board", pageWidth - 220, curY + 12);
+    doc.text("Approved By: Chief Auditor / Program Director", pageWidth - 220, curY + 12);
 
     // Ensure page counts are correct in footer for all pages
     for (let j = 1; j <= pageCount; j++) {
@@ -4445,6 +4355,45 @@ export default function GroupReportGenerator({
 
       curY += rowHeight;
     });
+
+    // Final Page Sign-off section for Bonds & Guarantees
+    if (curY + 75 > pageHeight - 55) {
+      doc.addPage();
+      pageCount++;
+      curY = 75;
+      drawHeaderFooter();
+    }
+
+    curY += 20;
+    doc.setDrawColor(226, 232, 240);
+    doc.line(40, curY, pageWidth - 40, curY);
+    curY += 12;
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(100, 116, 139);
+    doc.text("OFFICIAL ERA SECURITIES & BANK GUARANTEES AUDIT SIGN-OFF", 40, curY);
+
+    curY += 30;
+    // Sign line 1 (Report Generator)
+    doc.setDrawColor(148, 163, 184);
+    doc.line(40, curY, 220, curY);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.text("Report Generator: Program Director", 40, curY + 12);
+
+    // Sign line 2 (Approver)
+    doc.line(pageWidth - 220, curY, pageWidth - 40, curY);
+    doc.text("Approver: CPM DDG", pageWidth - 220, curY + 12);
+
+    // Ensure page counts are correct in footer for all pages
+    for (let j = 1; j <= pageCount; j++) {
+      doc.setPage(j);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`PAGE ${j} OF ${pageCount}`, pageWidth - 80, pageHeight - 30);
+    }
 
     // Save PDF
     const gName = selectedGroup.replace(/\s+/g, '_');
@@ -5210,6 +5159,46 @@ export default function GroupReportGenerator({
         doc.text(line, colX.matured + 7, sCol5Y);
         sCol5Y += 7.5;
       });
+    }
+
+    curY += summaryRowHeight;
+
+    // Final Page Sign-off section for Matured Payments
+    if (curY + 75 > pageHeight - 55) {
+      doc.addPage();
+      pageCount++;
+      curY = 75;
+      drawHeaderFooter();
+    }
+
+    curY += 20;
+    doc.setDrawColor(226, 232, 240);
+    doc.line(40, curY, pageWidth - 40, curY);
+    curY += 12;
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(100, 116, 139);
+    doc.text("OFFICIAL ERA MATURED PAYMENTS AUDIT SIGN-OFF", 40, curY);
+
+    curY += 30;
+    // Sign line 1 (Report Generator)
+    doc.setDrawColor(148, 163, 184);
+    doc.line(40, curY, 220, curY);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.text("Report Generator: Program Director", 40, curY + 12);
+
+    // Sign line 2 (Approver)
+    doc.line(pageWidth - 220, curY, pageWidth - 40, curY);
+    doc.text("Approver: CPM DDG", pageWidth - 220, curY + 12);
+
+    // Ensure page counts are correct in footer for all pages
+    for (let j = 1; j <= pageCount; j++) {
+      doc.setPage(j);
+      doc.setFontSize(7.5);
+      doc.setTextColor(148, 163, 184);
+      doc.text(`Page ${j} of ${pageCount}`, pageWidth - 60, pageHeight - 24);
     }
 
     // Save PDF
