@@ -1414,7 +1414,13 @@ export default function SubmittalLogView({
                   return (
                     <tr 
                       key={`sublog-${item.id}-${idx}`}
-                      className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors ${selectedSubmittalNos.includes(item.submittalNo) ? 'bg-indigo-50/35 dark:bg-indigo-950/25' : ''}`}
+                      className={`transition-all duration-150 ${
+                        selectedSubmittalNos.includes(item.submittalNo)
+                          ? 'bg-indigo-50/80 dark:bg-indigo-950/50'
+                          : idx % 2 === 1
+                          ? 'bg-slate-50/70 dark:bg-slate-800/35 hover:bg-blue-50/70 dark:hover:bg-blue-950/40'
+                          : 'bg-white dark:bg-slate-900 hover:bg-blue-50/70 dark:hover:bg-blue-950/40'
+                      }`}
                     >
                       <td className="p-3.5 text-center">
                         <input

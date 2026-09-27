@@ -13,6 +13,8 @@ import {
   Briefcase, 
   AlertTriangle,
   Building,
+  Building2,
+  Landmark,
   Layers,
   ChevronDown,
   ChevronUp,
@@ -50,6 +52,8 @@ import { calculateIpcMaturation } from '../lib/ipcCalculations';
 import { calculateProjectEvm } from '../lib/evmCalculations';
 import { printWorkloadReportDocument } from '../lib/workloadReportPrinter';
 import WorkloadReportModal from './WorkloadReportModal';
+import FirmsManagementView from './FirmsManagementView';
+import FinancialInstitutesAndGuarantiesModal from './FinancialInstitutesAndGuarantiesModal';
 import { DEFAULT_SUBMITTAL_KPIS, DEFAULT_SLA_TARGETS } from './ConsultantPerformanceKpiWidget';
 import { 
   getProjectConsultantEvaluation, 
@@ -169,6 +173,8 @@ interface GroupReportGeneratorProps {
   programDirectorates: string[];
   pmos: string[];
   onClose: () => void;
+  onUpdateProject?: (project: Project, sectionName: string) => void;
+  onSelectProject?: (projectId: string, autoOpenApprovals?: boolean, initialTab?: string) => void;
 }
 
 export default function GroupReportGenerator({
@@ -176,7 +182,9 @@ export default function GroupReportGenerator({
   currentUserObj,
   programDirectorates,
   pmos,
-  onClose
+  onClose,
+  onUpdateProject,
+  onSelectProject
 }: GroupReportGeneratorProps) {
   const roleStr = String(currentUserObj?.role || '').toLowerCase();
   const usernameStr = String(currentUserObj?.username || '').toLowerCase();
@@ -198,12 +206,14 @@ export default function GroupReportGenerator({
   const [reportSearchQuery, setReportSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'name' | 'progress' | 'value'>('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
-  const [reportMode, setReportMode] = useState<'performance' | 'audit' | 'payments' | 'bonds' | 'supervisionStaff'>('performance');
+  const [reportMode, setReportMode] = useState<'performance' | 'audit' | 'payments' | 'bonds' | 'firms' | 'supervisionStaff'>('performance');
   const [auditPerspective, setAuditPerspective] = useState<'contractor' | 'consultant'>('consultant');
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
   const [dossierConsultantMap, setDossierConsultantMap] = useState<Record<string, string>>({});
   const [maturedFilterOnly, setMaturedFilterOnly] = useState(false);
   const [isPrintWorkloadModalOpen, setIsPrintWorkloadModalOpen] = useState(false);
+  const [isInstitutesModalOpen, setIsInstitutesModalOpen] = useState(false);
+  const [institutesModalTab, setInstitutesModalTab] = useState<'institutes' | 'guaranties'>('guaranties');
 
   // Master Admin verification check
   const isMasterAdmin = Boolean(
@@ -5662,6 +5672,17 @@ export default function GroupReportGenerator({
           <CheckCircle2 className="w-3.5 h-3.5 text-blue-500" /> Bond Guarantee Status
         </button>
         <button
+          onClick={() => setReportMode('firms')}
+          id="btn-report-firms"
+          className={`px-4 py-2 text-xs font-bold border-b-2 transition-all flex items-center gap-2 -mb-px ${
+            reportMode === 'firms'
+              ? 'border-amber-500 text-amber-600 dark:border-amber-400 dark:text-amber-400 font-extrabold'
+              : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'
+          }`}
+        >
+          <Building2 className="w-3.5 h-3.5 text-amber-500" /> Firms
+        </button>
+        <button
           onClick={() => setReportMode('supervisionStaff')}
           id="btn-report-supervision-staff"
           className={`px-4 py-2 text-xs font-bold border-b-2 transition-all flex items-center gap-2 -mb-px ${
@@ -5674,8 +5695,17 @@ export default function GroupReportGenerator({
         </button>
       </div>
 
-      {/* Grid Layout Container */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      {reportMode === 'firms' ? (
+        <FirmsManagementView
+          projects={projects}
+          currentUserObj={currentUserObj}
+          onUpdateProject={onUpdateProject}
+          onSelectProject={onSelectProject}
+          onClose={onClose}
+        />
+      ) : (
+        /* Grid Layout Container */
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         
         {/* Left Control Panel Column */}
         <div className="lg:col-span-4 space-y-5 border-r border-slate-100 dark:border-slate-700/50 pr-0 lg:pr-6">
@@ -5883,6 +5913,17 @@ export default function GroupReportGenerator({
               </>
             ) : reportMode === 'bonds' ? (
               <>
+                <button
+                  onClick={() => {
+                    setInstitutesModalTab('guaranties');
+                    setIsInstitutesModalOpen(true);
+                  }}
+                  id="btn-open-financial-institutes-modal"
+                  className="w-full flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-600 text-white py-2.5 rounded-xl text-xs font-extrabold shadow-sm transition cursor-pointer"
+                  title="Register Banks, Insurances, and Guarantee Policy Categories (CAR, Advance, Retention...)"
+                >
+                  <Landmark className="w-3.5 h-3.5" /> Register Banks, Insurances & Policies
+                </button>
                 <button
                   onClick={handleExportBondsPDF}
                   id="btn-export-bonds-pdf"
@@ -7818,6 +7859,7 @@ export default function GroupReportGenerator({
         </div>
 
       </div>
+      )}
 
       {/* Cross-Project Supervision Personnel Workload & Commitments Modal */}
       <WorkloadReportModal
@@ -7826,6 +7868,14 @@ export default function GroupReportGenerator({
         projects={processedProjects}
         currentUser={currentUserObj}
         title="Supervision Personnel Workload & Project Commitments Summary"
+      />
+
+      {/* Financial Institutes & Guarantee Policy Categories Registry Modal */}
+      <FinancialInstitutesAndGuarantiesModal
+        isOpen={isInstitutesModalOpen}
+        onClose={() => setIsInstitutesModalOpen(false)}
+        initialTab={institutesModalTab}
+        currentUser={currentUserObj}
       />
 
       {/* MASTER ADMIN ONLY: Compliance & Grade Scoring Model Weight Distribution Modal */}

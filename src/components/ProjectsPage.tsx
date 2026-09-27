@@ -43,10 +43,11 @@ interface ProjectsPageProps {
   projects: Project[];
   currentUserObj: User;
   pendingApprovals: ApprovalRequest[];
-  onSelectProject: (id: string) => void;
+  onSelectProject: (id: string, autoOpenApprovals?: boolean, initialTab?: string) => void;
   onAddNewProject: (customId?: string, customName?: string, customDir?: string, customPmo?: string) => void;
   onDeleteProject: (id: string) => void;
   onUpdateProjectStatus?: (id: string, status: ProjectLifecycleStatus) => void;
+  onUpdateProject?: (project: Project, sectionName: string) => void;
   onLogout: () => void;
   onOpenProfile: () => void;
   onOpenApprovals: () => void;
@@ -71,6 +72,7 @@ export default function ProjectsPage({
   onAddNewProject,
   onDeleteProject,
   onUpdateProjectStatus,
+  onUpdateProject,
   onLogout,
   onOpenProfile,
   onOpenApprovals,
@@ -893,6 +895,8 @@ export default function ProjectsPage({
               programDirectorates={programDirectorates}
               pmos={pmos}
               onClose={() => setShowReportGenerator(false)}
+              onSelectProject={onSelectProject}
+              onUpdateProject={onUpdateProject}
             />
           )}
         </AnimatePresence>

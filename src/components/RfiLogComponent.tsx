@@ -1524,8 +1524,12 @@ export default function RfiLogComponent({
                     return (
                       <tr
                         key={`rfi-row-${rfi.id}-${idx}`}
-                        className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors ${
-                          isSelected ? 'bg-indigo-50/70 dark:bg-indigo-950/40' : ''
+                        className={`transition-all duration-150 ${
+                          isSelected
+                            ? 'bg-indigo-50/80 dark:bg-indigo-950/50'
+                            : idx % 2 === 1
+                            ? 'bg-slate-50/70 dark:bg-slate-800/35 hover:bg-blue-50/70 dark:hover:bg-blue-950/40'
+                            : 'bg-white dark:bg-slate-900 hover:bg-blue-50/70 dark:hover:bg-blue-950/40'
                         }`}
                       >
                         {/* Multi-Select Checkbox Column (Approvers only) */}

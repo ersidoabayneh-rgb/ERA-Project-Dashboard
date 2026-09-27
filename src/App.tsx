@@ -2508,7 +2508,7 @@ let isBatchSyncRunning = false;
     setCurrentPage('projects');
   };
 
-  const handleSelectProject = (id: string, autoOpenApprovals: boolean = false) => {
+  const handleSelectProject = (id: string, autoOpenApprovals: boolean = false, initialTab?: string) => {
     const isMasterAdmin = currentUserObj?.role === 'admin' || currentUserObj?.role === 'master_admin' || currentUserObj?.role === 'cpm_admin' || currentUserObj?.username === 'proj_1781786415663';
     if (!isMasterAdmin) {
       const proj = projects.find(pr => pr.id === id);
@@ -2539,7 +2539,9 @@ let isBatchSyncRunning = false;
         setShowApprovals(true);
       }
       setCurrentPage('dashboard');
-      if (currentUserObj && currentUserObj.assignedPages && Array.isArray(currentUserObj.assignedPages) && currentUserObj.assignedPages.length > 0 && !isMasterAdmin) {
+      if (initialTab) {
+        setActiveTab(initialTab);
+      } else if (currentUserObj && currentUserObj.assignedPages && Array.isArray(currentUserObj.assignedPages) && currentUserObj.assignedPages.length > 0 && !isMasterAdmin) {
         if (!currentUserObj.assignedPages.includes(activeTab)) {
           setActiveTab(currentUserObj.assignedPages[0]);
         }
@@ -3566,6 +3568,7 @@ let isBatchSyncRunning = false;
               onAddNewProject={handleAddNewProject}
               onDeleteProject={handleDeleteProject}
               onUpdateProjectStatus={handleUpdateProjectStatus}
+              onUpdateProject={handleProjectUpdate}
               onLogout={handleLogout}
               onOpenProfile={() => setShowProfile(true)}
               onOpenApprovals={() => setShowApprovals(true)}
@@ -4899,6 +4902,7 @@ let isBatchSyncRunning = false;
               {activeTab === 'bonds' && (
                 <BondsGuaranteeView
                   project={currentProject}
+                  currentUser={currentUser}
                   onUpdateBonds={(bonds) => handleProjectUpdate({ bonds }, 'Bonds escrow amended')}
                 />
               )}

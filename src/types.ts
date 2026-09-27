@@ -164,15 +164,58 @@ export interface WorkProgramActivity {
   manualFinish?: boolean;
 }
 
+export interface FinancialInstitute {
+  id: string;
+  name: string;
+  type?: 'Bank' | 'Insurance' | 'Financier' | 'Other';
+  country?: string;
+  swiftCode?: string;
+  licenseNo?: string;
+  tinNumber?: string;
+  headOfficeAddress?: string;
+  contactPerson?: string;
+  phone?: string;
+  email?: string;
+  knownBranches?: string[];
+  notes?: string;
+  nbeApprovalStatus?: 'Approved' | 'Under Review' | 'Suspended';
+  lastUpdatedBy?: string;
+  lastUpdatedAt?: string;
+}
+
+export type BondSecurityType = 'Conditional Bond' | 'Unconditional Bond' | 'Conditional Guarantee' | 'Unconditional Guarantee' | 'Insurance';
+
+export interface GuarantyPolicyCategory {
+  id: string;
+  name: string; // Title, e.g. "Performance Bond", "Advance Payment Guarantee", "CAR Policy"
+  category: BondSecurityType;
+  description?: string;
+}
+
+export interface BondAttachment {
+  id: string;
+  name: string;
+  size?: string;
+  url?: string;
+  dataUrl?: string;
+  uploadedAt: string;
+  fileType?: string;
+}
+
 export interface BondGuarantee {
   sno: number;
   type: string;
-  bank: string;
+  category?: BondSecurityType;
+  bank: string; // Financial Institute (Bank or Insurance Company)
+  issuingBranch?: string; // Branch where the bond or guarantee was issued
   amount: number;
   amountUsd?: number;
   issueDate: string;
   expireDate: string;
   status: 'Valid' | 'Recovered' | 'Expired' | 'N/A';
+  policyOrBondRefNo?: string;
+  attachments?: BondAttachment[];
+  pdfGenerated?: boolean;
 }
 
 export interface ResourceMobilizationItem {
@@ -781,8 +824,30 @@ export interface EvaluationCriteriaItem {
   pmbokDomain?: string;
 }
 
+export interface RegisteredFirm {
+  id: string;
+  firmName: string;
+  tinNumber: string;
+  firmType: 'Consultant' | 'Contractor';
+  countryOfOrigin: string;
+  constructionLicenseNo: string;
+  categoryOrGrade?: string; // e.g. 'Grade 1 RC', 'Grade 1 GC', 'Category-1 Highway Consultant', 'CA-1'
+  contactPerson?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  website?: string;
+  registeredDate?: string;
+  notes?: string;
+  associatedProjects?: string[];
+  contractRefNo?: string;
+}
+
 export interface SupervisionConsultantInfo {
   firmName: string;
+  tinNumber?: string;
+  countryOfOrigin?: string;
+  constructionLicenseNo?: string;
   associationType?: 'Lead Consultant' | 'Joint Venture (JV)' | 'Sole Consultant' | 'Association / Consortium';
   jvPartners?: string;
   contractRefNo: string;

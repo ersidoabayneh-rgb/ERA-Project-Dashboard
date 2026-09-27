@@ -51,10 +51,12 @@ import {
   HistoricalSupervisionConsultant,
   PersonnelAuditLogEntry,
   formatAccounting,
-  User 
+  User,
+  RegisteredFirm 
 } from '../types';
 import jsPDF from 'jspdf';
 import { drawEraLogo } from '../lib/pdfReportEngine';
+import { DEFAULT_REGISTERED_FIRMS } from '../data/defaultFirms';
 import WorkloadReportModal from './WorkloadReportModal';
 import ConsultantPerformanceKpiWidget, { DEFAULT_SUBMITTAL_KPIS, DEFAULT_SLA_TARGETS } from './ConsultantPerformanceKpiWidget';
 import ConsultantPerformanceMiniChart from './ConsultantPerformanceMiniChart';
@@ -3250,6 +3252,65 @@ export default function SupervisionConsultantView({
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                      {/* Pre-Registered Firm Directory Selector */}
+                      <div className="sm:col-span-2 p-3 bg-blue-50/60 dark:bg-blue-950/40 rounded-xl border border-blue-200 dark:border-blue-900/60 space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <label className="block text-[11px] font-bold text-blue-900 dark:text-blue-300">
+                            🏛️ Choose from Registered Firms Directory (Auto-Fill)
+                          </label>
+                          <span className="text-[10px] text-blue-600 dark:text-blue-400 font-medium">
+                            Auto-populates TIN, License, Country & Head Office
+                          </span>
+                        </div>
+                        <select
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (!val) return;
+                            try {
+                              const saved = localStorage.getItem('era_registered_firms_v1');
+                              const allFirms: RegisteredFirm[] = saved ? JSON.parse(saved) : DEFAULT_REGISTERED_FIRMS;
+                              const selected = allFirms.find(f => (f.id === val || f.firmName === val) && f.firmType === 'Consultant');
+                              if (selected) {
+                                setConsultantForm(prev => ({
+                                  ...prev,
+                                  firmName: selected.firmName,
+                                  tinNumber: selected.tinNumber || prev.tinNumber,
+                                  countryOfOrigin: selected.countryOfOrigin || prev.countryOfOrigin || 'Ethiopia',
+                                  constructionLicenseNo: selected.constructionLicenseNo || prev.constructionLicenseNo,
+                                  headOfficeAddress: selected.address || prev.headOfficeAddress,
+                                  headOfficePhone: selected.phone || prev.headOfficePhone,
+                                  headOfficeEmail: selected.email || prev.headOfficeEmail,
+                                  headOfficeContactPerson: selected.contactPerson || prev.headOfficeContactPerson
+                                }));
+                              }
+                            } catch (err) {
+                              console.warn('Firm select error', err);
+                            }
+                          }}
+                          className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-blue-300 dark:border-blue-700 rounded-lg text-slate-800 dark:text-white font-medium text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="">-- Select a Registered Consultant Firm to Auto-Fill --</option>
+                          {(() => {
+                            try {
+                              const saved = localStorage.getItem('era_registered_firms_v1');
+                              const allFirms: RegisteredFirm[] = saved ? JSON.parse(saved) : DEFAULT_REGISTERED_FIRMS;
+                              const consultantOnlyFirms = allFirms.filter(f => f.firmType === 'Consultant');
+                              return consultantOnlyFirms.map(f => (
+                                <option key={f.id} value={f.id}>
+                                  {f.firmName} (TIN: {f.tinNumber} • {f.countryOfOrigin})
+                                </option>
+                              ));
+                            } catch {
+                              return DEFAULT_REGISTERED_FIRMS.filter(f => f.firmType === 'Consultant').map(f => (
+                                <option key={f.id} value={f.id}>
+                                  {f.firmName} (TIN: {f.tinNumber} • {f.countryOfOrigin})
+                                </option>
+                              ));
+                            }
+                          })()}
+                        </select>
+                      </div>
+
                       <div className="sm:col-span-2">
                         <div className="flex items-center justify-between mb-1">
                           <label className="block font-semibold text-slate-700 dark:text-slate-300">
@@ -3266,6 +3327,45 @@ export default function SupervisionConsultantView({
                           onChange={(e) => setConsultantForm({ ...consultantForm, firmName: e.target.value })}
                           placeholder="e.g. Associated Engineering Consultants in JV with Ethio-Roads Consulting"
                           className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white font-medium shadow-xs"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                          TIN Number
+                        </label>
+                        <input
+                          type="text"
+                          value={consultantForm.tinNumber || ''}
+                          onChange={(e) => setConsultantForm({ ...consultantForm, tinNumber: e.target.value })}
+                          placeholder="e.g. 0090262271"
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white font-mono shadow-xs"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                          Country of Origin
+                        </label>
+                        <input
+                          type="text"
+                          value={consultantForm.countryOfOrigin || 'Ethiopia'}
+                          onChange={(e) => setConsultantForm({ ...consultantForm, countryOfOrigin: e.target.value })}
+                          placeholder="e.g. Ethiopia, India, Italy..."
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white font-medium shadow-xs"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                          Construction / Professional License No
+                        </label>
+                        <input
+                          type="text"
+                          value={consultantForm.constructionLicenseNo || ''}
+                          onChange={(e) => setConsultantForm({ ...consultantForm, constructionLicenseNo: e.target.value })}
+                          placeholder="e.g. CHB/415, AWM-07"
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white font-mono shadow-xs"
                         />
                       </div>
 
@@ -4460,10 +4560,57 @@ export default function SupervisionConsultantView({
                 </div>
 
                 {/* New Consultant Details Section */}
-                <div className="sm:col-span-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-                  <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider block mb-2">
+                <div className="sm:col-span-2 pt-2 border-t border-slate-100 dark:border-slate-800 space-y-2">
+                  <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider block">
                     New Successor Consultant Profile
                   </span>
+                  
+                  {/* Select Pre-Registered Consultant */}
+                  <div className="p-3 bg-amber-50/50 dark:bg-amber-950/30 rounded-xl border border-amber-200 dark:border-amber-900/50 space-y-1">
+                    <label className="block text-[11px] font-bold text-amber-900 dark:text-amber-300">
+                      👔 Select from Registered Consultant Directory
+                    </label>
+                    <select
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (!val) return;
+                        try {
+                          const saved = localStorage.getItem('era_registered_firms_v1');
+                          const allFirms: RegisteredFirm[] = saved ? JSON.parse(saved) : DEFAULT_REGISTERED_FIRMS;
+                          const selected = allFirms.find(f => (f.id === val || f.firmName === val) && f.firmType === 'Consultant');
+                          if (selected) {
+                            setNewConsultantForm(prev => ({
+                              ...prev,
+                              firmName: selected.firmName
+                            }));
+                          }
+                        } catch (err) {
+                          console.warn('Successor firm select error', err);
+                        }
+                      }}
+                      className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-700 rounded-lg text-slate-800 dark:text-white font-medium text-xs outline-none focus:ring-2 focus:ring-amber-500"
+                    >
+                      <option value="">-- Choose Registered Consultant Entity --</option>
+                      {(() => {
+                        try {
+                          const saved = localStorage.getItem('era_registered_firms_v1');
+                          const allFirms: RegisteredFirm[] = saved ? JSON.parse(saved) : DEFAULT_REGISTERED_FIRMS;
+                          const consultantOnlyFirms = allFirms.filter(f => f.firmType === 'Consultant');
+                          return consultantOnlyFirms.map(f => (
+                            <option key={f.id} value={f.id}>
+                              {f.firmName} (TIN: {f.tinNumber} • {f.countryOfOrigin})
+                            </option>
+                          ));
+                        } catch {
+                          return DEFAULT_REGISTERED_FIRMS.filter(f => f.firmType === 'Consultant').map(f => (
+                            <option key={f.id} value={f.id}>
+                              {f.firmName} (TIN: {f.tinNumber} • {f.countryOfOrigin})
+                            </option>
+                          ));
+                        }
+                      })()}
+                    </select>
+                  </div>
                 </div>
 
                 <div className="sm:col-span-2">
