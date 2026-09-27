@@ -601,6 +601,7 @@ export default function SupervisionConsultantView({
     const updatedConsultant: SupervisionConsultantInfo = {
       ...consultant,
       ...consultantForm,
+      jvPartners: consultantForm.associationType === 'Sole Consultant' ? '' : consultantForm.jvPartners,
       originalFeeEtb: Number(consultantForm.originalFeeEtb) || 0,
       revisedFeeEtb: Number(consultantForm.revisedFeeEtb) || Number(consultantForm.originalFeeEtb) || 0,
       enableUsdPayments: Boolean(consultantForm.enableUsdPayments),
@@ -2558,7 +2559,7 @@ export default function SupervisionConsultantView({
                   <div className="font-bold text-slate-800 dark:text-slate-200 text-sm mt-0.5">
                     {consultant.associationType || 'Joint Venture'}
                   </div>
-                  {consultant.jvPartners && (
+                  {consultant.associationType !== 'Sole Consultant' && consultant.jvPartners && (
                     <div className="text-[11px] text-slate-500 mt-0.5">
                       Partners: {consultant.jvPartners}
                     </div>
@@ -3210,7 +3211,7 @@ export default function SupervisionConsultantView({
                   </span>
                   {[
                     { id: 'all', label: 'All Sections (6)' },
-                    { id: 'firm', label: '1. Firm & JV' },
+                    { id: 'firm', label: consultantForm.associationType === 'Sole Consultant' ? '1. Firm (Sole)' : '1. Firm & JV' },
                     { id: 'financial', label: '2. Remuneration' },
                     { id: 'dates', label: '3. Timeline & Dates' },
                     { id: 'headOffice', label: '4. Head Office' },
@@ -3375,12 +3376,19 @@ export default function SupervisionConsultantView({
                         </label>
                         <select
                           value={consultantForm.associationType || 'Joint Venture (JV)'}
-                          onChange={(e) => setConsultantForm({ ...consultantForm, associationType: e.target.value as any })}
+                          onChange={(e) => {
+                            const newType = e.target.value as any;
+                            setConsultantForm({
+                              ...consultantForm,
+                              associationType: newType,
+                              jvPartners: newType === 'Sole Consultant' ? '' : consultantForm.jvPartners
+                            });
+                          }}
                           className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white shadow-xs font-medium"
                         >
+                          <option value="Sole Consultant">Sole Consultant</option>
                           <option value="Joint Venture (JV)">Joint Venture (JV)</option>
                           <option value="Lead Consultant">Lead Consultant</option>
-                          <option value="Sole Consultant">Sole Consultant</option>
                           <option value="Association / Consortium">Association / Consortium</option>
                         </select>
                       </div>
@@ -3414,18 +3422,35 @@ export default function SupervisionConsultantView({
                         </select>
                       </div>
 
-                      <div className="sm:col-span-2">
-                        <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                          JV Partners & Associate Details
-                        </label>
-                        <input
-                          type="text"
-                          value={consultantForm.jvPartners || ''}
-                          onChange={(e) => setConsultantForm({ ...consultantForm, jvPartners: e.target.value })}
-                          placeholder="e.g. Lead Partner (India - 65%) & Local Engineering Consultant (Ethiopia - 35%)"
-                          className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white shadow-xs"
-                        />
-                      </div>
+                      {consultantForm.associationType === 'Sole Consultant' ? (
+                        <div className="sm:col-span-2 p-3.5 rounded-xl bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/60 flex items-start gap-3">
+                          <CheckCircle2 className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+                          <div className="text-xs space-y-0.5">
+                            <span className="font-bold text-blue-900 dark:text-blue-200 block">
+                              Sole Consultant Selected (Single Entity Contract)
+                            </span>
+                            <p className="text-blue-700 dark:text-blue-300 text-[11px] leading-relaxed">
+                              Joint venture partner registration is hidden. This contract operates as a sole independent consulting engineering firm. Evaluation is conducted under the separate Sole Consultant Performance Framework.
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="sm:col-span-2 space-y-1">
+                          <label className="block font-semibold text-slate-700 dark:text-slate-300">
+                            Joint Venture Registration & Associate Partners Details <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={consultantForm.jvPartners || ''}
+                            onChange={(e) => setConsultantForm({ ...consultantForm, jvPartners: e.target.value })}
+                            placeholder="e.g. Lead Partner (India - 65%) & Local Engineering Consultant (Ethiopia - 35%)"
+                            className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white shadow-xs"
+                          />
+                          <p className="text-[10px] text-slate-400">
+                            Specify the Lead Partner, local associates, and equity/remuneration split for joint evaluation.
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -4629,15 +4654,40 @@ export default function SupervisionConsultantView({
                   <label className="block text-slate-500 font-semibold mb-1">Association Type</label>
                   <select
                     value={newConsultantForm.associationType}
-                    onChange={(e) => setNewConsultantForm({ ...newConsultantForm, associationType: e.target.value as any })}
+                    onChange={(e) => {
+                      const newType = e.target.value as any;
+                      setNewConsultantForm({ 
+                        ...newConsultantForm, 
+                        associationType: newType,
+                        jvPartners: newType === 'Sole Consultant' ? '' : newConsultantForm.jvPartners
+                      });
+                    }}
                     className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
                   >
+                    <option value="Sole Consultant">Sole Consultant</option>
                     <option value="Joint Venture (JV)">Joint Venture (JV)</option>
                     <option value="Lead Consultant">Lead Consultant</option>
-                    <option value="Sole Consultant">Sole Consultant</option>
                     <option value="Association / Consortium">Association / Consortium</option>
                   </select>
                 </div>
+
+                {newConsultantForm.associationType !== 'Sole Consultant' && (
+                  <div className="sm:col-span-2">
+                    <label className="block text-slate-500 font-semibold mb-1">
+                      Joint Venture Registration & Associate Partners <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Lead Partner (60%) & Local Engineering Partner (40%)"
+                      value={newConsultantForm.jvPartners || ''}
+                      onChange={(e) => setNewConsultantForm({ ...newConsultantForm, jvPartners: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
+                    />
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      Specify associate firms and equity split for joint venture consortium performance evaluation.
+                    </p>
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-slate-500 font-semibold mb-1">New Contract Reference No</label>

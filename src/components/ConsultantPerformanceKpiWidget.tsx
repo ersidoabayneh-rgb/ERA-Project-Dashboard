@@ -587,6 +587,15 @@ export default function ConsultantPerformanceKpiWidget({
                 <span className="text-xs font-extrabold text-slate-800 dark:text-zinc-100">
                   {isViewingHistorical ? historicalConsultant?.firmName : consultant.firmName}
                 </span>
+                {(consultant.associationType === 'Sole Consultant' || (isViewingHistorical && historicalConsultant?.associationType === 'Sole Consultant')) ? (
+                  <span className="text-[10px] px-2.5 py-0.5 rounded-full font-black uppercase bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800 flex items-center gap-1">
+                    🏢 Sole Consultant Evaluation
+                  </span>
+                ) : (
+                  <span className="text-[10px] px-2.5 py-0.5 rounded-full font-black uppercase bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-300 border border-purple-200 dark:border-purple-800 flex items-center gap-1">
+                    🤝 Joint Venture (JV) Evaluation
+                  </span>
+                )}
                 <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
                   {isViewingHistorical 
                     ? `Archived Term: ${historicalConsultant?.commencementDate || 'Start'} to ${historicalConsultant?.handoverDate || 'Archived'}`

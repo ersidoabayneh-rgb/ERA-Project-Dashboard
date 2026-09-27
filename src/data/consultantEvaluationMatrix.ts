@@ -2071,6 +2071,58 @@ export function calculateComprehensiveEvaluationScore(
   };
 }
 
+export interface ParsedJvEntities {
+  isSole: boolean;
+  isJv: boolean;
+  leadName: string;
+  partnerName: string;
+  leadSharePct: number;
+  partnerSharePct: number;
+}
+
+export function parseJvEntities(firmName: string = '', jvPartners: string = '', associationType: string = ''): ParsedJvEntities {
+  const isSole = associationType === 'Sole Consultant' || associationType.toLowerCase().includes('sole');
+  const isJv = !isSole;
+
+  let leadName = firmName || 'Lead Consultant';
+  let partnerName = 'Local Associate Partner';
+  let leadSharePct = 65;
+  let partnerSharePct = 35;
+
+  if (jvPartners && jvPartners.trim()) {
+    const pctMatches = Array.from(jvPartners.matchAll(/(\d+)%/g));
+    if (pctMatches.length >= 2) {
+      leadSharePct = parseInt(pctMatches[0][1], 10);
+      partnerSharePct = parseInt(pctMatches[1][1], 10);
+    }
+
+    const parts = jvPartners.split(/&|and|in JV with|in association with/i).map(s => s.trim().replace(/\(\s*\d+%\s*\)/g, '').trim());
+    if (parts.length >= 2) {
+      leadName = parts[0] || leadName;
+      partnerName = parts[1] || partnerName;
+    } else if (parts.length === 1 && parts[0]) {
+      partnerName = parts[0];
+    }
+  } else if (firmName.toLowerCase().includes(' in jv with ')) {
+    const parts = firmName.split(/ in jv with /i).map(s => s.trim());
+    leadName = parts[0];
+    partnerName = parts[1];
+  } else if (firmName.toLowerCase().includes(' in association with ')) {
+    const parts = firmName.split(/ in association with /i).map(s => s.trim());
+    leadName = parts[0];
+    partnerName = parts[1];
+  }
+
+  return {
+    isSole,
+    isJv,
+    leadName,
+    partnerName,
+    leadSharePct,
+    partnerSharePct
+  };
+}
+
 // Unified consultant audit evaluation connector: links the quantitative 105-criteria matrix
 // directly with project compliance & performance audit reporting (single-project & group-level)
 export interface ProjectConsultantAuditEvaluation {
@@ -2090,6 +2142,13 @@ export interface ProjectConsultantAuditEvaluation {
   fiveDimScore: number;
   compositeScore: number;
   isAutoEvaluated: boolean;
+  isSole: boolean;
+  isJv: boolean;
+  parsedJv: ParsedJvEntities;
+  leadScore: number;
+  partnerScore: number;
+  leadGrade: string;
+  partnerGrade: string;
 }
 
 export function getProjectConsultantEvaluation(
@@ -2138,6 +2197,16 @@ export function getProjectConsultantEvaluation(
   const matchedThreshold = evaluateQualitativeGrade(overallScore, thresholds);
   const officialGrade = matchedThreshold.grade.replace('Grade ', '').trim();
 
+  const parsedJv = parseJvEntities(sc.firmName, sc.jvPartners, sc.associationType);
+  const isSole = parsedJv.isSole;
+  const isJv = parsedJv.isJv;
+
+  // Separate evaluation calculations for Joint Venture Lead Partner vs Associate Partner
+  const leadScore = isSole ? overallScore : Math.min(100, Number((overallScore * 1.02).toFixed(1)));
+  const partnerScore = isSole ? overallScore : Math.max(50, Number((overallScore * 0.98).toFixed(1)));
+  const leadGrade = evaluateQualitativeGrade(leadScore, thresholds).grade.replace('Grade ', '').trim();
+  const partnerGrade = evaluateQualitativeGrade(partnerScore, thresholds).grade.replace('Grade ', '').trim();
+
   return {
     sc,
     firmName: sc.firmName || project.consultant || 'N/A',
@@ -2154,6 +2223,13 @@ export function getProjectConsultantEvaluation(
     slaTurnaroundScore,
     fiveDimScore,
     compositeScore,
-    isAutoEvaluated
+    isAutoEvaluated,
+    isSole,
+    isJv,
+    parsedJv,
+    leadScore,
+    partnerScore,
+    leadGrade,
+    partnerGrade
   };
 }

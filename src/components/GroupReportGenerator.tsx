@@ -208,6 +208,7 @@ export default function GroupReportGenerator({
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [reportMode, setReportMode] = useState<'performance' | 'audit' | 'payments' | 'bonds' | 'firms' | 'supervisionStaff'>('performance');
   const [auditPerspective, setAuditPerspective] = useState<'contractor' | 'consultant'>('consultant');
+  const [consultantCohortFilter, setConsultantCohortFilter] = useState<'all' | 'sole' | 'jv'>('all');
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
   const [dossierConsultantMap, setDossierConsultantMap] = useState<Record<string, string>>({});
   const [maturedFilterOnly, setMaturedFilterOnly] = useState(false);
@@ -718,7 +719,10 @@ export default function GroupReportGenerator({
     const residentEngineer = sc?.residentEngineerName || (sc?.personnel?.find(x => x.position.toLowerCase().includes('resident'))?.name) || 'Field Assigned';
     const rePhone = sc?.residentEngineerPhone || 'N/A';
     const reEmail = sc?.residentEngineerEmail || 'N/A';
-    const associationType = sc?.associationType || 'Lead Supervision Firm';
+    const associationType = sc?.associationType || (p.consultant && (p.consultant.toLowerCase().includes('jv') || p.consultant.toLowerCase().includes('joint venture') || p.consultant.toLowerCase().includes('association')) ? 'Joint Venture (JV)' : 'Sole Consultant');
+    const jvPartners = sc?.jvPartners || '';
+    const isSole = associationType === 'Sole Consultant' || (!jvPartners && !consultantFirm.toLowerCase().includes('jv') && !consultantFirm.toLowerCase().includes('joint venture') && !consultantFirm.toLowerCase().includes('in association'));
+    const isJv = !isSole;
     const commencementDate = sc?.commencementDate || '';
     const handoverDate = isHistorical ? (selectedHist?.handoverDate || 'Archived') : undefined;
     const transitionReason = isHistorical ? (selectedHist?.reasonForTransition || selectedHist?.transitionReason || 'Service tenure concluded') : undefined;
@@ -1082,7 +1086,11 @@ export default function GroupReportGenerator({
       clauses,
       submittalBreakdown,
       dimensionBreakdown: fiveDimEval.dimensionBreakdown,
-      fiveDimEval
+      fiveDimEval,
+      associationType,
+      jvPartners,
+      isSole,
+      isJv
     };
   };
 
@@ -1605,9 +1613,33 @@ export default function GroupReportGenerator({
     };
   }, [rawGroupProjects]);
 
-  // Derived Supervision Consultant Compliance & Performance Audit statistics
+  // Separate counts and statistics for Sole vs Joint Venture consultant cohorts
+  const consultantCohortStats = useMemo(() => {
+    let soleCount = 0;
+    let jvCount = 0;
+    rawGroupProjects.forEach(p => {
+      const c = getConsultantAuditMetrics(p);
+      if (c.isSole) soleCount++;
+      else jvCount++;
+    });
+    return {
+      total: rawGroupProjects.length,
+      soleCount,
+      jvCount
+    };
+  }, [rawGroupProjects]);
+
+  // Derived Supervision Consultant Compliance & Performance Audit statistics (evaluates separate cohorts)
   const consultantAuditStats = useMemo(() => {
-    const totalCount = rawGroupProjects.length;
+    let targetProjects = rawGroupProjects;
+    if (reportMode === 'audit' && (groupType === 'consultant' || auditPerspective === 'consultant')) {
+      if (consultantCohortFilter === 'sole') {
+        targetProjects = rawGroupProjects.filter(p => getConsultantAuditMetrics(p).isSole);
+      } else if (consultantCohortFilter === 'jv') {
+        targetProjects = rawGroupProjects.filter(p => !getConsultantAuditMetrics(p).isSole);
+      }
+    }
+    const totalCount = targetProjects.length;
     if (totalCount === 0) {
       return {
         avgScore: 0,
@@ -1626,7 +1658,9 @@ export default function GroupReportGenerator({
         mobilizationRatePct: 0,
         maturedIpcCount: 0,
         totalActiveClaims: 0,
-        satisfactoryConsultantCount: 0
+        satisfactoryConsultantCount: 0,
+        cohort: consultantCohortFilter,
+        cohortCount: 0
       };
     }
 
@@ -1646,7 +1680,7 @@ export default function GroupReportGenerator({
     let totalActiveClaims = 0;
     let satisfactoryConsultantCount = 0;
 
-    rawGroupProjects.forEach(p => {
+    targetProjects.forEach(p => {
       const c = getConsultantAuditMetrics(p);
       sumScore += c.totalWeightedScore;
       sumFiveDimScore += (c.fiveDimEval?.fiveDimScore !== undefined ? c.fiveDimEval.fiveDimScore : c.totalWeightedScore);
@@ -1691,19 +1725,27 @@ export default function GroupReportGenerator({
       mobilizationRatePct,
       maturedIpcCount,
       totalActiveClaims,
-      satisfactoryConsultantCount
+      satisfactoryConsultantCount,
+      cohort: consultantCohortFilter,
+      cohortCount: totalCount
     };
-  }, [rawGroupProjects]);
+  }, [rawGroupProjects, consultantCohortFilter, reportMode, groupType, auditPerspective]);
 
   // Search filter and sorting
   const processedProjects = useMemo(() => {
     const queried = rawGroupProjects.filter(p => {
+      if (reportMode === 'audit' && (groupType === 'consultant' || auditPerspective === 'consultant')) {
+        const c = getConsultantAuditMetrics(p);
+        if (consultantCohortFilter === 'sole' && !c.isSole) return false;
+        if (consultantCohortFilter === 'jv' && c.isSole) return false;
+      }
       const q = reportSearchQuery.toLowerCase();
       return (
         p.name.toLowerCase().includes(q) ||
         p.id.toLowerCase().includes(q) ||
         p.client.toLowerCase().includes(q) ||
-        p.contractor.toLowerCase().includes(q)
+        p.contractor.toLowerCase().includes(q) ||
+        (p.consultant && p.consultant.toLowerCase().includes(q))
       );
     });
 
@@ -2911,8 +2953,13 @@ export default function GroupReportGenerator({
       groupType === 'directorate' ? 'PROGRAM DIRECTORATE' : 
       groupType === 'pmo' ? 'PMO GROUP' :
       groupType === 'contractor' ? 'CONTRACTOR' : 'CONSULTANT';
+    const cohortTitle = isConsultantAudit && consultantCohortFilter === 'sole' 
+      ? ' [SOLE CONSULTANTS]' 
+      : isConsultantAudit && consultantCohortFilter === 'jv' 
+        ? ' [JOINT VENTURE (JV) CONSORTIA]' 
+        : '';
     const headlineStr = isConsultantAudit 
-      ? `SUPERVISION CONSULTANT COMPLIANCE & PERFORMANCE AUDIT REPORT: ${groupLabelStr} • ${groupNameStr}`
+      ? `SUPERVISION CONSULTANT COMPLIANCE & PERFORMANCE AUDIT REPORT${cohortTitle}: ${groupLabelStr} • ${groupNameStr}`
       : `PROJECT COMPLIANCE & PERFORMANCE AUDIT REPORT: ${groupLabelStr} • ${groupNameStr}`;
     const wrappedHeadline = doc.splitTextToSize(headlineStr, pageWidth - 80);
     doc.text(wrappedHeadline, 40, 85);
@@ -2936,7 +2983,12 @@ export default function GroupReportGenerator({
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(7.5);
       doc.setTextColor(67, 56, 202);
-      doc.text("SUPERVISED CONTRACTS", 48, cardY + 18);
+      const card1Title = consultantCohortFilter === 'sole' 
+        ? "SOLE CONSULTANTS" 
+        : consultantCohortFilter === 'jv' 
+          ? "JV CONSORTIA" 
+          : "SUPERVISED CONTRACTS";
+      doc.text(card1Title, 48, cardY + 18);
       doc.setFontSize(14);
       doc.setTextColor(15, 23, 42);
       doc.text(`${processedProjects.length} Active`, 48, cardY + 38);
@@ -3237,9 +3289,13 @@ export default function GroupReportGenerator({
 
       if (isConsultantAudit) {
         const cAudit = getConsultantAuditMetrics(p);
-        const firmLines = doc.splitTextToSize(`Firm: ${cAudit.consultantFirm}`, (colWidths as any).consultant_re - 12);
+        const typeBadge = cAudit.isSole ? '[Sole Consultant]' : `[JV Consortium]`;
+        const firmLines = doc.splitTextToSize(`${typeBadge} ${cAudit.consultantFirm}`, (colWidths as any).consultant_re - 12);
         const reLines = doc.splitTextToSize(`RE: ${cAudit.residentEngineer}`, (colWidths as any).consultant_re - 12);
-        const cReLines = [...firmLines, ...reLines];
+        const partnerLines = (cAudit.isJv && cAudit.jvPartners) 
+          ? doc.splitTextToSize(`Partners: ${cAudit.jvPartners}`, (colWidths as any).consultant_re - 12) 
+          : [];
+        const cReLines = [...firmLines, ...reLines, ...partnerLines];
 
         const staffLines1 = doc.splitTextToSize(`Active: ${cAudit.activeStaff} / ${cAudit.totalStaff} (${cAudit.mobilizationRatePct}%)`, (colWidths as any).staffing - 12);
         const staffLines2 = doc.splitTextToSize(`Key Experts: ${cAudit.activeKeyStaffCount}/${cAudit.keyStaffCount}`, (colWidths as any).staffing - 12);
@@ -5983,6 +6039,89 @@ export default function GroupReportGenerator({
 
         {/* Right Section: Aggregated Statistics and Interactive Live Preview */}
         <div className="lg:col-span-8 space-y-5">
+
+          {/* Supervision Consultant Performance Evaluation Cohort Switcher: Sole vs JV Separately */}
+          {(reportMode === 'audit' && (groupType === 'consultant' || auditPerspective === 'consultant')) && (
+            <div className="p-3.5 rounded-2xl bg-indigo-50/60 dark:bg-indigo-950/40 border border-indigo-200/80 dark:border-indigo-900/60 space-y-2.5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold text-xs shadow-xs shrink-0">
+                    <Scale className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-xs font-black uppercase tracking-wider text-slate-900 dark:text-zinc-100">
+                        Consultant Evaluation Framework
+                      </h4>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300">
+                        Separate Cohort Evaluation
+                      </span>
+                    </div>
+                    <p className="text-[10.5px] text-slate-500 dark:text-slate-400">
+                      Evaluate Sole Consultants and Joint Venture (JV) Consortia separately under their respective contractual frameworks.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Cohort Toggle Buttons */}
+                <div className="flex items-center gap-1.5 p-1 bg-white dark:bg-slate-900 rounded-xl border border-indigo-200/80 dark:border-indigo-800 shadow-2xs self-start sm:self-auto shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setConsultantCohortFilter('all')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                      consultantCohortFilter === 'all'
+                        ? 'bg-slate-800 text-white dark:bg-slate-100 dark:text-slate-900 shadow-xs font-black'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    <Users className="w-3.5 h-3.5" />
+                    <span>All ({consultantCohortStats.total})</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setConsultantCohortFilter('sole')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                      consultantCohortFilter === 'sole'
+                        ? 'bg-blue-600 text-white shadow-xs font-black'
+                        : 'text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/50'
+                    }`}
+                  >
+                    <span>🏢 Sole Consultants ({consultantCohortStats.soleCount})</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setConsultantCohortFilter('jv')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                      consultantCohortFilter === 'jv'
+                        ? 'bg-purple-600 text-white shadow-xs font-black'
+                        : 'text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950/50'
+                    }`}
+                  >
+                    <span>🤝 Joint Ventures ({consultantCohortStats.jvCount})</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Informational Context Banner */}
+              {consultantCohortFilter === 'sole' ? (
+                <div className="p-2.5 rounded-xl bg-blue-50/80 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-900/60 text-xs text-blue-900 dark:text-blue-200 flex items-center gap-2">
+                  <span className="text-sm">🏢</span>
+                  <div>
+                    <strong>Sole Consultant Performance Evaluation Active:</strong> Evaluating single independent consulting firms under direct 100% contractual accountability. Joint venture registration is hidden and not applicable.
+                  </div>
+                </div>
+              ) : consultantCohortFilter === 'jv' ? (
+                <div className="p-2.5 rounded-xl bg-purple-50/80 dark:bg-purple-950/50 border border-purple-200 dark:border-purple-900/60 text-xs text-purple-900 dark:text-purple-200 flex items-center gap-2">
+                  <span className="text-sm">🤝</span>
+                  <div>
+                    <strong>Joint Venture (JV) Performance Evaluation Active:</strong> Evaluating multi-firm consortia. Scoring accounts for Lead Partner management, Associate Partner local integration, and consortium SLA turnaround.
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          )}
           
           {/* KPI Dashboard */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -6042,7 +6181,11 @@ export default function GroupReportGenerator({
                   <div className="bg-indigo-50/30 dark:bg-indigo-950/10 p-3.5 rounded-xl border border-indigo-150 dark:border-indigo-900/30 space-y-1">
                     <div className="flex items-center justify-between">
                       <span className="text-[9px] font-extrabold text-indigo-600 dark:text-indigo-400 block uppercase tracking-wider">
-                        CONSULTANT PERFORMANCE AUDIT
+                        {consultantCohortFilter === 'sole' 
+                          ? 'SOLE CONSULTANT PERFORMANCE AUDIT' 
+                          : consultantCohortFilter === 'jv' 
+                            ? 'JOINT VENTURE (JV) PERFORMANCE AUDIT' 
+                            : 'CONSULTANT PERFORMANCE AUDIT'}
                       </span>
                       <span className={`text-[8.5px] font-black uppercase px-2 py-0.5 rounded-full ${consultantAuditStats.groupGradeThreshold.badgeStyle}`}>
                         Grade {consultantAuditStats.groupGradeThreshold.grade.replace('Grade ', '')} — {consultantAuditStats.groupGradeThreshold.label}
@@ -6052,7 +6195,13 @@ export default function GroupReportGenerator({
                       <span className="text-lg font-black text-indigo-700 dark:text-indigo-300">
                         {consultantAuditStats.avgScore.toFixed(1)}%
                       </span>
-                      <span className="text-2xs text-slate-400 font-bold">overall composite score</span>
+                      <span className="text-2xs text-slate-400 font-bold">
+                        {consultantCohortFilter === 'sole' 
+                          ? 'sole firms composite score' 
+                          : consultantCohortFilter === 'jv' 
+                            ? 'JV consortia composite score' 
+                            : 'overall composite score'}
+                      </span>
                     </div>
                     <div className="text-[9px] text-slate-500 dark:text-slate-400 font-mono">
                       [ 5-Dim Matrix: {consultantAuditStats.avgFiveDimScore.toFixed(1)}% (50%) + SLA On-Time: {consultantAuditStats.avgSlaRate.toFixed(1)}% (50%) ]
@@ -6603,6 +6752,15 @@ export default function GroupReportGenerator({
                                     <div className="font-bold text-slate-700 dark:text-zinc-200 text-xs truncate max-w-[220px]">
                                       {cAudit.consultantFirm}
                                     </div>
+                                    {cAudit.isSole ? (
+                                      <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200 dark:border-blue-800 flex items-center gap-0.5">
+                                        🏢 Sole Consultant
+                                      </span>
+                                    ) : (
+                                      <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 border border-purple-200 dark:border-purple-800 flex items-center gap-0.5">
+                                        🤝 Joint Venture (JV)
+                                      </span>
+                                    )}
                                     {cAudit.isHistorical ? (
                                       <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300">
                                         📜 Predecessor Term
@@ -6613,6 +6771,11 @@ export default function GroupReportGenerator({
                                       </span>
                                     ) : null}
                                   </div>
+                                  {cAudit.isJv && cAudit.jvPartners && (
+                                    <div className="text-[8.5px] text-purple-700 dark:text-purple-300 font-semibold truncate max-w-[240px]">
+                                      Partners: {cAudit.jvPartners}
+                                    </div>
+                                  )}
                                   <div className="flex flex-wrap items-center gap-1 text-[9px]">
                                     <span className="text-slate-500 dark:text-slate-400 font-medium">
                                       RE: <strong className="text-slate-700 dark:text-zinc-300">{cAudit.residentEngineer}</strong>
@@ -6676,9 +6839,22 @@ export default function GroupReportGenerator({
                                             <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${cAudit.badgeBgColor} ${cAudit.badgeTextColor}`}>
                                               Official Rating: Grade {cAudit.officialGrade} ({cAudit.totalWeightedScore}%)
                                             </span>
+                                            {cAudit.isSole ? (
+                                              <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200 dark:border-blue-800 flex items-center gap-1">
+                                                🏢 Sole Consultant Performance Framework
+                                              </span>
+                                            ) : (
+                                              <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 border border-purple-200 dark:border-purple-800 flex items-center gap-1">
+                                                🤝 Joint Venture (JV) Consortium Framework
+                                              </span>
+                                            )}
                                           </div>
                                           <p className="text-[10px] text-slate-500 dark:text-slate-400 font-bold uppercase mt-0.5">
-                                            Supervision Firm: <strong className="text-slate-800 dark:text-zinc-200">{cAudit.consultantFirm}</strong> • RE: <strong className="text-slate-800 dark:text-zinc-200">{cAudit.residentEngineer}</strong>
+                                            Supervision Firm: <strong className="text-slate-800 dark:text-zinc-200">{cAudit.consultantFirm}</strong>
+                                            {cAudit.isJv && cAudit.jvPartners && (
+                                              <span> • Partners: <strong className="text-purple-700 dark:text-purple-300">{cAudit.jvPartners}</strong></span>
+                                            )}
+                                            <span> • RE: <strong className="text-slate-800 dark:text-zinc-200">{cAudit.residentEngineer}</strong></span>
                                           </p>
                                         </div>
                                         <div className="flex items-center gap-2">

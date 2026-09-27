@@ -1124,7 +1124,14 @@ export default function FirmsManagementView({
                       </label>
                       <select
                         value={contractForm.associationType || 'Sole Consultant'}
-                        onChange={(e) => setContractForm({ ...contractForm, associationType: e.target.value as any })}
+                        onChange={(e) => {
+                          const newType = e.target.value as any;
+                          setContractForm({
+                            ...contractForm,
+                            associationType: newType,
+                            jvPartners: newType === 'Sole Consultant' ? '' : contractForm.jvPartners
+                          });
+                        }}
                         className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-medium"
                       >
                         <option value="Sole Consultant">Sole Consultant</option>
@@ -1133,18 +1140,25 @@ export default function FirmsManagementView({
                         <option value="Association / Consortium">Association / Consortium</option>
                       </select>
                     </div>
-                    <div>
-                      <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                        JV / Consortium Partners
-                      </label>
-                      <input
-                        type="text"
-                        value={contractForm.jvPartners || ''}
-                        onChange={(e) => setContractForm({ ...contractForm, jvPartners: e.target.value })}
-                        placeholder="e.g. in JV with Core Consulting PLC"
-                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-medium"
-                      />
-                    </div>
+                    {contractForm.associationType !== 'Sole Consultant' ? (
+                      <div>
+                        <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                          JV / Consortium Partners
+                        </label>
+                        <input
+                          type="text"
+                          value={contractForm.jvPartners || ''}
+                          onChange={(e) => setContractForm({ ...contractForm, jvPartners: e.target.value })}
+                          placeholder="e.g. in JV with Core Consulting PLC"
+                          className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-medium"
+                        />
+                      </div>
+                    ) : (
+                      <div className="p-3 bg-blue-50 dark:bg-blue-950/40 rounded-xl border border-blue-200 dark:border-blue-900/60 flex items-center gap-2 text-xs text-blue-800 dark:text-blue-300">
+                        <Check className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                        <span><strong>Sole Consultant:</strong> Single entity contract. Joint venture partner fields hidden.</span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

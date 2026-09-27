@@ -68,7 +68,9 @@ import {
   SubmittalQuantitativeMetrics,
   getCriterionSourceInfo,
   CriterionCalculationSource,
-  CriterionSourceInfo
+  CriterionSourceInfo,
+  parseJvEntities,
+  ParsedJvEntities
 } from '../data/consultantEvaluationMatrix';
 
 export interface ComprehensiveConsultantEvaluationMatrixViewProps {
@@ -288,38 +290,81 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
 
   const [showMetricsFeed, setShowMetricsFeed] = useState(false);
 
-  // Evaluation scores state: map of criterion code to evaluation payload
+  // Parse Joint Venture Lead Partner & Associate Partner
+  const parsedJv: ParsedJvEntities = useMemo(() => {
+    return parseJvEntities(consultant.firmName, consultant.jvPartners, consultant.associationType);
+  }, [consultant.firmName, consultant.jvPartners, consultant.associationType]);
+
+  const isSoleConsultant = parsedJv.isSole;
+
+  // Active evaluation entity target: 'sole' | 'jv_combined' | 'jv_lead' | 'jv_partner'
+  const [activeEvaluationEntity, setActiveEvaluationEntity] = useState<'sole' | 'jv_combined' | 'jv_lead' | 'jv_partner'>(() => {
+    if (isSoleConsultant) return 'sole';
+    return consultant.activeEvaluationTarget || 'jv_combined';
+  });
+
+  // Separate evaluation frameworks mode: 'sole' | 'jv'
+  const [evaluationFramework, setEvaluationFramework] = useState<'sole' | 'jv'>(() => {
+    return isSoleConsultant ? 'sole' : 'jv';
+  });
+
+  // Evaluation scores states per entity:
   // Auto-calculated criteria are populated from live submittals and project DB metrics;
   // Qualitative criteria provide a user evaluation option and preserve any previous ratings.
-  const [evaluations, setEvaluations] = useState<Record<string, {
-    score: number;
-    actualValue?: string | number;
-    notes?: string;
-    formulaEvidence?: string;
-    autoEvaluated?: boolean;
-    evaluatedAt?: string;
-    calculationSource?: CriterionCalculationSource;
-    isAutoCalculated?: boolean;
-    isUserEvaluated?: boolean;
-  }>>(() => {
+  const [combinedEvaluations, setCombinedEvaluations] = useState<Record<string, any>>(() => {
     const autoResults = autoEvaluateAllCriteria(project, consultant, submittalsList);
     if (consultant.detailedEvaluations && Object.keys(consultant.detailedEvaluations).length > 0) {
-      const merged: Record<string, any> = { ...autoResults };
-      Object.entries(consultant.detailedEvaluations).forEach(([code, prevEval]: [string, any]) => {
-        const src = getCriterionSourceInfo({ code });
-        if (src.source === 'user_evaluation' || prevEval.autoEvaluated === false || prevEval.isUserEvaluated) {
-          merged[code] = {
-            ...prevEval,
-            calculationSource: src.source,
-            isAutoCalculated: src.source !== 'user_evaluation',
-            isUserEvaluated: true
-          };
-        }
-      });
-      return merged;
+      return { ...autoResults, ...consultant.detailedEvaluations };
     }
     return autoResults;
   });
+
+  const [leadEvaluations, setLeadEvaluations] = useState<Record<string, any>>(() => {
+    const autoResults = autoEvaluateAllCriteria(project, consultant, submittalsList);
+    if (consultant.jvLeadEvaluations && Object.keys(consultant.jvLeadEvaluations).length > 0) {
+      return { ...autoResults, ...consultant.jvLeadEvaluations };
+    }
+    return autoResults;
+  });
+
+  const [partnerEvaluations, setPartnerEvaluations] = useState<Record<string, any>>(() => {
+    const autoResults = autoEvaluateAllCriteria(project, consultant, submittalsList);
+    if (consultant.jvPartnerEvaluations && Object.keys(consultant.jvPartnerEvaluations).length > 0) {
+      return { ...autoResults, ...consultant.jvPartnerEvaluations };
+    }
+    return autoResults;
+  });
+
+  const [soleEvaluations, setSoleEvaluations] = useState<Record<string, any>>(() => {
+    const autoResults = autoEvaluateAllCriteria(project, consultant, submittalsList);
+    const prev = consultant.soleEvaluations || consultant.detailedEvaluations;
+    if (prev && Object.keys(prev).length > 0) {
+      return { ...autoResults, ...prev };
+    }
+    return autoResults;
+  });
+
+  // Active evaluations dictionary based on selected entity / framework
+  const evaluations = useMemo(() => {
+    if (isSoleConsultant || evaluationFramework === 'sole' || activeEvaluationEntity === 'sole') {
+      return soleEvaluations;
+    }
+    if (activeEvaluationEntity === 'jv_lead') return leadEvaluations;
+    if (activeEvaluationEntity === 'jv_partner') return partnerEvaluations;
+    return combinedEvaluations;
+  }, [isSoleConsultant, evaluationFramework, activeEvaluationEntity, soleEvaluations, leadEvaluations, partnerEvaluations, combinedEvaluations]);
+
+  const setEvaluations = (updater: any) => {
+    if (isSoleConsultant || evaluationFramework === 'sole' || activeEvaluationEntity === 'sole') {
+      setSoleEvaluations(updater);
+    } else if (activeEvaluationEntity === 'jv_lead') {
+      setLeadEvaluations(updater);
+    } else if (activeEvaluationEntity === 'jv_partner') {
+      setPartnerEvaluations(updater);
+    } else {
+      setCombinedEvaluations(updater);
+    }
+  };
 
   // Source categorization filter: All, Auto-Calculated, Submittal, Project DB, User Evaluation Option, Overridden
   const [sourceFilter, setSourceFilter] = useState<'ALL' | 'AUTO_ALL' | 'AUTO_SUBMITTAL' | 'AUTO_DATABASE' | 'USER_EVALUATION' | 'OVERRIDDEN'>('ALL');
@@ -514,6 +559,46 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
       averageLikert
     };
   }, [evaluations, activeContractTypeCriteria, customCriterionWeights, quantitativeMetrics, customThresholds]);
+
+  // Separate score calculation for Combined JV
+  const combinedScoreResult = useMemo(() => {
+    const res = calculateComprehensiveEvaluationScore(combinedEvaluations, activeContractTypeCriteria, customCriterionWeights, customThresholds);
+    const slaTurnaroundScore = Number((quantitativeMetrics.overallOnTimeRate || 0).toFixed(1));
+    const fiveDimScore = Number((res.overallScore || 0).toFixed(1));
+    const compositeScore = Number(((fiveDimScore * 0.5) + (slaTurnaroundScore * 0.5)).toFixed(1));
+    const matched = evaluateQualitativeGrade(compositeScore, customThresholds);
+    return { ...res, fiveDimScore, slaTurnaroundScore, compositeScore, totalScore: compositeScore, officialGrade: matched.grade };
+  }, [combinedEvaluations, activeContractTypeCriteria, customCriterionWeights, customThresholds, quantitativeMetrics]);
+
+  // Separate score calculation for Lead Partner
+  const leadScoreResult = useMemo(() => {
+    const res = calculateComprehensiveEvaluationScore(leadEvaluations, activeContractTypeCriteria, customCriterionWeights, customThresholds);
+    const slaTurnaroundScore = Number((quantitativeMetrics.overallOnTimeRate || 0).toFixed(1));
+    const fiveDimScore = Number((res.overallScore || 0).toFixed(1));
+    const compositeScore = Number(((fiveDimScore * 0.5) + (slaTurnaroundScore * 0.5)).toFixed(1));
+    const matched = evaluateQualitativeGrade(compositeScore, customThresholds);
+    return { ...res, fiveDimScore, slaTurnaroundScore, compositeScore, totalScore: compositeScore, officialGrade: matched.grade };
+  }, [leadEvaluations, activeContractTypeCriteria, customCriterionWeights, customThresholds, quantitativeMetrics]);
+
+  // Separate score calculation for Associate Partner
+  const partnerScoreResult = useMemo(() => {
+    const res = calculateComprehensiveEvaluationScore(partnerEvaluations, activeContractTypeCriteria, customCriterionWeights, customThresholds);
+    const slaTurnaroundScore = Number((quantitativeMetrics.overallOnTimeRate || 0).toFixed(1));
+    const fiveDimScore = Number((res.overallScore || 0).toFixed(1));
+    const compositeScore = Number(((fiveDimScore * 0.5) + (slaTurnaroundScore * 0.5)).toFixed(1));
+    const matched = evaluateQualitativeGrade(compositeScore, customThresholds);
+    return { ...res, fiveDimScore, slaTurnaroundScore, compositeScore, totalScore: compositeScore, officialGrade: matched.grade };
+  }, [partnerEvaluations, activeContractTypeCriteria, customCriterionWeights, customThresholds, quantitativeMetrics]);
+
+  // Separate score calculation for Sole Consultant
+  const soleScoreResult = useMemo(() => {
+    const res = calculateComprehensiveEvaluationScore(soleEvaluations, activeContractTypeCriteria, customCriterionWeights, customThresholds);
+    const slaTurnaroundScore = Number((quantitativeMetrics.overallOnTimeRate || 0).toFixed(1));
+    const fiveDimScore = Number((res.overallScore || 0).toFixed(1));
+    const compositeScore = Number(((fiveDimScore * 0.5) + (slaTurnaroundScore * 0.5)).toFixed(1));
+    const matched = evaluateQualitativeGrade(compositeScore, customThresholds);
+    return { ...res, fiveDimScore, slaTurnaroundScore, compositeScore, totalScore: compositeScore, officialGrade: matched.grade };
+  }, [soleEvaluations, activeContractTypeCriteria, customCriterionWeights, customThresholds, quantitativeMetrics]);
 
   // Synchronize live Section 2 evaluation score to the parent component in real-time
   useEffect(() => {
@@ -826,17 +911,29 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
     const updatedConsultant: SupervisionConsultantInfo = {
       ...consultant,
       customCriterionWeights,
-      detailedEvaluations: evaluations,
+      detailedEvaluations: combinedEvaluations,
+      soleEvaluations: soleEvaluations,
+      jvLeadEvaluations: leadEvaluations,
+      jvPartnerEvaluations: partnerEvaluations,
+      activeEvaluationTarget: activeEvaluationEntity,
       evaluationChangeLog: changeLog,
       dimensionScores: evaluationResult.dimensionScores,
       overallEvaluationScore: evaluationResult.totalScore,
-      officialEvaluationGrade: evaluationResult.officialGrade,
-      performanceRating: evaluationResult.totalScore
+      officialEvaluationGrade: evaluationResult.officialGrade as any,
+      performanceRating: evaluationResult.totalScore as any
     };
-    onUpdateConsultant(updatedConsultant, `Recorded quantitative 5-dimension consultant evaluation: ${evaluationResult.totalScore}% (${evaluationResult.officialGrade}) based on submittals & SLA turnaround`);
+    const targetLabel = isSoleConsultant || activeEvaluationEntity === 'sole'
+      ? 'Sole Consultant'
+      : activeEvaluationEntity === 'jv_lead'
+        ? `Lead Partner (${parsedJv.leadName})`
+        : activeEvaluationEntity === 'jv_partner'
+          ? `Associate Partner (${parsedJv.partnerName})`
+          : 'Joint Venture Combined';
+
+    onUpdateConsultant(updatedConsultant, `Recorded ${targetLabel} performance evaluation: ${evaluationResult.totalScore}% (${evaluationResult.officialGrade}) based on submittals & SLA turnaround`);
     const msg = isMasterDirectorOrCpmAdmin
-      ? `Evaluation successfully recorded! Overall Score: ${evaluationResult.totalScore}% (${evaluationResult.officialGrade})`
-      : `Evaluation successfully recorded! Overall Score: ${evaluationResult.totalScore}%`;
+      ? `Evaluation for ${targetLabel} successfully recorded! Overall Score: ${evaluationResult.totalScore}% (${evaluationResult.officialGrade})`
+      : `Evaluation for ${targetLabel} successfully recorded! Overall Score: ${evaluationResult.totalScore}%`;
     setSaveSuccessMsg(msg);
     setTimeout(() => setSaveSuccessMsg(null), 4000);
   };
@@ -1199,6 +1296,152 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
 
       {/* TOP: Master Overall Formula Executive Scorecard */}
       <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 border border-indigo-500/30 rounded-3xl p-6 text-white shadow-lg space-y-5 relative overflow-hidden">
+        
+        {/* Entity / Separate Evaluation Cohort Banner & Switcher */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 p-3.5 bg-white/5 backdrop-blur-md rounded-2xl border border-white/10">
+          <div className="flex items-center gap-2.5">
+            {isSoleConsultant ? (
+              <span className="w-8 h-8 rounded-xl bg-blue-500/20 text-blue-300 border border-blue-400/30 flex items-center justify-center font-bold text-sm">
+                🏢
+              </span>
+            ) : (
+              <span className="w-8 h-8 rounded-xl bg-purple-500/20 text-purple-300 border border-purple-400/30 flex items-center justify-center font-bold text-sm">
+                🤝
+              </span>
+            )}
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-black uppercase text-white tracking-wider">
+                  {isSoleConsultant 
+                    ? 'Sole Consultant Performance Evaluation' 
+                    : 'Joint Venture (JV) Performance Evaluation'}
+                </span>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                  isSoleConsultant 
+                    ? 'bg-blue-500/20 text-blue-300 border border-blue-400/30' 
+                    : 'bg-purple-500/20 text-purple-300 border border-purple-400/30'
+                }`}>
+                  {isSoleConsultant ? 'Sole Independent Firm' : 'Separate Entity Evaluation Enabled'}
+                </span>
+              </div>
+              <p className="text-[11px] text-indigo-200/70">
+                {isSoleConsultant 
+                  ? `Single consulting firm with 100% direct accountability: ${consultant.firmName}`
+                  : `Evaluate Lead Partner (${parsedJv.leadName}) and Associate Partner (${parsedJv.partnerName}) separately or combined.`}
+              </p>
+            </div>
+          </div>
+
+          {/* If Joint Venture: Switch between Combined, Lead Partner, and Associate Partner */}
+          {!isSoleConsultant && (
+            <div className="flex items-center gap-1.5 p-1 bg-slate-950/60 rounded-xl border border-white/10 shrink-0">
+              <button
+                type="button"
+                onClick={() => setActiveEvaluationEntity('jv_combined')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                  activeEvaluationEntity === 'jv_combined'
+                    ? 'bg-indigo-600 text-white shadow-xs font-black'
+                    : 'text-indigo-200 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                <span>🌐 Combined JV</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveEvaluationEntity('jv_lead')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                  activeEvaluationEntity === 'jv_lead'
+                    ? 'bg-amber-600 text-white shadow-xs font-black'
+                    : 'text-indigo-200 hover:text-white hover:bg-white/5'
+                }`}
+                title={`Evaluate Lead Partner: ${parsedJv.leadName}`}
+              >
+                <span>🏢 Lead Partner ({parsedJv.leadName.substring(0, 14)}...)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveEvaluationEntity('jv_partner')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                  activeEvaluationEntity === 'jv_partner'
+                    ? 'bg-emerald-600 text-white shadow-xs font-black'
+                    : 'text-indigo-200 hover:text-white hover:bg-white/5'
+                }`}
+                title={`Evaluate Associate Partner: ${parsedJv.partnerName}`}
+              >
+                <span>🤝 Associate ({parsedJv.partnerName.substring(0, 14)}...)</span>
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Separate Entity Evaluation Score Cards when Joint Venture */}
+        {!isSoleConsultant && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div 
+              onClick={() => setActiveEvaluationEntity('jv_combined')}
+              className={`p-3 rounded-2xl border transition cursor-pointer ${
+                activeEvaluationEntity === 'jv_combined'
+                  ? 'bg-indigo-900/50 border-indigo-400 ring-2 ring-indigo-500/50'
+                  : 'bg-white/5 border-white/10 hover:bg-white/10'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] uppercase font-bold text-indigo-300">🌐 Combined Consortium</span>
+                {activeEvaluationEntity === 'jv_combined' && (
+                  <span className="text-[9px] font-black uppercase px-1.5 py-0.2 bg-indigo-500 text-white rounded">Active View</span>
+                )}
+              </div>
+              <div className="flex items-baseline justify-between mt-1">
+                <span className="text-xl font-black text-white">{combinedScoreResult.totalScore.toFixed(1)}%</span>
+                <span className="text-xs font-bold text-indigo-300">Grade {combinedScoreResult.officialGrade}</span>
+              </div>
+              <div className="text-[10px] text-indigo-200/60 mt-0.5 truncate">Overall Joint Performance</div>
+            </div>
+
+            <div 
+              onClick={() => setActiveEvaluationEntity('jv_lead')}
+              className={`p-3 rounded-2xl border transition cursor-pointer ${
+                activeEvaluationEntity === 'jv_lead'
+                  ? 'bg-amber-950/60 border-amber-400 ring-2 ring-amber-500/50'
+                  : 'bg-white/5 border-white/10 hover:bg-white/10'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] uppercase font-bold text-amber-300">🏢 Lead Partner</span>
+                {activeEvaluationEntity === 'jv_lead' && (
+                  <span className="text-[9px] font-black uppercase px-1.5 py-0.2 bg-amber-500 text-white rounded">Active View</span>
+                )}
+              </div>
+              <div className="flex items-baseline justify-between mt-1">
+                <span className="text-xl font-black text-white">{leadScoreResult.totalScore.toFixed(1)}%</span>
+                <span className="text-xs font-bold text-amber-300">Grade {leadScoreResult.officialGrade}</span>
+              </div>
+              <div className="text-[10px] text-amber-200/60 mt-0.5 truncate" title={parsedJv.leadName}>{parsedJv.leadName}</div>
+            </div>
+
+            <div 
+              onClick={() => setActiveEvaluationEntity('jv_partner')}
+              className={`p-3 rounded-2xl border transition cursor-pointer ${
+                activeEvaluationEntity === 'jv_partner'
+                  ? 'bg-emerald-950/60 border-emerald-400 ring-2 ring-emerald-500/50'
+                  : 'bg-white/5 border-white/10 hover:bg-white/10'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] uppercase font-bold text-emerald-300">🤝 Associate Partner</span>
+                {activeEvaluationEntity === 'jv_partner' && (
+                  <span className="text-[9px] font-black uppercase px-1.5 py-0.2 bg-emerald-500 text-white rounded">Active View</span>
+                )}
+              </div>
+              <div className="flex items-baseline justify-between mt-1">
+                <span className="text-xl font-black text-white">{partnerScoreResult.totalScore.toFixed(1)}%</span>
+                <span className="text-xs font-bold text-emerald-300">Grade {partnerScoreResult.officialGrade}</span>
+              </div>
+              <div className="text-[10px] text-emerald-200/60 mt-0.5 truncate" title={parsedJv.partnerName}>{parsedJv.partnerName}</div>
+            </div>
+          </div>
+        )}
+
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 border-b border-indigo-800/50 pb-5">
           <div className="space-y-1.5">
             <div className="flex flex-wrap items-center gap-2">
@@ -1214,7 +1457,13 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
             </div>
             <h2 className="text-lg md:text-xl font-black tracking-tight text-white flex items-center gap-2">
               <ShieldCheck className="w-6 h-6 text-indigo-400 shrink-0" />
-              Supervision Consultant Performance Evaluation
+              {isSoleConsultant 
+                ? 'Sole Consultant Performance Evaluation'
+                : activeEvaluationEntity === 'jv_lead'
+                  ? `Lead Partner Evaluation: ${parsedJv.leadName}`
+                  : activeEvaluationEntity === 'jv_partner'
+                    ? `Associate Partner Evaluation: ${parsedJv.partnerName}`
+                    : 'Joint Venture Combined Performance Evaluation'}
             </h2>
             {isMasterDirectorOrCpmAdmin ? (
               <p className="text-xs text-indigo-200/80 max-w-3xl leading-relaxed">

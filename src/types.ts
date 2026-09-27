@@ -880,6 +880,11 @@ export interface SupervisionConsultantInfo {
   customCriterionWeights?: Record<string, number>;
   customGradeThresholds?: QualitativeGradeThreshold[];
   detailedEvaluations?: Record<string, { score: number; actualValue?: string | number; evaluatedAt?: string; evaluator?: string; notes?: string }>;
+  // Separate Sole and Joint Venture consultant performance evaluations
+  soleEvaluations?: Record<string, { score: number; actualValue?: string | number; evaluatedAt?: string; evaluator?: string; notes?: string }>;
+  jvLeadEvaluations?: Record<string, { score: number; actualValue?: string | number; evaluatedAt?: string; evaluator?: string; notes?: string }>;
+  jvPartnerEvaluations?: Record<string, { score: number; actualValue?: string | number; evaluatedAt?: string; evaluator?: string; notes?: string }>;
+  activeEvaluationTarget?: 'sole' | 'jv_combined' | 'jv_lead' | 'jv_partner';
   dimensionScores?: Record<'A' | 'B' | 'C' | 'D' | 'E' | string, { earnedScore: number; maxScore: number; scorePct: number }>;
   overallEvaluationScore?: number;
   officialEvaluationGrade?: 'A' | 'B' | 'C' | 'D' | 'F' | 'Failed';
