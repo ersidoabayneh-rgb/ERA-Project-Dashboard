@@ -41,7 +41,8 @@ import {
   Plus,
   Trash2,
   Edit3,
-  RefreshCcw
+  RefreshCcw,
+  Scale
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { drawEraLogo } from '../lib/pdfReportEngine';
@@ -1087,7 +1088,6 @@ export default function GroupReportGenerator({
       submittalBreakdown,
       dimensionBreakdown: fiveDimEval.dimensionBreakdown,
       fiveDimEval,
-      associationType,
       jvPartners,
       isSole,
       isJv

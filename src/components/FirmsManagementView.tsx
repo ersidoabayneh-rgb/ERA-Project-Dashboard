@@ -271,12 +271,28 @@ export default function FirmsManagementView({
   // Save Firm
   const handleSaveFirm = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!firmForm.firmName?.trim()) {
+    const nameInput = firmForm.firmName?.trim();
+    const tinInput = firmForm.tinNumber?.trim();
+
+    if (!nameInput) {
       alert('Please provide a valid Firm Name.');
       return;
     }
-    if (!firmForm.tinNumber?.trim()) {
+    if (!tinInput) {
       alert('Please provide the TIN Number.');
+      return;
+    }
+
+    // Check for duplicate firm name or TIN number
+    const duplicateMatch = firms.find(f => {
+      if (editingFirm && f.id === editingFirm.id) return false; // Ignore current firm being edited
+      const sameName = f.firmName.trim().toLowerCase() === nameInput.toLowerCase();
+      const sameTin = tinInput !== '00000000' && f.tinNumber.trim() === tinInput;
+      return sameName || sameTin;
+    });
+
+    if (duplicateMatch) {
+      alert(`⚠️ Duplicate Firm Registration Prohibited:\nA firm with name "${duplicateMatch.firmName}" or TIN "${duplicateMatch.tinNumber}" is already registered in the system.`);
       return;
     }
 

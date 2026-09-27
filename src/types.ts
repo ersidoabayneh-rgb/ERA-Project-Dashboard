@@ -841,14 +841,40 @@ export interface RegisteredFirm {
   notes?: string;
   associatedProjects?: string[];
   contractRefNo?: string;
+  lastEvaluationGrade?: string;
+  lastEvaluationScore?: number;
+  evaluationHistory?: Array<{
+    projectName: string;
+    role: 'Lead Firm' | 'JV Partner' | 'Sole Consultant';
+    score: number;
+    grade: string;
+    evaluatedAt: string;
+  }>;
 }
 
 export interface SupervisionConsultantInfo {
   firmName: string;
+  leadFirmName?: string;
+  partnerFirmName?: string;
+  leadSharePct?: number; // e.g., 60
+  partnerSharePct?: number; // e.g., 40
+  leadFirmScore?: number;
+  leadFirmGrade?: string;
+  partnerFirmScore?: number;
+  partnerFirmGrade?: string;
+  individualFirmScores?: {
+    leadFirm?: { name: string; score: number; grade: string; evaluatedAt: string };
+    partnerFirm?: { name: string; score: number; grade: string; evaluatedAt: string };
+  };
+  partnerLikertRatings?: {
+    leadFirm?: Record<string, number>;
+    partnerFirm?: Record<string, number>;
+  };
   tinNumber?: string;
   countryOfOrigin?: string;
   constructionLicenseNo?: string;
   associationType?: 'Lead Consultant' | 'Joint Venture (JV)' | 'Sole Consultant' | 'Association / Consortium';
+  enableMemberBreakdown?: boolean;
   jvPartners?: string;
   contractRefNo: string;
   contractSignDate: string;

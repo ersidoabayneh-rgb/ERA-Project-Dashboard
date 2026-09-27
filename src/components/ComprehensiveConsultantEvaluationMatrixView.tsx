@@ -295,12 +295,17 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
     return parseJvEntities(consultant.firmName, consultant.jvPartners, consultant.associationType);
   }, [consultant.firmName, consultant.jvPartners, consultant.associationType]);
 
-  const isSoleConsultant = parsedJv.isSole;
+  const isSoleConsultant = true; // Always treat evaluation as single unified entity (removes separate JV partner sub-evaluation/scorecards)
 
   // Active evaluation entity target: 'sole' | 'jv_combined' | 'jv_lead' | 'jv_partner'
   const [activeEvaluationEntity, setActiveEvaluationEntity] = useState<'sole' | 'jv_combined' | 'jv_lead' | 'jv_partner'>(() => {
     if (isSoleConsultant) return 'sole';
     return consultant.activeEvaluationTarget || 'jv_combined';
+  });
+
+  // Enable optional breakdown for individual member firms
+  const [enableMemberBreakdown, setEnableMemberBreakdown] = useState<boolean>(() => {
+    return consultant.enableMemberBreakdown || false;
   });
 
   // Separate evaluation frameworks mode: 'sole' | 'jv'
@@ -356,13 +361,82 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
 
   const setEvaluations = (updater: any) => {
     if (isSoleConsultant || evaluationFramework === 'sole' || activeEvaluationEntity === 'sole') {
-      setSoleEvaluations(updater);
+      const getNext = (prev: any) => typeof updater === 'function' ? updater(prev) : updater;
+      setSoleEvaluations(prev => {
+        const next = getNext(prev);
+        setLeadEvaluations(next);
+        setPartnerEvaluations(next);
+        setCombinedEvaluations(next);
+        return next;
+      });
     } else if (activeEvaluationEntity === 'jv_lead') {
-      setLeadEvaluations(updater);
+      setLeadEvaluations(prev => {
+        const nextLead = typeof updater === 'function' ? updater(prev) : updater;
+        // Bidirectionally auto-link to combined JV evaluations
+        setCombinedEvaluations(prevCombined => {
+          const nextCombined = { ...prevCombined };
+          Object.keys(nextLead).forEach(code => {
+            const leadScore = nextLead[code]?.score;
+            if (leadScore !== undefined) {
+              const partnerScore = partnerEvaluations[code]?.score !== undefined ? partnerEvaluations[code].score : leadScore;
+              const weightedScore = Number(((leadScore * (leadSharePct / 100)) + (partnerScore * (partnerSharePct / 100))).toFixed(2));
+              nextCombined[code] = {
+                ...(nextCombined[code] || {}),
+                ...nextLead[code],
+                score: weightedScore
+              };
+            }
+          });
+          return nextCombined;
+        });
+        return nextLead;
+      });
     } else if (activeEvaluationEntity === 'jv_partner') {
-      setPartnerEvaluations(updater);
+      setPartnerEvaluations(prev => {
+        const nextPartner = typeof updater === 'function' ? updater(prev) : updater;
+        // Bidirectionally auto-link to combined JV evaluations
+        setCombinedEvaluations(prevCombined => {
+          const nextCombined = { ...prevCombined };
+          Object.keys(nextPartner).forEach(code => {
+            const partnerScore = nextPartner[code]?.score;
+            if (partnerScore !== undefined) {
+              const leadScore = leadEvaluations[code]?.score !== undefined ? leadEvaluations[code].score : partnerScore;
+              const weightedScore = Number(((leadScore * (leadSharePct / 100)) + (partnerScore * (partnerSharePct / 100))).toFixed(2));
+              nextCombined[code] = {
+                ...(nextCombined[code] || {}),
+                ...nextPartner[code],
+                score: weightedScore
+              };
+            }
+          });
+          return nextCombined;
+        });
+        return nextPartner;
+      });
     } else {
-      setCombinedEvaluations(updater);
+      setCombinedEvaluations(prev => {
+        const nextCombined = typeof updater === 'function' ? updater(prev) : updater;
+        // Bidirectionally auto-link to both lead and partner evaluations
+        setLeadEvaluations(prevLead => {
+          const nextLead = { ...prevLead };
+          Object.keys(nextCombined).forEach(code => {
+            if (nextCombined[code] !== undefined) {
+              nextLead[code] = { ...(nextLead[code] || {}), ...nextCombined[code] };
+            }
+          });
+          return nextLead;
+        });
+        setPartnerEvaluations(prevPartner => {
+          const nextPartner = { ...prevPartner };
+          Object.keys(nextCombined).forEach(code => {
+            if (nextCombined[code] !== undefined) {
+              nextPartner[code] = { ...(nextPartner[code] || {}), ...nextCombined[code] };
+            }
+          });
+          return nextPartner;
+        });
+        return nextCombined;
+      });
     }
   };
 
@@ -600,12 +674,31 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
     return { ...res, fiveDimScore, slaTurnaroundScore, compositeScore, totalScore: compositeScore, officialGrade: matched.grade };
   }, [soleEvaluations, activeContractTypeCriteria, customCriterionWeights, customThresholds, quantitativeMetrics]);
 
+  // Partner Share Percentages & Weighted Average Total JV Performance Score
+  const leadSharePct = consultant.leadSharePct !== undefined ? consultant.leadSharePct : 60;
+  const partnerSharePct = consultant.partnerSharePct !== undefined ? consultant.partnerSharePct : 40;
+
+  const weightedJvScore = useMemo(() => {
+    if (isSoleConsultant) return soleScoreResult.totalScore;
+    const leadScore = leadScoreResult.totalScore;
+    const partnerScore = partnerScoreResult.totalScore;
+    const weighted = (leadScore * (leadSharePct / 100)) + (partnerScore * (partnerSharePct / 100));
+    return Number(weighted.toFixed(1));
+  }, [isSoleConsultant, soleScoreResult.totalScore, leadScoreResult.totalScore, partnerScoreResult.totalScore, leadSharePct, partnerSharePct]);
+
+  const weightedJvGradeMatched = useMemo(() => {
+    return evaluateQualitativeGrade(weightedJvScore, customThresholds);
+  }, [weightedJvScore, customThresholds]);
+
   // Synchronize live Section 2 evaluation score to the parent component in real-time
   useEffect(() => {
     if (onScoreChange) {
-      onScoreChange(evaluationResult.fiveDimScore);
+      const activeFiveDimScore = !isSoleConsultant
+        ? Number(((leadScoreResult.fiveDimScore * (leadSharePct / 100)) + (partnerScoreResult.fiveDimScore * (partnerSharePct / 100))).toFixed(1))
+        : evaluationResult.fiveDimScore;
+      onScoreChange(activeFiveDimScore);
     }
-  }, [evaluationResult.fiveDimScore, onScoreChange]);
+  }, [isSoleConsultant, leadScoreResult.fiveDimScore, partnerScoreResult.fiveDimScore, leadSharePct, partnerSharePct, evaluationResult.fiveDimScore, onScoreChange]);
 
   // Real-time total weightage sum calculation
   const totalCustomWeightSum = useMemo(() => {
@@ -908,20 +1001,98 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
   // Save official evaluation into the consultant record
   const handleSaveEvaluation = () => {
     if (!onUpdateConsultant) return;
+    const nowIso = new Date().toISOString();
+    const isJv = consultant.associationType !== 'Sole Consultant';
+
     const updatedConsultant: SupervisionConsultantInfo = {
       ...consultant,
       customCriterionWeights,
-      detailedEvaluations: combinedEvaluations,
+      detailedEvaluations: soleEvaluations,
       soleEvaluations: soleEvaluations,
-      jvLeadEvaluations: leadEvaluations,
-      jvPartnerEvaluations: partnerEvaluations,
+      jvLeadEvaluations: soleEvaluations,
+      jvPartnerEvaluations: soleEvaluations,
       activeEvaluationTarget: activeEvaluationEntity,
+      enableMemberBreakdown: enableMemberBreakdown,
       evaluationChangeLog: changeLog,
       dimensionScores: evaluationResult.dimensionScores,
       overallEvaluationScore: evaluationResult.totalScore,
       officialEvaluationGrade: evaluationResult.officialGrade as any,
-      performanceRating: evaluationResult.totalScore as any
+      performanceRating: evaluationResult.totalScore as any,
+      leadSharePct,
+      partnerSharePct,
+      leadFirmName: parsedJv.leadName,
+      partnerFirmName: parsedJv.partnerName,
+      leadFirmScore: evaluationResult.totalScore,
+      leadFirmGrade: evaluationResult.officialGrade,
+      partnerFirmScore: evaluationResult.totalScore,
+      partnerFirmGrade: evaluationResult.officialGrade,
+      individualFirmScores: isJv ? {
+        leadFirm: {
+          name: parsedJv.leadName,
+          score: evaluationResult.totalScore,
+          grade: evaluationResult.officialGrade,
+          evaluatedAt: nowIso
+        },
+        partnerFirm: {
+          name: parsedJv.partnerName,
+          score: evaluationResult.totalScore,
+          grade: evaluationResult.officialGrade,
+          evaluatedAt: nowIso
+        }
+      } : undefined
     };
+
+    // Also update registered firms directory in localStorage to link similar evaluations together
+    try {
+      const saved = localStorage.getItem('era_registered_firms_v1');
+      if (saved) {
+        const allFirms: any[] = JSON.parse(saved);
+        const updatedFirms = allFirms.map(f => {
+          if (isJv) {
+            const isLead = parsedJv.leadName && (f.firmName === parsedJv.leadName || f.firmName.includes(parsedJv.leadName));
+            const isPartner = parsedJv.partnerName && (f.firmName === parsedJv.partnerName || f.firmName.includes(parsedJv.partnerName));
+            if (isLead || isPartner) {
+              const hist = f.evaluationHistory || [];
+              hist.push({
+                projectName: project.name || 'Project',
+                role: isLead ? 'Lead Firm' : 'JV Partner',
+                score: evaluationResult.totalScore,
+                grade: evaluationResult.officialGrade,
+                evaluatedAt: nowIso
+              });
+              return {
+                ...f,
+                lastEvaluationGrade: evaluationResult.officialGrade,
+                lastEvaluationScore: evaluationResult.totalScore,
+                evaluationHistory: hist
+              };
+            }
+          }
+
+          if (f.firmName === consultant.firmName || f.firmName.includes(consultant.firmName)) {
+            const hist = f.evaluationHistory || [];
+            hist.push({
+              projectName: project.name || 'Project',
+              role: 'Sole Consultant',
+              score: evaluationResult.totalScore,
+              grade: evaluationResult.officialGrade,
+              evaluatedAt: nowIso
+            });
+            return {
+              ...f,
+              lastEvaluationGrade: evaluationResult.officialGrade,
+              lastEvaluationScore: evaluationResult.totalScore,
+              evaluationHistory: hist
+            };
+          }
+          return f;
+        });
+        localStorage.setItem('era_registered_firms_v1', JSON.stringify(updatedFirms));
+      }
+    } catch (e) {
+      console.warn('Failed to sync evaluation grade to registered firms', e);
+    }
+
     const targetLabel = isSoleConsultant || activeEvaluationEntity === 'sole'
       ? 'Sole Consultant'
       : activeEvaluationEntity === 'jv_lead'
@@ -930,12 +1101,12 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
           ? `Associate Partner (${parsedJv.partnerName})`
           : 'Joint Venture Combined';
 
-    onUpdateConsultant(updatedConsultant, `Recorded ${targetLabel} performance evaluation: ${evaluationResult.totalScore}% (${evaluationResult.officialGrade}) based on submittals & SLA turnaround`);
-    const msg = isMasterDirectorOrCpmAdmin
-      ? `Evaluation for ${targetLabel} successfully recorded! Overall Score: ${evaluationResult.totalScore}% (${evaluationResult.officialGrade})`
-      : `Evaluation for ${targetLabel} successfully recorded! Overall Score: ${evaluationResult.totalScore}%`;
+    onUpdateConsultant(updatedConsultant, `Recorded ${targetLabel} performance evaluation: ${evaluationResult.totalScore}% (${evaluationResult.officialGrade}) — Grade added to JV and individual firms`);
+    const msg = !isSoleConsultant
+      ? `Joint Evaluation Recorded! JV Consortium Grade: ${combinedScoreResult.totalScore}% (${combinedScoreResult.officialGrade}) • Lead (${parsedJv.leadName}): ${leadScoreResult.officialGrade} (${leadScoreResult.totalScore}%) • Partner (${parsedJv.partnerName}): ${partnerScoreResult.officialGrade} (${partnerScoreResult.totalScore}%) — Individual Grades Updated!`
+      : `Evaluation for ${targetLabel} successfully recorded! Overall Score: ${evaluationResult.totalScore}% (${evaluationResult.officialGrade})`;
     setSaveSuccessMsg(msg);
-    setTimeout(() => setSaveSuccessMsg(null), 4000);
+    setTimeout(() => setSaveSuccessMsg(null), 5000);
   };
 
   // Toggle parent accordion collapse
@@ -1334,7 +1505,7 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
 
           {/* If Joint Venture: Switch between Combined, Lead Partner, and Associate Partner */}
           {!isSoleConsultant && (
-            <div className="flex items-center gap-1.5 p-1 bg-slate-950/60 rounded-xl border border-white/10 shrink-0">
+            <div className="flex flex-wrap items-center gap-1.5 p-1 bg-slate-950/60 rounded-xl border border-white/10 shrink-0">
               <button
                 type="button"
                 onClick={() => setActiveEvaluationEntity('jv_combined')}
@@ -1343,32 +1514,35 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
                     ? 'bg-indigo-600 text-white shadow-xs font-black'
                     : 'text-indigo-200 hover:text-white hover:bg-white/5'
                 }`}
+                title="View Consolidated Joint Venture Evaluation"
               >
-                <span>🌐 Combined JV</span>
+                <span>🌐 Consolidated JV ({weightedJvScore}%)</span>
               </button>
+
               <button
                 type="button"
                 onClick={() => setActiveEvaluationEntity('jv_lead')}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
                   activeEvaluationEntity === 'jv_lead'
                     ? 'bg-amber-600 text-white shadow-xs font-black'
-                    : 'text-indigo-200 hover:text-white hover:bg-white/5'
+                    : 'text-amber-300 hover:text-white hover:bg-white/5'
                 }`}
                 title={`Evaluate Lead Partner: ${parsedJv.leadName}`}
               >
-                <span>🏢 Lead Partner ({parsedJv.leadName.substring(0, 14)}...)</span>
+                <span>🏢 Lead: Grade {leadScoreResult.officialGrade} ({leadScoreResult.totalScore.toFixed(1)}%)</span>
               </button>
+
               <button
                 type="button"
                 onClick={() => setActiveEvaluationEntity('jv_partner')}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
                   activeEvaluationEntity === 'jv_partner'
                     ? 'bg-emerald-600 text-white shadow-xs font-black'
-                    : 'text-indigo-200 hover:text-white hover:bg-white/5'
+                    : 'text-emerald-300 hover:text-white hover:bg-white/5'
                 }`}
                 title={`Evaluate Associate Partner: ${parsedJv.partnerName}`}
               >
-                <span>🤝 Associate ({parsedJv.partnerName.substring(0, 14)}...)</span>
+                <span>🤝 Associate: Grade {partnerScoreResult.officialGrade} ({partnerScoreResult.totalScore.toFixed(1)}%)</span>
               </button>
             </div>
           )}
@@ -1392,10 +1566,12 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
                 )}
               </div>
               <div className="flex items-baseline justify-between mt-1">
-                <span className="text-xl font-black text-white">{combinedScoreResult.totalScore.toFixed(1)}%</span>
-                <span className="text-xs font-bold text-indigo-300">Grade {combinedScoreResult.officialGrade}</span>
+                <span className="text-xl font-black text-white">{weightedJvScore.toFixed(1)}%</span>
+                <span className="text-xs font-bold text-indigo-300">Grade {weightedJvGradeMatched.grade}</span>
               </div>
-              <div className="text-[10px] text-indigo-200/60 mt-0.5 truncate">Overall Joint Performance</div>
+              <div className="text-[10px] text-indigo-200/60 mt-0.5 truncate">
+                Weighted: {leadSharePct}% Lead + {partnerSharePct}% Associate
+              </div>
             </div>
 
             <div 
@@ -1407,7 +1583,7 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
               }`}
             >
               <div className="flex items-center justify-between">
-                <span className="text-[10px] uppercase font-bold text-amber-300">🏢 Lead Partner</span>
+                <span className="text-[10px] uppercase font-bold text-amber-300">🏢 Lead Partner ({leadSharePct}% Share)</span>
                 {activeEvaluationEntity === 'jv_lead' && (
                   <span className="text-[9px] font-black uppercase px-1.5 py-0.2 bg-amber-500 text-white rounded">Active View</span>
                 )}
@@ -1428,7 +1604,7 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
               }`}
             >
               <div className="flex items-center justify-between">
-                <span className="text-[10px] uppercase font-bold text-emerald-300">🤝 Associate Partner</span>
+                <span className="text-[10px] uppercase font-bold text-emerald-300">🤝 Associate Partner ({partnerSharePct}% Share)</span>
                 {activeEvaluationEntity === 'jv_partner' && (
                   <span className="text-[9px] font-black uppercase px-1.5 py-0.2 bg-emerald-500 text-white rounded">Active View</span>
                 )}

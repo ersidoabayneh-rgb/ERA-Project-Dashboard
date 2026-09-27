@@ -60,6 +60,7 @@ import { DEFAULT_REGISTERED_FIRMS } from '../data/defaultFirms';
 import WorkloadReportModal from './WorkloadReportModal';
 import ConsultantPerformanceKpiWidget, { DEFAULT_SUBMITTAL_KPIS, DEFAULT_SLA_TARGETS } from './ConsultantPerformanceKpiWidget';
 import ConsultantPerformanceMiniChart from './ConsultantPerformanceMiniChart';
+import { parseJvEntities, evaluateQualitativeGrade } from '../data/consultantEvaluationMatrix';
 
 interface SupervisionConsultantViewProps {
   project: Project;
@@ -188,6 +189,9 @@ export default function SupervisionConsultantView({
 
   // Active view subtab
   const [activeTab, setActiveTab] = useState<'personnel' | 'invoices' | 'kpis' | 'profile' | 'history' | 'personnel_audit'>('personnel');
+
+  // JV Partner Individual Performance Toggle State
+  const [isJvPerformanceExpanded, setIsJvPerformanceExpanded] = useState<boolean>(true);
 
   const isConsultantUser = currentUser?.role === 'consultant_approver' || currentUser?.role === 'consultant_editor';
 
@@ -582,6 +586,153 @@ export default function SupervisionConsultantView({
     const pctDiff = Math.abs(((target - avgDays) / target) * 100).toFixed(0);
     return { avgDays, target, isFaster, pctDiff, totalCount: list.length };
   }, [consultant.submittalKpis, consultant.targetOverrides, project.id]);
+
+  // Check if current contract is a Joint Venture
+  const isJvContract = consultant.associationType !== 'Sole Consultant';
+
+  // JV entities and Share Percentages
+  const parsedJv = useMemo(() => {
+    return parseJvEntities(consultant.firmName, consultant.jvPartners, consultant.associationType);
+  }, [consultant.firmName, consultant.jvPartners, consultant.associationType]);
+
+  const leadSharePct = consultant.leadSharePct || 60;
+  const partnerSharePct = consultant.partnerSharePct || 40;
+
+  // Likert ratings per dimension
+  const leadLikertRatings = useMemo(() => {
+    const defaultRatings = { A: 4, B: 4, C: 4, D: 4, E: 4 };
+    const stored = consultant.partnerLikertRatings?.leadFirm;
+    if (stored) return { ...defaultRatings, ...stored };
+
+    const evs = consultant.jvLeadEvaluations || {};
+    return {
+      A: evs['A1.1']?.score || 4,
+      B: evs['B1.1']?.score || 4,
+      C: evs['C1.1']?.score || 4,
+      D: evs['D1.1']?.score || 4,
+      E: evs['E1.1']?.score || 4,
+    };
+  }, [consultant.partnerLikertRatings?.leadFirm, consultant.jvLeadEvaluations]);
+
+  const partnerLikertRatings = useMemo(() => {
+    const defaultRatings = { A: 4, B: 4, C: 4, D: 4, E: 4 };
+    const stored = consultant.partnerLikertRatings?.partnerFirm;
+    if (stored) return { ...defaultRatings, ...stored };
+
+    const evs = consultant.jvPartnerEvaluations || {};
+    return {
+      A: evs['A1.1']?.score || 4,
+      B: evs['B1.1']?.score || 4,
+      C: evs['C1.1']?.score || 4,
+      D: evs['D1.1']?.score || 4,
+      E: evs['E1.1']?.score || 4,
+    };
+  }, [consultant.partnerLikertRatings?.partnerFirm, consultant.jvPartnerEvaluations]);
+
+  // Derived JV Scores
+  const jvScoreSummary = useMemo(() => {
+    const leadSum = Object.values(leadLikertRatings).reduce<number>((a, b) => a + Number(b), 0);
+    const partnerSum = Object.values(partnerLikertRatings).reduce<number>((a, b) => a + Number(b), 0);
+
+    const leadScore = Number(((leadSum / 25) * 100).toFixed(1));
+    const partnerScore = Number(((partnerSum / 25) * 100).toFixed(1));
+
+    const leadGrade = evaluateQualitativeGrade(leadScore).grade.replace('Grade ', '').trim();
+    const partnerGrade = evaluateQualitativeGrade(partnerScore).grade.replace('Grade ', '').trim();
+
+    const weightedJvScore = Number(((leadScore * (leadSharePct / 100)) + (partnerScore * (partnerSharePct / 100))).toFixed(1));
+    const weightedGrade = evaluateQualitativeGrade(weightedJvScore).grade.replace('Grade ', '').trim();
+
+    return {
+      leadScore: consultant.leadFirmScore !== undefined ? consultant.leadFirmScore : leadScore,
+      leadGrade: consultant.leadFirmGrade || leadGrade,
+      partnerScore: consultant.partnerFirmScore !== undefined ? consultant.partnerFirmScore : partnerScore,
+      partnerGrade: consultant.partnerFirmGrade || partnerGrade,
+      weightedJvScore: consultant.overallEvaluationScore !== undefined ? consultant.overallEvaluationScore : weightedJvScore,
+      weightedJvGrade: consultant.officialEvaluationGrade ? consultant.officialEvaluationGrade.replace('Grade ', '').trim() : weightedGrade,
+      calcLeadScore: leadScore,
+      calcPartnerScore: partnerScore,
+      calcWeightedJvScore: weightedJvScore,
+    };
+  }, [leadLikertRatings, partnerLikertRatings, leadSharePct, partnerSharePct, consultant.leadFirmScore, consultant.leadFirmGrade, consultant.partnerFirmScore, consultant.partnerFirmGrade, consultant.overallEvaluationScore, consultant.officialEvaluationGrade]);
+
+  // Handler for setting Likert scale rating (1-5) for a dimension
+  const handleSetJvLikertRating = (entity: 'lead' | 'partner', dimKey: string, ratingVal: number) => {
+    if (isReadonly || !isAdmin) return;
+    const nowIso = new Date().toISOString();
+
+    const nextLeadLikert = { ...leadLikertRatings, ...(entity === 'lead' ? { [dimKey]: ratingVal } : {}) };
+    const nextPartnerLikert = { ...partnerLikertRatings, ...(entity === 'partner' ? { [dimKey]: ratingVal } : {}) };
+
+    const leadSum = Object.values(nextLeadLikert).reduce<number>((a, b) => a + Number(b), 0);
+    const partnerSum = Object.values(nextPartnerLikert).reduce<number>((a, b) => a + Number(b), 0);
+
+    const newLeadScore = Number(((leadSum / 25) * 100).toFixed(1));
+    const newPartnerScore = Number(((partnerSum / 25) * 100).toFixed(1));
+
+    const newLeadGrade = evaluateQualitativeGrade(newLeadScore).grade.replace('Grade ', '').trim();
+    const newPartnerGrade = evaluateQualitativeGrade(newPartnerScore).grade.replace('Grade ', '').trim();
+
+    const newWeightedJvScore = Number(((newLeadScore * (leadSharePct / 100)) + (newPartnerScore * (partnerSharePct / 100))).toFixed(1));
+    const newWeightedGrade = evaluateQualitativeGrade(newWeightedJvScore).grade.replace('Grade ', '').trim();
+
+    const updatedJvLeadEvals = { ...(consultant.jvLeadEvaluations || {}) };
+    const updatedJvPartnerEvals = { ...(consultant.jvPartnerEvaluations || {}) };
+
+    ['A', 'B', 'C', 'D', 'E'].forEach(d => {
+      const code = `${d}1.1`;
+      updatedJvLeadEvals[code] = { score: Number(nextLeadLikert[d as keyof typeof nextLeadLikert]), evaluatedAt: nowIso };
+      updatedJvPartnerEvals[code] = { score: Number(nextPartnerLikert[d as keyof typeof nextPartnerLikert]), evaluatedAt: nowIso };
+    });
+
+    const updatedConsultant: SupervisionConsultantInfo = {
+      ...consultant,
+      leadSharePct,
+      partnerSharePct,
+      leadFirmName: parsedJv.leadName,
+      partnerFirmName: parsedJv.partnerName,
+      leadFirmScore: newLeadScore,
+      leadFirmGrade: newLeadGrade,
+      partnerFirmScore: newPartnerScore,
+      partnerFirmGrade: newPartnerGrade,
+      overallEvaluationScore: newWeightedJvScore,
+      officialEvaluationGrade: `Grade ${newWeightedGrade}` as any,
+      performanceRating: (newWeightedJvScore >= 80 ? 'Outstanding' : newWeightedJvScore >= 70 ? 'Satisfactory' : newWeightedJvScore >= 60 ? 'Needs Improvement' : 'Critical') as any,
+      jvLeadEvaluations: updatedJvLeadEvals,
+      jvPartnerEvaluations: updatedJvPartnerEvals,
+      partnerLikertRatings: {
+        leadFirm: nextLeadLikert,
+        partnerFirm: nextPartnerLikert
+      },
+      individualFirmScores: {
+        leadFirm: { name: parsedJv.leadName, score: newLeadScore, grade: newLeadGrade, evaluatedAt: nowIso },
+        partnerFirm: { name: parsedJv.partnerName, score: newPartnerScore, grade: newPartnerGrade, evaluatedAt: nowIso }
+      }
+    };
+
+    saveConsultantData(updatedConsultant, `Updated JV Partner Likert Rating for Dim ${dimKey} (${entity.toUpperCase()})`);
+  };
+
+  // Handler for updating JV Partner Share Percentages with 100% total validation rule
+  const handleUpdateJvSharePct = (entity: 'lead' | 'partner', val: number) => {
+    if (isReadonly || !isAdmin) return;
+    const sanitizedVal = Math.max(1, Math.min(99, val));
+    const newLeadShare = entity === 'lead' ? sanitizedVal : 100 - sanitizedVal;
+    const newPartnerShare = entity === 'partner' ? sanitizedVal : 100 - sanitizedVal;
+
+    const newWeightedJvScore = Number(((jvScoreSummary.calcLeadScore * (newLeadShare / 100)) + (jvScoreSummary.calcPartnerScore * (newPartnerShare / 100))).toFixed(1));
+    const newWeightedGrade = evaluateQualitativeGrade(newWeightedJvScore).grade.replace('Grade ', '').trim();
+
+    const updatedConsultant: SupervisionConsultantInfo = {
+      ...consultant,
+      leadSharePct: newLeadShare,
+      partnerSharePct: newPartnerShare,
+      overallEvaluationScore: newWeightedJvScore,
+      officialEvaluationGrade: `Grade ${newWeightedGrade}` as any,
+    };
+
+    saveConsultantData(updatedConsultant, `Updated JV Share percentages (Lead: ${newLeadShare}%, Associate: ${newPartnerShare}%)`);
+  };
 
   // Helper to commit consultant changes to project
   const saveConsultantData = (updatedConsultant: SupervisionConsultantInfo, actionDescription: string) => {
@@ -1858,6 +2009,217 @@ export default function SupervisionConsultantView({
         </div>
       </div>
 
+      {/* JV Partner Individual Performance Toggle Section (Appears ONLY when a Joint Venture contract is selected) */}
+      {false && isJvContract && (
+        <div className="bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-900/60 rounded-3xl shadow-sm overflow-hidden transition">
+          <div 
+            onClick={() => setIsJvPerformanceExpanded(!isJvPerformanceExpanded)}
+            className="p-4 md:p-5 bg-gradient-to-r from-indigo-950 via-slate-900 to-indigo-900 text-white flex flex-col md:flex-row md:items-center justify-between gap-4 cursor-pointer select-none"
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-2xl bg-indigo-500/20 border border-indigo-400/30 text-indigo-300 shrink-0">
+                <Users className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-sm md:text-base font-black uppercase tracking-wider text-white">
+                    JV Partner Individual Performance
+                  </h3>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/30 text-indigo-200 border border-indigo-400/30">
+                    🤝 Joint Venture Active
+                  </span>
+                </div>
+                <p className="text-xs text-indigo-200/80 mt-0.5">
+                  Capture and view individual partner Likert-scale (1–5) performance ratings &amp; share contribution breakdown
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 shrink-0">
+              <div className="hidden sm:flex items-center gap-2 font-mono text-xs">
+                <span className="px-2.5 py-1 rounded-xl bg-amber-500/20 text-amber-300 font-bold border border-amber-400/30" title={`Lead Firm: ${parsedJv.leadName}`}>
+                  👑 Lead: Grade {jvScoreSummary.leadGrade} ({jvScoreSummary.leadScore.toFixed(1)}%)
+                </span>
+                <span className="px-2.5 py-1 rounded-xl bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-400/30" title={`Associate Firm: ${parsedJv.partnerName}`}>
+                  🤛 Associate: Grade {jvScoreSummary.partnerGrade} ({jvScoreSummary.partnerScore.toFixed(1)}%)
+                </span>
+                <span className="px-2.5 py-1 rounded-xl bg-indigo-600 text-white font-black shadow-xs">
+                  🏆 Consolidated: {jvScoreSummary.weightedJvScore.toFixed(1)}% ({jvScoreSummary.weightedJvGrade})
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsJvPerformanceExpanded(!isJvPerformanceExpanded);
+                }}
+                className="px-3.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition flex items-center gap-1.5 border border-white/10 cursor-pointer"
+                title={isJvPerformanceExpanded ? "Collapse JV Partner Individual Performance section" : "Expand JV Partner Individual Performance section"}
+              >
+                <span>{isJvPerformanceExpanded ? 'Collapse JV Partner Individual Performance' : 'JV Partner Individual Performance'}</span>
+                <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isJvPerformanceExpanded ? 'rotate-180' : ''}`} />
+              </button>
+            </div>
+          </div>
+
+          {/* Section Body with Sub-Table UI */}
+          <AnimatePresence>
+            {isJvPerformanceExpanded && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="p-4 md:p-6 bg-slate-950 text-white border-t border-indigo-900/40 space-y-4"
+              >
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-indigo-800/40">
+                  <div className="space-y-0.5">
+                    <h4 className="text-xs font-black uppercase text-white tracking-wider flex items-center gap-2">
+                      🤝 Sub-Table: Capture Individual Partner Likert-Scale Performance Ratings (1–5)
+                    </h4>
+                    <p className="text-[11px] text-indigo-200/70">
+                      Likert Ratings: 1 = Critical (&lt;50%), 2 = Needs Improvement (50-69%), 3 = Satisfactory (70-79%), 4 = Good (80-89%), 5 = Outstanding (&ge;90%).
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 font-mono text-xs bg-indigo-900/60 px-3 py-1.5 rounded-xl border border-indigo-700/60 shrink-0">
+                    <span className="text-amber-300 font-bold">👑 Lead: {leadSharePct}% Share</span>
+                    <span>+</span>
+                    <span className="text-emerald-300 font-bold">🤛 Associate: {partnerSharePct}% Share</span>
+                    <span>= 100% Total JV</span>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs text-left border-collapse">
+                    <thead>
+                      <tr className="bg-white/5 border-b border-white/10 text-indigo-200 font-black uppercase tracking-wider text-[10px]">
+                        <th className="py-2.5 px-3">Partner Company &amp; Consortium Role</th>
+                        <th className="py-2.5 px-2 text-center">Share %</th>
+                        <th className="py-2.5 px-2 text-center" title="Technical Competence & Design Quality">Dim A: Tech Skills</th>
+                        <th className="py-2.5 px-2 text-center" title="Key Personnel Mobilization & MM Utilization">Dim B: Staff &amp; MM</th>
+                        <th className="py-2.5 px-2 text-center" title="Submittals & RFI SLA Turnaround">Dim C: Submittals SLA</th>
+                        <th className="py-2.5 px-2 text-center" title="Claims Resolution & Contract Administration">Dim D: Claims &amp; Admin</th>
+                        <th className="py-2.5 px-2 text-center" title="Workmanship Quality & QA Inspections">Dim E: Quality &amp; QA</th>
+                        <th className="py-2.5 px-3 text-center">Individual Score</th>
+                        <th className="py-2.5 px-3 text-right">Weighted JV Share</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/10">
+                      {/* Lead Firm Row */}
+                      <tr className="hover:bg-white/5 transition">
+                        <td className="py-3 px-3 font-bold text-amber-200">
+                          <div className="flex items-center gap-2">
+                            <span className="px-2 py-0.5 rounded bg-amber-500/30 text-amber-300 text-[10px] font-black border border-amber-400/30">LEAD</span>
+                            <span className="font-bold text-white truncate max-w-[200px]" title={parsedJv.leadName}>{parsedJv.leadName}</span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-2 text-center font-mono font-bold text-amber-300">
+                          {leadSharePct}%
+                        </td>
+                        {(['A', 'B', 'C', 'D', 'E'] as const).map(dimKey => {
+                          const currentRating = leadLikertRatings[dimKey];
+                          return (
+                            <td key={dimKey} className="py-3 px-2 text-center">
+                              <div className="inline-flex items-center gap-0.5 bg-slate-900 p-1 rounded-lg border border-amber-500/30">
+                                {[1, 2, 3, 4, 5].map(ratingVal => (
+                                  <button
+                                    key={ratingVal}
+                                    type="button"
+                                    disabled={isReadonly || !isAdmin}
+                                    onClick={() => handleSetJvLikertRating('lead', dimKey, ratingVal)}
+                                    className={`w-5 h-5 rounded text-[10px] font-black transition cursor-pointer disabled:cursor-default ${
+                                      currentRating === ratingVal
+                                        ? 'bg-amber-500 text-slate-950 font-black shadow-xs'
+                                        : 'text-slate-400 hover:text-white hover:bg-white/10'
+                                    }`}
+                                    title={`Set Likert Rating ${ratingVal}/5 for Dimension ${dimKey} (Lead Firm)`}
+                                  >
+                                    {ratingVal}
+                                  </button>
+                                ))}
+                              </div>
+                            </td>
+                          );
+                        })}
+                        <td className="py-3 px-3 text-center">
+                          <span className="px-2.5 py-1 rounded-lg font-mono font-black bg-amber-500/20 text-amber-300 border border-amber-400/30 text-xs">
+                            {jvScoreSummary.leadScore.toFixed(1)}% ({jvScoreSummary.leadGrade})
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 text-right font-mono font-bold text-amber-300">
+                          {(jvScoreSummary.leadScore * (leadSharePct / 100)).toFixed(1)}%
+                        </td>
+                      </tr>
+
+                      {/* Associate Partner Row */}
+                      <tr className="hover:bg-white/5 transition">
+                        <td className="py-3 px-3 font-bold text-emerald-200">
+                          <div className="flex items-center gap-2">
+                            <span className="px-2 py-0.5 rounded bg-emerald-500/30 text-emerald-300 text-[10px] font-black border border-emerald-400/30">ASSOCIATE</span>
+                            <span className="font-bold text-white truncate max-w-[200px]" title={parsedJv.partnerName}>{parsedJv.partnerName}</span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-2 text-center font-mono font-bold text-emerald-300">
+                          {partnerSharePct}%
+                        </td>
+                        {(['A', 'B', 'C', 'D', 'E'] as const).map(dimKey => {
+                          const currentRating = partnerLikertRatings[dimKey];
+                          return (
+                            <td key={dimKey} className="py-3 px-2 text-center">
+                              <div className="inline-flex items-center gap-0.5 bg-slate-900 p-1 rounded-lg border border-emerald-500/30">
+                                {[1, 2, 3, 4, 5].map(ratingVal => (
+                                  <button
+                                    key={ratingVal}
+                                    type="button"
+                                    disabled={isReadonly || !isAdmin}
+                                    onClick={() => handleSetJvLikertRating('partner', dimKey, ratingVal)}
+                                    className={`w-5 h-5 rounded text-[10px] font-black transition cursor-pointer disabled:cursor-default ${
+                                      currentRating === ratingVal
+                                        ? 'bg-emerald-500 text-slate-950 font-black shadow-xs'
+                                        : 'text-slate-400 hover:text-white hover:bg-white/10'
+                                    }`}
+                                    title={`Set Likert Rating ${ratingVal}/5 for Dimension ${dimKey} (Associate Partner)`}
+                                  >
+                                    {ratingVal}
+                                  </button>
+                                ))}
+                              </div>
+                            </td>
+                          );
+                        })}
+                        <td className="py-3 px-3 text-center">
+                          <span className="px-2.5 py-1 rounded-lg font-mono font-black bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 text-xs">
+                            {jvScoreSummary.partnerScore.toFixed(1)}% ({jvScoreSummary.partnerGrade})
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 text-right font-mono font-bold text-emerald-300">
+                          {(jvScoreSummary.partnerScore * (partnerSharePct / 100)).toFixed(1)}%
+                        </td>
+                      </tr>
+
+                      {/* Consolidated Weighted Total JV Row */}
+                      <tr className="bg-indigo-950/90 font-bold border-t-2 border-indigo-500/50">
+                        <td colSpan={7} className="py-3.5 px-3 text-right uppercase tracking-wider text-[11px] text-indigo-200 font-extrabold">
+                          🏆 Consolidated Total Joint Venture Performance Score (Share-Weighted Average):
+                        </td>
+                        <td className="py-3.5 px-3 text-center font-mono font-black text-sm text-indigo-100">
+                          <span className="px-3 py-1 rounded-xl bg-indigo-600 text-white shadow-md border border-indigo-400">
+                            {jvScoreSummary.weightedJvScore.toFixed(1)}% ({jvScoreSummary.weightedJvGrade})
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-3 text-right font-mono font-black text-sm text-emerald-400">
+                          {jvScoreSummary.weightedJvScore.toFixed(1)}%
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
+
       {/* Internal Navigation Subtabs */}
       <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
         <button
@@ -1904,11 +2266,11 @@ export default function SupervisionConsultantView({
             }`}
           >
             <Clock className="w-4 h-4" />
-            {isEraUser ? 'Supervision Consultant Performance Evaluation' : 'Performance KPIs & RFI SLA Evaluation'}
+            Supervision Consultant Evaluation
             <span className={`px-2 py-0.5 rounded-full text-xs font-mono ${
               activeTab === 'kpis' ? 'bg-purple-700 text-white' : 'bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-300 font-bold'
             }`}>
-              {isEraUser ? 'Section 2 Matrix' : `${consultant.submittalKpis?.length || 0} items`}
+              Section 2 Matrix
             </span>
           </button>
         )}
@@ -2555,9 +2917,11 @@ export default function SupervisionConsultantView({
                 </div>
 
                 <div>
-                  <span className="text-slate-400 font-semibold uppercase tracking-wider text-[10px] block">Association / JV Arrangement</span>
+                  <span className="text-slate-400 font-semibold uppercase tracking-wider text-[10px] block">
+                    {consultant.associationType === 'Sole Consultant' ? 'Engagement / Consultancy Model' : 'Association / JV Arrangement'}
+                  </span>
                   <div className="font-bold text-slate-800 dark:text-slate-200 text-sm mt-0.5">
-                    {consultant.associationType || 'Joint Venture'}
+                    {consultant.associationType || 'Sole Consultant'}
                   </div>
                   {consultant.associationType !== 'Sole Consultant' && consultant.jvPartners && (
                     <div className="text-[11px] text-slate-500 mt-0.5">
@@ -2861,7 +3225,7 @@ export default function SupervisionConsultantView({
                           <h4 className="text-base font-black text-slate-900 dark:text-white">
                             {hist.firmName}
                           </h4>
-                          <span className="text-xs text-slate-400 font-medium">({hist.associationType || 'Joint Venture'})</span>
+                          <span className="text-xs text-slate-400 font-medium">({hist.associationType || 'Sole Consultant'})</span>
                         </div>
 
                         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
@@ -3211,7 +3575,7 @@ export default function SupervisionConsultantView({
                   </span>
                   {[
                     { id: 'all', label: 'All Sections (6)' },
-                    { id: 'firm', label: consultantForm.associationType === 'Sole Consultant' ? '1. Firm (Sole)' : '1. Firm & JV' },
+                    { id: 'firm', label: consultantForm.associationType === 'Sole Consultant' ? '1. Consulting Firm' : '1. Firm & JV' },
                     { id: 'financial', label: '2. Remuneration' },
                     { id: 'dates', label: '3. Timeline & Dates' },
                     { id: 'headOffice', label: '4. Head Office' },
@@ -3244,11 +3608,13 @@ export default function SupervisionConsultantView({
                       <div className="flex items-center gap-2">
                         <Building2 className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                         <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
-                          Section 1: Consulting Entity & Association Structure
+                          {consultantForm.associationType === 'Sole Consultant'
+                            ? 'Section 1: Consulting Entity Particulars'
+                            : 'Section 1: Consulting Entity & Association Structure'}
                         </h4>
                       </div>
                       <span className="text-[11px] font-mono text-slate-500 bg-white dark:bg-slate-800 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-700">
-                        {consultantForm.associationType || 'Joint Venture (JV)'}
+                        {consultantForm.associationType || 'Sole Consultant'}
                       </span>
                     </div>
 
@@ -3315,7 +3681,9 @@ export default function SupervisionConsultantView({
                       <div className="sm:col-span-2">
                         <div className="flex items-center justify-between mb-1">
                           <label className="block font-semibold text-slate-700 dark:text-slate-300">
-                            Consulting Firm / Lead Partner Name <span className="text-red-500">*</span>
+                            {consultantForm.associationType === 'Sole Consultant'
+                              ? 'Consulting Firm Name'
+                              : 'Consulting Firm / Lead Partner Name'} <span className="text-red-500">*</span>
                           </label>
                           <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
                             🔗 Syncs with Project Information Supervising Consultant
@@ -3326,7 +3694,9 @@ export default function SupervisionConsultantView({
                           required
                           value={consultantForm.firmName}
                           onChange={(e) => setConsultantForm({ ...consultantForm, firmName: e.target.value })}
-                          placeholder="e.g. Associated Engineering Consultants in JV with Ethio-Roads Consulting"
+                          placeholder={consultantForm.associationType === 'Sole Consultant'
+                            ? "e.g. Associated Engineering Consultants"
+                            : "e.g. Associated Engineering Consultants in JV with Ethio-Roads Consulting"}
                           className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white font-medium shadow-xs"
                         />
                       </div>
@@ -3372,7 +3742,7 @@ export default function SupervisionConsultantView({
 
                       <div>
                         <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                          Association Type
+                          {consultantForm.associationType === 'Sole Consultant' ? 'Consultancy Engagement Model' : 'Association Type'}
                         </label>
                         <select
                           value={consultantForm.associationType || 'Joint Venture (JV)'}
@@ -3422,33 +3792,191 @@ export default function SupervisionConsultantView({
                         </select>
                       </div>
 
-                      {consultantForm.associationType === 'Sole Consultant' ? (
-                        <div className="sm:col-span-2 p-3.5 rounded-xl bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/60 flex items-start gap-3">
-                          <CheckCircle2 className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
-                          <div className="text-xs space-y-0.5">
-                            <span className="font-bold text-blue-900 dark:text-blue-200 block">
-                              Sole Consultant Selected (Single Entity Contract)
+                      {consultantForm.associationType !== 'Sole Consultant' && (
+                        <div className="sm:col-span-2 p-4 rounded-2xl bg-indigo-50/60 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-900/60 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <label className="block text-xs font-bold text-indigo-900 dark:text-indigo-300">
+                              🤝 Joint Venture (JV) Consortium Firm Selection (From Registry)
+                            </label>
+                            <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium">
+                              Select Lead Firm & Associate Partner from Firm Registry
                             </span>
-                            <p className="text-blue-700 dark:text-blue-300 text-[11px] leading-relaxed">
-                              Joint venture partner registration is hidden. This contract operates as a sole independent consulting engineering firm. Evaluation is conducted under the separate Sole Consultant Performance Framework.
-                            </p>
                           </div>
-                        </div>
-                      ) : (
-                        <div className="sm:col-span-2 space-y-1">
-                          <label className="block font-semibold text-slate-700 dark:text-slate-300">
-                            Joint Venture Registration & Associate Partners Details <span className="text-red-500">*</span>
-                          </label>
-                          <input
-                            type="text"
-                            value={consultantForm.jvPartners || ''}
-                            onChange={(e) => setConsultantForm({ ...consultantForm, jvPartners: e.target.value })}
-                            placeholder="e.g. Lead Partner (India - 65%) & Local Engineering Consultant (Ethiopia - 35%)"
-                            className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white shadow-xs"
-                          />
-                          <p className="text-[10px] text-slate-400">
-                            Specify the Lead Partner, local associates, and equity/remuneration split for joint evaluation.
-                          </p>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            {/* Lead Firm Selector from Registry */}
+                            <div>
+                              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                                👑 Lead Firm Name <span className="text-red-500">*</span>
+                              </label>
+                              <select
+                                value={consultantForm.leadFirmName || ''}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  try {
+                                    const saved = localStorage.getItem('era_registered_firms_v1');
+                                    const allFirms: RegisteredFirm[] = saved ? JSON.parse(saved) : DEFAULT_REGISTERED_FIRMS;
+                                    const lead = allFirms.find(f => f.firmName === val || f.id === val);
+                                    if (lead) {
+                                      const leadName = lead.firmName;
+                                      const partnerName = consultantForm.partnerFirmName || '';
+                                      const combinedName = partnerName ? `${leadName} in JV with ${partnerName}` : leadName;
+                                      const jvDetails = partnerName 
+                                        ? `Lead Partner: ${leadName} (${lead.countryOfOrigin || 'Ethiopia'}, TIN: ${lead.tinNumber || 'N/A'}) & Associate Partner: ${partnerName}`
+                                        : `Lead Partner: ${leadName} (${lead.countryOfOrigin || 'Ethiopia'}, TIN: ${lead.tinNumber || 'N/A'})`;
+                                      
+                                      setConsultantForm(prev => ({
+                                        ...prev,
+                                        leadFirmName: leadName,
+                                        firmName: combinedName,
+                                        tinNumber: lead.tinNumber || prev.tinNumber,
+                                        countryOfOrigin: lead.countryOfOrigin || prev.countryOfOrigin,
+                                        constructionLicenseNo: lead.constructionLicenseNo || prev.constructionLicenseNo,
+                                        jvPartners: jvDetails
+                                      }));
+                                    } else {
+                                      setConsultantForm(prev => ({ ...prev, leadFirmName: val }));
+                                    }
+                                  } catch (err) {
+                                    setConsultantForm(prev => ({ ...prev, leadFirmName: val }));
+                                  }
+                                }}
+                                className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-indigo-300 dark:border-indigo-700 rounded-xl text-slate-900 dark:text-white font-medium text-xs focus:ring-2 focus:ring-indigo-500"
+                              >
+                                <option value="">-- Choose Lead Firm from Registry --</option>
+                                {(() => {
+                                  try {
+                                    const saved = localStorage.getItem('era_registered_firms_v1');
+                                    const allFirms: RegisteredFirm[] = saved ? JSON.parse(saved) : DEFAULT_REGISTERED_FIRMS;
+                                    return allFirms.filter(f => f.firmType === 'Consultant').map(f => (
+                                      <option key={f.id} value={f.firmName}>
+                                        {f.firmName} ({f.countryOfOrigin || 'Ethiopia'})
+                                      </option>
+                                    ));
+                                  } catch {
+                                    return DEFAULT_REGISTERED_FIRMS.filter(f => f.firmType === 'Consultant').map(f => (
+                                      <option key={f.id} value={f.firmName}>
+                                        {f.firmName} ({f.countryOfOrigin || 'Ethiopia'})
+                                      </option>
+                                    ));
+                                  }
+                                })()}
+                              </select>
+                            </div>
+
+                            {/* JV Partner Selector from Registry (Distinct from Lead Firm) */}
+                            <div>
+                              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                                🤛 JV Partner / Associate Firm <span className="text-red-500">*</span>
+                              </label>
+                              <select
+                                value={consultantForm.partnerFirmName || ''}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  try {
+                                    const saved = localStorage.getItem('era_registered_firms_v1');
+                                    const allFirms: RegisteredFirm[] = saved ? JSON.parse(saved) : DEFAULT_REGISTERED_FIRMS;
+                                    const partner = allFirms.find(f => f.firmName === val || f.id === val);
+                                    if (partner) {
+                                      const partnerName = partner.firmName;
+                                      const leadName = consultantForm.leadFirmName || consultantForm.firmName.split(' in JV')[0] || '';
+                                      const combinedName = leadName ? `${leadName} in JV with ${partnerName}` : partnerName;
+                                      const jvDetails = leadName 
+                                        ? `Lead Partner: ${leadName} & Associate Partner: ${partnerName} (${partner.countryOfOrigin || 'Ethiopia'}, TIN: ${partner.tinNumber || 'N/A'})`
+                                        : `Associate Partner: ${partnerName} (${partner.countryOfOrigin || 'Ethiopia'}, TIN: ${partner.tinNumber || 'N/A'})`;
+
+                                      setConsultantForm(prev => ({
+                                        ...prev,
+                                        partnerFirmName: partnerName,
+                                        firmName: combinedName,
+                                        jvPartners: jvDetails
+                                      }));
+                                    } else {
+                                      setConsultantForm(prev => ({ ...prev, partnerFirmName: val }));
+                                    }
+                                  } catch (err) {
+                                    setConsultantForm(prev => ({ ...prev, partnerFirmName: val }));
+                                  }
+                                }}
+                                className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-indigo-300 dark:border-indigo-700 rounded-xl text-slate-900 dark:text-white font-medium text-xs focus:ring-2 focus:ring-indigo-500"
+                              >
+                                <option value="">-- Choose JV Partner Firm (Different from Lead) --</option>
+                                {(() => {
+                                  try {
+                                    const saved = localStorage.getItem('era_registered_firms_v1');
+                                    const allFirms: RegisteredFirm[] = saved ? JSON.parse(saved) : DEFAULT_REGISTERED_FIRMS;
+                                    // Exclude Lead Firm so JV Partner is DIFFERENT from Lead Firm!
+                                    return allFirms
+                                      .filter(f => f.firmType === 'Consultant' && f.firmName !== consultantForm.leadFirmName)
+                                      .map(f => (
+                                        <option key={f.id} value={f.firmName}>
+                                          {f.firmName} ({f.countryOfOrigin || 'Ethiopia'})
+                                        </option>
+                                      ));
+                                  } catch {
+                                    return DEFAULT_REGISTERED_FIRMS
+                                      .filter(f => f.firmType === 'Consultant' && f.firmName !== consultantForm.leadFirmName)
+                                      .map(f => (
+                                        <option key={f.id} value={f.firmName}>
+                                          {f.firmName} ({f.countryOfOrigin || 'Ethiopia'})
+                                        </option>
+                                      ));
+                                  }
+                                })()}
+                              </select>
+                            </div>
+                          </div>
+
+                          {/* Partner Share Percentages (% Weighting for JV Score Calculation) */}
+                          <div className="pt-2 border-t border-indigo-200/60 dark:border-indigo-900/60 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                                👑 Lead Firm Share Percentage (%)
+                              </label>
+                              <div className="relative">
+                                <input
+                                  type="number"
+                                  min="1"
+                                  max="99"
+                                  value={consultantForm.leadSharePct !== undefined ? consultantForm.leadSharePct : 60}
+                                  onChange={(e) => {
+                                    const val = Math.max(1, Math.min(99, Number(e.target.value) || 60));
+                                    setConsultantForm(prev => ({
+                                      ...prev,
+                                      leadSharePct: val,
+                                      partnerSharePct: 100 - val
+                                    }));
+                                  }}
+                                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-indigo-300 dark:border-indigo-700 rounded-xl font-mono text-xs font-bold text-slate-900 dark:text-white"
+                                />
+                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">%</span>
+                              </div>
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                                🤛 Associate Partner Share Percentage (%)
+                              </label>
+                              <div className="relative">
+                                <input
+                                  type="number"
+                                  min="1"
+                                  max="99"
+                                  value={consultantForm.partnerSharePct !== undefined ? consultantForm.partnerSharePct : 40}
+                                  onChange={(e) => {
+                                    const val = Math.max(1, Math.min(99, Number(e.target.value) || 40));
+                                    setConsultantForm(prev => ({
+                                      ...prev,
+                                      partnerSharePct: val,
+                                      leadSharePct: 100 - val
+                                    }));
+                                  }}
+                                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-indigo-300 dark:border-indigo-700 rounded-xl font-mono text-xs font-bold text-slate-900 dark:text-white"
+                                />
+                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">%</span>
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -4556,7 +5084,9 @@ export default function SupervisionConsultantView({
                     <option value="Time assigned completed (contract & extension expired)">Time assigned completed (contract & extension expired)</option>
                     <option value="Contract termination & re-tendering">Contract termination & re-tendering</option>
                     <option value="Mutual agreement & administrative transition">Mutual agreement & administrative transition</option>
-                    <option value="Joint venture restructuring / substitution">Joint venture restructuring / substitution</option>
+                    {consultant.associationType !== 'Sole Consultant' && (
+                      <option value="Joint venture restructuring / substitution">Joint venture restructuring / substitution</option>
+                    )}
                     <option value="Continuation of service under fresh engagement">Continuation of service under fresh engagement</option>
                   </select>
                 </div>
@@ -4639,11 +5169,13 @@ export default function SupervisionConsultantView({
                 </div>
 
                 <div className="sm:col-span-2">
-                  <label className="block text-slate-500 font-semibold mb-1">New Consulting Firm / Lead Partner *</label>
+                  <label className="block text-slate-500 font-semibold mb-1">
+                    {newConsultantForm.associationType === 'Sole Consultant' ? 'New Consulting Firm Name *' : 'New Consulting Firm / Lead Partner *'}
+                  </label>
                   <input
                     type="text"
                     required
-                    placeholder="e.g. Associated Engineering Consultants in JV with Ethio-Roads Consulting"
+                    placeholder={newConsultantForm.associationType === 'Sole Consultant' ? "e.g. Associated Engineering Consultants" : "e.g. Associated Engineering Consultants in JV with Ethio-Roads Consulting"}
                     value={newConsultantForm.firmName}
                     onChange={(e) => setNewConsultantForm({ ...newConsultantForm, firmName: e.target.value })}
                     className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-bold"
@@ -4671,23 +5203,7 @@ export default function SupervisionConsultantView({
                   </select>
                 </div>
 
-                {newConsultantForm.associationType !== 'Sole Consultant' && (
-                  <div className="sm:col-span-2">
-                    <label className="block text-slate-500 font-semibold mb-1">
-                      Joint Venture Registration & Associate Partners <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Lead Partner (60%) & Local Engineering Partner (40%)"
-                      value={newConsultantForm.jvPartners || ''}
-                      onChange={(e) => setNewConsultantForm({ ...newConsultantForm, jvPartners: e.target.value })}
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
-                    />
-                    <p className="text-[10px] text-slate-400 mt-1">
-                      Specify associate firms and equity split for joint venture consortium performance evaluation.
-                    </p>
-                  </div>
-                )}
+
 
                 <div>
                   <label className="block text-slate-500 font-semibold mb-1">New Contract Reference No</label>

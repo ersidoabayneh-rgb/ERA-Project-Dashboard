@@ -520,7 +520,7 @@ export default function ConsultantPerformanceKpiWidget({
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
                     <Clock className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-                    Supervision Consultant Performance KPI & SLA Evaluation
+                    Supervision Consultant Evaluation
                   </span>
                   <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 font-mono">
                     {overallMetrics.complianceRate.toFixed(1)}% On-Time SLA
@@ -531,7 +531,7 @@ export default function ConsultantPerformanceKpiWidget({
                 </div>
 
                 <h3 className="text-lg md:text-xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
-                  {isEraUser ? 'Supervision Consultant Performance Evaluation Matrix' : 'Consultant SLA Response Performance & Weighted Evaluation Matrix'}
+                  Supervision Consultant Evaluation Matrix
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 max-w-3xl">
                   {isEraUser
@@ -694,70 +694,92 @@ export default function ConsultantPerformanceKpiWidget({
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-5 rounded-2xl bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/80 shadow-2xs">
-                {/* Pillar I Score Card */}
-                <div className="bg-white dark:bg-slate-950 p-4 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                  <div className="space-y-1">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
-                      Pillar I: Submittal SLA
-                    </span>
-                    <div className="flex items-baseline gap-1.5">
-                      <span className="text-2xl font-black text-slate-800 dark:text-zinc-100 font-mono">
-                        {pillar1ScoreValue.toFixed(1)}%
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-5 rounded-2xl bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/80 shadow-2xs">
+                  {/* Pillar I Score Card */}
+                  <div className="bg-white dark:bg-slate-950 p-4 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
+                        Pillar I: Submittal SLA
                       </span>
-                      <span className="text-xs font-bold text-slate-400">score</span>
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="text-2xl font-black text-slate-800 dark:text-zinc-100 font-mono">
+                          {pillar1ScoreValue.toFixed(1)}%
+                        </span>
+                        <span className="text-xs font-bold text-slate-400">score</span>
+                      </div>
+                    </div>
+                    <div className="p-2.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400">
+                      <Clock className="w-5 h-5" />
                     </div>
                   </div>
-                  <div className="p-2.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400">
-                    <Clock className="w-5 h-5" />
+
+                  {/* Pillar II Score Card */}
+                  <div className="bg-white dark:bg-slate-950 p-4 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
+                        Pillar II: Technical Audit
+                      </span>
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="text-2xl font-black text-slate-800 dark:text-zinc-100 font-mono">
+                          {pillar2ScoreValue.toFixed(1)}%
+                        </span>
+                        <span className="text-xs font-bold text-slate-400">score</span>
+                      </div>
+                    </div>
+                    <div className="p-2.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400">
+                      <Award className="w-5 h-5" />
+                    </div>
+                  </div>
+
+                  {/* Combined Composite Overall Score */}
+                  <div className="bg-indigo-950/30 dark:bg-indigo-950/60 p-4 rounded-xl border border-indigo-200/50 dark:border-indigo-900/60 flex items-center justify-between">
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-indigo-700 dark:text-indigo-300 block">
+                        Combined Overall Score (Avg)
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-3xl font-black text-indigo-900 dark:text-indigo-100 font-mono">
+                          {combinedAvgScoreValue.toFixed(1)}%
+                        </span>
+                        {isMasterDirectorOrCpmAdmin && (
+                          <div className="flex flex-col">
+                            <span className="text-[10px] px-1.5 py-0.5 rounded font-black bg-indigo-600 text-white leading-tight">
+                              Grade {combinedGradeInfo.grade}
+                            </span>
+                            <span className="text-[9px] font-bold text-indigo-700 dark:text-indigo-300 leading-none mt-1">
+                              {combinedGradeInfo.standing}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="p-2.5 rounded-lg bg-indigo-600 text-white shadow-xs">
+                      <TrendingUp className="w-5 h-5" />
+                    </div>
                   </div>
                 </div>
 
-                {/* Pillar II Score Card */}
-                <div className="bg-white dark:bg-slate-950 p-4 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                  <div className="space-y-1">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
-                      Pillar II: Technical Audit
-                    </span>
-                    <div className="flex items-baseline gap-1.5">
-                      <span className="text-2xl font-black text-slate-800 dark:text-zinc-100 font-mono">
-                        {pillar2ScoreValue.toFixed(1)}%
-                      </span>
-                      <span className="text-xs font-bold text-slate-400">score</span>
-                    </div>
-                  </div>
-                  <div className="p-2.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400">
-                    <Award className="w-5 h-5" />
-                  </div>
-                </div>
-
-                {/* Combined Composite Overall Score */}
-                <div className="bg-indigo-950/30 dark:bg-indigo-950/60 p-4 rounded-xl border border-indigo-200/50 dark:border-indigo-900/60 flex items-center justify-between">
-                  <div className="space-y-1">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-indigo-700 dark:text-indigo-300 block">
-                      Combined Overall Score (Avg)
-                    </span>
+                {/* Individual Consultant Firm Grades Banner when in Joint Venture */}
+                {consultant.associationType !== 'Sole Consultant' && (
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-2xl bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 text-xs mt-3">
                     <div className="flex items-center gap-2">
-                      <span className="text-3xl font-black text-indigo-900 dark:text-indigo-100 font-mono">
-                        {combinedAvgScoreValue.toFixed(1)}%
+                      <Users className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                      <span className="font-bold text-slate-800 dark:text-slate-200">
+                        Constituent Firm Evaluation Breakdown (Propagated from Joint Venture Evaluation):
                       </span>
-                      {isMasterDirectorOrCpmAdmin && (
-                        <div className="flex flex-col">
-                          <span className="text-[10px] px-1.5 py-0.5 rounded font-black bg-indigo-600 text-white leading-tight">
-                            Grade {combinedGradeInfo.grade}
-                          </span>
-                          <span className="text-[9px] font-bold text-indigo-700 dark:text-indigo-300 leading-none mt-1">
-                            {combinedGradeInfo.standing}
-                          </span>
-                        </div>
-                      )}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 font-mono text-[11px]">
+                      <span className="px-2.5 py-1 rounded-xl bg-amber-100 dark:bg-amber-950/80 text-amber-900 dark:text-amber-200 font-bold border border-amber-300 dark:border-amber-800">
+                        👑 Lead ({consultant.leadFirmName || 'Lead Firm'}): Grade {consultant.leadFirmGrade || combinedGradeInfo.grade} ({(consultant.leadFirmScore || combinedAvgScoreValue).toFixed(1)}%)
+                      </span>
+                      <span className="px-2.5 py-1 rounded-xl bg-emerald-100 dark:bg-emerald-950/80 text-emerald-900 dark:text-emerald-200 font-bold border border-emerald-300 dark:border-emerald-800">
+                        🤛 Associate ({consultant.partnerFirmName || 'JV Partner'}): Grade {consultant.partnerFirmGrade || combinedGradeInfo.grade} ({(consultant.partnerFirmScore || combinedAvgScoreValue).toFixed(1)}%)
+                      </span>
                     </div>
                   </div>
-                  <div className="p-2.5 rounded-lg bg-indigo-600 text-white shadow-xs">
-                    <TrendingUp className="w-5 h-5" />
-                  </div>
-                </div>
-              </div>
+                )}
+              </>
             )}
           </>
         )}
