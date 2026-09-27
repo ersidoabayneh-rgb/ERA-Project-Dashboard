@@ -1299,33 +1299,33 @@ export default function DashboardView({
 
     // Dynamic Earned Value metric box
     doc.setFillColor(241, 245, 249); // slate-100
-    doc.rect(40, 245, pageWidth - 80, 50, 'F');
+    doc.rect(40, 243, pageWidth - 80, 68, 'F');
     doc.setDrawColor(203, 213, 225); // slate-300
-    doc.rect(40, 245, pageWidth - 80, 50, 'S');
+    doc.rect(40, 243, pageWidth - 80, 68, 'S');
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8.5);
     doc.setTextColor(15, 23, 42);
-    doc.text("CONTRACT EARNED VALUE & COST COMPLIANCE INDICATORS (FIDIC STATUS):", 55, 260);
+    doc.text("CONTRACT EARNED VALUE & COST COMPLIANCE INDICATORS (FIDIC STATUS):", 52, 257, { maxWidth: pageWidth - 104 });
     
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7.5);
     doc.setTextColor(71, 85, 105);
-    doc.text(`Earned Value (EV): Br. ${(EV / 1_000_000).toFixed(2)} M`, 55, 273);
-    doc.text(`Planned Value (PV): Br. ${(PV / 1_000_000).toFixed(2)} M`, 210, 273);
-    doc.text(`Actual Certificate Paid Cost (AC): Br. ${(AC / 1_000_000).toFixed(2)} M`, 365, 273);
+    doc.text(`Earned Value (EV): Br. ${(EV / 1_000_000).toFixed(2)} M`, 52, 273, { maxWidth: 150 });
+    doc.text(`Planned Value (PV): Br. ${(PV / 1_000_000).toFixed(2)} M`, 210, 273, { maxWidth: 150 });
+    doc.text(`Actual Certified Cost (AC): Br. ${(AC / 1_000_000).toFixed(2)} M`, 368, 273, { maxWidth: 155 });
     
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    doc.text(`Cost Performance Index (CPI): ${CPI.toFixed(3)} ${CPI >= 1 ? '(UNDER BUDGET)' : '(OVER BUDGET RISK)'}`, 55, 286);
-    doc.text(`Schedule Performance Index (SPI): ${SPI.toFixed(3)} ${SPI >= 1 ? '(PROPELLED)' : '(LAGGING BEHIND)'}`, 215, 286);
-    doc.text(`Schedule Variance (SV): ${SV_Mil.toFixed(2)} M Birr (${SV_pct.toFixed(2)}% slippage)`, 365, 286);
+    doc.setFontSize(7.5);
+    doc.text(`Cost Performance Index (CPI): ${CPI.toFixed(3)} ${CPI >= 1 ? '[UNDER BUDGET]' : '[OVER BUDGET RISK]'}`, 52, 293, { maxWidth: 165 });
+    doc.text(`Schedule Performance Index (SPI): ${SPI.toFixed(3)} ${SPI >= 1 ? '[ON SCHEDULE]' : '[SLIPPING]'}`, 225, 293, { maxWidth: 145 });
+    doc.text(`Schedule Variance (SV): ${SV_Mil.toFixed(2)} M (${SV_pct.toFixed(2)}%)`, 380, 293, { maxWidth: 145 });
 
     // Primary KPI Gauges Block
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9.5);
     doc.setTextColor(15, 23, 42);
-    doc.text("CHIEF REGULATORY PROGRESS & EFFICIENCY METRICS (KPI)", 40, 315);
+    doc.text("CHIEF REGULATORY PROGRESS & EFFICIENCY METRICS (KPI)", 40, 327);
     
     const primaryGauges = [
       { name: "Project Progress", val: `${p.physicalProgress.toFixed(2)}%` },
@@ -1336,26 +1336,26 @@ export default function DashboardView({
     primaryGauges.forEach((cg, idx) => {
       const bx = 40 + idx * 175;
       doc.setFillColor(254, 254, 254);
-      doc.rect(bx, 325, 165, 55, 'F');
+      doc.rect(bx, 337, 165, 55, 'F');
       doc.setDrawColor(226, 232, 240);
-      doc.rect(bx, 325, 165, 55, 'S');
+      doc.rect(bx, 337, 165, 55, 'S');
       
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(8);
       doc.setTextColor(30, 41, 59);
-      doc.text(cg.name, bx + 10, 342, { maxWidth: 145 });
+      doc.text(cg.name, bx + 10, 354, { maxWidth: 145 });
       
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
       doc.setTextColor(59, 130, 246); // href blue
-      doc.text(cg.val, bx + 10, 368);
+      doc.text(cg.val, bx + 10, 380);
     });
 
     // 10 Secondary indicators list
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9.5);
     doc.setTextColor(15, 23, 42);
-    doc.text("ADMINISTRATIVE COMPREHENSIVE PERFORMANCE CARD", 40, 405);
+    doc.text("ADMINISTRATIVE COMPREHENSIVE PERFORMANCE CARD", 40, 418);
     
     const secondaryKeys = [
       { label: "Cost Overrun (G3)", score: `${costOverrun.toFixed(2)}%` },
@@ -1374,7 +1374,7 @@ export default function DashboardView({
       const col = idx % 2;
       const row = Math.floor(idx / 2);
       const kbx = 40 + col * 260;
-      const kby = 415 + row * 28;
+      const kby = 428 + row * 28;
       
       doc.setFillColor(248, 250, 252);
       doc.rect(kbx, kby, 250, 23, 'F');
