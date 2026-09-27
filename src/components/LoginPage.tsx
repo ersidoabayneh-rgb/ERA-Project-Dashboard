@@ -587,7 +587,7 @@ export default function LoginPage({ onLoginSuccess, getUsers, saveUsers }: Login
                         required
                         value={fullName}
                         onChange={(e) => setFullName(e.target.value)}
-                        placeholder="e.g. Eng. Dawit Kebede"
+                        placeholder="e.g. Ersido Abayneh"
                         className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 rounded-xl py-2 pl-9 pr-3 text-xs text-slate-800 dark:text-slate-100 outline-none focus:border-blue-500 dark:focus:border-blue-400 focus:bg-white dark:focus:bg-slate-900 transition-all duration-200"
                       />
                     </div>
@@ -604,7 +604,7 @@ export default function LoginPage({ onLoginSuccess, getUsers, saveUsers }: Login
                         required
                         value={username}
                         onChange={(e) => setUsername(e.target.value)}
-                        placeholder="e.g. dawit.k"
+                        placeholder="e.g. ersidoabay"
                         className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 rounded-xl py-2 pl-9 pr-3 text-xs text-slate-800 dark:text-slate-100 outline-none focus:border-blue-500 dark:focus:border-blue-400 focus:bg-white dark:focus:bg-slate-900 transition-all duration-200"
                       />
                     </div>
@@ -624,7 +624,7 @@ export default function LoginPage({ onLoginSuccess, getUsers, saveUsers }: Login
                         required
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        placeholder="e.g. dawit.k@era.gov.et"
+                        placeholder="e.g. ersidoabayneh@gmail.com"
                         className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 rounded-xl py-2 pl-9 pr-3 text-xs text-slate-800 dark:text-slate-100 outline-none focus:border-blue-500 dark:focus:border-blue-400 focus:bg-white dark:focus:bg-slate-900 transition-all duration-200"
                       />
                     </div>
@@ -640,7 +640,7 @@ export default function LoginPage({ onLoginSuccess, getUsers, saveUsers }: Login
                         type="tel"
                         value={phone}
                         onChange={(e) => setPhone(e.target.value)}
-                        placeholder="e.g. +251 911 234567"
+                        placeholder="e.g. +251916337160"
                         className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 rounded-xl py-2 pl-9 pr-3 text-xs text-slate-800 dark:text-slate-100 outline-none focus:border-blue-500 dark:focus:border-blue-400 focus:bg-white dark:focus:bg-slate-900 transition-all duration-200"
                       />
                     </div>
