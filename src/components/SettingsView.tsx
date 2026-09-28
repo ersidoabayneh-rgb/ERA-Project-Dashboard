@@ -22,7 +22,20 @@ import {
   Award,
   Plus,
   Trash2,
-  Palette
+  Palette,
+  FileText,
+  Printer,
+  ToggleLeft,
+  ToggleRight,
+  FileSpreadsheet,
+  Building,
+  Activity,
+  PieChart,
+  Calendar,
+  CreditCard,
+  MapPin,
+  RotateCcw,
+  Check
 } from 'lucide-react';
 import { 
   User, 
@@ -30,7 +43,9 @@ import {
   ConsultantScoringWeights, 
   DEFAULT_CONTRACTOR_SCORING_WEIGHTS, 
   DEFAULT_CONSULTANT_SCORING_WEIGHTS,
-  CustomScoringCriterion
+  CustomScoringCriterion,
+  PdfReportConfig,
+  DEFAULT_PDF_REPORT_CONFIG
 } from '../types';
 import { safeSyncScoringWeights } from '../lib/apiSync';
 
@@ -77,6 +92,8 @@ interface SettingsViewProps {
   allUsers?: User[];
   onApproveUser?: (username: string) => void;
   onRejectUser?: (username: string) => void;
+  pdfReportConfig?: PdfReportConfig;
+  onUpdatePdfReportConfig?: (config: PdfReportConfig) => void;
 }
 
 export default function SettingsView({
@@ -101,7 +118,9 @@ export default function SettingsView({
   onUpdateScoringWeights,
   allUsers = [],
   onApproveUser,
-  onRejectUser
+  onRejectUser,
+  pdfReportConfig: propsPdfConfig,
+  onUpdatePdfReportConfig
 }: SettingsViewProps) {
 
   const isMasterAdmin = Boolean(
@@ -117,6 +136,82 @@ export default function SettingsView({
   const [tempConsultantWeights, setTempConsultantWeights] = useState<ConsultantScoringWeights>(consultantWeights);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
+
+  // PDF Report Configuration State
+  const [pdfConfig, setPdfConfig] = useState<PdfReportConfig>(() => {
+    if (propsPdfConfig) return propsPdfConfig;
+    try {
+      const saved = localStorage.getItem('era_pdf_report_config');
+      if (saved) return { ...DEFAULT_PDF_REPORT_CONFIG, ...JSON.parse(saved) };
+    } catch (e) {
+      console.error('Failed to parse era_pdf_report_config', e);
+    }
+    return DEFAULT_PDF_REPORT_CONFIG;
+  });
+
+  const handleTogglePdfModule = (key: keyof PdfReportConfig) => {
+    const updated = { ...pdfConfig, [key]: !pdfConfig[key] };
+    setPdfConfig(updated);
+    localStorage.setItem('era_pdf_report_config', JSON.stringify(updated));
+    if (onUpdatePdfReportConfig) {
+      onUpdatePdfReportConfig(updated);
+    }
+    setSaveSuccessMessage(`PDF Report Module "${key}" ${updated[key] ? 'ENABLED' : 'DISABLED'}. Configuration saved.`);
+    setTimeout(() => setSaveSuccessMessage(null), 3000);
+  };
+
+  const handleApplyPdfPreset = (preset: 'all' | 'summary' | 'financial' | 'physical' | 'reset') => {
+    let updated: PdfReportConfig;
+    if (preset === 'all' || preset === 'reset') {
+      updated = { ...DEFAULT_PDF_REPORT_CONFIG };
+    } else if (preset === 'summary') {
+      updated = {
+        includeMetadataProfile: true,
+        includeEvmIndicators: true,
+        includePrimaryGauges: true,
+        includeSecondaryKpis: false,
+        includeAnnualAccomplishment: false,
+        includeIpcDisbursement: false,
+        includeEngineeringQuantities: false,
+        includeRowMetrics: false,
+        includeSignOffBlock: true,
+        includeHeaderBorders: true,
+      };
+    } else if (preset === 'financial') {
+      updated = {
+        includeMetadataProfile: true,
+        includeEvmIndicators: true,
+        includePrimaryGauges: false,
+        includeSecondaryKpis: false,
+        includeAnnualAccomplishment: false,
+        includeIpcDisbursement: true,
+        includeEngineeringQuantities: false,
+        includeRowMetrics: false,
+        includeSignOffBlock: true,
+        includeHeaderBorders: true,
+      };
+    } else { // physical
+      updated = {
+        includeMetadataProfile: true,
+        includeEvmIndicators: false,
+        includePrimaryGauges: true,
+        includeSecondaryKpis: false,
+        includeAnnualAccomplishment: true,
+        includeIpcDisbursement: false,
+        includeEngineeringQuantities: true,
+        includeRowMetrics: true,
+        includeSignOffBlock: true,
+        includeHeaderBorders: true,
+      };
+    }
+    setPdfConfig(updated);
+    localStorage.setItem('era_pdf_report_config', JSON.stringify(updated));
+    if (onUpdatePdfReportConfig) {
+      onUpdatePdfReportConfig(updated);
+    }
+    setSaveSuccessMessage(`Applied PDF Report Preset: ${preset.toUpperCase()}`);
+    setTimeout(() => setSaveSuccessMessage(null), 3500);
+  };
 
   const handleOpenModal = () => {
     setTempContractorWeights(contractorWeights);
@@ -258,6 +353,228 @@ export default function SettingsView({
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Executive PDF Report Configuration & Module Selection Section */}
+      <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/70 p-6 rounded-2xl shadow-sm space-y-6">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-700/60 pb-4">
+          <div className="flex items-start gap-3">
+            <div className="p-3 bg-blue-500/15 text-blue-600 dark:text-blue-400 rounded-xl border border-blue-500/30 shrink-0">
+              <Printer className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="font-extrabold text-base text-slate-900 dark:text-zinc-100 flex items-center gap-2">
+                  <span>Executive PDF Report Configuration & Module Selection</span>
+                  <span className="text-[10px] font-black uppercase px-2 py-0.5 bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 rounded border border-blue-200 dark:border-blue-800">
+                    Print-Friendly Customizer
+                  </span>
+                </h3>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Toggle specific report modules (e.g., ROW metrics, KPI audit, Annual Progress, IPCs) before generating print-friendly PDF dossiers. Customizing active modules produces cleaner, targeted executive outputs.
+              </p>
+            </div>
+          </div>
+
+          {/* Quick Presets */}
+          <div className="flex items-center gap-1.5 flex-wrap shrink-0">
+            <span className="text-[10px] font-extrabold uppercase text-slate-400 mr-1 block sm:inline">Presets:</span>
+            <button
+              type="button"
+              onClick={() => handleApplyPdfPreset('all')}
+              className="px-2.5 py-1 text-2xs font-extrabold bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/60 dark:hover:bg-blue-900 text-blue-700 dark:text-blue-300 rounded-lg border border-blue-200 dark:border-blue-800 transition cursor-pointer"
+            >
+              🌟 All Modules
+            </button>
+            <button
+              type="button"
+              onClick={() => handleApplyPdfPreset('summary')}
+              className="px-2.5 py-1 text-2xs font-extrabold bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900 text-emerald-700 dark:text-emerald-300 rounded-lg border border-emerald-200 dark:border-emerald-800 transition cursor-pointer"
+            >
+              📊 Executive Summary
+            </button>
+            <button
+              type="button"
+              onClick={() => handleApplyPdfPreset('financial')}
+              className="px-2.5 py-1 text-2xs font-extrabold bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/60 dark:hover:bg-purple-900 text-purple-700 dark:text-purple-300 rounded-lg border border-purple-200 dark:border-purple-800 transition cursor-pointer"
+            >
+              💳 Financial & IPCs
+            </button>
+            <button
+              type="button"
+              onClick={() => handleApplyPdfPreset('physical')}
+              className="px-2.5 py-1 text-2xs font-extrabold bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/60 dark:hover:bg-amber-900 text-amber-700 dark:text-amber-300 rounded-lg border border-amber-200 dark:border-amber-800 transition cursor-pointer"
+            >
+              📏 Physical & ROW
+            </button>
+            <button
+              type="button"
+              onClick={() => handleApplyPdfPreset('reset')}
+              className="px-2.5 py-1 text-2xs font-extrabold bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-lg transition cursor-pointer flex items-center gap-1"
+              title="Reset all report modules to default enabled"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span>Reset</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Modules Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+          {[
+            {
+              key: 'includeMetadataProfile' as keyof PdfReportConfig,
+              label: 'Project Metadata Profile',
+              cat: 'Overview',
+              desc: 'Consulting Engineer, Contractor, Original Cost Base, Approved Variations, and Contractual EOT & Claims.',
+              Icon: Building
+            },
+            {
+              key: 'includeEvmIndicators' as keyof PdfReportConfig,
+              label: 'FIDIC Earned Value Indicators',
+              cat: 'Overview',
+              desc: 'Earned Value (EV), Planned Value (PV), Actual Certified Cost (AC), CPI, SPI, and Schedule Variance.',
+              Icon: Activity
+            },
+            {
+              key: 'includePrimaryGauges' as keyof PdfReportConfig,
+              label: 'Primary Regulatory Progress Gauges',
+              cat: 'Overview',
+              desc: 'Project Physical Progress %, Time Elapsed Schedule %, and Progress-to-Elapsed Velocity Ratio %.',
+              Icon: PieChart
+            },
+            {
+              key: 'includeSecondaryKpis' as keyof PdfReportConfig,
+              label: 'Administrative KPI Scorecard',
+              cat: 'Overview',
+              desc: 'Detailed KPI evaluation scores for G3 Cost Overrun through G12 Contract Compliance.',
+              Icon: Award
+            },
+            {
+              key: 'includeAnnualAccomplishment' as keyof PdfReportConfig,
+              label: 'Annual Progress Accomplishment',
+              cat: 'Physical & Technical',
+              desc: 'Fiscal Year (EFY) Contractor Plan, ERA Adjusted Target Plan, Actual Accomplishment, and Ratio.',
+              Icon: Calendar
+            },
+            {
+              key: 'includeIpcDisbursement' as keyof PdfReportConfig,
+              label: 'Certified IPCs & Price Escalation',
+              cat: 'Financial',
+              desc: 'Registered Interim Payment Certificates list, Disbursed Shares, and Matured Price Escalation Audit.',
+              Icon: CreditCard
+            },
+            {
+              key: 'includeEngineeringQuantities' as keyof PdfReportConfig,
+              label: 'BOQ Quantities Compliance Table',
+              cat: 'Physical & Technical',
+              desc: 'Engineering bill-of-quantities by unit of measurement (Km, M3, etc.), scheduled plan vs executed volumes.',
+              Icon: FileSpreadsheet
+            },
+            {
+              key: 'includeRowMetrics' as keyof PdfReportConfig,
+              label: 'Right-of-Way (ROW) & Utilities',
+              cat: 'Physical & Technical',
+              desc: 'Obstruction metrics table (Project length, Contractor request, PAP compensation, pole removal status).',
+              Icon: MapPin
+            },
+            {
+              key: 'includeSignOffBlock' as keyof PdfReportConfig,
+              label: 'Official Dual Sign-off Block',
+              cat: 'Governance',
+              desc: 'Program Director Report Generator and CPM DDG Authentication Seal & approval signature lines.',
+              Icon: CheckCircle2
+            },
+            {
+              key: 'includeHeaderBorders' as keyof PdfReportConfig,
+              label: 'Page Frame Borders & ERA Logos',
+              cat: 'Governance',
+              desc: 'Standardized outer page boundary border frame, official ERA emblem header logo, and Date Stamp badge.',
+              Icon: Shield
+            }
+          ].map((mod) => {
+            const isActive = Boolean(pdfConfig[mod.key]);
+            const ModIcon = mod.Icon;
+            return (
+              <div
+                key={mod.key}
+                onClick={() => handleTogglePdfModule(mod.key)}
+                className={`p-4 rounded-xl border transition-all cursor-pointer select-none space-y-2.5 flex flex-col justify-between ${
+                  isActive
+                    ? 'bg-blue-50/40 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800/80 shadow-xs'
+                    : 'bg-slate-50/70 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800 opacity-70 hover:opacity-100'
+                }`}
+              >
+                <div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${
+                      mod.cat === 'Financial' ? 'bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300' :
+                      mod.cat === 'Physical & Technical' ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300' :
+                      mod.cat === 'Governance' ? 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300' :
+                      'bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300'
+                    }`}>
+                      {mod.cat}
+                    </span>
+
+                    <div className="flex items-center gap-1.5">
+                      <span className={`text-[10px] font-bold ${isActive ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'}`}>
+                        {isActive ? 'Included' : 'Excluded'}
+                      </span>
+                      {isActive ? (
+                        <ToggleRight className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                      ) : (
+                        <ToggleLeft className="w-6 h-6 text-slate-400 dark:text-slate-600" />
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 mt-2">
+                    <ModIcon className={`w-4 h-4 shrink-0 ${isActive ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400'}`} />
+                    <h4 className="font-extrabold text-xs text-slate-850 dark:text-zinc-100 line-clamp-1">
+                      {mod.label}
+                    </h4>
+                  </div>
+
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug mt-1.5">
+                    {mod.desc}
+                  </p>
+                </div>
+
+                <div className="pt-2 border-t border-slate-200/60 dark:border-slate-800 flex items-center justify-between text-[10px] font-mono">
+                  <span className="text-slate-400">PDF Output State</span>
+                  <span className={`font-bold flex items-center gap-1 ${isActive ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                    {isActive ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
+                    <span>{isActive ? 'ACTIVE MODULE' : 'DISABLED'}</span>
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Live Summary Footer */}
+        <div className="p-4 bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700/60 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2">
+            <FileText className="w-4 h-4 text-blue-500 shrink-0" />
+            <span className="font-bold text-slate-700 dark:text-slate-200">
+              Active Configuration Summary:
+            </span>
+            <span className="font-mono font-black text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950 px-2 py-0.5 rounded border border-blue-200 dark:border-blue-800">
+              {Object.values(pdfConfig).filter(Boolean).length} / 10 Modules Active
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+            <span>Estimated Pagination:</span>
+            <span className="font-mono font-bold text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-800 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700">
+              {Object.values(pdfConfig).filter(Boolean).length <= 4 ? '~1 Page' : Object.values(pdfConfig).filter(Boolean).length <= 7 ? '~2 Pages' : '~3 Pages'}
+            </span>
+            <span className="text-emerald-600 dark:text-emerald-400 font-bold ml-1">
+              ✓ Saved to Storage
+            </span>
           </div>
         </div>
       </div>

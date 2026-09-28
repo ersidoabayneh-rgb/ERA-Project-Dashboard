@@ -2258,7 +2258,7 @@ export function defaultProjectTemplate(): Project {
     name: "Daye-Girja-Melka Desta & Meleya-Mejo Spur",
     client: "Ethiopian Roads Administration",
     consultant: "LEA Associates South Asia JV in Association with SABA Engineering PLC",
-    contractor: "China Tisiju Civil Engineering Group",
+    contractor: "China Wu Yi Co. Ltd",
     signDate: "2020-04-28",
     startDate: "2020-12-29",
     origDays: 1095,

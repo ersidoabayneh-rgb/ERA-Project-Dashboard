@@ -50,7 +50,7 @@ import {
   Landmark
 } from 'lucide-react';
 
-import { Project, User, ApprovalRequest, PrivateDraft, WorkflowAuditLogEntry, KpiAllocatedItem, SeriesItem, MonthlyProgress, LinearData, RowMetric, ProgressPlan, PaymentItem, AnnualItem, WorkProgramActivity, BondGuarantee, formatAccounting, ProjectDocument, ALL_EDITABLE_PAGES, EditablePageOption, ProjectLifecycleStatus, isProjectClosed, isCpmOrMasterAdmin, isRecentlyUpdated, formatRelativeTime, ContractorScoringWeights, ConsultantScoringWeights, DEFAULT_CONTRACTOR_SCORING_WEIGHTS, DEFAULT_CONSULTANT_SCORING_WEIGHTS, SupervisionConsultantInfo, ThemeSettings, DEFAULT_THEME_SETTINGS } from './types';
+import { Project, User, ApprovalRequest, PrivateDraft, WorkflowAuditLogEntry, KpiAllocatedItem, SeriesItem, MonthlyProgress, LinearData, RowMetric, ProgressPlan, PaymentItem, AnnualItem, WorkProgramActivity, BondGuarantee, formatAccounting, ProjectDocument, ALL_EDITABLE_PAGES, EditablePageOption, ProjectLifecycleStatus, isProjectClosed, isCpmOrMasterAdmin, isRecentlyUpdated, formatRelativeTime, ContractorScoringWeights, ConsultantScoringWeights, DEFAULT_CONTRACTOR_SCORING_WEIGHTS, DEFAULT_CONSULTANT_SCORING_WEIGHTS, SupervisionConsultantInfo, ThemeSettings, DEFAULT_THEME_SETTINGS, PdfReportConfig, DEFAULT_PDF_REPORT_CONFIG } from './types';
 import { createProjectHistoryEntry } from './lib/projectAuditDiff';
 
 export function hasApprovalCredentials(user: User | null): boolean {
@@ -515,6 +515,17 @@ export default function App() {
 
   // User Guide Modal state
   const [isUserGuideOpen, setIsUserGuideOpen] = useState(false);
+
+  // PDF Report Configuration state
+  const [pdfReportConfig, setPdfReportConfig] = useState<PdfReportConfig>(() => {
+    try {
+      const saved = localStorage.getItem('era_pdf_report_config');
+      if (saved) return { ...DEFAULT_PDF_REPORT_CONFIG, ...JSON.parse(saved) };
+    } catch (e) {
+      console.error('Failed to parse era_pdf_report_config in App', e);
+    }
+    return DEFAULT_PDF_REPORT_CONFIG;
+  });
 
   // Sync page view, active tab, and project ID state to local storage to persist on refresh
   useEffect(() => {
@@ -5085,6 +5096,8 @@ let isBatchSyncRunning = false;
                   allUsers={usersListState}
                   onApproveUser={handleApproveUserSetting}
                   onRejectUser={handleRejectUserSetting}
+                  pdfReportConfig={pdfReportConfig}
+                  onUpdatePdfReportConfig={setPdfReportConfig}
                 />
               )}
             </>

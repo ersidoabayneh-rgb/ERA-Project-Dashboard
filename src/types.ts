@@ -1311,3 +1311,29 @@ export const DEFAULT_THEME_SETTINGS: ThemeSettings = {
   opacity: 30,
 };
 
+export interface PdfReportConfig {
+  includeMetadataProfile: boolean;       // Executive Project Metadata Profile
+  includeEvmIndicators: boolean;         // FIDIC Earned Value & Cost Compliance Indicators
+  includePrimaryGauges: boolean;         // Chief Regulatory Progress & Efficiency Metrics (Primary Gauges)
+  includeSecondaryKpis: boolean;         // Administrative Performance Card (Secondary KPI Scores G3–G12)
+  includeAnnualAccomplishment: boolean;  // Annual Progress Accomplishment & EFY Targets
+  includeIpcDisbursement: boolean;       // Registered Certified IPCs & Price Escalation Audit
+  includeEngineeringQuantities: boolean; // Quantities Compliance & Linear Activities (BOQ Table)
+  includeRowMetrics: boolean;            // Right-of-Way (ROW) Utility Removability & Disputes Report
+  includeSignOffBlock: boolean;          // Official Dual Sign-Off Block
+  includeHeaderBorders: boolean;         // Executive Page Frame Borders & Official ERA Logo Headers
+}
+
+export const DEFAULT_PDF_REPORT_CONFIG: PdfReportConfig = {
+  includeMetadataProfile: true,
+  includeEvmIndicators: true,
+  includePrimaryGauges: true,
+  includeSecondaryKpis: true,
+  includeAnnualAccomplishment: true,
+  includeIpcDisbursement: true,
+  includeEngineeringQuantities: true,
+  includeRowMetrics: true,
+  includeSignOffBlock: true,
+  includeHeaderBorders: true,
+};
+
