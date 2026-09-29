@@ -48,11 +48,13 @@ input:disabled, select:disabled {
 /* Global Report Table Print & PDF Helpers */
 .report-table,
 .printable-table,
-.pdf-table {
+.pdf-table,
+.table-fixed-report {
   width: 100% !important;
   max-width: 100% !important;
   border-collapse: collapse !important;
-  table-layout: auto !important;
+  table-layout: fixed !important;
+  box-sizing: border-box !important;
 }
 
 .report-table th,
@@ -60,14 +62,45 @@ input:disabled, select:disabled {
 .printable-table th,
 .printable-table td,
 .pdf-table th,
-.pdf-table td {
+.pdf-table td,
+.table-fixed-report th,
+.table-fixed-report td {
   white-space: normal !important;
   word-wrap: break-word !important;
   overflow-wrap: anywhere !important;
   word-break: break-word !important;
   hyphens: auto !important;
   box-sizing: border-box !important;
+  overflow: hidden !important;
 }
+
+/* Key Column Width Definitions for Consulting Engineer & Contractor Names */
+.col-engineer,
+.col-contractor,
+.col-firm,
+th.col-engineer,
+td.col-engineer,
+th.col-contractor,
+td.col-contractor,
+th.col-firm,
+td.col-firm,
+[data-col="engineer"],
+[data-col="contractor"],
+[data-col="firm"] {
+  width: 32% !important;
+  max-width: 32% !important;
+  word-wrap: break-word !important;
+  overflow-wrap: anywhere !important;
+  word-break: break-word !important;
+  white-space: normal !important;
+}
+
+/* Explicit Width Utility Classes for Report Tables */
+.col-w-xs { width: 8% !important; max-width: 8% !important; }
+.col-w-sm { width: 14% !important; max-width: 14% !important; }
+.col-w-md { width: 24% !important; max-width: 24% !important; }
+.col-w-lg { width: 34% !important; max-width: 34% !important; }
+.col-w-xl { width: 48% !important; max-width: 48% !important; }
 
 @media print {
   /* Ensure all typography uses Times New Roman with normal spacing */
@@ -83,6 +116,7 @@ input:disabled, select:disabled {
     max-height: none !important;
     height: auto !important;
     width: 100% !important;
+    max-width: 100% !important;
   }
 
   /* Body text defaults for dense professional print reports */
@@ -104,16 +138,20 @@ input:disabled, select:disabled {
   }
 
   /* Tables layout standard across all reports:
-     Auto-calculated column widths and explicit text wrapping to prevent word warping */
-  table {
+     Fixed column widths and explicit text wrapping to ensure Consulting Engineer and Contractor names do not expand beyond container boundaries */
+  table,
+  .report-table,
+  .printable-table,
+  .pdf-table {
     width: 100% !important;
     max-width: 100% !important;
     border-collapse: collapse !important;
-    table-layout: auto !important;
+    table-layout: fixed !important;
     page-break-inside: auto !important;
     break-inside: auto !important;
     margin-top: 8px !important;
     margin-bottom: 12px !important;
+    box-sizing: border-box !important;
   }
 
   tr {
@@ -131,14 +169,13 @@ input:disabled, select:disabled {
     padding: 5px 7px !important;
     text-align: left !important;
     vertical-align: middle !important;
-    width: auto !important;
-    /* Text Wrapping: cell expands vertically, wrapping all text cleanly */
+    /* Text Wrapping: cell expands vertically, wrapping all text cleanly without horizontal expansion */
     white-space: normal !important;
     word-wrap: break-word !important;
     overflow-wrap: anywhere !important;
     word-break: break-word !important;
     hyphens: auto !important;
-    overflow: visible !important;
+    overflow: hidden !important;
     box-sizing: border-box !important;
   }
 
