@@ -303,8 +303,28 @@ export default function GroupReportGenerator({
     }
   }, []);
 
-  // Helper check for project access (matching standard view limits) - all users share the single database
+  const isDirAdmin = currentUserObj?.role === 'directorate_admin' && !isMasterAdmin;
+  const isPmoAdmin = currentUserObj?.role === 'pmo_admin' && !isMasterAdmin;
+  const isCpmAdmin = currentUserObj?.role === 'cpm_admin' && !isMasterAdmin;
+
+  // Helper check for project access based on user role and assigned projects
   const isAccessible = (p: Project) => {
+    if (currentUserObj?.accessibleProjects && Array.isArray(currentUserObj.accessibleProjects) && currentUserObj.accessibleProjects.length > 0) {
+      return currentUserObj.accessibleProjects.includes(p.id);
+    }
+    if (isMasterAdmin) return true;
+    if (isDirAdmin) {
+      if (currentUserObj.assignedDirectorate) {
+        return (p.programDirectorate || 'Southern') === currentUserObj.assignedDirectorate;
+      }
+      return true;
+    }
+    if (isPmoAdmin) {
+      if (currentUserObj.assignedPmo) {
+        return (p.pmo || '') === currentUserObj.assignedPmo;
+      }
+      return true;
+    }
     return true;
   };
 
