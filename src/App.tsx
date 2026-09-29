@@ -4174,78 +4174,11 @@ let isBatchSyncRunning = false;
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap">
-                  {/* EDIT & SAVE PROJECT INFORMATION BUTTONS */}
-                  {!isEditingDossier ? (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setIsDossierExpanded(true);
-                        setIsEditingDossier(true);
-                      }}
-                      className="inline-flex items-center gap-1.5 text-xs font-black uppercase tracking-wide bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-3.5 py-1.5 rounded-xl shadow-xs transition hover:shadow-md cursor-pointer border border-blue-500/30"
-                      title="Edit project information, contract specifications, dates, milestones and stakeholders"
-                    >
-                      <Edit3 className="w-3.5 h-3.5" />
-                      <span>Edit Project Information</span>
-                    </button>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setIsEditingDossier(false);
-                          // Reset form to active project values
-                          setEditProjectName(currentProject.name || '');
-                          setEditClient(currentProject.client);
-                          setEditConsultant(currentProject.supervisionConsultant?.firmName || currentProject.consultant || '');
-                          setEditContractor(currentProject.contractor);
-                          setEditSignDate(currentProject.signDate);
-                          setEditStartDate(currentProject.startDate);
-                          setEditOrigDays(currentProject.origDays);
-                          setEditEotDays(currentProject.eotDays);
-                          setEditInterimEotDays(currentProject.interimEotDays || 0);
-                          setEditOrigAmount(currentProject.origAmount);
-                          setEditProvisionalSum(currentProject.provisionalSum);
-                          const vVal = currentProject.variation || 0;
-                          setEditVariation(vVal);
-                          setEditVariationStr(formatAccounting(vVal, ''));
-                          setEditEnableUsdPayments(currentProject.enableUsdPayments !== undefined ? Boolean(currentProject.enableUsdPayments) : Boolean(currentProject.supervisionConsultant?.enableUsdPayments));
-                          setEditLengthKm(currentProject.lengthKm);
-                          setEditClassification(currentProject.classification);
-                          setEditContractType(currentProject.contractType);
-                          setEditProgramDirectorate(currentProject.programDirectorate || 'Southern');
-                          setEditPmo(currentProject.pmo || 'PMO 1');
-                          setEditFidicContractType(currentProject.fidicContractType || '');
-                        }}
-                        className="inline-flex items-center gap-1 text-xs font-bold uppercase bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 px-3 py-1.5 rounded-xl text-slate-700 dark:text-slate-300 transition cursor-pointer"
-                        title="Discard changes and cancel editing"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                        <span>Cancel</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleSaveDossier();
-                        }}
-                        className="inline-flex items-center gap-1.5 text-xs font-black uppercase tracking-wide bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white px-4 py-1.5 rounded-xl shadow-xs transition hover:shadow-md cursor-pointer border border-emerald-500/40"
-                        title="Save project information changes to project baseline and database"
-                      >
-                        <Save className="w-3.5 h-3.5" />
-                        <span>Save Project Information</span>
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Expand / Collapse Toggle button */}
+                  {/* Expand / Collapse Toggle button (Show Details / Hide Details) */}
                   <button
                     type="button"
                     onClick={() => setIsDossierExpanded(!isDossierExpanded)}
-                    className="flex items-center gap-1.5 text-2xs font-extrabold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-3 py-1.5 rounded-xl border border-blue-100 dark:border-blue-900/30 transition hover:bg-blue-100 dark:hover:bg-blue-900/50 cursor-pointer"
+                    className="flex items-center gap-1.5 text-2xs font-extrabold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-3.5 py-1.5 rounded-xl border border-blue-100 dark:border-blue-900/30 transition hover:bg-blue-100 dark:hover:bg-blue-900/50 cursor-pointer"
                     title={isDossierExpanded ? 'Hide Details' : 'Show Details'}
                   >
                     <span className="uppercase">{isDossierExpanded ? 'Hide Details' : 'Show Details'}</span>
@@ -4256,57 +4189,73 @@ let isBatchSyncRunning = false;
 
               {isDossierExpanded && (
                 <div className="border-t border-slate-100 dark:border-slate-800/80 pt-4 space-y-4">
-                  {/* Editing Active Notice Banner */}
-                  {isEditingDossier && (
-                    <div className="bg-gradient-to-r from-blue-500/10 via-indigo-500/10 to-emerald-500/10 border border-blue-200 dark:border-blue-900/60 rounded-2xl p-3 flex items-center justify-between flex-wrap gap-2">
-                      <div className="flex items-center gap-2">
-                        <Sparkles className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
-                        <span className="text-xs text-blue-950 dark:text-blue-200 font-bold">
-                          Editing Project Information: modify project name, stakeholders, calendar dates, costs, or classification below, then click <strong className="text-emerald-700 dark:text-emerald-300 font-black">"Save Project Information"</strong>.
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsEditingDossier(false);
-                            setEditProjectName(currentProject.name || '');
-                            setEditClient(currentProject.client);
-                            setEditConsultant(currentProject.supervisionConsultant?.firmName || currentProject.consultant || '');
-                            setEditContractor(currentProject.contractor);
-                            setEditSignDate(currentProject.signDate);
-                            setEditStartDate(currentProject.startDate);
-                            setEditOrigDays(currentProject.origDays);
-                            setEditEotDays(currentProject.eotDays);
-                            setEditInterimEotDays(currentProject.interimEotDays || 0);
-                            setEditOrigAmount(currentProject.origAmount);
-                            setEditProvisionalSum(currentProject.provisionalSum);
-                            const vVal = currentProject.variation || 0;
-                            setEditVariation(vVal);
-                            setEditVariationStr(formatAccounting(vVal, ''));
-                            setEditEnableUsdPayments(currentProject.enableUsdPayments !== undefined ? Boolean(currentProject.enableUsdPayments) : Boolean(currentProject.supervisionConsultant?.enableUsdPayments));
-                            setEditLengthKm(currentProject.lengthKm);
-                            setEditClassification(currentProject.classification);
-                            setEditContractType(currentProject.contractType);
-                            setEditProgramDirectorate(currentProject.programDirectorate || 'Southern');
-                            setEditPmo(currentProject.pmo || 'PMO 1');
-                            setEditFidicContractType(currentProject.fidicContractType || '');
-                          }}
-                          className="text-xs font-bold uppercase bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 px-3 py-1 rounded-lg text-slate-600 dark:text-slate-350 transition cursor-pointer"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleSaveDossier}
-                          className="inline-flex items-center gap-1.5 text-xs font-black uppercase tracking-wide bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1 rounded-lg shadow-xs transition cursor-pointer"
-                        >
-                          <Save className="w-3.5 h-3.5" />
-                          <span>Save Project Information</span>
-                        </button>
-                      </div>
+                  {/* Top Action Bar INSIDE expanded details only */}
+                  <div className="bg-gradient-to-r from-blue-500/10 via-indigo-500/10 to-emerald-500/10 border border-blue-200 dark:border-blue-900/60 rounded-2xl p-3 flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      {isEditingDossier && (
+                        <>
+                          <Sparkles className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                          <span className="text-xs text-blue-950 dark:text-blue-200 font-bold">
+                            Editing Mode Active: Modify project parameters below, then click "Save Project Information".
+                          </span>
+                        </>
+                      )}
                     </div>
-                  )}
+
+                    <div className="flex items-center gap-2">
+                      {!isEditingDossier ? (
+                        <button
+                          type="button"
+                          onClick={() => setIsEditingDossier(true)}
+                          className="inline-flex items-center gap-1.5 text-xs font-black uppercase tracking-wide bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-4 py-1.5 rounded-xl shadow-xs transition cursor-pointer border border-blue-500/30"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                          <span>Edit Project Information</span>
+                        </button>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsEditingDossier(false);
+                              setEditProjectName(currentProject.name || '');
+                              setEditClient(currentProject.client);
+                              setEditConsultant(currentProject.supervisionConsultant?.firmName || currentProject.consultant || '');
+                              setEditContractor(currentProject.contractor);
+                              setEditSignDate(currentProject.signDate);
+                              setEditStartDate(currentProject.startDate);
+                              setEditOrigDays(currentProject.origDays);
+                              setEditEotDays(currentProject.eotDays);
+                              setEditInterimEotDays(currentProject.interimEotDays || 0);
+                              setEditOrigAmount(currentProject.origAmount);
+                              setEditProvisionalSum(currentProject.provisionalSum);
+                              const vVal = currentProject.variation || 0;
+                              setEditVariation(vVal);
+                              setEditVariationStr(formatAccounting(vVal, ''));
+                              setEditEnableUsdPayments(currentProject.enableUsdPayments !== undefined ? Boolean(currentProject.enableUsdPayments) : Boolean(currentProject.supervisionConsultant?.enableUsdPayments));
+                              setEditLengthKm(currentProject.lengthKm);
+                              setEditClassification(currentProject.classification);
+                              setEditContractType(currentProject.contractType);
+                              setEditProgramDirectorate(currentProject.programDirectorate || 'Southern');
+                              setEditPmo(currentProject.pmo || 'PMO 1');
+                              setEditFidicContractType(currentProject.fidicContractType || '');
+                            }}
+                            className="text-xs font-bold uppercase bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 px-3 py-1.5 rounded-lg text-slate-700 dark:text-slate-300 transition cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleSaveDossier}
+                            className="inline-flex items-center gap-1.5 text-xs font-black uppercase tracking-wide bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-1.5 rounded-lg shadow-xs transition cursor-pointer"
+                          >
+                            <Save className="w-3.5 h-3.5" />
+                            <span>Save Project Information</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
 
                   {!isEditingDossier ? (
                     <div className="space-y-4">
