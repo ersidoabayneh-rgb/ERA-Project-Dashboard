@@ -5702,14 +5702,111 @@ export default function GroupReportGenerator({
     physicalProgress?: number;
   }
 
+  // Check if a period label is generic (like "Current Month", "Current Quarter", "Current EFY", "Current", etc.)
+  const isGenericPeriod = (str?: string): boolean => {
+    if (!str || typeof str !== 'string') return true;
+    const lower = str.trim().toLowerCase();
+    return (
+      lower === 'current month' ||
+      lower === 'current quarter' ||
+      lower === 'current efy' ||
+      lower === 'current' ||
+      lower === 'month' ||
+      lower === 'quarter' ||
+      lower === 'efy' ||
+      lower === 'active' ||
+      lower === 'live' ||
+      lower === 'default'
+    );
+  };
+
+  // Helper to resolve the exact month name (e.g. 'Aug 2026')
+  const resolveExactMonth = (proj?: Project | null, rawMonth?: string): string => {
+    if (rawMonth && !isGenericPeriod(rawMonth)) return rawMonth;
+    if (proj?.progressPlanLabels?.monthLabel && !isGenericPeriod(proj.progressPlanLabels.monthLabel)) {
+      return proj.progressPlanLabels.monthLabel;
+    }
+    if (proj?.progressPlanHistory && proj.progressPlanHistory.length > 0) {
+      const validHist = proj.progressPlanHistory.find(h => h.monthLabel && !isGenericPeriod(h.monthLabel));
+      if (validHist?.monthLabel) return validHist.monthLabel;
+    }
+    if (proj?.monthly && proj.monthly.length > 0) {
+      for (let i = proj.monthly.length - 1; i >= 0; i--) {
+        const m = proj.monthly[i];
+        if (m.month && !isGenericPeriod(m.month)) return m.month;
+      }
+    }
+    if (projects && projects.length > 0) {
+      const otherProj = projects.find(p => p.progressPlanLabels?.monthLabel && !isGenericPeriod(p.progressPlanLabels.monthLabel));
+      if (otherProj?.progressPlanLabels?.monthLabel) return otherProj.progressPlanLabels.monthLabel;
+    }
+    return 'Aug 2026';
+  };
+
+  // Helper to resolve the exact quarter name (e.g. 'Q1 (Jul-Sep 2026)')
+  const resolveExactQuarter = (proj?: Project | null, rawQuarter?: string, exactMonth?: string): string => {
+    if (rawQuarter && !isGenericPeriod(rawQuarter)) return rawQuarter;
+    if (proj?.progressPlanLabels?.quarterLabel && !isGenericPeriod(proj.progressPlanLabels.quarterLabel)) {
+      return proj.progressPlanLabels.quarterLabel;
+    }
+    if (proj?.progressPlanHistory && proj.progressPlanHistory.length > 0) {
+      const validHist = proj.progressPlanHistory.find(h => h.quarterLabel && !isGenericPeriod(h.quarterLabel));
+      if (validHist?.quarterLabel) return validHist.quarterLabel;
+    }
+    const mLower = (exactMonth || '').toLowerCase();
+    if (mLower.includes('jul') || mLower.includes('aug') || mLower.includes('sep')) {
+      return 'Q1 (Jul-Sep 2026)';
+    }
+    if (mLower.includes('oct') || mLower.includes('nov') || mLower.includes('dec')) {
+      return 'Q2 (Oct-Dec 2026)';
+    }
+    if (mLower.includes('jan') || mLower.includes('feb') || mLower.includes('mar')) {
+      return 'Q3 (Jan-Mar 2026)';
+    }
+    if (mLower.includes('apr') || mLower.includes('may') || mLower.includes('jun')) {
+      return 'Q4 (Apr-Jun 2026)';
+    }
+    return 'Q1 (Aug-Oct 2026)';
+  };
+
+  // Helper to resolve the exact EFY (e.g. '2019' or '2018')
+  const resolveExactEfy = (proj?: Project | null, rawEfy?: string, exactMonth?: string): string => {
+    if (rawEfy && !isGenericPeriod(rawEfy)) {
+      return rawEfy.replace(/^efy\s*/i, '').trim();
+    }
+    if (proj?.progressPlanLabels?.efyLabel && !isGenericPeriod(proj.progressPlanLabels.efyLabel)) {
+      return proj.progressPlanLabels.efyLabel.replace(/^efy\s*/i, '').trim();
+    }
+    if (proj?.progressPlanHistory && proj.progressPlanHistory.length > 0) {
+      const validHist = proj.progressPlanHistory.find(h => h.efyLabel && !isGenericPeriod(h.efyLabel));
+      if (validHist?.efyLabel) return validHist.efyLabel.replace(/^efy\s*/i, '').trim();
+    }
+    if (projects && projects.length > 0) {
+      const otherProj = projects.find(p => p.progressPlanLabels?.efyLabel && !isGenericPeriod(p.progressPlanLabels.efyLabel));
+      if (otherProj?.progressPlanLabels?.efyLabel) return otherProj.progressPlanLabels.efyLabel.replace(/^efy\s*/i, '').trim();
+    }
+    const mLower = (exactMonth || '').toLowerCase();
+    if (mLower.includes('2026')) {
+      if (mLower.includes('jul') || mLower.includes('aug') || mLower.includes('sep') || mLower.includes('oct') || mLower.includes('nov') || mLower.includes('dec')) {
+        return '2019';
+      }
+      return '2018';
+    }
+    return '2019';
+  };
+
   const availableMilestones = useMemo<MilestonePeriodOption[]>(() => {
     if (!activeComparisonProject) return [];
     const list: MilestonePeriodOption[] = [];
 
-    // 1. Live Workspace Milestone
-    const liveMonthLabel = activeComparisonProject.progressPlanLabels?.monthLabel || 'Current Month';
-    const liveQuarterLabel = activeComparisonProject.progressPlanLabels?.quarterLabel || 'Current Quarter';
-    const liveEfyLabel = activeComparisonProject.progressPlanLabels?.efyLabel || 'Current EFY';
+    const defaultMonth = resolveExactMonth(activeComparisonProject);
+    const defaultQuarter = resolveExactQuarter(activeComparisonProject, undefined, defaultMonth);
+    const defaultEfy = resolveExactEfy(activeComparisonProject, undefined, defaultMonth);
+
+    // 1. Live Workspace Milestone (Always with exact month, quarter, and EFY)
+    const liveMonthLabel = resolveExactMonth(activeComparisonProject, activeComparisonProject.progressPlanLabels?.monthLabel);
+    const liveQuarterLabel = resolveExactQuarter(activeComparisonProject, activeComparisonProject.progressPlanLabels?.quarterLabel, liveMonthLabel);
+    const liveEfyLabel = resolveExactEfy(activeComparisonProject, activeComparisonProject.progressPlanLabels?.efyLabel, liveMonthLabel);
 
     const livePlan = activeComparisonProject.progressPlan || {
       contractor: { month: 0, quarter: 0, efy: 0, todate: 0 },
@@ -5749,11 +5846,14 @@ export default function GroupReportGenerator({
       const sortedHistory = sortProgressPlanHistoryDescending(activeComparisonProject.progressPlanHistory);
       sortedHistory.forEach(h => {
         const key = h.id || `hist_${(h.monthLabel || '').replace(/\s+/g, '_')}`;
+        const hMonth = resolveExactMonth(activeComparisonProject, h.monthLabel);
+        const hQuarter = resolveExactQuarter(activeComparisonProject, h.quarterLabel, hMonth);
+        const hEfy = resolveExactEfy(activeComparisonProject, h.efyLabel, hMonth);
         list.push({
           key,
-          monthLabel: h.monthLabel,
-          quarterLabel: h.quarterLabel || 'Quarter',
-          efyLabel: h.efyLabel || 'EFY',
+          monthLabel: hMonth,
+          quarterLabel: hQuarter,
+          efyLabel: hEfy,
           isLive: false,
           contractor: {
             month: typeof h.contractorMonth === 'number' ? h.contractorMonth : 0,
@@ -5788,11 +5888,14 @@ export default function GroupReportGenerator({
         cumActual += act;
         cumPlan += plan;
         const qNum = Math.floor(idx / 3) + 1;
+        const synthMonth = resolveExactMonth(activeComparisonProject, m.month);
+        const synthQuarter = resolveExactQuarter(activeComparisonProject, `Q${qNum}`, synthMonth);
+        const synthEfy = resolveExactEfy(activeComparisonProject, undefined, synthMonth);
         list.push({
           key: `monthly_${idx}_${m.month.replace(/\s+/g, '_')}`,
-          monthLabel: m.month,
-          quarterLabel: `Q${qNum}`,
-          efyLabel: activeComparisonProject.progressPlanLabels?.efyLabel || 'Current EFY',
+          monthLabel: synthMonth,
+          quarterLabel: synthQuarter,
+          efyLabel: synthEfy,
           isLive: false,
           contractor: { month: plan, quarter: plan * 2.5, efy: plan * 8, todate: cumPlan },
           era: { month: plan, quarter: plan * 2.5, efy: plan * 8, todate: cumPlan },
@@ -5803,16 +5906,28 @@ export default function GroupReportGenerator({
     }
 
     return list;
-  }, [activeComparisonProject]);
+  }, [activeComparisonProject, projects]);
 
   const activeMilestone = useMemo<MilestonePeriodOption | null>(() => {
     if (!availableMilestones || availableMilestones.length === 0) return null;
+    let selected = availableMilestones[0];
     if (selectedComparisonMonthKey) {
       const found = availableMilestones.find(m => m.key === selectedComparisonMonthKey || m.monthLabel === selectedComparisonMonthKey);
-      if (found) return found;
+      if (found) selected = found;
     }
-    return availableMilestones[0];
-  }, [availableMilestones, selectedComparisonMonthKey]);
+    
+    // Safety guarantee: exact month, quarter, and EFY are always used instead of generic "Current"
+    const exactM = resolveExactMonth(activeComparisonProject, selected.monthLabel);
+    const exactQ = resolveExactQuarter(activeComparisonProject, selected.quarterLabel, exactM);
+    const exactE = resolveExactEfy(activeComparisonProject, selected.efyLabel, exactM);
+
+    return {
+      ...selected,
+      monthLabel: exactM,
+      quarterLabel: exactQ,
+      efyLabel: exactE
+    };
+  }, [availableMilestones, selectedComparisonMonthKey, activeComparisonProject, projects]);
 
   const comparisonTableData = useMemo(() => {
     if (!activeMilestone) return null;
@@ -5887,9 +6002,15 @@ export default function GroupReportGenerator({
   const groupComparisonMatrix = useMemo(() => {
     if (!activeMilestone) return [];
     const targetMonth = activeMilestone.monthLabel;
+    const targetClean = (targetMonth || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
     return processedProjects.map(p => {
-      const hist = (p.progressPlanHistory || []).find(h => h.monthLabel === targetMonth);
+      const hist = (p.progressPlanHistory || []).find(h => {
+        if (!h.monthLabel) return false;
+        if (h.monthLabel === targetMonth) return true;
+        const hClean = h.monthLabel.toLowerCase().replace(/[^a-z0-9]/g, '');
+        return Boolean(targetClean && hClean && (hClean === targetClean || hClean.includes(targetClean) || targetClean.includes(hClean)));
+      });
       const pLen = p.lengthKm || 65.0;
 
       let ctrMonth = 0;
