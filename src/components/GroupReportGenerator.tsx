@@ -42,11 +42,18 @@ import {
   Trash2,
   Edit3,
   RefreshCcw,
-  Scale
+  Scale,
+  BarChart3,
+  Calendar,
+  CalendarClock,
+  ArrowUpRight,
+  ArrowDownRight,
+  Check
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { drawEraLogo } from '../lib/pdfReportEngine';
-import { Project, User, formatAccounting, isProjectClosed, ContractorScoringWeights, DEFAULT_CONTRACTOR_SCORING_WEIGHTS, ConsultantScoringWeights, DEFAULT_CONSULTANT_SCORING_WEIGHTS, CustomScoringCriterion, SupervisionConsultantInfo } from '../types';
+import { Project, User, formatAccounting, isProjectClosed, ContractorScoringWeights, DEFAULT_CONTRACTOR_SCORING_WEIGHTS, ConsultantScoringWeights, DEFAULT_CONSULTANT_SCORING_WEIGHTS, CustomScoringCriterion, SupervisionConsultantInfo, ProgressPlan, ProgressPlanHistoryItem } from '../types';
+import { sortProgressPlanHistoryDescending } from './ProgressPlanView';
 import { buildKpiHierarchy, getIntegratedKpiAllocated } from '../data/defaultProject';
 import { QtyItem } from '../types';
 import { calculateIpcMaturation } from '../lib/ipcCalculations';
@@ -207,7 +214,10 @@ export default function GroupReportGenerator({
   const [reportSearchQuery, setReportSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'name' | 'progress' | 'value'>('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
-  const [reportMode, setReportMode] = useState<'performance' | 'audit' | 'payments' | 'bonds' | 'firms' | 'supervisionStaff'>('performance');
+  const [reportMode, setReportMode] = useState<'performance' | 'audit' | 'payments' | 'bonds' | 'firms' | 'supervisionStaff' | 'progressComparison'>('performance');
+  const [selectedComparisonProjectId, setSelectedComparisonProjectId] = useState<string | null>(null);
+  const [selectedComparisonMonthKey, setSelectedComparisonMonthKey] = useState<string | null>(null);
+  const [comparisonUnitMode, setComparisonUnitMode] = useState<'both' | 'km' | 'pct'>('both');
   const [auditPerspective, setAuditPerspective] = useState<'contractor' | 'consultant'>('consultant');
   const [consultantCohortFilter, setConsultantCohortFilter] = useState<'all' | 'sole' | 'jv'>('all');
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
@@ -5643,6 +5653,1138 @@ export default function GroupReportGenerator({
     });
   };
 
+  // --- PROGRESS COMPARISON LOGIC & RESOLUTION ---
+  const activeComparisonProject = useMemo(() => {
+    if (selectedComparisonProjectId) {
+      const found = processedProjects.find(p => p.id === selectedComparisonProjectId);
+      if (found) return found;
+    }
+    return processedProjects[0] || null;
+  }, [processedProjects, selectedComparisonProjectId]);
+
+  interface MilestonePeriodOption {
+    key: string;
+    monthLabel: string;
+    quarterLabel: string;
+    efyLabel: string;
+    isLive?: boolean;
+    contractor: { month: number; quarter: number; efy: number; todate: number };
+    era: { month: number; quarter: number; efy: number; todate: number };
+    actual: { month: number; quarter: number; efy: number; todate: number };
+    physicalProgress?: number;
+  }
+
+  const availableMilestones = useMemo<MilestonePeriodOption[]>(() => {
+    if (!activeComparisonProject) return [];
+    const list: MilestonePeriodOption[] = [];
+
+    // 1. Live Workspace Milestone
+    const liveMonthLabel = activeComparisonProject.progressPlanLabels?.monthLabel || 'Current Month';
+    const liveQuarterLabel = activeComparisonProject.progressPlanLabels?.quarterLabel || 'Current Quarter';
+    const liveEfyLabel = activeComparisonProject.progressPlanLabels?.efyLabel || 'Current EFY';
+
+    const livePlan = activeComparisonProject.progressPlan || {
+      contractor: { month: 0, quarter: 0, efy: 0, todate: 0 },
+      era: { month: 0, quarter: 0, efy: 0, todate: 0 },
+      actual: { month: 0, quarter: 0, efy: 0, todate: 0 }
+    };
+
+    list.push({
+      key: 'LIVE_CURRENT',
+      monthLabel: liveMonthLabel,
+      quarterLabel: liveQuarterLabel,
+      efyLabel: liveEfyLabel,
+      isLive: true,
+      contractor: {
+        month: Number(livePlan.contractor?.month || 0),
+        quarter: Number(livePlan.contractor?.quarter || 0),
+        efy: Number(livePlan.contractor?.efy || 0),
+        todate: Number(livePlan.contractor?.todate || 0)
+      },
+      era: {
+        month: Number(livePlan.era?.month || 0),
+        quarter: Number(livePlan.era?.quarter || 0),
+        efy: Number(livePlan.era?.efy || 0),
+        todate: Number(livePlan.era?.todate || 0)
+      },
+      actual: {
+        month: Number(livePlan.actual?.month || 0),
+        quarter: Number(livePlan.actual?.quarter || 0),
+        efy: Number(livePlan.actual?.efy || 0),
+        todate: Number(livePlan.actual?.todate || 0)
+      },
+      physicalProgress: activeComparisonProject.physicalProgress
+    });
+
+    // 2. Archived progressPlanHistory
+    if (activeComparisonProject.progressPlanHistory && activeComparisonProject.progressPlanHistory.length > 0) {
+      const sortedHistory = sortProgressPlanHistoryDescending(activeComparisonProject.progressPlanHistory);
+      sortedHistory.forEach(h => {
+        const key = h.id || `hist_${(h.monthLabel || '').replace(/\s+/g, '_')}`;
+        list.push({
+          key,
+          monthLabel: h.monthLabel,
+          quarterLabel: h.quarterLabel || 'Quarter',
+          efyLabel: h.efyLabel || 'EFY',
+          isLive: false,
+          contractor: {
+            month: typeof h.contractorMonth === 'number' ? h.contractorMonth : 0,
+            quarter: typeof h.contractorQuarter === 'number' ? h.contractorQuarter : 0,
+            efy: typeof h.contractorEfy === 'number' ? h.contractorEfy : 0,
+            todate: typeof h.contractorTodate === 'number' ? h.contractorTodate : 0
+          },
+          era: {
+            month: typeof h.eraMonth === 'number' ? h.eraMonth : 0,
+            quarter: typeof h.eraQuarter === 'number' ? h.eraQuarter : 0,
+            efy: typeof h.eraEfy === 'number' ? h.eraEfy : 0,
+            todate: typeof h.eraTodate === 'number' ? h.eraTodate : 0
+          },
+          actual: {
+            month: typeof h.actualMonth === 'number' ? h.actualMonth : 0,
+            quarter: typeof h.actualQuarter === 'number' ? h.actualQuarter : 0,
+            efy: typeof h.actualEfy === 'number' ? h.actualEfy : 0,
+            todate: typeof h.actualTodate === 'number' ? h.actualTodate : 0
+          },
+          physicalProgress: h.physicalProgress
+        });
+      });
+    }
+
+    // 3. Synthesize months from monthly progress if history is empty
+    if (list.length <= 1 && activeComparisonProject.monthly && activeComparisonProject.monthly.length > 0) {
+      let cumActual = 0;
+      let cumPlan = 0;
+      activeComparisonProject.monthly.forEach((m, idx) => {
+        const act = typeof m.actual === 'number' ? m.actual : parseFloat(String(m.actual || '0')) || 0;
+        const plan = typeof m.revisedPlan === 'number' ? m.revisedPlan : (typeof m.originalPlan === 'number' ? m.originalPlan : parseFloat(String(m.originalPlan || '0')) || 0);
+        cumActual += act;
+        cumPlan += plan;
+        const qNum = Math.floor(idx / 3) + 1;
+        list.push({
+          key: `monthly_${idx}_${m.month.replace(/\s+/g, '_')}`,
+          monthLabel: m.month,
+          quarterLabel: `Q${qNum}`,
+          efyLabel: activeComparisonProject.progressPlanLabels?.efyLabel || 'Current EFY',
+          isLive: false,
+          contractor: { month: plan, quarter: plan * 2.5, efy: plan * 8, todate: cumPlan },
+          era: { month: plan, quarter: plan * 2.5, efy: plan * 8, todate: cumPlan },
+          actual: { month: act, quarter: act * 2.2, efy: act * 7.5, todate: cumActual },
+          physicalProgress: activeComparisonProject.lengthKm ? (cumActual / activeComparisonProject.lengthKm) * 100 : undefined
+        });
+      });
+    }
+
+    return list;
+  }, [activeComparisonProject]);
+
+  const activeMilestone = useMemo<MilestonePeriodOption | null>(() => {
+    if (!availableMilestones || availableMilestones.length === 0) return null;
+    if (selectedComparisonMonthKey) {
+      const found = availableMilestones.find(m => m.key === selectedComparisonMonthKey || m.monthLabel === selectedComparisonMonthKey);
+      if (found) return found;
+    }
+    return availableMilestones[0];
+  }, [availableMilestones, selectedComparisonMonthKey]);
+
+  const comparisonTableData = useMemo(() => {
+    if (!activeMilestone) return null;
+    const lengthKm = activeComparisonProject?.lengthKm || 65.0;
+
+    const contractor = activeMilestone.contractor;
+    const era = activeMilestone.era;
+    const actual = activeMilestone.actual;
+
+    const varVsContractor = {
+      month: actual.month - contractor.month,
+      quarter: actual.quarter - contractor.quarter,
+      efy: actual.efy - contractor.efy,
+      todate: actual.todate - contractor.todate
+    };
+
+    const varVsEra = {
+      month: actual.month - era.month,
+      quarter: actual.quarter - era.quarter,
+      efy: actual.efy - era.efy,
+      todate: actual.todate - era.todate
+    };
+
+    const ratioVsContractor = {
+      month: contractor.month > 0 ? (actual.month / contractor.month) * 100 : (actual.month > 0 ? 100 : 0),
+      quarter: contractor.quarter > 0 ? (actual.quarter / contractor.quarter) * 100 : 0,
+      efy: contractor.efy > 0 ? (actual.efy / contractor.efy) * 100 : 0,
+      todate: contractor.todate > 0 ? (actual.todate / contractor.todate) * 100 : 0
+    };
+
+    const ratioVsEra = {
+      month: era.month > 0 ? (actual.month / era.month) * 100 : (actual.month > 0 ? 100 : 0),
+      quarter: era.quarter > 0 ? (actual.quarter / era.quarter) * 100 : 0,
+      efy: era.efy > 0 ? (actual.efy / era.efy) * 100 : 0,
+      todate: era.todate > 0 ? (actual.todate / era.todate) * 100 : 0
+    };
+
+    return {
+      lengthKm,
+      contractor,
+      era,
+      actual,
+      varVsContractor,
+      varVsEra,
+      ratioVsContractor,
+      ratioVsEra
+    };
+  }, [activeMilestone, activeComparisonProject]);
+
+  const formatProgressVal = (kmVal: number, lengthKm: number, mode: 'both' | 'km' | 'pct' = comparisonUnitMode): string => {
+    const kmStr = `${kmVal.toFixed(2)} Km`;
+    const pctStr = lengthKm > 0 ? `${((kmVal / lengthKm) * 100).toFixed(2)}%` : '0.00%';
+    if (mode === 'km') return kmStr;
+    if (mode === 'pct') return pctStr;
+    return `${kmStr} (${pctStr})`;
+  };
+
+  const formatVarianceVal = (kmVal: number, lengthKm: number, mode: 'both' | 'km' | 'pct' = comparisonUnitMode): { text: string; isPositive: boolean; isZero: boolean } => {
+    const isPositive = kmVal > 0.001;
+    const isZero = Math.abs(kmVal) <= 0.001;
+    const sign = isPositive ? '+' : '';
+    const kmStr = `${sign}${kmVal.toFixed(2)} Km`;
+    const pctVal = lengthKm > 0 ? (kmVal / lengthKm) * 100 : 0;
+    const pctStr = `${sign}${pctVal.toFixed(2)}%`;
+    let text = '';
+    if (mode === 'km') text = kmStr;
+    else if (mode === 'pct') text = pctStr;
+    else text = `${kmStr} (${pctStr})`;
+    return { text, isPositive, isZero };
+  };
+
+  const groupComparisonMatrix = useMemo(() => {
+    if (!activeMilestone) return [];
+    const targetMonth = activeMilestone.monthLabel;
+
+    return processedProjects.map(p => {
+      const hist = (p.progressPlanHistory || []).find(h => h.monthLabel === targetMonth);
+      const pLen = p.lengthKm || 65.0;
+
+      let ctrMonth = 0;
+      let ctrQuarter = 0;
+      let ctrEfy = 0;
+      let ctrTodate = 0;
+
+      let eraMonth = 0;
+      let eraQuarter = 0;
+      let eraEfy = 0;
+      let eraTodate = 0;
+
+      let actMonth = 0;
+      let actQuarter = 0;
+      let actEfy = 0;
+      let actTodate = 0;
+
+      if (hist) {
+        ctrMonth = hist.contractorMonth ?? 0;
+        ctrQuarter = hist.contractorQuarter ?? 0;
+        ctrEfy = hist.contractorEfy ?? 0;
+        ctrTodate = hist.contractorTodate ?? 0;
+
+        eraMonth = hist.eraMonth ?? 0;
+        eraQuarter = hist.eraQuarter ?? 0;
+        eraEfy = hist.eraEfy ?? 0;
+        eraTodate = hist.eraTodate ?? 0;
+
+        actMonth = hist.actualMonth ?? 0;
+        actQuarter = hist.actualQuarter ?? 0;
+        actEfy = hist.actualEfy ?? 0;
+        actTodate = hist.actualTodate ?? 0;
+      } else {
+        const plan = p.progressPlan || {
+          contractor: { month: 0, quarter: 0, efy: 0, todate: 0 },
+          era: { month: 0, quarter: 0, efy: 0, todate: 0 },
+          actual: { month: 0, quarter: 0, efy: 0, todate: 0 }
+        };
+        ctrMonth = Number(plan.contractor?.month || 0);
+        ctrQuarter = Number(plan.contractor?.quarter || 0);
+        ctrEfy = Number(plan.contractor?.efy || 0);
+        ctrTodate = Number(plan.contractor?.todate || 0);
+
+        eraMonth = Number(plan.era?.month || 0);
+        eraQuarter = Number(plan.era?.quarter || 0);
+        eraEfy = Number(plan.era?.efy || 0);
+        eraTodate = Number(plan.era?.todate || 0);
+
+        actMonth = Number(plan.actual?.month || 0);
+        actQuarter = Number(plan.actual?.quarter || 0);
+        actEfy = Number(plan.actual?.efy || 0);
+        actTodate = Number(plan.actual?.todate || 0);
+      }
+
+      const monthVariance = actMonth - eraMonth;
+      const todateVariance = actTodate - eraTodate;
+      const monthRatio = eraMonth > 0 ? (actMonth / eraMonth) * 100 : (actMonth > 0 ? 100 : 0);
+      const todatePct = pLen > 0 ? (actTodate / pLen) * 100 : 0;
+
+      let healthStatus: 'Ahead' | 'On Track' | 'Lagging' | 'Critical' = 'On Track';
+      if (monthVariance > 0.1) healthStatus = 'Ahead';
+      else if (monthVariance >= -0.05) healthStatus = 'On Track';
+      else if (monthVariance >= -0.5) healthStatus = 'Lagging';
+      else healthStatus = 'Critical';
+
+      return {
+        project: p,
+        isMatchingHistoricalMilestone: Boolean(hist),
+        lengthKm: pLen,
+        contractor: { month: ctrMonth, quarter: ctrQuarter, efy: ctrEfy, todate: ctrTodate },
+        era: { month: eraMonth, quarter: eraQuarter, efy: eraEfy, todate: eraTodate },
+        actual: { month: actMonth, quarter: actQuarter, efy: actEfy, todate: actTodate },
+        monthVariance,
+        todateVariance,
+        monthRatio,
+        todatePct,
+        healthStatus
+      };
+    });
+  }, [processedProjects, activeMilestone]);
+
+  const handleExportProgressComparisonPDF = () => {
+    if (!activeMilestone || groupComparisonMatrix.length === 0) return;
+
+    const doc = new jsPDF('l', 'pt', 'a4'); // Landscape A4 (841.89 pt x 595.28 pt)
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+
+    const totalGroupKm = groupComparisonMatrix.reduce((sum, item) => sum + (item.lengthKm || 0), 0);
+    const aheadCount = groupComparisonMatrix.filter(item => item.healthStatus === 'Ahead').length;
+    const onTrackCount = groupComparisonMatrix.filter(item => item.healthStatus === 'On Track').length;
+    const laggingCount = groupComparisonMatrix.filter(item => item.healthStatus === 'Lagging').length;
+    const criticalCount = groupComparisonMatrix.filter(item => item.healthStatus === 'Critical').length;
+
+    // Landscape Columns widths (Total A4 width: 841.89 pt, printable width: 761.89 pt with 40 pt margin)
+    const colW = {
+      name: 135,
+      contractor: 105,
+      consultant: 115,
+      month: 84,
+      quarter: 72,
+      efy: 68,
+      todate: 114,
+      status: 68.89
+    };
+
+    const colX = {
+      name: 40,
+      contractor: 40 + colW.name,
+      consultant: 40 + colW.name + colW.contractor,
+      month: 40 + colW.name + colW.contractor + colW.consultant,
+      quarter: 40 + colW.name + colW.contractor + colW.consultant + colW.month,
+      efy: 40 + colW.name + colW.contractor + colW.consultant + colW.month + colW.quarter,
+      todate: 40 + colW.name + colW.contractor + colW.consultant + colW.month + colW.quarter + colW.efy,
+      status: 40 + colW.name + colW.contractor + colW.consultant + colW.month + colW.quarter + colW.efy + colW.todate
+    };
+
+    let pageNumber = 1;
+
+    // Safe text wrapping helper: breaks words cleanly if any single word exceeds maxWidth
+    const safeWrapText = (text: string, maxWidth: number, fontSize: number, isBold: boolean = false): string[] => {
+      if (!text || text.trim() === '') return ['N/A'];
+      doc.setFont('helvetica', isBold ? 'bold' : 'normal');
+      doc.setFontSize(fontSize);
+      
+      const words = text.split(/\s+/);
+      const safeWords: string[] = [];
+      
+      for (const w of words) {
+        if (doc.getTextWidth(w) > maxWidth) {
+          // Word itself exceeds column width without spaces, break it with hyphens
+          let chunk = '';
+          for (let i = 0; i < w.length; i++) {
+            const test = chunk + w[i];
+            if (doc.getTextWidth(test + '-') > maxWidth) {
+              if (chunk) safeWords.push(chunk + '-');
+              chunk = w[i];
+            } else {
+              chunk = test;
+            }
+          }
+          if (chunk) safeWords.push(chunk);
+        } else {
+          safeWords.push(w);
+        }
+      }
+      return doc.splitTextToSize(safeWords.join(' '), maxWidth);
+    };
+
+    const drawPageHeader = (pNum: number) => {
+      // Clean page border
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.75);
+      doc.roundedRect(30, 16, pageWidth - 60, pageHeight - 32, 4, 4, 'S');
+
+      // Gold accent top bar
+      doc.setDrawColor(194, 120, 3);
+      doc.setLineWidth(3);
+      doc.line(40, 24, pageWidth - 40, 24);
+
+      if (pNum === 1) {
+        // Official ERA Logo
+        drawEraLogo(doc, 40, 28, 26, {
+          withContainer: true,
+          containerBg: [255, 255, 255],
+          containerBorder: [226, 232, 240],
+          borderRadius: 3
+        });
+
+        // Audit Stamp Box
+        const dsW = 145;
+        const dsX = pageWidth - 40 - dsW;
+        doc.setFillColor(248, 250, 252);
+        doc.setDrawColor(226, 232, 240);
+        doc.setLineWidth(0.75);
+        doc.roundedRect(dsX, 28, dsW, 28, 3, 3, 'DF');
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(6);
+        doc.setTextColor(100, 116, 139);
+        doc.text("OFFICIAL PORTFOLIO AUDIT REPORT", dsX + 6, 36);
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.setTextColor(15, 23, 42);
+        doc.text(new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' }), dsX + 6, 44);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(5.5);
+        doc.setTextColor(71, 85, 105);
+        doc.text(`AUDITOR: ${currentUserObj.username.toUpperCase()} • ERA CMS`, dsX + 6, 51);
+
+        // Header Title
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10.5);
+        doc.setTextColor(15, 23, 42);
+        doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA)", 72, 38);
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8.5);
+        doc.setTextColor(79, 70, 229);
+        doc.text(`GROUP PORTFOLIO COMPARISON SUMMARY FOR ${activeMilestone.monthLabel.toUpperCase()} (${(selectedGroup || 'Southern').toUpperCase()} ${groupType.toUpperCase()})`, 72, 48);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7);
+        doc.setTextColor(100, 116, 139);
+        doc.text(`Side-by-side contractor plan vs ERA plan vs actual execution across all ${groupComparisonMatrix.length} group projects`, 72, 57);
+
+        // Metadata ribbon
+        doc.setFillColor(248, 250, 252);
+        doc.setDrawColor(226, 232, 240);
+        doc.setLineWidth(0.75);
+        doc.roundedRect(40, 62, pageWidth - 80, 18, 3, 3, 'DF');
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(6.5);
+        doc.setTextColor(30, 41, 59);
+        doc.text(`PORTFOLIO: ${(selectedGroup || 'Southern').toUpperCase()} ${groupType.toUpperCase()} (${groupComparisonMatrix.length} Projects • ${totalGroupKm.toFixed(1)} Km Total)`, 48, 73);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(71, 85, 105);
+        doc.text(`TARGET MILESTONE: ${activeMilestone.monthLabel.toUpperCase()} (${activeMilestone.quarterLabel} • EFY ${activeMilestone.efyLabel})`, 330, 73);
+        doc.text(`STATUS: ${aheadCount} Ahead  |  ${onTrackCount} On Track  |  ${laggingCount} Lagging  |  ${criticalCount} Critical`, 560, 73);
+      } else {
+        // Compact header for subsequent pages
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8);
+        doc.setTextColor(15, 23, 42);
+        doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA) • GROUP PORTFOLIO COMPARISON SUMMARY (CONTINUED)", 40, 36);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(6.5);
+        doc.setTextColor(100, 116, 139);
+        doc.text(`Period: ${activeMilestone.monthLabel} (${selectedGroup} ${groupType.toUpperCase()}) • Page ${pNum}`, 40, 45);
+      }
+    };
+
+    const drawTableHeader = (y: number) => {
+      const headerH = 26;
+      doc.setFillColor(15, 23, 42); // slate-900
+      doc.rect(40, y, pageWidth - 80, headerH, 'F');
+
+      // Grid dividers in header
+      doc.setDrawColor(51, 65, 85);
+      doc.setLineWidth(0.5);
+      doc.line(colX.contractor, y, colX.contractor, y + headerH);
+      doc.line(colX.consultant, y, colX.consultant, y + headerH);
+      doc.line(colX.month, y, colX.month, y + headerH);
+      doc.line(colX.quarter, y, colX.quarter, y + headerH);
+      doc.line(colX.efy, y, colX.efy, y + headerH);
+      doc.line(colX.todate, y, colX.todate, y + headerH);
+      doc.line(colX.status, y, colX.status, y + headerH);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.5);
+      doc.setTextColor(255, 255, 255);
+
+      // Col 1: Project ID & Title
+      doc.text("PROJECT ID & TITLE", colX.name + 6, y + 11);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(5);
+      doc.setTextColor(148, 163, 184);
+      doc.text("Name, Code & Length", colX.name + 6, y + 20);
+
+      // Col 2: Contractor
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.5);
+      doc.setTextColor(255, 255, 255);
+      doc.text("MAIN CONTRACTOR", colX.contractor + 5, y + 11);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(5);
+      doc.setTextColor(148, 163, 184);
+      doc.text("Executing Firm", colX.contractor + 5, y + 20);
+
+      // Col 3: Supervision Consultant
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.5);
+      doc.setTextColor(255, 255, 255);
+      doc.text("SUPERVISION CONSULTANT", colX.consultant + 5, y + 11);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(5);
+      doc.setTextColor(148, 163, 184);
+      doc.text("Supervising Engineer", colX.consultant + 5, y + 20);
+
+      // Col 4: Month
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6);
+      doc.setTextColor(255, 255, 255);
+      doc.text("MONTHLY EXECUTION", colX.month + 5, y + 11);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(5);
+      doc.setTextColor(148, 163, 184);
+      doc.text(`(${activeMilestone.monthLabel.toUpperCase()})`, colX.month + 5, y + 20);
+
+      // Col 5: Quarter
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6);
+      doc.setTextColor(255, 255, 255);
+      doc.text("QUARTER PLAN", colX.quarter + 5, y + 11);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(5);
+      doc.setTextColor(148, 163, 184);
+      doc.text(`(${activeMilestone.quarterLabel.toUpperCase()})`, colX.quarter + 5, y + 20);
+
+      // Col 6: EFY
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6);
+      doc.setTextColor(255, 255, 255);
+      doc.text("EFY TARGET", colX.efy + 5, y + 11);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(5);
+      doc.setTextColor(148, 163, 184);
+      doc.text(`(EFY ${activeMilestone.efyLabel})`, colX.efy + 5, y + 20);
+
+      // Col 7: Cumulative To-Date
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6);
+      doc.setTextColor(255, 255, 255);
+      doc.text("CUMULATIVE TO-DATE", colX.todate + 5, y + 11);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(5);
+      doc.setTextColor(148, 163, 184);
+      doc.text("Plan vs Actual vs Slippage", colX.todate + 5, y + 20);
+
+      // Col 8: Status
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.5);
+      doc.setTextColor(255, 255, 255);
+      doc.text("STATUS", colX.status + 5, y + 11);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(5);
+      doc.setTextColor(148, 163, 184);
+      doc.text("Health", colX.status + 5, y + 20);
+
+      return headerH;
+    };
+
+    drawPageHeader(1);
+    let curY = 88;
+    curY += drawTableHeader(curY);
+
+    groupComparisonMatrix.forEach((item, idx) => {
+      // 1. Text wrapping with safe bounds for multiline text
+      const titleLines = safeWrapText(item.project.name || 'Unnamed Project', colW.name - 12, 6.5, true);
+      const idStr = `ID: ${item.project.id.substring(0, 10).toUpperCase()} • ${item.lengthKm.toFixed(1)} Km`;
+      const idLines = safeWrapText(idStr, colW.name - 12, 5, false);
+
+      const contrLines = safeWrapText(item.project.contractor || 'Not Specified', colW.contractor - 10, 6, true);
+      const consLines = safeWrapText(item.project.consultant || 'Not Specified', colW.consultant - 10, 5.5, false);
+
+      // Compute required height per column to prevent ANY overlapping
+      const col1H = 8 + titleLines.length * 8.5 + 3 + idLines.length * 7 + 6;
+      const col2H = 8 + contrLines.length * 8 + 8;
+      const col3H = 8 + consLines.length * 7.5 + 8;
+      const metricsH = 46; // 4 rows of 9pt step
+
+      const rowHeight = Math.max(col1H, col2H, col3H, metricsH, 46);
+
+      // Check page break
+      if (curY + rowHeight > pageHeight - 55) {
+        doc.addPage();
+        pageNumber++;
+        drawPageHeader(pageNumber);
+        curY = 54;
+        curY += drawTableHeader(curY);
+      }
+
+      // Zebra striping
+      doc.setFillColor(idx % 2 === 0 ? 255 : 248, idx % 2 === 0 ? 255 : 250, idx % 2 === 0 ? 255 : 252);
+      doc.rect(40, curY, pageWidth - 80, rowHeight, 'F');
+
+      // Grid borders
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.5);
+      doc.line(40, curY + rowHeight, pageWidth - 40, curY + rowHeight);
+      doc.line(colX.contractor, curY, colX.contractor, curY + rowHeight);
+      doc.line(colX.consultant, curY, colX.consultant, curY + rowHeight);
+      doc.line(colX.month, curY, colX.month, curY + rowHeight);
+      doc.line(colX.quarter, curY, colX.quarter, curY + rowHeight);
+      doc.line(colX.efy, curY, colX.efy, curY + rowHeight);
+      doc.line(colX.todate, curY, colX.todate, curY + rowHeight);
+      doc.line(colX.status, curY, colX.status, curY + rowHeight);
+
+      // 1. Project ID & Title (Wrapped cleanly, zero overlapping)
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.5);
+      doc.setTextColor(15, 23, 42);
+      titleLines.forEach((tLine: string, tIdx: number) => {
+        doc.text(tLine, colX.name + 6, curY + 10 + tIdx * 8.5);
+      });
+      const idStartY = curY + 10 + titleLines.length * 8.5 + 3;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(5);
+      doc.setTextColor(100, 116, 139);
+      idLines.forEach((idL: string, idIdx: number) => {
+        doc.text(idL, colX.name + 6, idStartY + idIdx * 7);
+      });
+
+      // 2. Contractor (Exact Name, wrapped to next line without clipping)
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6);
+      doc.setTextColor(30, 41, 59);
+      contrLines.forEach((cLine: string, cIdx: number) => {
+        doc.text(cLine, colX.contractor + 5, curY + 10 + cIdx * 8);
+      });
+
+      // 3. Supervision Consultant (Exact Name, wrapped to next line without clipping)
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(5.5);
+      doc.setTextColor(51, 65, 85);
+      consLines.forEach((csLine: string, csIdx: number) => {
+        doc.text(csLine, colX.consultant + 5, curY + 10 + csIdx * 7.5);
+      });
+
+      // 4. Month (Side-by-side with clear font and clean line spacing)
+      const mY = curY + 10;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(5.5);
+      doc.setTextColor(29, 78, 216); // Blue
+      doc.text(`Ctr: ${item.contractor.month.toFixed(2)} Km`, colX.month + 5, mY);
+      doc.setTextColor(109, 40, 217); // Purple
+      doc.text(`ERA: ${item.era.month.toFixed(2)} Km`, colX.month + 5, mY + 9);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(4, 120, 87); // Emerald
+      doc.text(`Act: ${item.actual.month.toFixed(2)} Km`, colX.month + 5, mY + 18);
+      if (item.monthVariance >= 0) {
+        doc.setTextColor(4, 120, 87);
+      } else {
+        doc.setTextColor(225, 29, 72);
+      }
+      doc.text(`Var: ${item.monthVariance >= 0 ? '+' : ''}${item.monthVariance.toFixed(2)} Km`, colX.month + 5, mY + 27);
+
+      // 5. Quarter (Side-by-side)
+      const qY = curY + 10;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(5.5);
+      doc.setTextColor(29, 78, 216);
+      doc.text(`Ctr: ${item.contractor.quarter.toFixed(2)} Km`, colX.quarter + 5, qY);
+      doc.setTextColor(109, 40, 217);
+      doc.text(`ERA: ${item.era.quarter.toFixed(2)} Km`, colX.quarter + 5, qY + 9);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(15, 23, 42);
+      doc.text(`Act: ${item.actual.quarter.toFixed(2)} Km`, colX.quarter + 5, qY + 18);
+      const qVar = item.actual.quarter - item.era.quarter;
+      if (qVar >= 0) {
+        doc.setTextColor(4, 120, 87);
+      } else {
+        doc.setTextColor(225, 29, 72);
+      }
+      doc.text(`Var: ${qVar >= 0 ? '+' : ''}${qVar.toFixed(2)} Km`, colX.quarter + 5, qY + 27);
+
+      // 6. EFY (Side-by-side)
+      const eY = curY + 10;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(5.5);
+      doc.setTextColor(29, 78, 216);
+      doc.text(`Ctr: ${item.contractor.efy.toFixed(2)} Km`, colX.efy + 5, eY);
+      doc.setTextColor(109, 40, 217);
+      doc.text(`ERA: ${item.era.efy.toFixed(2)} Km`, colX.efy + 5, eY + 9);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(15, 23, 42);
+      doc.text(`Act: ${item.actual.efy.toFixed(2)} Km`, colX.efy + 5, eY + 18);
+      const efyVar = item.actual.efy - item.era.efy;
+      if (efyVar >= 0) {
+        doc.setTextColor(4, 120, 87);
+      } else {
+        doc.setTextColor(225, 29, 72);
+      }
+      doc.text(`Var: ${efyVar >= 0 ? '+' : ''}${efyVar.toFixed(2)} Km`, colX.efy + 5, eY + 27);
+
+      // 7. Cumulative To-Date (Side-by-side)
+      const tY = curY + 10;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(5.5);
+      doc.setTextColor(29, 78, 216);
+      doc.text(`Ctr: ${item.contractor.todate.toFixed(2)} Km`, colX.todate + 5, tY);
+      doc.setTextColor(109, 40, 217);
+      doc.text(`ERA: ${item.era.todate.toFixed(2)} Km`, colX.todate + 5, tY + 9);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(67, 56, 202); // Indigo
+      doc.text(`Act: ${item.actual.todate.toFixed(2)} Km (${item.todatePct.toFixed(1)}%)`, colX.todate + 5, tY + 18);
+      if (item.todateVariance >= 0) {
+        doc.setTextColor(4, 120, 87);
+      } else {
+        doc.setTextColor(225, 29, 72);
+      }
+      doc.text(`Slip: ${item.todateVariance >= 0 ? '+' : ''}${item.todateVariance.toFixed(2)} Km`, colX.todate + 5, tY + 27);
+
+      // 8. Status Badge (Properly bounded & vertically centered)
+      const statusX = colX.status + 5;
+      const statusW = colW.status - 10;
+      const statusH = 15;
+      const statusY = curY + (rowHeight - statusH) / 2;
+      if (item.healthStatus === 'Ahead') {
+        doc.setFillColor(209, 250, 229);
+        doc.setDrawColor(16, 185, 129);
+        doc.setTextColor(6, 95, 70);
+      } else if (item.healthStatus === 'On Track') {
+        doc.setFillColor(224, 231, 255);
+        doc.setDrawColor(99, 102, 241);
+        doc.setTextColor(49, 46, 129);
+      } else if (item.healthStatus === 'Lagging') {
+        doc.setFillColor(254, 243, 199);
+        doc.setDrawColor(245, 158, 11);
+        doc.setTextColor(146, 64, 14);
+      } else {
+        doc.setFillColor(255, 228, 230);
+        doc.setDrawColor(244, 63, 94);
+        doc.setTextColor(159, 18, 57);
+      }
+      doc.setLineWidth(0.5);
+      doc.roundedRect(statusX, statusY, statusW, statusH, 2, 2, 'DF');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(5.5);
+      doc.text(item.healthStatus.toUpperCase(), statusX + statusW / 2, statusY + 10, { align: 'center' });
+
+      curY += rowHeight;
+    });
+
+    // Check space for sign-off block
+    if (curY + 50 > pageHeight - 55) {
+      doc.addPage();
+      pageNumber++;
+      drawPageHeader(pageNumber);
+      curY = 55;
+    } else {
+      curY += 12;
+    }
+
+    // Sign-Off Block at bottom of report
+    const signY = Math.max(curY, pageHeight - 68);
+    const signBoxW = (pageWidth - 110) / 3;
+
+    const signBoxes = [
+      { label: "SUPERVISION CONSULTANT / RE", subtitle: "Certified Physical Progress Accomplishment" },
+      { label: "ERA PROJECT MANAGER", subtitle: "Verified Execution Verification" },
+      { label: "ERA PROGRAM DIRECTORATE DIRECTOR", subtitle: "Approved for Contract Administration" }
+    ];
+
+    signBoxes.forEach((sb, sIdx) => {
+      const sX = 40 + sIdx * (signBoxW + 15);
+      doc.setFillColor(255, 255, 255);
+      doc.setDrawColor(203, 213, 225);
+      doc.setLineWidth(0.5);
+      doc.roundedRect(sX, signY, signBoxW, 36, 2, 2, 'DF');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(5.5);
+      doc.setTextColor(71, 85, 105);
+      doc.text(sb.label, sX + 6, signY + 10);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(4.5);
+      doc.setTextColor(148, 163, 184);
+      doc.text(sb.subtitle, sX + 6, signY + 17);
+
+      doc.setDrawColor(226, 232, 240);
+      doc.line(sX + 6, signY + 28, sX + signBoxW - 6, signY + 28);
+      doc.text("Signature & Official Stamp / Date", sX + 6, signY + 33);
+    });
+
+    // Footer page count on all pages
+    const totalPages = pageNumber;
+    for (let p = 1; p <= totalPages; p++) {
+      doc.setPage(p);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(5.5);
+      doc.setTextColor(148, 163, 184);
+      doc.text(
+        `Page ${p} of ${totalPages} • Ethiopian Roads Administration CMS • Confidential Official Audit Report`,
+        pageWidth / 2,
+        pageHeight - 20,
+        { align: 'center' }
+      );
+    }
+
+    const fileName = `ERA_Group_Portfolio_Comparison_${(selectedGroup || 'Southern').replace(/[^a-zA-Z0-9]/g, '_')}_${activeMilestone.monthLabel.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
+    doc.save(fileName);
+  };
+
+  const handleExportSingleProjectPDF = () => {
+    if (!activeComparisonProject || !activeMilestone || !comparisonTableData) return;
+
+    const doc = new jsPDF('l', 'pt', 'a4'); // Landscape A4 (841.89 pt x 595.28 pt)
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+
+    // Clean page border
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.75);
+    doc.roundedRect(30, 16, pageWidth - 60, pageHeight - 32, 4, 4, 'S');
+
+    // Gold accent top bar
+    doc.setDrawColor(194, 120, 3);
+    doc.setLineWidth(3);
+    doc.line(40, 25, pageWidth - 40, 25);
+
+    // Official ERA Logo
+    drawEraLogo(doc, 40, 28, 26, {
+      withContainer: true,
+      containerBg: [255, 255, 255],
+      containerBorder: [226, 232, 240],
+      borderRadius: 3
+    });
+
+    // Date Stamp
+    const dsW = 140;
+    const dsX = pageWidth - 40 - dsW;
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.75);
+    doc.roundedRect(dsX, 28, dsW, 26, 3, 3, 'DF');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6);
+    doc.setTextColor(100, 116, 139);
+    doc.text("OFFICIAL REPORT AUDIT STAMP", dsX + 6, 36);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(15, 23, 42);
+    doc.text(new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' }), dsX + 6, 44);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(5.5);
+    doc.setTextColor(71, 85, 105);
+    doc.text(`AUDITOR: ${currentUserObj.username.toUpperCase()} • ERA CMS`, dsX + 6, 50);
+
+    // Header Title
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.setTextColor(15, 23, 42);
+    doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA)", 72, 40);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(100, 116, 139);
+    doc.text("PROJECT PROGRESS PLAN & ACCOMPLISHMENT COMPARISON REPORT", 72, 50);
+
+    let curY = 62;
+
+    // Project Metadata Box
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.75);
+    doc.roundedRect(40, curY, pageWidth - 80, 52, 4, 4, 'DF');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(15, 23, 42);
+    doc.text(`PROJECT: ${activeComparisonProject.name.toUpperCase()}`, 50, curY + 14);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(71, 85, 105);
+    doc.text(`CONTRACTOR: ${activeComparisonProject.contractor || 'Not Specified'}`, 50, curY + 26);
+    doc.text(`SUPERVISION CONSULTANT: ${activeComparisonProject.consultant || 'Not Specified'}`, 50, curY + 36);
+    doc.text(`DIRECTORATE: ${activeComparisonProject.programDirectorate || 'Southern'} | PMO: ${activeComparisonProject.pmo || 'PMO 1'}`, 50, curY + 46);
+
+    const rightMetaX = pageWidth - 260;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(15, 23, 42);
+    doc.text(`TARGET MILESTONE: ${activeMilestone.monthLabel.toUpperCase()} (${activeMilestone.quarterLabel})`, rightMetaX, curY + 14);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(71, 85, 105);
+    doc.text(`FISCAL YEAR: EFY ${activeMilestone.efyLabel}`, rightMetaX, curY + 26);
+    doc.text(`PROJECT LENGTH: ${comparisonTableData.lengthKm.toFixed(2)} Km`, rightMetaX, curY + 36);
+    doc.text(`REVISED CONTRACT VALUE: ETB ${formatAccounting(activeComparisonProject.revisedContractAmountEtb || (activeComparisonProject.origAmount * 1_000_000))}`, rightMetaX, curY + 46);
+
+    curY += 60;
+
+    // Section Title
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(79, 70, 229);
+    doc.text(`1. MILESTONE PROGRESS COMPARISON MATRIX — AS REACHED AT ${activeMilestone.monthLabel.toUpperCase()}`, 40, curY);
+
+    curY += 8;
+
+    // Comparison Table
+    const tableX = 40;
+    const tableW = pageWidth - 80;
+    const colWidths = {
+      tier: 181.89,
+      month: 145,
+      quarter: 145,
+      efy: 145,
+      todate: 145
+    };
+
+    // Table Header
+    doc.setFillColor(30, 41, 59);
+    doc.rect(tableX, curY, tableW, 22, 'F');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(255, 255, 255);
+
+    let hX = tableX;
+    doc.text("PROGRESS PLAN / ACTUAL TIER CATEGORY", hX + 8, curY + 14);
+    hX += colWidths.tier;
+    doc.text(`MONTH: ${activeMilestone.monthLabel.toUpperCase()}`, hX + 8, curY + 14);
+    hX += colWidths.month;
+    doc.text(`QUARTER: ${activeMilestone.quarterLabel.toUpperCase()}`, hX + 8, curY + 14);
+    hX += colWidths.quarter;
+    doc.text(`FISCAL YEAR: EFY ${activeMilestone.efyLabel}`, hX + 8, curY + 14);
+    hX += colWidths.efy;
+    doc.text(`CUMULATIVE TO-DATE AT THIS MONTH`, hX + 8, curY + 14);
+
+    curY += 22;
+
+    const rows = [
+      {
+        tier: "Contractor Work Program Plan",
+        subtier: "Contractor Baseline Schedule",
+        bg: [239, 246, 255],
+        textColor: [30, 58, 138],
+        m: comparisonTableData.contractor.month,
+        q: comparisonTableData.contractor.quarter,
+        e: comparisonTableData.contractor.efy,
+        td: comparisonTableData.contractor.todate,
+        isVariance: false
+      },
+      {
+        tier: "ERA Approved Program Plan",
+        subtier: "Employer Approved Target",
+        bg: [245, 243, 255],
+        textColor: [76, 29, 149],
+        m: comparisonTableData.era.month,
+        q: comparisonTableData.era.quarter,
+        e: comparisonTableData.era.efy,
+        td: comparisonTableData.era.todate,
+        isVariance: false
+      },
+      {
+        tier: "Actual Execution Accomplishment",
+        subtier: "Supervision Verified Accomplishment",
+        bg: [236, 253, 245],
+        textColor: [6, 95, 70],
+        m: comparisonTableData.actual.month,
+        q: comparisonTableData.actual.quarter,
+        e: comparisonTableData.actual.efy,
+        td: comparisonTableData.actual.todate,
+        isVariance: false
+      },
+      {
+        tier: "Variance vs Contractor Plan (Actual - Plan)",
+        subtier: "Slippage vs Contractor Program",
+        bg: [255, 255, 255],
+        textColor: [15, 23, 42],
+        m: comparisonTableData.varVsContractor.month,
+        q: comparisonTableData.varVsContractor.quarter,
+        e: comparisonTableData.varVsContractor.efy,
+        td: comparisonTableData.varVsContractor.todate,
+        isVariance: true
+      },
+      {
+        tier: "Variance vs ERA Plan (Actual - ERA)",
+        subtier: "Official Compliance Slippage vs ERA",
+        bg: [248, 250, 252],
+        textColor: [15, 23, 42],
+        m: comparisonTableData.varVsEra.month,
+        q: comparisonTableData.varVsEra.quarter,
+        e: comparisonTableData.varVsEra.efy,
+        td: comparisonTableData.varVsEra.todate,
+        isVariance: true
+      }
+    ];
+
+    rows.forEach((r) => {
+      doc.setFillColor(r.bg[0], r.bg[1], r.bg[2]);
+      doc.rect(tableX, curY, tableW, 22, 'F');
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.5);
+      doc.line(tableX, curY + 22, tableX + tableW, curY + 22);
+
+      let rX = tableX;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7);
+      doc.setTextColor(r.textColor[0], r.textColor[1], r.textColor[2]);
+      doc.text(r.tier, rX + 8, curY + 11);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(5.5);
+      doc.setTextColor(148, 163, 184);
+      doc.text(r.subtier, rX + 8, curY + 18);
+
+      const renderVal = (val: number, isVar: boolean, curValX: number) => {
+        if (isVar) {
+          const sign = val > 0 ? '+' : '';
+          const kmStr = `${sign}${val.toFixed(2)} Km`;
+          const pctStr = `${sign}${((val / comparisonTableData.lengthKm) * 100).toFixed(2)}%`;
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(7);
+          if (val >= 0) {
+            doc.setTextColor(5, 150, 105);
+          } else {
+            doc.setTextColor(225, 29, 72);
+          }
+          doc.text(kmStr, curValX + 8, curY + 11);
+          doc.setFontSize(5.5);
+          doc.text(pctStr, curValX + 8, curY + 18);
+        } else {
+          const kmStr = `${val.toFixed(2)} Km`;
+          const pctStr = `${((val / comparisonTableData.lengthKm) * 100).toFixed(2)}% of length`;
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(7);
+          doc.setTextColor(r.textColor[0], r.textColor[1], r.textColor[2]);
+          doc.text(kmStr, curValX + 8, curY + 11);
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(5.5);
+          doc.setTextColor(100, 116, 139);
+          doc.text(pctStr, curValX + 8, curY + 18);
+        }
+      };
+
+      rX += colWidths.tier;
+      renderVal(r.m, r.isVariance, rX);
+      rX += colWidths.month;
+      renderVal(r.q, r.isVariance, rX);
+      rX += colWidths.quarter;
+      renderVal(r.e, r.isVariance, rX);
+      rX += colWidths.efy;
+      renderVal(r.td, r.isVariance, rX);
+
+      curY += 22;
+    });
+
+    curY += 12;
+
+    // Narrative Box
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(40, curY, pageWidth - 80, 42, 3, 3, 'DF');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(15, 23, 42);
+    doc.text("EXECUTIVE AUDIT FINDINGS & SPI PERFORMANCE INDEX", 50, curY + 12);
+
+    const spiMonth = comparisonTableData.era.month > 0 ? (comparisonTableData.actual.month / comparisonTableData.era.month).toFixed(2) : '1.00';
+    const spiTodate = comparisonTableData.era.todate > 0 ? (comparisonTableData.actual.todate / comparisonTableData.era.todate).toFixed(2) : '1.00';
+    const monthLag = comparisonTableData.varVsEra.month;
+    const todateLag = comparisonTableData.varVsEra.todate;
+
+    const narrative = `During ${activeMilestone.monthLabel}, the actual execution reached ${comparisonTableData.actual.month.toFixed(2)} Km vs the ERA approved plan of ${comparisonTableData.era.month.toFixed(2)} Km (${monthLag >= 0 ? '+' : ''}${monthLag.toFixed(2)} Km variance, Monthly SPI: ${spiMonth}). As of this milestone month, cumulative to-date physical accomplishment reached ${comparisonTableData.actual.todate.toFixed(2)} Km (${((comparisonTableData.actual.todate / comparisonTableData.lengthKm) * 100).toFixed(2)}% of total scope) against the planned ${comparisonTableData.era.todate.toFixed(2)} Km (${todateLag >= 0 ? '+' : ''}${todateLag.toFixed(2)} Km slippage, Cumulative SPI: ${spiTodate}).`;
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(71, 85, 105);
+    const wrappedNarrative = doc.splitTextToSize(narrative, pageWidth - 100);
+    doc.text(wrappedNarrative, 50, curY + 22);
+
+    // Sign-Off Block at bottom of page
+    const signY = pageHeight - 65;
+    const signBoxW = (pageWidth - 110) / 3;
+
+    const signBoxes = [
+      { label: "SUPERVISION CONSULTANT / RE", subtitle: "Certified Progress Accomplishment" },
+      { label: "ERA PROJECT MANAGER", subtitle: "Verified Execution Verification" },
+      { label: "ERA PROGRAM DIRECTORATE DIRECTOR", subtitle: "Approved for Contract Administration" }
+    ];
+
+    signBoxes.forEach((sb, sIdx) => {
+      const sX = 40 + sIdx * (signBoxW + 15);
+      doc.setDrawColor(203, 213, 225);
+      doc.setLineWidth(0.5);
+      doc.roundedRect(sX, signY, signBoxW, 36, 2, 2, 'S');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(5.5);
+      doc.setTextColor(71, 85, 105);
+      doc.text(sb.label, sX + 6, signY + 10);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(4.5);
+      doc.setTextColor(148, 163, 184);
+      doc.text(sb.subtitle, sX + 6, signY + 17);
+
+      doc.setDrawColor(226, 232, 240);
+      doc.line(sX + 6, signY + 28, sX + signBoxW - 6, signY + 28);
+      doc.text("Signature & Official Stamp / Date", sX + 6, signY + 33);
+    });
+
+    const fileName = `ERA_Progress_Comparison_${activeComparisonProject.name.replace(/[^a-zA-Z0-9]/g, '_')}_${activeMilestone.monthLabel.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
+    doc.save(fileName);
+  };
+
+  const handleExportProgressComparisonCSV = () => {
+    if (!activeMilestone || groupComparisonMatrix.length === 0) return;
+
+    const m = activeMilestone;
+
+    let csv = `ETHIOPIAN ROADS ADMINISTRATION (ERA) - GROUP PORTFOLIO COMPARISON SUMMARY REPORT\n`;
+    csv += `Group / Directorate,${selectedGroup || 'Southern'} ${groupType.toUpperCase()}\n`;
+    csv += `Target Month,${m.monthLabel}\n`;
+    csv += `Corresponding Quarter,${m.quarterLabel}\n`;
+    csv += `Fiscal Year,EFY ${m.efyLabel}\n`;
+    csv += `Total Projects,${groupComparisonMatrix.length}\n`;
+    csv += `Generated Date,${new Date().toLocaleDateString()}\n`;
+    csv += `Auditor,${currentUserObj.username} (ERA CMS)\n\n`;
+
+    csv += `GROUP PORTFOLIO COMPARISON SUMMARY - ALL ${groupComparisonMatrix.length} PROJECTS\n`;
+    csv += `Project ID,Project Title,Contractor,Supervision Consultant,Project Length (Km),Month (${m.monthLabel}) Ctr Plan (Km),Month (${m.monthLabel}) ERA Plan (Km),Month (${m.monthLabel}) Actual (Km),Month Variance vs ERA (Km),Quarter (${m.quarterLabel}) Ctr Plan (Km),Quarter (${m.quarterLabel}) ERA Plan (Km),Quarter (${m.quarterLabel}) Actual (Km),EFY (${m.efyLabel}) Ctr Plan (Km),EFY (${m.efyLabel}) ERA Plan (Km),EFY (${m.efyLabel}) Actual (Km),Cumulative Ctr Plan (Km),Cumulative ERA Plan (Km),Cumulative Actual (Km),Cumulative Actual (% Scope),Cumulative Slippage vs ERA (Km),Status\n`;
+
+    groupComparisonMatrix.forEach(row => {
+      csv += `"${row.project.id}","${row.project.name.replace(/"/g, '""')}","${(row.project.contractor || 'Not Specified').replace(/"/g, '""')}","${(row.project.consultant || 'Not Specified').replace(/"/g, '""')}",${row.lengthKm},${row.contractor.month.toFixed(2)},${row.era.month.toFixed(2)},${row.actual.month.toFixed(2)},${row.monthVariance.toFixed(2)},${row.contractor.quarter.toFixed(2)},${row.era.quarter.toFixed(2)},${row.actual.quarter.toFixed(2)},${row.contractor.efy.toFixed(2)},${row.era.efy.toFixed(2)},${row.actual.efy.toFixed(2)},${row.contractor.todate.toFixed(2)},${row.era.todate.toFixed(2)},${row.actual.todate.toFixed(2)},${row.todatePct.toFixed(2)}%,${row.todateVariance.toFixed(2)},"${row.healthStatus}"\n`;
+    });
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `ERA_Group_Portfolio_Comparison_${(selectedGroup || 'Southern').replace(/[^a-zA-Z0-9]/g, '_')}_${m.monthLabel.replace(/[^a-zA-Z0-9]/g, '_')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <motion.div 
       initial={{ opacity: 0, y: -15 }}
@@ -5730,13 +6872,24 @@ export default function GroupReportGenerator({
         <button
           onClick={() => setReportMode('supervisionStaff')}
           id="btn-report-supervision-staff"
-          className={`px-4 py-2 text-xs font-bold border-b-2 transition-all flex items-center gap-2 -mb-px ${
+          className={`px-4 py-2 text-xs font-bold border-b-2 transition-all flex items-center gap-2 -mb-px shrink-0 cursor-pointer ${
             reportMode === 'supervisionStaff'
               ? 'border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400'
               : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'
           }`}
         >
           <Users className="w-3.5 h-3.5 text-purple-500" /> Supervision Personnel Workload & Staff Status
+        </button>
+        <button
+          onClick={() => setReportMode('progressComparison')}
+          id="btn-report-progress-comparison"
+          className={`px-4 py-2 text-xs font-bold border-b-2 transition-all flex items-center gap-2 -mb-px shrink-0 cursor-pointer ${
+            reportMode === 'progressComparison'
+              ? 'border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400 font-extrabold'
+              : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'
+          }`}
+        >
+          <BarChart3 className="w-3.5 h-3.5 text-blue-500" /> Progress Plan & Accomplishment Comparison
         </button>
       </div>
 
@@ -5845,6 +6998,95 @@ export default function GroupReportGenerator({
               ))}
             </select>
           </div>
+
+          {/* Progress Comparison Dedicated Project & Milestone Filter */}
+          {reportMode === 'progressComparison' && (
+            <div className="space-y-3 p-3.5 bg-blue-50/70 dark:bg-blue-950/30 rounded-2xl border border-blue-200 dark:border-blue-900/60 shadow-xs">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black uppercase text-blue-700 dark:text-blue-300 tracking-wider block flex items-center justify-between">
+                  <span>Target Project Comparison</span>
+                  <span className="text-[9px] font-mono font-bold text-blue-600 dark:text-blue-400">
+                    {processedProjects.length} Available
+                  </span>
+                </label>
+                <select
+                  value={selectedComparisonProjectId || activeComparisonProject?.id || ''}
+                  onChange={(e) => {
+                    setSelectedComparisonProjectId(e.target.value);
+                    setSelectedComparisonMonthKey(null);
+                  }}
+                  className="w-full bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800 rounded-xl px-2.5 py-2 text-xs font-bold outline-none text-slate-800 dark:text-zinc-100 focus:ring-1 focus:ring-blue-500 transition cursor-pointer"
+                >
+                  {processedProjects.map(p => (
+                    <option key={`p_opt_${p.id}`} value={p.id}>
+                      {p.name} ({p.contractor})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black uppercase text-blue-700 dark:text-blue-300 tracking-wider block flex items-center justify-between">
+                  <span>Selected Milestone Month</span>
+                  <span className="text-[9px] font-mono text-slate-500">
+                    {availableMilestones.length} Recorded
+                  </span>
+                </label>
+                <select
+                  value={activeMilestone?.key || ''}
+                  onChange={(e) => setSelectedComparisonMonthKey(e.target.value)}
+                  className="w-full bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800 rounded-xl px-2.5 py-2 text-xs font-bold outline-none text-slate-800 dark:text-zinc-100 focus:ring-1 focus:ring-blue-500 transition cursor-pointer font-mono"
+                >
+                  {availableMilestones.map(m => (
+                    <option key={`m_opt_${m.key}`} value={m.key}>
+                      📅 {m.monthLabel} • {m.quarterLabel} • EFY {m.efyLabel} {m.isLive ? '★ [Live]' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400 tracking-wider block">
+                  Table Measurement Unit
+                </label>
+                <div className="grid grid-cols-3 gap-1 bg-white dark:bg-slate-900 p-1 rounded-xl border border-blue-200/80 dark:border-blue-900/60">
+                  <button
+                    type="button"
+                    onClick={() => setComparisonUnitMode('both')}
+                    className={`py-1 text-[10px] font-black rounded-lg transition ${
+                      comparisonUnitMode === 'both'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                    }`}
+                  >
+                    Both (Km & %)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setComparisonUnitMode('km')}
+                    className={`py-1 text-[10px] font-black rounded-lg transition ${
+                      comparisonUnitMode === 'km'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                    }`}
+                  >
+                    Km Only
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setComparisonUnitMode('pct')}
+                    className={`py-1 text-[10px] font-black rounded-lg transition ${
+                      comparisonUnitMode === 'pct'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                    }`}
+                  >
+                    % Only
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Matured Payments Option Filter */}
           <div className="space-y-2 p-3 bg-slate-50 dark:bg-slate-900/30 rounded-2xl border border-slate-200 dark:border-slate-800">
@@ -5985,6 +7227,43 @@ export default function GroupReportGenerator({
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" /> Export Bonds CSV
                 </button>
+              </>
+            ) : reportMode === 'progressComparison' ? (
+              <>
+                <button
+                  onClick={handleExportProgressComparisonPDF}
+                  id="btn-export-comparison-pdf"
+                  disabled={groupComparisonMatrix.length === 0 || !activeMilestone}
+                  className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white py-2.5 rounded-xl text-xs font-extrabold shadow-sm transition cursor-pointer"
+                  title="Export Group Portfolio Comparison Summary PDF for all multiple projects"
+                >
+                  <Printer className="w-3.5 h-3.5" /> Export Portfolio PDF (All Projects)
+                </button>
+                <button
+                  onClick={handleExportSingleProjectPDF}
+                  id="btn-export-single-project-pdf"
+                  disabled={!activeComparisonProject || !activeMilestone}
+                  className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white py-2 rounded-xl text-xs font-bold shadow-sm transition cursor-pointer"
+                  title="Export focused project deep-dive comparison PDF"
+                >
+                  <BarChart3 className="w-3.5 h-3.5" /> Export Focused Project PDF
+                </button>
+                <button
+                  onClick={handleExportProgressComparisonCSV}
+                  id="btn-export-comparison-csv"
+                  disabled={groupComparisonMatrix.length === 0 || !activeMilestone}
+                  className="w-full flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-650 disabled:opacity-50 text-slate-700 dark:text-slate-200 py-2 rounded-xl text-xs font-bold transition cursor-pointer border border-slate-200 dark:border-slate-600"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> Export Comparison CSV
+                </button>
+                {onSelectProject && activeComparisonProject && (
+                  <button
+                    onClick={() => onSelectProject(activeComparisonProject.id, false, 'progressPlan')}
+                    className="w-full flex items-center justify-center gap-2 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 py-2 rounded-xl text-xs font-bold transition cursor-pointer"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" /> Open Project Progress Plan
+                  </button>
+                )}
               </>
             ) : (
               <>
@@ -6418,6 +7697,91 @@ export default function GroupReportGenerator({
                   </div>
                 </div>
               </>
+            ) : reportMode === 'progressComparison' ? (
+              <>
+                {/* Progress Comparison KPI Block 1: Active Milestone Period */}
+                <div className="bg-blue-50/60 dark:bg-blue-950/20 p-3.5 rounded-xl border border-blue-200/80 dark:border-blue-900/40 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[9px] font-extrabold text-blue-600 dark:text-blue-400 block uppercase tracking-wider">
+                      SELECTED TARGET MILESTONE
+                    </span>
+                    <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 font-mono">
+                      {activeMilestone?.isLive ? '★ Live Snapshot' : 'Archived Baseline'}
+                    </span>
+                  </div>
+                  <div className="flex items-baseline gap-1.5 truncate">
+                    <span className="text-base font-black text-slate-800 dark:text-zinc-100 font-mono">
+                      {activeMilestone?.monthLabel || 'N/A'}
+                    </span>
+                    <span className="text-2xs font-bold text-slate-500">
+                      ({activeMilestone?.quarterLabel})
+                    </span>
+                  </div>
+                  <div className="text-[9.5px] text-slate-500 dark:text-slate-400 flex items-center justify-between truncate">
+                    <span>Fiscal Year: <strong>EFY {activeMilestone?.efyLabel}</strong></span>
+                    <span className="font-bold text-blue-600 dark:text-blue-400 truncate max-w-[140px]">
+                      {activeComparisonProject?.name}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Progress Comparison KPI Block 2: Month Accomplishment vs ERA Plan */}
+                <div className="bg-emerald-50/60 dark:bg-emerald-950/20 p-3.5 rounded-xl border border-emerald-200/80 dark:border-emerald-900/40 space-y-1">
+                  <span className="text-[9px] font-extrabold text-emerald-600 dark:text-emerald-400 block uppercase tracking-wider">
+                    SPECIFIC MONTH ACCOMPLISHMENT
+                  </span>
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-base font-black text-emerald-700 dark:text-emerald-300 font-mono">
+                      {activeMilestone?.actual.month.toFixed(2)} Km
+                    </span>
+                    <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${
+                      (comparisonTableData?.varVsEra.month || 0) >= 0
+                        ? 'bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300'
+                        : 'bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300'
+                    }`}>
+                      {(comparisonTableData?.varVsEra.month || 0) >= 0 ? '+' : ''}
+                      {(comparisonTableData?.varVsEra.month || 0).toFixed(2)} Km vs ERA
+                    </span>
+                  </div>
+                  <div className="text-[9.5px] text-slate-500 dark:text-slate-400 flex items-center justify-between">
+                    <span>Plan: Ctr {activeMilestone?.contractor.month.toFixed(2)} | ERA {activeMilestone?.era.month.toFixed(2)} Km</span>
+                    <span className="font-mono font-bold text-slate-700 dark:text-slate-300">
+                      {comparisonTableData?.ratioVsEra.month.toFixed(1)}% achieved
+                    </span>
+                  </div>
+                </div>
+
+                {/* Progress Comparison KPI Block 3: Cumulative To-Date reached when this month */}
+                <div className="bg-indigo-50/60 dark:bg-indigo-950/20 p-3.5 rounded-xl border border-indigo-200/80 dark:border-indigo-900/40 space-y-1">
+                  <span className="text-[9px] font-extrabold text-indigo-600 dark:text-indigo-400 block uppercase tracking-wider">
+                    CUMULATIVE TO-DATE REACHED AT THIS MONTH
+                  </span>
+                  <div className="flex items-baseline justify-between">
+                    <div className="text-base font-black text-indigo-700 dark:text-indigo-300 font-mono">
+                      {activeMilestone?.actual.todate.toFixed(2)} Km
+                      {comparisonTableData && comparisonTableData.lengthKm > 0 ? (
+                        <span className="text-2xs font-bold text-slate-400 dark:text-slate-400 ml-1">
+                          ({((activeMilestone?.actual.todate || 0) / comparisonTableData.lengthKm * 100).toFixed(1)}%)
+                        </span>
+                      ) : null}
+                    </div>
+                    <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${
+                      (comparisonTableData?.varVsEra.todate || 0) >= 0
+                        ? 'bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300'
+                        : 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300'
+                    }`}>
+                      {(comparisonTableData?.varVsEra.todate || 0) >= 0 ? '+' : ''}
+                      {(comparisonTableData?.varVsEra.todate || 0).toFixed(2)} Km vs ERA
+                    </span>
+                  </div>
+                  <div className="text-[9.5px] text-slate-500 dark:text-slate-400 flex items-center justify-between">
+                    <span>Target: Ctr {activeMilestone?.contractor.todate.toFixed(2)} | ERA {activeMilestone?.era.todate.toFixed(2)} Km</span>
+                    <span className="font-bold text-slate-600 dark:text-slate-300 font-mono">
+                      {comparisonTableData?.lengthKm} Km Total
+                    </span>
+                  </div>
+                </div>
+              </>
             ) : (
               <>
                 {/* Supervision Staff KPI Block 1 */}
@@ -6612,7 +7976,681 @@ export default function GroupReportGenerator({
             </div>
 
             {/* Structured Table Container */}
-            <div className="border border-slate-150 dark:border-slate-700 rounded-xl overflow-hidden bg-white dark:bg-slate-900/10">
+            {reportMode === 'progressComparison' ? (
+              <div className="space-y-5">
+                {/* 1. Milestone Timeline / Month Selector Strip */}
+                {activeComparisonProject && availableMilestones.length > 0 && (
+                  <div className="p-3.5 bg-slate-50/80 dark:bg-slate-900/40 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-2">
+                        <CalendarClock className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                        <span className="text-[10px] font-black uppercase text-slate-700 dark:text-zinc-200 tracking-wider">
+                          Select Milestone Month: {activeComparisonProject.name}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        {availableMilestones.length} Recorded Milestone Snapshots
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2 overflow-x-auto pb-1 pt-0.5">
+                      {availableMilestones.map((m) => {
+                        const isSelected = activeMilestone?.key === m.key;
+                        return (
+                          <button
+                            key={`chip_${m.key}`}
+                            type="button"
+                            onClick={() => setSelectedComparisonMonthKey(m.key)}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer ${
+                              isSelected
+                                ? 'bg-blue-600 text-white shadow-xs font-black ring-2 ring-blue-400 dark:ring-blue-500'
+                                : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'
+                            }`}
+                          >
+                            <Calendar className="w-3 h-3 opacity-75" />
+                            <span>{m.monthLabel}</span>
+                            <span className="text-[9.5px] opacity-80 font-normal font-mono">
+                              ({m.quarterLabel} • EFY {m.efyLabel})
+                            </span>
+                            {m.isLive && (
+                              <span className="px-1 py-0.2 rounded text-[8px] bg-amber-400 text-slate-900 font-black">
+                                LIVE
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* 2. Target Project Header Banner */}
+                {activeComparisonProject && activeMilestone && (
+                  <div className="p-4 bg-gradient-to-r from-blue-50/60 via-indigo-50/40 to-slate-50/60 dark:from-blue-950/20 dark:via-indigo-950/20 dark:to-slate-900/20 rounded-2xl border border-blue-200/80 dark:border-blue-900/50 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-black text-slate-900 dark:text-white">
+                            {activeComparisonProject.name}
+                          </span>
+                          <span className="px-2 py-0.5 rounded-md text-[9px] font-extrabold uppercase bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-300 font-mono">
+                            ID: {activeComparisonProject.id.substring(0, 10).toUpperCase()}
+                          </span>
+                          <span className="px-2 py-0.5 rounded-md text-[9px] font-extrabold uppercase bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 font-mono">
+                            {activeComparisonProject.lengthKm || 65} Km Total
+                          </span>
+                        </div>
+                        <div className="text-2xs text-slate-600 dark:text-slate-400 mt-1 flex flex-wrap gap-x-4 gap-y-0.5">
+                          <span>🏗️ Contractor: <strong className="text-slate-800 dark:text-zinc-200">{activeComparisonProject.contractor || 'China Wu Yi Co. Ltd'}</strong></span>
+                          <span>🎓 Consultant: <strong className="text-slate-800 dark:text-zinc-200">{activeComparisonProject.consultant || 'LEA Associates South Asia JV in Association with SABA Engineering PLC'}</strong></span>
+                          <span>🏢 {activeComparisonProject.programDirectorate || 'Southern'} • {activeComparisonProject.pmo || 'PMO 1'}</span>
+                        </div>
+                      </div>
+
+                      {onSelectProject && (
+                        <button
+                          onClick={() => onSelectProject(activeComparisonProject.id, false, 'progressPlan')}
+                          className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer shadow-2xs"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                          <span>Open Workspace</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* 3. The Core Progress Comparison Table */}
+                {comparisonTableData && activeMilestone && (
+                  <div className="border border-slate-200 dark:border-slate-700/80 rounded-2xl overflow-hidden bg-white dark:bg-slate-900/50 shadow-sm">
+                    <div className="p-3.5 bg-slate-50 dark:bg-slate-900/80 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div>
+                        <h4 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
+                          <BarChart3 className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                          Project Progress Plan vs. Accomplishment Comparison Matrix
+                        </h4>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                          Auditing <strong>Contractor Program Plan</strong> vs <strong>ERA Approved Plan</strong> vs <strong>Actual Physical Accomplishment</strong> as reached when <strong>{activeMilestone.monthLabel}</strong>
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 bg-white dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700 text-2xs shrink-0">
+                        <span className="text-slate-400 font-bold px-1.5">Unit:</span>
+                        <button
+                          type="button"
+                          onClick={() => setComparisonUnitMode('both')}
+                          className={`px-2 py-0.5 rounded font-extrabold transition ${comparisonUnitMode === 'both' ? 'bg-blue-600 text-white' : 'text-slate-600 dark:text-slate-400'}`}
+                        >
+                          Both (Km & %)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setComparisonUnitMode('km')}
+                          className={`px-2 py-0.5 rounded font-extrabold transition ${comparisonUnitMode === 'km' ? 'bg-blue-600 text-white' : 'text-slate-600 dark:text-slate-400'}`}
+                        >
+                          Km Only
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setComparisonUnitMode('pct')}
+                          className={`px-2 py-0.5 rounded font-extrabold transition ${comparisonUnitMode === 'pct' ? 'bg-blue-600 text-white' : 'text-slate-600 dark:text-slate-400'}`}
+                        >
+                          % Only
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse text-xs">
+                        <thead>
+                          <tr className="bg-slate-100/80 dark:bg-slate-800/80 text-[10px] font-black uppercase tracking-wider text-slate-700 dark:text-zinc-200 border-b border-slate-200 dark:border-slate-700">
+                            <th className="px-4 py-3 min-w-[200px]">Plan / Accomplishment Tier Category</th>
+                            <th className="px-4 py-3 text-center min-w-[140px] bg-blue-50/40 dark:bg-blue-950/20">
+                              <span className="block font-black text-blue-700 dark:text-blue-300">
+                                {activeMilestone.monthLabel}
+                              </span>
+                              <span className="text-[9px] font-medium text-slate-400 lowercase">
+                                specific month target
+                              </span>
+                            </th>
+                            <th className="px-4 py-3 text-center min-w-[140px]">
+                              <span className="block font-black text-slate-800 dark:text-zinc-100">
+                                {activeMilestone.quarterLabel}
+                              </span>
+                              <span className="text-[9px] font-medium text-slate-400 lowercase">
+                                corresponding quarter
+                              </span>
+                            </th>
+                            <th className="px-4 py-3 text-center min-w-[140px]">
+                              <span className="block font-black text-slate-800 dark:text-zinc-100">
+                                EFY {activeMilestone.efyLabel}
+                              </span>
+                              <span className="text-[9px] font-medium text-slate-400 lowercase">
+                                fiscal year accomplishment
+                              </span>
+                            </th>
+                            <th className="px-4 py-3 text-center min-w-[160px] bg-indigo-50/50 dark:bg-indigo-950/30 border-l border-slate-200 dark:border-slate-700">
+                              <span className="block font-black text-indigo-700 dark:text-indigo-300">
+                                Cumulative To-Date Progress
+                              </span>
+                              <span className="text-[9px] font-medium text-indigo-500/80 dark:text-indigo-400/80">
+                                exactly reached at {activeMilestone.monthLabel}
+                              </span>
+                            </th>
+                          </tr>
+                        </thead>
+
+                        <tbody className="divide-y divide-slate-150 dark:divide-slate-800 font-medium">
+                          {/* 1. Contractor Plan Row */}
+                          <tr className="hover:bg-blue-50/20 dark:hover:bg-blue-950/10 transition">
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                <span className="w-3 h-3 rounded-md bg-blue-500 shrink-0" />
+                                <div>
+                                  <div className="font-extrabold text-blue-900 dark:text-blue-200">
+                                    Contractor Program Schedule
+                                  </div>
+                                  <div className="text-[10px] text-slate-400">
+                                    Contractor work program plan
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-center font-mono font-bold text-slate-800 dark:text-zinc-200 bg-blue-50/20 dark:bg-blue-950/10">
+                              {formatProgressVal(comparisonTableData.contractor.month, comparisonTableData.lengthKm)}
+                            </td>
+                            <td className="px-4 py-3 text-center font-mono font-bold text-slate-800 dark:text-zinc-200">
+                              {formatProgressVal(comparisonTableData.contractor.quarter, comparisonTableData.lengthKm)}
+                            </td>
+                            <td className="px-4 py-3 text-center font-mono font-bold text-slate-800 dark:text-zinc-200">
+                              {formatProgressVal(comparisonTableData.contractor.efy, comparisonTableData.lengthKm)}
+                            </td>
+                            <td className="px-4 py-3 text-center font-mono font-black text-blue-700 dark:text-blue-300 bg-indigo-50/30 dark:bg-indigo-950/20 border-l border-slate-200 dark:border-slate-800">
+                              {formatProgressVal(comparisonTableData.contractor.todate, comparisonTableData.lengthKm)}
+                            </td>
+                          </tr>
+
+                          {/* 2. ERA Plan Row */}
+                          <tr className="hover:bg-purple-50/20 dark:hover:bg-purple-950/10 transition">
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                <span className="w-3 h-3 rounded-md bg-purple-600 shrink-0" />
+                                <div>
+                                  <div className="font-extrabold text-purple-900 dark:text-purple-200">
+                                    ERA Approved Plan Schedule
+                                  </div>
+                                  <div className="text-[10px] text-slate-400">
+                                    Employer baseline milestone target
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-center font-mono font-bold text-slate-800 dark:text-zinc-200 bg-blue-50/20 dark:bg-blue-950/10">
+                              {formatProgressVal(comparisonTableData.era.month, comparisonTableData.lengthKm)}
+                            </td>
+                            <td className="px-4 py-3 text-center font-mono font-bold text-slate-800 dark:text-zinc-200">
+                              {formatProgressVal(comparisonTableData.era.quarter, comparisonTableData.lengthKm)}
+                            </td>
+                            <td className="px-4 py-3 text-center font-mono font-bold text-slate-800 dark:text-zinc-200">
+                              {formatProgressVal(comparisonTableData.era.efy, comparisonTableData.lengthKm)}
+                            </td>
+                            <td className="px-4 py-3 text-center font-mono font-black text-purple-700 dark:text-purple-300 bg-indigo-50/30 dark:bg-indigo-950/20 border-l border-slate-200 dark:border-slate-800">
+                              {formatProgressVal(comparisonTableData.era.todate, comparisonTableData.lengthKm)}
+                            </td>
+                          </tr>
+
+                          {/* 3. Actual Accomplishment Row */}
+                          <tr className="bg-emerald-50/30 dark:bg-emerald-950/10 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/20 transition">
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                <span className="w-3 h-3 rounded-md bg-emerald-500 shrink-0" />
+                                <div>
+                                  <div className="font-black text-emerald-950 dark:text-emerald-200">
+                                    Actual Accomplishment Achieved
+                                  </div>
+                                  <div className="text-[10px] text-emerald-700/80 dark:text-emerald-400/80 font-bold">
+                                    Supervision verified execution accomplishment
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-center font-mono font-black text-emerald-700 dark:text-emerald-300 bg-blue-50/20 dark:bg-blue-950/10">
+                              {formatProgressVal(comparisonTableData.actual.month, comparisonTableData.lengthKm)}
+                            </td>
+                            <td className="px-4 py-3 text-center font-mono font-black text-emerald-700 dark:text-emerald-300">
+                              {formatProgressVal(comparisonTableData.actual.quarter, comparisonTableData.lengthKm)}
+                            </td>
+                            <td className="px-4 py-3 text-center font-mono font-black text-emerald-700 dark:text-emerald-300">
+                              {formatProgressVal(comparisonTableData.actual.efy, comparisonTableData.lengthKm)}
+                            </td>
+                            <td className="px-4 py-3 text-center font-mono font-black text-emerald-700 dark:text-emerald-300 bg-indigo-50/30 dark:bg-indigo-950/20 border-l border-slate-200 dark:border-slate-800">
+                              {formatProgressVal(comparisonTableData.actual.todate, comparisonTableData.lengthKm)}
+                            </td>
+                          </tr>
+
+                          {/* 4. Variance vs Contractor Plan */}
+                          <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
+                            <td className="px-4 py-2.5">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs">⚖️</span>
+                                <div>
+                                  <div className="font-extrabold text-slate-800 dark:text-zinc-200">
+                                    Variance vs Contractor Plan
+                                  </div>
+                                  <div className="text-[10px] text-slate-400 font-sans">
+                                    (Actual Accomplishment − Contractor Plan)
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                            {[
+                              comparisonTableData.varVsContractor.month,
+                              comparisonTableData.varVsContractor.quarter,
+                              comparisonTableData.varVsContractor.efy,
+                              comparisonTableData.varVsContractor.todate
+                            ].map((vVal, vIdx) => {
+                              const vFmt = formatVarianceVal(vVal, comparisonTableData.lengthKm);
+                              return (
+                                <td 
+                                  key={`var_ctr_${vIdx}`} 
+                                  className={`px-4 py-2.5 text-center font-mono font-black ${
+                                    vIdx === 0 ? 'bg-blue-50/20 dark:bg-blue-950/10' : ''
+                                  } ${vIdx === 3 ? 'bg-indigo-50/30 dark:bg-indigo-950/20 border-l border-slate-200 dark:border-slate-800' : ''}`}
+                                >
+                                  <span className={`inline-block px-2 py-0.5 rounded-md ${
+                                    vFmt.isPositive
+                                      ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300'
+                                      : vFmt.isZero
+                                        ? 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                                        : 'bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300'
+                                  }`}>
+                                    {vFmt.text}
+                                  </span>
+                                </td>
+                              );
+                            })}
+                          </tr>
+
+                          {/* 5. Variance vs ERA Plan */}
+                          <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
+                            <td className="px-4 py-2.5">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs">⚖️</span>
+                                <div>
+                                  <div className="font-extrabold text-slate-800 dark:text-zinc-200">
+                                    Variance vs ERA Plan
+                                  </div>
+                                  <div className="text-[10px] text-slate-400 font-sans">
+                                    (Actual Accomplishment − ERA Approved Plan)
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                            {[
+                              comparisonTableData.varVsEra.month,
+                              comparisonTableData.varVsEra.quarter,
+                              comparisonTableData.varVsEra.efy,
+                              comparisonTableData.varVsEra.todate
+                            ].map((vVal, vIdx) => {
+                              const vFmt = formatVarianceVal(vVal, comparisonTableData.lengthKm);
+                              return (
+                                <td 
+                                  key={`var_era_${vIdx}`} 
+                                  className={`px-4 py-2.5 text-center font-mono font-black ${
+                                    vIdx === 0 ? 'bg-blue-50/20 dark:bg-blue-950/10' : ''
+                                  } ${vIdx === 3 ? 'bg-indigo-50/30 dark:bg-indigo-950/20 border-l border-slate-200 dark:border-slate-800' : ''}`}
+                                >
+                                  <span className={`inline-block px-2 py-0.5 rounded-md ${
+                                    vFmt.isPositive
+                                      ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300'
+                                      : vFmt.isZero
+                                        ? 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                                        : 'bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300'
+                                  }`}>
+                                    {vFmt.text}
+                                  </span>
+                                </td>
+                              );
+                            })}
+                          </tr>
+
+                          {/* 6. Execution Ratio vs ERA Plan */}
+                          <tr className="bg-slate-50/80 dark:bg-slate-900/60 font-bold text-slate-700 dark:text-zinc-300">
+                            <td className="px-4 py-2.5">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs">📈</span>
+                                <div>
+                                  <div className="font-extrabold text-slate-800 dark:text-zinc-200">
+                                    Execution Ratio (% of ERA Plan)
+                                  </div>
+                                  <div className="text-[10px] text-slate-400">
+                                    Accomplishment fulfillment rate
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-4 py-2.5 text-center font-mono font-black bg-blue-50/20 dark:bg-blue-950/10">
+                              <span className={comparisonTableData.ratioVsEra.month >= 100 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}>
+                                {comparisonTableData.ratioVsEra.month.toFixed(1)}%
+                              </span>
+                            </td>
+                            <td className="px-4 py-2.5 text-center font-mono font-black">
+                              <span className={comparisonTableData.ratioVsEra.quarter >= 100 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}>
+                                {comparisonTableData.ratioVsEra.quarter.toFixed(1)}%
+                              </span>
+                            </td>
+                            <td className="px-4 py-2.5 text-center font-mono font-black">
+                              <span className={comparisonTableData.ratioVsEra.efy >= 100 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}>
+                                {comparisonTableData.ratioVsEra.efy.toFixed(1)}%
+                              </span>
+                            </td>
+                            <td className="px-4 py-2.5 text-center font-mono font-black bg-indigo-50/30 dark:bg-indigo-950/20 border-l border-slate-200 dark:border-slate-800">
+                              <span className={comparisonTableData.ratioVsEra.todate >= 100 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}>
+                                {comparisonTableData.ratioVsEra.todate.toFixed(1)}%
+                              </span>
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Visual Progress Bars Comparison Grid */}
+                    <div className="p-4 bg-slate-50/40 dark:bg-slate-900/40 border-t border-slate-200 dark:border-slate-800 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                      {/* Month Horizon Bar */}
+                      <div className="space-y-1.5 bg-white dark:bg-slate-800 p-2.5 rounded-xl border border-slate-200/80 dark:border-slate-700/60 shadow-2xs">
+                        <div className="flex justify-between text-[10px] font-bold">
+                          <span className="text-slate-500 uppercase">{activeMilestone.monthLabel} Target</span>
+                          <span className="font-mono text-emerald-600 dark:text-emerald-400">{comparisonTableData.actual.month.toFixed(2)} Km Exec</span>
+                        </div>
+                        <div className="space-y-1">
+                          <div className="w-full bg-slate-100 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden flex">
+                            <div className="bg-blue-500 h-full" style={{ width: `${Math.min(100, (comparisonTableData.contractor.month / (comparisonTableData.lengthKm || 65)) * 100 * 5)}%` }} title={`Ctr: ${comparisonTableData.contractor.month} Km`} />
+                          </div>
+                          <div className="w-full bg-slate-100 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden flex">
+                            <div className="bg-purple-600 h-full" style={{ width: `${Math.min(100, (comparisonTableData.era.month / (comparisonTableData.lengthKm || 65)) * 100 * 5)}%` }} title={`ERA: ${comparisonTableData.era.month} Km`} />
+                          </div>
+                          <div className="w-full bg-slate-100 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden flex">
+                            <div className="bg-emerald-500 h-full" style={{ width: `${Math.min(100, (comparisonTableData.actual.month / (comparisonTableData.lengthKm || 65)) * 100 * 5)}%` }} title={`Actual: ${comparisonTableData.actual.month} Km`} />
+                          </div>
+                        </div>
+                        <div className="flex justify-between text-[8px] text-slate-400 font-mono pt-0.5">
+                          <span>🟦 Ctr: {comparisonTableData.contractor.month.toFixed(2)}</span>
+                          <span>🟪 ERA: {comparisonTableData.era.month.toFixed(2)}</span>
+                          <span>🟩 Act: {comparisonTableData.actual.month.toFixed(2)}</span>
+                        </div>
+                      </div>
+
+                      {/* Quarter Horizon Bar */}
+                      <div className="space-y-1.5 bg-white dark:bg-slate-800 p-2.5 rounded-xl border border-slate-200/80 dark:border-slate-700/60 shadow-2xs">
+                        <div className="flex justify-between text-[10px] font-bold">
+                          <span className="text-slate-500 uppercase">{activeMilestone.quarterLabel} Target</span>
+                          <span className="font-mono text-emerald-600 dark:text-emerald-400">{comparisonTableData.actual.quarter.toFixed(2)} Km Exec</span>
+                        </div>
+                        <div className="space-y-1">
+                          <div className="w-full bg-slate-100 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden flex">
+                            <div className="bg-blue-500 h-full" style={{ width: `${Math.min(100, (comparisonTableData.contractor.quarter / (comparisonTableData.lengthKm || 65)) * 100 * 3)}%` }} />
+                          </div>
+                          <div className="w-full bg-slate-100 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden flex">
+                            <div className="bg-purple-600 h-full" style={{ width: `${Math.min(100, (comparisonTableData.era.quarter / (comparisonTableData.lengthKm || 65)) * 100 * 3)}%` }} />
+                          </div>
+                          <div className="w-full bg-slate-100 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden flex">
+                            <div className="bg-emerald-500 h-full" style={{ width: `${Math.min(100, (comparisonTableData.actual.quarter / (comparisonTableData.lengthKm || 65)) * 100 * 3)}%` }} />
+                          </div>
+                        </div>
+                        <div className="flex justify-between text-[8px] text-slate-400 font-mono pt-0.5">
+                          <span>🟦 Ctr: {comparisonTableData.contractor.quarter.toFixed(2)}</span>
+                          <span>🟪 ERA: {comparisonTableData.era.quarter.toFixed(2)}</span>
+                          <span>🟩 Act: {comparisonTableData.actual.quarter.toFixed(2)}</span>
+                        </div>
+                      </div>
+
+                      {/* Fiscal Year (EFY) Horizon Bar */}
+                      <div className="space-y-1.5 bg-white dark:bg-slate-800 p-2.5 rounded-xl border border-slate-200/80 dark:border-slate-700/60 shadow-2xs">
+                        <div className="flex justify-between text-[10px] font-bold">
+                          <span className="text-slate-500 uppercase">EFY {activeMilestone.efyLabel} Target</span>
+                          <span className="font-mono text-emerald-600 dark:text-emerald-400">{comparisonTableData.actual.efy.toFixed(2)} Km Exec</span>
+                        </div>
+                        <div className="space-y-1">
+                          <div className="w-full bg-slate-100 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden flex">
+                            <div className="bg-blue-500 h-full" style={{ width: `${Math.min(100, (comparisonTableData.contractor.efy / (comparisonTableData.lengthKm || 65)) * 100 * 2)}%` }} />
+                          </div>
+                          <div className="w-full bg-slate-100 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden flex">
+                            <div className="bg-purple-600 h-full" style={{ width: `${Math.min(100, (comparisonTableData.era.efy / (comparisonTableData.lengthKm || 65)) * 100 * 2)}%` }} />
+                          </div>
+                          <div className="w-full bg-slate-100 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden flex">
+                            <div className="bg-emerald-500 h-full" style={{ width: `${Math.min(100, (comparisonTableData.actual.efy / (comparisonTableData.lengthKm || 65)) * 100 * 2)}%` }} />
+                          </div>
+                        </div>
+                        <div className="flex justify-between text-[8px] text-slate-400 font-mono pt-0.5">
+                          <span>🟦 Ctr: {comparisonTableData.contractor.efy.toFixed(2)}</span>
+                          <span>🟪 ERA: {comparisonTableData.era.efy.toFixed(2)}</span>
+                          <span>🟩 Act: {comparisonTableData.actual.efy.toFixed(2)}</span>
+                        </div>
+                      </div>
+
+                      {/* Cumulative To-Date Horizon Bar */}
+                      <div className="space-y-1.5 bg-white dark:bg-slate-800 p-2.5 rounded-xl border border-indigo-200 dark:border-indigo-900/60 shadow-2xs">
+                        <div className="flex justify-between text-[10px] font-bold">
+                          <span className="text-indigo-600 dark:text-indigo-400 uppercase">Cumulative To-Date</span>
+                          <span className="font-mono text-indigo-700 dark:text-indigo-300 font-black">{comparisonTableData.actual.todate.toFixed(2)} Km</span>
+                        </div>
+                        <div className="space-y-1">
+                          <div className="w-full bg-slate-100 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden flex">
+                            <div className="bg-blue-500 h-full" style={{ width: `${Math.min(100, (comparisonTableData.contractor.todate / (comparisonTableData.lengthKm || 65)) * 100)}%` }} />
+                          </div>
+                          <div className="w-full bg-slate-100 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden flex">
+                            <div className="bg-purple-600 h-full" style={{ width: `${Math.min(100, (comparisonTableData.era.todate / (comparisonTableData.lengthKm || 65)) * 100)}%` }} />
+                          </div>
+                          <div className="w-full bg-slate-100 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden flex">
+                            <div className="bg-emerald-500 h-full" style={{ width: `${Math.min(100, (comparisonTableData.actual.todate / (comparisonTableData.lengthKm || 65)) * 100)}%` }} />
+                          </div>
+                        </div>
+                        <div className="flex justify-between text-[8px] text-slate-400 font-mono pt-0.5">
+                          <span>🟦 Ctr: {comparisonTableData.contractor.todate.toFixed(2)}</span>
+                          <span>🟪 ERA: {comparisonTableData.era.todate.toFixed(2)}</span>
+                          <span>🟩 Act: {comparisonTableData.actual.todate.toFixed(2)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 4. Diagnostic Executive Findings Narrative */}
+                {comparisonTableData && activeMilestone && (
+                  <div className="p-3.5 bg-blue-50/50 dark:bg-blue-950/20 rounded-2xl border border-blue-200/80 dark:border-blue-900/40 text-xs space-y-1">
+                    <div className="font-black text-blue-950 dark:text-blue-100 flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                      Executive Milestone Diagnostic Findings — {activeMilestone.monthLabel}
+                    </div>
+                    <p className="text-slate-600 dark:text-slate-300 leading-relaxed text-[11px]">
+                      For the target month of <strong>{activeMilestone.monthLabel}</strong>, contractor physical execution achieved <strong>{comparisonTableData.actual.month.toFixed(2)} Km</strong> against an ERA baseline requirement of <strong>{comparisonTableData.era.month.toFixed(2)} Km</strong> ({comparisonTableData.varVsEra.month >= 0 ? '+' : ''}{comparisonTableData.varVsEra.month.toFixed(2)} Km variance, {comparisonTableData.ratioVsEra.month.toFixed(1)}% fulfillment). Cumulative to-date physical execution reached <strong>{comparisonTableData.actual.todate.toFixed(2)} Km</strong> ({((comparisonTableData.actual.todate / comparisonTableData.lengthKm) * 100).toFixed(2)}% of the total {comparisonTableData.lengthKm.toFixed(2)} Km contract scope) as of this cut-off period, compared with the cumulative ERA planned target of <strong>{comparisonTableData.era.todate.toFixed(2)} Km</strong>.
+                    </p>
+                  </div>
+                )}
+
+                {/* 5. Group Projects Comparison Matrix Table */}
+                <div className="border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden bg-white dark:bg-slate-900/40 shadow-sm space-y-0">
+                  <div className="p-3 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700/80 flex items-center justify-between flex-wrap gap-2">
+                    <div>
+                      <h4 className="text-xs font-black uppercase text-slate-800 dark:text-white tracking-wider flex items-center gap-1.5">
+                        <Building2 className="w-3.5 h-3.5 text-indigo-500" />
+                        Group Portfolio Comparison Summary for {activeMilestone?.monthLabel} ({selectedGroup} {groupType.toUpperCase()})
+                      </h4>
+                      <p className="text-[10px] text-slate-400">
+                        Side-by-side contractor plan vs ERA plan vs actual execution across all {groupComparisonMatrix.length} group projects
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-mono font-bold text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700">
+                        {groupComparisonMatrix.length} Projects
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleExportProgressComparisonPDF}
+                        id="btn-print-portfolio-summary-table"
+                        className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                        title="Print / Export Group Portfolio Comparison Summary Table as PDF"
+                      >
+                        <Printer className="w-3.5 h-3.5" />
+                        <span>Print Portfolio PDF</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-slate-100/60 dark:bg-slate-800/40 text-[9px] font-black uppercase text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700">
+                          <th className="px-3 py-2.5 min-w-[170px]">Project ID & Title</th>
+                          <th className="px-3 py-2.5 min-w-[130px]">Contractor</th>
+                          <th className="px-3 py-2.5 min-w-[140px]">Supervision Consultant</th>
+                          <th className="px-3 py-2.5 text-center min-w-[145px]">Month ({activeMilestone?.monthLabel})</th>
+                          <th className="px-3 py-2.5 text-center min-w-[130px]">Quarter ({activeMilestone?.quarterLabel})</th>
+                          <th className="px-3 py-2.5 text-center min-w-[130px]">EFY {activeMilestone?.efyLabel}</th>
+                          <th className="px-3 py-2.5 text-center min-w-[155px]">Cumulative To-Date</th>
+                          <th className="px-3 py-2.5 text-center min-w-[85px]">Status</th>
+                          <th className="px-3 py-2.5 text-right min-w-[70px]">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {groupComparisonMatrix.map((item, pIdx) => {
+                          const isCurrentActive = activeComparisonProject?.id === item.project.id;
+                          return (
+                            <tr 
+                              key={`grp_row_${item.project.id || pIdx}`}
+                              className={`transition ${
+                                isCurrentActive 
+                                  ? 'bg-blue-50/60 dark:bg-blue-950/30 font-semibold' 
+                                  : 'hover:bg-slate-50/50 dark:hover:bg-slate-800/20'
+                              }`}
+                            >
+                              <td className="px-3 py-2.5">
+                                <div className="font-extrabold text-slate-800 dark:text-zinc-200 truncate max-w-[190px]" title={item.project.name}>
+                                  {item.project.name}
+                                </div>
+                                <div className="text-[10px] text-slate-400 font-mono">
+                                  ID: {item.project.id.substring(0, 10).toUpperCase()} • {item.lengthKm} Km
+                                </div>
+                              </td>
+                              <td className="px-3 py-2.5 text-slate-800 dark:text-zinc-200 text-2xs font-bold" title={item.project.contractor || 'Not Specified'}>
+                                {item.project.contractor || 'Not Specified'}
+                              </td>
+                              <td className="px-3 py-2.5 text-slate-600 dark:text-slate-400 text-2xs" title={item.project.consultant || 'Not Specified'}>
+                                {item.project.consultant || 'Not Specified'}
+                              </td>
+                              <td className="px-3 py-2.5 text-center font-mono">
+                                <div className="bg-slate-50 dark:bg-slate-800/60 p-1.5 rounded-lg border border-slate-150 dark:border-slate-700/60 space-y-0.5 text-2xs">
+                                  <div className="flex justify-between gap-1.5 text-slate-500 dark:text-slate-400">
+                                    <span>Ctr Plan:</span>
+                                    <span className="font-bold text-blue-600 dark:text-blue-400">{item.contractor.month.toFixed(2)} Km</span>
+                                  </div>
+                                  <div className="flex justify-between gap-1.5 text-slate-500 dark:text-slate-400">
+                                    <span>ERA Plan:</span>
+                                    <span className="font-bold text-purple-600 dark:text-purple-400">{item.era.month.toFixed(2)} Km</span>
+                                  </div>
+                                  <div className="flex justify-between gap-1.5 text-slate-800 dark:text-zinc-200 font-bold">
+                                    <span>Actual:</span>
+                                    <span className="text-emerald-600 dark:text-emerald-400 font-black">{item.actual.month.toFixed(2)} Km</span>
+                                  </div>
+                                  <div className="pt-0.5 border-t border-slate-200 dark:border-slate-700 flex justify-between gap-1 text-[9px]">
+                                    <span className="text-slate-400 font-sans">Var:</span>
+                                    <span className={`font-black ${item.monthVariance >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                                      {item.monthVariance >= 0 ? '+' : ''}{item.monthVariance.toFixed(2)} Km
+                                    </span>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-3 py-2.5 text-center font-mono">
+                                <div className="bg-slate-50 dark:bg-slate-800/60 p-1.5 rounded-lg border border-slate-150 dark:border-slate-700/60 space-y-0.5 text-2xs">
+                                  <div className="flex justify-between gap-1.5 text-slate-500 dark:text-slate-400">
+                                    <span>Ctr:</span>
+                                    <span className="font-bold text-blue-600 dark:text-blue-400">{item.contractor.quarter.toFixed(2)} Km</span>
+                                  </div>
+                                  <div className="flex justify-between gap-1.5 text-slate-500 dark:text-slate-400">
+                                    <span>ERA:</span>
+                                    <span className="font-bold text-purple-600 dark:text-purple-400">{item.era.quarter.toFixed(2)} Km</span>
+                                  </div>
+                                  <div className="flex justify-between gap-1.5 text-slate-800 dark:text-zinc-200 font-bold">
+                                    <span>Act:</span>
+                                    <span className="text-emerald-600 dark:text-emerald-400 font-black">{item.actual.quarter.toFixed(2)} Km</span>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-3 py-2.5 text-center font-mono">
+                                <div className="bg-slate-50 dark:bg-slate-800/60 p-1.5 rounded-lg border border-slate-150 dark:border-slate-700/60 space-y-0.5 text-2xs">
+                                  <div className="flex justify-between gap-1.5 text-slate-500 dark:text-slate-400">
+                                    <span>Ctr:</span>
+                                    <span className="font-bold text-blue-600 dark:text-blue-400">{item.contractor.efy.toFixed(2)} Km</span>
+                                  </div>
+                                  <div className="flex justify-between gap-1.5 text-slate-500 dark:text-slate-400">
+                                    <span>ERA:</span>
+                                    <span className="font-bold text-purple-600 dark:text-purple-400">{item.era.efy.toFixed(2)} Km</span>
+                                  </div>
+                                  <div className="flex justify-between gap-1.5 text-slate-800 dark:text-zinc-200 font-bold">
+                                    <span>Act:</span>
+                                    <span className="text-emerald-600 dark:text-emerald-400 font-black">{item.actual.efy.toFixed(2)} Km</span>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-3 py-2.5 text-center font-mono">
+                                <div className="bg-indigo-50/40 dark:bg-indigo-950/20 p-1.5 rounded-lg border border-indigo-100 dark:border-indigo-900/40 space-y-0.5 text-2xs">
+                                  <div className="flex justify-between gap-1.5 text-slate-500 dark:text-slate-400">
+                                    <span>Ctr:</span>
+                                    <span className="font-bold text-blue-600 dark:text-blue-400">{item.contractor.todate.toFixed(2)} Km</span>
+                                  </div>
+                                  <div className="flex justify-between gap-1.5 text-slate-500 dark:text-slate-400">
+                                    <span>ERA:</span>
+                                    <span className="font-bold text-purple-600 dark:text-purple-400">{item.era.todate.toFixed(2)} Km</span>
+                                  </div>
+                                  <div className="flex justify-between gap-1.5 text-indigo-950 dark:text-indigo-200 font-bold">
+                                    <span>Act:</span>
+                                    <span className="text-indigo-700 dark:text-indigo-300 font-black">{item.actual.todate.toFixed(2)} Km ({item.todatePct.toFixed(1)}%)</span>
+                                  </div>
+                                  <div className="pt-0.5 border-t border-indigo-200/60 dark:border-indigo-800/60 flex justify-between gap-1 text-[9px]">
+                                    <span className="text-slate-400 font-sans">Slip:</span>
+                                    <span className={`font-black ${item.todateVariance >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                                      {item.todateVariance >= 0 ? '+' : ''}{item.todateVariance.toFixed(2)} Km
+                                    </span>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-3 py-2.5 text-center">
+                                <span className={`inline-block px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                                  item.healthStatus === 'Ahead'
+                                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                                    : item.healthStatus === 'On Track'
+                                      ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
+                                      : item.healthStatus === 'Lagging'
+                                        ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
+                                        : 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
+                                }`}>
+                                  {item.healthStatus}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2.5 text-right">
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedComparisonProjectId(item.project.id)}
+                                  className={`px-2.5 py-1 rounded-lg text-2xs font-extrabold transition cursor-pointer ${
+                                    isCurrentActive
+                                      ? 'bg-blue-600 text-white shadow-xs'
+                                      : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-slate-700'
+                                  }`}
+                                >
+                                  {isCurrentActive ? 'Focused' : 'Inspect'}
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* Structured Table Container */
+              <div className="border border-slate-150 dark:border-slate-700 rounded-xl overflow-hidden bg-white dark:bg-slate-900/10">
               <div className="max-h-60 overflow-y-auto">
                 <table className="w-full text-left border-collapse">
                   <thead>
@@ -8019,6 +10057,7 @@ export default function GroupReportGenerator({
                 </table>
               </div>
             </div>
+            )}
           </div>
 
         </div>

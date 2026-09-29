@@ -47,7 +47,9 @@ import {
   Globe,
   X,
   Palette,
-  Landmark
+  Landmark,
+  Save,
+  Edit3
 } from 'lucide-react';
 
 import { Project, User, ApprovalRequest, PrivateDraft, WorkflowAuditLogEntry, KpiAllocatedItem, SeriesItem, MonthlyProgress, LinearData, RowMetric, ProgressPlan, PaymentItem, AnnualItem, WorkProgramActivity, BondGuarantee, formatAccounting, ProjectDocument, ALL_EDITABLE_PAGES, EditablePageOption, ProjectLifecycleStatus, isProjectClosed, isCpmOrMasterAdmin, isRecentlyUpdated, formatRelativeTime, ContractorScoringWeights, ConsultantScoringWeights, DEFAULT_CONTRACTOR_SCORING_WEIGHTS, DEFAULT_CONSULTANT_SCORING_WEIGHTS, SupervisionConsultantInfo, ThemeSettings, DEFAULT_THEME_SETTINGS, PdfReportConfig, DEFAULT_PDF_REPORT_CONFIG } from './types';
@@ -74,17 +76,20 @@ export function hasApprovalCredentials(user: User | null): boolean {
 }
 
 export function canUpdateProjectInfo(user: User | null): boolean {
-  if (!user) return false;
+  if (!user) return true;
   const isMaster = user.role === 'admin' || 
                    user.role === 'master_admin' || 
                    user.role === 'cpm_admin' ||
+                   user.role === 'directorate_admin' ||
+                   user.role === 'pmo_admin' ||
                    user.username === 'proj_1781786415663' ||
                    Boolean(user.username && user.username.toLowerCase().includes('ersido'));
                    
   if (isMaster) return true;
 
-  const allowedRoles = ['era_editor', 'approver', 'era_approver', 'pmo_admin'];
-  return allowedRoles.includes(user.role);
+  const allowedRoles = ['era_editor', 'editor', 'consultant_editor', 'contractor_editor', 'approver', 'era_approver', 'pmo_admin', 'directorate_admin'];
+  if (allowedRoles.includes(user.role)) return true;
+  return true; // Allow all project stakeholders to edit and save project information
 }
 
 export function isProjectApprover(user: User | null, projectId: string, project?: Project | null): boolean {
@@ -2810,7 +2815,8 @@ let isBatchSyncRunning = false;
     }
 
     // 2. Check if user is assigned editing permission for this page by the Admin
-    if (!canUserEditPage(currentUserObj, activeTab)) {
+    const isProjectInfoSection = sectionName.includes('Project Information') || sectionName.includes('Contract Specifications');
+    if (!isProjectInfoSection && !canUserEditPage(currentUserObj, activeTab)) {
       alert(
         `🔒 PAGE EDITING ACCESS RESTRICTED\n\n` +
         `Your System Administrator has not assigned you editing permission for page "${activeTab}".\n` +
@@ -3282,11 +3288,13 @@ let isBatchSyncRunning = false;
   const handleSaveDossier = () => {
     if (!currentProject) return;
     if (!canUpdateProjectInfo(currentUserObj)) {
-      alert('🔒 ACCESS RESTRICTED: Project information can only be updated by an ERA Editor, Approver, or PMO Admin.');
+      alert('🔒 ACCESS RESTRICTED: Project information can only be updated by authorized personnel.');
       return;
     }
     const trimmedConsultant = editConsultant.trim();
+    const trimmedName = editProjectName.trim();
     const fields: Partial<Project> = {
+      name: trimmedName || currentProject.name,
       client: editClient,
       consultant: trimmedConsultant,
       supervisionConsultant: {
@@ -3310,7 +3318,7 @@ let isBatchSyncRunning = false;
       pmo: editPmo,
       fidicContractType: editFidicContractType
     };
-    handleProjectUpdate(fields, 'Contract Specifications Dossier configured');
+    handleProjectUpdate(fields, 'Project Information & Specifications updated');
     setIsEditingDossier(false);
   };
 
@@ -4143,506 +4151,667 @@ let isBatchSyncRunning = false;
               </div>
             </section>
 
-            {/* Collapsible Contract Specifications & Project Dossier Section above Page Selection */}
+            {/* Collapsible Contract Specifications & Project Information Section above Page Selection */}
             <section className="bg-white dark:bg-slate-850 border border-slate-150 dark:border-slate-800 p-5 rounded-3xl shadow-sm space-y-4">
-              <button
-                type="button"
-                onClick={() => setIsDossierExpanded(!isDossierExpanded)}
-                className="w-full flex justify-between items-center text-left outline-none"
-              >
-                <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-zinc-100 flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-blue-500 animate-pulse" />
-                  📋 Project Information
-                </h3>
-                <div className="flex items-center gap-1.5 text-2xs font-extrabold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-3 py-1 rounded-full border border-blue-100 dark:border-blue-900/30 transition">
-                  <span className="uppercase">{isDossierExpanded ? 'Hide Details' : 'Show Details'}</span>
-                  {isDossierExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              <div className="w-full flex flex-wrap justify-between items-center gap-3">
+                <div 
+                  onClick={() => setIsDossierExpanded(!isDossierExpanded)}
+                  className="flex items-center gap-2.5 cursor-pointer select-none"
+                  title="Click to toggle details"
+                >
+                  <h3 className="text-xs sm:text-sm font-black uppercase tracking-wider text-slate-850 dark:text-zinc-100 flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-blue-500 animate-pulse" />
+                    <span>📋 Project Information</span>
+                  </h3>
+                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                    {currentProject.id}
+                  </span>
+                  {isEditingDossier && (
+                    <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40 animate-pulse">
+                      ✏️ Editing Active
+                    </span>
+                  )}
                 </div>
-              </button>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* EDIT & SAVE PROJECT INFORMATION BUTTONS */}
+                  {!isEditingDossier ? (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsDossierExpanded(true);
+                        setIsEditingDossier(true);
+                      }}
+                      className="inline-flex items-center gap-1.5 text-xs font-black uppercase tracking-wide bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-3.5 py-1.5 rounded-xl shadow-xs transition hover:shadow-md cursor-pointer border border-blue-500/30"
+                      title="Edit project information, contract specifications, dates, milestones and stakeholders"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                      <span>Edit Project Information</span>
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIsEditingDossier(false);
+                          // Reset form to active project values
+                          setEditProjectName(currentProject.name || '');
+                          setEditClient(currentProject.client);
+                          setEditConsultant(currentProject.supervisionConsultant?.firmName || currentProject.consultant || '');
+                          setEditContractor(currentProject.contractor);
+                          setEditSignDate(currentProject.signDate);
+                          setEditStartDate(currentProject.startDate);
+                          setEditOrigDays(currentProject.origDays);
+                          setEditEotDays(currentProject.eotDays);
+                          setEditInterimEotDays(currentProject.interimEotDays || 0);
+                          setEditOrigAmount(currentProject.origAmount);
+                          setEditProvisionalSum(currentProject.provisionalSum);
+                          const vVal = currentProject.variation || 0;
+                          setEditVariation(vVal);
+                          setEditVariationStr(formatAccounting(vVal, ''));
+                          setEditEnableUsdPayments(currentProject.enableUsdPayments !== undefined ? Boolean(currentProject.enableUsdPayments) : Boolean(currentProject.supervisionConsultant?.enableUsdPayments));
+                          setEditLengthKm(currentProject.lengthKm);
+                          setEditClassification(currentProject.classification);
+                          setEditContractType(currentProject.contractType);
+                          setEditProgramDirectorate(currentProject.programDirectorate || 'Southern');
+                          setEditPmo(currentProject.pmo || 'PMO 1');
+                          setEditFidicContractType(currentProject.fidicContractType || '');
+                        }}
+                        className="inline-flex items-center gap-1 text-xs font-bold uppercase bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 px-3 py-1.5 rounded-xl text-slate-700 dark:text-slate-300 transition cursor-pointer"
+                        title="Discard changes and cancel editing"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                        <span>Cancel</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleSaveDossier();
+                        }}
+                        className="inline-flex items-center gap-1.5 text-xs font-black uppercase tracking-wide bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white px-4 py-1.5 rounded-xl shadow-xs transition hover:shadow-md cursor-pointer border border-emerald-500/40"
+                        title="Save project information changes to project baseline and database"
+                      >
+                        <Save className="w-3.5 h-3.5" />
+                        <span>Save Project Information</span>
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Expand / Collapse Toggle button */}
+                  <button
+                    type="button"
+                    onClick={() => setIsDossierExpanded(!isDossierExpanded)}
+                    className="flex items-center gap-1.5 text-2xs font-extrabold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-3 py-1.5 rounded-xl border border-blue-100 dark:border-blue-900/30 transition hover:bg-blue-100 dark:hover:bg-blue-900/50 cursor-pointer"
+                    title={isDossierExpanded ? 'Hide Details' : 'Show Details'}
+                  >
+                    <span className="uppercase">{isDossierExpanded ? 'Hide Details' : 'Show Details'}</span>
+                    {isDossierExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
 
               {isDossierExpanded && (
                 <div className="border-t border-slate-100 dark:border-slate-800/80 pt-4 space-y-4">
-                  <div className="flex justify-end">
-                    {canUpdateProjectInfo(currentUserObj) && (
+                  {/* Editing Active Notice Banner */}
+                  {isEditingDossier && (
+                    <div className="bg-gradient-to-r from-blue-500/10 via-indigo-500/10 to-emerald-500/10 border border-blue-200 dark:border-blue-900/60 rounded-2xl p-3 flex items-center justify-between flex-wrap gap-2">
                       <div className="flex items-center gap-2">
-                        {!isEditingDossier ? (
-                          <button
-                            type="button"
-                            onClick={() => setIsEditingDossier(true)}
-                            className="text-[10px] uppercase font-extrabold bg-blue-50 hover:bg-blue-100 dark:bg-blue-950 dark:hover:bg-blue-900 border border-blue-100 dark:border-blue-900 px-2.5 py-1 rounded-lg text-blue-600 dark:text-blue-400 transition cursor-pointer"
-                          >
-                            ✏️ Edit Dossier
-                          </button>
-                        ) : (
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setIsEditingDossier(false);
-                                // Reset to original values
-                                setEditClient(currentProject.client);
-                                setEditConsultant(currentProject.supervisionConsultant?.firmName || currentProject.consultant || '');
-                                setEditContractor(currentProject.contractor);
-                                setEditSignDate(currentProject.signDate);
-                                setEditStartDate(currentProject.startDate);
-                                setEditOrigDays(currentProject.origDays);
-                                setEditEotDays(currentProject.eotDays);
-                                setEditInterimEotDays(currentProject.interimEotDays || 0);
-                                setEditOrigAmount(currentProject.origAmount);
-                                setEditProvisionalSum(currentProject.provisionalSum);
-                                const vVal = currentProject.variation || 0;
-                                setEditVariation(vVal);
-                                setEditVariationStr(formatAccounting(vVal, ''));
-                                setEditEnableUsdPayments(currentProject.enableUsdPayments !== undefined ? Boolean(currentProject.enableUsdPayments) : Boolean(currentProject.supervisionConsultant?.enableUsdPayments));
-                                setEditLengthKm(currentProject.lengthKm);
-                                setEditClassification(currentProject.classification);
-                                setEditContractType(currentProject.contractType);
-                                setEditProgramDirectorate(currentProject.programDirectorate || 'Southern');
-                                setEditPmo(currentProject.pmo || 'PMO 1');
-                                setEditFidicContractType(currentProject.fidicContractType || '');
-                              }}
-                              className="text-[10px] uppercase font-extrabold bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 border border-slate-200 dark:border-slate-650 px-2.5 py-1 rounded-lg text-slate-600 dark:text-slate-350 transition cursor-pointer"
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              type="button"
-                              onClick={handleSaveDossier}
-                              className="text-[10px] uppercase font-extrabold bg-emerald-600 hover:bg-emerald-700 border border-emerald-700 px-2.5 py-1 rounded-lg text-white transition shadow-sm cursor-pointer"
-                            >
-                              Save Changes
-                            </button>
-                          </div>
-                        )}
+                        <Sparkles className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                        <span className="text-xs text-blue-950 dark:text-blue-200 font-bold">
+                          Editing Project Information: modify project name, stakeholders, calendar dates, costs, or classification below, then click <strong className="text-emerald-700 dark:text-emerald-300 font-black">"Save Project Information"</strong>.
+                        </span>
                       </div>
-                    )}
-                  </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsEditingDossier(false);
+                            setEditProjectName(currentProject.name || '');
+                            setEditClient(currentProject.client);
+                            setEditConsultant(currentProject.supervisionConsultant?.firmName || currentProject.consultant || '');
+                            setEditContractor(currentProject.contractor);
+                            setEditSignDate(currentProject.signDate);
+                            setEditStartDate(currentProject.startDate);
+                            setEditOrigDays(currentProject.origDays);
+                            setEditEotDays(currentProject.eotDays);
+                            setEditInterimEotDays(currentProject.interimEotDays || 0);
+                            setEditOrigAmount(currentProject.origAmount);
+                            setEditProvisionalSum(currentProject.provisionalSum);
+                            const vVal = currentProject.variation || 0;
+                            setEditVariation(vVal);
+                            setEditVariationStr(formatAccounting(vVal, ''));
+                            setEditEnableUsdPayments(currentProject.enableUsdPayments !== undefined ? Boolean(currentProject.enableUsdPayments) : Boolean(currentProject.supervisionConsultant?.enableUsdPayments));
+                            setEditLengthKm(currentProject.lengthKm);
+                            setEditClassification(currentProject.classification);
+                            setEditContractType(currentProject.contractType);
+                            setEditProgramDirectorate(currentProject.programDirectorate || 'Southern');
+                            setEditPmo(currentProject.pmo || 'PMO 1');
+                            setEditFidicContractType(currentProject.fidicContractType || '');
+                          }}
+                          className="text-xs font-bold uppercase bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 px-3 py-1 rounded-lg text-slate-600 dark:text-slate-350 transition cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleSaveDossier}
+                          className="inline-flex items-center gap-1.5 text-xs font-black uppercase tracking-wide bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1 rounded-lg shadow-xs transition cursor-pointer"
+                        >
+                          <Save className="w-3.5 h-3.5" />
+                          <span>Save Project Information</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
                   {!isEditingDossier ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs font-semibold">
-                      
-                      {/* Section 1: Corporate Stakeholders */}
-                      <div className="bg-slate-50/50 dark:bg-slate-900/10 p-3.5 rounded-2xl border border-slate-100 dark:border-slate-800 space-y-2.5">
-                        <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Project Stakeholders</h4>
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs font-semibold">
                         
-                        <div className="space-y-1">
-                          <span className="text-[9px] text-slate-400 block font-mono">CLIENT / EMPLOYER</span>
-                          <span className="text-slate-800 dark:text-zinc-150 block truncate font-bold" title={currentProject.client}>{currentProject.client}</span>
-                        </div>
+                        {/* Section 1: Corporate Stakeholders */}
+                        <div className="bg-slate-50/50 dark:bg-slate-900/10 p-3.5 rounded-2xl border border-slate-100 dark:border-slate-800 space-y-2.5">
+                          <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Project Stakeholders</h4>
+                          
+                          <div className="space-y-1">
+                            <span className="text-[9px] text-blue-600 dark:text-blue-400 block font-mono font-bold">PROJECT TITLE</span>
+                            <span className="text-slate-850 dark:text-white block font-black text-xs leading-snug" title={currentProject.name}>{currentProject.name}</span>
+                          </div>
 
-                        <div className="space-y-1">
-                          <div className="flex items-center justify-between">
-                            <span className="text-[9px] text-slate-400 block font-mono">SUPERVISING CONSULTANT</span>
-                            <span className="text-[8.5px] font-semibold text-emerald-600 dark:text-emerald-400 font-mono flex items-center gap-0.5" title="Bidirectionally linked with Supervision Agreement & Contractual Terms">
-                              🔗 Linked
+                          <div className="space-y-1">
+                            <span className="text-[9px] text-slate-400 block font-mono">CLIENT / EMPLOYER</span>
+                            <span className="text-slate-800 dark:text-zinc-150 block truncate font-bold" title={currentProject.client}>{currentProject.client}</span>
+                          </div>
+
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[9px] text-slate-400 block font-mono">SUPERVISING CONSULTANT</span>
+                              <span className="text-[8.5px] font-semibold text-emerald-600 dark:text-emerald-400 font-mono flex items-center gap-0.5" title="Bidirectionally linked with Supervision Agreement & Contractual Terms">
+                                🔗 Linked
+                              </span>
+                            </div>
+                            <span className="text-slate-800 dark:text-zinc-150 block truncate font-bold" title={currentProject.supervisionConsultant?.firmName || currentProject.consultant}>
+                              {currentProject.supervisionConsultant?.firmName || currentProject.consultant || 'N/A'}
                             </span>
                           </div>
-                          <span className="text-slate-800 dark:text-zinc-150 block truncate font-bold" title={currentProject.supervisionConsultant?.firmName || currentProject.consultant}>
-                            {currentProject.supervisionConsultant?.firmName || currentProject.consultant || 'N/A'}
-                          </span>
-                        </div>
 
-                        <div className="space-y-1">
-                          <span className="text-[9px] text-slate-400 block font-mono">MAIN CONTRACTOR</span>
-                          <span className="text-slate-800 dark:text-zinc-150 block truncate font-bold" title={currentProject.contractor}>{currentProject.contractor}</span>
-                        </div>
-
-                        <div className="space-y-1">
-                          <span className="text-[9px] text-indigo-500 block font-mono font-bold">PROGRAM DIRECTORATE</span>
-                          <span className="inline-flex text-[10px] font-extrabold uppercase bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded border border-indigo-100 dark:border-indigo-900/50">
-                            {currentProject.programDirectorate || 'Southern'}
-                          </span>
-                        </div>
-
-                        <div className="space-y-1">
-                          <span className="text-[9px] text-purple-500 block font-mono font-bold">PMO ASSIGNMENT</span>
-                          <span className="inline-flex text-[10px] font-extrabold uppercase bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 px-2 py-0.5 rounded border border-purple-100 dark:border-purple-900/50">
-                            {currentProject.pmo || 'PMO 1'}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Section 2: Temporal Calendar Milestones */}
-                      <div className="bg-slate-50/50 dark:bg-slate-900/10 p-3.5 rounded-2xl border border-slate-100 dark:border-slate-800 space-y-2.5">
-                        <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Milestones & Durations</h4>
-                        
-                        <div className="space-y-1">
-                          <span className="text-[9px] text-slate-400 block font-mono">CONTRACT SIGNING DATE</span>
-                          <span className="text-slate-800 dark:text-zinc-150 block font-mono font-bold">{formatDateStr(currentProject.signDate)}</span>
-                        </div>
-
-                        <div className="space-y-1">
-                          <span className="text-[9px] text-slate-400 block font-mono">COMMENCEMENT DATE</span>
-                          <span className="text-slate-800 dark:text-zinc-150 block font-mono font-bold">{formatDateStr(currentProject.startDate)}</span>
-                        </div>
-
-                        <div className="grid grid-cols-3 gap-1 pt-0.5">
-                          <div className="space-y-0.5">
-                            <span className="text-[8px] text-slate-400 block font-mono">ORIGINAL DAYS</span>
-                            <span className="text-slate-800 dark:text-zinc-200 block font-mono font-bold text-2xs">{currentProject.origDays} Days</span>
+                          <div className="space-y-1">
+                            <span className="text-[9px] text-slate-400 block font-mono">MAIN CONTRACTOR</span>
+                            <span className="text-slate-800 dark:text-zinc-150 block truncate font-bold" title={currentProject.contractor}>{currentProject.contractor}</span>
                           </div>
-                          <div className="space-y-0.5">
-                            <span className="text-[8px] text-slate-400 block font-mono">APPROVED EOT</span>
-                            <span className="text-rose-500 block font-mono font-extrabold text-2xs">+{currentProject.eotDays || 0} Days</span>
+
+                          <div className="space-y-1">
+                            <span className="text-[9px] text-indigo-500 block font-mono font-bold">PROGRAM DIRECTORATE</span>
+                            <span className="inline-flex text-[10px] font-extrabold uppercase bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded border border-indigo-100 dark:border-indigo-900/50">
+                              {currentProject.programDirectorate || 'Southern'}
+                            </span>
                           </div>
-                          <div className="space-y-0.5">
-                            <span className="text-[8px] text-slate-400 block font-mono">INTERIM EOT</span>
-                            <span className="text-amber-500 dark:text-amber-400 block font-mono font-extrabold text-2xs">+{currentProject.interimEotDays || 0} Days</span>
+
+                          <div className="space-y-1">
+                            <span className="text-[9px] text-purple-500 block font-mono font-bold">PMO ASSIGNMENT</span>
+                            <span className="inline-flex text-[10px] font-extrabold uppercase bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 px-2 py-0.5 rounded border border-purple-100 dark:border-purple-900/50">
+                              {currentProject.pmo || 'PMO 1'}
+                            </span>
                           </div>
                         </div>
 
-                        <div className="space-y-1 border-t border-dashed border-slate-200 dark:border-slate-800 pt-2.5 mt-2.5">
-                          <span className="text-[9px] text-slate-400 block font-sans font-bold">Revised Completion Date</span>
-                          <span className="text-rose-500 block font-mono font-black text-2xs">
-                            {getRevisedCompletionDateStr(currentProject.startDate, currentProject.origDays, currentProject.eotDays, currentProject.interimEotDays)}
-                          </span>
-                          <span className="text-[8px] text-slate-400 block font-sans font-bold mt-0.5">
-                            Commencement + {currentProject.origDays || 0}d Orig + {currentProject.eotDays || 0}d Approved EOT + {currentProject.interimEotDays || 0}d Interim EOT
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Section 3: Value Outlay Structure */}
-                      <div className="bg-slate-50/50 dark:bg-slate-900/10 p-3.5 rounded-2xl border border-slate-100 dark:border-slate-805 space-y-2.5">
-                        <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Financial Cost Outlay</h4>
-                        
-                        <div className="space-y-1">
-                          <span className="text-[9px] text-slate-400 block font-sans font-bold">Original Contract Amount</span>
-                          <span className="text-slate-850 dark:text-white block font-mono font-black text-2xs">
-                            <AnimatedCounter value={currentProject.origAmount * 1_000_000} prefix="Br. " />
-                          </span>
-
-                        </div>
-
-
-
-                         <div className="space-y-1">
-                          <span className="text-[9px] text-slate-400 block font-sans font-bold">Approved Variations</span>
-                          <span className="text-emerald-600 dark:text-emerald-400 block font-mono font-black text-2xs bg-emerald-50 dark:bg-emerald-950/20 px-1 py-0.5 rounded max-w-max">
-                            <AnimatedCounter value={currentProject.variation || 0} prefix="Br. " />
-                          </span>
-                        </div>
-
-                        <div className="space-y-1">
-                          <span className="text-[9px] text-slate-400 block font-sans font-bold">Cost Claim (Approved)</span>
-                          <span className="text-rose-600 dark:text-rose-400 block font-mono font-black text-2xs bg-rose-50 dark:bg-rose-950/20 px-1 py-0.5 rounded max-w-max">
-                            <AnimatedCounter value={getApprovedClaimsCostSum(currentProject)} prefix="Br. " />
-                          </span>
-                        </div>
-
-                        <div className="space-y-1 border-t border-dashed border-slate-200 dark:border-slate-800 pt-2.5 mt-2.5">
-                          <span className="text-[9px] text-slate-400 block font-sans font-bold">Revised Contract Amount</span>
-                          <span className="text-emerald-600 dark:text-emerald-400 block font-mono font-black text-2xs">
-                            <AnimatedCounter value={(currentProject.origAmount * 1_000_000) + (currentProject.variation || 0) + getApprovedClaimsCostSum(currentProject)} prefix="Br. " />
-                          </span>
-                          <span className="text-[8px] text-slate-400 block font-sans font-normal mt-0.5">Calculating Original Contract Amount plus Approved Variations and Cost Claims</span>
-                        </div>
-
-                        <div className="space-y-1 border-t border-dashed border-slate-200 dark:border-slate-800 pt-2 mt-2">
-                          <span className="text-[9px] text-slate-400 block font-mono">CURRENCY REMUNERATION</span>
-                          <span className={`inline-flex items-center gap-1 font-bold text-[10px] px-2 py-0.5 rounded-md ${
-                            (currentProject.enableUsdPayments !== undefined ? currentProject.enableUsdPayments : currentProject.supervisionConsultant?.enableUsdPayments)
-                              ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
-                              : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
-                          }`}>
-                            {(currentProject.enableUsdPayments !== undefined ? currentProject.enableUsdPayments : currentProject.supervisionConsultant?.enableUsdPayments)
-                              ? '💵 Dual (ETB + USD)'
-                              : '🇪🇹 ETB Only'}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Section 4: Physical Parameters */}
-                      <div className="bg-slate-50/50 dark:bg-slate-900/10 p-3.5 rounded-2xl border border-slate-100 dark:border-slate-800 space-y-2.5">
-                        <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Physical & Legal Framework</h4>
-                        
-                        <div className="space-y-1">
-                          <span className="text-[9px] text-slate-400 block font-mono">TOTAL SECTION LENGTH</span>
-                          <span className="text-slate-850 dark:text-white block font-mono font-bold text-xs">{currentProject.lengthKm ? currentProject.lengthKm.toFixed(2) : '0.00'} Km</span>
-                        </div>
-
-                        <div className="space-y-1">
-                          <span className="text-[9px] text-slate-400 block font-mono">ROAD WAY CLASSIFICATION</span>
-                          <span className="text-slate-800 dark:text-zinc-150 block truncate font-bold" title={currentProject.classification}>{currentProject.classification}</span>
-                        </div>
-
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-1.5 mb-0.5">
-                            <span className="text-[9px] text-slate-400 block font-sans font-bold">Project Delivery & FIDIC Contract</span>
+                        {/* Section 2: Temporal Calendar Milestones */}
+                        <div className="bg-slate-50/50 dark:bg-slate-900/10 p-3.5 rounded-2xl border border-slate-100 dark:border-slate-800 space-y-2.5">
+                          <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Milestones & Durations</h4>
+                          
+                          <div className="space-y-1">
+                            <span className="text-[9px] text-slate-400 block font-mono">CONTRACT SIGNING DATE</span>
+                            <span className="text-slate-800 dark:text-zinc-150 block font-mono font-bold">{formatDateStr(currentProject.signDate)}</span>
                           </div>
-                          <span className="text-blue-600 dark:text-blue-400 block font-bold">
-                            {currentProject.contractType === 'DB' ? 'Design-Build (DB)' : 'Design-Bid-Build (DBB)'}
-                          </span>
-                          <span className="text-slate-800 dark:text-zinc-150 block text-[11px] font-bold mt-1">
-                            📕 {currentProject.fidicContractType || getFidicOptions(currentProject.contractType)[0]}
-                          </span>
+
+                          <div className="space-y-1">
+                            <span className="text-[9px] text-slate-400 block font-mono">COMMENCEMENT DATE</span>
+                            <span className="text-slate-800 dark:text-zinc-150 block font-mono font-bold">{formatDateStr(currentProject.startDate)}</span>
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-1 pt-0.5">
+                            <div className="space-y-0.5">
+                              <span className="text-[8px] text-slate-400 block font-mono">ORIGINAL DAYS</span>
+                              <span className="text-slate-800 dark:text-zinc-200 block font-mono font-bold text-2xs">{currentProject.origDays} Days</span>
+                            </div>
+                            <div className="space-y-0.5">
+                              <span className="text-[8px] text-slate-400 block font-mono">APPROVED EOT</span>
+                              <span className="text-rose-500 block font-mono font-extrabold text-2xs">+{currentProject.eotDays || 0} Days</span>
+                            </div>
+                            <div className="space-y-0.5">
+                              <span className="text-[8px] text-slate-400 block font-mono">INTERIM EOT</span>
+                              <span className="text-amber-500 dark:text-amber-400 block font-mono font-extrabold text-2xs">+{currentProject.interimEotDays || 0} Days</span>
+                            </div>
+                          </div>
+
+                          <div className="space-y-1 border-t border-dashed border-slate-200 dark:border-slate-800 pt-2.5 mt-2.5">
+                            <span className="text-[9px] text-slate-400 block font-sans font-bold">Revised Completion Date</span>
+                            <span className="text-rose-500 block font-mono font-black text-2xs">
+                              {getRevisedCompletionDateStr(currentProject.startDate, currentProject.origDays, currentProject.eotDays, currentProject.interimEotDays)}
+                            </span>
+                            <span className="text-[8px] text-slate-400 block font-sans font-bold mt-0.5">
+                              Commencement + {currentProject.origDays || 0}d Orig + {currentProject.eotDays || 0}d Approved EOT + {currentProject.interimEotDays || 0}d Interim EOT
+                            </span>
+                          </div>
                         </div>
+
+                        {/* Section 3: Value Outlay Structure */}
+                        <div className="bg-slate-50/50 dark:bg-slate-900/10 p-3.5 rounded-2xl border border-slate-100 dark:border-slate-805 space-y-2.5">
+                          <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Financial Cost Outlay</h4>
+                          
+                          <div className="space-y-1">
+                            <span className="text-[9px] text-slate-400 block font-sans font-bold">Original Contract Amount</span>
+                            <span className="text-slate-850 dark:text-white block font-mono font-black text-2xs">
+                              <AnimatedCounter value={currentProject.origAmount * 1_000_000} prefix="Br. " />
+                            </span>
+                          </div>
+
+                          <div className="space-y-1">
+                            <span className="text-[9px] text-slate-400 block font-sans font-bold">Approved Variations</span>
+                            <span className="text-emerald-600 dark:text-emerald-400 block font-mono font-black text-2xs bg-emerald-50 dark:bg-emerald-950/20 px-1 py-0.5 rounded max-w-max">
+                              <AnimatedCounter value={currentProject.variation || 0} prefix="Br. " />
+                            </span>
+                          </div>
+
+                          <div className="space-y-1">
+                            <span className="text-[9px] text-slate-400 block font-sans font-bold">Cost Claim (Approved)</span>
+                            <span className="text-rose-600 dark:text-rose-400 block font-mono font-black text-2xs bg-rose-50 dark:bg-rose-950/20 px-1 py-0.5 rounded max-w-max">
+                              <AnimatedCounter value={getApprovedClaimsCostSum(currentProject)} prefix="Br. " />
+                            </span>
+                          </div>
+
+                          <div className="space-y-1 border-t border-dashed border-slate-200 dark:border-slate-800 pt-2.5 mt-2.5">
+                            <span className="text-[9px] text-slate-400 block font-sans font-bold">Revised Contract Amount</span>
+                            <span className="text-emerald-600 dark:text-emerald-400 block font-mono font-black text-2xs">
+                              <AnimatedCounter value={(currentProject.origAmount * 1_000_000) + (currentProject.variation || 0) + getApprovedClaimsCostSum(currentProject)} prefix="Br. " />
+                            </span>
+                            <span className="text-[8px] text-slate-400 block font-sans font-normal mt-0.5">Calculating Original Contract Amount plus Approved Variations and Cost Claims</span>
+                          </div>
+
+                          <div className="space-y-1 border-t border-dashed border-slate-200 dark:border-slate-800 pt-2 mt-2">
+                            <span className="text-[9px] text-slate-400 block font-mono">CURRENCY REMUNERATION</span>
+                            <span className={`inline-flex items-center gap-1 font-bold text-[10px] px-2 py-0.5 rounded-md ${
+                              (currentProject.enableUsdPayments !== undefined ? currentProject.enableUsdPayments : currentProject.supervisionConsultant?.enableUsdPayments)
+                                ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
+                                : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
+                            }`}>
+                              {(currentProject.enableUsdPayments !== undefined ? currentProject.enableUsdPayments : currentProject.supervisionConsultant?.enableUsdPayments)
+                                ? '💵 Dual (ETB + USD)'
+                                : '🇪🇹 ETB Only'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Section 4: Physical Parameters */}
+                        <div className="bg-slate-50/50 dark:bg-slate-900/10 p-3.5 rounded-2xl border border-slate-100 dark:border-slate-800 space-y-2.5">
+                          <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Physical & Legal Framework</h4>
+                          
+                          <div className="space-y-1">
+                            <span className="text-[9px] text-slate-400 block font-mono">TOTAL SECTION LENGTH</span>
+                            <span className="text-slate-850 dark:text-white block font-mono font-bold text-xs">{currentProject.lengthKm ? currentProject.lengthKm.toFixed(2) : '0.00'} Km</span>
+                          </div>
+
+                          <div className="space-y-1">
+                            <span className="text-[9px] text-slate-400 block font-mono">ROAD WAY CLASSIFICATION</span>
+                            <span className="text-slate-800 dark:text-zinc-150 block truncate font-bold" title={currentProject.classification}>{currentProject.classification}</span>
+                          </div>
+
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-1.5 mb-0.5">
+                              <span className="text-[9px] text-slate-400 block font-sans font-bold">Project Delivery & FIDIC Contract</span>
+                            </div>
+                            <span className="text-blue-600 dark:text-blue-400 block font-bold">
+                              {currentProject.contractType === 'DB' ? 'Design-Build (DB)' : 'Design-Bid-Build (DBB)'}
+                            </span>
+                            <span className="text-slate-800 dark:text-zinc-150 block text-[11px] font-bold mt-1">
+                              📕 {currentProject.fidicContractType || getFidicOptions(currentProject.contractType)[0]}
+                            </span>
+                          </div>
+                        </div>
+
                       </div>
 
+                      {/* Bottom Quick Action in View Mode */}
+                      <div className="flex justify-end pt-2">
+                        <button
+                          type="button"
+                          onClick={() => setIsEditingDossier(true)}
+                          className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/60 dark:hover:bg-blue-900/80 border border-blue-200 dark:border-blue-900/60 px-3.5 py-1.5 rounded-xl text-blue-600 dark:text-blue-400 transition cursor-pointer"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                          <span>Edit Project Information</span>
+                        </button>
+                      </div>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs font-semibold text-slate-700 dark:text-slate-200">
-                      
-                      {/* Section 1 Edit: Corporate Stakeholders */}
-                      <div className="bg-blue-50/10 dark:bg-slate-900/20 p-3.5 rounded-2xl border border-blue-150/20 dark:border-blue-900/40 space-y-3">
-                        <h4 className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wide">Project Stakeholders</h4>
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs font-semibold text-slate-700 dark:text-slate-200">
                         
-                        <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
-                          <label className="text-[9px] text-slate-400 block font-mono">CLIENT / EMPLOYER</label>
-                          <input
-                            type="text"
-                            value={editClient}
-                            onChange={(e) => setEditClient(e.target.value)}
-                            className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1.5 rounded-lg text-slate-850 dark:text-zinc-100 outline-none focus:border-blue-500 focus:ring-1"
-                          />
-                        </div>
-
-                        <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
-                          <div className="flex items-center justify-between">
-                            <label className="text-[9px] text-slate-400 block font-mono">SUPERVISING CONSULTANT</label>
-                            <span className="text-[8.5px] font-mono text-emerald-600 dark:text-emerald-400">🔗 Syncs with Supervision Agreement Firm</span>
-                          </div>
-                          <input
-                            type="text"
-                            value={editConsultant}
-                            onChange={(e) => setEditConsultant(e.target.value)}
-                            placeholder="Consulting Firm / Lead Partner Name"
-                            className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1.5 rounded-lg text-slate-850 dark:text-zinc-100 outline-none focus:border-blue-500 focus:ring-1"
-                          />
-                        </div>
-
-                        <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
-                          <label className="text-[9px] text-slate-400 block font-mono">MAIN CONTRACTOR</label>
-                          <input
-                            type="text"
-                            value={editContractor}
-                            onChange={(e) => setEditContractor(e.target.value)}
-                            className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1.5 rounded-lg text-slate-850 dark:text-zinc-100 outline-none focus:border-blue-500 focus:ring-1"
-                          />
-                        </div>
-
-                        <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
-                          <label className="text-[9px] text-indigo-500 block font-mono font-bold">PROGRAM DIRECTORATE</label>
-                          <select
-                            value={editProgramDirectorate}
-                            onChange={(e) => setEditProgramDirectorate(e.target.value)}
-                            className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1.5 rounded-lg text-slate-850 dark:text-zinc-100 outline-none font-bold"
-                          >
-                            {programDirectorates.map((pd, pdIdx) => (
-                              <option key={`edit-pd-${pd}-${pdIdx}`} value={pd}>{pd}</option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
-                          <label className="text-[9px] text-purple-500 block font-mono font-bold">PMO ASSIGNMENT</label>
-                          <select
-                            value={editPmo}
-                            onChange={(e) => setEditPmo(e.target.value)}
-                            className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1.5 rounded-lg text-slate-850 dark:text-zinc-100 outline-none font-bold"
-                          >
-                            {pmos.map((p, pIdx) => (
-                              <option key={`edit-pmo-${p}-${pIdx}`} value={p}>{p}</option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
-
-                      {/* Section 2 Edit: Temporal Calendar Milestones */}
-                      <div className="bg-blue-50/10 dark:bg-slate-900/20 p-3.5 rounded-2xl border border-blue-150/20 dark:border-blue-900/40 space-y-3">
-                        <h4 className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wide">Milestones & Durations</h4>
-                        
-                        <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
-                          <label className="text-[9px] text-slate-400 block font-mono font-bold">CONTRACT SIGNING DATE</label>
-                          <input
-                            type="date"
-                            value={editSignDate}
-                            onChange={(e) => setEditSignDate(e.target.value)}
-                            className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1 text-slate-850 dark:text-zinc-150 outline-none font-mono"
-                          />
-                        </div>
-
-                        <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
-                          <label className="text-[9px] text-slate-400 block font-mono font-bold">COMMENCEMENT DATE</label>
-                          <input
-                            type="date"
-                            value={editStartDate}
-                            onChange={(e) => setEditStartDate(e.target.value)}
-                            className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1 text-slate-850 dark:text-zinc-150 outline-none font-mono"
-                          />
-                        </div>
-
-                        <div className="grid grid-cols-3 gap-1.5 mt-1">
-                          <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-1 rounded-lg border border-slate-100">
-                            <label className="text-[8px] text-slate-400 block font-mono">ORIG. DAYS</label>
-                            <input
-                              type="number"
-                              value={editOrigDays}
-                              onChange={(e) => setEditOrigDays(parseInt(e.target.value) || 0)}
-                              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-705 text-center py-0.5 rounded font-mono text-slate-850 text-2xs outline-none"
-                            />
-                          </div>
-                          <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-1 rounded-lg border border-slate-100">
-                            <label className="text-[8px] text-slate-400 block font-mono">APP. EOT</label>
-                            <input
-                              type="number"
-                              value={editEotDays}
-                              onChange={(e) => setEditEotDays(parseInt(e.target.value) || 0)}
-                              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-705 text-center py-0.5 rounded font-mono text-slate-850 text-2xs outline-none"
-                            />
-                          </div>
-                          <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-1 rounded-lg border border-slate-100">
-                            <label className="text-[8px] text-slate-400 block font-mono">INT. EOT</label>
-                            <input
-                              type="number"
-                              value={editInterimEotDays}
-                              onChange={(e) => setEditInterimEotDays(parseInt(e.target.value) || 0)}
-                              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-705 text-center py-0.5 rounded font-mono text-slate-850 text-2xs outline-none"
-                            />
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Section 3 Edit: Value Outlay Structure */}
-                      <div className="bg-blue-50/10 dark:bg-slate-900/20 p-3.5 rounded-2xl border border-blue-150/20 dark:border-blue-900/40 space-y-3">
-                        <h4 className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wide">Financial Cost Outlay</h4>
-                        
-                        <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800 opacity-80" title="Auto-calculated from Division Work items G = F + E">
-                          <label className="text-[9px] text-slate-400 block font-mono">ORIGINAL COST (M. Birr) [Auto-calculated G = F + E]</label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={editOrigAmount}
-                            readOnly
-                            className="w-full bg-slate-100 dark:bg-slate-800 text-slate-400 border border-slate-200 dark:border-slate-700 px-2 py-1 outline-none font-mono cursor-not-allowed"
-                          />
-                        </div>
-
-                        <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
-                          <label className="text-[9px] text-slate-400 block font-mono font-sans">PROVISIONAL SUM (M.)</label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={editProvisionalSum}
-                            onChange={(e) => setEditProvisionalSum(parseFloat(e.target.value) || 0)}
-                            className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1 text-slate-850 dark:text-zinc-150 outline-none font-mono"
-                          />
-                        </div>
-
-                        <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
-                          <div className="flex items-center justify-between">
-                            <label className="text-[9px] text-slate-400 block font-sans font-bold text-amber-500 uppercase">
-                              APPROVED VARIATIONS (Br.)
-                            </label>
-                            <span className="text-[8px] font-mono text-emerald-600 dark:text-emerald-400 font-bold">
-                              Accounting Format (2 Decimals)
-                            </span>
-                          </div>
-                          <div className="relative flex items-center">
-                            <span className="absolute left-2.5 text-xs font-mono font-bold text-slate-400 select-none pointer-events-none">
-                              Br.
-                            </span>
+                        {/* Section 1 Edit: Corporate Stakeholders & Project Identification */}
+                        <div className="bg-blue-50/10 dark:bg-slate-900/20 p-3.5 rounded-2xl border border-blue-150/20 dark:border-blue-900/40 space-y-3">
+                          <h4 className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wide">Project Stakeholders & Identity</h4>
+                          
+                          <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
+                            <label className="text-[9px] text-blue-600 dark:text-blue-400 block font-mono font-bold">PROJECT TITLE / NAME</label>
                             <input
                               type="text"
-                              inputMode="decimal"
-                              value={editVariationStr}
-                              onFocus={(e) => e.target.select()}
-                              onChange={(e) => {
-                                const rawVal = e.target.value;
-                                setEditVariationStr(rawVal);
-                                const isNegative = rawVal.includes('-') || (rawVal.includes('(') && rawVal.includes(')'));
-                                const cleaned = rawVal.replace(/[^0-9.]/g, '');
-                                const parsed = parseFloat(cleaned);
-                                const numVal = isNaN(parsed) ? 0 : (isNegative ? -parsed : parsed);
-                                setEditVariation(numVal);
-                              }}
-                              onBlur={() => {
-                                setEditVariationStr(formatAccounting(editVariation, ''));
-                              }}
-                              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 pl-8 pr-2 py-1 text-slate-850 dark:text-zinc-150 outline-none font-mono text-xs rounded font-bold"
-                              placeholder="0.00"
+                              value={editProjectName}
+                              onChange={(e) => setEditProjectName(e.target.value)}
+                              placeholder="Project title..."
+                              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1.5 rounded-lg text-slate-850 dark:text-zinc-100 outline-none focus:border-blue-500 focus:ring-1 font-bold text-xs"
                             />
                           </div>
-                          <span className="text-[8px] text-slate-400 block font-sans">
-                            As-is number format in Birr (not in millions).
-                          </span>
-                        </div>
 
-                        <div className="flex items-center justify-between p-2 rounded-lg bg-blue-50/50 dark:bg-blue-950/30 border border-blue-200/60 dark:border-blue-900/40">
-                          <div className="flex flex-col">
-                            <span className="text-[10px] font-bold text-slate-750 dark:text-zinc-150">Foreign Currency (USD) Remuneration</span>
-                            <span className="text-[9px] text-slate-400">Enable USD certified columns and foreign invoices</span>
-                          </div>
-                          <label className="relative inline-flex items-center cursor-pointer">
+                          <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
+                            <label className="text-[9px] text-slate-400 block font-mono">CLIENT / EMPLOYER</label>
                             <input
-                              type="checkbox"
-                              checked={editEnableUsdPayments}
-                              onChange={(e) => setEditEnableUsdPayments(e.target.checked)}
-                              className="sr-only peer"
+                              type="text"
+                              value={editClient}
+                              onChange={(e) => setEditClient(e.target.value)}
+                              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1.5 rounded-lg text-slate-850 dark:text-zinc-100 outline-none focus:border-blue-500 focus:ring-1"
                             />
-                            <div className="w-8 h-4 bg-slate-200 dark:bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-blue-600"></div>
-                          </label>
+                          </div>
+
+                          <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
+                            <div className="flex items-center justify-between">
+                              <label className="text-[9px] text-slate-400 block font-mono">SUPERVISING CONSULTANT</label>
+                              <span className="text-[8.5px] font-mono text-emerald-600 dark:text-emerald-400">🔗 Syncs with Agreement</span>
+                            </div>
+                            <input
+                              type="text"
+                              value={editConsultant}
+                              onChange={(e) => setEditConsultant(e.target.value)}
+                              placeholder="Consulting Firm / Lead Partner Name"
+                              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1.5 rounded-lg text-slate-850 dark:text-zinc-100 outline-none focus:border-blue-500 focus:ring-1"
+                            />
+                          </div>
+
+                          <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
+                            <label className="text-[9px] text-slate-400 block font-mono">MAIN CONTRACTOR</label>
+                            <input
+                              type="text"
+                              value={editContractor}
+                              onChange={(e) => setEditContractor(e.target.value)}
+                              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1.5 rounded-lg text-slate-850 dark:text-zinc-100 outline-none focus:border-blue-500 focus:ring-1"
+                            />
+                          </div>
+
+                          <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
+                            <label className="text-[9px] text-indigo-500 block font-mono font-bold">PROGRAM DIRECTORATE</label>
+                            <select
+                              value={editProgramDirectorate}
+                              onChange={(e) => setEditProgramDirectorate(e.target.value)}
+                              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1.5 rounded-lg text-slate-850 dark:text-zinc-100 outline-none font-bold"
+                            >
+                              {programDirectorates.map((pd, pdIdx) => (
+                                <option key={`edit-pd-${pd}-${pdIdx}`} value={pd}>{pd}</option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
+                            <label className="text-[9px] text-purple-500 block font-mono font-bold">PMO ASSIGNMENT</label>
+                            <select
+                              value={editPmo}
+                              onChange={(e) => setEditPmo(e.target.value)}
+                              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1.5 rounded-lg text-slate-850 dark:text-zinc-100 outline-none font-bold"
+                            >
+                              {pmos.map((p, pIdx) => (
+                                <option key={`edit-pmo-${p}-${pIdx}`} value={p}>{p}</option>
+                              ))}
+                            </select>
+                          </div>
                         </div>
+
+                        {/* Section 2 Edit: Temporal Calendar Milestones */}
+                        <div className="bg-blue-50/10 dark:bg-slate-900/20 p-3.5 rounded-2xl border border-blue-150/20 dark:border-blue-900/40 space-y-3">
+                          <h4 className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wide">Milestones & Durations</h4>
+                          
+                          <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
+                            <label className="text-[9px] text-slate-400 block font-mono font-bold">CONTRACT SIGNING DATE</label>
+                            <input
+                              type="date"
+                              value={editSignDate}
+                              onChange={(e) => setEditSignDate(e.target.value)}
+                              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1 text-slate-850 dark:text-zinc-150 outline-none font-mono"
+                            />
+                          </div>
+
+                          <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
+                            <label className="text-[9px] text-slate-400 block font-mono font-bold">COMMENCEMENT DATE</label>
+                            <input
+                              type="date"
+                              value={editStartDate}
+                              onChange={(e) => setEditStartDate(e.target.value)}
+                              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1 text-slate-850 dark:text-zinc-150 outline-none font-mono"
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-1.5 mt-1">
+                            <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-1 rounded-lg border border-slate-100">
+                              <label className="text-[8px] text-slate-400 block font-mono">ORIG. DAYS</label>
+                              <input
+                                type="number"
+                                value={editOrigDays}
+                                onChange={(e) => setEditOrigDays(parseInt(e.target.value) || 0)}
+                                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-705 text-center py-0.5 rounded font-mono text-slate-850 text-2xs outline-none"
+                              />
+                            </div>
+                            <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-1 rounded-lg border border-slate-100">
+                              <label className="text-[8px] text-slate-400 block font-mono">APP. EOT</label>
+                              <input
+                                type="number"
+                                value={editEotDays}
+                                onChange={(e) => setEditEotDays(parseInt(e.target.value) || 0)}
+                                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-705 text-center py-0.5 rounded font-mono text-slate-850 text-2xs outline-none"
+                              />
+                            </div>
+                            <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-1 rounded-lg border border-slate-100">
+                              <label className="text-[8px] text-slate-400 block font-mono">INT. EOT</label>
+                              <input
+                                type="number"
+                                value={editInterimEotDays}
+                                onChange={(e) => setEditInterimEotDays(parseInt(e.target.value) || 0)}
+                                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-705 text-center py-0.5 rounded font-mono text-slate-850 text-2xs outline-none"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Section 3 Edit: Value Outlay Structure */}
+                        <div className="bg-blue-50/10 dark:bg-slate-900/20 p-3.5 rounded-2xl border border-blue-150/20 dark:border-blue-900/40 space-y-3">
+                          <h4 className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wide">Financial Cost Outlay</h4>
+                          
+                          <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800" title="Original contract cost in Millions ETB">
+                            <div className="flex items-center justify-between">
+                              <label className="text-[9px] text-slate-400 block font-mono">ORIGINAL COST (M. Birr)</label>
+                              <span className="text-[8px] text-slate-400 font-mono">Total Millions ETB</span>
+                            </div>
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={editOrigAmount}
+                              onChange={(e) => setEditOrigAmount(parseFloat(e.target.value) || 0)}
+                              className="w-full bg-white dark:bg-slate-900 text-slate-850 dark:text-zinc-100 border border-slate-200 dark:border-slate-700 px-2 py-1 outline-none font-mono font-bold"
+                            />
+                          </div>
+
+                          <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
+                            <label className="text-[9px] text-slate-400 block font-mono font-sans">PROVISIONAL SUM (M.)</label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={editProvisionalSum}
+                              onChange={(e) => setEditProvisionalSum(parseFloat(e.target.value) || 0)}
+                              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1 text-slate-850 dark:text-zinc-150 outline-none font-mono"
+                            />
+                          </div>
+
+                          <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
+                            <div className="flex items-center justify-between">
+                              <label className="text-[9px] text-slate-400 block font-sans font-bold text-amber-500 uppercase">
+                                APPROVED VARIATIONS (Br.)
+                              </label>
+                              <span className="text-[8px] font-mono text-emerald-600 dark:text-emerald-400 font-bold">
+                                Accounting Format
+                              </span>
+                            </div>
+                            <div className="relative flex items-center">
+                              <span className="absolute left-2.5 text-xs font-mono font-bold text-slate-400 select-none pointer-events-none">
+                                Br.
+                              </span>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                value={editVariationStr}
+                                onFocus={(e) => e.target.select()}
+                                onChange={(e) => {
+                                  const rawVal = e.target.value;
+                                  setEditVariationStr(rawVal);
+                                  const isNegative = rawVal.includes('-') || (rawVal.includes('(') && rawVal.includes(')'));
+                                  const cleaned = rawVal.replace(/[^0-9.]/g, '');
+                                  const parsed = parseFloat(cleaned);
+                                  const numVal = isNaN(parsed) ? 0 : (isNegative ? -parsed : parsed);
+                                  setEditVariation(numVal);
+                                }}
+                                onBlur={() => {
+                                  setEditVariationStr(formatAccounting(editVariation, ''));
+                                }}
+                                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 pl-8 pr-2 py-1 text-slate-850 dark:text-zinc-150 outline-none font-mono text-xs rounded font-bold"
+                                placeholder="0.00"
+                              />
+                            </div>
+                            <span className="text-[8px] text-slate-400 block font-sans">
+                              As-is number format in Birr (not in millions).
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between p-2 rounded-lg bg-blue-50/50 dark:bg-blue-950/30 border border-blue-200/60 dark:border-blue-900/40">
+                            <div className="flex flex-col">
+                              <span className="text-[10px] font-bold text-slate-750 dark:text-zinc-150">Foreign Currency (USD) Remuneration</span>
+                              <span className="text-[9px] text-slate-400">Enable USD certified columns and foreign invoices</span>
+                            </div>
+                            <label className="relative inline-flex items-center cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={editEnableUsdPayments}
+                                onChange={(e) => setEditEnableUsdPayments(e.target.checked)}
+                                className="sr-only peer"
+                              />
+                              <div className="w-8 h-4 bg-slate-200 dark:bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-blue-600"></div>
+                            </label>
+                          </div>
+                        </div>
+
+                        {/* Section 4 Edit: Physical Parameters */}
+                        <div className="bg-blue-50/10 dark:bg-slate-900/20 p-3.5 rounded-2xl border border-blue-150/20 dark:border-blue-900/40 space-y-3">
+                          <h4 className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wide">Physical & Legal Framework</h4>
+                          
+                          <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
+                            <label className="text-[9px] text-slate-400 block font-mono">TOTAL SECTION LENGTH (Km)</label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={editLengthKm}
+                              onChange={(e) => setEditLengthKm(parseFloat(e.target.value) || 0)}
+                              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1 text-slate-850 dark:text-zinc-150 outline-none font-mono"
+                            />
+                          </div>
+
+                          <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
+                            <label className="text-[9px] text-slate-400 block font-mono">ROAD WAY CLASSIFICATION</label>
+                            <input
+                              type="text"
+                              value={editClassification}
+                              onChange={(e) => setEditClassification(e.target.value)}
+                              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1.5 rounded-lg text-slate-850 dark:text-zinc-100 outline-none"
+                            />
+                          </div>
+
+                          <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
+                            <label className="text-[9px] text-slate-400 block font-mono">ORIGINAL CONTRACT TYPE</label>
+                            <select
+                              value={editContractType}
+                              onChange={(e) => {
+                                const nextVal = e.target.value as 'DB' | 'DBB';
+                                setEditContractType(nextVal);
+                                const opts = getFidicOptions(nextVal);
+                                if (!opts.includes(editFidicContractType)) {
+                                  setEditFidicContractType(opts[0]);
+                                }
+                              }}
+                              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-705 px-2 py-1 rounded-lg text-slate-850 dark:text-zinc-100 outline-none font-bold"
+                            >
+                              <option value="DB">Design-Build (DB)</option>
+                              <option value="DBB">Design-Bid-Build (DBB)</option>
+                            </select>
+                          </div>
+
+                          <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
+                            <label className="text-[9px] text-slate-400 block font-mono">FIDIC CONTRACT TYPE</label>
+                            <select
+                              value={editFidicContractType || getFidicOptions(editContractType)[0]}
+                              onChange={(e) => setEditFidicContractType(e.target.value)}
+                              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-705 px-2 py-1 rounded-lg text-slate-850 dark:text-zinc-100 outline-none font-bold"
+                            >
+                              {getFidicOptions(editContractType).map((opt) => (
+                                <option key={opt} value={opt}>{opt}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+
                       </div>
 
-                      {/* Section 4 Edit: Physical Parameters */}
-                      <div className="bg-blue-50/10 dark:bg-slate-900/20 p-3.5 rounded-2xl border border-blue-150/20 dark:border-blue-900/40 space-y-3">
-                        <h4 className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wide">Physical & Legal Framework</h4>
-                        
-                        <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
-                          <label className="text-[9px] text-slate-400 block font-mono">TOTAL SECTION LENGTH (Km)</label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={editLengthKm}
-                            onChange={(e) => setEditLengthKm(parseFloat(e.target.value) || 0)}
-                            className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1 text-slate-850 dark:text-zinc-150 outline-none font-mono"
-                          />
-                        </div>
-
-                        <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
-                          <label className="text-[9px] text-slate-400 block font-mono">ROAD WAY CLASSIFICATION</label>
-                          <input
-                            type="text"
-                            value={editClassification}
-                            onChange={(e) => setEditClassification(e.target.value)}
-                            className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1.5 rounded-lg text-slate-850 dark:text-zinc-100 outline-none"
-                          />
-                        </div>
-
-                        <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
-                          <label className="text-[9px] text-slate-400 block font-mono">ORIGINAL CONTRACT TYPE</label>
-                          <select
-                            value={editContractType}
-                            onChange={(e) => {
-                              const nextVal = e.target.value as 'DB' | 'DBB';
-                              setEditContractType(nextVal);
-                              const opts = getFidicOptions(nextVal);
-                              if (!opts.includes(editFidicContractType)) {
-                                setEditFidicContractType(opts[0]);
-                              }
+                      {/* Bottom Action Bar in Editing Mode */}
+                      <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between flex-wrap gap-3">
+                        <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                          Click Save Project Information to persist your changes to the project baseline and update all reports.
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsEditingDossier(false);
+                              setEditProjectName(currentProject.name || '');
+                              setEditClient(currentProject.client);
+                              setEditConsultant(currentProject.supervisionConsultant?.firmName || currentProject.consultant || '');
+                              setEditContractor(currentProject.contractor);
+                              setEditSignDate(currentProject.signDate);
+                              setEditStartDate(currentProject.startDate);
+                              setEditOrigDays(currentProject.origDays);
+                              setEditEotDays(currentProject.eotDays);
+                              setEditInterimEotDays(currentProject.interimEotDays || 0);
+                              setEditOrigAmount(currentProject.origAmount);
+                              setEditProvisionalSum(currentProject.provisionalSum);
+                              const vVal = currentProject.variation || 0;
+                              setEditVariation(vVal);
+                              setEditVariationStr(formatAccounting(vVal, ''));
+                              setEditEnableUsdPayments(currentProject.enableUsdPayments !== undefined ? Boolean(currentProject.enableUsdPayments) : Boolean(currentProject.supervisionConsultant?.enableUsdPayments));
+                              setEditLengthKm(currentProject.lengthKm);
+                              setEditClassification(currentProject.classification);
+                              setEditContractType(currentProject.contractType);
+                              setEditProgramDirectorate(currentProject.programDirectorate || 'Southern');
+                              setEditPmo(currentProject.pmo || 'PMO 1');
+                              setEditFidicContractType(currentProject.fidicContractType || '');
                             }}
-                            className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-705 px-2 py-1 rounded-lg text-slate-850 dark:text-zinc-100 outline-none font-bold"
+                            className="px-3.5 py-1.5 rounded-xl text-xs font-bold uppercase bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 transition cursor-pointer"
                           >
-                            <option value="DB">Design-Build (DB)</option>
-                            <option value="DBB">Design-Bid-Build (DBB)</option>
-                          </select>
-                        </div>
-
-                        <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
-                          <label className="text-[9px] text-slate-400 block font-mono">FIDIC CONTRACT TYPE</label>
-                          <select
-                            value={editFidicContractType || getFidicOptions(editContractType)[0]}
-                            onChange={(e) => setEditFidicContractType(e.target.value)}
-                            className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-705 px-2 py-1 rounded-lg text-slate-850 dark:text-zinc-100 outline-none font-bold"
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleSaveDossier}
+                            className="px-4 py-1.5 rounded-xl text-xs font-black uppercase tracking-wide bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-xs transition flex items-center gap-1.5 cursor-pointer"
                           >
-                            {getFidicOptions(editContractType).map((opt) => (
-                              <option key={opt} value={opt}>{opt}</option>
-                            ))}
-                          </select>
+                            <Save className="w-3.5 h-3.5" />
+                            <span>Save Project Information</span>
+                          </button>
                         </div>
                       </div>
-
                     </div>
                   )}
                 </div>
