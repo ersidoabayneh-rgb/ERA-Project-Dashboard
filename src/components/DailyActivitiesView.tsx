@@ -257,7 +257,7 @@ export default function DailyActivitiesView({
   const [newWirPriority, setNewWirPriority] = useState<'High' | 'Medium' | 'Low' | 'Critical'>('High');
 
   // Project Length for Chainage bar
-  const totalLengthKm = project.lengthKm || 48.5;
+  const totalLengthKm = project.lengthKm || 65.0;
 
   // Filtered activities
   const filteredActivities = useMemo(() => {

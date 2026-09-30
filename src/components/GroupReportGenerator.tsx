@@ -7824,6 +7824,19 @@ export default function GroupReportGenerator({
   const handleExportDirectoratePmoSummaryPDF = () => {
     if (!activeMilestone) return;
 
+    let filteredDirectorates = [...directorateComparisonSummary];
+    let filteredPmos = [...pmoComparisonSummary];
+
+    if (currentUserObj.role === 'pmo_admin' || currentUserObj.assignedPmo) {
+      const assignedPmo = (currentUserObj.assignedPmo || 'PMO 1').toLowerCase().trim();
+      filteredPmos = filteredPmos.filter(p => p.name.toLowerCase().trim() === assignedPmo);
+      filteredDirectorates = [];
+    } else if (currentUserObj.role === 'directorate_admin' || currentUserObj.assignedDirectorate) {
+      const assignedDir = (currentUserObj.assignedDirectorate || 'Southern').toLowerCase().trim();
+      filteredDirectorates = filteredDirectorates.filter(d => d.name.toLowerCase().trim() === assignedDir);
+      filteredPmos = [];
+    }
+
     const doc = new jsPDF('l', 'pt', 'a4'); // Landscape A4 (841.89 pt x 595.28 pt)
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
@@ -7917,7 +7930,7 @@ export default function GroupReportGenerator({
         doc.setFontSize(6.5);
         doc.setTextColor(0, 0, 0);
 
-        let groupsText = `GROUPS: ${directorateComparisonSummary.length} Directorates • ${pmoComparisonSummary.length} PMOs`;
+        let groupsText = `GROUPS: ${filteredDirectorates.length} Directorates • ${filteredPmos.length} PMOs`;
         if (currentUserObj.role === 'pmo_admin' || currentUserObj.assignedPmo) {
           const pmoName = (currentUserObj.assignedPmo || 'PMO 1').toUpperCase();
           groupsText = `ASSIGNED PMO: ${pmoName} • PMO ADMIN: ${currentUserObj.username.toUpperCase()}`;
@@ -7925,7 +7938,7 @@ export default function GroupReportGenerator({
           const dirName = (currentUserObj.assignedDirectorate || 'Southern').toUpperCase();
           groupsText = `ASSIGNED DIRECTORATE: ${dirName} • DIRECTORATE ADMIN: ${currentUserObj.username.toUpperCase()}`;
         } else if (currentUserObj.role === 'cpm_admin') {
-          groupsText = `GROUPS: ${directorateComparisonSummary.length} Directorates • ${pmoComparisonSummary.length} PMOs`;
+          groupsText = `GROUPS: ${filteredDirectorates.length} Directorates • ${filteredPmos.length} PMOs`;
         }
         doc.text(groupsText, 48, 73);
 
@@ -8119,9 +8132,9 @@ export default function GroupReportGenerator({
       });
     };
 
-    renderGroupRows(directorateComparisonSummary, `PROGRAM DIRECTORATE GROUPINGS (${directorateComparisonSummary.length} DIRECTORATES)`);
+    renderGroupRows(filteredDirectorates, `PROGRAM DIRECTORATE GROUPINGS (${filteredDirectorates.length} DIRECTORATES)`);
     curY += 8;
-    renderGroupRows(pmoComparisonSummary, `PMO GROUPINGS (${pmoComparisonSummary.length} PMO OFFICES)`);
+    renderGroupRows(filteredPmos, `PMO GROUPINGS (${filteredPmos.length} PMO OFFICES)`);
 
     // Sign-off block
     if (curY + 50 > pageHeight - 55) {

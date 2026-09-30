@@ -904,6 +904,12 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
   const displayRowMetrics = (p.rowMetrics || [])
     .filter(rm => allowedRowMetricNames.includes(rm.name))
     .map(rm => {
+      if (rm.name === 'Project Length') {
+        return { ...rm, value: p.lengthKm || 65.0 };
+      }
+      if (rm.name === 'ROW Request By Contractor') {
+        return { ...rm, value: p.lengthKm || 65.0 };
+      }
       if (rm.name === 'Properties identified, measured, evaluated') {
         return { ...rm, name: 'Measurement Identification Complete' };
       }

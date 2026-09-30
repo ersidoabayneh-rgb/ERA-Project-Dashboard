@@ -1626,10 +1626,10 @@ export default function DashboardView({
           ];
 
           const mappedRowList = standardRowMetricOrder.map(mName => {
-            const match = rawRowMetrics.find(rm => rm.name.toLowerCase() === mName.toLowerCase());
-            if (match) return match;
             if (mName === 'Project Length') return { name: mName, value: p.lengthKm || 65, unit: 'Km' };
             if (mName === 'ROW Request By Contractor') return { name: mName, value: p.lengthKm || 65, unit: 'Km' };
+            const match = rawRowMetrics.find(rm => rm.name.toLowerCase() === mName.toLowerCase());
+            if (match) return match;
             if (mName === 'Properties identified, measured, evaluated') return { name: mName, value: 44.22, unit: 'Km' };
             if (mName === 'Document Sent ERA for Compensation') return { name: mName, value: 51.3, unit: 'Km' };
             if (mName === 'ROW Obstruction free Section') return { name: mName, value: 54, unit: 'Km' };
