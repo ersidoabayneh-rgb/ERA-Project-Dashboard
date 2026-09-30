@@ -2335,6 +2335,20 @@ export default function GroupReportGenerator({
     return projects.filter(p => {
       if (!isAccessible(p)) return false;
       
+      // Filter out explicitly removed project "Bonosha- Achamo"
+      const nameLower = (p.name || '').toLowerCase();
+      const idLower = (p.id || '').toLowerCase();
+      const contractorLower = (p.contractor || '').toLowerCase();
+
+      if (
+        nameLower.includes('bonosha') ||
+        nameLower.includes('achamo') ||
+        idLower.includes('w-137') ||
+        contractorLower.includes('yirgalem construction')
+      ) {
+        return false;
+      }
+
       let isMatch = false;
       if (groupType === 'directorate') {
         isMatch = selectedGroup === 'All' || (p.programDirectorate || 'Southern') === selectedGroup;
@@ -9810,32 +9824,6 @@ export default function GroupReportGenerator({
                   </div>
                 )}
 
-                {/* 2. Target Project Header Banner */}
-                {activeComparisonProject && activeMilestone && (
-                  <div className="p-4 bg-gradient-to-r from-blue-50/60 via-indigo-50/40 to-slate-50/60 dark:from-blue-950/20 dark:via-indigo-950/20 dark:to-slate-900/20 rounded-2xl border border-blue-200/80 dark:border-blue-900/50 space-y-3">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      <div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm font-black text-slate-900 dark:text-white">
-                            {activeComparisonProject.name}
-                          </span>
-                          <span className="px-2 py-0.5 rounded-md text-[9px] font-extrabold uppercase bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-300 font-mono">
-                            ID: {activeComparisonProject.id.substring(0, 10).toUpperCase()}
-                          </span>
-                          <span className="px-2 py-0.5 rounded-md text-[9px] font-extrabold uppercase bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 font-mono">
-                            {activeComparisonProject.lengthKm || 65} Km Total
-                          </span>
-                        </div>
-                        <div className="text-2xs text-slate-600 dark:text-slate-400 mt-1 flex flex-wrap gap-x-4 gap-y-0.5">
-                          <span>🏗️ Contractor: <strong className="text-slate-800 dark:text-zinc-200">{activeComparisonProject.contractor || 'China Wu Yi Co. Ltd'}</strong></span>
-                          <span>🎓 Consultant: <strong className="text-slate-800 dark:text-zinc-200">{activeComparisonProject.consultant || 'LEA Associates South Asia JV in Association with SABA Engineering PLC'}</strong></span>
-                          <span>🏢 {activeComparisonProject.programDirectorate || 'Southern'} • {activeComparisonProject.pmo || 'PMO 1'}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
                 {/* 3. Beginning of Fiscal Year (EFY) Annual Progress Baseline Planning Table */}
                 <div className="border-2 border-indigo-200 dark:border-indigo-800/80 rounded-2xl overflow-hidden bg-white dark:bg-slate-900 shadow-md space-y-0">
                   {/* Header banner */}
@@ -9849,16 +9837,7 @@ export default function GroupReportGenerator({
                           <h3 className="text-sm sm:text-base font-black tracking-tight flex items-center gap-1.5">
                             EFY {selectedPlanningEfy} Annual Baseline Plan (ERA & Contractor)
                           </h3>
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-500/30 text-indigo-200 border border-indigo-400/30">
-                            Whole Fiscal Year Setup (M1 - M12)
-                          </span>
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-purple-500/30 text-purple-200 border border-purple-400/30">
-                            Annual Fiscal Year (EFY) Progress Baseline Plan
-                          </span>
                         </div>
-                        <p className="text-[11px] text-indigo-200/80 mt-0.5 leading-relaxed">
-                          Add and edit monthly target allocations at the beginning of the fiscal year. <strong>Quarterly (Q1-Q4) and Total EFY sums are calculated automatically in real time from the 12 monthly inputs.</strong>
-                        </p>
                       </div>
                     </div>
 
@@ -9884,37 +9863,15 @@ export default function GroupReportGenerator({
                         </select>
                       </div>
 
-                      {/* Add Previous EFY Plan Year button */}
-                      <button
-                        type="button"
-                        onClick={() => setIsAddEfyModalOpen(true)}
-                        className="px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 font-bold text-xs flex items-center gap-1 shadow-2xs transition cursor-pointer"
-                        title="Add previous fiscal year baseline plan"
-                      >
-                        <Plus className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-                        <span>+ Add Previous EFY</span>
-                      </button>
-
                       {/* Show Recorded EFY Plans button */}
                       <button
                         type="button"
                         onClick={() => setIsViewRecordedModalOpen(true)}
                         className="px-2.5 py-1.5 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 border border-purple-400/30 text-purple-200 font-bold text-xs flex items-center gap-1 shadow-2xs transition cursor-pointer"
-                        title="View and manage recorded EFY baseline plans across projects"
+                        title="View recorded EFY baseline plans across projects"
                       >
                         <Eye className="w-3.5 h-3.5 text-purple-300" />
                         <span>Recorded EFY Plans</span>
-                      </button>
-
-                      {/* Delete EFY Year Plans button */}
-                      <button
-                        type="button"
-                        onClick={() => setIsDeleteYearModalOpen(true)}
-                        className="px-2.5 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 border border-rose-400/30 text-rose-200 font-bold text-xs flex items-center gap-1 shadow-2xs transition cursor-pointer"
-                        title={`Delete or clear all EFY ${selectedPlanningEfy} baseline plan records across projects`}
-                      >
-                        <Trash2 className="w-3.5 h-3.5 text-rose-300" />
-                        <span>Delete EFY Year</span>
                       </button>
 
                       {/* Toggle Quarterly Columns */}
@@ -9930,17 +9887,6 @@ export default function GroupReportGenerator({
                       >
                         <Layers className="w-3.5 h-3.5" />
                         <span>{isQuarterlyPlanningExpanded ? 'Hide Quarters' : 'Show Quarters (Q1-Q4)'}</span>
-                      </button>
-
-                      {/* Save All Modified Plans */}
-                      <button
-                        type="button"
-                        onClick={handleSaveAllEfyPlans}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-black transition-all shadow-md active:scale-98 cursor-pointer"
-                        title="Save all EFY annual baseline plans across projects & synchronize with active project tracking"
-                      >
-                        <Save className="w-3.5 h-3.5" />
-                        <span>Save All EFY Plans</span>
                       </button>
 
                       {/* Expand / Collapse Section */}
@@ -10461,7 +10407,7 @@ export default function GroupReportGenerator({
                                 Length %
                               </th>
                               <th className="p-1.5 font-black bg-slate-50 dark:bg-slate-850 text-slate-500">
-                                Quick Save
+                                Reflection Status
                               </th>
                             </tr>
                           </thead>
@@ -10518,17 +10464,8 @@ export default function GroupReportGenerator({
                                     {(baselineQuarterView === 'all' || baselineQuarterView === 'Q1') && (
                                       <>
                                         {[0, 1, 2].map((mIdx) => (
-                                          <td key={`ctr_m_${p.id}_${mIdx}`} className="p-1 text-center bg-blue-50/20 dark:bg-blue-950/10">
-                                            <ValidatedEfyInput
-                                              type="number"
-                                              step="0.01"
-                                              value={contractorMonths[mIdx] ?? 0}
-                                              onChange={(e) => updateEfyMonthValue(p.id, 'contractor', mIdx, parseFloat(e.target.value) || 0)}
-                                              project={p}
-                                              tooltipPosition="top"
-                                              baseClassName="w-14 sm:w-16 bg-white dark:bg-slate-900 border rounded text-center font-mono py-1 text-xs font-bold outline-none transition"
-                                              normalBorderClass="border-slate-200 dark:border-slate-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-blue-950 dark:text-blue-200"
-                                            />
+                                          <td key={`ctr_m_${p.id}_${mIdx}`} className="p-1.5 text-center bg-blue-50/20 dark:bg-blue-950/10 font-mono text-xs font-bold text-blue-950 dark:text-blue-200">
+                                            {(contractorMonths[mIdx] ?? 0) > 0 ? (contractorMonths[mIdx] ?? 0).toFixed(2) : '—'}
                                           </td>
                                         ))}
                                         <td className="p-1.5 text-center font-mono font-black text-blue-700 dark:text-blue-300 bg-blue-100/60 dark:bg-blue-900/40 border-r border-blue-200 dark:border-blue-800">
@@ -10544,17 +10481,8 @@ export default function GroupReportGenerator({
                                     {(baselineQuarterView === 'all' || baselineQuarterView === 'Q2') && (
                                       <>
                                         {[3, 4, 5].map((mIdx) => (
-                                          <td key={`ctr_m_${p.id}_${mIdx}`} className="p-1 text-center bg-cyan-50/20 dark:bg-cyan-950/10">
-                                            <ValidatedEfyInput
-                                              type="number"
-                                              step="0.01"
-                                              value={contractorMonths[mIdx] ?? 0}
-                                              onChange={(e) => updateEfyMonthValue(p.id, 'contractor', mIdx, parseFloat(e.target.value) || 0)}
-                                              project={p}
-                                              tooltipPosition="top"
-                                              baseClassName="w-14 sm:w-16 bg-white dark:bg-slate-900 border rounded text-center font-mono py-1 text-xs font-bold outline-none transition"
-                                              normalBorderClass="border-slate-200 dark:border-slate-700 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 text-cyan-950 dark:text-cyan-200"
-                                            />
+                                          <td key={`ctr_m_${p.id}_${mIdx}`} className="p-1.5 text-center bg-cyan-50/20 dark:bg-cyan-950/10 font-mono text-xs font-bold text-cyan-950 dark:text-cyan-200">
+                                            {(contractorMonths[mIdx] ?? 0) > 0 ? (contractorMonths[mIdx] ?? 0).toFixed(2) : '—'}
                                           </td>
                                         ))}
                                         <td className="p-1.5 text-center font-mono font-black text-cyan-700 dark:text-cyan-300 bg-cyan-100/60 dark:bg-cyan-900/40 border-r border-cyan-200 dark:border-cyan-800">
@@ -10570,17 +10498,8 @@ export default function GroupReportGenerator({
                                     {(baselineQuarterView === 'all' || baselineQuarterView === 'Q3') && (
                                       <>
                                         {[6, 7, 8].map((mIdx) => (
-                                          <td key={`ctr_m_${p.id}_${mIdx}`} className="p-1 text-center bg-indigo-50/20 dark:bg-indigo-950/10">
-                                            <ValidatedEfyInput
-                                              type="number"
-                                              step="0.01"
-                                              value={contractorMonths[mIdx] ?? 0}
-                                              onChange={(e) => updateEfyMonthValue(p.id, 'contractor', mIdx, parseFloat(e.target.value) || 0)}
-                                              project={p}
-                                              tooltipPosition="top"
-                                              baseClassName="w-14 sm:w-16 bg-white dark:bg-slate-900 border rounded text-center font-mono py-1 text-xs font-bold outline-none transition"
-                                              normalBorderClass="border-slate-200 dark:border-slate-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-indigo-950 dark:text-indigo-200"
-                                            />
+                                          <td key={`ctr_m_${p.id}_${mIdx}`} className="p-1.5 text-center bg-indigo-50/20 dark:bg-indigo-950/10 font-mono text-xs font-bold text-indigo-950 dark:text-indigo-200">
+                                            {(contractorMonths[mIdx] ?? 0) > 0 ? (contractorMonths[mIdx] ?? 0).toFixed(2) : '—'}
                                           </td>
                                         ))}
                                         <td className="p-1.5 text-center font-mono font-black text-indigo-700 dark:text-indigo-300 bg-indigo-100/60 dark:bg-indigo-900/40 border-r border-indigo-200 dark:border-indigo-800">
@@ -10596,17 +10515,8 @@ export default function GroupReportGenerator({
                                     {(baselineQuarterView === 'all' || baselineQuarterView === 'Q4') && (
                                       <>
                                         {[9, 10, 11].map((mIdx) => (
-                                          <td key={`ctr_m_${p.id}_${mIdx}`} className="p-1 text-center bg-purple-50/20 dark:bg-purple-950/10">
-                                            <ValidatedEfyInput
-                                              type="number"
-                                              step="0.01"
-                                              value={contractorMonths[mIdx] ?? 0}
-                                              onChange={(e) => updateEfyMonthValue(p.id, 'contractor', mIdx, parseFloat(e.target.value) || 0)}
-                                              project={p}
-                                              tooltipPosition="top"
-                                              baseClassName="w-14 sm:w-16 bg-white dark:bg-slate-900 border rounded text-center font-mono py-1 text-xs font-bold outline-none transition"
-                                              normalBorderClass="border-slate-200 dark:border-slate-700 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 text-purple-950 dark:text-purple-200"
-                                            />
+                                          <td key={`ctr_m_${p.id}_${mIdx}`} className="p-1.5 text-center bg-purple-50/20 dark:bg-purple-950/10 font-mono text-xs font-bold text-purple-950 dark:text-purple-200">
+                                            {(contractorMonths[mIdx] ?? 0) > 0 ? (contractorMonths[mIdx] ?? 0).toFixed(2) : '—'}
                                           </td>
                                         ))}
                                         <td className="p-1.5 text-center font-mono font-black text-purple-700 dark:text-purple-300 bg-purple-100/60 dark:bg-purple-900/40 border-r border-purple-200 dark:border-purple-800">
@@ -10628,26 +10538,11 @@ export default function GroupReportGenerator({
                                       {totalKm > 0 ? `${((contractorSums.efy / totalKm) * 100).toFixed(1)}%` : '—'}
                                     </td>
 
-                                    {/* Tools: Preset & Copy */}
-                                    <td className="p-1.5 text-center">
-                                      <div className="flex items-center justify-center gap-1">
-                                        <button
-                                          type="button"
-                                          onClick={() => copyContractorToEraForProject(p.id)}
-                                          className="p-1 rounded bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 text-[10px] font-bold transition cursor-pointer"
-                                          title="Copy Contractor monthly schedule to ERA approved milestone plan"
-                                        >
-                                          Copy → ERA
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => handleAutoDistributeQuarters(p.id)}
-                                          className="p-1 rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-[10px] font-bold transition cursor-pointer"
-                                          title="Auto-split evenly"
-                                        >
-                                          ⚡
-                                        </button>
-                                      </div>
+                                    {/* Reflection Status Column (Spans 2 rows) */}
+                                    <td rowSpan={2} className="p-1.5 text-center border-b border-slate-200 dark:border-slate-700 bg-slate-50/30 dark:bg-slate-850/30">
+                                      <span className="px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold text-[10px] border border-blue-200 dark:border-blue-800">
+                                        Reflected
+                                      </span>
                                     </td>
                                   </tr>
 
@@ -10667,17 +10562,8 @@ export default function GroupReportGenerator({
                                     {(baselineQuarterView === 'all' || baselineQuarterView === 'Q1') && (
                                       <>
                                         {[0, 1, 2].map((mIdx) => (
-                                          <td key={`era_m_${p.id}_${mIdx}`} className="p-1 text-center bg-purple-50/20 dark:bg-purple-950/10">
-                                            <ValidatedEfyInput
-                                              type="number"
-                                              step="0.01"
-                                              value={eraMonths[mIdx] ?? 0}
-                                              onChange={(e) => updateEfyMonthValue(p.id, 'era', mIdx, parseFloat(e.target.value) || 0)}
-                                              project={p}
-                                              tooltipPosition="bottom"
-                                              baseClassName="w-14 sm:w-16 bg-white dark:bg-slate-900 border rounded text-center font-mono py-1 text-xs font-bold outline-none transition"
-                                              normalBorderClass="border-slate-200 dark:border-slate-700 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 text-purple-950 dark:text-purple-200"
-                                            />
+                                          <td key={`era_m_${p.id}_${mIdx}`} className="p-1.5 text-center bg-purple-50/20 dark:bg-purple-950/10 font-mono text-xs font-bold text-purple-950 dark:text-purple-200">
+                                            {(eraMonths[mIdx] ?? 0) > 0 ? (eraMonths[mIdx] ?? 0).toFixed(2) : '—'}
                                           </td>
                                         ))}
                                         <td className="p-1.5 text-center font-mono font-black text-purple-700 dark:text-purple-300 bg-purple-100/60 dark:bg-purple-900/40 border-r border-purple-200 dark:border-purple-800">
@@ -10693,17 +10579,8 @@ export default function GroupReportGenerator({
                                     {(baselineQuarterView === 'all' || baselineQuarterView === 'Q2') && (
                                       <>
                                         {[3, 4, 5].map((mIdx) => (
-                                          <td key={`era_m_${p.id}_${mIdx}`} className="p-1 text-center bg-purple-50/20 dark:bg-purple-950/10">
-                                            <ValidatedEfyInput
-                                              type="number"
-                                              step="0.01"
-                                              value={eraMonths[mIdx] ?? 0}
-                                              onChange={(e) => updateEfyMonthValue(p.id, 'era', mIdx, parseFloat(e.target.value) || 0)}
-                                              project={p}
-                                              tooltipPosition="bottom"
-                                              baseClassName="w-14 sm:w-16 bg-white dark:bg-slate-900 border rounded text-center font-mono py-1 text-xs font-bold outline-none transition"
-                                              normalBorderClass="border-slate-200 dark:border-slate-700 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 text-purple-950 dark:text-purple-200"
-                                            />
+                                          <td key={`era_m_${p.id}_${mIdx}`} className="p-1.5 text-center bg-purple-50/20 dark:bg-purple-950/10 font-mono text-xs font-bold text-purple-950 dark:text-purple-200">
+                                            {(eraMonths[mIdx] ?? 0) > 0 ? (eraMonths[mIdx] ?? 0).toFixed(2) : '—'}
                                           </td>
                                         ))}
                                         <td className="p-1.5 text-center font-mono font-black text-purple-700 dark:text-purple-300 bg-purple-100/60 dark:bg-purple-900/40 border-r border-purple-200 dark:border-purple-800">
@@ -10719,17 +10596,8 @@ export default function GroupReportGenerator({
                                     {(baselineQuarterView === 'all' || baselineQuarterView === 'Q3') && (
                                       <>
                                         {[6, 7, 8].map((mIdx) => (
-                                          <td key={`era_m_${p.id}_${mIdx}`} className="p-1 text-center bg-purple-50/20 dark:bg-purple-950/10">
-                                            <ValidatedEfyInput
-                                              type="number"
-                                              step="0.01"
-                                              value={eraMonths[mIdx] ?? 0}
-                                              onChange={(e) => updateEfyMonthValue(p.id, 'era', mIdx, parseFloat(e.target.value) || 0)}
-                                              project={p}
-                                              tooltipPosition="bottom"
-                                              baseClassName="w-14 sm:w-16 bg-white dark:bg-slate-900 border rounded text-center font-mono py-1 text-xs font-bold outline-none transition"
-                                              normalBorderClass="border-slate-200 dark:border-slate-700 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 text-purple-950 dark:text-purple-200"
-                                            />
+                                          <td key={`era_m_${p.id}_${mIdx}`} className="p-1.5 text-center bg-purple-50/20 dark:bg-purple-950/10 font-mono text-xs font-bold text-purple-950 dark:text-purple-200">
+                                            {(eraMonths[mIdx] ?? 0) > 0 ? (eraMonths[mIdx] ?? 0).toFixed(2) : '—'}
                                           </td>
                                         ))}
                                         <td className="p-1.5 text-center font-mono font-black text-purple-700 dark:text-purple-300 bg-purple-100/60 dark:bg-purple-900/40 border-r border-purple-200 dark:border-purple-800">
@@ -10745,17 +10613,8 @@ export default function GroupReportGenerator({
                                     {(baselineQuarterView === 'all' || baselineQuarterView === 'Q4') && (
                                       <>
                                         {[9, 10, 11].map((mIdx) => (
-                                          <td key={`era_m_${p.id}_${mIdx}`} className="p-1 text-center bg-purple-50/20 dark:bg-purple-950/10">
-                                            <ValidatedEfyInput
-                                              type="number"
-                                              step="0.01"
-                                              value={eraMonths[mIdx] ?? 0}
-                                              onChange={(e) => updateEfyMonthValue(p.id, 'era', mIdx, parseFloat(e.target.value) || 0)}
-                                              project={p}
-                                              tooltipPosition="bottom"
-                                              baseClassName="w-14 sm:w-16 bg-white dark:bg-slate-900 border rounded text-center font-mono py-1 text-xs font-bold outline-none transition"
-                                              normalBorderClass="border-slate-200 dark:border-slate-700 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 text-purple-950 dark:text-purple-200"
-                                            />
+                                          <td key={`era_m_${p.id}_${mIdx}`} className="p-1.5 text-center bg-purple-50/20 dark:bg-purple-950/10 font-mono text-xs font-bold text-purple-950 dark:text-purple-200">
+                                            {(eraMonths[mIdx] ?? 0) > 0 ? (eraMonths[mIdx] ?? 0).toFixed(2) : '—'}
                                           </td>
                                         ))}
                                         <td className="p-1.5 text-center font-mono font-black text-purple-700 dark:text-purple-300 bg-purple-100/60 dark:bg-purple-900/40 border-r border-purple-200 dark:border-purple-800">
@@ -10775,30 +10634,6 @@ export default function GroupReportGenerator({
                                     {/* ERA % of Scope */}
                                     <td className="p-2 text-center font-mono font-bold text-xs bg-slate-50 dark:bg-slate-850 text-purple-700 dark:text-purple-300 border-r border-slate-200 dark:border-slate-700">
                                       {totalKm > 0 ? `${((eraSums.efy / totalKm) * 100).toFixed(1)}%` : '—'}
-                                    </td>
-
-                                    {/* Single Project Save & Delete Action Buttons */}
-                                    <td className="p-1.5 text-center">
-                                      <div className="flex flex-col sm:flex-row items-center justify-center gap-1">
-                                        <button
-                                          type="button"
-                                          onClick={() => handleSaveSingleEfyPlan(p)}
-                                          className="px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[10px] transition flex items-center gap-1 cursor-pointer shadow-2xs"
-                                          title={`Save & update EFY ${selectedPlanningEfy} plan for this project`}
-                                        >
-                                          <Save className="w-3 h-3" />
-                                          <span>Save</span>
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => setProjectPendingDeletion(p)}
-                                          className="px-2 py-1 rounded bg-rose-500/20 hover:bg-rose-500/30 text-rose-700 dark:text-rose-300 border border-rose-300/40 font-bold text-[10px] transition flex items-center gap-1 cursor-pointer shadow-2xs"
-                                          title={`Delete recorded EFY ${selectedPlanningEfy} plan for this project`}
-                                        >
-                                          <Trash2 className="w-3 h-3 text-rose-500" />
-                                          <span>Delete</span>
-                                        </button>
-                                      </div>
                                     </td>
                                   </tr>
                                 </React.Fragment>
@@ -11093,9 +10928,6 @@ export default function GroupReportGenerator({
                             ERA Plan vs Accomplished
                           </span>
                         </div>
-                        <p className="text-[11px] text-indigo-200/80 mt-0.5">
-                          Aggregated Monthly ({activeMilestone?.monthLabel}), Quarterly ({activeMilestone?.quarterLabel}), and EFY {activeMilestone?.efyLabel} group totals for Program Directorates and PMO groupings.
-                        </p>
                       </div>
                     </div>
 
