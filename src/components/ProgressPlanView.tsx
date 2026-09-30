@@ -30,10 +30,167 @@ import {
   ArrowRight,
   Info,
   CheckCircle2,
-  Percent
+  Percent,
+  AlertCircle
 } from 'lucide-react';
 import { Project, ProgressPlan, ProgressPlanHistoryItem } from '../types';
 import { parseMonthKey } from '../lib/monthlySync';
+
+export interface EfyPlanValidation {
+  isExceeded: boolean;
+  message: string;
+  reason?: 'length' | 'budget' | 'both';
+}
+
+export const validateEfyPlanValue = (
+  val: number | string | undefined | null,
+  project?: Partial<Project> | null
+): EfyPlanValidation => {
+  const num = typeof val === 'string' ? parseFloat(val) : (typeof val === 'number' ? val : 0);
+  if (isNaN(num) || num <= 0) {
+    return { isExceeded: false, message: '' };
+  }
+
+  const lengthKm = typeof project?.lengthKm === 'number' && project.lengthKm > 0 ? project.lengthKm : 0;
+  
+  // Total contract budget in ETB
+  const totalBudget = project?.contractAmountEtb || 
+    project?.revisedContractAmountEtb || 
+    (typeof project?.origAmount === 'number' && project.origAmount > 0
+      ? (project.origAmount > 100000 ? project.origAmount : project.origAmount * 1_000_000)
+      : 0);
+
+  // Annual budget for this EFY year if defined in project.annual
+  const efyLabel = project?.progressPlanLabels?.efyLabel || '';
+  const efyNum = parseInt(efyLabel.replace(/\D/g, ''), 10);
+  const annualItem = project?.annual?.find(a => 
+    a.year === efyNum || 
+    (!isNaN(efyNum) && efyNum < 100 && (a.year % 100) === efyNum) || 
+    (!isNaN(efyNum) && efyNum > 2000 && (a.year === efyNum || a.year === efyNum + 7 || a.year === efyNum + 8))
+  );
+  
+  let annualBudget = 0;
+  if (annualItem?.budget && annualItem.budget > 0) {
+    annualBudget = annualItem.budget;
+  } else if (annualItem?.amount && annualItem.amount > 0) {
+    if (annualItem.amount > 100_000) {
+      annualBudget = annualItem.amount;
+    } else if (!annualItem.km || annualItem.amount !== annualItem.km) {
+      annualBudget = annualItem.amount * 1_000_000;
+    }
+  }
+
+  const exceedsLength = lengthKm > 0 && num > lengthKm;
+  let exceedsBudget = false;
+  let budgetDetail = '';
+
+  if (totalBudget > 0 && num > totalBudget) {
+    exceedsBudget = true;
+    budgetDetail = `exceeds total contract budget constraint (${totalBudget.toLocaleString(undefined, { maximumFractionDigits: 0 })} ETB)`;
+  } else if (annualBudget > 0 && num > annualBudget) {
+    exceedsBudget = true;
+    budgetDetail = `exceeds EFY ${annualItem?.year || efyLabel} annual budget constraint (${annualBudget.toLocaleString(undefined, { maximumFractionDigits: 0 })} ETB)`;
+  } else if (annualBudget > 0 && lengthKm > 0 && totalBudget > 0) {
+    const impliedCost = (num / lengthKm) * totalBudget;
+    if (impliedCost > annualBudget * 1.02) {
+      exceedsBudget = true;
+      budgetDetail = `implied cost (${impliedCost.toLocaleString(undefined, { maximumFractionDigits: 0 })} ETB) exceeds EFY ${annualItem?.year || efyLabel} annual budget constraint (${annualBudget.toLocaleString(undefined, { maximumFractionDigits: 0 })} ETB)`;
+    }
+  }
+
+  if (exceedsLength && exceedsBudget) {
+    return {
+      isExceeded: true,
+      reason: 'both',
+      message: `⚠️ Exceeds Constraints: Entered ${num.toFixed(2)} Km exceeds total length (${lengthKm.toFixed(2)} Km) and ${budgetDetail}`
+    };
+  }
+
+  if (exceedsLength) {
+    return {
+      isExceeded: true,
+      reason: 'length',
+      message: `⚠️ Exceeds Length Constraint: Entered ${num.toFixed(2)} Km exceeds project's total length of ${lengthKm.toFixed(2)} Km`
+    };
+  }
+
+  if (exceedsBudget) {
+    return {
+      isExceeded: true,
+      reason: 'budget',
+      message: `⚠️ Exceeds Budget Constraint: Entered value ${budgetDetail}`
+    };
+  }
+
+  return { isExceeded: false, message: '' };
+};
+
+export interface ValidatedEfyInputProps {
+  value: number | string;
+  project?: Partial<Project> | null;
+  baseClassName?: string;
+  normalBorderClass?: string;
+  tooltipPosition?: 'top' | 'bottom';
+  containerClassName?: string;
+  className?: string;
+  type?: string;
+  step?: string | number;
+  min?: string | number;
+  max?: string | number;
+  placeholder?: string;
+  disabled?: boolean;
+  readOnly?: boolean;
+  title?: string;
+  id?: string;
+  name?: string;
+  onChange?: (e: any) => void;
+  onFocus?: (e: any) => void;
+  onBlur?: (e: any) => void;
+  [key: string]: any;
+}
+
+export function ValidatedEfyInput({
+  value,
+  project,
+  baseClassName = 'w-24 border rounded-lg text-center font-mono py-1.5 text-xs font-semibold outline-none transition',
+  normalBorderClass = 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 focus:ring-1 focus:ring-blue-500',
+  tooltipPosition = 'top',
+  containerClassName = '',
+  className = '',
+  ...rest
+}: ValidatedEfyInputProps) {
+  const validation = validateEfyPlanValue(value, project);
+
+  return (
+    <div className={`relative group inline-flex items-center justify-center ${containerClassName}`}>
+      <input
+        value={value}
+        title={validation.isExceeded ? validation.message : (rest.title || undefined)}
+        aria-invalid={validation.isExceeded}
+        data-invalid={validation.isExceeded ? "true" : undefined}
+        className={`${baseClassName} ${
+          validation.isExceeded
+            ? '!border-red-500 !border-2 !ring-2 !ring-red-500/60 !bg-red-50/90 dark:!bg-red-950/50 !text-red-700 dark:!text-red-300 font-bold focus:!border-red-600 focus:!ring-red-600 shadow-xs'
+            : normalBorderClass
+        } ${className}`}
+        {...rest}
+      />
+      {validation.isExceeded && (
+        <div 
+          role="tooltip"
+          className={`absolute ${tooltipPosition === 'top' ? 'bottom-full mb-2' : 'top-full mt-2'} left-1/2 -translate-x-1/2 hidden group-hover:flex group-focus-within:flex flex-col items-center z-50 pointer-events-none w-max max-w-[260px] animate-fadeIn`}
+        >
+          {tooltipPosition === 'bottom' && <div className="w-2 h-2 bg-red-600 rotate-45 -mb-1 z-10" />}
+          <div className="bg-red-600 text-white text-[10.5px] font-bold px-2.5 py-1.5 rounded-lg shadow-xl flex items-center gap-1.5 text-center leading-snug whitespace-normal border border-red-400">
+            <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-200" />
+            <span>{validation.message}</span>
+          </div>
+          {tooltipPosition === 'top' && <div className="w-2 h-2 bg-red-600 rotate-45 -mt-1" />}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // EFY Month Definitions (12 Fiscal Months in Gregorian Calendar: Jul to Jun)
 export const EFY_MONTH_DEFINITIONS = [
@@ -218,6 +375,8 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
   const [planningEfyYear, setPlanningEfyYear] = useState<string>(labels.efyLabel || '2019');
   const [isAnnualEfyTableOpen, setIsAnnualEfyTableOpen] = useState<boolean>(true);
   const [isAddEfyModalOpen, setIsAddEfyModalOpen] = useState<boolean>(false);
+  const [isViewRecordedEfyModalOpen, setIsViewRecordedEfyModalOpen] = useState<boolean>(false);
+  const [isDeleteEfyModalOpen, setIsDeleteEfyModalOpen] = useState<boolean>(false);
   const [customEfyInput, setCustomEfyInput] = useState<string>('');
   const [selectedQuarterView, setSelectedQuarterView] = useState<'all' | 'Q1' | 'Q2' | 'Q3' | 'Q4'>('all');
 
@@ -249,18 +408,18 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
       setContractorMonths(distributeTotalTo12Months(cEfy, 'even'));
       setEraMonths(distributeTotalTo12Months(eEfy, 'even'));
       showToast(`Loaded annual plan target of ${eEfy.toFixed(2)} Km for EFY ${cleaned}`);
-    } else if ((labels.efyLabel || '').trim() === cleaned) {
+    } else if ((labels.efyLabel || '').trim() === cleaned && (plan.contractor.efy > 0 || plan.era.efy > 0)) {
       if (project.monthly && project.monthly.length >= 12) {
         setContractorMonths(project.monthly.slice(0, 12).map(m => typeof m.revisedPlan === 'number' ? m.revisedPlan : (typeof m.originalPlan === 'number' ? m.originalPlan : 0)));
         setEraMonths(project.monthly.slice(0, 12).map(m => typeof m.originalPlan === 'number' ? m.originalPlan : (typeof m.revisedPlan === 'number' ? m.revisedPlan : 0)));
       } else {
-        setContractorMonths(distributeTotalTo12Months(plan.contractor.efy || 6.5, 'even'));
-        setEraMonths(distributeTotalTo12Months(plan.era.efy || 5.0, 'even'));
+        setContractorMonths(distributeTotalTo12Months(plan.contractor.efy || 0, 'even'));
+        setEraMonths(distributeTotalTo12Months(plan.era.efy || 0, 'even'));
       }
     } else {
-      setContractorMonths(distributeTotalTo12Months(plan.contractor.efy || 6.5, 'even'));
-      setEraMonths(distributeTotalTo12Months(plan.era.efy || 5.0, 'even'));
-      showToast(`Ready to calibrate new baseline plan for EFY ${cleaned}`);
+      setContractorMonths(Array(12).fill(0));
+      setEraMonths(Array(12).fill(0));
+      showToast(`EFY ${cleaned} baseline plan is empty / unrecorded. Enter values to configure.`);
     }
   };
 
@@ -442,6 +601,55 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
       onUpdateProgressPlan(updatedPlan, updatedLabels);
     }
     showToast(`Successfully saved EFY ${targetEfyStr} baseline plan! Contractor: ${contractorSums.efy.toFixed(2)} Km • ERA: ${eraSums.efy.toFixed(2)} Km`);
+  };
+
+  const handleDeleteRecordedEfyPlan = () => {
+    const targetEfyStr = planningEfyYear.trim() || '2019';
+    const numericYear = parseInt(targetEfyStr, 10);
+    const isActiveEfy = (labels.efyLabel || '').trim() === targetEfyStr;
+
+    // Reset current active monthly inputs
+    setContractorMonths(Array(12).fill(0));
+    setEraMonths(Array(12).fill(0));
+
+    // Filter out from history
+    const existingHistory = project.progressPlanHistory || [];
+    const updatedHistory = existingHistory.filter(
+      h => h.id !== `efy_${targetEfyStr}_plan_${project.id}` &&
+           (h.efyLabel || '').trim() !== targetEfyStr &&
+           h.monthLabel !== `EFY ${targetEfyStr} Baseline Plan`
+    );
+
+    // Filter out from annual
+    const updatedAnnual = (project.annual || []).filter(a => a.year !== numericYear);
+
+    // Reset active targets if deleting current active year
+    const updatedPlan: ProgressPlan = {
+      contractor: {
+        ...plan.contractor,
+        efy: isActiveEfy ? 0 : plan.contractor.efy
+      },
+      era: {
+        ...plan.era,
+        efy: isActiveEfy ? 0 : plan.era.efy
+      },
+      actual: plan.actual
+    };
+
+    if (onProjectUpdate) {
+      onProjectUpdate({
+        progressPlan: isActiveEfy ? updatedPlan : project.progressPlan,
+        progressPlanHistory: updatedHistory,
+        annual: updatedAnnual
+      }, `Deleted recorded EFY ${targetEfyStr} baseline plan for ${project.name}`);
+    }
+
+    if (isActiveEfy) {
+      onUpdateProgressPlan(updatedPlan, labels);
+    }
+
+    setIsDeleteEfyModalOpen(false);
+    showToast(`🗑️ Deleted recorded EFY ${targetEfyStr} baseline plan for ${project.name}`);
   };
 
   // Keep live snapshot updated when user makes manual live changes outside reload mode
@@ -770,7 +978,7 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
     : (typeof project.physicalProgress === 'number' ? project.physicalProgress : 0);
 
   return (
-    <div className="space-y-4">
+    <div id="progressComparisonContainer" className="space-y-4">
       {/* Toast Feedback */}
       <AnimatePresence>
         {feedbackToast && (
@@ -967,39 +1175,51 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
                   Contractor Program Schedule
                 </td>
                 <td className="p-3 text-center">
-                  <input
+                  <ValidatedEfyInput
                     type="number"
                     step="0.01"
                     value={plan.contractor.month}
                     onChange={(e) => handleFieldChange('contractor', 'month', e.target.value)}
-                    className="w-24 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1.5 text-xs font-semibold focus:ring-1 focus:ring-blue-500 outline-none"
+                    project={project}
+                    tooltipPosition="bottom"
+                    baseClassName="w-24 border rounded-lg text-center font-mono py-1.5 text-xs font-semibold outline-none transition"
+                    normalBorderClass="bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 focus:ring-1 focus:ring-blue-500"
                   />
                 </td>
                 <td className="p-3 text-center">
-                  <input
+                  <ValidatedEfyInput
                     type="number"
                     step="0.01"
                     value={plan.contractor.quarter}
                     onChange={(e) => handleFieldChange('contractor', 'quarter', e.target.value)}
-                    className="w-24 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1.5 text-xs font-semibold focus:ring-1 focus:ring-blue-500 outline-none"
+                    project={project}
+                    tooltipPosition="bottom"
+                    baseClassName="w-24 border rounded-lg text-center font-mono py-1.5 text-xs font-semibold outline-none transition"
+                    normalBorderClass="bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 focus:ring-1 focus:ring-blue-500"
                   />
                 </td>
                 <td className="p-3 text-center">
-                  <input
+                  <ValidatedEfyInput
                     type="number"
                     step="0.01"
                     value={plan.contractor.efy}
                     onChange={(e) => handleFieldChange('contractor', 'efy', e.target.value)}
-                    className="w-24 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1.5 text-xs font-semibold focus:ring-1 focus:ring-blue-500 outline-none"
+                    project={project}
+                    tooltipPosition="bottom"
+                    baseClassName="w-24 border rounded-lg text-center font-mono py-1.5 text-xs font-semibold outline-none transition"
+                    normalBorderClass="bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 focus:ring-1 focus:ring-blue-500"
                   />
                 </td>
                 <td className="p-3 text-center font-mono font-extrabold text-blue-600 dark:text-blue-400 bg-blue-50/20 dark:bg-blue-950/10">
-                  <input
+                  <ValidatedEfyInput
                     type="number"
                     step="0.01"
                     value={plan.contractor.todate}
                     onChange={(e) => handleFieldChange('contractor', 'todate', e.target.value)}
-                    className="w-24 bg-white dark:bg-slate-800 border border-blue-300 dark:border-blue-700 rounded-lg text-center font-mono py-1.5 text-xs text-blue-600 dark:text-blue-400 font-bold focus:ring-1 focus:ring-blue-500 outline-none"
+                    project={project}
+                    tooltipPosition="bottom"
+                    baseClassName="w-24 border rounded-lg text-center font-mono py-1.5 text-xs text-blue-600 dark:text-blue-400 font-bold focus:ring-1 focus:ring-blue-500 outline-none"
+                    normalBorderClass="bg-white dark:bg-slate-800 border-blue-300 dark:border-blue-700"
                   />
                 </td>
               </tr>
@@ -1011,39 +1231,51 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
                   ERA Approved Milestone Plan
                 </td>
                 <td className="p-3 text-center">
-                  <input
+                  <ValidatedEfyInput
                     type="number"
                     step="0.01"
                     value={plan.era.month}
                     onChange={(e) => handleFieldChange('era', 'month', e.target.value)}
-                    className="w-24 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1.5 text-xs font-semibold focus:ring-1 focus:ring-slate-500 outline-none"
+                    project={project}
+                    tooltipPosition="bottom"
+                    baseClassName="w-24 border rounded-lg text-center font-mono py-1.5 text-xs font-semibold outline-none transition"
+                    normalBorderClass="bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 focus:ring-1 focus:ring-slate-500"
                   />
                 </td>
                 <td className="p-3 text-center">
-                  <input
+                  <ValidatedEfyInput
                     type="number"
                     step="0.01"
                     value={plan.era.quarter}
                     onChange={(e) => handleFieldChange('era', 'quarter', e.target.value)}
-                    className="w-24 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1.5 text-xs font-semibold focus:ring-1 focus:ring-slate-500 outline-none"
+                    project={project}
+                    tooltipPosition="bottom"
+                    baseClassName="w-24 border rounded-lg text-center font-mono py-1.5 text-xs font-semibold outline-none transition"
+                    normalBorderClass="bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 focus:ring-1 focus:ring-slate-500"
                   />
                 </td>
                 <td className="p-3 text-center">
-                  <input
+                  <ValidatedEfyInput
                     type="number"
                     step="0.01"
                     value={plan.era.efy}
                     onChange={(e) => handleFieldChange('era', 'efy', e.target.value)}
-                    className="w-24 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1.5 text-xs font-semibold focus:ring-1 focus:ring-slate-500 outline-none"
+                    project={project}
+                    tooltipPosition="bottom"
+                    baseClassName="w-24 border rounded-lg text-center font-mono py-1.5 text-xs font-semibold outline-none transition"
+                    normalBorderClass="bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 focus:ring-1 focus:ring-slate-500"
                   />
                 </td>
                 <td className="p-3 text-center font-mono font-extrabold text-slate-700 dark:text-slate-300 bg-blue-50/20 dark:bg-blue-950/10">
-                  <input
+                  <ValidatedEfyInput
                     type="number"
                     step="0.01"
                     value={plan.era.todate}
                     onChange={(e) => handleFieldChange('era', 'todate', e.target.value)}
-                    className="w-24 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-center font-mono py-1.5 text-xs text-slate-700 dark:text-slate-300 font-bold focus:ring-1 focus:ring-slate-500 outline-none"
+                    project={project}
+                    tooltipPosition="bottom"
+                    baseClassName="w-24 border rounded-lg text-center font-mono py-1.5 text-xs text-slate-700 dark:text-slate-300 font-bold focus:ring-1 focus:ring-slate-500 outline-none"
+                    normalBorderClass="bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700"
                   />
                 </td>
               </tr>
@@ -1055,39 +1287,51 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
                   Actual Road Completed (Km)
                 </td>
                 <td className="p-3 text-center">
-                  <input
+                  <ValidatedEfyInput
                     type="number"
                     step="0.01"
                     value={plan.actual.month}
                     onChange={(e) => handleFieldChange('actual', 'month', e.target.value)}
-                    className="w-24 bg-white dark:bg-slate-800 border border-emerald-300 dark:border-emerald-700 rounded-lg text-center font-mono py-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-bold focus:ring-1 focus:ring-emerald-500 outline-none"
+                    project={project}
+                    tooltipPosition="top"
+                    baseClassName="w-24 border rounded-lg text-center font-mono py-1.5 text-xs font-bold outline-none transition"
+                    normalBorderClass="bg-white dark:bg-slate-800 border border-emerald-300 dark:border-emerald-700 text-emerald-600 dark:text-emerald-400 focus:ring-1 focus:ring-emerald-500"
                   />
                 </td>
                 <td className="p-3 text-center">
-                  <input
+                  <ValidatedEfyInput
                     type="number"
                     step="0.01"
                     value={plan.actual.quarter}
                     onChange={(e) => handleFieldChange('actual', 'quarter', e.target.value)}
-                    className="w-24 bg-white dark:bg-slate-800 border border-emerald-300 dark:border-emerald-700 rounded-lg text-center font-mono py-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-bold focus:ring-1 focus:ring-emerald-500 outline-none"
+                    project={project}
+                    tooltipPosition="top"
+                    baseClassName="w-24 border rounded-lg text-center font-mono py-1.5 text-xs font-bold outline-none transition"
+                    normalBorderClass="bg-white dark:bg-slate-800 border border-emerald-300 dark:border-emerald-700 text-emerald-600 dark:text-emerald-400 focus:ring-1 focus:ring-emerald-500"
                   />
                 </td>
                 <td className="p-3 text-center">
-                  <input
+                  <ValidatedEfyInput
                     type="number"
                     step="0.01"
                     value={plan.actual.efy}
                     onChange={(e) => handleFieldChange('actual', 'efy', e.target.value)}
-                    className="w-24 bg-white dark:bg-slate-800 border border-emerald-300 dark:border-emerald-700 rounded-lg text-center font-mono py-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-bold focus:ring-1 focus:ring-emerald-500 outline-none"
+                    project={project}
+                    tooltipPosition="top"
+                    baseClassName="w-24 border rounded-lg text-center font-mono py-1.5 text-xs font-bold outline-none transition"
+                    normalBorderClass="bg-white dark:bg-slate-800 border border-emerald-300 dark:border-emerald-700 text-emerald-600 dark:text-emerald-400 focus:ring-1 focus:ring-emerald-500"
                   />
                 </td>
                 <td className="p-3 text-center font-mono font-extrabold text-blue-600 dark:text-blue-400 bg-blue-50/20 dark:bg-blue-950/10">
-                  <input
+                  <ValidatedEfyInput
                     type="number"
                     step="0.01"
                     value={plan.actual.todate}
                     onChange={(e) => handleFieldChange('actual', 'todate', e.target.value)}
-                    className="w-24 bg-white dark:bg-slate-800 border border-dashed border-emerald-500 dark:border-emerald-400 rounded-lg text-center text-emerald-600 dark:text-emerald-400 font-black py-1.5 text-xs focus:ring-1 focus:ring-emerald-500 outline-none shadow-2xs"
+                    project={project}
+                    tooltipPosition="top"
+                    baseClassName="w-24 border border-dashed rounded-lg text-center text-emerald-600 dark:text-emerald-400 font-black py-1.5 text-xs focus:ring-1 focus:ring-emerald-500 outline-none shadow-2xs transition"
+                    normalBorderClass="bg-white dark:bg-slate-800 border-emerald-500 dark:border-emerald-400"
                   />
                 </td>
               </tr>
@@ -1151,6 +1395,28 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
               <span>+ Add Previous EFY</span>
             </button>
 
+            {/* Show Recorded EFY Plans Button */}
+            <button
+              type="button"
+              onClick={() => setIsViewRecordedEfyModalOpen(true)}
+              className="px-2.5 py-1.5 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 border border-purple-400/30 text-purple-200 font-bold text-xs flex items-center gap-1 shadow-2xs transition cursor-pointer"
+              title="Show recorded EFY baseline plans for this project"
+            >
+              <Eye className="w-3.5 h-3.5 text-purple-300" />
+              <span>Show Recorded EFY</span>
+            </button>
+
+            {/* Delete Recorded EFY Plan Button */}
+            <button
+              type="button"
+              onClick={() => setIsDeleteEfyModalOpen(true)}
+              className="px-2.5 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 border border-rose-400/30 text-rose-200 font-bold text-xs flex items-center gap-1 shadow-2xs transition cursor-pointer"
+              title={`Delete recorded EFY ${planningEfyYear} baseline plan for ${project.name}`}
+            >
+              <Trash2 className="w-3.5 h-3.5 text-rose-300" />
+              <span>Delete Recorded EFY</span>
+            </button>
+
             {/* Save & Apply Button */}
             <button
               onClick={handleSaveAndApplyEfyPlan}
@@ -1171,6 +1437,159 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
             </button>
           </div>
         </div>
+
+        {/* Modal for Showing Recorded EFY Baseline Plans for this project */}
+        {isViewRecordedEfyModalOpen && (
+          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white dark:bg-slate-800 border border-purple-200 dark:border-purple-800 rounded-2xl max-w-2xl w-full p-5 shadow-2xl space-y-4 animate-fadeIn max-h-[80vh] flex flex-col">
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-3 shrink-0">
+                <div className="flex items-center gap-2">
+                  <Layers className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                  <div>
+                    <h3 className="text-sm font-black text-slate-900 dark:text-white">
+                      Recorded EFY Baseline Plans
+                    </h3>
+                    <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400">
+                      {project.name}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsViewRecordedEfyModalOpen(false)}
+                  className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Table of recorded EFY plans for this project */}
+              <div className="overflow-auto flex-1 border border-slate-200 dark:border-slate-700 rounded-xl">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 text-[10px] font-black uppercase text-slate-600 dark:text-slate-300 sticky top-0 z-10">
+                      <th className="p-2.5">Fiscal Year (EFY)</th>
+                      <th className="p-2.5 text-center">Contractor Plan (Km)</th>
+                      <th className="p-2.5 text-center">ERA Approved (Km)</th>
+                      <th className="p-2.5 text-center">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {availableEfyYears.map((yr) => {
+                      const historyMatch = (project.progressPlanHistory || []).find(
+                        h => (h.efyLabel || '').trim() === yr.trim() || (h.monthLabel || '').includes(`EFY ${yr}`)
+                      );
+                      const numericYr = parseInt(yr, 10);
+                      const annualMatch = !isNaN(numericYr) ? (project.annual || []).find(a => a.year === numericYr) : undefined;
+                      const hasRecord = !!historyMatch || !!annualMatch || (planningEfyYear === yr && (contractorSums.efy > 0 || eraSums.efy > 0));
+
+                      const cEfyVal = historyMatch?.contractorEfy || (planningEfyYear === yr ? contractorSums.efy : 0);
+                      const eEfyVal = historyMatch?.eraEfy || annualMatch?.km || (planningEfyYear === yr ? eraSums.efy : 0);
+
+                      return (
+                        <tr key={`rec_p_${yr}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                          <td className="p-2.5 font-bold text-slate-800 dark:text-slate-100">
+                            EFY {yr} {yr === planningEfyYear ? '(Active Selected)' : ''}
+                          </td>
+                          <td className="p-2.5 text-center font-mono font-black text-blue-700 dark:text-blue-300">
+                            {Number(cEfyVal).toFixed(2)} Km
+                          </td>
+                          <td className="p-2.5 text-center font-mono font-black text-purple-700 dark:text-purple-300">
+                            {Number(eEfyVal).toFixed(2)} Km
+                          </td>
+                          <td className="p-2.5 text-center">
+                            <div className="flex items-center justify-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  handleSwitchPlanningEfyYear(yr);
+                                  setIsViewRecordedEfyModalOpen(false);
+                                }}
+                                className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-black text-[10px] transition cursor-pointer flex items-center gap-1"
+                                title="Load this EFY baseline into matrix to edit"
+                              >
+                                <Sliders className="w-3 h-3" />
+                                <span>Load & Edit</span>
+                              </button>
+                              {hasRecord && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    handleSwitchPlanningEfyYear(yr);
+                                    setIsViewRecordedEfyModalOpen(false);
+                                    setIsDeleteEfyModalOpen(true);
+                                  }}
+                                  className="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-700 dark:text-rose-300 border border-rose-300/40 font-bold text-[10px] transition cursor-pointer flex items-center gap-1"
+                                  title="Delete recorded baseline for this year"
+                                >
+                                  <Trash2 className="w-3 h-3 text-rose-500" />
+                                  <span>Delete</span>
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex items-center justify-end border-t border-slate-100 dark:border-slate-700 pt-3 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setIsViewRecordedEfyModalOpen(false)}
+                  className="px-4 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 text-slate-700 dark:text-slate-200 font-bold text-xs transition cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal for Deleting Recorded EFY Plan for this project */}
+        {isDeleteEfyModalOpen && (
+          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white dark:bg-slate-800 border border-rose-200 dark:border-rose-900 rounded-2xl max-w-md w-full p-5 shadow-2xl space-y-4 animate-fadeIn">
+              <div className="flex items-center gap-3 text-rose-600 dark:text-rose-400">
+                <div className="p-2 bg-rose-100 dark:bg-rose-950/80 rounded-xl">
+                  <Trash2 className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-slate-900 dark:text-white">
+                    Delete Recorded EFY {planningEfyYear} Plan?
+                  </h3>
+                  <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400 mt-0.5">
+                    {project.name}
+                  </p>
+                </div>
+              </div>
+
+              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                Are you sure you want to delete the recorded EFY {planningEfyYear} baseline plan for this project?
+              </p>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsDeleteEfyModalOpen(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 text-slate-700 dark:text-slate-200 font-bold text-xs transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteRecordedEfyPlan}
+                  className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs transition shadow-md cursor-pointer flex items-center gap-1.5"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Delete Recorded Plan</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Modal for adding Previous / Custom EFY Year */}
         {isAddEfyModalOpen && (
@@ -1474,30 +1893,36 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
                     {(selectedQuarterView === 'all' || selectedQuarterView === 'Q1') && (
                       <>
                         <td className="p-1.5 text-center bg-blue-50/20 dark:bg-blue-950/10">
-                          <input
+                          <ValidatedEfyInput
                             type="number"
                             step="0.01"
                             value={contractorMonths[0] ?? 0}
                             onChange={(e) => handleContractorMonthChange(0, e.target.value)}
-                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-blue-500 outline-none"
+                            project={project}
+                            baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
+                            normalBorderClass="border-slate-200 dark:border-slate-700 focus:border-blue-500"
                           />
                         </td>
                         <td className="p-1.5 text-center bg-blue-50/20 dark:bg-blue-950/10">
-                          <input
+                          <ValidatedEfyInput
                             type="number"
                             step="0.01"
                             value={contractorMonths[1] ?? 0}
                             onChange={(e) => handleContractorMonthChange(1, e.target.value)}
-                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-blue-500 outline-none"
+                            project={project}
+                            baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
+                            normalBorderClass="border-slate-200 dark:border-slate-700 focus:border-blue-500"
                           />
                         </td>
                         <td className="p-1.5 text-center bg-blue-50/20 dark:bg-blue-950/10">
-                          <input
+                          <ValidatedEfyInput
                             type="number"
                             step="0.01"
                             value={contractorMonths[2] ?? 0}
                             onChange={(e) => handleContractorMonthChange(2, e.target.value)}
-                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-blue-500 outline-none"
+                            project={project}
+                            baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
+                            normalBorderClass="border-slate-200 dark:border-slate-700 focus:border-blue-500"
                           />
                         </td>
                         <td className="p-2 text-center font-mono font-black text-blue-700 dark:text-blue-300 bg-blue-100/50 dark:bg-blue-900/30 border-r border-blue-200 dark:border-blue-800">
@@ -1513,30 +1938,36 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
                     {(selectedQuarterView === 'all' || selectedQuarterView === 'Q2') && (
                       <>
                         <td className="p-1.5 text-center bg-cyan-50/20 dark:bg-cyan-950/10">
-                          <input
+                          <ValidatedEfyInput
                             type="number"
                             step="0.01"
                             value={contractorMonths[3] ?? 0}
                             onChange={(e) => handleContractorMonthChange(3, e.target.value)}
-                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-cyan-500 outline-none"
+                            project={project}
+                            baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
+                            normalBorderClass="border-slate-200 dark:border-slate-700 focus:border-cyan-500"
                           />
                         </td>
                         <td className="p-1.5 text-center bg-cyan-50/20 dark:bg-cyan-950/10">
-                          <input
+                          <ValidatedEfyInput
                             type="number"
                             step="0.01"
                             value={contractorMonths[4] ?? 0}
                             onChange={(e) => handleContractorMonthChange(4, e.target.value)}
-                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-cyan-500 outline-none"
+                            project={project}
+                            baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
+                            normalBorderClass="border-slate-200 dark:border-slate-700 focus:border-cyan-500"
                           />
                         </td>
                         <td className="p-1.5 text-center bg-cyan-50/20 dark:bg-cyan-950/10">
-                          <input
+                          <ValidatedEfyInput
                             type="number"
                             step="0.01"
                             value={contractorMonths[5] ?? 0}
                             onChange={(e) => handleContractorMonthChange(5, e.target.value)}
-                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-cyan-500 outline-none"
+                            project={project}
+                            baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
+                            normalBorderClass="border-slate-200 dark:border-slate-700 focus:border-cyan-500"
                           />
                         </td>
                         <td className="p-2 text-center font-mono font-black text-cyan-700 dark:text-cyan-300 bg-cyan-100/50 dark:bg-cyan-900/30 border-r border-cyan-200 dark:border-cyan-800">
@@ -1552,30 +1983,36 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
                     {(selectedQuarterView === 'all' || selectedQuarterView === 'Q3') && (
                       <>
                         <td className="p-1.5 text-center bg-indigo-50/20 dark:bg-indigo-950/10">
-                          <input
+                          <ValidatedEfyInput
                             type="number"
                             step="0.01"
                             value={contractorMonths[6] ?? 0}
                             onChange={(e) => handleContractorMonthChange(6, e.target.value)}
-                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-indigo-500 outline-none"
+                            project={project}
+                            baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
+                            normalBorderClass="border-slate-200 dark:border-slate-700 focus:border-indigo-500"
                           />
                         </td>
                         <td className="p-1.5 text-center bg-indigo-50/20 dark:bg-indigo-950/10">
-                          <input
+                          <ValidatedEfyInput
                             type="number"
                             step="0.01"
                             value={contractorMonths[7] ?? 0}
                             onChange={(e) => handleContractorMonthChange(7, e.target.value)}
-                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-indigo-500 outline-none"
+                            project={project}
+                            baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
+                            normalBorderClass="border-slate-200 dark:border-slate-700 focus:border-indigo-500"
                           />
                         </td>
                         <td className="p-1.5 text-center bg-indigo-50/20 dark:bg-indigo-950/10">
-                          <input
+                          <ValidatedEfyInput
                             type="number"
                             step="0.01"
                             value={contractorMonths[8] ?? 0}
                             onChange={(e) => handleContractorMonthChange(8, e.target.value)}
-                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-indigo-500 outline-none"
+                            project={project}
+                            baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
+                            normalBorderClass="border-slate-200 dark:border-slate-700 focus:border-indigo-500"
                           />
                         </td>
                         <td className="p-2 text-center font-mono font-black text-indigo-700 dark:text-indigo-300 bg-indigo-100/50 dark:bg-indigo-900/30 border-r border-indigo-200 dark:border-indigo-800">
@@ -1591,30 +2028,36 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
                     {(selectedQuarterView === 'all' || selectedQuarterView === 'Q4') && (
                       <>
                         <td className="p-1.5 text-center bg-purple-50/20 dark:bg-purple-950/10">
-                          <input
+                          <ValidatedEfyInput
                             type="number"
                             step="0.01"
                             value={contractorMonths[9] ?? 0}
                             onChange={(e) => handleContractorMonthChange(9, e.target.value)}
-                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-purple-500 outline-none"
+                            project={project}
+                            baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
+                            normalBorderClass="border-slate-200 dark:border-slate-700 focus:border-purple-500"
                           />
                         </td>
                         <td className="p-1.5 text-center bg-purple-50/20 dark:bg-purple-950/10">
-                          <input
+                          <ValidatedEfyInput
                             type="number"
                             step="0.01"
                             value={contractorMonths[10] ?? 0}
                             onChange={(e) => handleContractorMonthChange(10, e.target.value)}
-                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-purple-500 outline-none"
+                            project={project}
+                            baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
+                            normalBorderClass="border-slate-200 dark:border-slate-700 focus:border-purple-500"
                           />
                         </td>
                         <td className="p-1.5 text-center bg-purple-50/20 dark:bg-purple-950/10">
-                          <input
+                          <ValidatedEfyInput
                             type="number"
                             step="0.01"
                             value={contractorMonths[11] ?? 0}
                             onChange={(e) => handleContractorMonthChange(11, e.target.value)}
-                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-purple-500 outline-none"
+                            project={project}
+                            baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
+                            normalBorderClass="border-slate-200 dark:border-slate-700 focus:border-purple-500"
                           />
                         </td>
                         <td className="p-2 text-center font-mono font-black text-purple-700 dark:text-purple-300 bg-purple-100/50 dark:bg-purple-900/30 border-r border-purple-200 dark:border-purple-800">
@@ -1627,8 +2070,25 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
                     )}
 
                     {/* EFY Total Calculated Sum */}
-                    <td className="p-2 text-center font-mono font-black text-blue-700 dark:text-blue-300 bg-blue-50/60 dark:bg-blue-950/40 text-sm">
-                      {contractorSums.efy.toFixed(2)} Km
+                    <td className={`p-2 text-center font-mono font-black text-sm relative group ${
+                      validateEfyPlanValue(contractorSums.efy, project).isExceeded
+                        ? 'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300'
+                        : 'bg-blue-50/60 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300'
+                    }`}>
+                      <div className="flex items-center justify-center gap-1">
+                        <span>{contractorSums.efy.toFixed(2)} Km</span>
+                        {validateEfyPlanValue(contractorSums.efy, project).isExceeded && (
+                          <>
+                            <AlertCircle className="w-3.5 h-3.5 text-red-500 animate-pulse shrink-0" />
+                            <div role="tooltip" className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:flex flex-col items-center z-50 pointer-events-none w-max max-w-[220px]">
+                              <div className="bg-red-600 text-white text-[9.5px] font-bold px-2 py-1 rounded shadow-lg border border-red-400">
+                                <span>{validateEfyPlanValue(contractorSums.efy, project).message}</span>
+                              </div>
+                              <div className="w-1.5 h-1.5 bg-red-600 rotate-45 -mt-0.5" />
+                            </div>
+                          </>
+                        )}
+                      </div>
                     </td>
                     <td className="p-2 text-center font-mono font-bold text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-850">
                       {project.lengthKm > 0 ? `${((contractorSums.efy / project.lengthKm) * 100).toFixed(1)}%` : '—'}
@@ -1649,30 +2109,36 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
                     {(selectedQuarterView === 'all' || selectedQuarterView === 'Q1') && (
                       <>
                         <td className="p-1.5 text-center bg-purple-50/20 dark:bg-purple-950/10">
-                          <input
+                          <ValidatedEfyInput
                             type="number"
                             step="0.01"
                             value={eraMonths[0] ?? 0}
                             onChange={(e) => handleEraMonthChange(0, e.target.value)}
-                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-purple-500 outline-none"
+                            project={project}
+                            baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
+                            normalBorderClass="border-slate-200 dark:border-slate-700 focus:border-purple-500"
                           />
                         </td>
                         <td className="p-1.5 text-center bg-purple-50/20 dark:bg-purple-950/10">
-                          <input
+                          <ValidatedEfyInput
                             type="number"
                             step="0.01"
                             value={eraMonths[1] ?? 0}
                             onChange={(e) => handleEraMonthChange(1, e.target.value)}
-                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-purple-500 outline-none"
+                            project={project}
+                            baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
+                            normalBorderClass="border-slate-200 dark:border-slate-700 focus:border-purple-500"
                           />
                         </td>
                         <td className="p-1.5 text-center bg-purple-50/20 dark:bg-purple-950/10">
-                          <input
+                          <ValidatedEfyInput
                             type="number"
                             step="0.01"
                             value={eraMonths[2] ?? 0}
                             onChange={(e) => handleEraMonthChange(2, e.target.value)}
-                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-purple-500 outline-none"
+                            project={project}
+                            baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
+                            normalBorderClass="border-slate-200 dark:border-slate-700 focus:border-purple-500"
                           />
                         </td>
                         <td className="p-2 text-center font-mono font-black text-purple-700 dark:text-purple-300 bg-purple-100/50 dark:bg-purple-900/30 border-r border-purple-200 dark:border-purple-800">
@@ -1688,30 +2154,36 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
                     {(selectedQuarterView === 'all' || selectedQuarterView === 'Q2') && (
                       <>
                         <td className="p-1.5 text-center bg-purple-50/20 dark:bg-purple-950/10">
-                          <input
+                          <ValidatedEfyInput
                             type="number"
                             step="0.01"
                             value={eraMonths[3] ?? 0}
                             onChange={(e) => handleEraMonthChange(3, e.target.value)}
-                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-purple-500 outline-none"
+                            project={project}
+                            baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
+                            normalBorderClass="border-slate-200 dark:border-slate-700 focus:border-purple-500"
                           />
                         </td>
                         <td className="p-1.5 text-center bg-purple-50/20 dark:bg-purple-950/10">
-                          <input
+                          <ValidatedEfyInput
                             type="number"
                             step="0.01"
                             value={eraMonths[4] ?? 0}
                             onChange={(e) => handleEraMonthChange(4, e.target.value)}
-                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-purple-500 outline-none"
+                            project={project}
+                            baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
+                            normalBorderClass="border-slate-200 dark:border-slate-700 focus:border-purple-500"
                           />
                         </td>
                         <td className="p-1.5 text-center bg-purple-50/20 dark:bg-purple-950/10">
-                          <input
+                          <ValidatedEfyInput
                             type="number"
                             step="0.01"
                             value={eraMonths[5] ?? 0}
                             onChange={(e) => handleEraMonthChange(5, e.target.value)}
-                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-purple-500 outline-none"
+                            project={project}
+                            baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
+                            normalBorderClass="border-slate-200 dark:border-slate-700 focus:border-purple-500"
                           />
                         </td>
                         <td className="p-2 text-center font-mono font-black text-purple-700 dark:text-purple-300 bg-purple-100/50 dark:bg-purple-900/30 border-r border-purple-200 dark:border-purple-800">
@@ -1727,30 +2199,36 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
                     {(selectedQuarterView === 'all' || selectedQuarterView === 'Q3') && (
                       <>
                         <td className="p-1.5 text-center bg-purple-50/20 dark:bg-purple-950/10">
-                          <input
+                          <ValidatedEfyInput
                             type="number"
                             step="0.01"
                             value={eraMonths[6] ?? 0}
                             onChange={(e) => handleEraMonthChange(6, e.target.value)}
-                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-purple-500 outline-none"
+                            project={project}
+                            baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
+                            normalBorderClass="border-slate-200 dark:border-slate-700 focus:border-purple-500"
                           />
                         </td>
                         <td className="p-1.5 text-center bg-purple-50/20 dark:bg-purple-950/10">
-                          <input
+                          <ValidatedEfyInput
                             type="number"
                             step="0.01"
                             value={eraMonths[7] ?? 0}
                             onChange={(e) => handleEraMonthChange(7, e.target.value)}
-                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-purple-500 outline-none"
+                            project={project}
+                            baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
+                            normalBorderClass="border-slate-200 dark:border-slate-700 focus:border-purple-500"
                           />
                         </td>
                         <td className="p-1.5 text-center bg-purple-50/20 dark:bg-purple-950/10">
-                          <input
+                          <ValidatedEfyInput
                             type="number"
                             step="0.01"
                             value={eraMonths[8] ?? 0}
                             onChange={(e) => handleEraMonthChange(8, e.target.value)}
-                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-purple-500 outline-none"
+                            project={project}
+                            baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
+                            normalBorderClass="border-slate-200 dark:border-slate-700 focus:border-purple-500"
                           />
                         </td>
                         <td className="p-2 text-center font-mono font-black text-purple-700 dark:text-purple-300 bg-purple-100/50 dark:bg-purple-900/30 border-r border-purple-200 dark:border-purple-800">
@@ -1766,30 +2244,36 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
                     {(selectedQuarterView === 'all' || selectedQuarterView === 'Q4') && (
                       <>
                         <td className="p-1.5 text-center bg-purple-50/20 dark:bg-purple-950/10">
-                          <input
+                          <ValidatedEfyInput
                             type="number"
                             step="0.01"
                             value={eraMonths[9] ?? 0}
                             onChange={(e) => handleEraMonthChange(9, e.target.value)}
-                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-purple-500 outline-none"
+                            project={project}
+                            baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
+                            normalBorderClass="border-slate-200 dark:border-slate-700 focus:border-purple-500"
                           />
                         </td>
                         <td className="p-1.5 text-center bg-purple-50/20 dark:bg-purple-950/10">
-                          <input
+                          <ValidatedEfyInput
                             type="number"
                             step="0.01"
                             value={eraMonths[10] ?? 0}
                             onChange={(e) => handleEraMonthChange(10, e.target.value)}
-                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-purple-500 outline-none"
+                            project={project}
+                            baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
+                            normalBorderClass="border-slate-200 dark:border-slate-700 focus:border-purple-500"
                           />
                         </td>
                         <td className="p-1.5 text-center bg-purple-50/20 dark:bg-purple-950/10">
-                          <input
+                          <ValidatedEfyInput
                             type="number"
                             step="0.01"
                             value={eraMonths[11] ?? 0}
                             onChange={(e) => handleEraMonthChange(11, e.target.value)}
-                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-purple-500 outline-none"
+                            project={project}
+                            baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
+                            normalBorderClass="border-slate-200 dark:border-slate-700 focus:border-purple-500"
                           />
                         </td>
                         <td className="p-2 text-center font-mono font-black text-purple-700 dark:text-purple-300 bg-purple-100/50 dark:bg-purple-900/30 border-r border-purple-200 dark:border-purple-800">
@@ -1802,8 +2286,25 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
                     )}
 
                     {/* EFY Total Calculated Sum */}
-                    <td className="p-2 text-center font-mono font-black text-purple-700 dark:text-purple-300 bg-purple-50/60 dark:bg-purple-950/40 text-sm">
-                      {eraSums.efy.toFixed(2)} Km
+                    <td className={`p-2 text-center font-mono font-black text-sm relative group ${
+                      validateEfyPlanValue(eraSums.efy, project).isExceeded
+                        ? 'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300'
+                        : 'bg-purple-50/60 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300'
+                    }`}>
+                      <div className="flex items-center justify-center gap-1">
+                        <span>{eraSums.efy.toFixed(2)} Km</span>
+                        {validateEfyPlanValue(eraSums.efy, project).isExceeded && (
+                          <>
+                            <AlertCircle className="w-3.5 h-3.5 text-red-500 animate-pulse shrink-0" />
+                            <div role="tooltip" className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:flex flex-col items-center z-50 pointer-events-none w-max max-w-[220px]">
+                              <div className="bg-red-600 text-white text-[9.5px] font-bold px-2 py-1 rounded shadow-lg border border-red-400">
+                                <span>{validateEfyPlanValue(eraSums.efy, project).message}</span>
+                              </div>
+                              <div className="w-1.5 h-1.5 bg-red-600 rotate-45 -mt-0.5" />
+                            </div>
+                          </>
+                        )}
+                      </div>
                     </td>
                     <td className="p-2 text-center font-mono font-bold text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-850">
                       {project.lengthKm > 0 ? `${((eraSums.efy / project.lengthKm) * 100).toFixed(1)}%` : '—'}
@@ -2414,39 +2915,47 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
                       <tr>
                         <td className="p-2.5 font-semibold text-slate-800 dark:text-slate-200">Contractor Plan</td>
                         <td className="p-2.5 text-center">
-                          <input
+                          <ValidatedEfyInput
                             type="number"
                             step="0.01"
                             value={editingModalItem.contractorMonth}
                             onChange={(e) => setEditingModalItem({ ...editingModalItem, contractorMonth: parseFloat(e.target.value) || 0 })}
-                            className="w-20 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-md text-center font-mono py-1 text-xs"
+                            project={project}
+                            baseClassName="w-20 bg-slate-50 dark:bg-slate-900 border rounded-md text-center font-mono py-1 text-xs outline-none transition"
+                            normalBorderClass="border-slate-200 dark:border-slate-700"
                           />
                         </td>
                         <td className="p-2.5 text-center">
-                          <input
+                          <ValidatedEfyInput
                             type="number"
                             step="0.01"
                             value={editingModalItem.contractorQuarter || 0}
                             onChange={(e) => setEditingModalItem({ ...editingModalItem, contractorQuarter: parseFloat(e.target.value) || 0 })}
-                            className="w-20 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-md text-center font-mono py-1 text-xs"
+                            project={project}
+                            baseClassName="w-20 bg-slate-50 dark:bg-slate-900 border rounded-md text-center font-mono py-1 text-xs outline-none transition"
+                            normalBorderClass="border-slate-200 dark:border-slate-700"
                           />
                         </td>
                         <td className="p-2.5 text-center">
-                          <input
+                          <ValidatedEfyInput
                             type="number"
                             step="0.01"
                             value={editingModalItem.contractorEfy}
                             onChange={(e) => setEditingModalItem({ ...editingModalItem, contractorEfy: parseFloat(e.target.value) || 0 })}
-                            className="w-20 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-md text-center font-mono py-1 text-xs"
+                            project={project}
+                            baseClassName="w-20 bg-slate-50 dark:bg-slate-900 border rounded-md text-center font-mono py-1 text-xs outline-none transition"
+                            normalBorderClass="border-slate-200 dark:border-slate-700"
                           />
                         </td>
                         <td className="p-2.5 text-center bg-blue-50/20 dark:bg-blue-950/10">
-                          <input
+                          <ValidatedEfyInput
                             type="number"
                             step="0.01"
                             value={editingModalItem.contractorTodate || 0}
                             onChange={(e) => setEditingModalItem({ ...editingModalItem, contractorTodate: parseFloat(e.target.value) || 0 })}
-                            className="w-20 bg-white dark:bg-slate-800 border border-blue-300 dark:border-blue-700 rounded-md text-center font-mono py-1 text-xs text-blue-600 dark:text-blue-400 font-bold"
+                            project={project}
+                            baseClassName="w-20 bg-white dark:bg-slate-800 border rounded-md text-center font-mono py-1 text-xs text-blue-600 dark:text-blue-400 font-bold outline-none transition"
+                            normalBorderClass="border-blue-300 dark:border-blue-700"
                           />
                         </td>
                       </tr>
@@ -2455,39 +2964,47 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
                       <tr>
                         <td className="p-2.5 font-semibold text-slate-800 dark:text-slate-200">ERA Milestone</td>
                         <td className="p-2.5 text-center">
-                          <input
+                          <ValidatedEfyInput
                             type="number"
                             step="0.01"
                             value={editingModalItem.eraMonth}
                             onChange={(e) => setEditingModalItem({ ...editingModalItem, eraMonth: parseFloat(e.target.value) || 0 })}
-                            className="w-20 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-md text-center font-mono py-1 text-xs"
+                            project={project}
+                            baseClassName="w-20 bg-slate-50 dark:bg-slate-900 border rounded-md text-center font-mono py-1 text-xs outline-none transition"
+                            normalBorderClass="border-slate-200 dark:border-slate-700"
                           />
                         </td>
                         <td className="p-2.5 text-center">
-                          <input
+                          <ValidatedEfyInput
                             type="number"
                             step="0.01"
                             value={editingModalItem.eraQuarter || 0}
                             onChange={(e) => setEditingModalItem({ ...editingModalItem, eraQuarter: parseFloat(e.target.value) || 0 })}
-                            className="w-20 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-md text-center font-mono py-1 text-xs"
+                            project={project}
+                            baseClassName="w-20 bg-slate-50 dark:bg-slate-900 border rounded-md text-center font-mono py-1 text-xs outline-none transition"
+                            normalBorderClass="border-slate-200 dark:border-slate-700"
                           />
                         </td>
                         <td className="p-2.5 text-center">
-                          <input
+                          <ValidatedEfyInput
                             type="number"
                             step="0.01"
                             value={editingModalItem.eraEfy}
                             onChange={(e) => setEditingModalItem({ ...editingModalItem, eraEfy: parseFloat(e.target.value) || 0 })}
-                            className="w-20 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-md text-center font-mono py-1 text-xs"
+                            project={project}
+                            baseClassName="w-20 bg-slate-50 dark:bg-slate-900 border rounded-md text-center font-mono py-1 text-xs outline-none transition"
+                            normalBorderClass="border-slate-200 dark:border-slate-700"
                           />
                         </td>
                         <td className="p-2.5 text-center bg-blue-50/20 dark:bg-blue-950/10">
-                          <input
+                          <ValidatedEfyInput
                             type="number"
                             step="0.01"
                             value={editingModalItem.eraTodate || 0}
                             onChange={(e) => setEditingModalItem({ ...editingModalItem, eraTodate: parseFloat(e.target.value) || 0 })}
-                            className="w-20 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-md text-center font-mono py-1 text-xs text-slate-700 dark:text-slate-300 font-bold"
+                            project={project}
+                            baseClassName="w-20 bg-white dark:bg-slate-800 border rounded-md text-center font-mono py-1 text-xs text-slate-700 dark:text-slate-300 font-bold outline-none transition"
+                            normalBorderClass="border-slate-300 dark:border-slate-700"
                           />
                         </td>
                       </tr>
@@ -2496,39 +3013,47 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
                       <tr className="bg-emerald-50/15 dark:bg-emerald-950/10">
                         <td className="p-2.5 font-bold text-emerald-600 dark:text-emerald-400">Actual Completed</td>
                         <td className="p-2.5 text-center">
-                          <input
+                          <ValidatedEfyInput
                             type="number"
                             step="0.01"
                             value={editingModalItem.actualMonth}
                             onChange={(e) => setEditingModalItem({ ...editingModalItem, actualMonth: parseFloat(e.target.value) || 0 })}
-                            className="w-20 bg-white dark:bg-slate-800 border border-emerald-300 dark:border-emerald-700 rounded-md text-center font-mono py-1 text-xs text-emerald-600 dark:text-emerald-400 font-bold"
+                            project={project}
+                            baseClassName="w-20 bg-white dark:bg-slate-800 border rounded-md text-center font-mono py-1 text-xs text-emerald-600 dark:text-emerald-400 font-bold outline-none transition"
+                            normalBorderClass="border-emerald-300 dark:border-emerald-700"
                           />
                         </td>
                         <td className="p-2.5 text-center">
-                          <input
+                          <ValidatedEfyInput
                             type="number"
                             step="0.01"
                             value={editingModalItem.actualQuarter || 0}
                             onChange={(e) => setEditingModalItem({ ...editingModalItem, actualQuarter: parseFloat(e.target.value) || 0 })}
-                            className="w-20 bg-white dark:bg-slate-800 border border-emerald-300 dark:border-emerald-700 rounded-md text-center font-mono py-1 text-xs text-emerald-600 dark:text-emerald-400 font-bold"
+                            project={project}
+                            baseClassName="w-20 bg-white dark:bg-slate-800 border rounded-md text-center font-mono py-1 text-xs text-emerald-600 dark:text-emerald-400 font-bold outline-none transition"
+                            normalBorderClass="border-emerald-300 dark:border-emerald-700"
                           />
                         </td>
                         <td className="p-2.5 text-center">
-                          <input
+                          <ValidatedEfyInput
                             type="number"
                             step="0.01"
                             value={editingModalItem.actualEfy}
                             onChange={(e) => setEditingModalItem({ ...editingModalItem, actualEfy: parseFloat(e.target.value) || 0 })}
-                            className="w-20 bg-white dark:bg-slate-800 border border-emerald-300 dark:border-emerald-700 rounded-md text-center font-mono py-1 text-xs text-emerald-600 dark:text-emerald-400 font-bold"
+                            project={project}
+                            baseClassName="w-20 bg-white dark:bg-slate-800 border rounded-md text-center font-mono py-1 text-xs text-emerald-600 dark:text-emerald-400 font-bold outline-none transition"
+                            normalBorderClass="border-emerald-300 dark:border-emerald-700"
                           />
                         </td>
                         <td className="p-2.5 text-center bg-emerald-100/30 dark:bg-emerald-950/20">
-                          <input
+                          <ValidatedEfyInput
                             type="number"
                             step="0.01"
                             value={editingModalItem.actualTodate !== undefined ? editingModalItem.actualTodate : editingModalItem.actualMonth}
                             onChange={(e) => setEditingModalItem({ ...editingModalItem, actualTodate: parseFloat(e.target.value) || 0 })}
-                            className="w-20 bg-white dark:bg-slate-800 border border-dashed border-emerald-500 rounded-md text-center font-mono py-1 text-xs text-emerald-600 dark:text-emerald-400 font-black"
+                            project={project}
+                            baseClassName="w-20 bg-white dark:bg-slate-800 border border-dashed rounded-md text-center font-mono py-1 text-xs text-emerald-600 dark:text-emerald-400 font-black outline-none transition"
+                            normalBorderClass="border-emerald-500"
                           />
                         </td>
                       </tr>
