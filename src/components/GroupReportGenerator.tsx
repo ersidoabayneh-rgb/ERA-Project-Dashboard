@@ -42,6 +42,7 @@ import {
   Plus,
   Trash2,
   Edit3,
+  Pencil,
   RefreshCcw,
   Scale,
   BarChart3,
@@ -301,6 +302,9 @@ export default function GroupReportGenerator({
   const [isQuarterlyPlanningExpanded, setIsQuarterlyPlanningExpanded] = useState<boolean>(false);
   const [expandedMonthlyRowProjectId, setExpandedMonthlyRowProjectId] = useState<string | null>(null);
   const [activeMonthlyModalProject, setActiveMonthlyModalProject] = useState<Project | null>(null);
+  const [editingEfyProject, setEditingEfyProject] = useState<Project | null>(null);
+  const [projectPendingDeletion, setProjectPendingDeletion] = useState<Project | null>(null);
+  const [isDeleteYearModalOpen, setIsDeleteYearModalOpen] = useState<boolean>(false);
   const [efySaveToast, setEfySaveToast] = useState<{ message: string; type: 'success' | 'info' } | null>(null);
 
   // Directorate and PMO Group Progress Comparison state (Default hidden as requested)
@@ -655,15 +659,26 @@ export default function GroupReportGenerator({
       updatedAnnual.sort((a, b) => b.year - a.year);
     }
 
-    // 4. Update project.monthly if active
+    // 4. Update project.monthly S-Curve with cumulative sum (previous months + current month)
     let updatedMonthly = project.monthly || [];
     if (isActiveEfy && updatedMonthly.length >= 12) {
+      let cumContractor = 0;
+      let cumEra = 0;
+      const cumulativeContractorMonths = (draft.contractorMonths || []).map(val => {
+        cumContractor += Number(val) || 0;
+        return Number(cumContractor.toFixed(2));
+      });
+      const cumulativeEraMonths = (draft.eraMonths || []).map(val => {
+        cumEra += Number(val) || 0;
+        return Number(cumEra.toFixed(2));
+      });
+
       updatedMonthly = updatedMonthly.map((m, idx) => {
         if (idx < 12) {
           return {
             ...m,
-            revisedPlan: draft.contractorMonths[idx] !== undefined ? draft.contractorMonths[idx] : m.revisedPlan,
-            originalPlan: draft.eraMonths[idx] !== undefined ? draft.eraMonths[idx] : m.originalPlan
+            revisedPlan: cumulativeContractorMonths[idx] !== undefined ? cumulativeContractorMonths[idx] : m.revisedPlan,
+            originalPlan: cumulativeEraMonths[idx] !== undefined ? cumulativeEraMonths[idx] : m.originalPlan
           };
         }
         return m;
@@ -680,10 +695,123 @@ export default function GroupReportGenerator({
     };
 
     if (onUpdateProject) {
-      onUpdateProject(updatedProject, `EFY ${efyYearStr} Annual Baseline Plan configured (Contractor: ${draft.contractorEfy} Km, ERA: ${draft.eraEfy} Km)`);
+      onUpdateProject(updatedProject, `EFY ${efyYearStr} Annual Baseline Plan configured (Contractor: ${draft.contractorEfy} Km, ERA: ${draft.eraEfy} Km, synced to S-Curve)`);
     }
 
-    showEfyToast(`✅ EFY ${efyYearStr} Baseline Plan saved for "${project.name}" (Contractor: ${draft.contractorEfy} Km, ERA: ${draft.eraEfy} Km)`);
+    showEfyToast(`✅ EFY ${efyYearStr} Baseline Plan saved & synced to cumulative S-Curve for "${project.name}" (Contractor: ${draft.contractorEfy} Km, ERA: ${draft.eraEfy} Km)`);
+  };
+
+  const handleDeleteSingleEfyPlan = (project: Project) => {
+    const efyYearStr = selectedPlanningEfy;
+    const numericYear = parseInt(efyYearStr, 10);
+    const isActiveEfy = (project.progressPlanLabels?.efyLabel || '').trim() === efyYearStr.trim();
+
+    // 1. Reset local draft in memory
+    setEfyDraftMapByYear(prevAll => {
+      const currentYearDrafts = { ...(prevAll[selectedPlanningEfy] || {}) };
+      delete currentYearDrafts[project.id];
+      return {
+        ...prevAll,
+        [selectedPlanningEfy]: currentYearDrafts
+      };
+    });
+
+    // 2. Filter out from progressPlanHistory
+    const existingHistory = project.progressPlanHistory || [];
+    const updatedHistory = existingHistory.filter(
+      h => h.id !== `efy_${efyYearStr}_plan_${project.id}` &&
+           (h.efyLabel || '').trim() !== efyYearStr.trim() &&
+           h.monthLabel !== `EFY ${efyYearStr} Baseline Plan`
+    );
+
+    // 3. Filter out from project.annual
+    const updatedAnnual = (project.annual || []).filter(a => a.year !== numericYear);
+
+    // 4. If this was the active EFY, reset active EFY plan targets
+    const updatedPlan: ProgressPlan = {
+      contractor: {
+        ...(project.progressPlan?.contractor || { month: 0, quarter: 0, efy: 0, todate: 0 }),
+        efy: isActiveEfy ? 0 : (project.progressPlan?.contractor?.efy || 0)
+      },
+      era: {
+        ...(project.progressPlan?.era || { month: 0, quarter: 0, efy: 0, todate: 0 }),
+        efy: isActiveEfy ? 0 : (project.progressPlan?.era?.efy || 0)
+      },
+      actual: project.progressPlan?.actual || { month: 0, quarter: 0, efy: 0, todate: 0 }
+    };
+
+    const updatedProject: Project = {
+      ...project,
+      progressPlan: isActiveEfy ? updatedPlan : project.progressPlan,
+      progressPlanHistory: updatedHistory,
+      annual: updatedAnnual
+    };
+
+    if (onUpdateProject) {
+      onUpdateProject(updatedProject, `Deleted EFY ${efyYearStr} Baseline Plan for "${project.name}"`);
+    }
+
+    setProjectPendingDeletion(null);
+    showEfyToast(`🗑️ Deleted EFY ${efyYearStr} Baseline Plan for "${project.name}"`);
+  };
+
+  const handleDeleteEntireEfyYear = (efyYear: string) => {
+    const numericYear = parseInt(efyYear, 10);
+
+    // Remove from draft state
+    setEfyDraftMapByYear(prevAll => {
+      const next = { ...prevAll };
+      delete next[efyYear];
+      return next;
+    });
+
+    // Remove from available list if custom
+    setAvailableEfyYears(prev => {
+      const filtered = prev.filter(y => y !== efyYear);
+      return filtered.length > 0 ? filtered : ['2019', '2018', '2017'];
+    });
+
+    if (selectedPlanningEfy === efyYear) {
+      setSelectedPlanningEfy('2019');
+    }
+
+    let affectedCount = 0;
+    processedProjects.forEach(p => {
+      const isActiveEfy = (p.progressPlanLabels?.efyLabel || '').trim() === efyYear.trim();
+      const updatedHistory = (p.progressPlanHistory || []).filter(
+        h => h.id !== `efy_${efyYear}_plan_${p.id}` &&
+             (h.efyLabel || '').trim() !== efyYear.trim() &&
+             h.monthLabel !== `EFY ${efyYear} Baseline Plan`
+      );
+      const updatedAnnual = (p.annual || []).filter(a => a.year !== numericYear);
+
+      const updatedPlan: ProgressPlan = {
+        contractor: {
+          ...(p.progressPlan?.contractor || { month: 0, quarter: 0, efy: 0, todate: 0 }),
+          efy: isActiveEfy ? 0 : (p.progressPlan?.contractor?.efy || 0)
+        },
+        era: {
+          ...(p.progressPlan?.era || { month: 0, quarter: 0, efy: 0, todate: 0 }),
+          efy: isActiveEfy ? 0 : (p.progressPlan?.era?.efy || 0)
+        },
+        actual: p.progressPlan?.actual || { month: 0, quarter: 0, efy: 0, todate: 0 }
+      };
+
+      const updatedProject: Project = {
+        ...p,
+        progressPlan: isActiveEfy ? updatedPlan : p.progressPlan,
+        progressPlanHistory: updatedHistory,
+        annual: updatedAnnual
+      };
+
+      if (onUpdateProject) {
+        onUpdateProject(updatedProject, `Cleared EFY ${efyYear} baseline plan records`);
+        affectedCount++;
+      }
+    });
+
+    setIsDeleteYearModalOpen(false);
+    showEfyToast(`🗑️ Deleted EFY ${efyYear} baseline plans across ${affectedCount || processedProjects.length} projects`);
   };
 
   const handleSaveAllEfyPlans = () => {
@@ -757,14 +885,26 @@ export default function GroupReportGenerator({
         updatedAnnual.sort((a, b) => b.year - a.year);
       }
 
+      // 4. Update project.monthly S-Curve with cumulative sum (previous months + current month)
       let updatedMonthly = p.monthly || [];
       if (isActiveEfy && updatedMonthly.length >= 12) {
+        let cumContractor = 0;
+        let cumEra = 0;
+        const cumulativeContractorMonths = (draft.contractorMonths || []).map(val => {
+          cumContractor += Number(val) || 0;
+          return Number(cumContractor.toFixed(2));
+        });
+        const cumulativeEraMonths = (draft.eraMonths || []).map(val => {
+          cumEra += Number(val) || 0;
+          return Number(cumEra.toFixed(2));
+        });
+
         updatedMonthly = updatedMonthly.map((m, idx) => {
           if (idx < 12) {
             return {
               ...m,
-              revisedPlan: draft.contractorMonths[idx] !== undefined ? draft.contractorMonths[idx] : m.revisedPlan,
-              originalPlan: draft.eraMonths[idx] !== undefined ? draft.eraMonths[idx] : m.originalPlan
+              revisedPlan: cumulativeContractorMonths[idx] !== undefined ? cumulativeContractorMonths[idx] : m.revisedPlan,
+              originalPlan: cumulativeEraMonths[idx] !== undefined ? cumulativeEraMonths[idx] : m.originalPlan
             };
           }
           return m;
@@ -781,12 +921,12 @@ export default function GroupReportGenerator({
       };
 
       if (onUpdateProject) {
-        onUpdateProject(updatedProject, `EFY ${efyYearStr} Annual Baseline Plan configured across portfolio`);
+        onUpdateProject(updatedProject, `EFY ${efyYearStr} Annual Baseline Plan configured across portfolio (synced to S-Curve)`);
         savedCount++;
       }
     });
 
-    showEfyToast(`🎉 Successfully saved EFY ${efyYearStr} Annual Progress Baseline Plans across ${savedCount || processedProjects.length} projects!`);
+    showEfyToast(`🎉 Successfully saved & synced EFY ${efyYearStr} Annual Progress Baseline Plans across ${savedCount || processedProjects.length} projects to S-Curves!`);
   };
 
   // Master Admin verification check
@@ -9739,6 +9879,17 @@ export default function GroupReportGenerator({
                         <span>+ Add Previous EFY</span>
                       </button>
 
+                      {/* Delete EFY Year Plans button */}
+                      <button
+                        type="button"
+                        onClick={() => setIsDeleteYearModalOpen(true)}
+                        className="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:hover:bg-rose-900 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 font-bold text-xs flex items-center gap-1 shadow-2xs transition cursor-pointer"
+                        title={`Delete or clear all EFY ${selectedPlanningEfy} baseline plan records across projects`}
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+                        <span>Delete EFY Year</span>
+                      </button>
+
                       {/* Toggle Quarterly Columns */}
                       <button
                         type="button"
@@ -9759,7 +9910,7 @@ export default function GroupReportGenerator({
                         type="button"
                         onClick={handleSaveAllEfyPlans}
                         className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black uppercase tracking-wide transition flex items-center gap-1.5 shadow-xs cursor-pointer"
-                        title="Save all EFY annual baseline plans across projects"
+                        title="Save all EFY annual baseline plans across projects & sync to S-Curve"
                       >
                         <Save className="w-3.5 h-3.5" />
                         <span>Save All EFY Plans</span>
