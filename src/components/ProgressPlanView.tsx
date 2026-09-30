@@ -15,14 +15,59 @@ import {
   Edit3,
   Check,
   PlusCircle,
+  Plus,
   Undo2,
   Sparkles,
   TrendingUp,
   ChevronDown,
-  ArrowDownNarrowWide
+  ChevronUp,
+  ArrowDownNarrowWide,
+  CalendarRange,
+  Layers,
+  Sliders,
+  Calculator,
+  Copy,
+  ArrowRight,
+  Info,
+  CheckCircle2,
+  Percent
 } from 'lucide-react';
 import { Project, ProgressPlan, ProgressPlanHistoryItem } from '../types';
 import { parseMonthKey } from '../lib/monthlySync';
+
+// EFY Month Definitions (12 Fiscal Months in Gregorian Calendar: Jul to Jun)
+export const EFY_MONTH_DEFINITIONS = [
+  { id: 1, idx: 0, name: 'M1 (July)', short: 'Jul', eth: 'July', q: 'Q1' },
+  { id: 2, idx: 1, name: 'M2 (August)', short: 'Aug', eth: 'August', q: 'Q1' },
+  { id: 3, idx: 2, name: 'M3 (September)', short: 'Sep', eth: 'September', q: 'Q1' },
+  { id: 4, idx: 3, name: 'M4 (October)', short: 'Oct', eth: 'October', q: 'Q2' },
+  { id: 5, idx: 4, name: 'M5 (November)', short: 'Nov', eth: 'November', q: 'Q2' },
+  { id: 6, idx: 5, name: 'M6 (December)', short: 'Dec', eth: 'December', q: 'Q2' },
+  { id: 7, idx: 6, name: 'M7 (January)', short: 'Jan', eth: 'January', q: 'Q3' },
+  { id: 8, idx: 7, name: 'M8 (February)', short: 'Feb', eth: 'February', q: 'Q3' },
+  { id: 9, idx: 8, name: 'M9 (March)', short: 'Mar', eth: 'March', q: 'Q3' },
+  { id: 10, idx: 9, name: 'M10 (April)', short: 'Apr', eth: 'April', q: 'Q4' },
+  { id: 11, idx: 10, name: 'M11 (May)', short: 'May', eth: 'May', q: 'Q4' },
+  { id: 12, idx: 11, name: 'M12 (June)', short: 'Jun', eth: 'June', q: 'Q4' },
+];
+
+export const calculateQuarterlyAndEfyFromMonths = (months: number[]) => {
+  const m = months && months.length === 12 ? months : Array(12).fill(0);
+  const q1 = Number(((m[0] || 0) + (m[1] || 0) + (m[2] || 0)).toFixed(2));
+  const q2 = Number(((m[3] || 0) + (m[4] || 0) + (m[5] || 0)).toFixed(2));
+  const q3 = Number(((m[6] || 0) + (m[7] || 0) + (m[8] || 0)).toFixed(2));
+  const q4 = Number(((m[9] || 0) + (m[10] || 0) + (m[11] || 0)).toFixed(2));
+  const efy = Number((q1 + q2 + q3 + q4).toFixed(2));
+  return { q1, q2, q3, q4, efy };
+};
+
+export const distributeTotalTo12Months = (total: number, pattern: 'even' | 'dry_season' | 'scurve' = 'even'): number[] => {
+  const weightsEven = Array(12).fill(1 / 12);
+  const weightsDry = [0.04, 0.04, 0.06, 0.09, 0.11, 0.12, 0.13, 0.13, 0.12, 0.08, 0.05, 0.03];
+  const weightsScurve = [0.03, 0.04, 0.06, 0.08, 0.10, 0.12, 0.14, 0.13, 0.11, 0.09, 0.06, 0.04];
+  const weights = pattern === 'dry_season' ? weightsDry : pattern === 'scurve' ? weightsScurve : weightsEven;
+  return weights.map(w => Number((total * w).toFixed(2)));
+};
 
 export const parseHistoryMonthSortKey = (monthLabel: string | undefined | null, efyLabel?: string): number => {
   if (!monthLabel) return 0;
@@ -152,6 +197,90 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
     physicalProgress: project.physicalProgress,
   }));
 
+  // EFY Whole Year Planning states (Whole Fiscal Year Planning at Beginning of FY)
+  const [contractorMonths, setContractorMonths] = useState<number[]>(() => {
+    if (project.monthly && project.monthly.length >= 12) {
+      return project.monthly.slice(0, 12).map(m => typeof m.revisedPlan === 'number' ? m.revisedPlan : (typeof m.originalPlan === 'number' ? m.originalPlan : 0));
+    }
+    return distributeTotalTo12Months(plan.contractor.efy || 6.5, 'even');
+  });
+
+  const [eraMonths, setEraMonths] = useState<number[]>(() => {
+    if (project.monthly && project.monthly.length >= 12) {
+      return project.monthly.slice(0, 12).map(m => typeof m.originalPlan === 'number' ? m.originalPlan : (typeof m.revisedPlan === 'number' ? m.revisedPlan : 0));
+    }
+    return distributeTotalTo12Months(plan.era.efy || 5.0, 'even');
+  });
+
+  const [availableEfyYears, setAvailableEfyYears] = useState<string[]>([
+    '2022', '2021', '2020', '2019', '2018', '2017', '2016', '2015', '2014', '2013', '2012'
+  ]);
+  const [planningEfyYear, setPlanningEfyYear] = useState<string>(labels.efyLabel || '2019');
+  const [isAnnualEfyTableOpen, setIsAnnualEfyTableOpen] = useState<boolean>(true);
+  const [isAddEfyModalOpen, setIsAddEfyModalOpen] = useState<boolean>(false);
+  const [customEfyInput, setCustomEfyInput] = useState<string>('');
+  const [selectedQuarterView, setSelectedQuarterView] = useState<'all' | 'Q1' | 'Q2' | 'Q3' | 'Q4'>('all');
+
+  // Real-time Sum calculations for Quarterly & EFY from Monthly Plans
+  const contractorSums = useMemo(() => calculateQuarterlyAndEfyFromMonths(contractorMonths), [contractorMonths]);
+  const eraSums = useMemo(() => calculateQuarterlyAndEfyFromMonths(eraMonths), [eraMonths]);
+
+  const handleSwitchPlanningEfyYear = (targetYear: string) => {
+    const cleaned = targetYear.trim().replace(/^EFY\s*/i, '');
+    if (!cleaned) return;
+    setPlanningEfyYear(cleaned);
+
+    // Look up historical baseline plan for this target year
+    const historyMatch = (project.progressPlanHistory || []).find(
+      h => (h.efyLabel || '').trim() === cleaned || (h.monthLabel || '').includes(`EFY ${cleaned}`)
+    );
+    const numericYear = parseInt(cleaned, 10);
+    const annualMatch = !isNaN(numericYear) ? (project.annual || []).find(a => a.year === numericYear) : undefined;
+
+    if (historyMatch) {
+      const cEfy = Number(historyMatch.contractorEfy || 0);
+      const eEfy = Number(historyMatch.eraEfy || 0);
+      setContractorMonths(distributeTotalTo12Months(cEfy, 'even'));
+      setEraMonths(distributeTotalTo12Months(eEfy, 'even'));
+      showToast(`Loaded historical baseline figures for EFY ${cleaned}`);
+    } else if (annualMatch) {
+      const eEfy = Number(annualMatch.km || annualMatch.amount || 0);
+      const cEfy = Number((eEfy * 1.1).toFixed(2));
+      setContractorMonths(distributeTotalTo12Months(cEfy, 'even'));
+      setEraMonths(distributeTotalTo12Months(eEfy, 'even'));
+      showToast(`Loaded annual plan target of ${eEfy.toFixed(2)} Km for EFY ${cleaned}`);
+    } else if ((labels.efyLabel || '').trim() === cleaned) {
+      if (project.monthly && project.monthly.length >= 12) {
+        setContractorMonths(project.monthly.slice(0, 12).map(m => typeof m.revisedPlan === 'number' ? m.revisedPlan : (typeof m.originalPlan === 'number' ? m.originalPlan : 0)));
+        setEraMonths(project.monthly.slice(0, 12).map(m => typeof m.originalPlan === 'number' ? m.originalPlan : (typeof m.revisedPlan === 'number' ? m.revisedPlan : 0)));
+      } else {
+        setContractorMonths(distributeTotalTo12Months(plan.contractor.efy || 6.5, 'even'));
+        setEraMonths(distributeTotalTo12Months(plan.era.efy || 5.0, 'even'));
+      }
+    } else {
+      setContractorMonths(distributeTotalTo12Months(plan.contractor.efy || 6.5, 'even'));
+      setEraMonths(distributeTotalTo12Months(plan.era.efy || 5.0, 'even'));
+      showToast(`Ready to calibrate new baseline plan for EFY ${cleaned}`);
+    }
+  };
+
+  const handleAddNewEfyYear = (newYear: string) => {
+    const cleaned = newYear.trim().replace(/^EFY\s*/i, '');
+    if (!cleaned) return;
+    if (!availableEfyYears.includes(cleaned)) {
+      const updatedList = Array.from(new Set([cleaned, ...availableEfyYears])).sort((a, b) => {
+        const numA = parseInt(a, 10) || 0;
+        const numB = parseInt(b, 10) || 0;
+        return numB - numA;
+      });
+      setAvailableEfyYears(updatedList);
+    }
+    handleSwitchPlanningEfyYear(cleaned);
+    setIsAddEfyModalOpen(false);
+    setCustomEfyInput('');
+    showToast(`Added EFY ${cleaned} baseline planning configuration!`);
+  };
+
   // Reset active loaded state if project switches
   useEffect(() => {
     setActiveLoadedRecordId(null);
@@ -174,7 +303,146 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
     setNewMonthLabel(freshLabels.monthLabel);
     setNewQuarterLabel(freshLabels.quarterLabel);
     setNewEfyLabel(freshLabels.efyLabel);
+
+    if (project.monthly && project.monthly.length >= 12) {
+      setContractorMonths(project.monthly.slice(0, 12).map(m => typeof m.revisedPlan === 'number' ? m.revisedPlan : (typeof m.originalPlan === 'number' ? m.originalPlan : 0)));
+      setEraMonths(project.monthly.slice(0, 12).map(m => typeof m.originalPlan === 'number' ? m.originalPlan : (typeof m.revisedPlan === 'number' ? m.revisedPlan : 0)));
+    } else {
+      setContractorMonths(distributeTotalTo12Months(freshPlan.contractor.efy || 6.5, 'even'));
+      setEraMonths(distributeTotalTo12Months(freshPlan.era.efy || 5.0, 'even'));
+    }
+    setPlanningEfyYear(freshLabels.efyLabel || '2019');
   }, [project.id]);
+
+  // Monthly Edit handlers for whole fiscal year planning
+  const handleContractorMonthChange = (idx: number, val: string) => {
+    const num = parseFloat(val);
+    const updated = [...contractorMonths];
+    updated[idx] = isNaN(num) ? 0 : Math.max(0, num);
+    setContractorMonths(updated);
+  };
+
+  const handleEraMonthChange = (idx: number, val: string) => {
+    const num = parseFloat(val);
+    const updated = [...eraMonths];
+    updated[idx] = isNaN(num) ? 0 : Math.max(0, num);
+    setEraMonths(updated);
+  };
+
+  const handleApplyPreset = (tier: 'all' | 'contractor' | 'era', preset: 'even' | 'dry_season' | 'scurve') => {
+    const cTotal = contractorSums.efy || plan.contractor.efy || 6.5;
+    const eTotal = eraSums.efy || plan.era.efy || 5.0;
+
+    if (tier === 'all' || tier === 'contractor') {
+      setContractorMonths(distributeTotalTo12Months(cTotal, preset));
+    }
+    if (tier === 'all' || tier === 'era') {
+      setEraMonths(distributeTotalTo12Months(eTotal, preset));
+    }
+    const presetName = preset === 'dry_season' ? '☀️ Dry Season Weighted' : preset === 'scurve' ? '📈 S-Curve Gradual' : '⚖️ Equal Monthly';
+    showToast(`Applied ${presetName} breakdown across all 12 months. Quarterly & EFY sums recalculated!`);
+  };
+
+  const handleCopyContractorToEra = () => {
+    setEraMonths([...contractorMonths]);
+    showToast('Copied Contractor monthly plan to ERA Approved Milestone plan.');
+  };
+
+  const handleSaveAndApplyEfyPlan = () => {
+    const targetEfyStr = planningEfyYear.trim() || labels.efyLabel || '2019';
+    const numericYear = parseInt(targetEfyStr, 10);
+    const isActiveEfy = (labels.efyLabel || '').trim() === targetEfyStr;
+
+    const updatedPlan: ProgressPlan = {
+      contractor: {
+        ...plan.contractor,
+        month: isActiveEfy ? (contractorMonths[1] || contractorMonths[0] || plan.contractor.month) : plan.contractor.month,
+        quarter: isActiveEfy ? contractorSums.q1 : plan.contractor.quarter,
+        efy: isActiveEfy ? contractorSums.efy : plan.contractor.efy
+      },
+      era: {
+        ...plan.era,
+        month: isActiveEfy ? (eraMonths[1] || eraMonths[0] || plan.era.month) : plan.era.month,
+        quarter: isActiveEfy ? eraSums.q1 : plan.era.quarter,
+        efy: isActiveEfy ? eraSums.efy : plan.era.efy
+      },
+      actual: {
+        ...plan.actual
+      }
+    };
+
+    const updatedLabels = {
+      ...labels,
+      efyLabel: isActiveEfy ? targetEfyStr : labels.efyLabel
+    };
+
+    const historyItem: ProgressPlanHistoryItem = {
+      id: `efy_${targetEfyStr}_plan_${project.id}`,
+      monthLabel: `EFY ${targetEfyStr} Baseline Plan`,
+      quarterLabel: `Q1-Q4 (EFY ${targetEfyStr})`,
+      efyLabel: targetEfyStr,
+      contractorMonth: contractorMonths[0] || 0,
+      contractorQuarter: contractorSums.q1 || 0,
+      contractorEfy: contractorSums.efy || 0,
+      eraMonth: eraMonths[0] || 0,
+      eraQuarter: eraSums.q1 || 0,
+      eraEfy: eraSums.efy || 0,
+      actualMonth: 0,
+      actualQuarter: 0,
+      actualEfy: 0,
+      actualTodate: 0,
+      contractorTodate: 0,
+      eraTodate: 0,
+      physicalProgress: 0
+    };
+
+    const existingHistory = project.progressPlanHistory || [];
+    const filteredHistory = existingHistory.filter(h => h.id !== historyItem.id && h.monthLabel !== historyItem.monthLabel);
+    const updatedHistory = sortProgressPlanHistoryDescending([historyItem, ...filteredHistory]);
+
+    let updatedAnnual = [...(project.annual || [])];
+    if (!isNaN(numericYear)) {
+      const existsIdx = updatedAnnual.findIndex(a => a.year === numericYear);
+      const annualEntry = {
+        year: numericYear,
+        amount: eraSums.efy || contractorSums.efy || 0,
+        km: eraSums.efy || contractorSums.efy || 0,
+        percent: project.lengthKm > 0 ? Number(((eraSums.efy / project.lengthKm) * 100).toFixed(2)) : 0
+      };
+      if (existsIdx >= 0) {
+        updatedAnnual[existsIdx] = { ...updatedAnnual[existsIdx], ...annualEntry };
+      } else {
+        updatedAnnual.push(annualEntry);
+      }
+      updatedAnnual.sort((a, b) => b.year - a.year);
+    }
+
+    const updatedMonthly = (project.monthly || []).map((m, idx) => {
+      if (isActiveEfy && idx < 12) {
+        return {
+          ...m,
+          revisedPlan: contractorMonths[idx] !== undefined ? contractorMonths[idx] : m.revisedPlan,
+          originalPlan: eraMonths[idx] !== undefined ? eraMonths[idx] : m.originalPlan
+        };
+      }
+      return m;
+    });
+
+    if (onProjectUpdate) {
+      onProjectUpdate({
+        progressPlan: isActiveEfy ? updatedPlan : project.progressPlan,
+        progressPlanLabels: isActiveEfy ? updatedLabels : project.progressPlanLabels,
+        progressPlanHistory: updatedHistory,
+        annual: updatedAnnual,
+        monthly: updatedMonthly.length >= 12 ? updatedMonthly : project.monthly
+      }, `Updated EFY ${targetEfyStr} Whole Fiscal Year Baseline Plan (Contractor: ${contractorSums.efy.toFixed(2)} Km, ERA: ${eraSums.efy.toFixed(2)} Km)`);
+    }
+
+    if (isActiveEfy) {
+      onUpdateProgressPlan(updatedPlan, updatedLabels);
+    }
+    showToast(`Successfully saved EFY ${targetEfyStr} baseline plan! Contractor: ${contractorSums.efy.toFixed(2)} Km • ERA: ${eraSums.efy.toFixed(2)} Km`);
+  };
 
   // Keep live snapshot updated when user makes manual live changes outside reload mode
   useEffect(() => {
@@ -826,6 +1094,896 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* 📅 EFY Annual Baseline Planning Matrix & 12-Month Breakdown (Contractor & ERA) */}
+      <div className="bg-white dark:bg-slate-800 border-2 border-indigo-200/80 dark:border-indigo-800/60 rounded-2xl overflow-hidden shadow-md">
+        {/* Header & Control Bar */}
+        <div className="bg-gradient-to-r from-indigo-900 via-slate-900 to-blue-950 p-4 sm:p-5 text-white flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className="p-2.5 bg-indigo-600/80 rounded-xl border border-indigo-400/40 shadow-inner">
+              <CalendarRange className="w-5 h-5 text-indigo-200" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-sm sm:text-base font-black tracking-tight flex items-center gap-1.5">
+                  EFY {planningEfyYear} Annual Baseline Plan (ERA & Contractor)
+                </h3>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-500/30 text-indigo-200 border border-indigo-400/30">
+                  Whole Fiscal Year Setup (M1 - M12)
+                </span>
+              </div>
+              <p className="text-[11px] text-indigo-200/80 mt-0.5 leading-relaxed">
+                Add and edit monthly target allocations at the beginning of the fiscal year. <strong>Quarterly (Q1-Q4) and Total EFY sums are calculated automatically in real time from the 12 monthly inputs.</strong>
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap self-start lg:self-auto">
+            {/* EFY Year Selector & Quick Switcher */}
+            <div className="flex items-center gap-1.5 bg-slate-800/90 border border-indigo-400/30 rounded-xl px-2.5 py-1 text-xs">
+              <span className="text-[10px] uppercase font-bold text-indigo-300">EFY Year:</span>
+              <select
+                value={planningEfyYear}
+                onChange={(e) => handleSwitchPlanningEfyYear(e.target.value)}
+                className="bg-transparent font-mono font-bold text-white outline-none cursor-pointer"
+              >
+                {availableEfyYears.map(yr => {
+                  const num = parseInt(yr, 10);
+                  const gregorian = !isNaN(num) ? `(${num + 7}/${num + 8})` : '';
+                  return (
+                    <option key={yr} value={yr} className="bg-slate-900 text-white">
+                      EFY {yr} {gregorian}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+
+            {/* Add Previous / Custom EFY Year Button */}
+            <button
+              type="button"
+              onClick={() => setIsAddEfyModalOpen(true)}
+              className="px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 font-bold text-xs flex items-center gap-1 shadow-2xs transition cursor-pointer"
+              title="Add previous fiscal year baseline plan"
+            >
+              <Plus className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+              <span>+ Add Previous EFY</span>
+            </button>
+
+            {/* Save & Apply Button */}
+            <button
+              onClick={handleSaveAndApplyEfyPlan}
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-black transition-all shadow-md active:scale-98 cursor-pointer"
+              title="Save whole fiscal year plan & synchronize with active project tracking"
+            >
+              <Save className="w-3.5 h-3.5" />
+              <span>Save EFY Plan to Project</span>
+            </button>
+
+            {/* Expand / Collapse Button */}
+            <button
+              onClick={() => setIsAnnualEfyTableOpen(!isAnnualEfyTableOpen)}
+              className="p-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-indigo-400/30 text-indigo-200 transition cursor-pointer"
+              title={isAnnualEfyTableOpen ? 'Collapse EFY Table' : 'Expand EFY Table'}
+            >
+              {isAnnualEfyTableOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </button>
+          </div>
+        </div>
+
+        {/* Modal for adding Previous / Custom EFY Year */}
+        {isAddEfyModalOpen && (
+          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white dark:bg-slate-800 border border-indigo-200 dark:border-indigo-800 rounded-2xl max-w-md w-full p-5 shadow-2xl space-y-4 animate-fadeIn">
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-3">
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                  <h3 className="text-sm font-black text-slate-900 dark:text-white">
+                    Add Previous / Custom EFY Baseline Plan
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsAddEfyModalOpen(false)}
+                  className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                Select a previous Ethiopian Fiscal Year (EFY) or type any custom fiscal year to add and calibrate its annual progress baseline targets and monthly schedules in the system.
+              </p>
+
+              {/* Quick Previous Years Pick */}
+              <div className="space-y-1.5">
+                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400">
+                  Quick Select Previous Fiscal Year:
+                </label>
+                <div className="grid grid-cols-4 gap-2">
+                  {['2018', '2017', '2016', '2015', '2014', '2013', '2012', '2011'].map((yr) => (
+                    <button
+                      key={yr}
+                      type="button"
+                      onClick={() => handleAddNewEfyYear(yr)}
+                      className={`py-1.5 px-2 rounded-xl text-xs font-bold border text-center transition cursor-pointer ${
+                        planningEfyYear === yr
+                          ? 'bg-indigo-600 text-white border-indigo-500 shadow-xs'
+                          : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-indigo-50 hover:text-indigo-600'
+                      }`}
+                    >
+                      EFY {yr}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Custom EFY Input */}
+              <div className="space-y-1.5 pt-2 border-t border-slate-100 dark:border-slate-700">
+                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400">
+                  Or Enter Custom Fiscal Year Number:
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={customEfyInput}
+                    onChange={(e) => setCustomEfyInput(e.target.value)}
+                    placeholder="e.g. 2010 or 2015"
+                    className="flex-1 px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-mono font-bold outline-none focus:border-indigo-500 text-slate-800 dark:text-slate-100"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleAddNewEfyYear(customEfyInput)}
+                    disabled={!customEfyInput.trim()}
+                    className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-black transition cursor-pointer"
+                  >
+                    Add Year
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {isAnnualEfyTableOpen && (
+          <div className="p-4 sm:p-5 space-y-4">
+            {/* Quick KPI & Preset Distribution Strip */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 p-3 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-700/60">
+              {/* Calculated KPI Badges */}
+              <div className="flex items-center gap-3 flex-wrap text-xs">
+                <div className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-lg">
+                  <span className="w-2 h-2 rounded-full bg-blue-500" />
+                  <span className="text-slate-600 dark:text-slate-300 font-semibold">Contractor EFY Sum:</span>
+                  <span className="font-mono font-black text-blue-700 dark:text-blue-300">{contractorSums.efy.toFixed(2)} Km</span>
+                  {project.lengthKm > 0 && (
+                    <span className="text-[10px] text-blue-600 dark:text-blue-400 font-bold">
+                      ({((contractorSums.efy / project.lengthKm) * 100).toFixed(1)}%)
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1.5 px-2.5 py-1 bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 rounded-lg">
+                  <span className="w-2 h-2 rounded-full bg-purple-500" />
+                  <span className="text-slate-600 dark:text-slate-300 font-semibold">ERA Approved EFY Sum:</span>
+                  <span className="font-mono font-black text-purple-700 dark:text-purple-300">{eraSums.efy.toFixed(2)} Km</span>
+                  {project.lengthKm > 0 && (
+                    <span className="text-[10px] text-purple-600 dark:text-purple-400 font-bold">
+                      ({((eraSums.efy / project.lengthKm) * 100).toFixed(1)}%)
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg">
+                  <span className="text-slate-500 dark:text-slate-400 font-semibold">Variance:</span>
+                  <span className={`font-mono font-extrabold ${contractorSums.efy >= eraSums.efy ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                    {(contractorSums.efy - eraSums.efy) >= 0 ? '+' : ''}{(contractorSums.efy - eraSums.efy).toFixed(2)} Km
+                  </span>
+                </div>
+              </div>
+
+              {/* Presets & Helper Tools */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide flex items-center gap-1">
+                  <Sliders className="w-3 h-3 text-indigo-500" />
+                  Distribution Presets:
+                </span>
+                <button
+                  onClick={() => handleApplyPreset('all', 'even')}
+                  className="px-2 py-1 rounded-lg bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-[11px] font-semibold text-slate-700 dark:text-slate-200 transition shadow-2xs cursor-pointer"
+                  title="Distribute EFY total evenly (1/12 per month)"
+                >
+                  ⚖️ Equal
+                </button>
+                <button
+                  onClick={() => handleApplyPreset('all', 'dry_season')}
+                  className="px-2 py-1 rounded-lg bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-[11px] font-semibold text-slate-700 dark:text-slate-200 transition shadow-2xs cursor-pointer"
+                  title="Heavy distribution in dry season (Oct - May)"
+                >
+                  ☀️ Dry Season
+                </button>
+                <button
+                  onClick={() => handleApplyPreset('all', 'scurve')}
+                  className="px-2 py-1 rounded-lg bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-[11px] font-semibold text-slate-700 dark:text-slate-200 transition shadow-2xs cursor-pointer"
+                  title="Gradual S-Curve distribution"
+                >
+                  📈 S-Curve
+                </button>
+                <button
+                  onClick={handleCopyContractorToEra}
+                  className="px-2 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900 border border-indigo-200 dark:border-indigo-800 text-[11px] font-bold text-indigo-700 dark:text-indigo-300 transition shadow-2xs cursor-pointer flex items-center gap-1"
+                  title="Copy Contractor monthly schedule to ERA approved milestone plan"
+                >
+                  <Copy className="w-3 h-3" />
+                  Copy Ctr → ERA
+                </button>
+              </div>
+            </div>
+
+            {/* Quarter Filter Tabs */}
+            <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-900 p-1 rounded-xl w-fit text-xs font-bold">
+              <button
+                onClick={() => setSelectedQuarterView('all')}
+                className={`px-3 py-1 rounded-lg transition ${selectedQuarterView === 'all' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-xs font-black' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}
+              >
+                All 12 Months
+              </button>
+              <button
+                onClick={() => setSelectedQuarterView('Q1')}
+                className={`px-3 py-1 rounded-lg transition ${selectedQuarterView === 'Q1' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-xs font-black' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}
+              >
+                Q1 (Jul - Sep)
+              </button>
+              <button
+                onClick={() => setSelectedQuarterView('Q2')}
+                className={`px-3 py-1 rounded-lg transition ${selectedQuarterView === 'Q2' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-xs font-black' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}
+              >
+                Q2 (Oct - Dec)
+              </button>
+              <button
+                onClick={() => setSelectedQuarterView('Q3')}
+                className={`px-3 py-1 rounded-lg transition ${selectedQuarterView === 'Q3' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-xs font-black' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}
+              >
+                Q3 (Jan - Mar)
+              </button>
+              <button
+                onClick={() => setSelectedQuarterView('Q4')}
+                className={`px-3 py-1 rounded-lg transition ${selectedQuarterView === 'Q4' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-xs font-black' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}
+              >
+                Q4 (Apr - Jun)
+              </button>
+            </div>
+
+            {/* The Core 12-Month & Quarterly Interactive Planning Table */}
+            <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700/60 shadow-xs">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  {/* Top Tier Grouping: Quarters Header */}
+                  <tr className="bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    <th className="p-2.5 min-w-[200px] sticky left-0 bg-slate-100 dark:bg-slate-900 z-10">
+                      Stakeholder Plan Tier
+                    </th>
+
+                    {(selectedQuarterView === 'all' || selectedQuarterView === 'Q1') && (
+                      <th colSpan={4} className="p-2 text-center bg-blue-100/50 dark:bg-blue-950/40 text-blue-900 dark:text-blue-200 border-l border-r border-blue-200 dark:border-blue-800/60">
+                        Quarter 1 (Jul - Sep)
+                      </th>
+                    )}
+
+                    {(selectedQuarterView === 'all' || selectedQuarterView === 'Q2') && (
+                      <th colSpan={4} className="p-2 text-center bg-cyan-100/50 dark:bg-cyan-950/40 text-cyan-900 dark:text-cyan-200 border-r border-cyan-200 dark:border-cyan-800/60">
+                        Quarter 2 (Oct - Dec)
+                      </th>
+                    )}
+
+                    {(selectedQuarterView === 'all' || selectedQuarterView === 'Q3') && (
+                      <th colSpan={4} className="p-2 text-center bg-indigo-100/50 dark:bg-indigo-950/40 text-indigo-900 dark:text-indigo-200 border-r border-indigo-200 dark:border-indigo-800/60">
+                        Quarter 3 (Jan - Mar)
+                      </th>
+                    )}
+
+                    {(selectedQuarterView === 'all' || selectedQuarterView === 'Q4') && (
+                      <th colSpan={4} className="p-2 text-center bg-purple-100/50 dark:bg-purple-950/40 text-purple-900 dark:text-purple-200 border-r border-purple-200 dark:border-purple-800/60">
+                        Quarter 4 (Apr - Jun)
+                      </th>
+                    )}
+
+                    <th className="p-2 text-center bg-emerald-100/60 dark:bg-emerald-950/50 text-emerald-900 dark:text-emerald-200 font-black min-w-[130px]">
+                      EFY {planningEfyYear} Total
+                    </th>
+                    <th className="p-2 text-center bg-slate-200 dark:bg-slate-850 text-slate-700 dark:text-slate-300 min-w-[90px]">
+                      % of Scope
+                    </th>
+                  </tr>
+
+                  {/* Individual Month Sub-Headers */}
+                  <tr className="bg-slate-50 dark:bg-slate-850 border-b border-slate-200 dark:border-slate-700 text-[9px] font-bold text-slate-600 dark:text-slate-400 text-center">
+                    <th className="p-2 text-left sticky left-0 bg-slate-50 dark:bg-slate-850 z-10">
+                      Editable Monthly Breakdown (Km)
+                    </th>
+
+                    {/* Q1 Months */}
+                    {(selectedQuarterView === 'all' || selectedQuarterView === 'Q1') && (
+                      <>
+                        <th className="p-2 min-w-[75px] bg-blue-50/40 dark:bg-blue-950/20">M1 (Jul)</th>
+                        <th className="p-2 min-w-[75px] bg-blue-50/40 dark:bg-blue-950/20">M2 (Aug)</th>
+                        <th className="p-2 min-w-[75px] bg-blue-50/40 dark:bg-blue-950/20">M3 (Sep)</th>
+                        <th className="p-2 min-w-[90px] font-black bg-blue-100/80 dark:bg-blue-900/40 text-blue-900 dark:text-blue-200 border-r border-blue-200 dark:border-blue-800">
+                          Q1 Sum (Km)
+                        </th>
+                      </>
+                    )}
+
+                    {/* Q2 Months */}
+                    {(selectedQuarterView === 'all' || selectedQuarterView === 'Q2') && (
+                      <>
+                        <th className="p-2 min-w-[75px] bg-cyan-50/40 dark:bg-cyan-950/20">M4 (Oct)</th>
+                        <th className="p-2 min-w-[75px] bg-cyan-50/40 dark:bg-cyan-950/20">M5 (Nov)</th>
+                        <th className="p-2 min-w-[75px] bg-cyan-50/40 dark:bg-cyan-950/20">M6 (Dec)</th>
+                        <th className="p-2 min-w-[90px] font-black bg-cyan-100/80 dark:bg-cyan-900/40 text-cyan-900 dark:text-cyan-200 border-r border-cyan-200 dark:border-cyan-800">
+                          Q2 Sum (Km)
+                        </th>
+                      </>
+                    )}
+
+                    {/* Q3 Months */}
+                    {(selectedQuarterView === 'all' || selectedQuarterView === 'Q3') && (
+                      <>
+                        <th className="p-2 min-w-[75px] bg-indigo-50/40 dark:bg-indigo-950/20">M7 (Jan)</th>
+                        <th className="p-2 min-w-[75px] bg-indigo-50/40 dark:bg-indigo-950/20">M8 (Feb)</th>
+                        <th className="p-2 min-w-[75px] bg-indigo-50/40 dark:bg-indigo-950/20">M9 (Mar)</th>
+                        <th className="p-2 min-w-[90px] font-black bg-indigo-100/80 dark:bg-indigo-900/40 text-indigo-900 dark:text-indigo-200 border-r border-indigo-200 dark:border-indigo-800">
+                          Q3 Sum (Km)
+                        </th>
+                      </>
+                    )}
+
+                    {/* Q4 Months */}
+                    {(selectedQuarterView === 'all' || selectedQuarterView === 'Q4') && (
+                      <>
+                        <th className="p-2 min-w-[75px] bg-purple-50/40 dark:bg-purple-950/20">M10 (Apr)</th>
+                        <th className="p-2 min-w-[75px] bg-purple-50/40 dark:bg-purple-950/20">M11 (May)</th>
+                        <th className="p-2 min-w-[75px] bg-purple-50/40 dark:bg-purple-950/20">M12 (Jun)</th>
+                        <th className="p-2 min-w-[90px] font-black bg-purple-100/80 dark:bg-purple-900/40 text-purple-900 dark:text-purple-200 border-r border-purple-200 dark:border-purple-800">
+                          Q4 Sum (Km)
+                        </th>
+                      </>
+                    )}
+
+                    <th className="p-2 font-black bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300">
+                      Calculated EFY
+                    </th>
+                    <th className="p-2 font-black bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                      Contract %
+                    </th>
+                  </tr>
+                </thead>
+
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-700/40 text-slate-700 dark:text-slate-200">
+                  {/* Row 1: Contractor Program Plan */}
+                  <tr className="hover:bg-slate-50/50 dark:hover:bg-slate-900/20 transition-colors">
+                    <td className="p-2.5 font-bold flex items-center gap-1.5 sticky left-0 bg-white dark:bg-slate-800 z-10 border-r border-slate-200 dark:border-slate-700">
+                      <span className="w-2.5 h-2.5 bg-blue-500 rounded-sm shrink-0" />
+                      <div>
+                        <span className="block text-blue-900 dark:text-blue-300 font-bold">Contractor Program Plan</span>
+                        <span className="text-[10px] text-slate-400 font-normal">Monthly Targets (Km)</span>
+                      </div>
+                    </td>
+
+                    {/* Q1 Inputs */}
+                    {(selectedQuarterView === 'all' || selectedQuarterView === 'Q1') && (
+                      <>
+                        <td className="p-1.5 text-center bg-blue-50/20 dark:bg-blue-950/10">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={contractorMonths[0] ?? 0}
+                            onChange={(e) => handleContractorMonthChange(0, e.target.value)}
+                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-blue-500 outline-none"
+                          />
+                        </td>
+                        <td className="p-1.5 text-center bg-blue-50/20 dark:bg-blue-950/10">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={contractorMonths[1] ?? 0}
+                            onChange={(e) => handleContractorMonthChange(1, e.target.value)}
+                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-blue-500 outline-none"
+                          />
+                        </td>
+                        <td className="p-1.5 text-center bg-blue-50/20 dark:bg-blue-950/10">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={contractorMonths[2] ?? 0}
+                            onChange={(e) => handleContractorMonthChange(2, e.target.value)}
+                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-blue-500 outline-none"
+                          />
+                        </td>
+                        <td className="p-2 text-center font-mono font-black text-blue-700 dark:text-blue-300 bg-blue-100/50 dark:bg-blue-900/30 border-r border-blue-200 dark:border-blue-800">
+                          <span className="block">{contractorSums.q1.toFixed(2)}</span>
+                          <span className="text-[9px] text-blue-500 font-normal">
+                            {project.lengthKm > 0 ? `${((contractorSums.q1 / project.lengthKm) * 100).toFixed(1)}%` : ''}
+                          </span>
+                        </td>
+                      </>
+                    )}
+
+                    {/* Q2 Inputs */}
+                    {(selectedQuarterView === 'all' || selectedQuarterView === 'Q2') && (
+                      <>
+                        <td className="p-1.5 text-center bg-cyan-50/20 dark:bg-cyan-950/10">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={contractorMonths[3] ?? 0}
+                            onChange={(e) => handleContractorMonthChange(3, e.target.value)}
+                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-cyan-500 outline-none"
+                          />
+                        </td>
+                        <td className="p-1.5 text-center bg-cyan-50/20 dark:bg-cyan-950/10">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={contractorMonths[4] ?? 0}
+                            onChange={(e) => handleContractorMonthChange(4, e.target.value)}
+                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-cyan-500 outline-none"
+                          />
+                        </td>
+                        <td className="p-1.5 text-center bg-cyan-50/20 dark:bg-cyan-950/10">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={contractorMonths[5] ?? 0}
+                            onChange={(e) => handleContractorMonthChange(5, e.target.value)}
+                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-cyan-500 outline-none"
+                          />
+                        </td>
+                        <td className="p-2 text-center font-mono font-black text-cyan-700 dark:text-cyan-300 bg-cyan-100/50 dark:bg-cyan-900/30 border-r border-cyan-200 dark:border-cyan-800">
+                          <span className="block">{contractorSums.q2.toFixed(2)}</span>
+                          <span className="text-[9px] text-cyan-500 font-normal">
+                            {project.lengthKm > 0 ? `${((contractorSums.q2 / project.lengthKm) * 100).toFixed(1)}%` : ''}
+                          </span>
+                        </td>
+                      </>
+                    )}
+
+                    {/* Q3 Inputs */}
+                    {(selectedQuarterView === 'all' || selectedQuarterView === 'Q3') && (
+                      <>
+                        <td className="p-1.5 text-center bg-indigo-50/20 dark:bg-indigo-950/10">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={contractorMonths[6] ?? 0}
+                            onChange={(e) => handleContractorMonthChange(6, e.target.value)}
+                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-indigo-500 outline-none"
+                          />
+                        </td>
+                        <td className="p-1.5 text-center bg-indigo-50/20 dark:bg-indigo-950/10">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={contractorMonths[7] ?? 0}
+                            onChange={(e) => handleContractorMonthChange(7, e.target.value)}
+                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-indigo-500 outline-none"
+                          />
+                        </td>
+                        <td className="p-1.5 text-center bg-indigo-50/20 dark:bg-indigo-950/10">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={contractorMonths[8] ?? 0}
+                            onChange={(e) => handleContractorMonthChange(8, e.target.value)}
+                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-indigo-500 outline-none"
+                          />
+                        </td>
+                        <td className="p-2 text-center font-mono font-black text-indigo-700 dark:text-indigo-300 bg-indigo-100/50 dark:bg-indigo-900/30 border-r border-indigo-200 dark:border-indigo-800">
+                          <span className="block">{contractorSums.q3.toFixed(2)}</span>
+                          <span className="text-[9px] text-indigo-500 font-normal">
+                            {project.lengthKm > 0 ? `${((contractorSums.q3 / project.lengthKm) * 100).toFixed(1)}%` : ''}
+                          </span>
+                        </td>
+                      </>
+                    )}
+
+                    {/* Q4 Inputs */}
+                    {(selectedQuarterView === 'all' || selectedQuarterView === 'Q4') && (
+                      <>
+                        <td className="p-1.5 text-center bg-purple-50/20 dark:bg-purple-950/10">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={contractorMonths[9] ?? 0}
+                            onChange={(e) => handleContractorMonthChange(9, e.target.value)}
+                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-purple-500 outline-none"
+                          />
+                        </td>
+                        <td className="p-1.5 text-center bg-purple-50/20 dark:bg-purple-950/10">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={contractorMonths[10] ?? 0}
+                            onChange={(e) => handleContractorMonthChange(10, e.target.value)}
+                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-purple-500 outline-none"
+                          />
+                        </td>
+                        <td className="p-1.5 text-center bg-purple-50/20 dark:bg-purple-950/10">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={contractorMonths[11] ?? 0}
+                            onChange={(e) => handleContractorMonthChange(11, e.target.value)}
+                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-purple-500 outline-none"
+                          />
+                        </td>
+                        <td className="p-2 text-center font-mono font-black text-purple-700 dark:text-purple-300 bg-purple-100/50 dark:bg-purple-900/30 border-r border-purple-200 dark:border-purple-800">
+                          <span className="block">{contractorSums.q4.toFixed(2)}</span>
+                          <span className="text-[9px] text-purple-500 font-normal">
+                            {project.lengthKm > 0 ? `${((contractorSums.q4 / project.lengthKm) * 100).toFixed(1)}%` : ''}
+                          </span>
+                        </td>
+                      </>
+                    )}
+
+                    {/* EFY Total Calculated Sum */}
+                    <td className="p-2 text-center font-mono font-black text-blue-700 dark:text-blue-300 bg-blue-50/60 dark:bg-blue-950/40 text-sm">
+                      {contractorSums.efy.toFixed(2)} Km
+                    </td>
+                    <td className="p-2 text-center font-mono font-bold text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-850">
+                      {project.lengthKm > 0 ? `${((contractorSums.efy / project.lengthKm) * 100).toFixed(1)}%` : '—'}
+                    </td>
+                  </tr>
+
+                  {/* Row 2: ERA Approved Milestone Plan */}
+                  <tr className="hover:bg-slate-50/50 dark:hover:bg-slate-900/20 transition-colors">
+                    <td className="p-2.5 font-bold flex items-center gap-1.5 sticky left-0 bg-white dark:bg-slate-800 z-10 border-r border-slate-200 dark:border-slate-700">
+                      <span className="w-2.5 h-2.5 bg-purple-500 rounded-sm shrink-0" />
+                      <div>
+                        <span className="block text-purple-900 dark:text-purple-300 font-bold">ERA Approved Milestone Plan</span>
+                        <span className="text-[10px] text-slate-400 font-normal">Approved Milestones (Km)</span>
+                      </div>
+                    </td>
+
+                    {/* Q1 Inputs */}
+                    {(selectedQuarterView === 'all' || selectedQuarterView === 'Q1') && (
+                      <>
+                        <td className="p-1.5 text-center bg-purple-50/20 dark:bg-purple-950/10">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={eraMonths[0] ?? 0}
+                            onChange={(e) => handleEraMonthChange(0, e.target.value)}
+                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-purple-500 outline-none"
+                          />
+                        </td>
+                        <td className="p-1.5 text-center bg-purple-50/20 dark:bg-purple-950/10">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={eraMonths[1] ?? 0}
+                            onChange={(e) => handleEraMonthChange(1, e.target.value)}
+                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-purple-500 outline-none"
+                          />
+                        </td>
+                        <td className="p-1.5 text-center bg-purple-50/20 dark:bg-purple-950/10">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={eraMonths[2] ?? 0}
+                            onChange={(e) => handleEraMonthChange(2, e.target.value)}
+                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-purple-500 outline-none"
+                          />
+                        </td>
+                        <td className="p-2 text-center font-mono font-black text-purple-700 dark:text-purple-300 bg-purple-100/50 dark:bg-purple-900/30 border-r border-purple-200 dark:border-purple-800">
+                          <span className="block">{eraSums.q1.toFixed(2)}</span>
+                          <span className="text-[9px] text-purple-500 font-normal">
+                            {project.lengthKm > 0 ? `${((eraSums.q1 / project.lengthKm) * 100).toFixed(1)}%` : ''}
+                          </span>
+                        </td>
+                      </>
+                    )}
+
+                    {/* Q2 Inputs */}
+                    {(selectedQuarterView === 'all' || selectedQuarterView === 'Q2') && (
+                      <>
+                        <td className="p-1.5 text-center bg-purple-50/20 dark:bg-purple-950/10">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={eraMonths[3] ?? 0}
+                            onChange={(e) => handleEraMonthChange(3, e.target.value)}
+                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-purple-500 outline-none"
+                          />
+                        </td>
+                        <td className="p-1.5 text-center bg-purple-50/20 dark:bg-purple-950/10">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={eraMonths[4] ?? 0}
+                            onChange={(e) => handleEraMonthChange(4, e.target.value)}
+                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-purple-500 outline-none"
+                          />
+                        </td>
+                        <td className="p-1.5 text-center bg-purple-50/20 dark:bg-purple-950/10">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={eraMonths[5] ?? 0}
+                            onChange={(e) => handleEraMonthChange(5, e.target.value)}
+                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-purple-500 outline-none"
+                          />
+                        </td>
+                        <td className="p-2 text-center font-mono font-black text-purple-700 dark:text-purple-300 bg-purple-100/50 dark:bg-purple-900/30 border-r border-purple-200 dark:border-purple-800">
+                          <span className="block">{eraSums.q2.toFixed(2)}</span>
+                          <span className="text-[9px] text-purple-500 font-normal">
+                            {project.lengthKm > 0 ? `${((eraSums.q2 / project.lengthKm) * 100).toFixed(1)}%` : ''}
+                          </span>
+                        </td>
+                      </>
+                    )}
+
+                    {/* Q3 Inputs */}
+                    {(selectedQuarterView === 'all' || selectedQuarterView === 'Q3') && (
+                      <>
+                        <td className="p-1.5 text-center bg-purple-50/20 dark:bg-purple-950/10">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={eraMonths[6] ?? 0}
+                            onChange={(e) => handleEraMonthChange(6, e.target.value)}
+                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-purple-500 outline-none"
+                          />
+                        </td>
+                        <td className="p-1.5 text-center bg-purple-50/20 dark:bg-purple-950/10">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={eraMonths[7] ?? 0}
+                            onChange={(e) => handleEraMonthChange(7, e.target.value)}
+                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-purple-500 outline-none"
+                          />
+                        </td>
+                        <td className="p-1.5 text-center bg-purple-50/20 dark:bg-purple-950/10">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={eraMonths[8] ?? 0}
+                            onChange={(e) => handleEraMonthChange(8, e.target.value)}
+                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-purple-500 outline-none"
+                          />
+                        </td>
+                        <td className="p-2 text-center font-mono font-black text-purple-700 dark:text-purple-300 bg-purple-100/50 dark:bg-purple-900/30 border-r border-purple-200 dark:border-purple-800">
+                          <span className="block">{eraSums.q3.toFixed(2)}</span>
+                          <span className="text-[9px] text-purple-500 font-normal">
+                            {project.lengthKm > 0 ? `${((eraSums.q3 / project.lengthKm) * 100).toFixed(1)}%` : ''}
+                          </span>
+                        </td>
+                      </>
+                    )}
+
+                    {/* Q4 Inputs */}
+                    {(selectedQuarterView === 'all' || selectedQuarterView === 'Q4') && (
+                      <>
+                        <td className="p-1.5 text-center bg-purple-50/20 dark:bg-purple-950/10">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={eraMonths[9] ?? 0}
+                            onChange={(e) => handleEraMonthChange(9, e.target.value)}
+                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-purple-500 outline-none"
+                          />
+                        </td>
+                        <td className="p-1.5 text-center bg-purple-50/20 dark:bg-purple-950/10">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={eraMonths[10] ?? 0}
+                            onChange={(e) => handleEraMonthChange(10, e.target.value)}
+                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-purple-500 outline-none"
+                          />
+                        </td>
+                        <td className="p-1.5 text-center bg-purple-50/20 dark:bg-purple-950/10">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={eraMonths[11] ?? 0}
+                            onChange={(e) => handleEraMonthChange(11, e.target.value)}
+                            className="w-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-center font-mono py-1 text-xs font-semibold focus:border-purple-500 outline-none"
+                          />
+                        </td>
+                        <td className="p-2 text-center font-mono font-black text-purple-700 dark:text-purple-300 bg-purple-100/50 dark:bg-purple-900/30 border-r border-purple-200 dark:border-purple-800">
+                          <span className="block">{eraSums.q4.toFixed(2)}</span>
+                          <span className="text-[9px] text-purple-500 font-normal">
+                            {project.lengthKm > 0 ? `${((eraSums.q4 / project.lengthKm) * 100).toFixed(1)}%` : ''}
+                          </span>
+                        </td>
+                      </>
+                    )}
+
+                    {/* EFY Total Calculated Sum */}
+                    <td className="p-2 text-center font-mono font-black text-purple-700 dark:text-purple-300 bg-purple-50/60 dark:bg-purple-950/40 text-sm">
+                      {eraSums.efy.toFixed(2)} Km
+                    </td>
+                    <td className="p-2 text-center font-mono font-bold text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-850">
+                      {project.lengthKm > 0 ? `${((eraSums.efy / project.lengthKm) * 100).toFixed(1)}%` : '—'}
+                    </td>
+                  </tr>
+
+                  {/* Row 3: Variance Row (Contractor - ERA) */}
+                  <tr className="bg-slate-50/60 dark:bg-slate-900/40 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                    <td className="p-2 sticky left-0 bg-slate-50 dark:bg-slate-900 z-10 border-r border-slate-200 dark:border-slate-700 text-slate-500 font-medium">
+                      Monthly Alignment Variance
+                    </td>
+
+                    {/* Q1 Variance */}
+                    {(selectedQuarterView === 'all' || selectedQuarterView === 'Q1') && (
+                      <>
+                        <td className="p-1.5 text-center font-mono text-[10px]">
+                          {((contractorMonths[0] || 0) - (eraMonths[0] || 0)).toFixed(2)}
+                        </td>
+                        <td className="p-1.5 text-center font-mono text-[10px]">
+                          {((contractorMonths[1] || 0) - (eraMonths[1] || 0)).toFixed(2)}
+                        </td>
+                        <td className="p-1.5 text-center font-mono text-[10px]">
+                          {((contractorMonths[2] || 0) - (eraMonths[2] || 0)).toFixed(2)}
+                        </td>
+                        <td className="p-2 text-center font-mono font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700">
+                          {(contractorSums.q1 - eraSums.q1).toFixed(2)}
+                        </td>
+                      </>
+                    )}
+
+                    {/* Q2 Variance */}
+                    {(selectedQuarterView === 'all' || selectedQuarterView === 'Q2') && (
+                      <>
+                        <td className="p-1.5 text-center font-mono text-[10px]">
+                          {((contractorMonths[3] || 0) - (eraMonths[3] || 0)).toFixed(2)}
+                        </td>
+                        <td className="p-1.5 text-center font-mono text-[10px]">
+                          {((contractorMonths[4] || 0) - (eraMonths[4] || 0)).toFixed(2)}
+                        </td>
+                        <td className="p-1.5 text-center font-mono text-[10px]">
+                          {((contractorMonths[5] || 0) - (eraMonths[5] || 0)).toFixed(2)}
+                        </td>
+                        <td className="p-2 text-center font-mono font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700">
+                          {(contractorSums.q2 - eraSums.q2).toFixed(2)}
+                        </td>
+                      </>
+                    )}
+
+                    {/* Q3 Variance */}
+                    {(selectedQuarterView === 'all' || selectedQuarterView === 'Q3') && (
+                      <>
+                        <td className="p-1.5 text-center font-mono text-[10px]">
+                          {((contractorMonths[6] || 0) - (eraMonths[6] || 0)).toFixed(2)}
+                        </td>
+                        <td className="p-1.5 text-center font-mono text-[10px]">
+                          {((contractorMonths[7] || 0) - (eraMonths[7] || 0)).toFixed(2)}
+                        </td>
+                        <td className="p-1.5 text-center font-mono text-[10px]">
+                          {((contractorMonths[8] || 0) - (eraMonths[8] || 0)).toFixed(2)}
+                        </td>
+                        <td className="p-2 text-center font-mono font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700">
+                          {(contractorSums.q3 - eraSums.q3).toFixed(2)}
+                        </td>
+                      </>
+                    )}
+
+                    {/* Q4 Variance */}
+                    {(selectedQuarterView === 'all' || selectedQuarterView === 'Q4') && (
+                      <>
+                        <td className="p-1.5 text-center font-mono text-[10px]">
+                          {((contractorMonths[9] || 0) - (eraMonths[9] || 0)).toFixed(2)}
+                        </td>
+                        <td className="p-1.5 text-center font-mono text-[10px]">
+                          {((contractorMonths[10] || 0) - (eraMonths[10] || 0)).toFixed(2)}
+                        </td>
+                        <td className="p-1.5 text-center font-mono text-[10px]">
+                          {((contractorMonths[11] || 0) - (eraMonths[11] || 0)).toFixed(2)}
+                        </td>
+                        <td className="p-2 text-center font-mono font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700">
+                          {(contractorSums.q4 - eraSums.q4).toFixed(2)}
+                        </td>
+                      </>
+                    )}
+
+                    {/* Total Annual Variance */}
+                    <td className="p-2 text-center font-mono font-black text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800">
+                      {(contractorSums.efy - eraSums.efy) >= 0 ? '+' : ''}{(contractorSums.efy - eraSums.efy).toFixed(2)} Km
+                    </td>
+                    <td className="p-2 text-center font-mono text-slate-400">
+                      —
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            {/* Quarterly Cards Breakdown Summary Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1 text-xs">
+              {/* Q1 Card */}
+              <div className="p-3.5 bg-blue-50/60 dark:bg-blue-950/20 border border-blue-200/80 dark:border-blue-800/50 rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-extrabold text-blue-900 dark:text-blue-200 text-xs">Quarter 1</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-md bg-blue-200/60 dark:bg-blue-900 text-blue-800 dark:text-blue-200 font-mono font-bold">
+                    Jul - Sep
+                  </span>
+                </div>
+                <div className="space-y-1 font-mono text-[11px]">
+                  <div className="flex justify-between text-blue-800 dark:text-blue-300">
+                    <span>Contractor Plan:</span>
+                    <span className="font-bold">{contractorSums.q1.toFixed(2)} Km</span>
+                  </div>
+                  <div className="flex justify-between text-purple-800 dark:text-purple-300">
+                    <span>ERA Approved:</span>
+                    <span className="font-bold">{eraSums.q1.toFixed(2)} Km</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Q2 Card */}
+              <div className="p-3.5 bg-cyan-50/60 dark:bg-cyan-950/20 border border-cyan-200/80 dark:border-cyan-800/50 rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-extrabold text-cyan-900 dark:text-cyan-200 text-xs">Quarter 2</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-md bg-cyan-200/60 dark:bg-cyan-900 text-cyan-800 dark:text-cyan-200 font-mono font-bold">
+                    Oct - Dec
+                  </span>
+                </div>
+                <div className="space-y-1 font-mono text-[11px]">
+                  <div className="flex justify-between text-blue-800 dark:text-blue-300">
+                    <span>Contractor Plan:</span>
+                    <span className="font-bold">{contractorSums.q2.toFixed(2)} Km</span>
+                  </div>
+                  <div className="flex justify-between text-purple-800 dark:text-purple-300">
+                    <span>ERA Approved:</span>
+                    <span className="font-bold">{eraSums.q2.toFixed(2)} Km</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Q3 Card */}
+              <div className="p-3.5 bg-indigo-50/60 dark:bg-indigo-950/20 border border-indigo-200/80 dark:border-indigo-800/50 rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-extrabold text-indigo-900 dark:text-indigo-200 text-xs">Quarter 3</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-md bg-indigo-200/60 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-200 font-mono font-bold">
+                    Jan - Mar
+                  </span>
+                </div>
+                <div className="space-y-1 font-mono text-[11px]">
+                  <div className="flex justify-between text-blue-800 dark:text-blue-300">
+                    <span>Contractor Plan:</span>
+                    <span className="font-bold">{contractorSums.q3.toFixed(2)} Km</span>
+                  </div>
+                  <div className="flex justify-between text-purple-800 dark:text-purple-300">
+                    <span>ERA Approved:</span>
+                    <span className="font-bold">{eraSums.q3.toFixed(2)} Km</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Q4 Card */}
+              <div className="p-3.5 bg-purple-50/60 dark:bg-purple-950/20 border border-purple-200/80 dark:border-purple-800/50 rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-extrabold text-purple-900 dark:text-purple-200 text-xs">Quarter 4</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-md bg-purple-200/60 dark:bg-purple-900 text-purple-800 dark:text-purple-200 font-mono font-bold">
+                    Apr - Jun
+                  </span>
+                </div>
+                <div className="space-y-1 font-mono text-[11px]">
+                  <div className="flex justify-between text-blue-800 dark:text-blue-300">
+                    <span>Contractor Plan:</span>
+                    <span className="font-bold">{contractorSums.q4.toFixed(2)} Km</span>
+                  </div>
+                  <div className="flex justify-between text-purple-800 dark:text-purple-300">
+                    <span>ERA Approved:</span>
+                    <span className="font-bold">{eraSums.q4.toFixed(2)} Km</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
 

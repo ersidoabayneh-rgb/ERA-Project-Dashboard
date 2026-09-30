@@ -20,6 +20,7 @@ import {
   ChevronUp,
   Table,
   Eye,
+  EyeOff,
   CheckCircle2,
   FileSpreadsheet,
   UserCheck,
@@ -234,6 +235,559 @@ export default function GroupReportGenerator({
   const [isPrintWorkloadModalOpen, setIsPrintWorkloadModalOpen] = useState(false);
   const [isInstitutesModalOpen, setIsInstitutesModalOpen] = useState(false);
   const [institutesModalTab, setInstitutesModalTab] = useState<'institutes' | 'guaranties'>('guaranties');
+
+  // EFY Month Definitions (12 Fiscal Months in Gregorian Calendar: Jul to Jun)
+  const EFY_MONTH_DEFINITIONS = [
+    { id: 1, idx: 0, name: 'M1 (July)', short: 'Jul', q: 'Q1' },
+    { id: 2, idx: 1, name: 'M2 (August)', short: 'Aug', q: 'Q1' },
+    { id: 3, idx: 2, name: 'M3 (September)', short: 'Sep', q: 'Q1' },
+    { id: 4, idx: 3, name: 'M4 (October)', short: 'Oct', q: 'Q2' },
+    { id: 5, idx: 4, name: 'M5 (November)', short: 'Nov', q: 'Q2' },
+    { id: 6, idx: 5, name: 'M6 (December)', short: 'Dec', q: 'Q2' },
+    { id: 7, idx: 6, name: 'M7 (January)', short: 'Jan', q: 'Q3' },
+    { id: 8, idx: 7, name: 'M8 (February)', short: 'Feb', q: 'Q3' },
+    { id: 9, idx: 8, name: 'M9 (March)', short: 'Mar', q: 'Q3' },
+    { id: 10, idx: 9, name: 'M10 (April)', short: 'Apr', q: 'Q4' },
+    { id: 11, idx: 10, name: 'M11 (May)', short: 'May', q: 'Q4' },
+    { id: 12, idx: 11, name: 'M12 (June)', short: 'Jun', q: 'Q4' },
+  ];
+
+  const calculateQuarterlyAndEfyFromMonths = (months: number[]) => {
+    const m = months && months.length === 12 ? months : Array(12).fill(0);
+    const q1 = Number(((m[0] || 0) + (m[1] || 0) + (m[2] || 0)).toFixed(2));
+    const q2 = Number(((m[3] || 0) + (m[4] || 0) + (m[5] || 0)).toFixed(2));
+    const q3 = Number(((m[6] || 0) + (m[7] || 0) + (m[8] || 0)).toFixed(2));
+    const q4 = Number(((m[9] || 0) + (m[10] || 0) + (m[11] || 0)).toFixed(2));
+    const efy = Number((q1 + q2 + q3 + q4).toFixed(2));
+    return { q1, q2, q3, q4, efy };
+  };
+
+  const distributeTotalTo12Months = (total: number, pattern: 'even' | 'dry_season' | 'scurve' = 'even'): number[] => {
+    const weightsEven = Array(12).fill(1 / 12);
+    const weightsDry = [0.04, 0.04, 0.06, 0.09, 0.11, 0.12, 0.13, 0.13, 0.12, 0.08, 0.05, 0.03];
+    const weightsScurve = [0.03, 0.04, 0.06, 0.08, 0.10, 0.12, 0.14, 0.13, 0.11, 0.09, 0.06, 0.04];
+    const weights = pattern === 'dry_season' ? weightsDry : pattern === 'scurve' ? weightsScurve : weightsEven;
+    return weights.map(w => Number((total * w).toFixed(2)));
+  };
+
+  // EFY Annual Progress Baseline Planning states (Whole Fiscal Year Planning at Beginning of FY)
+  interface EfyProjectDraft {
+    contractorEfy: number;
+    eraEfy: number;
+    q1Contractor: number;
+    q2Contractor: number;
+    q3Contractor: number;
+    q4Contractor: number;
+    q1Era: number;
+    q2Era: number;
+    q3Era: number;
+    q4Era: number;
+    contractorMonths: number[]; // 12 numbers
+    eraMonths: number[];        // 12 numbers
+    efyLabel: string;
+  }
+
+  // List of available EFY baseline plan years in the system (supporting past and future fiscal years)
+  const [availableEfyYears, setAvailableEfyYears] = useState<string[]>([
+    '2022', '2021', '2020', '2019', '2018', '2017', '2016', '2015', '2014', '2013', '2012'
+  ]);
+  const [selectedPlanningEfy, setSelectedPlanningEfy] = useState<string>('2019');
+  const [isAddEfyModalOpen, setIsAddEfyModalOpen] = useState<boolean>(false);
+  const [customEfyInput, setCustomEfyInput] = useState<string>('');
+
+  // Drafts keyed by EFY year and Project ID: { [efyYear]: { [projectId]: EfyProjectDraft } }
+  const [efyDraftMapByYear, setEfyDraftMapByYear] = useState<Record<string, Record<string, EfyProjectDraft>>>({});
+  const [isEfySectionExpanded, setIsEfySectionExpanded] = useState<boolean>(true);
+  const [isQuarterlyPlanningExpanded, setIsQuarterlyPlanningExpanded] = useState<boolean>(false);
+  const [expandedMonthlyRowProjectId, setExpandedMonthlyRowProjectId] = useState<string | null>(null);
+  const [activeMonthlyModalProject, setActiveMonthlyModalProject] = useState<Project | null>(null);
+  const [efySaveToast, setEfySaveToast] = useState<{ message: string; type: 'success' | 'info' } | null>(null);
+
+  // Directorate and PMO Group Progress Comparison state (Default hidden as requested)
+  const [avgSummaryGroupTab, setAvgSummaryGroupTab] = useState<'both' | 'directorate' | 'pmo'>('both');
+  const [isAvgSummaryExpanded, setIsAvgSummaryExpanded] = useState<boolean>(false);
+  const [isGroupPortfolioSummaryExpanded, setIsGroupPortfolioSummaryExpanded] = useState<boolean>(true);
+
+  const showEfyToast = (message: string, type: 'success' | 'info' = 'success') => {
+    setEfySaveToast({ message, type });
+    setTimeout(() => {
+      setEfySaveToast(null);
+    }, 4500);
+  };
+
+  const getEfyDraft = (p: Project, targetEfy: string = selectedPlanningEfy): EfyProjectDraft => {
+    const yearDrafts = efyDraftMapByYear[targetEfy];
+    if (yearDrafts && yearDrafts[p.id]) {
+      return yearDrafts[p.id];
+    }
+
+    // 1. Check if project has an archived progressPlanHistory item matching this EFY
+    const historyMatch = (p.progressPlanHistory || []).find(
+      h => (h.efyLabel || '').trim().toLowerCase() === targetEfy.trim().toLowerCase() ||
+           (h.efyLabel || '').includes(targetEfy) ||
+           (h.monthLabel || '').includes(`EFY ${targetEfy}`)
+    );
+
+    // 2. Check if project has an annual record matching this EFY
+    const numericYear = parseInt(targetEfy, 10);
+    const annualMatch = !isNaN(numericYear) 
+      ? (p.annual || []).find(a => a.year === numericYear)
+      : undefined;
+
+    let ctrEfy = 0;
+    let eraEfy = 0;
+
+    if (historyMatch) {
+      ctrEfy = Number(historyMatch.contractorEfy || 0);
+      eraEfy = Number(historyMatch.eraEfy || 0);
+    } else if (annualMatch) {
+      eraEfy = Number(annualMatch.km || annualMatch.amount || 0);
+      ctrEfy = Number((eraEfy * 1.1).toFixed(2));
+    } else if (p.progressPlanLabels?.efyLabel === targetEfy) {
+      ctrEfy = Number(p.progressPlan?.contractor?.efy || 0);
+      eraEfy = Number(p.progressPlan?.era?.efy || 0);
+    } else {
+      ctrEfy = Number(p.progressPlan?.contractor?.efy || 6.5);
+      eraEfy = Number(p.progressPlan?.era?.efy || 5.0);
+    }
+
+    // Derive initial 12 monthly allocations
+    let cMonths: number[] = [];
+    let eMonths: number[] = [];
+
+    if (p.progressPlanLabels?.efyLabel === targetEfy && p.monthly && p.monthly.length >= 12) {
+      cMonths = p.monthly.slice(0, 12).map(m => typeof m.revisedPlan === 'number' ? m.revisedPlan : (typeof m.originalPlan === 'number' ? m.originalPlan : 0));
+      eMonths = p.monthly.slice(0, 12).map(m => typeof m.originalPlan === 'number' ? m.originalPlan : (typeof m.revisedPlan === 'number' ? m.revisedPlan : 0));
+    } else {
+      cMonths = distributeTotalTo12Months(ctrEfy || 6.5, 'even');
+      eMonths = distributeTotalTo12Months(eraEfy || 5.0, 'even');
+    }
+
+    const cSums = calculateQuarterlyAndEfyFromMonths(cMonths);
+    const eSums = calculateQuarterlyAndEfyFromMonths(eMonths);
+
+    return {
+      contractorEfy: cSums.efy || ctrEfy,
+      eraEfy: eSums.efy || eraEfy,
+      q1Contractor: cSums.q1,
+      q2Contractor: cSums.q2,
+      q3Contractor: cSums.q3,
+      q4Contractor: cSums.q4,
+      q1Era: eSums.q1,
+      q2Era: eSums.q2,
+      q3Era: eSums.q3,
+      q4Era: eSums.q4,
+      contractorMonths: cMonths,
+      eraMonths: eMonths,
+      efyLabel: targetEfy
+    };
+  };
+
+  const handleAddNewEfyYear = (newYear: string) => {
+    const cleaned = newYear.trim().replace(/^EFY\s*/i, '');
+    if (!cleaned) return;
+    if (!availableEfyYears.includes(cleaned)) {
+      const updatedList = Array.from(new Set([cleaned, ...availableEfyYears])).sort((a, b) => {
+        const numA = parseInt(a, 10) || 0;
+        const numB = parseInt(b, 10) || 0;
+        return numB - numA;
+      });
+      setAvailableEfyYears(updatedList);
+    }
+    setSelectedPlanningEfy(cleaned);
+    setIsAddEfyModalOpen(false);
+    setCustomEfyInput('');
+    showEfyToast(`Added & switched to EFY ${cleaned} Progress Baseline Plan!`);
+  };
+
+  const updateEfyMonthValue = (projectId: string, tier: 'contractor' | 'era', monthIdx: number, val: number) => {
+    setEfyDraftMapByYear(prevAll => {
+      const currentYearDrafts = prevAll[selectedPlanningEfy] || {};
+      const proj = processedProjects.find(p => p.id === projectId);
+      const current = currentYearDrafts[projectId] || (proj ? getEfyDraft(proj, selectedPlanningEfy) : {
+        contractorEfy: 0,
+        eraEfy: 0,
+        q1Contractor: 0,
+        q2Contractor: 0,
+        q3Contractor: 0,
+        q4Contractor: 0,
+        q1Era: 0,
+        q2Era: 0,
+        q3Era: 0,
+        q4Era: 0,
+        contractorMonths: Array(12).fill(0),
+        eraMonths: Array(12).fill(0),
+        efyLabel: selectedPlanningEfy
+      });
+
+      const newMonths = tier === 'contractor'
+        ? [...(current.contractorMonths || Array(12).fill(0))]
+        : [...(current.eraMonths || Array(12).fill(0))];
+
+      newMonths[monthIdx] = Math.max(0, val);
+      const { q1, q2, q3, q4, efy } = calculateQuarterlyAndEfyFromMonths(newMonths);
+
+      const updatedDraft: EfyProjectDraft = tier === 'contractor'
+        ? {
+            ...current,
+            contractorMonths: newMonths,
+            q1Contractor: q1,
+            q2Contractor: q2,
+            q3Contractor: q3,
+            q4Contractor: q4,
+            contractorEfy: efy
+          }
+        : {
+            ...current,
+            eraMonths: newMonths,
+            q1Era: q1,
+            q2Era: q2,
+            q3Era: q3,
+            q4Era: q4,
+            eraEfy: efy
+          };
+
+      return {
+        ...prevAll,
+        [selectedPlanningEfy]: {
+          ...currentYearDrafts,
+          [projectId]: updatedDraft
+        }
+      };
+    });
+  };
+
+  const applyMonthlyPreset = (projectId: string, tier: 'all' | 'contractor' | 'era', preset: 'even' | 'dry_season' | 'scurve') => {
+    const proj = processedProjects.find(p => p.id === projectId);
+    if (!proj) return;
+    const current = getEfyDraft(proj, selectedPlanningEfy);
+
+    const cTotal = current.contractorEfy || 6.5;
+    const eTotal = current.eraEfy || 5.0;
+
+    const newCMonths = (tier === 'all' || tier === 'contractor') ? distributeTotalTo12Months(cTotal, preset) : current.contractorMonths;
+    const newEMonths = (tier === 'all' || tier === 'era') ? distributeTotalTo12Months(eTotal, preset) : current.eraMonths;
+
+    const cSums = calculateQuarterlyAndEfyFromMonths(newCMonths);
+    const eSums = calculateQuarterlyAndEfyFromMonths(newEMonths);
+
+    setEfyDraftMapByYear(prevAll => ({
+      ...prevAll,
+      [selectedPlanningEfy]: {
+        ...(prevAll[selectedPlanningEfy] || {}),
+        [projectId]: {
+          ...current,
+          contractorMonths: newCMonths,
+          eraMonths: newEMonths,
+          q1Contractor: cSums.q1,
+          q2Contractor: cSums.q2,
+          q3Contractor: cSums.q3,
+          q4Contractor: cSums.q4,
+          contractorEfy: cSums.efy,
+          q1Era: eSums.q1,
+          q2Era: eSums.q2,
+          q3Era: eSums.q3,
+          q4Era: eSums.q4,
+          eraEfy: eSums.efy
+        }
+      }
+    }));
+
+    const presetLabel = preset === 'dry_season' ? '☀️ Dry Season Weighted' : preset === 'scurve' ? '📈 S-Curve Gradual' : '⚖️ Equal Monthly';
+    showEfyToast(`Applied ${presetLabel} distribution across all 12 months for EFY ${selectedPlanningEfy} on ${proj.name}.`);
+  };
+
+  const updateEfyDraft = (projectId: string, field: keyof EfyProjectDraft, value: any) => {
+    setEfyDraftMapByYear(prevAll => {
+      const currentYearDrafts = prevAll[selectedPlanningEfy] || {};
+      const proj = processedProjects.find(p => p.id === projectId);
+      const current = currentYearDrafts[projectId] || (proj ? getEfyDraft(proj, selectedPlanningEfy) : {
+        contractorEfy: 0,
+        eraEfy: 0,
+        q1Contractor: 0,
+        q2Contractor: 0,
+        q3Contractor: 0,
+        q4Contractor: 0,
+        q1Era: 0,
+        q2Era: 0,
+        q3Era: 0,
+        q4Era: 0,
+        contractorMonths: Array(12).fill(0),
+        eraMonths: Array(12).fill(0),
+        efyLabel: selectedPlanningEfy
+      });
+
+      const updated: EfyProjectDraft = {
+        ...current,
+        [field]: value
+      };
+
+      if (field === 'contractorEfy' && typeof value === 'number') {
+        const newCM = distributeTotalTo12Months(value, 'even');
+        const cSums = calculateQuarterlyAndEfyFromMonths(newCM);
+        updated.contractorMonths = newCM;
+        updated.q1Contractor = cSums.q1;
+        updated.q2Contractor = cSums.q2;
+        updated.q3Contractor = cSums.q3;
+        updated.q4Contractor = cSums.q4;
+      } else if (field === 'eraEfy' && typeof value === 'number') {
+        const newEM = distributeTotalTo12Months(value, 'even');
+        const eSums = calculateQuarterlyAndEfyFromMonths(newEM);
+        updated.eraMonths = newEM;
+        updated.q1Era = eSums.q1;
+        updated.q2Era = eSums.q2;
+        updated.q3Era = eSums.q3;
+        updated.q4Era = eSums.q4;
+      }
+
+      return {
+        ...prevAll,
+        [selectedPlanningEfy]: {
+          ...currentYearDrafts,
+          [projectId]: updated
+        }
+      };
+    });
+  };
+
+  const handleAutoDistributeQuarters = (projectId: string) => {
+    const proj = processedProjects.find(p => p.id === projectId);
+    if (!proj) return;
+    const current = getEfyDraft(proj, selectedPlanningEfy);
+    const cEfy = current.contractorEfy;
+    const eEfy = current.eraEfy;
+    const cMonths = distributeTotalTo12Months(cEfy, 'even');
+    const eMonths = distributeTotalTo12Months(eEfy, 'even');
+    const cSums = calculateQuarterlyAndEfyFromMonths(cMonths);
+    const eSums = calculateQuarterlyAndEfyFromMonths(eMonths);
+
+    setEfyDraftMapByYear(prevAll => ({
+      ...prevAll,
+      [selectedPlanningEfy]: {
+        ...(prevAll[selectedPlanningEfy] || {}),
+        [projectId]: {
+          ...current,
+          contractorMonths: cMonths,
+          eraMonths: eMonths,
+          q1Contractor: cSums.q1,
+          q2Contractor: cSums.q2,
+          q3Contractor: cSums.q3,
+          q4Contractor: cSums.q4,
+          q1Era: eSums.q1,
+          q2Era: eSums.q2,
+          q3Era: eSums.q3,
+          q4Era: eSums.q4
+        }
+      }
+    }));
+    showEfyToast(`Calculated 12-month and quarterly plan breakdown for EFY ${selectedPlanningEfy} on ${proj.name}`);
+  };
+
+  const handleSaveSingleEfyPlan = (project: Project) => {
+    const draft = getEfyDraft(project, selectedPlanningEfy);
+    const efyYearStr = draft.efyLabel || selectedPlanningEfy;
+    const numericYear = parseInt(efyYearStr, 10);
+
+    const isActiveEfy = (project.progressPlanLabels?.efyLabel || '').trim() === efyYearStr.trim();
+
+    // 1. Prepare updated active plan (if this is the active EFY)
+    const updatedPlan: ProgressPlan = {
+      contractor: {
+        ...(project.progressPlan?.contractor || { month: 0, quarter: 0, efy: 0, todate: 0 }),
+        month: isActiveEfy ? (draft.contractorMonths[1] || draft.contractorMonths[0] || (project.progressPlan?.contractor?.month || 0)) : (project.progressPlan?.contractor?.month || 0),
+        quarter: isActiveEfy ? (draft.q1Contractor !== undefined ? Number(draft.q1Contractor) : (project.progressPlan?.contractor?.quarter || 0)) : (project.progressPlan?.contractor?.quarter || 0),
+        efy: isActiveEfy ? Number(draft.contractorEfy || 0) : (project.progressPlan?.contractor?.efy || 0),
+      },
+      era: {
+        ...(project.progressPlan?.era || { month: 0, quarter: 0, efy: 0, todate: 0 }),
+        month: isActiveEfy ? (draft.eraMonths[1] || draft.eraMonths[0] || (project.progressPlan?.era?.month || 0)) : (project.progressPlan?.era?.month || 0),
+        quarter: isActiveEfy ? (draft.q1Era !== undefined ? Number(draft.q1Era) : (project.progressPlan?.era?.quarter || 0)) : (project.progressPlan?.era?.quarter || 0),
+        efy: isActiveEfy ? Number(draft.eraEfy || 0) : (project.progressPlan?.era?.efy || 0),
+      },
+      actual: project.progressPlan?.actual || { month: 0, quarter: 0, efy: 0, todate: 0 }
+    };
+
+    const updatedLabels = {
+      ...(project.progressPlanLabels || { monthLabel: 'Aug 2026', quarterLabel: 'Q1 (Jul-Sep 2026)', efyLabel: '2019' }),
+      efyLabel: isActiveEfy ? efyYearStr : (project.progressPlanLabels?.efyLabel || '2019')
+    };
+
+    // 2. Also record in historical baseline archive (progressPlanHistory)
+    const historyItem: ProgressPlanHistoryItem = {
+      id: `efy_${efyYearStr}_plan_${project.id}`,
+      monthLabel: `EFY ${efyYearStr} Baseline Plan`,
+      quarterLabel: `Q1-Q4 (EFY ${efyYearStr})`,
+      efyLabel: efyYearStr,
+      contractorMonth: draft.contractorMonths[0] || 0,
+      contractorQuarter: draft.q1Contractor || 0,
+      contractorEfy: draft.contractorEfy || 0,
+      eraMonth: draft.eraMonths[0] || 0,
+      eraQuarter: draft.q1Era || 0,
+      eraEfy: draft.eraEfy || 0,
+      actualMonth: 0,
+      actualQuarter: 0,
+      actualEfy: 0,
+      actualTodate: 0,
+      contractorTodate: 0,
+      eraTodate: 0,
+      physicalProgress: 0
+    };
+
+    const existingHistory = project.progressPlanHistory || [];
+    const filteredHistory = existingHistory.filter(h => h.id !== historyItem.id && h.monthLabel !== historyItem.monthLabel);
+    const updatedHistory = sortProgressPlanHistoryDescending([historyItem, ...filteredHistory]);
+
+    // 3. Update project.annual list
+    let updatedAnnual = [...(project.annual || [])];
+    if (!isNaN(numericYear)) {
+      const existsIdx = updatedAnnual.findIndex(a => a.year === numericYear);
+      const annualEntry = {
+        year: numericYear,
+        amount: draft.eraEfy || draft.contractorEfy || 0,
+        km: draft.eraEfy || draft.contractorEfy || 0,
+        percent: project.lengthKm > 0 ? Number(((draft.eraEfy / project.lengthKm) * 100).toFixed(2)) : 0
+      };
+      if (existsIdx >= 0) {
+        updatedAnnual[existsIdx] = { ...updatedAnnual[existsIdx], ...annualEntry };
+      } else {
+        updatedAnnual.push(annualEntry);
+      }
+      updatedAnnual.sort((a, b) => b.year - a.year);
+    }
+
+    // 4. Update project.monthly if active
+    let updatedMonthly = project.monthly || [];
+    if (isActiveEfy && updatedMonthly.length >= 12) {
+      updatedMonthly = updatedMonthly.map((m, idx) => {
+        if (idx < 12) {
+          return {
+            ...m,
+            revisedPlan: draft.contractorMonths[idx] !== undefined ? draft.contractorMonths[idx] : m.revisedPlan,
+            originalPlan: draft.eraMonths[idx] !== undefined ? draft.eraMonths[idx] : m.originalPlan
+          };
+        }
+        return m;
+      });
+    }
+
+    const updatedProject: Project = {
+      ...project,
+      progressPlan: isActiveEfy ? updatedPlan : project.progressPlan,
+      progressPlanLabels: isActiveEfy ? updatedLabels : project.progressPlanLabels,
+      progressPlanHistory: updatedHistory,
+      annual: updatedAnnual,
+      monthly: updatedMonthly
+    };
+
+    if (onUpdateProject) {
+      onUpdateProject(updatedProject, `EFY ${efyYearStr} Annual Baseline Plan configured (Contractor: ${draft.contractorEfy} Km, ERA: ${draft.eraEfy} Km)`);
+    }
+
+    showEfyToast(`✅ EFY ${efyYearStr} Baseline Plan saved for "${project.name}" (Contractor: ${draft.contractorEfy} Km, ERA: ${draft.eraEfy} Km)`);
+  };
+
+  const handleSaveAllEfyPlans = () => {
+    let savedCount = 0;
+    const efyYearStr = selectedPlanningEfy;
+    const numericYear = parseInt(efyYearStr, 10);
+
+    processedProjects.forEach(p => {
+      const draft = getEfyDraft(p, selectedPlanningEfy);
+      const isActiveEfy = (p.progressPlanLabels?.efyLabel || '').trim() === efyYearStr.trim();
+
+      const updatedPlan: ProgressPlan = {
+        contractor: {
+          ...(p.progressPlan?.contractor || { month: 0, quarter: 0, efy: 0, todate: 0 }),
+          month: isActiveEfy ? (draft.contractorMonths[1] || draft.contractorMonths[0] || (p.progressPlan?.contractor?.month || 0)) : (p.progressPlan?.contractor?.month || 0),
+          quarter: isActiveEfy ? (draft.q1Contractor !== undefined ? Number(draft.q1Contractor) : (p.progressPlan?.contractor?.quarter || 0)) : (p.progressPlan?.contractor?.quarter || 0),
+          efy: isActiveEfy ? Number(draft.contractorEfy || 0) : (p.progressPlan?.contractor?.efy || 0),
+        },
+        era: {
+          ...(p.progressPlan?.era || { month: 0, quarter: 0, efy: 0, todate: 0 }),
+          month: isActiveEfy ? (draft.eraMonths[1] || draft.eraMonths[0] || (p.progressPlan?.era?.month || 0)) : (p.progressPlan?.era?.month || 0),
+          quarter: isActiveEfy ? (draft.q1Era !== undefined ? Number(draft.q1Era) : (p.progressPlan?.era?.quarter || 0)) : (p.progressPlan?.era?.quarter || 0),
+          efy: isActiveEfy ? Number(draft.eraEfy || 0) : (p.progressPlan?.era?.efy || 0),
+        },
+        actual: p.progressPlan?.actual || { month: 0, quarter: 0, efy: 0, todate: 0 }
+      };
+
+      const updatedLabels = {
+        ...(p.progressPlanLabels || { monthLabel: 'Aug 2026', quarterLabel: 'Q1 (Jul-Sep 2026)', efyLabel: '2019' }),
+        efyLabel: isActiveEfy ? efyYearStr : (p.progressPlanLabels?.efyLabel || '2019')
+      };
+
+      const historyItem: ProgressPlanHistoryItem = {
+        id: `efy_${efyYearStr}_plan_${p.id}`,
+        monthLabel: `EFY ${efyYearStr} Baseline Plan`,
+        quarterLabel: `Q1-Q4 (EFY ${efyYearStr})`,
+        efyLabel: efyYearStr,
+        contractorMonth: draft.contractorMonths[0] || 0,
+        contractorQuarter: draft.q1Contractor || 0,
+        contractorEfy: draft.contractorEfy || 0,
+        eraMonth: draft.eraMonths[0] || 0,
+        eraQuarter: draft.q1Era || 0,
+        eraEfy: draft.eraEfy || 0,
+        actualMonth: 0,
+        actualQuarter: 0,
+        actualEfy: 0,
+        actualTodate: 0,
+        contractorTodate: 0,
+        eraTodate: 0,
+        physicalProgress: 0
+      };
+
+      const existingHistory = p.progressPlanHistory || [];
+      const filteredHistory = existingHistory.filter(h => h.id !== historyItem.id && h.monthLabel !== historyItem.monthLabel);
+      const updatedHistory = sortProgressPlanHistoryDescending([historyItem, ...filteredHistory]);
+
+      let updatedAnnual = [...(p.annual || [])];
+      if (!isNaN(numericYear)) {
+        const existsIdx = updatedAnnual.findIndex(a => a.year === numericYear);
+        const annualEntry = {
+          year: numericYear,
+          amount: draft.eraEfy || draft.contractorEfy || 0,
+          km: draft.eraEfy || draft.contractorEfy || 0,
+          percent: p.lengthKm > 0 ? Number(((draft.eraEfy / p.lengthKm) * 100).toFixed(2)) : 0
+        };
+        if (existsIdx >= 0) {
+          updatedAnnual[existsIdx] = { ...updatedAnnual[existsIdx], ...annualEntry };
+        } else {
+          updatedAnnual.push(annualEntry);
+        }
+        updatedAnnual.sort((a, b) => b.year - a.year);
+      }
+
+      let updatedMonthly = p.monthly || [];
+      if (isActiveEfy && updatedMonthly.length >= 12) {
+        updatedMonthly = updatedMonthly.map((m, idx) => {
+          if (idx < 12) {
+            return {
+              ...m,
+              revisedPlan: draft.contractorMonths[idx] !== undefined ? draft.contractorMonths[idx] : m.revisedPlan,
+              originalPlan: draft.eraMonths[idx] !== undefined ? draft.eraMonths[idx] : m.originalPlan
+            };
+          }
+          return m;
+        });
+      }
+
+      const updatedProject: Project = {
+        ...p,
+        progressPlan: isActiveEfy ? updatedPlan : p.progressPlan,
+        progressPlanLabels: isActiveEfy ? updatedLabels : p.progressPlanLabels,
+        progressPlanHistory: updatedHistory,
+        annual: updatedAnnual,
+        monthly: updatedMonthly
+      };
+
+      if (onUpdateProject) {
+        onUpdateProject(updatedProject, `EFY ${efyYearStr} Annual Baseline Plan configured across portfolio`);
+        savedCount++;
+      }
+    });
+
+    showEfyToast(`🎉 Successfully saved EFY ${efyYearStr} Annual Progress Baseline Plans across ${savedCount || processedProjects.length} projects!`);
+  };
 
   // Master Admin verification check
   const isMasterAdmin = Boolean(
@@ -2310,43 +2864,43 @@ export default function GroupReportGenerator({
 
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(5.5);
-      doc.setTextColor(100, 116, 139);
+      doc.setTextColor(0, 0, 0);
       doc.text("OFFICIAL DATE STAMP", dsX + 6, 35);
 
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(7.5);
-      doc.setTextColor(15, 23, 42);
+      doc.setTextColor(0, 0, 0);
       doc.text(new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' }), dsX + 6, 43);
 
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(5.5);
-      doc.setTextColor(71, 85, 105);
+      doc.setTextColor(0, 0, 0);
       doc.text(`TIME: ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • OFFICIAL`, dsX + 6, 50);
 
       // Title & Metadata Block
       const maxTitleW = dsX - 72 - 12;
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(11);
-      doc.setTextColor(15, 23, 42); // slate-900
+      doc.setTextColor(0, 0, 0); // Black
       doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA)", 72, 40);
       
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8);
-      doc.setTextColor(100, 116, 139); // slate-500
+      doc.setTextColor(0, 0, 0); // Black
       const headerMetaStr = `CMS - CONTRACT MONITORING & EXECUTIVE REPORTING SYSTEM • GENERATOR: ${currentUserObj.username.toUpperCase()}`;
       const wrappedHeaderMeta = doc.splitTextToSize(headerMetaStr, maxTitleW);
       doc.text(wrappedHeaderMeta[0] || headerMetaStr, 72, 51);
 
       // Footer line
       doc.setLineWidth(0.75);
-      doc.setDrawColor(203, 213, 225); // slate-300
+      doc.setDrawColor(200, 200, 200);
       doc.line(40, pageHeight - 40, pageWidth - 40, pageHeight - 40);
 
       // Header bottom divider line
       doc.line(40, 58, pageWidth - 40, 58);
 
       doc.setFontSize(7.5);
-      doc.setTextColor(148, 163, 184); // slate-400
+      doc.setTextColor(0, 0, 0);
       doc.text(`CONFIDENTIALITY CLAUSE: FOR OFFICIAL USE ONLY • INTERNAL ERA MANAGEMENT PERFORMANCE BRIEFING`, 40, pageHeight - 24);
       doc.text(`Page ${pageCount}`, pageWidth - 60, pageHeight - 24);
     };
@@ -2356,7 +2910,7 @@ export default function GroupReportGenerator({
     // Document Subject Headline
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(14);
-    doc.setTextColor(79, 70, 229); // Indigo-600
+    doc.setTextColor(0, 0, 0); // Black
     const groupNameStr = selectedGroup === 'All' ? 'ALL GROUPINGS (COMBINED STATS)' : selectedGroup.toUpperCase();
     const groupLabelStr = 
       groupType === 'directorate' ? 'PROGRAM DIRECTORATE' : 
@@ -2367,7 +2921,7 @@ export default function GroupReportGenerator({
     doc.text(wrappedHeadline, 40, 85);
 
     // Decorative thin separator
-    doc.setDrawColor(226, 232, 240);
+    doc.setDrawColor(200, 200, 200);
     doc.setLineWidth(1);
     doc.line(40, 95, pageWidth - 40, 95);
 
@@ -2379,14 +2933,14 @@ export default function GroupReportGenerator({
     // KPI Card 1: Total Contracts
     doc.setFillColor(248, 250, 252);
     doc.rect(40, cardY, cardWidth, cardHeight, 'F');
-    doc.setDrawColor(226, 232, 240);
+    doc.setDrawColor(200, 200, 200);
     doc.rect(40, cardY, cardWidth, cardHeight, 'S');
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7.5);
-    doc.setTextColor(100, 116, 139);
+    doc.setTextColor(0, 0, 0);
     doc.text("TOTAL ACTIVE CONTRACTS", 48, cardY + 18);
     doc.setFontSize(14);
-    doc.setTextColor(15, 23, 42);
+    doc.setTextColor(0, 0, 0);
     doc.text(`${stats.count}`, 48, cardY + 38);
 
     // KPI Card 2: Average Physical Progress
@@ -2394,10 +2948,10 @@ export default function GroupReportGenerator({
     doc.rect(40 + cardWidth + 10, cardY, cardWidth, cardHeight, 'F');
     doc.rect(40 + cardWidth + 10, cardY, cardWidth, cardHeight, 'S');
     doc.setFontSize(7.5);
-    doc.setTextColor(100, 116, 139);
+    doc.setTextColor(0, 0, 0);
     doc.text("AVG PHYSICAL PROGRESS", 40 + cardWidth + 18, cardY + 18);
     doc.setFontSize(14);
-    doc.setTextColor(13, 148, 136); // Teal
+    doc.setTextColor(0, 0, 0);
     doc.text(`${stats.avgProgress.toFixed(2)}%`, 40 + cardWidth + 18, cardY + 38);
 
     // KPI Card 3: Aggregate Value
@@ -2405,10 +2959,10 @@ export default function GroupReportGenerator({
     doc.rect(40 + (cardWidth + 10) * 2, cardY, cardWidth, cardHeight, 'F');
     doc.rect(40 + (cardWidth + 10) * 2, cardY, cardWidth, cardHeight, 'S');
     doc.setFontSize(7.5);
-    doc.setTextColor(100, 116, 139);
+    doc.setTextColor(0, 0, 0);
     doc.text("AGGREGATE CONTRACT VALUE", 40 + (cardWidth + 10) * 2 + 8, cardY + 18);
     doc.setFontSize(10.5);
-    doc.setTextColor(15, 23, 42);
+    doc.setTextColor(0, 0, 0);
     doc.text(`${stats.totalValue.toLocaleString(undefined, { maximumFractionDigits: 2 })} ETB`, 40 + (cardWidth + 10) * 2 + 8, cardY + 38);
 
     // KPI Card 4: Risks & Warnings
@@ -2416,14 +2970,10 @@ export default function GroupReportGenerator({
     doc.rect(40 + (cardWidth + 10) * 3, cardY, cardWidth, cardHeight, 'F');
     doc.rect(40 + (cardWidth + 10) * 3, cardY, cardWidth, cardHeight, 'S');
     doc.setFontSize(7.5);
-    doc.setTextColor(100, 116, 139);
+    doc.setTextColor(0, 0, 0);
     doc.text("EXPIRED/CRITICAL GUARANTEES", 40 + (cardWidth + 10) * 3 + 8, cardY + 18);
     doc.setFontSize(14);
-    if (stats.warningCount > 0) {
-      doc.setTextColor(220, 38, 38); // red
-    } else {
-      doc.setTextColor(22, 163, 74); // green
-    }
+    doc.setTextColor(0, 0, 0);
     doc.text(`${stats.warningCount} Alerts`, 40 + (cardWidth + 10) * 3 + 8, cardY + 38);
 
     curY = cardY + cardHeight + 25;
@@ -2437,63 +2987,125 @@ export default function GroupReportGenerator({
 
     // Landscape Columns widths (Total A4 width: 841.89 pt, printable width: 761.89 pt)
     const colWidths = {
-      name: 180,
-      clientContr: 140,
-      groupInfo: 110,
-      progress: 110, // progress bar + text
-      value: 125,
-      milestones: 96
+      name: 100,
+      contractor: 95,
+      consultant: 95,
+      signDate: 55,
+      startDate: 58,
+      origComp: 60,
+      revComp: 60,
+      origAmount: 88,
+      devisedAmount: 92,
+      progress: 58.89
     };
 
     const colX = {
       name: 40,
-      clientContr: 40 + colWidths.name,
-      groupInfo: 40 + colWidths.name + colWidths.clientContr,
-      progress: 40 + colWidths.name + colWidths.clientContr + colWidths.groupInfo,
-      value: 40 + colWidths.name + colWidths.clientContr + colWidths.groupInfo + colWidths.progress,
-      milestones: 40 + colWidths.name + colWidths.clientContr + colWidths.groupInfo + colWidths.progress + colWidths.value
+      contractor: 40 + colWidths.name,
+      consultant: 40 + colWidths.name + colWidths.contractor,
+      signDate: 40 + colWidths.name + colWidths.contractor + colWidths.consultant,
+      startDate: 40 + colWidths.name + colWidths.contractor + colWidths.consultant + colWidths.signDate,
+      origComp: 40 + colWidths.name + colWidths.contractor + colWidths.consultant + colWidths.signDate + colWidths.startDate,
+      revComp: 40 + colWidths.name + colWidths.contractor + colWidths.consultant + colWidths.signDate + colWidths.startDate + colWidths.origComp,
+      origAmount: 40 + colWidths.name + colWidths.contractor + colWidths.consultant + colWidths.signDate + colWidths.startDate + colWidths.origComp + colWidths.revComp,
+      devisedAmount: 40 + colWidths.name + colWidths.contractor + colWidths.consultant + colWidths.signDate + colWidths.startDate + colWidths.origComp + colWidths.revComp + colWidths.origAmount,
+      progress: 40 + colWidths.name + colWidths.contractor + colWidths.consultant + colWidths.signDate + colWidths.startDate + colWidths.origComp + colWidths.revComp + colWidths.origAmount + colWidths.devisedAmount
+    };
+
+    const formatDateForPdf = (dateStr?: string) => {
+      if (!dateStr) return 'N/A';
+      try {
+        const parts = dateStr.trim().split('-');
+        if (parts.length === 3) {
+          const y = parseInt(parts[0], 10);
+          const m = parseInt(parts[1], 10) - 1;
+          const d = parseInt(parts[2], 10);
+          if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
+            const dt = new Date(y, m, d);
+            return dt.toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' });
+          }
+        }
+        const dt = new Date(dateStr);
+        if (isNaN(dt.getTime())) return dateStr;
+        return dt.toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' });
+      } catch {
+        return dateStr;
+      }
+    };
+
+    const addDaysToDateForPdf = (startDateStr: string | undefined, daysToAdd: number): string => {
+      if (!startDateStr) return 'N/A';
+      try {
+        let baseDate: Date;
+        const parts = startDateStr.trim().split('-');
+        if (parts.length === 3) {
+          const y = parseInt(parts[0], 10);
+          const m = parseInt(parts[1], 10) - 1;
+          const d = parseInt(parts[2], 10);
+          baseDate = new Date(y, m, d);
+        } else {
+          baseDate = new Date(startDateStr);
+        }
+        if (isNaN(baseDate.getTime())) return 'N/A';
+        const targetDate = new Date(baseDate.getTime() + daysToAdd * 86400000);
+        return targetDate.toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' });
+      } catch {
+        return 'N/A';
+      }
     };
 
     const drawTableHeader = (y: number) => {
       doc.setFont('times', 'bold');
-      doc.setFontSize(8.5);
-      const headerNameLines = doc.splitTextToSize("PROJECT IDENTIFIER / CODE", colWidths.name - 12);
-      const headerClientContrLines = doc.splitTextToSize("CLIENT / CONTRACTOR", colWidths.clientContr - 12);
-      const headerGroupInfoLines = doc.splitTextToSize("DIRECTORATE & PMO", colWidths.groupInfo - 12);
-      const headerProgressLines = doc.splitTextToSize("PHYSICAL PROGRESS", colWidths.progress - 12);
-      const headerValueLines = doc.splitTextToSize("REVISED CONTRACT VAL (ETB)", colWidths.value - 12);
-      const headerMilestonesLines = doc.splitTextToSize("ALERTS / EOT", colWidths.milestones - 12);
+      doc.setFontSize(7.5);
+      const headerNameLines = doc.splitTextToSize("PROJECT NAME", colWidths.name - 6);
+      const headerContractorLines = doc.splitTextToSize("CONTRACTOR", colWidths.contractor - 6);
+      const headerConsultantLines = doc.splitTextToSize("CONSULTANT", colWidths.consultant - 6);
+      const headerSignLines = doc.splitTextToSize("SIGNING DATE", colWidths.signDate - 6);
+      const headerStartLines = doc.splitTextToSize("COMMENCEMENT DATE", colWidths.startDate - 6);
+      const headerOrigCompLines = doc.splitTextToSize("ORIGINAL COMPLETION", colWidths.origComp - 6);
+      const headerRevCompLines = doc.splitTextToSize("REVISED COMPLETION", colWidths.revComp - 6);
+      const headerOrigAmtLines = doc.splitTextToSize("ORIGINAL CONTRACT AMOUNT (ETB)", colWidths.origAmount - 6);
+      const headerDevisedAmtLines = doc.splitTextToSize("DEVISED CONTRACT AMOUNT (ETB)", colWidths.devisedAmount - 6);
+      const headerProgressLines = doc.splitTextToSize("PROGRESS (%)", colWidths.progress - 6);
 
       const maxHeaderLines = Math.max(
         headerNameLines.length,
-        headerClientContrLines.length,
-        headerGroupInfoLines.length,
-        headerProgressLines.length,
-        headerValueLines.length,
-        headerMilestonesLines.length
+        headerContractorLines.length,
+        headerConsultantLines.length,
+        headerSignLines.length,
+        headerStartLines.length,
+        headerOrigCompLines.length,
+        headerRevCompLines.length,
+        headerOrigAmtLines.length,
+        headerDevisedAmtLines.length,
+        headerProgressLines.length
       );
-      const headerHeight = maxHeaderLines * 11 + 10;
+      const headerHeight = maxHeaderLines * 9.5 + 8;
 
       doc.setFillColor(15, 23, 42); // slate-900 (professional navy dark)
       doc.rect(40, y, pageWidth - 80, headerHeight, 'F');
 
       doc.setFont('times', 'bold');
-      doc.setFontSize(8.5);
+      doc.setFontSize(7.5);
       doc.setTextColor(255, 255, 255);
 
       const drawCellLines = (lines: string[], x: number) => {
-        const startY = y + (headerHeight - (lines.length * 11)) / 2 + 8;
+        const startY = y + (headerHeight - (lines.length * 9.5)) / 2 + 7;
         lines.forEach((line, idx) => {
-          doc.text(line, x + 6, startY + idx * 11);
+          doc.text(line, x + 3, startY + idx * 9.5);
         });
       };
 
       drawCellLines(headerNameLines, colX.name);
-      drawCellLines(headerClientContrLines, colX.clientContr);
-      drawCellLines(headerGroupInfoLines, colX.groupInfo);
+      drawCellLines(headerContractorLines, colX.contractor);
+      drawCellLines(headerConsultantLines, colX.consultant);
+      drawCellLines(headerSignLines, colX.signDate);
+      drawCellLines(headerStartLines, colX.startDate);
+      drawCellLines(headerOrigCompLines, colX.origComp);
+      drawCellLines(headerRevCompLines, colX.revComp);
+      drawCellLines(headerOrigAmtLines, colX.origAmount);
+      drawCellLines(headerDevisedAmtLines, colX.devisedAmount);
       drawCellLines(headerProgressLines, colX.progress);
-      drawCellLines(headerValueLines, colX.value);
-      drawCellLines(headerMilestonesLines, colX.milestones);
 
       // Header border line
       doc.setDrawColor(15, 23, 42);
@@ -2503,11 +3115,15 @@ export default function GroupReportGenerator({
       doc.line(40, y, 40, y + headerHeight);
       doc.line(pageWidth - 40, y, pageWidth - 40, y + headerHeight);
 
-      doc.line(colX.clientContr, y, colX.clientContr, y + headerHeight);
-      doc.line(colX.groupInfo, y, colX.groupInfo, y + headerHeight);
+      doc.line(colX.contractor, y, colX.contractor, y + headerHeight);
+      doc.line(colX.consultant, y, colX.consultant, y + headerHeight);
+      doc.line(colX.signDate, y, colX.signDate, y + headerHeight);
+      doc.line(colX.startDate, y, colX.startDate, y + headerHeight);
+      doc.line(colX.origComp, y, colX.origComp, y + headerHeight);
+      doc.line(colX.revComp, y, colX.revComp, y + headerHeight);
+      doc.line(colX.origAmount, y, colX.origAmount, y + headerHeight);
+      doc.line(colX.devisedAmount, y, colX.devisedAmount, y + headerHeight);
       doc.line(colX.progress, y, colX.progress, y + headerHeight);
-      doc.line(colX.value, y, colX.value, y + headerHeight);
-      doc.line(colX.milestones, y, colX.milestones, y + headerHeight);
 
       return headerHeight;
     };
@@ -2516,70 +3132,67 @@ export default function GroupReportGenerator({
     curY += initialHeaderHeight;
 
     processedProjects.forEach((p, idx) => {
-      const combinedTitle = p.name || 'Untitled Project';
-      doc.setFont('times', 'bold');
-      doc.setFontSize(12);
-      const titleLines = doc.splitTextToSize(combinedTitle, colWidths.name - 12);
+      const nameText = p.name || 'Untitled Project';
+      const contractorText = p.contractor || 'N/A';
+      const consultantText = p.consultant || 'N/A';
 
-      const clientText = `Client: ${p.client || 'N/A'}`;
-      const contractorText = `Contr: ${p.contractor || 'N/A'}`;
-      doc.setFont('times', 'normal');
-      doc.setFontSize(12);
-      const clientLines = doc.splitTextToSize(clientText, colWidths.clientContr - 12);
-      const contrLines = doc.splitTextToSize(contractorText, colWidths.clientContr - 12);
-
-      const dirText = `DIR: ${p.programDirectorate || 'Southern'}`;
-      const pmoText = `PMO: ${p.pmo || 'PMO 1'}`;
       doc.setFont('times', 'bold');
-      doc.setFontSize(12);
-      const dirLines = doc.splitTextToSize(dirText, colWidths.groupInfo - 12);
+      doc.setFontSize(8.5);
+      const nameLines = doc.splitTextToSize(nameText, colWidths.name - 6);
+
       doc.setFont('times', 'normal');
-      doc.setFontSize(12);
-      const pmoLines = doc.splitTextToSize(pmoText, colWidths.groupInfo - 12);
+      doc.setFontSize(8);
+      const contractorLines = doc.splitTextToSize(contractorText, colWidths.contractor - 6);
+      const consultantLines = doc.splitTextToSize(consultantText, colWidths.consultant - 6);
+
+      const signDateText = formatDateForPdf(p.signDate);
+      const startDateText = formatDateForPdf(p.startDate);
+
+      const totalDays = (p.origDays || 0) + (p.eotDays || 0) + (p.interimEotDays || 0);
+      const origCompDateText = p.startDate ? addDaysToDateForPdf(p.startDate, p.origDays || 0) : 'N/A';
+      const revCompDateText = p.startDate ? addDaysToDateForPdf(p.startDate, totalDays) : 'N/A';
+
+      const signLines = doc.splitTextToSize(signDateText, colWidths.signDate - 6);
+      const startLines = doc.splitTextToSize(startDateText, colWidths.startDate - 6);
+      const origCompLines = doc.splitTextToSize(origCompDateText, colWidths.origComp - 6);
+
+      doc.setFont('times', 'bold');
+      const revCompLines = doc.splitTextToSize(revCompDateText, colWidths.revComp - 6);
+
+      const origValNum = p.origAmount ? Math.round(p.origAmount * 1_000_000) : 0;
+      const varVal = (p.variation || 0) > 10000 ? (p.variation || 0) : ((p.variation || 0) * 1_000_000);
+      const devisedValNum = p.origAmount ? Math.round((p.origAmount * 1_000_000) + varVal) : 0;
+
+      const origAmountText = origValNum ? `${origValNum.toLocaleString()} ETB` : 'N/A';
+      const devisedAmountText = devisedValNum ? `${devisedValNum.toLocaleString()} ETB` : 'N/A';
+
+      doc.setFont('times', 'normal');
+      const origAmountLines = doc.splitTextToSize(origAmountText, colWidths.origAmount - 6);
+
+      doc.setFont('times', 'bold');
+      const devisedAmountLines = doc.splitTextToSize(devisedAmountText, colWidths.devisedAmount - 6);
 
       const progVal = p.physicalProgress || 0;
-      const progText = `${progVal.toFixed(2)}% Completed`;
-      doc.setFont('times', 'bold');
-      doc.setFontSize(12);
-      const progLines = doc.splitTextToSize(progText, colWidths.progress - 12);
+      const progText = `${progVal.toFixed(2)}%`;
+      const progLines = doc.splitTextToSize(progText, colWidths.progress - 6);
 
-      const varVal = (p.variation || 0) > 10000 ? (p.variation || 0) : ((p.variation || 0) * 1_000_000);
-      const valAmount = (p.origAmount * 1_000_000) + varVal;
-      const valText = `${valAmount.toLocaleString()} ETB`;
-      const provText = `Prov. Sum: ${p.provisionalSum?.toLocaleString() || '0'}`;
-      doc.setFont('times', 'bold');
-      doc.setFontSize(12);
-      const valLines = doc.splitTextToSize(valText, colWidths.value - 12);
-      doc.setFont('times', 'normal');
-      doc.setFontSize(12);
-      const provLines = doc.splitTextToSize(provText, colWidths.value - 12);
+      // Pre-calculate cells heights with line spacing
+      const nameHeight = nameLines.length * 9.5 + 8;
+      const contractorHeight = contractorLines.length * 9.5 + 8;
+      const consultantHeight = consultantLines.length * 9.5 + 8;
+      const signHeight = signLines.length * 9.5 + 8;
+      const startHeight = startLines.length * 9.5 + 8;
+      const origCompHeight = origCompLines.length * 9.5 + 8;
+      const revCompHeight = revCompLines.length * 9.5 + 8;
+      const origAmtHeight = origAmountLines.length * 9.5 + 8;
+      const devisedAmtHeight = devisedAmountLines.length * 9.5 + 8;
+      const progressHeight = progLines.length * 9.5 + 8;
 
-      const expiredBonds = (p.bonds || []).filter(b => {
-        if (b.status && (b.status.toLowerCase().includes('recovered') || b.status.toLowerCase().includes('returned') || b.status.toLowerCase().includes('amortized') || b.status === 'N/A')) return false;
-        if (b.status === 'Expired') return true;
-        if (b.expireDate) {
-          try { return new Date(b.expireDate) < new Date(); } catch { return false; }
-        }
-        return false;
-      }).length;
-      const bondText = expiredBonds > 0 ? `[ALERT] ${expiredBonds} Exp. Guarantees` : `[OK] Guarantees Valid`;
-      const eotText = `EOT Days: +${p.eotDays || 0}d`;
-      doc.setFont('times', 'bold');
-      doc.setFontSize(12);
-      const bondLines = doc.splitTextToSize(bondText, colWidths.milestones - 12);
-      doc.setFont('times', 'normal');
-      doc.setFontSize(12);
-      const eotLines = doc.splitTextToSize(eotText, colWidths.milestones - 12);
-
-      // Pre-calculate cells heights with 12pt font (15pt line spacing)
-      const nameHeight = titleLines.length * 15 + 12;
-      const clientContrHeight = (clientLines.length + contrLines.length) * 15 + 12;
-      const groupInfoHeight = (dirLines.length + pmoLines.length) * 15 + 12;
-      const progressHeight = progLines.length * 15 + 18 + 12; // text + progress bar
-      const valueHeight = (valLines.length + provLines.length) * 15 + 12;
-      const milestonesHeight = (bondLines.length + eotLines.length) * 15 + 12;
-
-      const rowHeight = Math.max(nameHeight, clientContrHeight, groupInfoHeight, progressHeight, valueHeight, milestonesHeight, 52);
+      const rowHeight = Math.max(
+        nameHeight, contractorHeight, consultantHeight, signHeight,
+        startHeight, origCompHeight, revCompHeight, origAmtHeight,
+        devisedAmtHeight, progressHeight, 32
+      );
 
       // Prevent overflow, add new page with header
       if (curY + rowHeight > pageHeight - 55) {
@@ -2605,120 +3218,108 @@ export default function GroupReportGenerator({
       doc.rect(40, curY, pageWidth - 80, rowHeight, 'S');
 
       // Draw columns vertical grid lines
-      doc.line(colX.clientContr, curY, colX.clientContr, curY + rowHeight);
-      doc.line(colX.groupInfo, curY, colX.groupInfo, curY + rowHeight);
+      doc.line(colX.contractor, curY, colX.contractor, curY + rowHeight);
+      doc.line(colX.consultant, curY, colX.consultant, curY + rowHeight);
+      doc.line(colX.signDate, curY, colX.signDate, curY + rowHeight);
+      doc.line(colX.startDate, curY, colX.startDate, curY + rowHeight);
+      doc.line(colX.origComp, curY, colX.origComp, curY + rowHeight);
+      doc.line(colX.revComp, curY, colX.revComp, curY + rowHeight);
+      doc.line(colX.origAmount, curY, colX.origAmount, curY + rowHeight);
+      doc.line(colX.devisedAmount, curY, colX.devisedAmount, curY + rowHeight);
       doc.line(colX.progress, curY, colX.progress, curY + rowHeight);
-      doc.line(colX.value, curY, colX.value, curY + rowHeight);
-      doc.line(colX.milestones, curY, colX.milestones, curY + rowHeight);
 
-      // 1. Render Name Code
+      // 1. Render Project Name
       doc.setFont('times', 'bold');
-      doc.setFontSize(12);
+      doc.setFontSize(8.5);
       doc.setTextColor(15, 23, 42);
-      let yOffsetN = curY + 18;
-      titleLines.forEach((line: string) => {
-        doc.text(line, colX.name + 6, yOffsetN);
-        yOffsetN += 15;
+      let yOffsetN = curY + 12;
+      nameLines.forEach((line: string) => {
+        doc.text(line, colX.name + 3, yOffsetN);
+        yOffsetN += 9.5;
       });
 
-      // 2. Render Client & Contractor Info
+      // 2. Render Contractor Name
       doc.setFont('times', 'normal');
-      doc.setFontSize(12);
-      doc.setTextColor(71, 85, 105);
-      let yOffsetCC = curY + 18;
-      clientLines.forEach((line: string) => {
-        doc.text(line, colX.clientContr + 6, yOffsetCC);
-        yOffsetCC += 15;
-      });
-      contrLines.forEach((line: string) => {
-        doc.text(line, colX.clientContr + 6, yOffsetCC);
-        yOffsetCC += 15;
+      doc.setFontSize(8);
+      doc.setTextColor(51, 65, 85);
+      let yOffsetContr = curY + 12;
+      contractorLines.forEach((line: string) => {
+        doc.text(line, colX.contractor + 3, yOffsetContr);
+        yOffsetContr += 9.5;
       });
 
-      // 3. Render Directorate & PMO Grouping Info
-      doc.setFont('times', 'bold');
-      doc.setFontSize(12);
-      doc.setTextColor(79, 70, 229); // Indigo
-      let yOffsetG = curY + 18;
-      dirLines.forEach((line: string) => {
-        doc.text(line, colX.groupInfo + 6, yOffsetG);
-        yOffsetG += 15;
+      // 3. Render Consultant Name
+      let yOffsetConsult = curY + 12;
+      consultantLines.forEach((line: string) => {
+        doc.text(line, colX.consultant + 3, yOffsetConsult);
+        yOffsetConsult += 9.5;
       });
+
+      // 4. Render Signing Date
+      let yOffsetSign = curY + 12;
+      signLines.forEach((line: string) => {
+        doc.text(line, colX.signDate + 3, yOffsetSign);
+        yOffsetSign += 9.5;
+      });
+
+      // 5. Render Commencement Date
+      let yOffsetStart = curY + 12;
+      startLines.forEach((line: string) => {
+        doc.text(line, colX.startDate + 3, yOffsetStart);
+        yOffsetStart += 9.5;
+      });
+
+      // 6. Render Original Completion Date
+      let yOffsetOrigComp = curY + 12;
+      origCompLines.forEach((line: string) => {
+        doc.text(line, colX.origComp + 3, yOffsetOrigComp);
+        yOffsetOrigComp += 9.5;
+      });
+
+      // 7. Render Revised Completion Date
+      doc.setFont('times', 'bold');
+      doc.setTextColor(30, 41, 59);
+      let yOffsetRevComp = curY + 12;
+      revCompLines.forEach((line: string) => {
+        doc.text(line, colX.revComp + 3, yOffsetRevComp);
+        yOffsetRevComp += 9.5;
+      });
+
+      // 8. Render Original Contract Amount
       doc.setFont('times', 'normal');
-      doc.setTextColor(147, 51, 234); // Purple
-      pmoLines.forEach((line: string) => {
-        doc.text(line, colX.groupInfo + 6, yOffsetG);
-        yOffsetG += 15;
+      doc.setFontSize(8);
+      doc.setTextColor(51, 65, 85);
+      let yOffsetOrigAmt = curY + 12;
+      origAmountLines.forEach((line: string) => {
+        doc.text(line, colX.origAmount + 3, yOffsetOrigAmt);
+        yOffsetOrigAmt += 9.5;
       });
 
-      // 4. Render Physical Progress Visual Bar
+      // 9. Render Devised Contract Amount
       doc.setFont('times', 'bold');
-      doc.setFontSize(12);
-      let progColor = [22, 163, 74]; // emerald green
+      doc.setFontSize(8);
+      doc.setTextColor(15, 23, 42);
+      let yOffsetDevisedAmt = curY + 12;
+      devisedAmountLines.forEach((line: string) => {
+        doc.text(line, colX.devisedAmount + 3, yOffsetDevisedAmt);
+        yOffsetDevisedAmt += 9.5;
+      });
+
+      // 10. Render Physical Progress in % (Text only, NO graph / NO bar)
+      doc.setFont('times', 'bold');
+      doc.setFontSize(8.5);
       if (progVal < 15) {
-        progColor = [220, 38, 38]; // red
         doc.setTextColor(220, 38, 38);
       } else if (progVal < 45) {
-        progColor = [217, 119, 6]; // amber
         doc.setTextColor(217, 119, 6);
       } else {
         doc.setTextColor(22, 163, 74);
       }
       
-      let yOffsetP = curY + 18;
+      let yOffsetP = curY + 12;
       progLines.forEach((line: string) => {
-        doc.text(line, colX.progress + 6, yOffsetP);
-        yOffsetP += 15;
-      });
-
-      // Progress bar outline
-      doc.setDrawColor(226, 232, 240);
-      doc.setFillColor(241, 245, 249);
-      doc.rect(colX.progress + 6, yOffsetP + 2, 85, 6, 'F');
-      
-      // Progress bar fill
-      doc.setFillColor(progColor[0], progColor[1], progColor[2]);
-      const fillWidth = Math.min(85, Math.max(0, (progVal / 100) * 85));
-      if (fillWidth > 0) {
-        doc.rect(colX.progress + 6, yOffsetP + 2, fillWidth, 6, 'F');
-      }
-
-      // 5. Render Revised Contract Value
-      doc.setFont('times', 'bold');
-      doc.setFontSize(12);
-      doc.setTextColor(15, 23, 42);
-      let yOffsetV = curY + 18;
-      valLines.forEach((line: string) => {
-        doc.text(line, colX.value + 6, yOffsetV);
-        yOffsetV += 15;
-      });
-      doc.setFont('times', 'normal');
-      doc.setFontSize(12);
-      doc.setTextColor(100, 116, 139);
-      provLines.forEach((line: string) => {
-        doc.text(line, colX.value + 6, yOffsetV);
-        yOffsetV += 15;
-      });
-
-      // 6. Render Alerts / EOT Days
-      doc.setFont('times', 'bold');
-      doc.setFontSize(12);
-      if (expiredBonds > 0) {
-        doc.setTextColor(220, 38, 38);
-      } else {
-        doc.setTextColor(22, 163, 74);
-      }
-      let yOffsetM = curY + 18;
-      bondLines.forEach((line: string) => {
-        doc.text(line, colX.milestones + 6, yOffsetM);
-        yOffsetM += 15;
-      });
-      doc.setFont('times', 'normal');
-      doc.setFontSize(12);
-      doc.setTextColor(100, 116, 139);
-      eotLines.forEach((line: string) => {
-        doc.text(line, colX.milestones + 6, yOffsetM);
-        yOffsetM += 15;
+        doc.text(line, colX.progress + 3, yOffsetP);
+        yOffsetP += 9.5;
       });
 
       curY += rowHeight;
@@ -6066,9 +6667,16 @@ export default function GroupReportGenerator({
       }
 
       const monthVariance = actMonth - eraMonth;
+      const quarterVariance = actQuarter - eraQuarter;
+      const efyVariance = actEfy - eraEfy;
       const todateVariance = actTodate - eraTodate;
+
+      // Always calculate fulfillment percentage by dividing actual by ERA plan: (Actual / ERA Plan) * 100
       const monthRatio = eraMonth > 0 ? (actMonth / eraMonth) * 100 : (actMonth > 0 ? 100 : 0);
-      const todatePct = pLen > 0 ? (actTodate / pLen) * 100 : 0;
+      const quarterRatio = eraQuarter > 0 ? (actQuarter / eraQuarter) * 100 : (actQuarter > 0 ? 100 : 0);
+      const efyRatio = eraEfy > 0 ? (actEfy / eraEfy) * 100 : (actEfy > 0 ? 100 : 0);
+      const todateRatio = eraTodate > 0 ? (actTodate / eraTodate) * 100 : (actTodate > 0 ? 100 : 0);
+      const todatePct = todateRatio; // Consistent (Actual / ERA Plan) * 100
 
       let healthStatus: 'Ahead' | 'On Track' | 'Lagging' | 'Critical' = 'On Track';
       if (monthVariance > 0.1) healthStatus = 'Ahead';
@@ -6084,13 +6692,299 @@ export default function GroupReportGenerator({
         era: { month: eraMonth, quarter: eraQuarter, efy: eraEfy, todate: eraTodate },
         actual: { month: actMonth, quarter: actQuarter, efy: actEfy, todate: actTodate },
         monthVariance,
+        quarterVariance,
+        efyVariance,
         todateVariance,
         monthRatio,
+        quarterRatio,
+        efyRatio,
+        todateRatio,
         todatePct,
         healthStatus
       };
     });
   }, [processedProjects, activeMilestone]);
+
+  // Aggregate Directorate & PMO Group Performance Metrics (Monthly, Quarterly, EFY Planned vs Accomplished)
+  interface GroupProgressAggregate {
+    name: string;
+    type: 'directorate' | 'pmo';
+    projectCount: number;
+    totalLengthKm: number;
+    avgLengthKm: number;
+    // Month
+    totalEraMonth: number;
+    avgEraMonth: number;
+    totalActMonth: number;
+    avgActMonth: number;
+    avgMonthVar: number;
+    totalMonthVar: number;
+    monthRatio: number;
+    // Quarter
+    totalEraQuarter: number;
+    avgEraQuarter: number;
+    totalActQuarter: number;
+    avgActQuarter: number;
+    avgQuarterVar: number;
+    totalQuarterVar: number;
+    quarterRatio: number;
+    // EFY
+    totalEraEfy: number;
+    avgEraEfy: number;
+    totalActEfy: number;
+    avgActEfy: number;
+    avgEfyVar: number;
+    totalEfyVar: number;
+    efyRatio: number;
+    // Cumulative
+    totalEraTodate: number;
+    avgEraTodate: number;
+    totalActTodate: number;
+    avgActTodate: number;
+    avgTodateVar: number;
+    totalTodateVar: number;
+    todateRatio: number;
+    avgTodatePct: number;
+    healthStatus: 'Ahead' | 'On Track' | 'Lagging' | 'Critical';
+  }
+
+  const directorateComparisonSummary = useMemo<GroupProgressAggregate[]>(() => {
+    if (groupComparisonMatrix.length === 0) return [];
+    const dirMap = new Map<string, typeof groupComparisonMatrix>();
+    groupComparisonMatrix.forEach(item => {
+      const dir = item.project.programDirectorate || 'Southern';
+      if (!dirMap.has(dir)) dirMap.set(dir, []);
+      dirMap.get(dir)!.push(item);
+    });
+
+    return Array.from(dirMap.entries()).map(([name, items]) => {
+      const count = items.length;
+      const totalLen = items.reduce((s, i) => s + (i.lengthKm || 0), 0);
+      const avgLen = count > 0 ? totalLen / count : 0;
+
+      const tEraMonth = items.reduce((s, i) => s + (i.era.month || 0), 0);
+      const tActMonth = items.reduce((s, i) => s + (i.actual.month || 0), 0);
+      const aEraMonth = count > 0 ? tEraMonth / count : 0;
+      const aActMonth = count > 0 ? tActMonth / count : 0;
+
+      const tEraQtr = items.reduce((s, i) => s + (i.era.quarter || 0), 0);
+      const tActQtr = items.reduce((s, i) => s + (i.actual.quarter || 0), 0);
+      const aEraQtr = count > 0 ? tEraQtr / count : 0;
+      const aActQtr = count > 0 ? tActQtr / count : 0;
+
+      const tEraEfy = items.reduce((s, i) => s + (i.era.efy || 0), 0);
+      const tActEfy = items.reduce((s, i) => s + (i.actual.efy || 0), 0);
+      const aEraEfy = count > 0 ? tEraEfy / count : 0;
+      const aActEfy = count > 0 ? tActEfy / count : 0;
+
+      const tEraTd = items.reduce((s, i) => s + (i.era.todate || 0), 0);
+      const tActTd = items.reduce((s, i) => s + (i.actual.todate || 0), 0);
+      const aEraTd = count > 0 ? tEraTd / count : 0;
+      const aActTd = count > 0 ? tActTd / count : 0;
+
+      const avgMonthVar = aActMonth - aEraMonth;
+      const monthRatio = aEraMonth > 0 ? (aActMonth / aEraMonth) * 100 : (aActMonth > 0 ? 100 : 0);
+      const quarterRatio = aEraQtr > 0 ? (aActQtr / aEraQtr) * 100 : (aActQtr > 0 ? 100 : 0);
+      const efyRatio = aEraEfy > 0 ? (aActEfy / aEraEfy) * 100 : (aActEfy > 0 ? 100 : 0);
+      const todateRatio = aEraTd > 0 ? (aActTd / aEraTd) * 100 : (aActTd > 0 ? 100 : 0);
+      const avgTodatePct = todateRatio;
+
+      let healthStatus: 'Ahead' | 'On Track' | 'Lagging' | 'Critical' = 'On Track';
+      if (avgMonthVar > 0.05) healthStatus = 'Ahead';
+      else if (avgMonthVar >= -0.05) healthStatus = 'On Track';
+      else if (avgMonthVar >= -0.4) healthStatus = 'Lagging';
+      else healthStatus = 'Critical';
+
+      return {
+        name,
+        type: 'directorate',
+        projectCount: count,
+        totalLengthKm: totalLen,
+        avgLengthKm: avgLen,
+        totalEraMonth: tEraMonth,
+        avgEraMonth: aEraMonth,
+        totalActMonth: tActMonth,
+        avgActMonth: aActMonth,
+        avgMonthVar,
+        totalMonthVar: tActMonth - tEraMonth,
+        monthRatio,
+        totalEraQuarter: tEraQtr,
+        avgEraQuarter: aEraQtr,
+        totalActQuarter: tActQtr,
+        avgActQuarter: aActQtr,
+        avgQuarterVar: aActQtr - aEraQtr,
+        totalQuarterVar: tActQtr - tEraQtr,
+        quarterRatio,
+        totalEraEfy: tEraEfy,
+        avgEraEfy: aEraEfy,
+        totalActEfy: tActEfy,
+        avgActEfy: aActEfy,
+        avgEfyVar: aActEfy - aEraEfy,
+        totalEfyVar: tActEfy - tEraEfy,
+        efyRatio,
+        totalEraTodate: tEraTd,
+        avgEraTodate: aEraTd,
+        totalActTodate: tActTd,
+        avgActTodate: aActTd,
+        avgTodateVar: aActTd - aEraTd,
+        totalTodateVar: tActTd - tEraTd,
+        todateRatio,
+        avgTodatePct,
+        healthStatus
+      };
+    }).sort((a, b) => b.monthRatio - a.monthRatio);
+  }, [groupComparisonMatrix]);
+
+  const pmoComparisonSummary = useMemo<GroupProgressAggregate[]>(() => {
+    if (groupComparisonMatrix.length === 0) return [];
+    const pmoMap = new Map<string, typeof groupComparisonMatrix>();
+    groupComparisonMatrix.forEach(item => {
+      const pmo = item.project.pmo || 'PMO 1';
+      if (!pmoMap.has(pmo)) pmoMap.set(pmo, []);
+      pmoMap.get(pmo)!.push(item);
+    });
+
+    return Array.from(pmoMap.entries()).map(([name, items]) => {
+      const count = items.length;
+      const totalLen = items.reduce((s, i) => s + (i.lengthKm || 0), 0);
+      const avgLen = count > 0 ? totalLen / count : 0;
+
+      const tEraMonth = items.reduce((s, i) => s + (i.era.month || 0), 0);
+      const tActMonth = items.reduce((s, i) => s + (i.actual.month || 0), 0);
+      const aEraMonth = count > 0 ? tEraMonth / count : 0;
+      const aActMonth = count > 0 ? tActMonth / count : 0;
+
+      const tEraQtr = items.reduce((s, i) => s + (i.era.quarter || 0), 0);
+      const tActQtr = items.reduce((s, i) => s + (i.actual.quarter || 0), 0);
+      const aEraQtr = count > 0 ? tEraQtr / count : 0;
+      const aActQtr = count > 0 ? tActQtr / count : 0;
+
+      const tEraEfy = items.reduce((s, i) => s + (i.era.efy || 0), 0);
+      const tActEfy = items.reduce((s, i) => s + (i.actual.efy || 0), 0);
+      const aEraEfy = count > 0 ? tEraEfy / count : 0;
+      const aActEfy = count > 0 ? tActEfy / count : 0;
+
+      const tEraTd = items.reduce((s, i) => s + (i.era.todate || 0), 0);
+      const tActTd = items.reduce((s, i) => s + (i.actual.todate || 0), 0);
+      const aEraTd = count > 0 ? tEraTd / count : 0;
+      const aActTd = count > 0 ? tActTd / count : 0;
+
+      const avgMonthVar = aActMonth - aEraMonth;
+      const monthRatio = aEraMonth > 0 ? (aActMonth / aEraMonth) * 100 : (aActMonth > 0 ? 100 : 0);
+      const quarterRatio = aEraQtr > 0 ? (aActQtr / aEraQtr) * 100 : (aActQtr > 0 ? 100 : 0);
+      const efyRatio = aEraEfy > 0 ? (aActEfy / aEraEfy) * 100 : (aActEfy > 0 ? 100 : 0);
+      const todateRatio = aEraTd > 0 ? (aActTd / aEraTd) * 100 : (aActTd > 0 ? 100 : 0);
+      const avgTodatePct = todateRatio;
+
+      let healthStatus: 'Ahead' | 'On Track' | 'Lagging' | 'Critical' = 'On Track';
+      if (avgMonthVar > 0.05) healthStatus = 'Ahead';
+      else if (avgMonthVar >= -0.05) healthStatus = 'On Track';
+      else if (avgMonthVar >= -0.4) healthStatus = 'Lagging';
+      else healthStatus = 'Critical';
+
+      return {
+        name,
+        type: 'pmo',
+        projectCount: count,
+        totalLengthKm: totalLen,
+        avgLengthKm: avgLen,
+        totalEraMonth: tEraMonth,
+        avgEraMonth: aEraMonth,
+        totalActMonth: tActMonth,
+        avgActMonth: aActMonth,
+        avgMonthVar,
+        totalMonthVar: tActMonth - tEraMonth,
+        monthRatio,
+        totalEraQuarter: tEraQtr,
+        avgEraQuarter: aEraQtr,
+        totalActQuarter: tActQtr,
+        avgActQuarter: aActQtr,
+        avgQuarterVar: aActQtr - aEraQtr,
+        totalQuarterVar: tActQtr - tEraQtr,
+        quarterRatio,
+        totalEraEfy: tEraEfy,
+        avgEraEfy: aEraEfy,
+        totalActEfy: tActEfy,
+        avgActEfy: aActEfy,
+        avgEfyVar: aActEfy - aEraEfy,
+        totalEfyVar: tActEfy - tEraEfy,
+        efyRatio,
+        totalEraTodate: tEraTd,
+        avgEraTodate: aEraTd,
+        totalActTodate: tActTd,
+        avgActTodate: aActTd,
+        avgTodateVar: aActTd - aEraTd,
+        totalTodateVar: tActTd - tEraTd,
+        todateRatio,
+        avgTodatePct,
+        healthStatus
+      };
+    }).sort((a, b) => b.monthRatio - a.monthRatio);
+  }, [groupComparisonMatrix]);
+
+  const overallPortfolioAverages = useMemo(() => {
+    if (groupComparisonMatrix.length === 0) return null;
+    const count = groupComparisonMatrix.length;
+    const totalLen = groupComparisonMatrix.reduce((s, i) => s + (i.lengthKm || 0), 0);
+    const avgLen = totalLen / count;
+
+    const tEraMonth = groupComparisonMatrix.reduce((s, i) => s + (i.era.month || 0), 0);
+    const tActMonth = groupComparisonMatrix.reduce((s, i) => s + (i.actual.month || 0), 0);
+    const aEraMonth = tEraMonth / count;
+    const aActMonth = tActMonth / count;
+
+    const tEraQtr = groupComparisonMatrix.reduce((s, i) => s + (i.era.quarter || 0), 0);
+    const tActQtr = groupComparisonMatrix.reduce((s, i) => s + (i.actual.quarter || 0), 0);
+    const aEraQtr = tEraQtr / count;
+    const aActQtr = tActQtr / count;
+
+    const tEraEfy = groupComparisonMatrix.reduce((s, i) => s + (i.era.efy || 0), 0);
+    const tActEfy = groupComparisonMatrix.reduce((s, i) => s + (i.actual.efy || 0), 0);
+    const aEraEfy = tEraEfy / count;
+    const aActEfy = tActEfy / count;
+
+    const tEraTd = groupComparisonMatrix.reduce((s, i) => s + (i.era.todate || 0), 0);
+    const tActTd = groupComparisonMatrix.reduce((s, i) => s + (i.actual.todate || 0), 0);
+    const aEraTd = tEraTd / count;
+    const aActTd = tActTd / count;
+
+    const todateRatio = aEraTd > 0 ? (aActTd / aEraTd) * 100 : 0;
+
+    return {
+      projectCount: count,
+      totalLengthKm: totalLen,
+      avgLengthKm: avgLen,
+      totalEraMonth: tEraMonth,
+      avgEraMonth: aEraMonth,
+      totalActMonth: tActMonth,
+      avgActMonth: aActMonth,
+      avgMonthVar: aActMonth - aEraMonth,
+      totalMonthVar: tActMonth - tEraMonth,
+      monthRatio: aEraMonth > 0 ? (aActMonth / aEraMonth) * 100 : 0,
+      totalEraQuarter: tEraQtr,
+      avgEraQuarter: aEraQtr,
+      totalActQuarter: tActQtr,
+      avgActQuarter: aActQtr,
+      avgQuarterVar: aActQtr - aEraQtr,
+      totalQuarterVar: tActQtr - tEraQtr,
+      quarterRatio: aEraQtr > 0 ? (aActQtr / aEraQtr) * 100 : 0,
+      totalEraEfy: tEraEfy,
+      avgEraEfy: aEraEfy,
+      totalActEfy: tActEfy,
+      avgActEfy: aActEfy,
+      avgEfyVar: aActEfy - aEraEfy,
+      totalEfyVar: tActEfy - tEraEfy,
+      efyRatio: aEraEfy > 0 ? (aActEfy / aEraEfy) * 100 : 0,
+      totalEraTodate: tEraTd,
+      avgEraTodate: aEraTd,
+      totalActTodate: tActTd,
+      avgActTodate: aActTd,
+      avgTodateVar: aActTd - aEraTd,
+      totalTodateVar: tActTd - tEraTd,
+      todateRatio,
+      avgTodatePct: todateRatio,
+    };
+  }, [groupComparisonMatrix]);
 
   const handleExportProgressComparisonPDF = () => {
     if (!activeMilestone || groupComparisonMatrix.length === 0) return;
@@ -6184,66 +7078,66 @@ export default function GroupReportGenerator({
         const dsW = 145;
         const dsX = pageWidth - 40 - dsW;
         doc.setFillColor(248, 250, 252);
-        doc.setDrawColor(226, 232, 240);
+        doc.setDrawColor(200, 200, 200);
         doc.setLineWidth(0.75);
         doc.roundedRect(dsX, 28, dsW, 28, 3, 3, 'DF');
 
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(6);
-        doc.setTextColor(100, 116, 139);
+        doc.setTextColor(0, 0, 0);
         doc.text("OFFICIAL PORTFOLIO AUDIT REPORT", dsX + 6, 36);
 
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(7.5);
-        doc.setTextColor(15, 23, 42);
+        doc.setTextColor(0, 0, 0);
         doc.text(new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' }), dsX + 6, 44);
 
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(5.5);
-        doc.setTextColor(71, 85, 105);
+        doc.setTextColor(0, 0, 0);
         doc.text(`AUDITOR: ${currentUserObj.username.toUpperCase()} • ERA CMS`, dsX + 6, 51);
 
         // Header Title
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(10.5);
-        doc.setTextColor(15, 23, 42);
+        doc.setTextColor(0, 0, 0);
         doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA)", 72, 38);
 
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(8.5);
-        doc.setTextColor(79, 70, 229);
+        doc.setTextColor(0, 0, 0);
         doc.text(`GROUP PORTFOLIO COMPARISON SUMMARY FOR ${activeMilestone.monthLabel.toUpperCase()} (${(selectedGroup || 'Southern').toUpperCase()} ${groupType.toUpperCase()})`, 72, 48);
 
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(7);
-        doc.setTextColor(100, 116, 139);
+        doc.setTextColor(0, 0, 0);
         doc.text(`Side-by-side contractor plan vs ERA plan vs actual execution across all ${groupComparisonMatrix.length} group projects`, 72, 57);
 
         // Metadata ribbon
         doc.setFillColor(248, 250, 252);
-        doc.setDrawColor(226, 232, 240);
+        doc.setDrawColor(200, 200, 200);
         doc.setLineWidth(0.75);
         doc.roundedRect(40, 62, pageWidth - 80, 18, 3, 3, 'DF');
 
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(6.5);
-        doc.setTextColor(30, 41, 59);
+        doc.setTextColor(0, 0, 0);
         doc.text(`PORTFOLIO: ${(selectedGroup || 'Southern').toUpperCase()} ${groupType.toUpperCase()} (${groupComparisonMatrix.length} Projects • ${totalGroupKm.toFixed(1)} Km Total)`, 48, 73);
 
         doc.setFont('helvetica', 'normal');
-        doc.setTextColor(71, 85, 105);
+        doc.setTextColor(0, 0, 0);
         doc.text(`TARGET MILESTONE: ${activeMilestone.monthLabel.toUpperCase()} (${activeMilestone.quarterLabel} • EFY ${activeMilestone.efyLabel})`, 330, 73);
         doc.text(`STATUS: ${aheadCount} Ahead  |  ${onTrackCount} On Track  |  ${laggingCount} Lagging  |  ${criticalCount} Critical`, 560, 73);
       } else {
         // Compact header for subsequent pages
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(8);
-        doc.setTextColor(15, 23, 42);
+        doc.setTextColor(0, 0, 0);
         doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA) • GROUP PORTFOLIO COMPARISON SUMMARY (CONTINUED)", 40, 36);
 
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(6.5);
-        doc.setTextColor(100, 116, 139);
+        doc.setTextColor(0, 0, 0);
         doc.text(`Period: ${activeMilestone.monthLabel} (${selectedGroup} ${groupType.toUpperCase()}) • Page ${pNum}`, 40, 45);
       }
     };
@@ -6254,7 +7148,7 @@ export default function GroupReportGenerator({
       doc.rect(40, y, pageWidth - 80, headerH, 'F');
 
       // Grid dividers in header
-      doc.setDrawColor(51, 65, 85);
+      doc.setDrawColor(200, 200, 200);
       doc.setLineWidth(0.5);
       doc.line(colX.contractor, y, colX.contractor, y + headerH);
       doc.line(colX.consultant, y, colX.consultant, y + headerH);
@@ -6272,7 +7166,7 @@ export default function GroupReportGenerator({
       doc.text("PROJECT ID & TITLE", colX.name + 6, y + 11);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(5);
-      doc.setTextColor(148, 163, 184);
+      doc.setTextColor(230, 230, 230);
       doc.text("Name, Code & Length", colX.name + 6, y + 20);
 
       // Col 2: Contractor
@@ -6282,7 +7176,7 @@ export default function GroupReportGenerator({
       doc.text("MAIN CONTRACTOR", colX.contractor + 5, y + 11);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(5);
-      doc.setTextColor(148, 163, 184);
+      doc.setTextColor(230, 230, 230);
       doc.text("Executing Firm", colX.contractor + 5, y + 20);
 
       // Col 3: Supervision Consultant
@@ -6292,7 +7186,7 @@ export default function GroupReportGenerator({
       doc.text("SUPERVISION CONSULTANT", colX.consultant + 5, y + 11);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(5);
-      doc.setTextColor(148, 163, 184);
+      doc.setTextColor(230, 230, 230);
       doc.text("Supervising Engineer", colX.consultant + 5, y + 20);
 
       // Col 4: Month
@@ -6302,7 +7196,7 @@ export default function GroupReportGenerator({
       doc.text("MONTHLY EXECUTION", colX.month + 5, y + 11);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(5);
-      doc.setTextColor(148, 163, 184);
+      doc.setTextColor(230, 230, 230);
       doc.text(`(${activeMilestone.monthLabel.toUpperCase()})`, colX.month + 5, y + 20);
 
       // Col 5: Quarter
@@ -6312,7 +7206,7 @@ export default function GroupReportGenerator({
       doc.text("QUARTER PLAN", colX.quarter + 5, y + 11);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(5);
-      doc.setTextColor(148, 163, 184);
+      doc.setTextColor(230, 230, 230);
       doc.text(`(${activeMilestone.quarterLabel.toUpperCase()})`, colX.quarter + 5, y + 20);
 
       // Col 6: EFY
@@ -6322,7 +7216,7 @@ export default function GroupReportGenerator({
       doc.text("EFY TARGET", colX.efy + 5, y + 11);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(5);
-      doc.setTextColor(148, 163, 184);
+      doc.setTextColor(230, 230, 230);
       doc.text(`(EFY ${activeMilestone.efyLabel})`, colX.efy + 5, y + 20);
 
       // Col 7: Cumulative To-Date
@@ -6332,7 +7226,7 @@ export default function GroupReportGenerator({
       doc.text("CUMULATIVE TO-DATE", colX.todate + 5, y + 11);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(5);
-      doc.setTextColor(148, 163, 184);
+      doc.setTextColor(230, 230, 230);
       doc.text("Plan vs Actual vs Slippage", colX.todate + 5, y + 20);
 
       // Col 8: Status
@@ -6342,7 +7236,7 @@ export default function GroupReportGenerator({
       doc.text("STATUS", colX.status + 5, y + 11);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(5);
-      doc.setTextColor(148, 163, 184);
+      doc.setTextColor(230, 230, 230);
       doc.text("Health", colX.status + 5, y + 20);
 
       return headerH;
@@ -6383,7 +7277,7 @@ export default function GroupReportGenerator({
       doc.rect(40, curY, pageWidth - 80, rowHeight, 'F');
 
       // Grid borders
-      doc.setDrawColor(226, 232, 240);
+      doc.setDrawColor(200, 200, 200);
       doc.setLineWidth(0.5);
       doc.line(40, curY + rowHeight, pageWidth - 40, curY + rowHeight);
       doc.line(colX.contractor, curY, colX.contractor, curY + rowHeight);
@@ -6394,133 +7288,91 @@ export default function GroupReportGenerator({
       doc.line(colX.todate, curY, colX.todate, curY + rowHeight);
       doc.line(colX.status, curY, colX.status, curY + rowHeight);
 
-      // 1. Project ID & Title (Wrapped cleanly, zero overlapping)
+      // 1. Project ID & Title
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(6.5);
-      doc.setTextColor(15, 23, 42);
+      doc.setTextColor(0, 0, 0);
       titleLines.forEach((tLine: string, tIdx: number) => {
         doc.text(tLine, colX.name + 6, curY + 10 + tIdx * 8.5);
       });
       const idStartY = curY + 10 + titleLines.length * 8.5 + 3;
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(5);
-      doc.setTextColor(100, 116, 139);
+      doc.setTextColor(0, 0, 0);
       idLines.forEach((idL: string, idIdx: number) => {
         doc.text(idL, colX.name + 6, idStartY + idIdx * 7);
       });
 
-      // 2. Contractor (Exact Name, wrapped to next line without clipping)
+      // 2. Contractor
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(6);
-      doc.setTextColor(30, 41, 59);
+      doc.setTextColor(0, 0, 0);
       contrLines.forEach((cLine: string, cIdx: number) => {
         doc.text(cLine, colX.contractor + 5, curY + 10 + cIdx * 8);
       });
 
-      // 3. Supervision Consultant (Exact Name, wrapped to next line without clipping)
+      // 3. Supervision Consultant
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(5.5);
-      doc.setTextColor(51, 65, 85);
+      doc.setTextColor(0, 0, 0);
       consLines.forEach((csLine: string, csIdx: number) => {
         doc.text(csLine, colX.consultant + 5, curY + 10 + csIdx * 7.5);
       });
 
-      // 4. Month (Side-by-side with clear font and clean line spacing)
+      // 4. Month (Monochrome Black Text)
       const mY = curY + 10;
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(5.5);
-      doc.setTextColor(29, 78, 216); // Blue
+      doc.setTextColor(0, 0, 0);
       doc.text(`Ctr: ${item.contractor.month.toFixed(2)} Km`, colX.month + 5, mY);
-      doc.setTextColor(109, 40, 217); // Purple
       doc.text(`ERA: ${item.era.month.toFixed(2)} Km`, colX.month + 5, mY + 9);
       doc.setFont('helvetica', 'bold');
-      doc.setTextColor(4, 120, 87); // Emerald
-      doc.text(`Act: ${item.actual.month.toFixed(2)} Km`, colX.month + 5, mY + 18);
-      if (item.monthVariance >= 0) {
-        doc.setTextColor(4, 120, 87);
-      } else {
-        doc.setTextColor(225, 29, 72);
-      }
+      doc.text(`Act: ${item.actual.month.toFixed(2)} Km (${item.monthRatio.toFixed(1)}%)`, colX.month + 5, mY + 18);
       doc.text(`Var: ${item.monthVariance >= 0 ? '+' : ''}${item.monthVariance.toFixed(2)} Km`, colX.month + 5, mY + 27);
 
-      // 5. Quarter (Side-by-side)
+      // 5. Quarter (Monochrome Black Text)
       const qY = curY + 10;
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(5.5);
-      doc.setTextColor(29, 78, 216);
+      doc.setTextColor(0, 0, 0);
       doc.text(`Ctr: ${item.contractor.quarter.toFixed(2)} Km`, colX.quarter + 5, qY);
-      doc.setTextColor(109, 40, 217);
       doc.text(`ERA: ${item.era.quarter.toFixed(2)} Km`, colX.quarter + 5, qY + 9);
       doc.setFont('helvetica', 'bold');
-      doc.setTextColor(15, 23, 42);
-      doc.text(`Act: ${item.actual.quarter.toFixed(2)} Km`, colX.quarter + 5, qY + 18);
+      doc.text(`Act: ${item.actual.quarter.toFixed(2)} Km (${item.quarterRatio.toFixed(1)}%)`, colX.quarter + 5, qY + 18);
       const qVar = item.actual.quarter - item.era.quarter;
-      if (qVar >= 0) {
-        doc.setTextColor(4, 120, 87);
-      } else {
-        doc.setTextColor(225, 29, 72);
-      }
       doc.text(`Var: ${qVar >= 0 ? '+' : ''}${qVar.toFixed(2)} Km`, colX.quarter + 5, qY + 27);
 
-      // 6. EFY (Side-by-side)
+      // 6. EFY (Monochrome Black Text)
       const eY = curY + 10;
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(5.5);
-      doc.setTextColor(29, 78, 216);
+      doc.setTextColor(0, 0, 0);
       doc.text(`Ctr: ${item.contractor.efy.toFixed(2)} Km`, colX.efy + 5, eY);
-      doc.setTextColor(109, 40, 217);
       doc.text(`ERA: ${item.era.efy.toFixed(2)} Km`, colX.efy + 5, eY + 9);
       doc.setFont('helvetica', 'bold');
-      doc.setTextColor(15, 23, 42);
-      doc.text(`Act: ${item.actual.efy.toFixed(2)} Km`, colX.efy + 5, eY + 18);
+      doc.text(`Act: ${item.actual.efy.toFixed(2)} Km (${item.efyRatio.toFixed(1)}%)`, colX.efy + 5, eY + 18);
       const efyVar = item.actual.efy - item.era.efy;
-      if (efyVar >= 0) {
-        doc.setTextColor(4, 120, 87);
-      } else {
-        doc.setTextColor(225, 29, 72);
-      }
       doc.text(`Var: ${efyVar >= 0 ? '+' : ''}${efyVar.toFixed(2)} Km`, colX.efy + 5, eY + 27);
 
-      // 7. Cumulative To-Date (Side-by-side)
+      // 7. Cumulative To-Date (Monochrome Black Text)
       const tY = curY + 10;
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(5.5);
-      doc.setTextColor(29, 78, 216);
+      doc.setTextColor(0, 0, 0);
       doc.text(`Ctr: ${item.contractor.todate.toFixed(2)} Km`, colX.todate + 5, tY);
-      doc.setTextColor(109, 40, 217);
       doc.text(`ERA: ${item.era.todate.toFixed(2)} Km`, colX.todate + 5, tY + 9);
       doc.setFont('helvetica', 'bold');
-      doc.setTextColor(67, 56, 202); // Indigo
-      doc.text(`Act: ${item.actual.todate.toFixed(2)} Km (${item.todatePct.toFixed(1)}%)`, colX.todate + 5, tY + 18);
-      if (item.todateVariance >= 0) {
-        doc.setTextColor(4, 120, 87);
-      } else {
-        doc.setTextColor(225, 29, 72);
-      }
+      doc.text(`Act: ${item.actual.todate.toFixed(2)} Km (${item.todateRatio.toFixed(1)}%)`, colX.todate + 5, tY + 18);
       doc.text(`Slip: ${item.todateVariance >= 0 ? '+' : ''}${item.todateVariance.toFixed(2)} Km`, colX.todate + 5, tY + 27);
 
-      // 8. Status Badge (Properly bounded & vertically centered)
+      // 8. Status Badge (Black text on light grey background)
       const statusX = colX.status + 5;
       const statusW = colW.status - 10;
       const statusH = 15;
       const statusY = curY + (rowHeight - statusH) / 2;
-      if (item.healthStatus === 'Ahead') {
-        doc.setFillColor(209, 250, 229);
-        doc.setDrawColor(16, 185, 129);
-        doc.setTextColor(6, 95, 70);
-      } else if (item.healthStatus === 'On Track') {
-        doc.setFillColor(224, 231, 255);
-        doc.setDrawColor(99, 102, 241);
-        doc.setTextColor(49, 46, 129);
-      } else if (item.healthStatus === 'Lagging') {
-        doc.setFillColor(254, 243, 199);
-        doc.setDrawColor(245, 158, 11);
-        doc.setTextColor(146, 64, 14);
-      } else {
-        doc.setFillColor(255, 228, 230);
-        doc.setDrawColor(244, 63, 94);
-        doc.setTextColor(159, 18, 57);
-      }
+      doc.setFillColor(242, 242, 242);
+      doc.setDrawColor(0, 0, 0);
+      doc.setTextColor(0, 0, 0);
       doc.setLineWidth(0.5);
       doc.roundedRect(statusX, statusY, statusW, statusH, 2, 2, 'DF');
 
@@ -6590,6 +7442,318 @@ export default function GroupReportGenerator({
 
     const fileName = `ERA_Group_Portfolio_Comparison_${(selectedGroup || 'Southern').replace(/[^a-zA-Z0-9]/g, '_')}_${activeMilestone.monthLabel.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
     doc.save(fileName);
+  };
+
+  // Export Directorate & PMO Group Performance Summary PDF separately
+  const handleExportDirectoratePmoSummaryPDF = () => {
+    if (!activeMilestone) return;
+
+    const doc = new jsPDF('l', 'pt', 'a4'); // Landscape A4 (841.89 pt x 595.28 pt)
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+
+    let pageNumber = 1;
+
+    const drawPageHeader = (pNum: number) => {
+      // Clean page border
+      doc.setDrawColor(200, 200, 200);
+      doc.setLineWidth(0.75);
+      doc.roundedRect(30, 16, pageWidth - 60, pageHeight - 32, 4, 4, 'S');
+
+      // Top accent bar
+      doc.setDrawColor(0, 0, 0);
+      doc.setLineWidth(2);
+      doc.line(40, 24, pageWidth - 40, 24);
+
+      if (pNum === 1) {
+        // Official ERA Logo
+        drawEraLogo(doc, 40, 28, 26, {
+          withContainer: true,
+          containerBg: [255, 255, 255],
+          containerBorder: [200, 200, 200],
+          borderRadius: 3
+        });
+
+        // Audit Stamp Box
+        const dsW = 145;
+        const dsX = pageWidth - 40 - dsW;
+        doc.setFillColor(248, 250, 252);
+        doc.setDrawColor(200, 200, 200);
+        doc.setLineWidth(0.75);
+        doc.roundedRect(dsX, 28, dsW, 28, 3, 3, 'DF');
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(6);
+        doc.setTextColor(0, 0, 0);
+        doc.text("DIRECTORATE & PMO SUMMARY REPORT", dsX + 6, 36);
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.setTextColor(0, 0, 0);
+        doc.text(new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' }), dsX + 6, 44);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(5.5);
+        doc.setTextColor(0, 0, 0);
+        doc.text(`GENERATED BY: ${currentUserObj.username.toUpperCase()} • ERA CMS`, dsX + 6, 51);
+
+        // Header Title
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10.5);
+        doc.setTextColor(0, 0, 0);
+        doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA)", 72, 38);
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8.5);
+        doc.setTextColor(0, 0, 0);
+        doc.text("PROGRAM DIRECTORATE & PMO GROUP PERFORMANCE SUMMARY REPORT", 72, 48);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7);
+        doc.setTextColor(0, 0, 0);
+        doc.text("Aggregated ERA Baseline Plan vs Actual Accomplishment (Group Total Sum)", 72, 57);
+
+        // Metadata ribbon
+        doc.setFillColor(248, 250, 252);
+        doc.setDrawColor(200, 200, 200);
+        doc.setLineWidth(0.75);
+        doc.roundedRect(40, 62, pageWidth - 80, 18, 3, 3, 'DF');
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(6.5);
+        doc.setTextColor(0, 0, 0);
+        doc.text(`GROUPS: ${directorateComparisonSummary.length} Directorates • ${pmoComparisonSummary.length} PMOs`, 48, 73);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(0, 0, 0);
+        doc.text(`TARGET MILESTONE: ${activeMilestone.monthLabel.toUpperCase()} (${activeMilestone.quarterLabel} • EFY ${activeMilestone.efyLabel})`, 330, 73);
+        doc.text(`METRIC BASIS: GROUP TOTAL SUM (KM)`, 560, 73);
+      } else {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8);
+        doc.setTextColor(0, 0, 0);
+        doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA) • DIRECTORATE & PMO PERFORMANCE SUMMARY (CONTINUED)", 40, 36);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(6.5);
+        doc.setTextColor(0, 0, 0);
+        doc.text(`Period: ${activeMilestone.monthLabel} • Page ${pNum}`, 40, 45);
+      }
+    };
+
+    const colW = {
+      name: 170,
+      scope: 90,
+      month: 160,
+      quarter: 160,
+      efy: 121.89,
+      status: 60
+    };
+
+    const colX = {
+      name: 40,
+      scope: 40 + colW.name,
+      month: 40 + colW.name + colW.scope,
+      quarter: 40 + colW.name + colW.scope + colW.month,
+      efy: 40 + colW.name + colW.scope + colW.month + colW.quarter,
+      status: 40 + colW.name + colW.scope + colW.month + colW.quarter + colW.efy
+    };
+
+    const drawTableHeader = (y: number) => {
+      const headerH = 22;
+      doc.setFillColor(15, 23, 42); // dark header
+      doc.rect(40, y, pageWidth - 80, headerH, 'F');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7);
+      doc.setTextColor(255, 255, 255);
+
+      doc.text("GROUP ENTITY (DIRECTORATE / PMO)", colX.name + 6, y + 14);
+      doc.text("PROJECTS & SCOPE", colX.scope + 6, y + 14);
+      doc.text(`MONTH: ${activeMilestone.monthLabel.toUpperCase()} (PLAN vs ACT)`, colX.month + 6, y + 14);
+      doc.text(`QUARTER: ${activeMilestone.quarterLabel.toUpperCase()} (PLAN vs ACT)`, colX.quarter + 6, y + 14);
+      doc.text(`EFY ${activeMilestone.efyLabel} (PLAN vs ACT)`, colX.efy + 6, y + 14);
+      doc.text("HEALTH", colX.status + 6, y + 14);
+
+      // Dividers
+      doc.setDrawColor(200, 200, 200);
+      doc.setLineWidth(0.5);
+      doc.line(colX.scope, y, colX.scope, y + headerH);
+      doc.line(colX.month, y, colX.month, y + headerH);
+      doc.line(colX.quarter, y, colX.quarter, y + headerH);
+      doc.line(colX.efy, y, colX.efy, y + headerH);
+      doc.line(colX.status, y, colX.status, y + headerH);
+
+      return headerH;
+    };
+
+    drawPageHeader(1);
+    let curY = 88;
+    curY += drawTableHeader(curY);
+
+    const renderGroupRows = (groups: typeof directorateComparisonSummary, groupTitle: string) => {
+      if (groups.length === 0) return;
+
+      // Group Section Header Bar
+      if (curY + 20 > pageHeight - 55) {
+        doc.addPage();
+        pageNumber++;
+        drawPageHeader(pageNumber);
+        curY = 54;
+        curY += drawTableHeader(curY);
+      }
+
+      doc.setFillColor(230, 235, 240);
+      doc.rect(40, curY, pageWidth - 80, 16, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7);
+      doc.setTextColor(0, 0, 0);
+      doc.text(groupTitle.toUpperCase(), 46, curY + 11);
+      curY += 16;
+
+      groups.forEach((grp, idx) => {
+        const rowHeight = 32;
+
+        if (curY + rowHeight > pageHeight - 55) {
+          doc.addPage();
+          pageNumber++;
+          drawPageHeader(pageNumber);
+          curY = 54;
+          curY += drawTableHeader(curY);
+        }
+
+        doc.setFillColor(idx % 2 === 0 ? 255 : 248, idx % 2 === 0 ? 255 : 250, idx % 2 === 0 ? 255 : 252);
+        doc.rect(40, curY, pageWidth - 80, rowHeight, 'F');
+
+        doc.setDrawColor(200, 200, 200);
+        doc.setLineWidth(0.5);
+        doc.rect(40, curY, pageWidth - 80, rowHeight, 'S');
+
+        doc.line(colX.scope, curY, colX.scope, curY + rowHeight);
+        doc.line(colX.month, curY, colX.month, curY + rowHeight);
+        doc.line(colX.quarter, curY, colX.quarter, curY + rowHeight);
+        doc.line(colX.efy, curY, colX.efy, curY + rowHeight);
+        doc.line(colX.status, curY, colX.status, curY + rowHeight);
+
+        const eraM = grp.totalEraMonth;
+        const actM = grp.totalActMonth;
+        const varM = grp.totalMonthVar;
+
+        const eraQ = grp.totalEraQuarter;
+        const actQ = grp.totalActQuarter;
+        const varQ = grp.totalQuarterVar;
+
+        const eraE = grp.totalEraEfy;
+        const actE = grp.totalActEfy;
+        const varE = grp.totalEfyVar;
+
+        // 1. Group Entity Name
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.setTextColor(0, 0, 0);
+        doc.text(grp.name, colX.name + 6, curY + 13);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(6);
+        doc.text(`${grp.type === 'directorate' ? 'Program Directorate' : 'Project Management Office'}`, colX.name + 6, curY + 23);
+
+        // 2. Scope
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7);
+        doc.text(`${grp.projectCount} Projects`, colX.scope + 6, curY + 13);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(6);
+        doc.text(`${grp.totalLengthKm.toFixed(1)} Km total`, colX.scope + 6, curY + 23);
+
+        // 3. Monthly
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(6.5);
+        doc.text(`ERA Plan: ${eraM.toFixed(2)} Km  |  Actual: ${actM.toFixed(2)} Km`, colX.month + 6, curY + 12);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`Fulfillment Rate: ${grp.monthRatio.toFixed(1)}%  |  Var: ${varM >= 0 ? '+' : ''}${varM.toFixed(2)} Km`, colX.month + 6, curY + 23);
+
+        // 4. Quarterly
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(6.5);
+        doc.text(`ERA Plan: ${eraQ.toFixed(2)} Km  |  Actual: ${actQ.toFixed(2)} Km`, colX.quarter + 6, curY + 12);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`Fulfillment Rate: ${grp.quarterRatio.toFixed(1)}%  |  Var: ${varQ >= 0 ? '+' : ''}${varQ.toFixed(2)} Km`, colX.quarter + 6, curY + 23);
+
+        // 5. EFY
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(6.5);
+        doc.text(`Plan: ${eraE.toFixed(2)} Km  |  Act: ${actE.toFixed(2)} Km`, colX.efy + 6, curY + 12);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`Rate: ${grp.efyRatio.toFixed(1)}%  |  Var: ${varE >= 0 ? '+' : ''}${varE.toFixed(2)} Km`, colX.efy + 6, curY + 23);
+
+        // 6. Health Badge
+        const statusX = colX.status + 4;
+        const statusW = colW.status - 8;
+        const statusH = 14;
+        const statusY = curY + (rowHeight - statusH) / 2;
+        doc.setFillColor(242, 242, 242);
+        doc.setDrawColor(0, 0, 0);
+        doc.setTextColor(0, 0, 0);
+        doc.setLineWidth(0.5);
+        doc.roundedRect(statusX, statusY, statusW, statusH, 2, 2, 'DF');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(5.5);
+        doc.text(grp.healthStatus.toUpperCase(), statusX + statusW / 2, statusY + 9.5, { align: 'center' });
+
+        curY += rowHeight;
+      });
+    };
+
+    renderGroupRows(directorateComparisonSummary, `PROGRAM DIRECTORATE GROUPINGS (${directorateComparisonSummary.length} DIRECTORATES)`);
+    curY += 8;
+    renderGroupRows(pmoComparisonSummary, `PMO GROUPINGS (${pmoComparisonSummary.length} PMO OFFICES)`);
+
+    // Sign-off block
+    if (curY + 50 > pageHeight - 55) {
+      doc.addPage();
+      pageNumber++;
+      drawPageHeader(pageNumber);
+      curY = 55;
+    } else {
+      curY += 12;
+    }
+
+    const signY = Math.max(curY, pageHeight - 65);
+    const signBoxW = (pageWidth - 110) / 3;
+
+    const signBoxes = [
+      { label: "PREPARED BY: CMS OFFICER", subtitle: "Data Aggregation Certified" },
+      { label: "VERIFIED BY: PMO COORDINATOR", subtitle: "Performance Metrics Verified" },
+      { label: "APPROVED BY: PROGRAM DIRECTOR", subtitle: "Approved for Distribution" }
+    ];
+
+    signBoxes.forEach((sb, sIdx) => {
+      const sX = 40 + sIdx * (signBoxW + 15);
+      doc.setFillColor(255, 255, 255);
+      doc.setDrawColor(200, 200, 200);
+      doc.setLineWidth(0.5);
+      doc.roundedRect(sX, signY, signBoxW, 34, 2, 2, 'DF');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(5.5);
+      doc.setTextColor(0, 0, 0);
+      doc.text(sb.label, sX + 6, signY + 11);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(5);
+      doc.text(sb.subtitle, sX + 6, signY + 18);
+
+      doc.line(sX + 6, signY + 29, sX + signBoxW - 6, signY + 29);
+    });
+
+    for (let j = 1; j <= pageNumber; j++) {
+      doc.setPage(j);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.5);
+      doc.setTextColor(0, 0, 0);
+      doc.text(`ETHIOPIAN ROADS ADMINISTRATION • PROGRAM DIRECTORATE & PMO PERFORMANCE BRIEFING • Page ${j} of ${pageNumber}`, 40, pageHeight - 20);
+    }
+
+    doc.save(`ERA_Directorate_PMO_Group_Performance_Summary_${activeMilestone.monthLabel.replace(/\s+/g, '_')}.pdf`);
   };
 
   const handleExportSingleProjectPDF = () => {
@@ -6916,11 +8080,38 @@ export default function GroupReportGenerator({
     csv += `Generated Date,${new Date().toLocaleDateString()}\n`;
     csv += `Auditor,${currentUserObj.username} (ERA CMS)\n\n`;
 
-    csv += `GROUP PORTFOLIO COMPARISON SUMMARY - ALL ${groupComparisonMatrix.length} PROJECTS\n`;
-    csv += `Project ID,Project Title,Contractor,Supervision Consultant,Project Length (Km),Month (${m.monthLabel}) Ctr Plan (Km),Month (${m.monthLabel}) ERA Plan (Km),Month (${m.monthLabel}) Actual (Km),Month Variance vs ERA (Km),Quarter (${m.quarterLabel}) Ctr Plan (Km),Quarter (${m.quarterLabel}) ERA Plan (Km),Quarter (${m.quarterLabel}) Actual (Km),EFY (${m.efyLabel}) Ctr Plan (Km),EFY (${m.efyLabel}) ERA Plan (Km),EFY (${m.efyLabel}) Actual (Km),Cumulative Ctr Plan (Km),Cumulative ERA Plan (Km),Cumulative Actual (Km),Cumulative Actual (% Scope),Cumulative Slippage vs ERA (Km),Status\n`;
+    // 1. Program Directorate Group Performance Summary
+    csv += `SECTION 1: PROGRAM DIRECTORATES GROUP AVERAGE PERFORMANCE SUMMARY (SELECTED MONTH, QUARTER & EFY)\n`;
+    csv += `Directorate Name,Projects Count,Total Scope (Km),Avg Scope (Km),Avg Month (${m.monthLabel}) ERA Plan (Km),Avg Month (${m.monthLabel}) Actual (Km),Month Fulfillment Rate vs ERA (%),Avg Month Variance (Km),Avg Quarter (${m.quarterLabel}) ERA Plan (Km),Avg Quarter (${m.quarterLabel}) Actual (Km),Quarter Fulfillment Rate vs ERA (%),Avg Quarter Variance (Km),Avg EFY (${m.efyLabel}) ERA Plan (Km),Avg EFY (${m.efyLabel}) Actual (Km),EFY Fulfillment Rate vs ERA (%),Avg EFY Variance (Km),Health Status\n`;
+
+    directorateComparisonSummary.forEach(d => {
+      csv += `"${d.name} Directorate",${d.projectCount},${d.totalLengthKm.toFixed(2)},${d.avgLengthKm.toFixed(2)},${d.avgEraMonth.toFixed(2)},${d.avgActMonth.toFixed(2)},${d.monthRatio.toFixed(1)}%,${d.avgMonthVar.toFixed(2)},${d.avgEraQuarter.toFixed(2)},${d.avgActQuarter.toFixed(2)},${d.quarterRatio.toFixed(1)}%,${d.avgQuarterVar.toFixed(2)},${d.avgEraEfy.toFixed(2)},${d.avgActEfy.toFixed(2)},${d.efyRatio.toFixed(1)}%,${d.avgEfyVar.toFixed(2)},"${d.healthStatus}"\n`;
+    });
+    csv += `\n`;
+
+    // 2. PMO Groupings Performance Summary
+    csv += `SECTION 2: PMO GROUPINGS AVERAGE PERFORMANCE SUMMARY (SELECTED MONTH, QUARTER & EFY)\n`;
+    csv += `PMO Name,Projects Count,Total Scope (Km),Avg Scope (Km),Avg Month (${m.monthLabel}) ERA Plan (Km),Avg Month (${m.monthLabel}) Actual (Km),Month Fulfillment Rate vs ERA (%),Avg Month Variance (Km),Avg Quarter (${m.quarterLabel}) ERA Plan (Km),Avg Quarter (${m.quarterLabel}) Actual (Km),Quarter Fulfillment Rate vs ERA (%),Avg Quarter Variance (Km),Avg EFY (${m.efyLabel}) ERA Plan (Km),Avg EFY (${m.efyLabel}) Actual (Km),EFY Fulfillment Rate vs ERA (%),Avg EFY Variance (Km),Health Status\n`;
+
+    pmoComparisonSummary.forEach(p => {
+      csv += `"${p.name}",${p.projectCount},${p.totalLengthKm.toFixed(2)},${p.avgLengthKm.toFixed(2)},${p.avgEraMonth.toFixed(2)},${p.avgActMonth.toFixed(2)},${p.monthRatio.toFixed(1)}%,${p.avgMonthVar.toFixed(2)},${p.avgEraQuarter.toFixed(2)},${p.avgActQuarter.toFixed(2)},${p.quarterRatio.toFixed(1)}%,${p.avgQuarterVar.toFixed(2)},${p.avgEraEfy.toFixed(2)},${p.avgActEfy.toFixed(2)},${p.efyRatio.toFixed(1)}%,${p.avgEfyVar.toFixed(2)},"${p.healthStatus}"\n`;
+    });
+    csv += `\n`;
+
+    // 3. Overall Portfolio Aggregate
+    if (overallPortfolioAverages) {
+      const o = overallPortfolioAverages;
+      csv += `SECTION 3: OVERALL PORTFOLIO AVERAGE & TOTAL SUMMARY (SELECTED MONTH, QUARTER & EFY)\n`;
+      csv += `Metric Level,Projects Count,Total Scope (Km),Avg Scope (Km),Avg Month ERA Plan (Km),Avg Month Actual (Km),Month Fulfillment Rate vs ERA (%),Avg Quarter ERA Plan (Km),Avg Quarter Actual (Km),Quarter Fulfillment Rate vs ERA (%),Avg EFY ERA Plan (Km),Avg EFY Actual (Km),EFY Fulfillment Rate vs ERA (%)\n`;
+      csv += `"PORTFOLIO OVERALL AVERAGE",${o.projectCount},${o.totalLengthKm.toFixed(2)},${o.avgLengthKm.toFixed(2)},${o.avgEraMonth.toFixed(2)},${o.avgActMonth.toFixed(2)},${o.monthRatio.toFixed(1)}%,${o.avgEraQuarter.toFixed(2)},${o.avgActQuarter.toFixed(2)},${o.quarterRatio.toFixed(1)}%,${o.avgEraEfy.toFixed(2)},${o.avgActEfy.toFixed(2)},${o.efyRatio.toFixed(1)}%\n\n`;
+    }
+
+    // 4. Detailed Individual Projects Matrix
+    csv += `SECTION 4: INDIVIDUAL PROJECT PROGRESS COMPARISONS (ALL ${groupComparisonMatrix.length} PROJECTS)\n`;
+    csv += `Project ID,Project Title,Directorate,PMO,Contractor,Supervision Consultant,Project Length (Km),Month (${m.monthLabel}) Ctr Plan (Km),Month (${m.monthLabel}) ERA Plan (Km),Month (${m.monthLabel}) Actual (Km),Month Execution Rate vs ERA (%),Month Variance vs ERA (Km),Quarter (${m.quarterLabel}) Ctr Plan (Km),Quarter (${m.quarterLabel}) ERA Plan (Km),Quarter (${m.quarterLabel}) Actual (Km),Quarter Execution Rate vs ERA (%),Quarter Variance vs ERA (Km),EFY (${m.efyLabel}) Ctr Plan (Km),EFY (${m.efyLabel}) ERA Plan (Km),EFY (${m.efyLabel}) Actual (Km),EFY Execution Rate vs ERA (%),EFY Variance vs ERA (Km),Cumulative Ctr Plan (Km),Cumulative ERA Plan (Km),Cumulative Actual (Km),Cumulative Execution Rate vs ERA Target (%),Cumulative Slippage vs ERA (Km),Status\n`;
 
     groupComparisonMatrix.forEach(row => {
-      csv += `"${row.project.id}","${row.project.name.replace(/"/g, '""')}","${(row.project.contractor || 'Not Specified').replace(/"/g, '""')}","${(row.project.consultant || 'Not Specified').replace(/"/g, '""')}",${row.lengthKm},${row.contractor.month.toFixed(2)},${row.era.month.toFixed(2)},${row.actual.month.toFixed(2)},${row.monthVariance.toFixed(2)},${row.contractor.quarter.toFixed(2)},${row.era.quarter.toFixed(2)},${row.actual.quarter.toFixed(2)},${row.contractor.efy.toFixed(2)},${row.era.efy.toFixed(2)},${row.actual.efy.toFixed(2)},${row.contractor.todate.toFixed(2)},${row.era.todate.toFixed(2)},${row.actual.todate.toFixed(2)},${row.todatePct.toFixed(2)}%,${row.todateVariance.toFixed(2)},"${row.healthStatus}"\n`;
+      csv += `"${row.project.id}","${row.project.name.replace(/"/g, '""')}","${(row.project.programDirectorate || 'Southern').replace(/"/g, '""')}","${(row.project.pmo || 'PMO 1').replace(/"/g, '""')}","${(row.project.contractor || 'Not Specified').replace(/"/g, '""')}","${(row.project.consultant || 'Not Specified').replace(/"/g, '""')}",${row.lengthKm},${row.contractor.month.toFixed(2)},${row.era.month.toFixed(2)},${row.actual.month.toFixed(2)},${row.monthRatio.toFixed(1)}%,${row.monthVariance.toFixed(2)},${row.contractor.quarter.toFixed(2)},${row.era.quarter.toFixed(2)},${row.actual.quarter.toFixed(2)},${row.quarterRatio.toFixed(1)}%,${row.quarterVariance.toFixed(2)},${row.contractor.efy.toFixed(2)},${row.era.efy.toFixed(2)},${row.actual.efy.toFixed(2)},${row.efyRatio.toFixed(1)}%,${row.efyVariance.toFixed(2)},${row.contractor.todate.toFixed(2)},${row.era.todate.toFixed(2)},${row.actual.todate.toFixed(2)},${row.todateRatio.toFixed(1)}%,${row.todateVariance.toFixed(2)},"${row.healthStatus}"\n`;
     });
 
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -7389,6 +8580,15 @@ export default function GroupReportGenerator({
                   <Printer className="w-3.5 h-3.5" /> Export Portfolio PDF (All Projects)
                 </button>
                 <button
+                  onClick={handleExportDirectoratePmoSummaryPDF}
+                  id="btn-export-directorate-pmo-summary-sidebar"
+                  disabled={!activeMilestone}
+                  className="w-full flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white py-2 rounded-xl text-xs font-bold shadow-sm transition cursor-pointer"
+                  title="Export aggregated Directorate & PMO Group Performance Summary PDF"
+                >
+                  <Building2 className="w-3.5 h-3.5" /> Export Directorate & PMO PDF
+                </button>
+                <button
                   onClick={handleExportSingleProjectPDF}
                   id="btn-export-single-project-pdf"
                   disabled={!activeComparisonProject || !activeMilestone}
@@ -7405,14 +8605,6 @@ export default function GroupReportGenerator({
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> Export Comparison CSV
                 </button>
-                {onSelectProject && activeComparisonProject && (
-                  <button
-                    onClick={() => onSelectProject(activeComparisonProject.id, false, 'progressPlan')}
-                    className="w-full flex items-center justify-center gap-2 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 py-2 rounded-xl text-xs font-bold transition cursor-pointer"
-                  >
-                    <Edit3 className="w-3.5 h-3.5" /> Open Project Progress Plan
-                  </button>
-                )}
               </>
             ) : (
               <>
@@ -8195,16 +9387,6 @@ export default function GroupReportGenerator({
                           <span>🏢 {activeComparisonProject.programDirectorate || 'Southern'} • {activeComparisonProject.pmo || 'PMO 1'}</span>
                         </div>
                       </div>
-
-                      {onSelectProject && (
-                        <button
-                          onClick={() => onSelectProject(activeComparisonProject.id, false, 'progressPlan')}
-                          className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer shadow-2xs"
-                        >
-                          <Edit3 className="w-3.5 h-3.5" />
-                          <span>Open Workspace</span>
-                        </button>
-                      )}
                     </div>
                   </div>
                 )}
@@ -8502,122 +9684,853 @@ export default function GroupReportGenerator({
                         </tbody>
                       </table>
                     </div>
-
-                    {/* Visual Progress Bars Comparison Grid */}
-                    <div className="p-4 bg-slate-50/40 dark:bg-slate-900/40 border-t border-slate-200 dark:border-slate-800 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                      {/* Month Horizon Bar */}
-                      <div className="space-y-1.5 bg-white dark:bg-slate-800 p-2.5 rounded-xl border border-slate-200/80 dark:border-slate-700/60 shadow-2xs">
-                        <div className="flex justify-between text-[10px] font-bold">
-                          <span className="text-slate-500 uppercase">{activeMilestone.monthLabel} Target</span>
-                          <span className="font-mono text-emerald-600 dark:text-emerald-400">{comparisonTableData.actual.month.toFixed(2)} Km Exec</span>
-                        </div>
-                        <div className="space-y-1">
-                          <div className="w-full bg-slate-100 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden flex">
-                            <div className="bg-blue-500 h-full" style={{ width: `${Math.min(100, (comparisonTableData.contractor.month / (comparisonTableData.lengthKm || 65)) * 100 * 5)}%` }} title={`Ctr: ${comparisonTableData.contractor.month} Km`} />
-                          </div>
-                          <div className="w-full bg-slate-100 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden flex">
-                            <div className="bg-purple-600 h-full" style={{ width: `${Math.min(100, (comparisonTableData.era.month / (comparisonTableData.lengthKm || 65)) * 100 * 5)}%` }} title={`ERA: ${comparisonTableData.era.month} Km`} />
-                          </div>
-                          <div className="w-full bg-slate-100 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden flex">
-                            <div className="bg-emerald-500 h-full" style={{ width: `${Math.min(100, (comparisonTableData.actual.month / (comparisonTableData.lengthKm || 65)) * 100 * 5)}%` }} title={`Actual: ${comparisonTableData.actual.month} Km`} />
-                          </div>
-                        </div>
-                        <div className="flex justify-between text-[8px] text-slate-400 font-mono pt-0.5">
-                          <span>🟦 Ctr: {comparisonTableData.contractor.month.toFixed(2)}</span>
-                          <span>🟪 ERA: {comparisonTableData.era.month.toFixed(2)}</span>
-                          <span>🟩 Act: {comparisonTableData.actual.month.toFixed(2)}</span>
-                        </div>
-                      </div>
-
-                      {/* Quarter Horizon Bar */}
-                      <div className="space-y-1.5 bg-white dark:bg-slate-800 p-2.5 rounded-xl border border-slate-200/80 dark:border-slate-700/60 shadow-2xs">
-                        <div className="flex justify-between text-[10px] font-bold">
-                          <span className="text-slate-500 uppercase">{activeMilestone.quarterLabel} Target</span>
-                          <span className="font-mono text-emerald-600 dark:text-emerald-400">{comparisonTableData.actual.quarter.toFixed(2)} Km Exec</span>
-                        </div>
-                        <div className="space-y-1">
-                          <div className="w-full bg-slate-100 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden flex">
-                            <div className="bg-blue-500 h-full" style={{ width: `${Math.min(100, (comparisonTableData.contractor.quarter / (comparisonTableData.lengthKm || 65)) * 100 * 3)}%` }} />
-                          </div>
-                          <div className="w-full bg-slate-100 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden flex">
-                            <div className="bg-purple-600 h-full" style={{ width: `${Math.min(100, (comparisonTableData.era.quarter / (comparisonTableData.lengthKm || 65)) * 100 * 3)}%` }} />
-                          </div>
-                          <div className="w-full bg-slate-100 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden flex">
-                            <div className="bg-emerald-500 h-full" style={{ width: `${Math.min(100, (comparisonTableData.actual.quarter / (comparisonTableData.lengthKm || 65)) * 100 * 3)}%` }} />
-                          </div>
-                        </div>
-                        <div className="flex justify-between text-[8px] text-slate-400 font-mono pt-0.5">
-                          <span>🟦 Ctr: {comparisonTableData.contractor.quarter.toFixed(2)}</span>
-                          <span>🟪 ERA: {comparisonTableData.era.quarter.toFixed(2)}</span>
-                          <span>🟩 Act: {comparisonTableData.actual.quarter.toFixed(2)}</span>
-                        </div>
-                      </div>
-
-                      {/* Fiscal Year (EFY) Horizon Bar */}
-                      <div className="space-y-1.5 bg-white dark:bg-slate-800 p-2.5 rounded-xl border border-slate-200/80 dark:border-slate-700/60 shadow-2xs">
-                        <div className="flex justify-between text-[10px] font-bold">
-                          <span className="text-slate-500 uppercase">EFY {activeMilestone.efyLabel} Target</span>
-                          <span className="font-mono text-emerald-600 dark:text-emerald-400">{comparisonTableData.actual.efy.toFixed(2)} Km Exec</span>
-                        </div>
-                        <div className="space-y-1">
-                          <div className="w-full bg-slate-100 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden flex">
-                            <div className="bg-blue-500 h-full" style={{ width: `${Math.min(100, (comparisonTableData.contractor.efy / (comparisonTableData.lengthKm || 65)) * 100 * 2)}%` }} />
-                          </div>
-                          <div className="w-full bg-slate-100 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden flex">
-                            <div className="bg-purple-600 h-full" style={{ width: `${Math.min(100, (comparisonTableData.era.efy / (comparisonTableData.lengthKm || 65)) * 100 * 2)}%` }} />
-                          </div>
-                          <div className="w-full bg-slate-100 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden flex">
-                            <div className="bg-emerald-500 h-full" style={{ width: `${Math.min(100, (comparisonTableData.actual.efy / (comparisonTableData.lengthKm || 65)) * 100 * 2)}%` }} />
-                          </div>
-                        </div>
-                        <div className="flex justify-between text-[8px] text-slate-400 font-mono pt-0.5">
-                          <span>🟦 Ctr: {comparisonTableData.contractor.efy.toFixed(2)}</span>
-                          <span>🟪 ERA: {comparisonTableData.era.efy.toFixed(2)}</span>
-                          <span>🟩 Act: {comparisonTableData.actual.efy.toFixed(2)}</span>
-                        </div>
-                      </div>
-
-                      {/* Cumulative To-Date Horizon Bar */}
-                      <div className="space-y-1.5 bg-white dark:bg-slate-800 p-2.5 rounded-xl border border-indigo-200 dark:border-indigo-900/60 shadow-2xs">
-                        <div className="flex justify-between text-[10px] font-bold">
-                          <span className="text-indigo-600 dark:text-indigo-400 uppercase">Cumulative To-Date</span>
-                          <span className="font-mono text-indigo-700 dark:text-indigo-300 font-black">{comparisonTableData.actual.todate.toFixed(2)} Km</span>
-                        </div>
-                        <div className="space-y-1">
-                          <div className="w-full bg-slate-100 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden flex">
-                            <div className="bg-blue-500 h-full" style={{ width: `${Math.min(100, (comparisonTableData.contractor.todate / (comparisonTableData.lengthKm || 65)) * 100)}%` }} />
-                          </div>
-                          <div className="w-full bg-slate-100 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden flex">
-                            <div className="bg-purple-600 h-full" style={{ width: `${Math.min(100, (comparisonTableData.era.todate / (comparisonTableData.lengthKm || 65)) * 100)}%` }} />
-                          </div>
-                          <div className="w-full bg-slate-100 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden flex">
-                            <div className="bg-emerald-500 h-full" style={{ width: `${Math.min(100, (comparisonTableData.actual.todate / (comparisonTableData.lengthKm || 65)) * 100)}%` }} />
-                          </div>
-                        </div>
-                        <div className="flex justify-between text-[8px] text-slate-400 font-mono pt-0.5">
-                          <span>🟦 Ctr: {comparisonTableData.contractor.todate.toFixed(2)}</span>
-                          <span>🟪 ERA: {comparisonTableData.era.todate.toFixed(2)}</span>
-                          <span>🟩 Act: {comparisonTableData.actual.todate.toFixed(2)}</span>
-                        </div>
-                      </div>
-                    </div>
                   </div>
                 )}
 
-                {/* 4. Diagnostic Executive Findings Narrative */}
-                {comparisonTableData && activeMilestone && (
-                  <div className="p-3.5 bg-blue-50/50 dark:bg-blue-950/20 rounded-2xl border border-blue-200/80 dark:border-blue-900/40 text-xs space-y-1">
-                    <div className="font-black text-blue-950 dark:text-blue-100 flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                      Executive Milestone Diagnostic Findings — {activeMilestone.monthLabel}
+                {/* 4. Beginning of Fiscal Year (EFY) Annual Progress Baseline Planning Table */}
+                <div className="border border-indigo-200 dark:border-indigo-800/80 rounded-2xl overflow-hidden bg-white dark:bg-slate-900 shadow-sm space-y-0">
+                  {/* Header banner */}
+                  <div className="p-4 bg-gradient-to-r from-indigo-50/90 via-purple-50/70 to-blue-50/90 dark:from-indigo-950/40 dark:via-purple-950/30 dark:to-blue-950/40 border-b border-indigo-100 dark:border-indigo-900/60 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="text-xs sm:text-sm font-black uppercase text-indigo-950 dark:text-indigo-100 tracking-wider flex items-center gap-2">
+                          <Calendar className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                          <span>Annual Fiscal Year (EFY) Progress Baseline Plan</span>
+                        </h4>
+                        <span className="text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-800 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                          Beginning of FY Calibration
+                        </span>
+                      </div>
+                      <p className="text-2xs text-slate-600 dark:text-slate-400 max-w-2xl leading-relaxed">
+                        Establish, calibrate, and lock in the whole-year physical progress targets for both <strong>Contractor Program</strong> and <strong>ERA Approved Baseline</strong> at the start of the fiscal year.
+                      </p>
                     </div>
-                    <p className="text-slate-600 dark:text-slate-300 leading-relaxed text-[11px]">
-                      For the target month of <strong>{activeMilestone.monthLabel}</strong>, contractor physical execution achieved <strong>{comparisonTableData.actual.month.toFixed(2)} Km</strong> against an ERA baseline requirement of <strong>{comparisonTableData.era.month.toFixed(2)} Km</strong> ({comparisonTableData.varVsEra.month >= 0 ? '+' : ''}{comparisonTableData.varVsEra.month.toFixed(2)} Km variance, {comparisonTableData.ratioVsEra.month.toFixed(1)}% fulfillment). Cumulative to-date physical execution reached <strong>{comparisonTableData.actual.todate.toFixed(2)} Km</strong> ({((comparisonTableData.actual.todate / comparisonTableData.lengthKm) * 100).toFixed(2)}% of the total {comparisonTableData.lengthKm.toFixed(2)} Km contract scope) as of this cut-off period, compared with the cumulative ERA planned target of <strong>{comparisonTableData.era.todate.toFixed(2)} Km</strong>.
-                    </p>
-                  </div>
-                )}
 
-                {/* 5. Group Projects Comparison Matrix Table */}
+                    {/* Header Controls */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {/* Target Fiscal Year Selector */}
+                      <div className="flex items-center gap-1.5 bg-white dark:bg-slate-800 px-3 py-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800 text-xs shadow-2xs">
+                        <span className="text-[10px] font-extrabold uppercase text-slate-400">Target FY:</span>
+                        <select
+                          value={selectedPlanningEfy}
+                          onChange={(e) => setSelectedPlanningEfy(e.target.value)}
+                          className="bg-transparent font-black text-indigo-700 dark:text-indigo-300 outline-none cursor-pointer"
+                        >
+                          {availableEfyYears.map((yr) => {
+                            const numeric = parseInt(yr, 10);
+                            const gregorianStr = !isNaN(numeric) ? `(${numeric + 7}/${numeric + 8})` : '';
+                            return (
+                              <option key={yr} value={yr}>
+                                EFY {yr} {gregorianStr}
+                              </option>
+                            );
+                          })}
+                        </select>
+                      </div>
+
+                      {/* Add Previous EFY Plan Year button */}
+                      <button
+                        type="button"
+                        onClick={() => setIsAddEfyModalOpen(true)}
+                        className="px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 font-bold text-xs flex items-center gap-1 shadow-2xs transition cursor-pointer"
+                        title="Add and calibrate previous Ethiopian Fiscal Year baseline plan"
+                      >
+                        <Plus className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                        <span>+ Add Previous EFY</span>
+                      </button>
+
+                      {/* Toggle Quarterly Columns */}
+                      <button
+                        type="button"
+                        onClick={() => setIsQuarterlyPlanningExpanded(!isQuarterlyPlanningExpanded)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border cursor-pointer ${
+                          isQuarterlyPlanningExpanded
+                            ? 'bg-purple-600 text-white border-purple-500 shadow-xs'
+                            : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-750'
+                        }`}
+                        title="Toggle Q1, Q2, Q3, Q4 Quarterly Breakdown columns"
+                      >
+                        <Layers className="w-3.5 h-3.5" />
+                        <span>{isQuarterlyPlanningExpanded ? 'Hide Quarters' : 'Show Quarters (Q1-Q4)'}</span>
+                      </button>
+
+                      {/* Save All Modified Plans */}
+                      <button
+                        type="button"
+                        onClick={handleSaveAllEfyPlans}
+                        className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black uppercase tracking-wide transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                        title="Save all EFY annual baseline plans across projects"
+                      >
+                        <Save className="w-3.5 h-3.5" />
+                        <span>Save All EFY Plans</span>
+                      </button>
+
+                      {/* Expand / Collapse Section */}
+                      <button
+                        type="button"
+                        onClick={() => setIsEfySectionExpanded(!isEfySectionExpanded)}
+                        className="p-1.5 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 transition cursor-pointer"
+                        title={isEfySectionExpanded ? 'Collapse Table' : 'Expand Table'}
+                      >
+                        {isEfySectionExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Add Previous EFY Plan Modal */}
+                  {isAddEfyModalOpen && (
+                    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+                      <div className="bg-white dark:bg-slate-800 border border-indigo-200 dark:border-indigo-800 rounded-2xl max-w-md w-full p-5 shadow-2xl space-y-4 animate-fadeIn">
+                        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-3">
+                          <div className="flex items-center gap-2">
+                            <Calendar className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                            <h3 className="text-sm font-black text-slate-900 dark:text-white">
+                              Add Previous / Custom EFY Baseline Plan
+                            </h3>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setIsAddEfyModalOpen(false)}
+                            className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 cursor-pointer"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                          Select a previous Ethiopian Fiscal Year (EFY) or type any custom fiscal year to add and calibrate its annual progress baseline targets and monthly schedules in the system.
+                        </p>
+
+                        {/* Quick Previous Years Pick */}
+                        <div className="space-y-1.5">
+                          <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400">
+                            Quick Select Previous Fiscal Year:
+                          </label>
+                          <div className="grid grid-cols-4 gap-2">
+                            {['2018', '2017', '2016', '2015', '2014', '2013', '2012', '2011'].map((yr) => (
+                              <button
+                                key={yr}
+                                type="button"
+                                onClick={() => handleAddNewEfyYear(yr)}
+                                className={`py-1.5 px-2 rounded-xl text-xs font-bold border text-center transition cursor-pointer ${
+                                  selectedPlanningEfy === yr
+                                    ? 'bg-indigo-600 text-white border-indigo-500 shadow-xs'
+                                    : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-indigo-50 hover:text-indigo-600'
+                                }`}
+                              >
+                                EFY {yr}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Custom EFY Input */}
+                        <div className="space-y-1.5 pt-2 border-t border-slate-100 dark:border-slate-700">
+                          <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400">
+                            Or Enter Custom Fiscal Year Number:
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={customEfyInput}
+                              onChange={(e) => setCustomEfyInput(e.target.value)}
+                              placeholder="e.g. 2010 or 2015"
+                              className="flex-1 px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-mono font-bold outline-none focus:border-indigo-500 text-slate-800 dark:text-slate-100"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleAddNewEfyYear(customEfyInput)}
+                              disabled={!customEfyInput.trim()}
+                              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-black transition cursor-pointer"
+                            >
+                              Add Year
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Toast Notification Banner */}
+                  {efySaveToast && (
+                    <div className="p-3 bg-emerald-500 text-white text-xs font-bold flex items-center justify-between gap-2 animate-fadeIn">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 shrink-0" />
+                        <span>{efySaveToast.message}</span>
+                      </div>
+                      <button onClick={() => setEfySaveToast(null)} className="text-white/80 hover:text-white font-black text-sm cursor-pointer">×</button>
+                    </div>
+                  )}
+
+                  {isEfySectionExpanded && (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse text-xs">
+                        <thead>
+                          <tr className="bg-slate-100/90 dark:bg-slate-800 text-[9.5px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700">
+                            <th className="px-3.5 py-3 min-w-[180px]">Project ID & Title</th>
+                            <th className="px-3.5 py-3 text-center min-w-[90px]">Contract Scope</th>
+                            <th className="px-3.5 py-3 text-center min-w-[140px] bg-blue-50/50 dark:bg-blue-950/20 text-blue-800 dark:text-blue-300">
+                              Contractor EFY Plan (Km)
+                            </th>
+                            <th className="px-3.5 py-3 text-center min-w-[100px] bg-blue-50/30 dark:bg-blue-950/10 text-blue-700 dark:text-blue-300">
+                              Contractor %
+                            </th>
+                            <th className="px-3.5 py-3 text-center min-w-[140px] bg-purple-50/50 dark:bg-purple-950/20 text-purple-800 dark:text-purple-300">
+                              ERA Approved EFY Plan (Km)
+                            </th>
+                            <th className="px-3.5 py-3 text-center min-w-[100px] bg-purple-50/30 dark:bg-purple-950/10 text-purple-700 dark:text-purple-300">
+                              ERA Approved %
+                            </th>
+                            {isQuarterlyPlanningExpanded && (
+                              <>
+                                <th className="px-2.5 py-3 text-center min-w-[90px] bg-slate-50 dark:bg-slate-850">Q1 Plan (Km)</th>
+                                <th className="px-2.5 py-3 text-center min-w-[90px] bg-slate-50 dark:bg-slate-850">Q2 Plan (Km)</th>
+                                <th className="px-2.5 py-3 text-center min-w-[90px] bg-slate-50 dark:bg-slate-850">Q3 Plan (Km)</th>
+                                <th className="px-2.5 py-3 text-center min-w-[90px] bg-slate-50 dark:bg-slate-850">Q4 Plan (Km)</th>
+                              </>
+                            )}
+                            <th className="px-3.5 py-3 text-center min-w-[120px]">Plan Variance</th>
+                            <th className="px-3.5 py-3 text-right min-w-[120px]">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                          {processedProjects.map((p, pIdx) => {
+                            const draft = getEfyDraft(p, selectedPlanningEfy);
+                            const totalKm = p.lengthKm || 65.0;
+                            const cKm = Number(draft.contractorEfy || 0);
+                            const eKm = Number(draft.eraEfy || 0);
+                            const cPct = totalKm > 0 ? (cKm / totalKm) * 100 : 0;
+                            const ePct = totalKm > 0 ? (eKm / totalKm) * 100 : 0;
+                            const varianceKm = cKm - eKm;
+
+                            return (
+                              <tr key={`efy_row_${p.id}`} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition">
+                                {/* Project Info */}
+                                <td className="px-3.5 py-2.5">
+                                  <div className="font-extrabold text-slate-900 dark:text-white line-clamp-1" title={p.name}>
+                                    {p.name}
+                                  </div>
+                                  <div className="text-[10px] text-slate-400 font-mono flex items-center gap-1.5">
+                                    <span className="font-bold text-indigo-600 dark:text-indigo-400">{p.id.substring(0, 10).toUpperCase()}</span>
+                                    <span>•</span>
+                                    <span>{p.contractor || 'Contractor N/A'}</span>
+                                  </div>
+                                </td>
+
+                                {/* Total Scope */}
+                                <td className="px-3.5 py-2.5 text-center font-mono font-bold text-slate-700 dark:text-slate-300">
+                                  {totalKm.toFixed(2)} Km
+                                </td>
+
+                                {/* Contractor EFY Plan Input */}
+                                <td className="px-3.5 py-2.5 bg-blue-50/20 dark:bg-blue-950/10">
+                                  <div className="flex items-center justify-center gap-1">
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      min="0"
+                                      value={draft.contractorEfy === 0 ? '' : draft.contractorEfy}
+                                      placeholder="0.00"
+                                      onChange={(e) => updateEfyDraft(p.id, 'contractorEfy', parseFloat(e.target.value) || 0)}
+                                      className="w-24 px-2 py-1 text-center font-mono font-bold text-xs bg-white dark:bg-slate-900 border border-blue-300 dark:border-blue-700 rounded-lg outline-none focus:ring-1 focus:ring-blue-500 text-blue-900 dark:text-blue-200"
+                                    />
+                                    <span className="text-[10px] text-slate-400 font-mono">Km</span>
+                                  </div>
+                                </td>
+
+                                {/* Contractor EFY % */}
+                                <td className="px-3.5 py-2.5 text-center font-mono font-bold text-blue-700 dark:text-blue-300 bg-blue-50/10 dark:bg-blue-950/5">
+                                  {cPct.toFixed(2)}%
+                                </td>
+
+                                {/* ERA Approved EFY Plan Input */}
+                                <td className="px-3.5 py-2.5 bg-purple-50/20 dark:bg-purple-950/10">
+                                  <div className="flex items-center justify-center gap-1">
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      min="0"
+                                      value={draft.eraEfy === 0 ? '' : draft.eraEfy}
+                                      placeholder="0.00"
+                                      onChange={(e) => updateEfyDraft(p.id, 'eraEfy', parseFloat(e.target.value) || 0)}
+                                      className="w-24 px-2 py-1 text-center font-mono font-bold text-xs bg-white dark:bg-slate-900 border border-purple-300 dark:border-purple-700 rounded-lg outline-none focus:ring-1 focus:ring-purple-500 text-purple-900 dark:text-purple-200"
+                                    />
+                                    <span className="text-[10px] text-slate-400 font-mono">Km</span>
+                                  </div>
+                                </td>
+
+                                {/* ERA Approved EFY % */}
+                                <td className="px-3.5 py-2.5 text-center font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-50/10 dark:bg-purple-950/5">
+                                  {ePct.toFixed(2)}%
+                                </td>
+
+                                {/* Quarterly Breakdown (Q1-Q4) */}
+                                {isQuarterlyPlanningExpanded && (
+                                  <>
+                                    <td className="px-2 py-2 text-center">
+                                      <input
+                                        type="number"
+                                        step="0.01"
+                                        value={draft.q1Era ?? ''}
+                                        onChange={(e) => updateEfyDraft(p.id, 'q1Era', parseFloat(e.target.value) || 0)}
+                                        placeholder="Q1"
+                                        className="w-16 px-1.5 py-0.5 text-center font-mono text-[11px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded outline-none"
+                                      />
+                                    </td>
+                                    <td className="px-2 py-2 text-center">
+                                      <input
+                                        type="number"
+                                        step="0.01"
+                                        value={draft.q2Era ?? ''}
+                                        onChange={(e) => updateEfyDraft(p.id, 'q2Era', parseFloat(e.target.value) || 0)}
+                                        placeholder="Q2"
+                                        className="w-16 px-1.5 py-0.5 text-center font-mono text-[11px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded outline-none"
+                                      />
+                                    </td>
+                                    <td className="px-2 py-2 text-center">
+                                      <input
+                                        type="number"
+                                        step="0.01"
+                                        value={draft.q3Era ?? ''}
+                                        onChange={(e) => updateEfyDraft(p.id, 'q3Era', parseFloat(e.target.value) || 0)}
+                                        placeholder="Q3"
+                                        className="w-16 px-1.5 py-0.5 text-center font-mono text-[11px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded outline-none"
+                                      />
+                                    </td>
+                                    <td className="px-2 py-2 text-center">
+                                      <input
+                                        type="number"
+                                        step="0.01"
+                                        value={draft.q4Era ?? ''}
+                                        onChange={(e) => updateEfyDraft(p.id, 'q4Era', parseFloat(e.target.value) || 0)}
+                                        placeholder="Q4"
+                                        className="w-16 px-1.5 py-0.5 text-center font-mono text-[11px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded outline-none"
+                                      />
+                                    </td>
+                                  </>
+                                )}
+
+                                {/* Variance */}
+                                <td className="px-3.5 py-2.5 text-center font-mono font-bold">
+                                  <span className={varianceKm > 0 ? 'text-blue-600 dark:text-blue-400' : varianceKm < 0 ? 'text-red-500' : 'text-slate-400'}>
+                                    {varianceKm > 0 ? `+${varianceKm.toFixed(2)}` : varianceKm.toFixed(2)} Km
+                                  </span>
+                                </td>
+
+                                {/* Action */}
+                                <td className="px-3.5 py-2.5 text-right">
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleAutoDistributeQuarters(p.id)}
+                                      className="p-1 rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-3xs font-bold transition cursor-pointer"
+                                      title="Auto-distribute 20%/25%/30%/25% to quarters"
+                                    >
+                                      ⚡ Split
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSaveSingleEfyPlan(p)}
+                                      className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-black text-2xs transition flex items-center gap-1 cursor-pointer shadow-2xs"
+                                      title={`Save EFY ${selectedPlanningEfy} baseline plan for this project`}
+                                    >
+                                      <Save className="w-3 h-3" />
+                                      <span>Save</span>
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                {/* 5. Directorate & PMO Group Average Performance Report (ERA Plan vs Accomplished - Collapsible/Default Hidden) */}
+                <div className="border-2 border-indigo-200 dark:border-indigo-800/80 rounded-2xl overflow-hidden bg-white dark:bg-slate-900 shadow-md space-y-0">
+                  {/* Header */}
+                  <div className="p-3.5 sm:p-4 bg-gradient-to-r from-indigo-900 via-slate-900 to-indigo-950 text-white flex flex-col md:flex-row md:items-center justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 bg-indigo-600/80 rounded-xl border border-indigo-400/40 shadow-inner">
+                        <Landmark className="w-5 h-5 text-indigo-200" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4 className="text-sm font-black tracking-tight flex items-center gap-1.5">
+                            Directorate & PMO Group Performance Summary
+                          </h4>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-500/30 text-indigo-200 border border-indigo-400/30">
+                            ERA Plan vs Accomplished
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-indigo-200/80 mt-0.5">
+                          Aggregated Monthly ({activeMilestone?.monthLabel}), Quarterly ({activeMilestone?.quarterLabel}), and EFY {activeMilestone?.efyLabel} group totals for Program Directorates and PMO groupings.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap self-start md:self-auto">
+                      {/* Export Summary PDF Button */}
+                      <button
+                        type="button"
+                        onClick={handleExportDirectoratePmoSummaryPDF}
+                        disabled={!activeMilestone}
+                        className="px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white border border-indigo-400/40 shadow-sm cursor-pointer disabled:opacity-50"
+                        title="Print / Export Directorate & PMO Group Performance Summary in PDF"
+                        id="btn-export-directorate-pmo-summary-pdf"
+                      >
+                        <Printer className="w-3.5 h-3.5" />
+                        <span>Export Summary PDF</span>
+                      </button>
+
+                      {/* Show / Hide Toggle Button */}
+                      <button
+                        type="button"
+                        onClick={() => setIsAvgSummaryExpanded(!isAvgSummaryExpanded)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border cursor-pointer ${
+                          isAvgSummaryExpanded
+                            ? 'bg-slate-800 text-indigo-200 border-indigo-400/40 hover:bg-slate-700'
+                            : 'bg-indigo-600 text-white border-indigo-400 shadow-sm hover:bg-indigo-500'
+                        }`}
+                        title={isAvgSummaryExpanded ? 'Hide Directorate & PMO Group Summary' : 'Show Directorate & PMO Group Summary'}
+                      >
+                        {isAvgSummaryExpanded ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                        <span>{isAvgSummaryExpanded ? 'Hide Group Summary' : 'Show Group Summary'}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Collapsed Placeholder Bar */}
+                  {!isAvgSummaryExpanded && (
+                    <div className="p-3 bg-slate-50 dark:bg-slate-900/60 border-t border-indigo-100 dark:border-indigo-900/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
+                      <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400 text-2xs">
+                        <span className="w-2 h-2 rounded-full bg-indigo-500 shrink-0" />
+                        <span>Directorate & PMO performance summary is currently hidden. Click "Show Group Summary" to display aggregated month, quarter, and EFY averages.</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsAvgSummaryExpanded(true)}
+                        className="px-3 py-1 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 rounded-lg text-2xs font-bold transition cursor-pointer flex items-center gap-1.5 self-start sm:self-auto shrink-0"
+                      >
+                        <Eye className="w-3 h-3" />
+                        <span>Show Group Summary</span>
+                      </button>
+                    </div>
+                  )}
+
+                  {isAvgSummaryExpanded && (
+                    <div className="p-4 space-y-3.5">
+                      {/* Sub-Tabs & Quick KPI Badges */}
+                      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                        {/* Group Selection Tabs */}
+                        <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl w-fit text-xs font-bold">
+                          <button
+                            type="button"
+                            onClick={() => setAvgSummaryGroupTab('both')}
+                            className={`px-3 py-1 rounded-lg transition ${avgSummaryGroupTab === 'both' ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 font-black shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}
+                          >
+                            Combined Overview ({directorateComparisonSummary.length + pmoComparisonSummary.length} Groups)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAvgSummaryGroupTab('directorate')}
+                            className={`px-3 py-1 rounded-lg transition flex items-center gap-1.5 ${avgSummaryGroupTab === 'directorate' ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 font-black shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}
+                          >
+                            <Building2 className="w-3.5 h-3.5" />
+                            Program Directorates ({directorateComparisonSummary.length})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAvgSummaryGroupTab('pmo')}
+                            className={`px-3 py-1 rounded-lg transition flex items-center gap-1.5 ${avgSummaryGroupTab === 'pmo' ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 font-black shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}
+                          >
+                            <Landmark className="w-3.5 h-3.5" />
+                            PMO Groupings ({pmoComparisonSummary.length})
+                          </button>
+                        </div>
+
+                        {/* Top Performance Badges */}
+                        {overallPortfolioAverages && (
+                          <div className="flex items-center gap-2 flex-wrap text-2xs">
+                            <div className="px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 font-bold flex items-center gap-1.5">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                              <span>Portfolio Monthly Fulfillment:</span>
+                              <span className="font-mono font-black">{overallPortfolioAverages.monthRatio.toFixed(1)}%</span>
+                            </div>
+                            <div className="px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 text-indigo-800 dark:text-indigo-300 font-bold flex items-center gap-1.5">
+                              <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                              <span>Portfolio EFY Fulfillment:</span>
+                              <span className="font-mono font-black">{overallPortfolioAverages.efyRatio.toFixed(1)}%</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Directorate and PMO Summary Table */}
+                      <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700/80 shadow-xs">
+                        <table className="w-full text-left border-collapse text-xs">
+                          <thead>
+                            <tr className="bg-slate-100/90 dark:bg-slate-800/90 text-[9.5px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700">
+                              <th className="px-3.5 py-3 min-w-[180px]">Group Entity (Directorate / PMO)</th>
+                              <th className="px-3 py-3 text-center min-w-[90px]">Projects & Scope</th>
+                              <th className="px-3 py-3 text-center min-w-[155px] bg-blue-50/50 dark:bg-blue-950/20 text-blue-900 dark:text-blue-200">
+                                Month: {activeMilestone?.monthLabel} (ERA vs Act)
+                              </th>
+                              <th className="px-3 py-3 text-center min-w-[150px] bg-indigo-50/50 dark:bg-indigo-950/20 text-indigo-900 dark:text-indigo-200">
+                                Quarter: {activeMilestone?.quarterLabel} (ERA vs Act)
+                              </th>
+                              <th className="px-3 py-3 text-center min-w-[150px] bg-purple-50/50 dark:bg-purple-950/20 text-purple-900 dark:text-purple-200">
+                                EFY {activeMilestone?.efyLabel} (ERA vs Act)
+                              </th>
+                              <th className="px-3 py-3 text-center min-w-[90px]">Health</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                            {/* Render Directorates if selected */}
+                            {(avgSummaryGroupTab === 'both' || avgSummaryGroupTab === 'directorate') && (
+                              <>
+                                {avgSummaryGroupTab === 'both' && (
+                                  <tr className="bg-slate-100/60 dark:bg-slate-800/40 text-[10px] font-black text-indigo-700 dark:text-indigo-300 uppercase">
+                                    <td colSpan={6} className="px-3.5 py-1.5 flex items-center gap-1.5">
+                                      <Building2 className="w-3.5 h-3.5 text-indigo-500" />
+                                      Program Directorates Averages & Totals ({directorateComparisonSummary.length} Directorates)
+                                    </td>
+                                  </tr>
+                                )}
+                                {directorateComparisonSummary.map((grp) => {
+                                  const eraM = grp.totalEraMonth;
+                                  const actM = grp.totalActMonth;
+                                  const varM = grp.totalMonthVar;
+
+                                  const eraQ = grp.totalEraQuarter;
+                                  const actQ = grp.totalActQuarter;
+                                  const varQ = grp.totalQuarterVar;
+
+                                  const eraE = grp.totalEraEfy;
+                                  const actE = grp.totalActEfy;
+                                  const varE = grp.totalEfyVar;
+
+                                  return (
+                                    <tr key={`dir_sum_${grp.name}`} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition">
+                                      {/* Entity Info */}
+                                      <td className="px-3.5 py-2.5">
+                                        <div className="font-extrabold text-slate-900 dark:text-white flex items-center gap-1.5">
+                                          <Building2 className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                                          <span>{grp.name} Directorate</span>
+                                        </div>
+                                        <div className="text-[10px] text-slate-400 font-mono pl-5">
+                                          Directorate Group • {grp.projectCount} Projects
+                                        </div>
+                                      </td>
+
+                                      {/* Scope */}
+                                      <td className="px-3 py-2.5 text-center font-mono">
+                                        <div className="font-bold text-slate-800 dark:text-slate-200">
+                                          {grp.totalLengthKm.toFixed(1)} Km
+                                        </div>
+                                        <div className="text-[10px] text-slate-400">
+                                          {grp.projectCount} proj • {grp.totalLengthKm.toFixed(0)} Km tot
+                                        </div>
+                                      </td>
+
+                                      {/* Monthly */}
+                                      <td className="px-3 py-2.5 text-center font-mono bg-blue-50/20 dark:bg-blue-950/10">
+                                        <div className="bg-white dark:bg-slate-900 p-1.5 rounded-lg border border-blue-150 dark:border-blue-900/40 space-y-0.5 text-2xs">
+                                          <div className="flex justify-between gap-1 text-slate-500 dark:text-slate-400">
+                                            <span>ERA Plan:</span>
+                                            <span className="font-bold text-purple-600 dark:text-purple-400">{eraM.toFixed(2)} Km</span>
+                                          </div>
+                                          <div className="flex justify-between gap-1 text-slate-800 dark:text-white font-bold">
+                                            <span>Actual:</span>
+                                            <span className="text-emerald-600 dark:text-emerald-400 font-black">{actM.toFixed(2)} Km</span>
+                                          </div>
+                                          <div className="pt-0.5 border-t border-slate-100 dark:border-slate-800 flex justify-between gap-1 text-[9px]">
+                                            <span className="font-bold text-blue-600 dark:text-blue-400">{grp.monthRatio.toFixed(1)}% rate</span>
+                                            <span className={`font-black ${varM >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                                              {varM >= 0 ? '+' : ''}{varM.toFixed(2)} Km
+                                            </span>
+                                          </div>
+                                        </div>
+                                      </td>
+
+                                      {/* Quarterly */}
+                                      <td className="px-3 py-2.5 text-center font-mono bg-indigo-50/20 dark:bg-indigo-950/10">
+                                        <div className="bg-white dark:bg-slate-900 p-1.5 rounded-lg border border-indigo-150 dark:border-indigo-900/40 space-y-0.5 text-2xs">
+                                          <div className="flex justify-between gap-1 text-slate-500 dark:text-slate-400">
+                                            <span>ERA Plan:</span>
+                                            <span className="font-bold text-purple-600 dark:text-purple-400">{eraQ.toFixed(2)} Km</span>
+                                          </div>
+                                          <div className="flex justify-between gap-1 text-slate-800 dark:text-white font-bold">
+                                            <span>Actual:</span>
+                                            <span className="text-emerald-600 dark:text-emerald-400 font-black">{actQ.toFixed(2)} Km</span>
+                                          </div>
+                                          <div className="pt-0.5 border-t border-slate-100 dark:border-slate-800 flex justify-between gap-1 text-[9px]">
+                                            <span className="font-bold text-indigo-600 dark:text-indigo-400">{grp.quarterRatio.toFixed(1)}% rate</span>
+                                            <span className={`font-black ${varQ >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                                              {varQ >= 0 ? '+' : ''}{varQ.toFixed(2)} Km
+                                            </span>
+                                          </div>
+                                        </div>
+                                      </td>
+
+                                      {/* EFY */}
+                                      <td className="px-3 py-2.5 text-center font-mono bg-purple-50/20 dark:bg-purple-950/10">
+                                        <div className="bg-white dark:bg-slate-900 p-1.5 rounded-lg border border-purple-150 dark:border-purple-900/40 space-y-0.5 text-2xs">
+                                          <div className="flex justify-between gap-1 text-slate-500 dark:text-slate-400">
+                                            <span>ERA Plan:</span>
+                                            <span className="font-bold text-purple-600 dark:text-purple-400">{eraE.toFixed(2)} Km</span>
+                                          </div>
+                                          <div className="flex justify-between gap-1 text-slate-800 dark:text-white font-bold">
+                                            <span>Actual:</span>
+                                            <span className="text-emerald-600 dark:text-emerald-400 font-black">{actE.toFixed(2)} Km</span>
+                                          </div>
+                                          <div className="pt-0.5 border-t border-slate-100 dark:border-slate-800 flex justify-between gap-1 text-[9px]">
+                                            <span className="font-bold text-purple-600 dark:text-purple-400">{grp.efyRatio.toFixed(1)}% rate</span>
+                                            <span className={`font-black ${varE >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                                              {varE >= 0 ? '+' : ''}{varE.toFixed(2)} Km
+                                            </span>
+                                          </div>
+                                        </div>
+                                      </td>
+
+                                      {/* Health */}
+                                      <td className="px-3 py-2.5 text-center">
+                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold inline-block border ${
+                                          grp.healthStatus === 'Ahead'
+                                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
+                                            : grp.healthStatus === 'On Track'
+                                            ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border-blue-300 dark:border-blue-700'
+                                            : grp.healthStatus === 'Lagging'
+                                            ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border-amber-300 dark:border-amber-700'
+                                            : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 border-rose-300 dark:border-rose-700'
+                                        }`}>
+                                          {grp.healthStatus}
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </>
+                            )}
+
+                            {/* Render PMOs if selected */}
+                            {(avgSummaryGroupTab === 'both' || avgSummaryGroupTab === 'pmo') && (
+                              <>
+                                {avgSummaryGroupTab === 'both' && (
+                                  <tr className="bg-slate-100/60 dark:bg-slate-800/40 text-[10px] font-black text-indigo-700 dark:text-indigo-300 uppercase">
+                                    <td colSpan={6} className="px-3.5 py-1.5 flex items-center gap-1.5">
+                                      <Landmark className="w-3.5 h-3.5 text-indigo-500" />
+                                      PMO Groupings Averages & Totals ({pmoComparisonSummary.length} PMOs)
+                                    </td>
+                                  </tr>
+                                )}
+                                {pmoComparisonSummary.map((grp) => {
+                                  const eraM = grp.totalEraMonth;
+                                  const actM = grp.totalActMonth;
+                                  const varM = grp.totalMonthVar;
+
+                                  const eraQ = grp.totalEraQuarter;
+                                  const actQ = grp.totalActQuarter;
+                                  const varQ = grp.totalQuarterVar;
+
+                                  const eraE = grp.totalEraEfy;
+                                  const actE = grp.totalActEfy;
+                                  const varE = grp.totalEfyVar;
+
+                                  return (
+                                    <tr key={`pmo_sum_${grp.name}`} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition">
+                                      {/* Entity Info */}
+                                      <td className="px-3.5 py-2.5">
+                                        <div className="font-extrabold text-slate-900 dark:text-white flex items-center gap-1.5">
+                                          <Landmark className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                                          <span>{grp.name}</span>
+                                        </div>
+                                        <div className="text-[10px] text-slate-400 font-mono pl-5">
+                                          Project Management Office • {grp.projectCount} Projects
+                                        </div>
+                                      </td>
+
+                                      {/* Scope */}
+                                      <td className="px-3 py-2.5 text-center font-mono">
+                                        <div className="font-bold text-slate-800 dark:text-slate-200">
+                                          {grp.totalLengthKm.toFixed(1)} Km
+                                        </div>
+                                        <div className="text-[10px] text-slate-400">
+                                          {grp.projectCount} proj • {grp.totalLengthKm.toFixed(0)} Km tot
+                                        </div>
+                                      </td>
+
+                                      {/* Monthly */}
+                                      <td className="px-3 py-2.5 text-center font-mono bg-blue-50/20 dark:bg-blue-950/10">
+                                        <div className="bg-white dark:bg-slate-900 p-1.5 rounded-lg border border-blue-150 dark:border-blue-900/40 space-y-0.5 text-2xs">
+                                          <div className="flex justify-between gap-1 text-slate-500 dark:text-slate-400">
+                                            <span>ERA Plan:</span>
+                                            <span className="font-bold text-purple-600 dark:text-purple-400">{eraM.toFixed(2)} Km</span>
+                                          </div>
+                                          <div className="flex justify-between gap-1 text-slate-800 dark:text-white font-bold">
+                                            <span>Actual:</span>
+                                            <span className="text-emerald-600 dark:text-emerald-400 font-black">{actM.toFixed(2)} Km</span>
+                                          </div>
+                                          <div className="pt-0.5 border-t border-slate-100 dark:border-slate-800 flex justify-between gap-1 text-[9px]">
+                                            <span className="font-bold text-blue-600 dark:text-blue-400">{grp.monthRatio.toFixed(1)}% rate</span>
+                                            <span className={`font-black ${varM >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                                              {varM >= 0 ? '+' : ''}{varM.toFixed(2)} Km
+                                            </span>
+                                          </div>
+                                        </div>
+                                      </td>
+
+                                      {/* Quarterly */}
+                                      <td className="px-3 py-2.5 text-center font-mono bg-indigo-50/20 dark:bg-indigo-950/10">
+                                        <div className="bg-white dark:bg-slate-900 p-1.5 rounded-lg border border-indigo-150 dark:border-indigo-900/40 space-y-0.5 text-2xs">
+                                          <div className="flex justify-between gap-1 text-slate-500 dark:text-slate-400">
+                                            <span>ERA Plan:</span>
+                                            <span className="font-bold text-purple-600 dark:text-purple-400">{eraQ.toFixed(2)} Km</span>
+                                          </div>
+                                          <div className="flex justify-between gap-1 text-slate-800 dark:text-white font-bold">
+                                            <span>Actual:</span>
+                                            <span className="text-emerald-600 dark:text-emerald-400 font-black">{actQ.toFixed(2)} Km</span>
+                                          </div>
+                                          <div className="pt-0.5 border-t border-slate-100 dark:border-slate-800 flex justify-between gap-1 text-[9px]">
+                                            <span className="font-bold text-indigo-600 dark:text-indigo-400">{grp.quarterRatio.toFixed(1)}% rate</span>
+                                            <span className={`font-black ${varQ >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                                              {varQ >= 0 ? '+' : ''}{varQ.toFixed(2)} Km
+                                            </span>
+                                          </div>
+                                        </div>
+                                      </td>
+
+                                      {/* EFY */}
+                                      <td className="px-3 py-2.5 text-center font-mono bg-purple-50/20 dark:bg-purple-950/10">
+                                        <div className="bg-white dark:bg-slate-900 p-1.5 rounded-lg border border-purple-150 dark:border-purple-900/40 space-y-0.5 text-2xs">
+                                          <div className="flex justify-between gap-1 text-slate-500 dark:text-slate-400">
+                                            <span>ERA Plan:</span>
+                                            <span className="font-bold text-purple-600 dark:text-purple-400">{eraE.toFixed(2)} Km</span>
+                                          </div>
+                                          <div className="flex justify-between gap-1 text-slate-800 dark:text-white font-bold">
+                                            <span>Actual:</span>
+                                            <span className="text-emerald-600 dark:text-emerald-400 font-black">{actE.toFixed(2)} Km</span>
+                                          </div>
+                                          <div className="pt-0.5 border-t border-slate-100 dark:border-slate-800 flex justify-between gap-1 text-[9px]">
+                                            <span className="font-bold text-purple-600 dark:text-purple-400">{grp.efyRatio.toFixed(1)}% rate</span>
+                                            <span className={`font-black ${varE >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                                              {varE >= 0 ? '+' : ''}{varE.toFixed(2)} Km
+                                            </span>
+                                          </div>
+                                        </div>
+                                      </td>
+
+                                      {/* Health */}
+                                      <td className="px-3 py-2.5 text-center">
+                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold inline-block border ${
+                                          grp.healthStatus === 'Ahead'
+                                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
+                                            : grp.healthStatus === 'On Track'
+                                            ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border-blue-300 dark:border-blue-700'
+                                            : grp.healthStatus === 'Lagging'
+                                            ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border-amber-300 dark:border-amber-700'
+                                            : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 border-rose-300 dark:border-rose-700'
+                                        }`}>
+                                          {grp.healthStatus}
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </>
+                            )}
+
+                            {/* Overall Portfolio Aggregate Summary Row */}
+                            {overallPortfolioAverages && (
+                              <tr className="bg-slate-100 dark:bg-slate-800/90 font-black text-slate-900 dark:text-white border-t-2 border-indigo-300 dark:border-indigo-700">
+                                <td className="px-3.5 py-3">
+                                  <div className="flex items-center gap-1.5">
+                                    <Sparkles className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                                    <span>PORTFOLIO OVERALL TOTAL</span>
+                                  </div>
+                                  <div className="text-[10px] text-slate-500 font-mono font-normal pl-5">
+                                    All {overallPortfolioAverages.projectCount} Projects Combined
+                                  </div>
+                                </td>
+                                <td className="px-3 py-3 text-center font-mono">
+                                  <div>
+                                    {overallPortfolioAverages.totalLengthKm.toFixed(1)} Km
+                                  </div>
+                                  <div className="text-[10px] text-slate-500 font-normal">
+                                    {overallPortfolioAverages.projectCount} Projects
+                                  </div>
+                                </td>
+                                <td className="px-3 py-3 text-center font-mono bg-blue-100/50 dark:bg-blue-900/30">
+                                  <div className="text-2xs space-y-0.5">
+                                    <div className="flex justify-between gap-1 text-slate-600 dark:text-slate-300">
+                                      <span>ERA:</span>
+                                      <span>{overallPortfolioAverages.totalEraMonth.toFixed(2)} Km</span>
+                                    </div>
+                                    <div className="flex justify-between gap-1 text-emerald-700 dark:text-emerald-300 font-black">
+                                      <span>Act:</span>
+                                      <span>{overallPortfolioAverages.totalActMonth.toFixed(2)} Km</span>
+                                    </div>
+                                    <div className="flex justify-between gap-1 text-[9px] text-blue-700 dark:text-blue-300 pt-0.5 border-t border-blue-200 dark:border-blue-800">
+                                      <span>{overallPortfolioAverages.monthRatio.toFixed(1)}% Achieved</span>
+                                      <span className={overallPortfolioAverages.totalMonthVar >= 0 ? 'text-emerald-600' : 'text-rose-600'}>
+                                        {overallPortfolioAverages.totalMonthVar >= 0 ? '+' : ''}{overallPortfolioAverages.totalMonthVar.toFixed(2)} Km
+                                      </span>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="px-3 py-3 text-center font-mono bg-indigo-100/50 dark:bg-indigo-900/30">
+                                  <div className="text-2xs space-y-0.5">
+                                    <div className="flex justify-between gap-1 text-slate-600 dark:text-slate-300">
+                                      <span>ERA:</span>
+                                      <span>{overallPortfolioAverages.totalEraQuarter.toFixed(2)} Km</span>
+                                    </div>
+                                    <div className="flex justify-between gap-1 text-emerald-700 dark:text-emerald-300 font-black">
+                                      <span>Act:</span>
+                                      <span>{overallPortfolioAverages.totalActQuarter.toFixed(2)} Km</span>
+                                    </div>
+                                    <div className="flex justify-between gap-1 text-[9px] text-indigo-700 dark:text-indigo-300 pt-0.5 border-t border-indigo-200 dark:border-indigo-800">
+                                      <span>{overallPortfolioAverages.quarterRatio.toFixed(1)}% Achieved</span>
+                                      <span className={overallPortfolioAverages.totalQuarterVar >= 0 ? 'text-emerald-600' : 'text-rose-600'}>
+                                        {overallPortfolioAverages.totalQuarterVar >= 0 ? '+' : ''}{overallPortfolioAverages.totalQuarterVar.toFixed(2)} Km
+                                      </span>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="px-3 py-3 text-center font-mono bg-purple-100/50 dark:bg-purple-900/30">
+                                  <div className="text-2xs space-y-0.5">
+                                    <div className="flex justify-between gap-1 text-slate-600 dark:text-slate-300">
+                                      <span>ERA:</span>
+                                      <span>{overallPortfolioAverages.totalEraEfy.toFixed(2)} Km</span>
+                                    </div>
+                                    <div className="flex justify-between gap-1 text-emerald-700 dark:text-emerald-300 font-black">
+                                      <span>Act:</span>
+                                      <span>{overallPortfolioAverages.totalActEfy.toFixed(2)} Km</span>
+                                    </div>
+                                    <div className="flex justify-between gap-1 text-[9px] text-purple-700 dark:text-purple-300 pt-0.5 border-t border-purple-200 dark:border-purple-800">
+                                      <span>{overallPortfolioAverages.efyRatio.toFixed(1)}% Achieved</span>
+                                      <span className={overallPortfolioAverages.totalEfyVar >= 0 ? 'text-emerald-600' : 'text-rose-600'}>
+                                        {overallPortfolioAverages.totalEfyVar >= 0 ? '+' : ''}{overallPortfolioAverages.totalEfyVar.toFixed(2)} Km
+                                      </span>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="px-3 py-3 text-center">
+                                  <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-indigo-600 text-white">
+                                    Portfolio
+                                  </span>
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 6. Group Projects Comparison Matrix Table */}
                 <div className="border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden bg-white dark:bg-slate-900/40 shadow-sm space-y-0">
                   <div className="p-3 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700/80 flex items-center justify-between flex-wrap gap-2">
                     <div>
@@ -8635,6 +10548,27 @@ export default function GroupReportGenerator({
                       </span>
                       <button
                         type="button"
+                        onClick={() => setIsGroupPortfolioSummaryExpanded(!isGroupPortfolioSummaryExpanded)}
+                        id="btn-toggle-portfolio-summary-table"
+                        className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border border-slate-200 dark:border-slate-700 shadow-2xs"
+                        title={isGroupPortfolioSummaryExpanded ? 'Hide Portfolio Comparison Table' : 'Show Portfolio Comparison Table'}
+                      >
+                        {isGroupPortfolioSummaryExpanded ? (
+                          <>
+                            <EyeOff className="w-3.5 h-3.5 text-slate-500" />
+                            <span>Hide Table</span>
+                            <ChevronUp className="w-3.5 h-3.5 text-slate-400" />
+                          </>
+                        ) : (
+                          <>
+                            <Eye className="w-3.5 h-3.5 text-indigo-500" />
+                            <span>Show Table</span>
+                            <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                          </>
+                        )}
+                      </button>
+                      <button
+                        type="button"
                         onClick={handleExportProgressComparisonPDF}
                         id="btn-print-portfolio-summary-table"
                         className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
@@ -8646,155 +10580,169 @@ export default function GroupReportGenerator({
                     </div>
                   </div>
 
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse text-xs">
-                      <thead>
-                        <tr className="bg-slate-100/60 dark:bg-slate-800/40 text-[9px] font-black uppercase text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700">
-                          <th className="px-3 py-2.5 min-w-[170px]">Project ID & Title</th>
-                          <th className="px-3 py-2.5 min-w-[130px]">Contractor</th>
-                          <th className="px-3 py-2.5 min-w-[140px]">Supervision Consultant</th>
-                          <th className="px-3 py-2.5 text-center min-w-[145px]">Month ({activeMilestone?.monthLabel})</th>
-                          <th className="px-3 py-2.5 text-center min-w-[130px]">Quarter ({activeMilestone?.quarterLabel})</th>
-                          <th className="px-3 py-2.5 text-center min-w-[130px]">EFY {activeMilestone?.efyLabel}</th>
-                          <th className="px-3 py-2.5 text-center min-w-[155px]">Cumulative To-Date</th>
-                          <th className="px-3 py-2.5 text-center min-w-[85px]">Status</th>
-                          <th className="px-3 py-2.5 text-right min-w-[70px]">Action</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                        {groupComparisonMatrix.map((item, pIdx) => {
-                          const isCurrentActive = activeComparisonProject?.id === item.project.id;
-                          return (
-                            <tr 
-                              key={`grp_row_${item.project.id || pIdx}`}
-                              className={`transition ${
-                                isCurrentActive 
-                                  ? 'bg-blue-50/60 dark:bg-blue-950/30 font-semibold' 
-                                  : 'hover:bg-slate-50/50 dark:hover:bg-slate-800/20'
-                              }`}
-                            >
-                              <td className="px-3 py-2.5">
-                                <div className="font-extrabold text-slate-800 dark:text-zinc-200 truncate max-w-[190px]" title={item.project.name}>
-                                  {item.project.name}
-                                </div>
-                                <div className="text-[10px] text-slate-400 font-mono">
-                                  ID: {item.project.id.substring(0, 10).toUpperCase()} • {item.lengthKm} Km
-                                </div>
-                              </td>
-                              <td className={`px-3 py-2.5 text-slate-800 dark:text-zinc-200 font-bold col-contractor ${getLengthClass(item.project.contractor)}`} data-col="contractor" title={item.project.contractor || 'Not Specified'}>
-                                {item.project.contractor || 'Not Specified'}
-                              </td>
-                              <td className={`px-3 py-2.5 text-slate-600 dark:text-slate-400 col-engineer ${getLengthClass(item.project.consultant)}`} data-col="engineer" title={item.project.consultant || 'Not Specified'}>
-                                {item.project.consultant || 'Not Specified'}
-                              </td>
-                              <td className="px-3 py-2.5 text-center font-mono">
-                                <div className="bg-slate-50 dark:bg-slate-800/60 p-1.5 rounded-lg border border-slate-150 dark:border-slate-700/60 space-y-0.5 text-2xs">
-                                  <div className="flex justify-between gap-1.5 text-slate-500 dark:text-slate-400">
-                                    <span>Ctr Plan:</span>
-                                    <span className="font-bold text-blue-600 dark:text-blue-400">{item.contractor.month.toFixed(2)} Km</span>
+                  {isGroupPortfolioSummaryExpanded && (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse text-xs">
+                        <thead>
+                          <tr className="bg-slate-100/60 dark:bg-slate-800/40 text-[9px] font-black uppercase text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700">
+                            <th className="px-3 py-2.5 min-w-[170px]">Project ID & Title</th>
+                            <th className="px-3 py-2.5 min-w-[130px]">Contractor</th>
+                            <th className="px-3 py-2.5 min-w-[140px]">Supervision Consultant</th>
+                            <th className="px-3 py-2.5 text-center min-w-[145px]">Month ({activeMilestone?.monthLabel})</th>
+                            <th className="px-3 py-2.5 text-center min-w-[130px]">Quarter ({activeMilestone?.quarterLabel})</th>
+                            <th className="px-3 py-2.5 text-center min-w-[130px]">EFY {activeMilestone?.efyLabel}</th>
+                            <th className="px-3 py-2.5 text-center min-w-[155px]">Cumulative To-Date</th>
+                            <th className="px-3 py-2.5 text-center min-w-[85px]">Status</th>
+                            <th className="px-3 py-2.5 text-right min-w-[70px]">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                          {groupComparisonMatrix.map((item, pIdx) => {
+                            const isCurrentActive = activeComparisonProject?.id === item.project.id;
+                            return (
+                              <tr 
+                                key={`grp_row_${item.project.id || pIdx}`}
+                                className={`transition ${
+                                  isCurrentActive 
+                                    ? 'bg-blue-50/60 dark:bg-blue-950/30 font-semibold' 
+                                    : 'hover:bg-slate-50/50 dark:hover:bg-slate-800/20'
+                                }`}
+                              >
+                                <td className="px-3 py-2.5">
+                                  <div className="font-extrabold text-slate-800 dark:text-zinc-200 truncate max-w-[190px]" title={item.project.name}>
+                                    {item.project.name}
                                   </div>
-                                  <div className="flex justify-between gap-1.5 text-slate-500 dark:text-slate-400">
-                                    <span>ERA Plan:</span>
-                                    <span className="font-bold text-purple-600 dark:text-purple-400">{item.era.month.toFixed(2)} Km</span>
+                                  <div className="text-[10px] text-slate-400 font-mono">
+                                    ID: {item.project.id.substring(0, 10).toUpperCase()} • {item.lengthKm} Km
                                   </div>
-                                  <div className="flex justify-between gap-1.5 text-slate-800 dark:text-zinc-200 font-bold">
-                                    <span>Actual:</span>
-                                    <span className="text-emerald-600 dark:text-emerald-400 font-black">{item.actual.month.toFixed(2)} Km</span>
+                                </td>
+                                <td className={`px-3 py-2.5 text-slate-800 dark:text-zinc-200 font-bold col-contractor ${getLengthClass(item.project.contractor)}`} data-col="contractor" title={item.project.contractor || 'Not Specified'}>
+                                  {item.project.contractor || 'Not Specified'}
+                                </td>
+                                <td className={`px-3 py-2.5 text-slate-600 dark:text-slate-400 col-engineer ${getLengthClass(item.project.consultant)}`} data-col="engineer" title={item.project.consultant || 'Not Specified'}>
+                                  {item.project.consultant || 'Not Specified'}
+                                </td>
+                                <td className="px-3 py-2.5 text-center font-mono">
+                                  <div className="bg-slate-50 dark:bg-slate-800/60 p-1.5 rounded-lg border border-slate-150 dark:border-slate-700/60 space-y-0.5 text-2xs">
+                                    <div className="flex justify-between gap-1.5 text-slate-500 dark:text-slate-400">
+                                      <span>Ctr Plan:</span>
+                                      <span className="font-bold text-blue-600 dark:text-blue-400">{item.contractor.month.toFixed(2)} Km</span>
+                                    </div>
+                                    <div className="flex justify-between gap-1.5 text-slate-500 dark:text-slate-400">
+                                      <span>ERA Plan:</span>
+                                      <span className="font-bold text-purple-600 dark:text-purple-400">{item.era.month.toFixed(2)} Km</span>
+                                    </div>
+                                    <div className="flex justify-between gap-1.5 text-slate-800 dark:text-zinc-200 font-bold">
+                                      <span>Actual:</span>
+                                      <span className="text-emerald-600 dark:text-emerald-400 font-black">{item.actual.month.toFixed(2)} Km ({item.monthRatio.toFixed(1)}%)</span>
+                                    </div>
+                                    <div className="pt-0.5 border-t border-slate-200 dark:border-slate-700 flex justify-between gap-1 text-[9px]">
+                                      <span className="text-slate-400 font-sans">Var:</span>
+                                      <span className={`font-black ${item.monthVariance >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                                        {item.monthVariance >= 0 ? '+' : ''}{item.monthVariance.toFixed(2)} Km
+                                      </span>
+                                    </div>
                                   </div>
-                                  <div className="pt-0.5 border-t border-slate-200 dark:border-slate-700 flex justify-between gap-1 text-[9px]">
-                                    <span className="text-slate-400 font-sans">Var:</span>
-                                    <span className={`font-black ${item.monthVariance >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                                      {item.monthVariance >= 0 ? '+' : ''}{item.monthVariance.toFixed(2)} Km
-                                    </span>
+                                </td>
+                                <td className="px-3 py-2.5 text-center font-mono">
+                                  <div className="bg-slate-50 dark:bg-slate-800/60 p-1.5 rounded-lg border border-slate-150 dark:border-slate-700/60 space-y-0.5 text-2xs">
+                                    <div className="flex justify-between gap-1.5 text-slate-500 dark:text-slate-400">
+                                      <span>Ctr:</span>
+                                      <span className="font-bold text-blue-600 dark:text-blue-400">{item.contractor.quarter.toFixed(2)} Km</span>
+                                    </div>
+                                    <div className="flex justify-between gap-1.5 text-slate-500 dark:text-slate-400">
+                                      <span>ERA:</span>
+                                      <span className="font-bold text-purple-600 dark:text-purple-400">{item.era.quarter.toFixed(2)} Km</span>
+                                    </div>
+                                    <div className="flex justify-between gap-1.5 text-slate-800 dark:text-zinc-200 font-bold">
+                                      <span>Act:</span>
+                                      <span className="text-emerald-600 dark:text-emerald-400 font-black">{item.actual.quarter.toFixed(2)} Km ({item.quarterRatio.toFixed(1)}%)</span>
+                                    </div>
+                                    <div className="pt-0.5 border-t border-slate-200 dark:border-slate-700 flex justify-between gap-1 text-[9px]">
+                                      <span className="text-slate-400 font-sans">Var:</span>
+                                      <span className={`font-black ${item.quarterVariance >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                                        {item.quarterVariance >= 0 ? '+' : ''}{item.quarterVariance.toFixed(2)} Km
+                                      </span>
+                                    </div>
                                   </div>
-                                </div>
-                              </td>
-                              <td className="px-3 py-2.5 text-center font-mono">
-                                <div className="bg-slate-50 dark:bg-slate-800/60 p-1.5 rounded-lg border border-slate-150 dark:border-slate-700/60 space-y-0.5 text-2xs">
-                                  <div className="flex justify-between gap-1.5 text-slate-500 dark:text-slate-400">
-                                    <span>Ctr:</span>
-                                    <span className="font-bold text-blue-600 dark:text-blue-400">{item.contractor.quarter.toFixed(2)} Km</span>
+                                </td>
+                                <td className="px-3 py-2.5 text-center font-mono">
+                                  <div className="bg-slate-50 dark:bg-slate-800/60 p-1.5 rounded-lg border border-slate-150 dark:border-slate-700/60 space-y-0.5 text-2xs">
+                                    <div className="flex justify-between gap-1.5 text-slate-500 dark:text-slate-400">
+                                      <span>Ctr:</span>
+                                      <span className="font-bold text-blue-600 dark:text-blue-400">{item.contractor.efy.toFixed(2)} Km</span>
+                                    </div>
+                                    <div className="flex justify-between gap-1.5 text-slate-500 dark:text-slate-400">
+                                      <span>ERA:</span>
+                                      <span className="font-bold text-purple-600 dark:text-purple-400">{item.era.efy.toFixed(2)} Km</span>
+                                    </div>
+                                    <div className="flex justify-between gap-1.5 text-slate-800 dark:text-zinc-200 font-bold">
+                                      <span>Act:</span>
+                                      <span className="text-emerald-600 dark:text-emerald-400 font-black">{item.actual.efy.toFixed(2)} Km ({item.efyRatio.toFixed(1)}%)</span>
+                                    </div>
+                                    <div className="pt-0.5 border-t border-slate-200 dark:border-slate-700 flex justify-between gap-1 text-[9px]">
+                                      <span className="text-slate-400 font-sans">Var:</span>
+                                      <span className={`font-black ${item.efyVariance >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                                        {item.efyVariance >= 0 ? '+' : ''}{item.efyVariance.toFixed(2)} Km
+                                      </span>
+                                    </div>
                                   </div>
-                                  <div className="flex justify-between gap-1.5 text-slate-500 dark:text-slate-400">
-                                    <span>ERA:</span>
-                                    <span className="font-bold text-purple-600 dark:text-purple-400">{item.era.quarter.toFixed(2)} Km</span>
+                                </td>
+                                <td className="px-3 py-2.5 text-center font-mono">
+                                  <div className="bg-indigo-50/40 dark:bg-indigo-950/20 p-1.5 rounded-lg border border-indigo-100 dark:border-indigo-900/40 space-y-0.5 text-2xs">
+                                    <div className="flex justify-between gap-1.5 text-slate-500 dark:text-slate-400">
+                                      <span>Ctr:</span>
+                                      <span className="font-bold text-blue-600 dark:text-blue-400">{item.contractor.todate.toFixed(2)} Km</span>
+                                    </div>
+                                    <div className="flex justify-between gap-1.5 text-slate-500 dark:text-slate-400">
+                                      <span>ERA:</span>
+                                      <span className="font-bold text-purple-600 dark:text-purple-400">{item.era.todate.toFixed(2)} Km</span>
+                                    </div>
+                                    <div className="flex justify-between gap-1.5 text-indigo-950 dark:text-indigo-200 font-bold">
+                                      <span>Act:</span>
+                                      <span className="text-indigo-700 dark:text-indigo-300 font-black">{item.actual.todate.toFixed(2)} Km ({item.todateRatio.toFixed(1)}%)</span>
+                                    </div>
+                                    <div className="pt-0.5 border-t border-indigo-200/60 dark:border-indigo-800/60 flex justify-between gap-1 text-[9px]">
+                                      <span className="text-slate-400 font-sans">Slip:</span>
+                                      <span className={`font-black ${item.todateVariance >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                                        {item.todateVariance >= 0 ? '+' : ''}{item.todateVariance.toFixed(2)} Km
+                                      </span>
+                                    </div>
                                   </div>
-                                  <div className="flex justify-between gap-1.5 text-slate-800 dark:text-zinc-200 font-bold">
-                                    <span>Act:</span>
-                                    <span className="text-emerald-600 dark:text-emerald-400 font-black">{item.actual.quarter.toFixed(2)} Km</span>
-                                  </div>
-                                </div>
-                              </td>
-                              <td className="px-3 py-2.5 text-center font-mono">
-                                <div className="bg-slate-50 dark:bg-slate-800/60 p-1.5 rounded-lg border border-slate-150 dark:border-slate-700/60 space-y-0.5 text-2xs">
-                                  <div className="flex justify-between gap-1.5 text-slate-500 dark:text-slate-400">
-                                    <span>Ctr:</span>
-                                    <span className="font-bold text-blue-600 dark:text-blue-400">{item.contractor.efy.toFixed(2)} Km</span>
-                                  </div>
-                                  <div className="flex justify-between gap-1.5 text-slate-500 dark:text-slate-400">
-                                    <span>ERA:</span>
-                                    <span className="font-bold text-purple-600 dark:text-purple-400">{item.era.efy.toFixed(2)} Km</span>
-                                  </div>
-                                  <div className="flex justify-between gap-1.5 text-slate-800 dark:text-zinc-200 font-bold">
-                                    <span>Act:</span>
-                                    <span className="text-emerald-600 dark:text-emerald-400 font-black">{item.actual.efy.toFixed(2)} Km</span>
-                                  </div>
-                                </div>
-                              </td>
-                              <td className="px-3 py-2.5 text-center font-mono">
-                                <div className="bg-indigo-50/40 dark:bg-indigo-950/20 p-1.5 rounded-lg border border-indigo-100 dark:border-indigo-900/40 space-y-0.5 text-2xs">
-                                  <div className="flex justify-between gap-1.5 text-slate-500 dark:text-slate-400">
-                                    <span>Ctr:</span>
-                                    <span className="font-bold text-blue-600 dark:text-blue-400">{item.contractor.todate.toFixed(2)} Km</span>
-                                  </div>
-                                  <div className="flex justify-between gap-1.5 text-slate-500 dark:text-slate-400">
-                                    <span>ERA:</span>
-                                    <span className="font-bold text-purple-600 dark:text-purple-400">{item.era.todate.toFixed(2)} Km</span>
-                                  </div>
-                                  <div className="flex justify-between gap-1.5 text-indigo-950 dark:text-indigo-200 font-bold">
-                                    <span>Act:</span>
-                                    <span className="text-indigo-700 dark:text-indigo-300 font-black">{item.actual.todate.toFixed(2)} Km ({item.todatePct.toFixed(1)}%)</span>
-                                  </div>
-                                  <div className="pt-0.5 border-t border-indigo-200/60 dark:border-indigo-800/60 flex justify-between gap-1 text-[9px]">
-                                    <span className="text-slate-400 font-sans">Slip:</span>
-                                    <span className={`font-black ${item.todateVariance >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                                      {item.todateVariance >= 0 ? '+' : ''}{item.todateVariance.toFixed(2)} Km
-                                    </span>
-                                  </div>
-                                </div>
-                              </td>
-                              <td className="px-3 py-2.5 text-center">
-                                <span className={`inline-block px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider ${
-                                  item.healthStatus === 'Ahead'
-                                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
-                                    : item.healthStatus === 'On Track'
-                                      ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
-                                      : item.healthStatus === 'Lagging'
-                                        ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
-                                        : 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
-                                }`}>
-                                  {item.healthStatus}
-                                </span>
-                              </td>
-                              <td className="px-3 py-2.5 text-right">
-                                <button
-                                  type="button"
-                                  onClick={() => setSelectedComparisonProjectId(item.project.id)}
-                                  className={`px-2.5 py-1 rounded-lg text-2xs font-extrabold transition cursor-pointer ${
-                                    isCurrentActive
-                                      ? 'bg-blue-600 text-white shadow-xs'
-                                      : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-slate-700'
-                                  }`}
-                                >
-                                  {isCurrentActive ? 'Focused' : 'Inspect'}
-                                </button>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+                                </td>
+                                <td className="px-3 py-2.5 text-center">
+                                  <span className={`inline-block px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                                    item.healthStatus === 'Ahead'
+                                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                                      : item.healthStatus === 'On Track'
+                                        ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
+                                        : item.healthStatus === 'Lagging'
+                                          ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
+                                          : 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
+                                  }`}>
+                                    {item.healthStatus}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-2.5 text-right">
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedComparisonProjectId(item.project.id)}
+                                    className={`px-2.5 py-1 rounded-lg text-2xs font-extrabold transition cursor-pointer ${
+                                      isCurrentActive
+                                        ? 'bg-blue-600 text-white shadow-xs'
+                                        : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-slate-700'
+                                    }`}
+                                  >
+                                    {isCurrentActive ? 'Focused' : 'Inspect'}
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
               </div>
             ) : (
