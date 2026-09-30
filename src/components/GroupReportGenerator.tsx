@@ -7772,16 +7772,15 @@ export default function GroupReportGenerator({
 
     // Sign-Off Block at bottom of report
     const signY = Math.max(curY, pageHeight - 68);
-    const signBoxW = (pageWidth - 110) / 3;
+    const signBoxW = (pageWidth - 100) / 2;
 
     const signBoxes = [
-      { label: "SUPERVISION CONSULTANT / RE", subtitle: "Certified Physical Progress Accomplishment" },
       { label: "ERA PROJECT MANAGER", subtitle: "Verified Execution Verification" },
       { label: "ERA PROGRAM DIRECTORATE DIRECTOR", subtitle: "Approved for Contract Administration" }
     ];
 
     signBoxes.forEach((sb, sIdx) => {
-      const sX = 40 + sIdx * (signBoxW + 15);
+      const sX = 40 + sIdx * (signBoxW + 20);
       doc.setFillColor(255, 255, 255);
       doc.setDrawColor(203, 213, 225);
       doc.setLineWidth(0.5);
@@ -8135,16 +8134,15 @@ export default function GroupReportGenerator({
     }
 
     const signY = Math.max(curY, pageHeight - 65);
-    const signBoxW = (pageWidth - 110) / 3;
+    const signBoxW = (pageWidth - 100) / 2;
 
     const signBoxes = [
-      { label: "PREPARED BY: CMS OFFICER", subtitle: "Data Aggregation Certified" },
       { label: "VERIFIED BY: PMO COORDINATOR", subtitle: "Performance Metrics Verified" },
       { label: "APPROVED BY: PROGRAM DIRECTOR", subtitle: "Approved for Distribution" }
     ];
 
     signBoxes.forEach((sb, sIdx) => {
-      const sX = 40 + sIdx * (signBoxW + 15);
+      const sX = 40 + sIdx * (signBoxW + 20);
       doc.setFillColor(255, 255, 255);
       doc.setDrawColor(200, 200, 200);
       doc.setLineWidth(0.5);
@@ -8941,15 +8939,6 @@ export default function GroupReportGenerator({
                   <Building2 className="w-3.5 h-3.5" /> Export Directorate & PMO PDF
                 </button>
                 <button
-                  onClick={handleExportSingleProjectPDF}
-                  id="btn-export-single-project-pdf"
-                  disabled={!activeComparisonProject || !activeMilestone}
-                  className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white py-2 rounded-xl text-xs font-bold shadow-sm transition cursor-pointer"
-                  title="Export focused project deep-dive comparison PDF"
-                >
-                  <BarChart3 className="w-3.5 h-3.5" /> Export Focused Project PDF
-                </button>
-                <button
                   onClick={handleExportProgressComparisonCSV}
                   id="btn-export-comparison-csv"
                   disabled={groupComparisonMatrix.length === 0 || !activeMilestone}
@@ -9713,17 +9702,6 @@ export default function GroupReportGenerator({
                       >
                         <Building2 className="w-3.5 h-3.5 shrink-0" />
                         <span className="truncate">Export Directorate & PMO PDF</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleExportSingleProjectPDF}
-                        id="btn-export-single-project-pdf-top"
-                        disabled={!activeComparisonProject || !activeMilestone}
-                        className="w-full flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white py-2 rounded-xl text-xs font-bold shadow-sm transition cursor-pointer"
-                        title="Export focused project deep-dive comparison PDF"
-                      >
-                        <BarChart3 className="w-3.5 h-3.5 shrink-0" />
-                        <span className="truncate">Export Focused Project PDF</span>
                       </button>
                       <button
                         type="button"

@@ -31,8 +31,11 @@ import {
   Info,
   CheckCircle2,
   Percent,
-  AlertCircle
+  AlertCircle,
+  FileText
 } from 'lucide-react';
+import { jsPDF } from 'jspdf';
+import { drawEraLogo } from '../lib/pdfReportEngine';
 import { Project, ProgressPlan, ProgressPlanHistoryItem } from '../types';
 import { parseMonthKey } from '../lib/monthlySync';
 
@@ -977,6 +980,312 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
     ? Number(((previewActualKm / project.lengthKm) * 100).toFixed(2))
     : (typeof project.physicalProgress === 'number' ? project.physicalProgress : 0);
 
+  const handleExportFocusedProjectPDF = () => {
+    const doc = new jsPDF('l', 'pt', 'a4');
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.75);
+    doc.roundedRect(30, 16, pageWidth - 60, pageHeight - 32, 4, 4, 'S');
+
+    doc.setDrawColor(194, 120, 3);
+    doc.setLineWidth(3);
+    doc.line(40, 25, pageWidth - 40, 25);
+
+    drawEraLogo(doc, 40, 28, 26, {
+      withContainer: true,
+      containerBg: [255, 255, 255],
+      containerBorder: [226, 232, 240],
+      borderRadius: 3
+    });
+
+    const dsW = 140;
+    const dsX = pageWidth - 40 - dsW;
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.75);
+    doc.roundedRect(dsX, 28, dsW, 26, 3, 3, 'DF');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6);
+    doc.setTextColor(100, 116, 139);
+    doc.text("OFFICIAL REPORT AUDIT STAMP", dsX + 6, 36);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(15, 23, 42);
+    doc.text(new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' }), dsX + 6, 44);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(5.5);
+    doc.setTextColor(71, 85, 105);
+    doc.text(`PROJECT: ${(project.name || 'Project').toUpperCase()}`, dsX + 6, 50);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.setTextColor(15, 23, 42);
+    doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA)", 72, 40);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(100, 116, 139);
+    doc.text("PROJECT PROGRESS PLAN & ACCOMPLISHMENT COMPARISON REPORT", 72, 50);
+
+    let curY = 62;
+
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.75);
+    doc.roundedRect(40, curY, pageWidth - 80, 52, 4, 4, 'DF');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(15, 23, 42);
+    doc.text(`PROJECT: ${(project.name || 'Project').toUpperCase()}`, 50, curY + 14);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(71, 85, 105);
+    doc.text(`CONTRACTOR: ${project.contractor || 'Not Specified'}`, 50, curY + 26);
+    doc.text(`SUPERVISION CONSULTANT: ${project.consultant || 'Not Specified'}`, 50, curY + 36);
+    doc.text(`DIRECTORATE: ${project.programDirectorate || 'Southern'} | PMO: ${project.pmo || 'PMO 1'}`, 50, curY + 46);
+
+    const lengthKm = Number(project.lengthKm) || 65.0;
+    const rightMetaX = pageWidth - 260;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(15, 23, 42);
+    doc.text(`TARGET MILESTONE: ${(labels.monthLabel || 'Current Month').toUpperCase()} (${labels.quarterLabel || 'Q1'})`, rightMetaX, curY + 14);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(71, 85, 105);
+    doc.text(`FISCAL YEAR: EFY ${labels.efyLabel || planningEfyYear}`, rightMetaX, curY + 26);
+    doc.text(`PROJECT LENGTH: ${lengthKm.toFixed(2)} Km`, rightMetaX, curY + 36);
+    doc.text(`CONTRACT AMOUNT: ETB ${(project.origAmount ? (project.origAmount * 1_000_000).toLocaleString() : 'N/A')}`, rightMetaX, curY + 46);
+
+    curY += 60;
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(79, 70, 229);
+    doc.text(`1. MILESTONE PROGRESS COMPARISON MATRIX — AS REACHED AT ${(labels.monthLabel || 'MONTH').toUpperCase()}`, 40, curY);
+
+    curY += 8;
+
+    const tableX = 40;
+    const tableW = pageWidth - 80;
+    const colWidths = {
+      tier: 181.89,
+      month: 145,
+      quarter: 145,
+      efy: 145,
+      todate: 145
+    };
+
+    doc.setFillColor(30, 41, 59);
+    doc.rect(tableX, curY, tableW, 22, 'F');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(255, 255, 255);
+
+    let hX = tableX;
+    doc.text("PROGRESS PLAN / ACTUAL TIER CATEGORY", hX + 8, curY + 14);
+    hX += colWidths.tier;
+    doc.text(`MONTH: ${(labels.monthLabel || 'CURRENT').toUpperCase()}`, hX + 8, curY + 14);
+    hX += colWidths.month;
+    doc.text(`QUARTER: ${(labels.quarterLabel || 'Q1').toUpperCase()}`, hX + 8, curY + 14);
+    hX += colWidths.quarter;
+    doc.text(`FISCAL YEAR: EFY ${labels.efyLabel || planningEfyYear}`, hX + 8, curY + 14);
+    hX += colWidths.efy;
+    doc.text(`CUMULATIVE TO-DATE AT THIS MONTH`, hX + 8, curY + 14);
+
+    curY += 22;
+
+    const varCtrM = plan.actual.month - plan.contractor.month;
+    const varCtrQ = plan.actual.quarter - plan.contractor.quarter;
+    const varCtrE = plan.actual.efy - plan.contractor.efy;
+    const varCtrTd = plan.actual.todate - plan.contractor.todate;
+
+    const varEraM = plan.actual.month - plan.era.month;
+    const varEraQ = plan.actual.quarter - plan.era.quarter;
+    const varEraE = plan.actual.efy - plan.era.efy;
+    const varEraTd = plan.actual.todate - plan.era.todate;
+
+    const rows = [
+      {
+        tier: "Contractor Work Program Plan",
+        subtier: "Contractor Baseline Schedule",
+        bg: [239, 246, 255],
+        textColor: [30, 58, 138],
+        m: plan.contractor.month,
+        q: plan.contractor.quarter,
+        e: contractorSums.efy || plan.contractor.efy,
+        td: plan.contractor.todate,
+        isVariance: false
+      },
+      {
+        tier: "ERA Approved Program Plan",
+        subtier: "Employer Approved Target",
+        bg: [245, 243, 255],
+        textColor: [76, 29, 149],
+        m: plan.era.month,
+        q: plan.era.quarter,
+        e: eraSums.efy || plan.era.efy,
+        td: plan.era.todate,
+        isVariance: false
+      },
+      {
+        tier: "Actual Execution Accomplishment",
+        subtier: "Supervision Verified Accomplishment",
+        bg: [236, 253, 245],
+        textColor: [6, 95, 70],
+        m: plan.actual.month,
+        q: plan.actual.quarter,
+        e: plan.actual.efy,
+        td: plan.actual.todate,
+        isVariance: false
+      },
+      {
+        tier: "Variance vs Contractor Plan (Actual - Plan)",
+        subtier: "Slippage vs Contractor Program",
+        bg: [255, 255, 255],
+        textColor: [15, 23, 42],
+        m: varCtrM,
+        q: varCtrQ,
+        e: varCtrE,
+        td: varCtrTd,
+        isVariance: true
+      },
+      {
+        tier: "Variance vs ERA Plan (Actual - ERA)",
+        subtier: "Official Compliance Slippage vs ERA",
+        bg: [248, 250, 252],
+        textColor: [15, 23, 42],
+        m: varEraM,
+        q: varEraQ,
+        e: varEraE,
+        td: varEraTd,
+        isVariance: true
+      }
+    ];
+
+    rows.forEach((r) => {
+      doc.setFillColor(r.bg[0], r.bg[1], r.bg[2]);
+      doc.rect(tableX, curY, tableW, 22, 'F');
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.5);
+      doc.line(tableX, curY + 22, tableX + tableW, curY + 22);
+
+      let rX = tableX;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7);
+      doc.setTextColor(r.textColor[0], r.textColor[1], r.textColor[2]);
+      doc.text(r.tier, rX + 8, curY + 11);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(5.5);
+      doc.setTextColor(148, 163, 184);
+      doc.text(r.subtier, rX + 8, curY + 18);
+
+      const renderVal = (val: number, isVar: boolean, curValX: number) => {
+        if (isVar) {
+          const sign = val > 0 ? '+' : '';
+          const kmStr = `${sign}${val.toFixed(2)} Km`;
+          const pctStr = `${sign}${((val / lengthKm) * 100).toFixed(2)}%`;
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(7);
+          if (val >= 0) {
+            doc.setTextColor(5, 150, 105);
+          } else {
+            doc.setTextColor(225, 29, 72);
+          }
+          doc.text(kmStr, curValX + 8, curY + 11);
+          doc.setFontSize(5.5);
+          doc.text(pctStr, curValX + 8, curY + 18);
+        } else {
+          const kmStr = `${val.toFixed(2)} Km`;
+          const pctStr = `${((val / lengthKm) * 100).toFixed(2)}% of length`;
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(7);
+          doc.setTextColor(r.textColor[0], r.textColor[1], r.textColor[2]);
+          doc.text(kmStr, curValX + 8, curY + 11);
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(5.5);
+          doc.setTextColor(100, 116, 139);
+          doc.text(pctStr, curValX + 8, curY + 18);
+        }
+      };
+
+      rX += colWidths.tier;
+      renderVal(r.m, r.isVariance, rX);
+      rX += colWidths.month;
+      renderVal(r.q, r.isVariance, rX);
+      rX += colWidths.quarter;
+      renderVal(r.e, r.isVariance, rX);
+      rX += colWidths.efy;
+      renderVal(r.td, r.isVariance, rX);
+
+      curY += 22;
+    });
+
+    curY += 12;
+
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(40, curY, pageWidth - 80, 42, 3, 3, 'DF');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(15, 23, 42);
+    doc.text("EXECUTIVE AUDIT FINDINGS & SPI PERFORMANCE INDEX", 50, curY + 12);
+
+    const spiMonth = plan.era.month > 0 ? (plan.actual.month / plan.era.month).toFixed(2) : '1.00';
+    const spiTodate = plan.era.todate > 0 ? (plan.actual.todate / plan.era.todate).toFixed(2) : '1.00';
+
+    const narrative = `During ${labels.monthLabel || 'this tracking month'}, the actual execution reached ${plan.actual.month.toFixed(2)} Km vs the ERA approved plan of ${plan.era.month.toFixed(2)} Km (${varEraM >= 0 ? '+' : ''}${varEraM.toFixed(2)} Km variance, Monthly SPI: ${spiMonth}). As of this milestone month, cumulative to-date physical accomplishment reached ${plan.actual.todate.toFixed(2)} Km (${((plan.actual.todate / lengthKm) * 100).toFixed(2)}% of total scope) against the planned ${plan.era.todate.toFixed(2)} Km (${varEraTd >= 0 ? '+' : ''}${varEraTd.toFixed(2)} Km slippage, Cumulative SPI: ${spiTodate}).`;
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(71, 85, 105);
+    const wrappedNarrative = doc.splitTextToSize(narrative, pageWidth - 100);
+    doc.text(wrappedNarrative, 50, curY + 22);
+
+    const signY = pageHeight - 65;
+    const signBoxW = (pageWidth - 100) / 2;
+
+    const signBoxes = [
+      { label: "ERA PROJECT MANAGER", subtitle: "Verified Execution Verification" },
+      { label: "ERA PROGRAM DIRECTORATE DIRECTOR", subtitle: "Approved for Contract Administration" }
+    ];
+
+    signBoxes.forEach((sb, sIdx) => {
+      const sX = 40 + sIdx * (signBoxW + 20);
+      doc.setDrawColor(203, 213, 225);
+      doc.setLineWidth(0.5);
+      doc.roundedRect(sX, signY, signBoxW, 36, 2, 2, 'S');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(5.5);
+      doc.setTextColor(71, 85, 105);
+      doc.text(sb.label, sX + 6, signY + 10);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(4.5);
+      doc.setTextColor(148, 163, 184);
+      doc.text(sb.subtitle, sX + 6, signY + 17);
+
+      doc.setDrawColor(226, 232, 240);
+      doc.line(sX + 6, signY + 28, sX + signBoxW - 6, signY + 28);
+      doc.text("Signature & Official Stamp / Date", sX + 6, signY + 33);
+    });
+
+    const fileName = `ERA_Focused_Project_Comparison_${(project.name || 'Project').replace(/[^a-zA-Z0-9]/g, '_')}_${(labels.monthLabel || 'Milestone').replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
+    doc.save(fileName);
+    showToast(`📄 Exported focused project comparison PDF for "${project.name}"`);
+  };
+
   return (
     <div id="progressComparisonContainer" className="space-y-4">
       {/* Toast Feedback */}
@@ -1019,6 +1328,17 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
           </div>
 
           <div className="flex items-center gap-2 flex-wrap self-start sm:self-auto">
+            <button
+              type="button"
+              onClick={handleExportFocusedProjectPDF}
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow-sm active:scale-98 cursor-pointer"
+              title="Export focused project progress plan & accomplishment comparison report in PDF"
+              id="btn-export-focused-project-pdf"
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>Export Focused Project PDF</span>
+            </button>
+
             {activeLoadedRecordId ? (
               <>
                 <button
