@@ -925,51 +925,51 @@ export default function VariationAndClaimView({ project, onProjectUpdate, curren
 
               {/* Variation Orders Table */}
               <div className="overflow-x-auto border border-slate-150 dark:border-slate-800/80 rounded-2xl shadow-2xs">
-                <table className="w-full text-left border-collapse">
+                <table className="w-full text-left border-collapse min-w-[1600px]">
                   <thead>
                     <tr className="bg-slate-50 dark:bg-slate-850 border-b border-slate-200 dark:border-slate-800 text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                      <th className="py-3 px-4">VO Number</th>
-                      <th className="py-3 px-4">Reason For Issue</th>
-                      <th className="py-3 px-4">Further Detail</th>
-                      <th className="py-3 px-4">Description</th>
-                      <th className="py-3 px-4 text-right">Cost Requested (Birr)</th>
-                      <th className="py-3 px-4 text-right">Cost Recommended (Birr)</th>
-                      <th className="py-3 px-4 text-right">Cost Approved (Birr)</th>
-                      <th className="py-3 px-4 text-center">Date Approved (ERA)</th>
-                      <th className="py-3 px-4 text-center">Status</th>
-                      <th className="py-3 px-4">Subcontractor Activity</th>
-                      <th className="py-3 px-4 text-center">Actions</th>
+                      <th className="py-3 px-4 w-[100px] min-w-[100px]">VO Number</th>
+                      <th className="py-3 px-4 min-w-[200px] max-w-[250px]">Reason For Issue</th>
+                      <th className="py-3 px-4 min-w-[200px] max-w-[250px]">Further Detail</th>
+                      <th className="py-3 px-4 min-w-[260px] max-w-[340px]">Description</th>
+                      <th className="py-3 px-4 text-right min-w-[140px]">Cost Requested (Birr)</th>
+                      <th className="py-3 px-4 text-right min-w-[150px]">Cost Recommended (Birr)</th>
+                      <th className="py-3 px-4 text-right min-w-[140px]">Cost Approved (Birr)</th>
+                      <th className="py-3 px-4 text-center min-w-[120px]">Date Approved (ERA)</th>
+                      <th className="py-3 px-4 text-center min-w-[100px]">Status</th>
+                      <th className="py-3 px-4 min-w-[150px]">Subcontractor Activity</th>
+                      <th className="py-3 px-4 text-center min-w-[100px]">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
                     {paginatedVOs.length > 0 ? (
                       paginatedVOs.map(vo => (
                         <tr key={vo.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition text-[11px]">
-                          <td className="py-3 px-4 font-extrabold text-slate-800 dark:text-slate-200">
+                          <td className="py-3 px-4 font-extrabold text-slate-800 dark:text-slate-200 w-[100px] min-w-[100px]">
                             VO-{vo.voNumber}
                           </td>
-                          <td className="py-3 px-4 font-semibold text-slate-700 dark:text-slate-300">
+                          <td className="py-3 px-4 font-semibold text-slate-700 dark:text-slate-300 min-w-[200px] max-w-[250px] whitespace-normal break-words leading-relaxed">
                             {vo.reasonForIssue}
                           </td>
-                          <td className="py-3 px-4 text-slate-600 dark:text-slate-400">
+                          <td className="py-3 px-4 text-slate-600 dark:text-slate-400 min-w-[200px] max-w-[250px] whitespace-normal break-words leading-relaxed">
                             {vo.furtherDetail}
                           </td>
-                          <td className="py-3 px-4 max-w-xs text-slate-600 dark:text-slate-400 leading-relaxed truncate" title={vo.description}>
+                          <td className="py-3 px-4 text-slate-600 dark:text-slate-400 min-w-[260px] max-w-[340px] whitespace-normal break-words leading-relaxed" title={vo.description}>
                             {vo.description}
                           </td>
-                          <td className="py-3 px-4 text-right font-mono text-slate-500">
+                          <td className="py-3 px-4 text-right font-mono text-slate-500 min-w-[140px]">
                             {formatNum(vo.costRequested)}
                           </td>
-                          <td className="py-3 px-4 text-right font-mono text-amber-600 font-semibold">
+                          <td className="py-3 px-4 text-right font-mono text-amber-600 font-semibold min-w-[150px]">
                             {formatNum(vo.costRecommended)}
                           </td>
-                          <td className="py-3 px-4 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                          <td className="py-3 px-4 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400 min-w-[140px]">
                             {formatNum(vo.costApproved)}
                           </td>
-                          <td className="py-3 px-4 text-center font-mono text-slate-600 dark:text-slate-400">
+                          <td className="py-3 px-4 text-center font-mono text-slate-600 dark:text-slate-400 min-w-[120px]">
                             {vo.dateApproved}
                           </td>
-                          <td className="py-3 px-4 text-center">
+                          <td className="py-3 px-4 text-center min-w-[100px]">
                             {(() => {
                               const badge = getBadgeStyle(vo.status);
                               return (
@@ -979,10 +979,10 @@ export default function VariationAndClaimView({ project, onProjectUpdate, curren
                               );
                             })()}
                           </td>
-                          <td className="py-3 px-4 text-slate-600 dark:text-slate-400">
+                          <td className="py-3 px-4 text-slate-600 dark:text-slate-400 min-w-[150px] whitespace-normal break-words">
                             {vo.subcontractorActivity}
                           </td>
-                          <td className="py-3 px-4 text-center">
+                          <td className="py-3 px-4 text-center min-w-[100px]">
                             <div className="flex items-center justify-center gap-1.5">
                               <button
                                 onClick={() => handleViewVoHistory(vo)}
@@ -1131,50 +1131,50 @@ export default function VariationAndClaimView({ project, onProjectUpdate, curren
 
               {/* Claims Table */}
               <div className="overflow-x-auto border border-slate-150 dark:border-slate-800/80 rounded-2xl shadow-2xs">
-                <table className="w-full text-left border-collapse">
+                <table className="w-full text-left border-collapse min-w-[1300px]">
                   <thead>
                     <tr className="bg-slate-50 dark:bg-slate-850 border-b border-slate-200 dark:border-slate-800 text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                      <th className="py-3 px-4">Claim No</th>
-                      <th className="py-3 px-4">Notice Date</th>
-                      <th className="py-3 px-4">Clause Ref</th>
-                      <th className="py-3 px-4">Event Description</th>
-                      <th className="py-3 px-4 text-right">EOT Days (Req/Rec/App)</th>
-                      <th className="py-3 px-4 text-right">Cost Claimed (Birr) (Req/Rec/App)</th>
-                      <th className="py-3 px-4 text-center">Status</th>
-                      <th className="py-3 px-4 text-center">Actions</th>
+                      <th className="py-3 px-4 min-w-[100px]">Claim No</th>
+                      <th className="py-3 px-4 min-w-[110px]">Notice Date</th>
+                      <th className="py-3 px-4 min-w-[110px]">Clause Ref</th>
+                      <th className="py-3 px-4 min-w-[280px] max-w-[380px]">Event Description</th>
+                      <th className="py-3 px-4 text-right min-w-[150px]">EOT Days (Req/Rec/App)</th>
+                      <th className="py-3 px-4 text-right min-w-[280px]">Cost Claimed (Birr) (Req/Rec/App)</th>
+                      <th className="py-3 px-4 text-center min-w-[110px]">Status</th>
+                      <th className="py-3 px-4 text-center min-w-[100px]">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
                     {paginatedClaims.length > 0 ? (
                       paginatedClaims.map(claim => (
                         <tr key={claim.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition text-[11px]">
-                          <td className="py-3 px-4 font-extrabold text-slate-800 dark:text-slate-200">
+                          <td className="py-3 px-4 font-extrabold text-slate-800 dark:text-slate-200 min-w-[100px]">
                             CLM-{claim.claimNo}
                           </td>
-                          <td className="py-3 px-4 font-mono text-slate-600 dark:text-slate-400">
+                          <td className="py-3 px-4 font-mono text-slate-600 dark:text-slate-400 min-w-[110px]">
                             {claim.noticeDate}
                           </td>
-                          <td className="py-3 px-4 font-bold text-indigo-600 dark:text-indigo-400">
+                          <td className="py-3 px-4 font-bold text-indigo-600 dark:text-indigo-400 min-w-[110px]">
                             {claim.clauseRef}
                           </td>
-                          <td className="py-3 px-4 max-w-xs text-slate-600 dark:text-slate-400 truncate" title={claim.eventDescription}>
+                          <td className="py-3 px-4 min-w-[280px] max-w-[380px] text-slate-600 dark:text-slate-400 whitespace-normal break-words leading-relaxed" title={claim.eventDescription}>
                             {claim.eventDescription}
                           </td>
-                          <td className="py-3 px-4 text-right font-mono font-bold text-slate-800 dark:text-slate-200">
+                          <td className="py-3 px-4 text-right font-mono font-bold text-slate-800 dark:text-slate-200 min-w-[150px]">
                             <span className="text-slate-400" title="Requested">{claim.eotDaysRequested}d</span>
                             <span className="text-slate-300 mx-1">/</span>
                             <span className="text-amber-600" title="Recommended">{claim.eotRecommended}d</span>
                             <span className="text-slate-300 mx-1">/</span>
                             <span className="text-emerald-600" title="Approved">{claim.eotApproved}d</span>
                           </td>
-                          <td className="py-3 px-4 text-right font-mono font-bold text-slate-800 dark:text-slate-100">
+                          <td className="py-3 px-4 text-right font-mono font-bold text-slate-800 dark:text-slate-100 min-w-[280px]">
                             <span className="text-slate-400" title="Claimed/Requested">{formatNum(claim.costClaimed)}</span>
                             <span className="text-slate-300 dark:text-slate-700 mx-1">/</span>
                             <span className="text-amber-600 font-semibold" title="Recommended">{formatNum(claim.costRecommended)}</span>
                             <span className="text-slate-300 dark:text-slate-700 mx-1">/</span>
                             <span className="text-emerald-600 font-extrabold" title="Approved">{formatNum(claim.costApproved)}</span>
                           </td>
-                           <td className="py-3 px-4 text-center">
+                          <td className="py-3 px-4 text-center min-w-[110px]">
                             {(() => {
                               const badge = getBadgeStyle(claim.status);
                               return (
@@ -1184,7 +1184,7 @@ export default function VariationAndClaimView({ project, onProjectUpdate, curren
                               );
                             })()}
                           </td>
-                          <td className="py-3 px-4 text-center">
+                          <td className="py-3 px-4 text-center min-w-[100px]">
                             <div className="flex items-center justify-center gap-1.5">
                               <button
                                 onClick={() => handleViewClaimHistory(claim)}
