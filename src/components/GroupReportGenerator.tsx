@@ -356,6 +356,14 @@ export default function GroupReportGenerator({
   const [isAvgSummaryExpanded, setIsAvgSummaryExpanded] = useState<boolean>(false);
   const [isGroupPortfolioSummaryExpanded, setIsGroupPortfolioSummaryExpanded] = useState<boolean>(true);
 
+  React.useEffect(() => {
+    if (currentUserObj && (currentUserObj.role === 'pmo_admin' || currentUserObj.assignedPmo)) {
+      setAvgSummaryGroupTab('pmo');
+    } else {
+      setAvgSummaryGroupTab('both');
+    }
+  }, [currentUserObj]);
+
   const showEfyToast = (message: string, type: 'success' | 'info' = 'success') => {
     setEfySaveToast({ message, type });
     setTimeout(() => {
@@ -6763,6 +6771,24 @@ export default function GroupReportGenerator({
     };
   }, [availableMilestones, selectedComparisonMonthKey, activeComparisonProject, projects]);
 
+  const uniqueMonths = useMemo(() => {
+    if (!availableMilestones) return [];
+    const months = availableMilestones.map(m => m.monthLabel);
+    return Array.from(new Set(months));
+  }, [availableMilestones]);
+
+  const uniqueQuarters = useMemo(() => {
+    if (!availableMilestones) return [];
+    const quarters = availableMilestones.map(m => m.quarterLabel);
+    return Array.from(new Set(quarters));
+  }, [availableMilestones]);
+
+  const uniqueEfys = useMemo(() => {
+    if (!availableMilestones) return [];
+    const efys = availableMilestones.map(m => m.efyLabel);
+    return Array.from(new Set(efys));
+  }, [availableMilestones]);
+
   // Helper to resolve month index from tracking period
   const getTrackingMonthIndex = (period: string): number => {
     const p = (period || '').toLowerCase();
@@ -9769,52 +9795,6 @@ export default function GroupReportGenerator({
             {/* Structured Table Container */}
             {reportMode === 'progressComparison' ? (
               <div id="progressComparisonContainer" className="space-y-5">
-                {/* 1. Milestone Timeline / Month Selector Strip */}
-                {activeComparisonProject && availableMilestones.length > 0 && (
-                  <div className="p-3.5 bg-slate-50/80 dark:bg-slate-900/40 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2">
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <div className="flex items-center gap-2">
-                        <CalendarClock className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                        <span className="text-[10px] font-black uppercase text-slate-700 dark:text-zinc-200 tracking-wider">
-                          Select Milestone Month: {activeComparisonProject.name}
-                        </span>
-                      </div>
-                      <span className="text-[10px] text-slate-400 font-mono">
-                        {availableMilestones.length} Recorded Milestone Snapshots
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-2 overflow-x-auto pb-1 pt-0.5">
-                      {availableMilestones.map((m) => {
-                        const isSelected = activeMilestone?.key === m.key;
-                        return (
-                          <button
-                            key={`chip_${m.key}`}
-                            type="button"
-                            onClick={() => setSelectedComparisonMonthKey(m.key)}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer ${
-                              isSelected
-                                ? 'bg-blue-600 text-white shadow-xs font-black ring-2 ring-blue-400 dark:ring-blue-500'
-                                : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'
-                            }`}
-                          >
-                            <Calendar className="w-3 h-3 opacity-75" />
-                            <span>{m.monthLabel}</span>
-                            <span className="text-[9.5px] opacity-80 font-normal font-mono">
-                              ({m.quarterLabel} • EFY {m.efyLabel})
-                            </span>
-                            {m.isLive && (
-                              <span className="px-1 py-0.2 rounded text-[8px] bg-amber-400 text-slate-900 font-black">
-                                LIVE
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
                 {/* 3. Beginning of Fiscal Year (EFY) Annual Progress Baseline Planning Table */}
                 <div className="border-2 border-indigo-200 dark:border-indigo-800/80 rounded-2xl overflow-hidden bg-white dark:bg-slate-900 shadow-md space-y-0">
                   {/* Header banner */}
@@ -10977,21 +10957,30 @@ export default function GroupReportGenerator({
                       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
                         {/* Group Selection Tabs */}
                         <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl w-fit text-xs font-bold">
-                          <button
-                            type="button"
-                            onClick={() => setAvgSummaryGroupTab('both')}
-                            className={`px-3 py-1 rounded-lg transition ${avgSummaryGroupTab === 'both' ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 font-black shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}
-                          >
-                            Combined Overview ({directorateComparisonSummary.length + pmoComparisonSummary.length} Groups)
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setAvgSummaryGroupTab('directorate')}
-                            className={`px-3 py-1 rounded-lg transition flex items-center gap-1.5 ${avgSummaryGroupTab === 'directorate' ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 font-black shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}
-                          >
-                            <Building2 className="w-3.5 h-3.5" />
-                            Program Directorates ({directorateComparisonSummary.length})
-                          </button>
+                          {/* Combined Overview button is hidden for PMO Admins */}
+                          {!(currentUserObj.role === 'pmo_admin' || currentUserObj.assignedPmo) && (
+                            <button
+                              type="button"
+                              onClick={() => setAvgSummaryGroupTab('both')}
+                              className={`px-3 py-1 rounded-lg transition ${avgSummaryGroupTab === 'both' ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 font-black shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}
+                            >
+                              Combined Overview ({directorateComparisonSummary.length + pmoComparisonSummary.length} Groups)
+                            </button>
+                          )}
+
+                          {/* Program Directorates button is hidden for PMO Admins, but shown for Directorate Admins and CPM/Super Admins */}
+                          {!(currentUserObj.role === 'pmo_admin' || currentUserObj.assignedPmo) && (
+                            <button
+                              type="button"
+                              onClick={() => setAvgSummaryGroupTab('directorate')}
+                              className={`px-3 py-1 rounded-lg transition flex items-center gap-1.5 ${avgSummaryGroupTab === 'directorate' ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 font-black shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}
+                            >
+                              <Building2 className="w-3.5 h-3.5" />
+                              Program Directorates ({directorateComparisonSummary.length})
+                            </button>
+                          )}
+
+                          {/* PMO Groupings button shown for everyone */}
                           <button
                             type="button"
                             onClick={() => setAvgSummaryGroupTab('pmo')}
@@ -11017,6 +11006,68 @@ export default function GroupReportGenerator({
                             </div>
                           </div>
                         )}
+                      </div>
+
+                      {/* Active Milestone Display with Month/Quarter/EFY select options */}
+                      <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-indigo-50/40 dark:bg-slate-800/40 rounded-xl border border-indigo-100 dark:border-slate-800">
+                        <div className="flex items-center gap-2">
+                          <CalendarClock className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                          <span className="text-xs font-extrabold text-slate-700 dark:text-zinc-200 uppercase tracking-wider">
+                            Select Performance Milestone Period:
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3 flex-wrap text-2xs font-bold">
+                          <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1">
+                            <span className="text-slate-400 dark:text-zinc-400 font-extrabold uppercase text-[9px]">Month:</span>
+                            <select
+                              value={activeMilestone?.monthLabel || ''}
+                              onChange={(e) => {
+                                const mLabel = e.target.value;
+                                const match = availableMilestones.find(m => m.monthLabel === mLabel);
+                                if (match) setSelectedComparisonMonthKey(match.key);
+                              }}
+                              className="bg-transparent text-slate-850 dark:text-zinc-100 outline-none cursor-pointer"
+                            >
+                              {uniqueMonths.map(m => (
+                                <option key={m} value={m} className="bg-white dark:bg-slate-900 text-slate-800 dark:text-white">{m}</option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1">
+                            <span className="text-slate-400 dark:text-zinc-400 font-extrabold uppercase text-[9px]">Quarter:</span>
+                            <select
+                              value={activeMilestone?.quarterLabel || ''}
+                              onChange={(e) => {
+                                const qLabel = e.target.value;
+                                const match = availableMilestones.find(m => m.quarterLabel === qLabel);
+                                if (match) setSelectedComparisonMonthKey(match.key);
+                              }}
+                              className="bg-transparent text-slate-850 dark:text-zinc-100 outline-none cursor-pointer"
+                            >
+                              {uniqueQuarters.map(q => (
+                                <option key={q} value={q} className="bg-white dark:bg-slate-900 text-slate-800 dark:text-white">{q}</option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1">
+                            <span className="text-slate-400 dark:text-zinc-400 font-extrabold uppercase text-[9px]">EFY Year:</span>
+                            <select
+                              value={activeMilestone?.efyLabel || ''}
+                              onChange={(e) => {
+                                const efyLabel = e.target.value;
+                                const match = availableMilestones.find(m => m.efyLabel === efyLabel);
+                                if (match) setSelectedComparisonMonthKey(match.key);
+                              }}
+                              className="bg-transparent text-slate-850 dark:text-zinc-100 outline-none cursor-pointer"
+                            >
+                              {uniqueEfys.map(efy => (
+                                <option key={efy} value={efy} className="bg-white dark:bg-slate-900 text-slate-800 dark:text-white">EFY {efy}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
                       </div>
 
                       {/* Directorate and PMO Summary Table */}
@@ -11430,6 +11481,72 @@ export default function GroupReportGenerator({
                       </button>
                     </div>
                   </div>
+
+                  {isGroupPortfolioSummaryExpanded && (
+                    <div className="space-y-3 p-3 bg-slate-50/50 dark:bg-slate-900/40 border-b border-slate-200 dark:border-slate-800">
+                      {/* Active Milestone Display with Month/Quarter/EFY select options */}
+                      <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-white dark:bg-slate-850 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
+                        <div className="flex items-center gap-2">
+                          <CalendarClock className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                          <span className="text-xs font-extrabold text-slate-700 dark:text-zinc-200 uppercase tracking-wider">
+                            Select Portfolio Milestone Period:
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3 flex-wrap text-2xs font-bold">
+                          <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1">
+                            <span className="text-slate-400 dark:text-zinc-400 font-extrabold uppercase text-[9px]">Month:</span>
+                            <select
+                              value={activeMilestone?.monthLabel || ''}
+                              onChange={(e) => {
+                                const mLabel = e.target.value;
+                                const match = availableMilestones.find(m => m.monthLabel === mLabel);
+                                if (match) setSelectedComparisonMonthKey(match.key);
+                              }}
+                              className="bg-transparent text-slate-850 dark:text-zinc-100 outline-none cursor-pointer text-2xs"
+                            >
+                              {uniqueMonths.map(m => (
+                                <option key={m} value={m} className="bg-white dark:bg-slate-900 text-slate-800 dark:text-white">{m}</option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1">
+                            <span className="text-slate-400 dark:text-zinc-400 font-extrabold uppercase text-[9px]">Quarter:</span>
+                            <select
+                              value={activeMilestone?.quarterLabel || ''}
+                              onChange={(e) => {
+                                const qLabel = e.target.value;
+                                const match = availableMilestones.find(m => m.quarterLabel === qLabel);
+                                if (match) setSelectedComparisonMonthKey(match.key);
+                              }}
+                              className="bg-transparent text-slate-850 dark:text-zinc-100 outline-none cursor-pointer text-2xs"
+                            >
+                              {uniqueQuarters.map(q => (
+                                <option key={q} value={q} className="bg-white dark:bg-slate-900 text-slate-800 dark:text-white">{q}</option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1">
+                            <span className="text-slate-400 dark:text-zinc-400 font-extrabold uppercase text-[9px]">EFY Year:</span>
+                            <select
+                              value={activeMilestone?.efyLabel || ''}
+                              onChange={(e) => {
+                                const efyLabel = e.target.value;
+                                const match = availableMilestones.find(m => m.efyLabel === efyLabel);
+                                if (match) setSelectedComparisonMonthKey(match.key);
+                              }}
+                              className="bg-transparent text-slate-850 dark:text-zinc-100 outline-none cursor-pointer text-2xs"
+                            >
+                              {uniqueEfys.map(efy => (
+                                <option key={efy} value={efy} className="bg-white dark:bg-slate-900 text-slate-800 dark:text-white">EFY {efy}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {isGroupPortfolioSummaryExpanded && (
                     <div className="overflow-auto max-h-[500px]">
