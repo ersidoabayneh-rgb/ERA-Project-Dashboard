@@ -777,11 +777,11 @@ export default function ProjectsPage({
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 p-4 md:p-6 transition-colors duration-300">
-      <div className="max-w-6xl mx-auto space-y-6">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 p-3 sm:p-4 md:p-5 transition-colors duration-300">
+      <div className="max-w-6xl mx-auto space-y-2.5 sm:space-y-3">
         
         {/* Header/Controls */}
-        <header className="flex flex-col md:flex-row md:items-center md:justify-between bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 p-5 rounded-2xl shadow-sm gap-4">
+        <header className="flex flex-col md:flex-row md:items-center md:justify-between bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 p-3.5 sm:p-4 rounded-2xl shadow-sm gap-3">
           <div className="flex items-center gap-3">
             {logoError ? (
               <div className="w-12 h-12 rounded-xl flex items-center justify-center border border-slate-250 bg-gradient-to-br from-emerald-600 via-amber-500 to-red-500 p-0.5 shrink-0 shadow-xs">
@@ -1055,9 +1055,9 @@ export default function ProjectsPage({
 
         {/* Search & Sort & Directorate Panel */}
         {!hasNoProjects && (
-          <div className="space-y-3">
+          <div className="space-y-2">
             {/* Primary Search Bar */}
-            <div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center">
+            <div className="flex flex-col lg:flex-row gap-2 items-stretch lg:items-center">
               <div className="relative flex-1 group">
                 <Search className="absolute left-3.5 top-3 w-4 h-4 text-slate-400 dark:text-slate-500 group-focus-within:text-blue-500 transition" />
                 <input
@@ -1450,7 +1450,7 @@ export default function ProjectsPage({
             </button>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-2.5">
             {/* Archived Repository Notice Banner */}
             {selectedStatusFilter === 'Archived' && (
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 bg-slate-100/90 dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 rounded-2xl shadow-xs">
@@ -1482,7 +1482,7 @@ export default function ProjectsPage({
             )}
 
             {viewMode === 'grid' ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-3.5 gap-y-2.5 sm:gap-y-3">
                 <AnimatePresence>
                   {sortedProjects.map((p) => {
                     const criticalBonds = p.bonds ? p.bonds.filter(b => {
@@ -1514,9 +1514,9 @@ export default function ProjectsPage({
                         whileHover={{ y: -2 }}
                         transition={{ duration: 0.2 }}
                         onClick={() => onSelectProject(p.id)}
-                        className={`bg-white dark:bg-slate-800 border p-5 rounded-2xl shadow-sm hover:shadow-md cursor-pointer relative group transition-all ${statusInfo.cardBorderClass}`}
+                        className={`bg-white dark:bg-slate-800 border p-3.5 sm:p-4 rounded-2xl shadow-sm hover:shadow-md cursor-pointer relative group transition-all ${statusInfo.cardBorderClass}`}
                       >
-                        <div className="space-y-4">
+                        <div className="space-y-2.5 sm:space-y-3">
                           {/* Badge & Type */}
                           <div className="flex items-center gap-1.5 justify-between">
                             <div className="flex items-center gap-1.5 flex-wrap">
@@ -1662,7 +1662,7 @@ export default function ProjectsPage({
 
                           {/* Project Lifecycle Status Governance */}
                           <div 
-                            className="flex items-center justify-between gap-2 pt-2 pb-1 border-t border-slate-100 dark:border-slate-700/50"
+                            className="flex items-center justify-between gap-2 pt-1.5 pb-0.5 border-t border-slate-100 dark:border-slate-700/50"
                             onClick={(e) => e.stopPropagation()}
                             onMouseDown={(e) => e.stopPropagation()}
                             onPointerDown={(e) => e.stopPropagation()}
@@ -1714,7 +1714,7 @@ export default function ProjectsPage({
                           </div>
 
                           {/* 3-Column Micro-Grid Specs Layout */}
-                          <div className="grid grid-cols-3 gap-2 border-t border-slate-50 dark:border-slate-700/40 pt-3 text-center">
+                          <div className="grid grid-cols-3 gap-2 border-t border-slate-50 dark:border-slate-700/40 pt-2 text-center">
                             <div>
                               <p className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">Length</p>
                               <p className="text-xs font-bold font-mono tabular-nums flex items-center justify-center gap-0.5 mt-0.5 text-slate-800 dark:text-slate-100">
@@ -1912,7 +1912,7 @@ export default function ProjectsPage({
                       <tr>
                         <th 
                           onClick={() => handleSort('name')} 
-                          className="py-3 px-3.5 hover:bg-slate-200/60 dark:hover:bg-slate-800 cursor-pointer transition min-w-[240px]"
+                          className="py-2 px-3.5 hover:bg-slate-200/60 dark:hover:bg-slate-800 cursor-pointer transition min-w-[240px]"
                           title="Click to sort by Project Name"
                         >
                           <div className="flex items-center gap-1.5">
@@ -1924,12 +1924,12 @@ export default function ProjectsPage({
                             )}
                           </div>
                         </th>
-                        <th className="py-3 px-3 min-w-[130px]">
+                        <th className="py-2 px-3 min-w-[130px]">
                           <span>Lifecycle Status</span>
                         </th>
                         <th 
                           onClick={() => handleSort('directorate')} 
-                          className="py-3 px-3 hover:bg-slate-200/60 dark:hover:bg-slate-800 cursor-pointer transition min-w-[130px]"
+                          className="py-2 px-3 hover:bg-slate-200/60 dark:hover:bg-slate-800 cursor-pointer transition min-w-[130px]"
                           title="Click to sort by Directorate"
                         >
                           <div className="flex items-center gap-1.5">
@@ -1941,15 +1941,15 @@ export default function ProjectsPage({
                             )}
                           </div>
                         </th>
-                        <th className="py-3 px-3 min-w-[170px]">
+                        <th className="py-2 px-3 min-w-[170px]">
                           <span>Contractor & Client</span>
                         </th>
-                        <th className="py-3 px-2.5 min-w-[100px]">
+                        <th className="py-2 px-2.5 min-w-[100px]">
                           <span>Class / Type</span>
                         </th>
                         <th 
                           onClick={() => handleSort('length')} 
-                          className="py-3 px-3 text-right hover:bg-slate-200/60 dark:hover:bg-slate-800 cursor-pointer transition min-w-[95px]"
+                          className="py-2 px-3 text-right hover:bg-slate-200/60 dark:hover:bg-slate-800 cursor-pointer transition min-w-[95px]"
                           title="Click to sort by Length"
                         >
                           <div className="flex items-center justify-end gap-1.5">
@@ -1963,7 +1963,7 @@ export default function ProjectsPage({
                         </th>
                         <th 
                           onClick={() => handleSort('budget')} 
-                          className="py-3 px-3 text-right hover:bg-slate-200/60 dark:hover:bg-slate-800 cursor-pointer transition min-w-[125px]"
+                          className="py-2 px-3 text-right hover:bg-slate-200/60 dark:hover:bg-slate-800 cursor-pointer transition min-w-[125px]"
                           title="Click to sort by Revised Budget"
                         >
                           <div className="flex items-center justify-end gap-1.5">
@@ -1977,7 +1977,7 @@ export default function ProjectsPage({
                         </th>
                         <th 
                           onClick={() => handleSort('progress')} 
-                          className="py-3 px-3 text-left hover:bg-slate-200/60 dark:hover:bg-slate-800 cursor-pointer transition min-w-[155px]"
+                          className="py-2 px-3 text-left hover:bg-slate-200/60 dark:hover:bg-slate-800 cursor-pointer transition min-w-[155px]"
                           title="Click to sort by Physical Progress"
                         >
                           <div className="flex items-center gap-1.5">
@@ -1991,7 +1991,7 @@ export default function ProjectsPage({
                         </th>
                         <th 
                           onClick={() => handleSort('bondWarnings')} 
-                          className="py-3 px-3 text-center hover:bg-slate-200/60 dark:hover:bg-slate-800 cursor-pointer transition min-w-[115px]"
+                          className="py-2 px-3 text-center hover:bg-slate-200/60 dark:hover:bg-slate-800 cursor-pointer transition min-w-[115px]"
                           title="Click to sort by Risk / Health Warnings"
                         >
                           <div className="flex items-center justify-center gap-1.5">
@@ -2003,7 +2003,7 @@ export default function ProjectsPage({
                             )}
                           </div>
                         </th>
-                        <th className="py-3 px-3 text-center min-w-[125px]">
+                        <th className="py-2 px-3 text-center min-w-[125px]">
                           <span>Actions</span>
                         </th>
                       </tr>
@@ -2027,7 +2027,7 @@ export default function ProjectsPage({
                             className="hover:bg-blue-50/40 dark:hover:bg-blue-950/25 transition-colors cursor-pointer group"
                           >
                             {/* Contract Name & Subtitle */}
-                            <td className="py-3 px-3.5 align-middle">
+                            <td className="py-2 px-3.5 align-middle">
                               <div className="flex items-center gap-2">
                                 {hasPendingChangesForApprover && (
                                   <span className="relative flex h-2 w-2 shrink-0" title="Pending Approver Review">
@@ -2057,7 +2057,7 @@ export default function ProjectsPage({
                             </td>
 
                             {/* Status */}
-                            <td className="py-3 px-3 align-middle" onClick={(e) => e.stopPropagation()}>
+                            <td className="py-2 px-3 align-middle" onClick={(e) => e.stopPropagation()}>
                               {canManageStatus(p) ? (
                                 <select
                                   value={p.status || 'In Progress'}
@@ -2087,7 +2087,7 @@ export default function ProjectsPage({
                             </td>
 
                             {/* Directorate / PMO */}
-                            <td className="py-3 px-3 align-middle">
+                            <td className="py-2 px-3 align-middle">
                               <div className="text-[11px] font-bold text-slate-800 dark:text-slate-200">
                                 🏢 {p.programDirectorate || 'Southern'}
                               </div>
@@ -2097,7 +2097,7 @@ export default function ProjectsPage({
                             </td>
 
                             {/* Contractor & Client */}
-                            <td className="py-3 px-3 align-middle">
+                            <td className="py-2 px-3 align-middle">
                               <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate max-w-[160px]" title={p.contractor}>
                                 {p.contractor || 'Unassigned'}
                               </div>
@@ -2107,7 +2107,7 @@ export default function ProjectsPage({
                             </td>
 
                             {/* Class / Type */}
-                            <td className="py-3 px-2.5 align-middle">
+                            <td className="py-2 px-2.5 align-middle">
                               <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 mr-1">
                                 {p.classification || 'DS-4'}
                               </span>
@@ -2117,19 +2117,19 @@ export default function ProjectsPage({
                             </td>
 
                             {/* Length */}
-                            <td className="py-3 px-3 text-right font-mono font-bold text-slate-800 dark:text-slate-200 tabular-nums align-middle">
+                            <td className="py-2 px-3 text-right font-mono font-bold text-slate-800 dark:text-slate-200 tabular-nums align-middle">
                               {p.lengthKm} <span className="text-[10px] font-normal text-slate-400">km</span>
                             </td>
 
                             {/* Revised Budget */}
-                            <td className="py-3 px-3 text-right font-mono font-bold text-slate-800 dark:text-slate-200 tabular-nums align-middle">
+                            <td className="py-2 px-3 text-right font-mono font-bold text-slate-800 dark:text-slate-200 tabular-nums align-middle">
                               <span className="text-[10px] font-normal text-slate-400 mr-0.5">Br.</span>
                               {revBudget.toFixed(2)}
                               <span className="text-[10px] font-normal text-slate-400 ml-0.5">M</span>
                             </td>
 
                             {/* Physical Progress */}
-                            <td className="py-3 px-3 align-middle">
+                            <td className="py-2 px-3 align-middle">
                               <div className="space-y-1 max-w-[140px]">
                                 <div className="flex items-center justify-between text-[11px] font-bold font-mono">
                                   <span className="text-slate-800 dark:text-slate-100 tabular-nums">
@@ -2163,7 +2163,7 @@ export default function ProjectsPage({
                             </td>
 
                             {/* Risk / Health */}
-                            <td className="py-3 px-3 text-center align-middle">
+                            <td className="py-2 px-3 text-center align-middle">
                               <span 
                                 className={`inline-flex items-center gap-1 text-[9px] font-extrabold px-2 py-0.5 rounded-md border uppercase tracking-tight ${statusInfo.badgeClass}`}
                                 title={statusInfo.reason}
@@ -2174,7 +2174,7 @@ export default function ProjectsPage({
                             </td>
 
                             {/* Actions */}
-                            <td className="py-3 px-3 text-center align-middle" onClick={(e) => e.stopPropagation()}>
+                            <td className="py-2 px-3 text-center align-middle" onClick={(e) => e.stopPropagation()}>
                               <div className="flex items-center justify-center gap-1">
                                 <button
                                   type="button"
@@ -2182,7 +2182,7 @@ export default function ProjectsPage({
                                     e.stopPropagation();
                                     setInspectProjectId(p.id);
                                   }}
-                                  className="p-1.5 text-slate-500 hover:text-blue-600 dark:text-slate-400 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded-lg transition cursor-pointer"
+                                  className="p-1 text-slate-500 hover:text-blue-600 dark:text-slate-400 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded-lg transition cursor-pointer"
                                   title="Quick Inspect Project Details"
                                 >
                                   <Eye className="w-3.5 h-3.5" />
@@ -2210,7 +2210,7 @@ export default function ProjectsPage({
                                         onDeleteProject(p.id);
                                       }
                                     }}
-                                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition cursor-pointer"
+                                    className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition cursor-pointer"
                                     title="Delete Project"
                                   >
                                     <Trash2 className="w-3.5 h-3.5" />
@@ -2226,7 +2226,7 @@ export default function ProjectsPage({
                     {/* Table Footer with Summary Statistics */}
                     <tfoot className="bg-slate-50 dark:bg-slate-850 border-t-2 border-slate-200 dark:border-slate-700 font-bold text-[11px] text-slate-700 dark:text-slate-300">
                       <tr>
-                        <td className="py-3 px-3.5" colSpan={4}>
+                        <td className="py-2 px-3.5" colSpan={4}>
                           <div className="flex items-center gap-2">
                             <span className="font-extrabold uppercase tracking-wider text-[10px] text-slate-500">
                               Portfolio Summary:
@@ -2236,21 +2236,21 @@ export default function ProjectsPage({
                             </span>
                           </div>
                         </td>
-                        <td className="py-3 px-2.5 text-slate-400 text-[10px]">
+                        <td className="py-2 px-2.5 text-slate-400 text-[10px]">
                           Totals
                         </td>
-                        <td className="py-3 px-3 text-right font-mono font-extrabold tabular-nums text-slate-900 dark:text-white">
+                        <td className="py-2 px-3 text-right font-mono font-extrabold tabular-nums text-slate-900 dark:text-white">
                           {portfolioTotals.totalLength.toFixed(1)} <span className="text-[9px] font-normal text-slate-400">km</span>
                         </td>
-                        <td className="py-3 px-3 text-right font-mono font-extrabold tabular-nums text-slate-900 dark:text-white">
+                        <td className="py-2 px-3 text-right font-mono font-extrabold tabular-nums text-slate-900 dark:text-white">
                           <span className="text-[9px] font-normal text-slate-400 mr-0.5">Br.</span>
                           {portfolioTotals.totalBudget.toFixed(2)}
                           <span className="text-[9px] font-normal text-slate-400 ml-0.5">M</span>
                         </td>
-                        <td className="py-3 px-3 font-mono font-extrabold tabular-nums text-slate-900 dark:text-white">
+                        <td className="py-2 px-3 font-mono font-extrabold tabular-nums text-slate-900 dark:text-white">
                           Avg: {portfolioTotals.avgProgress.toFixed(1)}%
                         </td>
-                        <td className="py-3 px-3 text-center text-[10px] text-slate-400" colSpan={2}>
+                        <td className="py-2 px-3 text-center text-[10px] text-slate-400" colSpan={2}>
                         </td>
                       </tr>
                     </tfoot>
