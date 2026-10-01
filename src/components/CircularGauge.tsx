@@ -91,14 +91,14 @@ export default function CircularGauge({
       onClick={onKpiClick}
       className={isCompact 
         ? `flex flex-col items-center justify-center w-full group relative ${onKpiClick ? 'cursor-pointer' : ''}`
-        : `flex flex-col items-center justify-center bg-white dark:bg-slate-800 p-4 rounded-2xl border border-slate-100 dark:border-slate-700/50 shadow-sm hover:shadow-md transition-all duration-300 w-full group relative overflow-hidden ${onKpiClick ? 'cursor-pointer hover:border-blue-400 dark:hover:border-blue-500' : ''}`
+        : `flex flex-col items-center justify-center bg-white dark:bg-slate-800 p-2.5 sm:p-3 rounded-xl border border-slate-100 dark:border-slate-700/50 shadow-xs hover:shadow-md transition-all duration-300 w-full group relative overflow-hidden ${onKpiClick ? 'cursor-pointer hover:border-blue-400 dark:hover:border-blue-500' : ''}`
       }
     >
       {!isCompact && (
         <div className="absolute inset-0 bg-gradient-to-br from-slate-50/50 to-transparent dark:from-slate-700/10 dark:to-transparent pointer-events-none" />
       )}
 
-      <div className="relative w-full max-w-[160px] aspect-square flex items-center justify-center">
+      <div className="relative w-full max-w-[115px] sm:max-w-[125px] aspect-square flex items-center justify-center">
         <svg className="w-full h-full absolute inset-0" viewBox="0 0 120 120">
           <g transform="rotate(-225 60 60)">
             {/* Background circle track */}
@@ -156,7 +156,7 @@ export default function CircularGauge({
       
       {/* Label outside arc */}
       {!isCompact && label && (
-        <span className="mt-3 text-xs font-semibold text-slate-600 dark:text-slate-300 text-center tracking-wide group-hover:text-amber-500 dark:group-hover:text-amber-400 transition-colors duration-200">
+        <span className="mt-1.5 text-xs text-[12px] font-bold text-slate-700 dark:text-slate-200 text-center tracking-tight group-hover:text-amber-500 dark:group-hover:text-amber-400 transition-colors duration-200 line-clamp-1">
           {label}
         </span>
       )}

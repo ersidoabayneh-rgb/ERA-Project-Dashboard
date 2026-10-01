@@ -1737,31 +1737,31 @@ export default function DashboardView({
 
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3 sm:space-y-3.5">
 
       {/* Page Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-2.5 border-b border-slate-100 dark:border-slate-800 pb-2.5 text-[12px]">
         <div>
-          <h1 className="text-xl font-bold text-slate-800 dark:text-white uppercase tracking-tight flex items-center gap-2">
+          <h1 className="text-lg sm:text-xl font-bold text-slate-800 dark:text-white uppercase tracking-tight flex items-center gap-2">
             <span>Project Executive Dashboard</span>
-            <span className="text-xs font-normal text-slate-400">({project.name})</span>
+            <span className="text-[12px] font-normal text-slate-400">({project.name})</span>
           </h1>
         </div>
 
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-2.5 flex-wrap text-[12px]">
           <button
             onClick={handleExportDashboardPDF}
             disabled={isExporting}
-            className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-sm transition cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-[12px] font-bold shadow-xs transition cursor-pointer"
             title="Export a comprehensive PDF report summarizing all project metrics, milestones, and financial status for the currently selected project"
           >
-            <Download className="w-4 h-4" />
+            <Download className="w-3.5 h-3.5" />
             <span>{isExporting ? 'Generating PDF...' : 'Export Comprehensive Project PDF'}</span>
           </button>
 
           {/* Status selector / badge */}
-          <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-3 py-1.5 rounded-xl">
-            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">
+          <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2.5 py-1 rounded-xl text-[12px]">
+            <span className="text-[11px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">
               Lifecycle Status:
             </span>
             {(() => {
@@ -1782,7 +1782,7 @@ export default function DashboardView({
                       onUpdateProjectStatus(project.id, newStatus);
                     }
                   }}
-                  className="bg-transparent text-xs font-bold text-slate-800 dark:text-slate-100 outline-none cursor-pointer"
+                  className="bg-transparent text-[12px] font-bold text-slate-800 dark:text-slate-100 outline-none cursor-pointer"
                   title={isClosed ? "Project lifecycle is closed. As CPM/Master Admin, you have privilege to change its lifecycle." : "Change project lifecycle status"}
                 >
                   <option value="In Progress">🟢 In Progress</option>
@@ -1795,7 +1795,7 @@ export default function DashboardView({
                 </select>
               ) : (
                 <span 
-                  className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5"
+                  className="text-[12px] font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5"
                   title={isClosed ? "Project lifecycle is closed. Only the CPM Admin and Master Admin are authorized to change it to another lifecycle." : "Lifecycle status"}
                 >
                   <span>{project.status || 'In Progress'}</span>
@@ -1828,7 +1828,7 @@ export default function DashboardView({
                     if (onSwitchTab) onSwitchTab('projects');
                   }
                 }}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-900/60 rounded-xl text-xs font-bold transition cursor-pointer"
+                className="flex items-center gap-1.5 px-2.5 py-1 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-900/60 rounded-xl text-[12px] font-bold transition cursor-pointer"
                 title="Permanently Delete Project (CPM Admins & Master Admin only)"
               >
                 <Trash2 className="w-3.5 h-3.5 text-rose-500" />
@@ -1840,7 +1840,7 @@ export default function DashboardView({
       </div>
 
       {/* Printable / Capturable Visual Dashboard Content */}
-      <div id="dashboard-view-content" className="space-y-6">
+      <div id="dashboard-view-content" className="space-y-3 sm:space-y-3.5">
 
       {hasCriticalBonds && (
         <div className="bg-gradient-to-r from-rose-50 to-amber-50 dark:from-rose-950/20 dark:to-amber-950/20 border-l-4 border-rose-500 rounded-2xl p-5 shadow-sm space-y-3">
@@ -1988,7 +1988,7 @@ export default function DashboardView({
       })()}
 
       {/* Three prominent Master Gauges */}
-      <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <section className="grid grid-cols-1 md:grid-cols-3 gap-2.5 sm:gap-3">
         {/* Physical progress gauge */}
         <div className="relative group">
           <CircularGauge 
@@ -2000,7 +2000,7 @@ export default function DashboardView({
           />
           {/* Inline Editor (Disabled when project is closed) */}
           {!isClosed && (
-            <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 flex flex-col items-center bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border border-slate-200 dark:border-slate-700 px-3 py-1.5 rounded-2xl shadow-xl transition-all duration-200 z-20 gap-1 text-[10px] min-w-[190px]">
+            <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 flex flex-col items-center bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border border-slate-200 dark:border-slate-700 px-2.5 py-1 rounded-2xl shadow-xl transition-all duration-200 z-20 gap-1 text-[10px] min-w-[180px]">
               <div className="flex items-center justify-center gap-1.5 w-full">
                 <input 
                   type="number"
@@ -2015,13 +2015,13 @@ export default function DashboardView({
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') handleApplyPhysical();
                   }}
-                  className="w-16 border rounded-lg text-center px-1.5 py-0.5 bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 font-bold text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-16 border rounded-lg text-center px-1.5 py-0.5 bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 font-bold text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-blue-500 text-[12px]"
                   placeholder="0.00"
                 />
-                <span className="font-bold text-slate-400">%</span>
+                <span className="font-bold text-slate-400 text-[12px]">%</span>
                 <button 
                   onClick={handleApplyPhysical}
-                  className="bg-blue-600 dark:bg-blue-500 hover:bg-blue-700 text-white font-bold px-3 py-1 rounded-lg transition shadow-sm cursor-pointer active:scale-95"
+                  className="bg-blue-600 dark:bg-blue-500 hover:bg-blue-700 text-white font-bold px-2.5 py-0.5 rounded-lg transition shadow-xs cursor-pointer active:scale-95 text-[12px]"
                 >
                   Set
                 </button>
@@ -2067,11 +2067,11 @@ export default function DashboardView({
       </section>
 
       {/* SECTION A: EXECUTIVE PERFORMANCE INDICATORS (CPI & SPI CONTROL ENGINE) */}
-      <section className="bg-gradient-to-br from-slate-900 via-slate-850 to-indigo-950 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950 text-white p-6 rounded-2xl shadow-md border border-slate-800 space-y-6">
+      <section className="bg-gradient-to-br from-slate-900 via-slate-850 to-indigo-950 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950 text-white p-3.5 sm:p-4 rounded-xl shadow-md border border-slate-800 space-y-3 text-[12px]">
         {/* CPI & SPI Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 sm:gap-3">
           {/* 1. CPI Card */}
-          <div className={`p-5 rounded-xl border flex flex-col justify-between transition-all ${
+          <div className={`p-3.5 rounded-xl border flex flex-col justify-between transition-all ${
             CPI >= 1.0 
               ? 'bg-emerald-950/40 border-emerald-500/40 shadow-emerald-950/20' 
               : CPI >= 0.90 
@@ -2080,9 +2080,9 @@ export default function DashboardView({
           }`}>
             <div className="flex justify-between items-start">
               <div>
-                <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider block">CPI (Cost Performance Index)</span>
+                <span className="text-[12px] font-bold text-slate-300 uppercase tracking-wider block">CPI (Cost Performance Index)</span>
               </div>
-              <span className={`px-2.5 py-0.5 text-[10px] font-extrabold uppercase rounded-full border ${
+              <span className={`px-2 py-0.5 text-[11px] font-extrabold uppercase rounded-full border ${
                 CPI >= 1.0 
                   ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' 
                   : CPI >= 0.90 
@@ -2093,20 +2093,20 @@ export default function DashboardView({
               </span>
             </div>
 
-            <div className="my-3 flex items-baseline gap-2">
-              <span className="text-3xl font-black font-mono tracking-tight text-white">{CPI.toFixed(3)}</span>
-              <div className="flex items-center text-xs font-bold">
+            <div className="my-1.5 flex items-baseline gap-2">
+              <span className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-white">{CPI.toFixed(3)}</span>
+              <div className="flex items-center text-[12px] font-bold">
                 {CPI >= 1.0 ? (
-                  <span className="text-emerald-400 flex items-center"><TrendingUp className="w-4 h-4 mr-0.5" /> Efficient</span>
+                  <span className="text-emerald-400 flex items-center"><TrendingUp className="w-3.5 h-3.5 mr-0.5" /> Efficient</span>
                 ) : (
-                  <span className="text-rose-400 flex items-center"><TrendingDown className="w-4 h-4 mr-0.5" /> {((1 - CPI) * 100).toFixed(2)}% Deficit</span>
+                  <span className="text-rose-400 flex items-center"><TrendingDown className="w-3.5 h-3.5 mr-0.5" /> {((1 - CPI) * 100).toFixed(2)}% Deficit</span>
                 )}
               </div>
             </div>
           </div>
 
           {/* 2. SPI Card */}
-          <div className={`p-5 rounded-xl border flex flex-col justify-between transition-all ${
+          <div className={`p-3.5 rounded-xl border flex flex-col justify-between transition-all ${
             SPI >= 1.0 
               ? 'bg-emerald-950/40 border-emerald-500/40 shadow-emerald-950/20' 
               : SPI >= 0.90 
@@ -2115,9 +2115,9 @@ export default function DashboardView({
           }`}>
             <div className="flex justify-between items-start">
               <div>
-                <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider block">SPI (Schedule Performance Index)</span>
+                <span className="text-[12px] font-bold text-slate-300 uppercase tracking-wider block">SPI (Schedule Performance Index)</span>
               </div>
-              <span className={`px-2.5 py-0.5 text-[10px] font-extrabold uppercase rounded-full border ${
+              <span className={`px-2 py-0.5 text-[11px] font-extrabold uppercase rounded-full border ${
                 SPI >= 1.0 
                   ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' 
                   : SPI >= 0.90 
@@ -2128,13 +2128,13 @@ export default function DashboardView({
               </span>
             </div>
 
-            <div className="my-3 flex items-baseline gap-2">
-              <span className="text-3xl font-black font-mono tracking-tight text-white">{SPI.toFixed(3)}</span>
-              <div className="flex items-center text-xs font-bold">
+            <div className="my-1.5 flex items-baseline gap-2">
+              <span className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-white">{SPI.toFixed(3)}</span>
+              <div className="flex items-center text-[12px] font-bold">
                 {SPI >= 1.0 ? (
-                  <span className="text-emerald-400 flex items-center"><TrendingUp className="w-4 h-4 mr-0.5" /> Ahead</span>
+                  <span className="text-emerald-400 flex items-center"><TrendingUp className="w-3.5 h-3.5 mr-0.5" /> Ahead</span>
                 ) : (
-                  <span className="text-rose-400 flex items-center"><TrendingDown className="w-4 h-4 mr-0.5" /> {Math.abs(SV_pct).toFixed(2)}% Lag</span>
+                  <span className="text-rose-400 flex items-center"><TrendingDown className="w-3.5 h-3.5 mr-0.5" /> {Math.abs(SV_pct).toFixed(2)}% Lag</span>
                 )}
               </div>
             </div>

@@ -606,6 +606,19 @@ export default function ProjectsPage({
     document.body.removeChild(link);
   };
 
+  const getProgressBarColor = (progress: number): string => {
+    if (progress < 25) {
+      return 'bg-red-500';
+    }
+    if (progress < 50) {
+      return 'bg-amber-500';
+    }
+    if (progress < 75) {
+      return 'bg-yellow-400';
+    }
+    return 'bg-emerald-500';
+  };
+
   const getLifecycleStatusBadge = (status?: string) => {
     const s = status || 'In Progress';
     switch (s) {
@@ -778,7 +791,7 @@ export default function ProjectsPage({
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 p-3 sm:p-4 md:p-5 transition-colors duration-300">
-      <div className="max-w-6xl mx-auto space-y-2.5 sm:space-y-3">
+      <div className="max-w-7xl 2xl:max-w-[1560px] mx-auto space-y-2.5 sm:space-y-3">
         
         {/* Header/Controls */}
         <header className="flex flex-col md:flex-row md:items-center md:justify-between bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 p-3.5 sm:p-4 rounded-2xl shadow-sm gap-3">
@@ -1482,7 +1495,7 @@ export default function ProjectsPage({
             )}
 
             {viewMode === 'grid' ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-3.5 gap-y-2.5 sm:gap-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-3 gap-x-3.5 gap-y-2.5 sm:gap-y-3">
                 <AnimatePresence>
                   {sortedProjects.map((p) => {
                     const criticalBonds = p.bonds ? p.bonds.filter(b => {
@@ -1749,11 +1762,7 @@ export default function ProjectsPage({
                                 />
                               )}
                               <div 
-                                className={`h-full rounded-full transition-all duration-500 relative z-10 ${
-                                  variance !== null && variance < -5
-                                    ? 'bg-amber-500'
-                                    : 'bg-blue-600 dark:bg-blue-500'
-                                }`}
+                                className={`h-full rounded-full transition-all duration-500 relative z-10 ${getProgressBarColor(actual)}`}
                                 style={{ width: `${Math.min(100, Math.max(0, actual))}%` }}
                               />
                             </div>
@@ -2151,11 +2160,7 @@ export default function ProjectsPage({
                                     />
                                   )}
                                   <div 
-                                    className={`h-full rounded-full transition-all duration-300 relative z-10 ${
-                                      planned !== null && actual < planned - 5 
-                                        ? 'bg-amber-500' 
-                                        : 'bg-blue-600 dark:bg-blue-500'
-                                    }`}
+                                    className={`h-full rounded-full transition-all duration-300 relative z-10 ${getProgressBarColor(actual)}`}
                                     style={{ width: `${Math.min(100, Math.max(0, actual))}%` }}
                                   />
                                 </div>
@@ -2514,9 +2519,7 @@ export default function ProjectsPage({
                               />
                             )}
                             <div 
-                              className={`h-full rounded-full transition-all duration-300 relative z-10 ${
-                                variance !== null && variance < -5 ? 'bg-amber-500' : 'bg-blue-600'
-                              }`}
+                              className={`h-full rounded-full transition-all duration-300 relative z-10 ${getProgressBarColor(actual)}`}
                               style={{ width: `${Math.min(100, Math.max(0, actual))}%` }}
                             />
                           </div>
