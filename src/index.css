@@ -74,6 +74,21 @@ input:disabled, select:disabled {
   overflow: hidden !important;
 }
 
+/* Alternating row colors for report tables */
+.report-table tbody tr:nth-child(even),
+.printable-table tbody tr:nth-child(even),
+.pdf-table tbody tr:nth-child(even),
+.table-fixed-report tbody tr:nth-child(even) {
+  background-color: rgba(241, 245, 249, 0.6);
+}
+
+.report-table tbody tr:nth-child(odd),
+.printable-table tbody tr:nth-child(odd),
+.pdf-table tbody tr:nth-child(odd),
+.table-fixed-report tbody tr:nth-child(odd) {
+  background-color: transparent;
+}
+
 /* Key Column Width Definitions for Consulting Engineer & Contractor Names */
 .col-engineer,
 .col-contractor,
@@ -201,9 +216,64 @@ td.col-firm,
   table thead tr th,
   table thead tr td {
     font-weight: bold !important;
-    background-color: #f1f5f9 !important;
+    background-color: #e2e8f0 !important;
     color: #0f172a !important;
     border-bottom: 2px solid #0f172a !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Alternating background colors to table rows for better readability in printed reports */
+  .report-table tbody tr:nth-child(even),
+  .report-table tr:nth-child(even),
+  .printable-table tbody tr:nth-child(even),
+  .printable-table tr:nth-child(even),
+  .pdf-table tbody tr:nth-child(even),
+  .pdf-table tr:nth-child(even),
+  .table-fixed-report tbody tr:nth-child(even),
+  table tbody tr:nth-child(even) {
+    background-color: #f8fafc !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .report-table tbody tr:nth-child(even) td,
+  .report-table tr:nth-child(even) td,
+  .printable-table tbody tr:nth-child(even) td,
+  .printable-table tr:nth-child(even) td,
+  .pdf-table tbody tr:nth-child(even) td,
+  .pdf-table tr:nth-child(even) td,
+  .table-fixed-report tbody tr:nth-child(even) td,
+  table tbody tr:nth-child(even) td {
+    background-color: #f8fafc !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .report-table tbody tr:nth-child(odd),
+  .report-table tr:nth-child(odd),
+  .printable-table tbody tr:nth-child(odd),
+  .printable-table tr:nth-child(odd),
+  .pdf-table tbody tr:nth-child(odd),
+  .pdf-table tr:nth-child(odd),
+  .table-fixed-report tbody tr:nth-child(odd),
+  table tbody tr:nth-child(odd) {
+    background-color: #ffffff !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .report-table tbody tr:nth-child(odd) td,
+  .report-table tr:nth-child(odd) td,
+  .printable-table tbody tr:nth-child(odd) td,
+  .printable-table tr:nth-child(odd) td,
+  .pdf-table tbody tr:nth-child(odd) td,
+  .pdf-table tr:nth-child(odd) td,
+  .table-fixed-report tbody tr:nth-child(odd) td,
+  table tbody tr:nth-child(odd) td {
+    background-color: #ffffff !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 
   /* Clean borders and prevent clipping shadows */
