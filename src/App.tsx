@@ -3767,8 +3767,6 @@ let isBatchSyncRunning = false;
                     </div>
                   )}
                   <p className="text-[10px] md:text-xs text-slate-500 dark:text-slate-400 font-semibold tracking-wide flex items-center gap-1.5 flex-wrap mt-1">
-                    <span>Client: {currentProject.client}</span> • 
-                    <span>Contractor: {currentProject.contractor}</span> • 
                     <span>Classification: {currentProject.classification}</span>
                     {currentProject.approvedBy && (
                       <>
@@ -3885,22 +3883,6 @@ let isBatchSyncRunning = false;
                   </button>
                 )}
                 <button
-                  onClick={() => setIsUserGuideOpen(true)}
-                  className="bg-emerald-600 hover:bg-emerald-700 p-2 rounded-full border border-emerald-700 flex items-center gap-1.5 text-[11px] font-extrabold text-white px-3 py-1.5 transition shadow-sm"
-                  title="Open ERA ERP User Guide Manual"
-                >
-                  <BookOpen className="w-3.5 h-3.5" />
-                  User Guide Manual
-                </button>
-                <button
-                  onClick={() => setIsThemeCustomizerOpen(true)}
-                  className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white p-2 rounded-full border border-indigo-500/40 flex items-center gap-1.5 text-[11px] font-extrabold px-3 py-1.5 transition shadow-sm cursor-pointer"
-                  title="Theme, Colors & Background Customizer"
-                >
-                  <Palette className="w-3.5 h-3.5" />
-                  <span>Theme Settings</span>
-                </button>
-                <button
                   onClick={() => window.print()}
                   className="bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 p-2.5 rounded-full border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-blue-500 transition"
                   title="Print Current Tab"
@@ -3913,22 +3895,6 @@ let isBatchSyncRunning = false;
                   title="Toggle Mode"
                 >
                   {darkMode ? <Sun className="w-4 h-4 text-amber-500" /> : <Moon className="w-4 h-4 text-blue-500" />}
-                </button>
-                <button
-                  onClick={() => setShowProfile(true)}
-                  className="bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 p-2 rounded-full border border-slate-200 dark:border-slate-700 flex items-center gap-1 text-[11px] font-extrabold text-slate-700 dark:text-slate-200 px-3 py-1.5 transition"
-                  title="My Profile & Security Settings"
-                >
-                  <UserIcon className="w-3.5 h-3.5 text-blue-500" />
-                  Profile
-                </button>
-                <button
-                  onClick={handleLogout}
-                  className="bg-slate-50 hover:bg-slate-100 dark:bg-slate-805 p-2 rounded-full border border-slate-200 dark:border-slate-700 flex items-center gap-1 text-[11px] font-extrabold text-rose-600 dark:text-rose-400 px-3 py-1.5 transition"
-                  title="Log Out"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                  Logout
                 </button>
               </div>
             </header>
