@@ -1300,49 +1300,6 @@ export default function ProjectsPage({
               </div>
             </div>
 
-            {/* Quick Classification Filter Chips Row */}
-            <div className="flex items-center gap-1.5 overflow-x-auto scroller-none py-0.5 text-xs font-semibold">
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 shrink-0 mr-1 flex items-center gap-1">
-                <span>🛣️ Quick Classification:</span>
-              </span>
-              <button
-                type="button"
-                onClick={() => setSelectedClassification('All')}
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer ${
-                  selectedClassification === 'All'
-                    ? 'bg-blue-600 text-white shadow-xs'
-                    : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-750'
-                }`}
-              >
-                All ({accessibleProjects.length})
-              </button>
-              {availableClassifications.map((cls) => {
-                const count = accessibleProjects.filter(p => p.classification === cls).length;
-                const isSelected = selectedClassification === cls;
-                return (
-                  <button
-                    key={`quick-cls-pill-${cls}`}
-                    type="button"
-                    onClick={() => setSelectedClassification(isSelected ? 'All' : cls)}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
-                      isSelected
-                        ? 'bg-indigo-600 text-white shadow-xs ring-2 ring-indigo-400/40'
-                        : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-600 hover:text-indigo-600 dark:hover:text-indigo-400'
-                    }`}
-                  >
-                    <span>{cls}</span>
-                    <span className={`text-[10px] px-1.5 py-0.2 rounded font-black ${
-                      isSelected
-                        ? 'bg-indigo-700 text-white'
-                        : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
-                    }`}>
-                      {count}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-
             {/* Filter Status & Count summary bar */}
             <div className="flex items-center justify-between text-xs px-2 text-slate-500 dark:text-slate-400">
               <div className="flex items-center gap-2 flex-wrap">
@@ -1495,7 +1452,7 @@ export default function ProjectsPage({
             )}
 
             {viewMode === 'grid' ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-3 gap-x-3.5 gap-y-2.5 sm:gap-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-3 gap-x-3 gap-y-2 sm:gap-y-2">
                 <AnimatePresence>
                   {sortedProjects.map((p) => {
                     const criticalBonds = p.bonds ? p.bonds.filter(b => {
@@ -1527,18 +1484,18 @@ export default function ProjectsPage({
                         whileHover={{ y: -2 }}
                         transition={{ duration: 0.2 }}
                         onClick={() => onSelectProject(p.id)}
-                        className={`bg-white dark:bg-slate-800 border p-3.5 sm:p-4 rounded-2xl shadow-sm hover:shadow-md cursor-pointer relative group transition-all ${statusInfo.cardBorderClass}`}
+                        className={`bg-white dark:bg-slate-800 border p-2.5 sm:p-3 rounded-xl shadow-xs hover:shadow-md cursor-pointer relative group transition-all ${statusInfo.cardBorderClass}`}
                       >
-                        <div className="space-y-2.5 sm:space-y-3">
+                        <div className="space-y-1.5 sm:space-y-2">
                           {/* Badge & Type */}
-                          <div className="flex items-center gap-1.5 justify-between">
-                            <div className="flex items-center gap-1.5 flex-wrap">
+                          <div className="flex items-center gap-1 justify-between">
+                            <div className="flex items-center gap-1 flex-wrap">
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setSimilarityFilter({ type: 'contractType', value: p.contractType });
                                 }}
-                                className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md border transition ${
+                                className={`text-[9.5px] font-extrabold uppercase px-1.5 py-0.5 rounded-md border transition ${
                                   similarityFilter.type === 'contractType' && similarityFilter.value === p.contractType
                                     ? 'bg-blue-600 text-white border-blue-600'
                                     : 'bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border-blue-100/50 dark:border-blue-900/30'
@@ -1552,7 +1509,7 @@ export default function ProjectsPage({
                                   e.stopPropagation();
                                   setSimilarityFilter({ type: 'classification', value: p.classification });
                                 }}
-                                className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md border transition ${
+                                className={`text-[9.5px] font-extrabold uppercase px-1.5 py-0.5 rounded-md border transition ${
                                   similarityFilter.type === 'classification' && similarityFilter.value === p.classification
                                     ? 'bg-indigo-600 text-white border-indigo-600'
                                     : 'bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 border-indigo-100/50 dark:border-indigo-900/30'
@@ -1561,40 +1518,40 @@ export default function ProjectsPage({
                               >
                                 {p.classification}
                               </button>
-                              <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-md border bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border-emerald-100 dark:border-emerald-900/30">
+                              <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-md border bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border-emerald-100 dark:border-emerald-900/30">
                                 🏢 {p.programDirectorate || 'Southern'}
                               </span>
-                              <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-md border bg-purple-50 dark:bg-purple-950/30 text-purple-600 dark:text-purple-400 border-purple-100 dark:border-purple-900/30">
+                              <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-md border bg-purple-50 dark:bg-purple-950/30 text-purple-600 dark:text-purple-400 border-purple-100 dark:border-purple-900/30">
                                 📦 {p.pmo || 'PMO 1'}
                               </span>
                               {isRecentlyUpdated(p.lastModifiedAt) && (
                                 <span 
-                                  className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md border bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-400/50 flex items-center gap-1 shadow-2xs animate-pulse"
+                                  className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md border bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-400/50 flex items-center gap-1 shadow-2xs animate-pulse"
                                   title={`Updated within the last 24 hours (${p.lastModifiedAt ? new Date(p.lastModifiedAt).toLocaleString() : ''})`}
                                 >
                                   <Sparkles className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
                                   <span>Updated {formatRelativeTime(p.lastModifiedAt)}</span>
                                 </span>
                               )}
-                              <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">
+                              <span className="text-[9.5px] font-bold text-slate-400 dark:text-slate-500">
                                 ID: {p.id.substring(0, 10)}
                               </span>
                             </div>
                             
                             {/* Health Status & Quick Inspect */}
-                            <div className="flex items-center gap-1.5 shrink-0">
+                            <div className="flex items-center gap-1 shrink-0">
                               <button
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setInspectProjectId(p.id);
                                 }}
-                                className="p-1 rounded-md text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-700/60 transition cursor-pointer"
+                                className="p-0.5 rounded-md text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-700/60 transition cursor-pointer"
                                 title="Quick inspect project details"
                               >
                                 <Eye className="w-3.5 h-3.5" />
                               </button>
-                              <span className={`flex items-center gap-1 text-[9px] font-extrabold px-2 py-0.5 rounded-md border uppercase tracking-tight ${statusInfo.badgeClass}`}>
+                              <span className={`flex items-center gap-0.5 text-[9px] font-extrabold px-1.5 py-0.5 rounded-md border uppercase tracking-tight ${statusInfo.badgeClass}`}>
                                 {statusInfo.icon}
                                 <span>{statusInfo.level}</span>
                               </span>
@@ -1603,7 +1560,7 @@ export default function ProjectsPage({
 
                           {/* Title */}
                           <div>
-                            <h3 className="text-base font-bold text-slate-800 dark:text-slate-100 line-clamp-1 group-hover:text-amber-500 dark:group-hover:text-amber-400 transition-colors flex items-center gap-2">
+                            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 line-clamp-1 group-hover:text-amber-500 dark:group-hover:text-amber-400 transition-colors flex items-center gap-1.5">
                               {hasPendingChangesForApprover && (
                                 <span className="relative flex h-2 w-2 shrink-0" title="This contract has pending, unapproved changes requiring your review as designated approver">
                                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-450 opacity-75"></span>
@@ -1634,10 +1591,10 @@ export default function ProjectsPage({
                                 </span>
                               )}
                             </h3>
-                            <div className="text-xs text-slate-400 dark:text-slate-500 flex flex-wrap items-center gap-2 mt-1.5">
-                              <span className="flex items-center gap-1 bg-slate-50 dark:bg-slate-900/40 px-2 py-0.5 rounded border border-slate-100 dark:border-slate-800">
-                                <Building className="w-3 h-3 text-slate-400" />
-                                <span className="font-semibold text-slate-400 mr-1">Client:</span>
+                            <div className="text-[11px] text-slate-400 dark:text-slate-500 flex flex-wrap items-center gap-1.5 mt-0.5">
+                              <span className="flex items-center gap-1 bg-slate-50 dark:bg-slate-900/40 px-1.5 py-0.5 rounded border border-slate-100 dark:border-slate-800">
+                                <Building className="w-2.5 h-2.5 text-slate-400" />
+                                <span className="font-semibold text-slate-400 mr-0.5">Client:</span>
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
@@ -1653,8 +1610,8 @@ export default function ProjectsPage({
                                   {p.client}
                                 </button>
                               </span>
-                              <span className="flex items-center gap-1 bg-slate-50 dark:bg-slate-900/40 px-2 py-0.5 rounded border border-slate-100 dark:border-slate-800">
-                                <span className="font-semibold text-slate-400 mr-1">Contractor:</span>
+                              <span className="flex items-center gap-1 bg-slate-50 dark:bg-slate-900/40 px-1.5 py-0.5 rounded border border-slate-100 dark:border-slate-800">
+                                <span className="font-semibold text-slate-400 mr-0.5">Contractor:</span>
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
@@ -1675,18 +1632,18 @@ export default function ProjectsPage({
 
                           {/* Project Lifecycle Status Governance */}
                           <div 
-                            className="flex items-center justify-between gap-2 pt-1.5 pb-0.5 border-t border-slate-100 dark:border-slate-700/50"
+                            className="flex items-center justify-between gap-1.5 pt-1 pb-0 border-t border-slate-100 dark:border-slate-700/50"
                             onClick={(e) => e.stopPropagation()}
                             onMouseDown={(e) => e.stopPropagation()}
                             onPointerDown={(e) => e.stopPropagation()}
                           >
-                            <span className="text-[10px] font-extrabold uppercase text-slate-400 dark:text-slate-500">
+                            <span className="text-[9.5px] font-extrabold uppercase text-slate-400 dark:text-slate-500">
                               Lifecycle Status:
                             </span>
 
                             {canManageStatus(p) ? (
                               <div 
-                                className="flex items-center gap-1.5" 
+                                className="flex items-center gap-1" 
                                 onClick={(e) => e.stopPropagation()}
                                 onMouseDown={(e) => e.stopPropagation()}
                                 onPointerDown={(e) => e.stopPropagation()}
@@ -1703,7 +1660,7 @@ export default function ProjectsPage({
                                   onClick={(e) => e.stopPropagation()}
                                   onMouseDown={(e) => e.stopPropagation()}
                                   onPointerDown={(e) => e.stopPropagation()}
-                                  className={`text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-lg border outline-none cursor-pointer transition shadow-xs ${getLifecycleStatusBadge(p.status).style}`}
+                                  className={`text-[9.5px] font-extrabold uppercase px-2 py-0.5 rounded-lg border outline-none cursor-pointer transition shadow-2xs ${getLifecycleStatusBadge(p.status).style}`}
                                   title={isProjectClosed(p.status) ? "Project is closed. As CPM/Master Admin, you have privilege to change its lifecycle." : "Assigned by Directorate Admin / Administrator"}
                                 >
                                   <option value="In Progress">🟢 In Progress</option>
@@ -1717,7 +1674,7 @@ export default function ProjectsPage({
                               </div>
                             ) : (
                               <span 
-                                className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-lg border flex items-center gap-1 ${getLifecycleStatusBadge(p.status).style}`}
+                                className={`text-[9.5px] font-extrabold uppercase px-1.5 py-0.5 rounded-lg border flex items-center gap-1 ${getLifecycleStatusBadge(p.status).style}`}
                                 title={isProjectClosed(p.status) ? "Project lifecycle is closed. Only the CPM Admin and Master Admin are authorized to change it to another lifecycle." : "Assigned by Directorate / System Administrator"}
                               >
                                 <span>{getLifecycleStatusBadge(p.status).icon}</span>
@@ -1727,33 +1684,33 @@ export default function ProjectsPage({
                           </div>
 
                           {/* 3-Column Micro-Grid Specs Layout */}
-                          <div className="grid grid-cols-3 gap-2 border-t border-slate-50 dark:border-slate-700/40 pt-2 text-center">
+                          <div className="grid grid-cols-3 gap-1 border-t border-slate-50 dark:border-slate-700/40 pt-1 text-center">
                             <div>
-                              <p className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">Length</p>
+                              <p className="text-[9.5px] font-semibold text-slate-500 dark:text-slate-400">Length</p>
                               <p className="text-xs font-bold font-mono tabular-nums flex items-center justify-center gap-0.5 mt-0.5 text-slate-800 dark:text-slate-100">
-                                <Briefcase className="w-3 h-3 text-slate-400" />
-                                {p.lengthKm} <span className="text-[10px] font-normal text-slate-400">km</span>
+                                <Briefcase className="w-2.5 h-2.5 text-slate-400" />
+                                {p.lengthKm} <span className="text-[9.5px] font-normal text-slate-400">km</span>
                               </p>
                             </div>
                             <div>
-                              <p className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">Revised Budget</p>
+                              <p className="text-[9.5px] font-semibold text-slate-500 dark:text-slate-400">Revised Budget</p>
                               <p className="text-xs font-bold font-mono tabular-nums flex items-center justify-center gap-0.5 mt-0.5 text-slate-800 dark:text-slate-100">
-                                <DollarSign className="w-3 h-3 text-slate-400" />
-                                {revBudget.toFixed(2)} <span className="text-[10px] font-normal text-slate-400">M</span>
+                                <DollarSign className="w-2.5 h-2.5 text-slate-400" />
+                                {revBudget.toFixed(2)} <span className="text-[9.5px] font-normal text-slate-400">M</span>
                               </p>
                             </div>
                             <div>
-                              <p className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">Physical Progress</p>
+                              <p className="text-[9.5px] font-semibold text-slate-500 dark:text-slate-400">Physical Progress</p>
                               <p className="text-xs font-bold font-mono tabular-nums flex items-center justify-center gap-0.5 mt-0.5 text-slate-800 dark:text-slate-100">
-                                <TrendingUp className="w-3 h-3 text-slate-400" />
+                                <TrendingUp className="w-2.5 h-2.5 text-slate-400" />
                                 {actual.toFixed(1)}%
                               </p>
                             </div>
                           </div>
 
                           {/* Progress Dual Line */}
-                          <div className="space-y-1">
-                            <div className="w-full bg-slate-100 dark:bg-slate-700/50 h-2 rounded-full overflow-hidden relative">
+                          <div className="space-y-0.5">
+                            <div className="w-full bg-slate-100 dark:bg-slate-700/50 h-1.5 rounded-full overflow-hidden relative">
                               {planned !== null && (
                                 <div 
                                   className="absolute top-0 bottom-0 bg-slate-300 dark:bg-slate-600 rounded-full"
@@ -1778,13 +1735,13 @@ export default function ProjectsPage({
 
                           {/* Adaptive Project Health Warning / Condition Details Sign */}
                           {statusInfo.level === 'Critical' && (
-                            <div className="bg-rose-50 dark:bg-rose-950/25 border border-rose-100 dark:border-rose-950/40 p-2.5 rounded-xl space-y-1 mt-2">
-                              <div className="flex items-center gap-1.5 text-rose-700 dark:text-rose-400 font-extrabold text-[10px] uppercase tracking-wider">
-                                <AlertTriangle className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400 animate-bounce shrink-0" />
+                            <div className="bg-rose-50 dark:bg-rose-950/25 border border-rose-100 dark:border-rose-950/40 p-1.5 sm:p-2 rounded-lg space-y-0.5 mt-1">
+                              <div className="flex items-center gap-1.5 text-rose-700 dark:text-rose-400 font-extrabold text-[9.5px] uppercase tracking-wider">
+                                <AlertTriangle className="w-3 h-3 text-rose-600 dark:text-rose-400 animate-bounce shrink-0" />
                                 <span>{statusInfo.reason}</span>
                               </div>
                               {criticalBonds.length > 0 && (
-                                <div className="text-[9px] space-y-0.5 text-rose-600/80 dark:text-rose-400/80">
+                                <div className="text-[8.5px] space-y-0.5 text-rose-600/80 dark:text-rose-400/80">
                                   {criticalBonds.map((b, bIdx) => {
                                     const exp = new Date(b.expireDate);
                                     const isExpired = b.status === 'Expired' || exp < new Date();
@@ -1803,24 +1760,24 @@ export default function ProjectsPage({
                           )}
 
                           {statusInfo.level === 'Warning' && (
-                            <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/30 p-2.5 rounded-xl space-y-1 mt-2">
-                              <div className="flex items-center gap-1.5 text-amber-700 dark:text-amber-400 font-extrabold text-[10px] uppercase tracking-wider">
-                                <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                            <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/30 p-1.5 sm:p-2 rounded-lg space-y-0.5 mt-1">
+                              <div className="flex items-center gap-1.5 text-amber-700 dark:text-amber-400 font-extrabold text-[9.5px] uppercase tracking-wider">
+                                <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0" />
                                 <span>{statusInfo.reason}</span>
                               </div>
-                              <p className="text-[9px] text-slate-500 dark:text-slate-400 leading-normal">
-                                This road project is functional but has unresolved pending liabilities, resource deficiencies, or low progress rates.
+                              <p className="text-[8.5px] text-slate-500 dark:text-slate-400 leading-tight">
+                                This road project is functional but has unresolved pending liabilities or low progress rates.
                               </p>
                             </div>
                           )}
 
                           {statusInfo.level === 'Good' && (
-                            <div className="bg-emerald-50/50 dark:bg-emerald-950/10 border border-emerald-100/60 dark:border-emerald-900/20 p-2.5 rounded-xl space-y-1 mt-2">
-                              <div className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400 font-extrabold text-[10px] uppercase tracking-wider">
-                                <CheckCircle className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                            <div className="bg-emerald-50/50 dark:bg-emerald-950/10 border border-emerald-100/60 dark:border-emerald-900/20 p-1.5 sm:p-2 rounded-lg space-y-0.5 mt-1">
+                              <div className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400 font-extrabold text-[9.5px] uppercase tracking-wider">
+                                <CheckCircle className="w-3 h-3 text-emerald-500 shrink-0" />
                                 <span>On-Track & Fully Compliant</span>
                               </div>
-                              <p className="text-[9px] text-slate-500 dark:text-slate-400 leading-normal">
+                              <p className="text-[8.5px] text-slate-500 dark:text-slate-400 leading-tight">
                                 Securities are valid, physical progress is compliant, and no matured overdue IPC claims are pending.
                               </p>
                             </div>
@@ -1828,16 +1785,16 @@ export default function ProjectsPage({
 
                           {/* Last Modified Audit Footer */}
                           {p.lastModifiedAt && (
-                            <div className="flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500 pt-2 border-t border-slate-100 dark:border-slate-700/40 mt-2">
+                            <div className="flex items-center justify-between text-[9.5px] text-slate-400 dark:text-slate-500 pt-1 border-t border-slate-100 dark:border-slate-700/40 mt-1">
                               <span className="flex items-center gap-1">
                                 <span className="font-semibold text-slate-400">Last Modified:</span>
                                 <span className={`font-bold ${isRecentlyUpdated(p.lastModifiedAt) ? 'text-emerald-600 dark:text-emerald-400 font-extrabold' : 'text-slate-500 dark:text-slate-400'}`}>
                                   {formatRelativeTime(p.lastModifiedAt)}
                                 </span>
-                                <span className="text-[9px] text-slate-400">({new Date(p.lastModifiedAt).toLocaleDateString()})</span>
+                                <span className="text-[8.5px] text-slate-400">({new Date(p.lastModifiedAt).toLocaleDateString()})</span>
                               </span>
                               {p.lastModifiedBy && (
-                                <span className="text-[9px] text-slate-400 truncate max-w-[120px]" title={`Modified by ${p.lastModifiedBy}`}>
+                                <span className="text-[8.5px] text-slate-400 truncate max-w-[120px]" title={`Modified by ${p.lastModifiedBy}`}>
                                   By: {p.lastModifiedBy}
                                 </span>
                               )}
@@ -1846,7 +1803,7 @@ export default function ProjectsPage({
 
                           {/* Project Actions: Quick Inspect & Delete / Open */}
                           <div 
-                            className="pt-2.5 flex justify-between items-center border-t border-slate-100 dark:border-slate-700/50 mt-3" 
+                            className="pt-1.5 flex justify-between items-center border-t border-slate-100 dark:border-slate-700/50 mt-1.5" 
                             onClick={(e) => e.stopPropagation()}
                           >
                             <button
@@ -1855,14 +1812,14 @@ export default function ProjectsPage({
                                 e.stopPropagation();
                                 setInspectProjectId(p.id);
                               }}
-                              className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 bg-slate-100 dark:bg-slate-750 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded-xl transition cursor-pointer"
+                              className="flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 bg-slate-100 dark:bg-slate-750 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded-lg transition cursor-pointer"
                               title="Inspect deep project data in slide-over drawer"
                             >
-                              <Eye className="w-3.5 h-3.5" />
+                              <Eye className="w-3 h-3" />
                               <span>Quick Inspect</span>
                             </button>
 
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1.5">
                               {canDeleteProject(p) && (
                                 <button
                                   type="button"
@@ -1873,10 +1830,10 @@ export default function ProjectsPage({
                                       onDeleteProject(p.id);
                                     }
                                   }}
-                                  className="flex items-center gap-1 px-2.5 py-1 text-xs font-bold text-rose-600 dark:text-rose-400 hover:text-white bg-rose-50 hover:bg-rose-600 dark:bg-rose-950/30 dark:hover:bg-rose-600 border border-rose-200 dark:border-rose-900/50 rounded-xl transition-all duration-200 shadow-2xs cursor-pointer"
+                                  className="flex items-center gap-1 px-2 py-0.5 text-[11px] font-bold text-rose-600 dark:text-rose-400 hover:text-white bg-rose-50 hover:bg-rose-600 dark:bg-rose-950/30 dark:hover:bg-rose-600 border border-rose-200 dark:border-rose-900/50 rounded-lg transition-all duration-200 shadow-2xs cursor-pointer"
                                   title="Permanently Delete Project"
                                 >
-                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <Trash2 className="w-3 h-3" />
                                   <span className="hidden sm:inline">Delete</span>
                                 </button>
                               )}
@@ -1887,10 +1844,10 @@ export default function ProjectsPage({
                                   e.stopPropagation();
                                   onSelectProject(p.id);
                                 }}
-                                className="flex items-center gap-1.5 px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
+                                className="flex items-center gap-1 px-2.5 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-bold transition shadow-xs cursor-pointer"
                               >
                                 <span>Open</span>
-                                <ExternalLink className="w-3.5 h-3.5" />
+                                <ExternalLink className="w-3 h-3" />
                               </button>
                             </div>
                           </div>

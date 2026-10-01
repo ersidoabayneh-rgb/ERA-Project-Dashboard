@@ -1988,9 +1988,9 @@ export default function DashboardView({
       })()}
 
       {/* Three prominent Master Gauges */}
-      <section className="grid grid-cols-1 md:grid-cols-3 gap-2.5 sm:gap-3">
+      <section className="grid grid-cols-3 gap-2 sm:gap-3">
         {/* Physical progress gauge */}
-        <div className="relative group">
+        <div className="relative group w-full">
           <CircularGauge 
             value={project.physicalProgress} 
             label="Project Progress" 
