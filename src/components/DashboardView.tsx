@@ -1737,28 +1737,17 @@ export default function DashboardView({
 
 
   return (
-    <div className="space-y-3 sm:space-y-3.5">
+    <div className="space-y-2 sm:space-y-2.5">
 
-      {/* Page Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-2.5 border-b border-slate-100 dark:border-slate-800 pb-2.5 text-[12px]">
+      {/* Page Header - One Single Row with Title, Status, Export, and Delete */}
+      <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-2.5 border-b border-slate-100 dark:border-slate-800 pb-2 text-[12px]">
         <div>
-          <h1 className="text-lg sm:text-xl font-bold text-slate-800 dark:text-white uppercase tracking-tight flex items-center gap-2">
-            <span>Project Executive Dashboard</span>
-            <span className="text-[12px] font-normal text-slate-400">({project.name})</span>
+          <h1 className="text-base sm:text-lg font-bold text-slate-800 dark:text-white uppercase tracking-tight flex items-center gap-2">
+            Project Executive Dashboard
           </h1>
         </div>
 
-        <div className="flex items-center gap-2.5 flex-wrap text-[12px]">
-          <button
-            onClick={handleExportDashboardPDF}
-            disabled={isExporting}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-[12px] font-bold shadow-xs transition cursor-pointer"
-            title="Export a comprehensive PDF report summarizing all project metrics, milestones, and financial status for the currently selected project"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>{isExporting ? 'Generating PDF...' : 'Export Comprehensive Project PDF'}</span>
-          </button>
-
+        <div className="flex items-center gap-2 flex-wrap text-[12px]">
           {/* Status selector / badge */}
           <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2.5 py-1 rounded-xl text-[12px]">
             <span className="text-[11px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">
@@ -1809,6 +1798,16 @@ export default function DashboardView({
             })()}
           </div>
 
+          <button
+            onClick={handleExportDashboardPDF}
+            disabled={isExporting}
+            className="flex items-center gap-1.5 px-3 py-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-[12px] font-bold shadow-xs transition cursor-pointer"
+            title="Export a comprehensive PDF report summarizing all project metrics, milestones, and financial status for the currently selected project"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>{isExporting ? 'Generating PDF...' : 'Export Comprehensive Project PDF'}</span>
+          </button>
+
           {/* Delete project option for CPM Admins and Master Admins only */}
           {(() => {
             const isAuthorizedAdmin = currentUserObj && (
@@ -1840,53 +1839,53 @@ export default function DashboardView({
       </div>
 
       {/* Printable / Capturable Visual Dashboard Content */}
-      <div id="dashboard-view-content" className="space-y-3 sm:space-y-3.5">
+      <div id="dashboard-view-content" className="space-y-2.5 sm:space-y-3">
 
       {hasCriticalBonds && (
-        <div className="bg-gradient-to-r from-rose-50 to-amber-50 dark:from-rose-950/20 dark:to-amber-950/20 border-l-4 border-rose-500 rounded-2xl p-5 shadow-sm space-y-3">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="bg-gradient-to-r from-rose-50 to-amber-50 dark:from-rose-950/20 dark:to-amber-950/20 border-l-4 border-rose-500 rounded-xl p-3.5 sm:p-4 shadow-sm space-y-2">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
             <div className="flex items-start gap-2.5">
-              <div className="p-2 bg-rose-100 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 rounded-xl mt-0.5 animate-pulse">
-                <AlertTriangle className="w-5 h-5" />
+              <div className="p-1.5 bg-rose-100 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 rounded-lg mt-0.5 animate-pulse">
+                <AlertTriangle className="w-4 h-4" />
               </div>
               <div>
-                <h4 className="text-sm font-black text-rose-800 dark:text-rose-300 uppercase tracking-wide">
+                <h4 className="text-xs sm:text-sm font-black text-rose-800 dark:text-rose-300 uppercase tracking-wide">
                   Critical Bank Security & Guarantee Warning
                 </h4>
-                <p className="text-xs text-rose-600/95 dark:text-rose-400/80">
+                <p className="text-[11px] text-rose-600/95 dark:text-rose-400/80">
                   {criticalBonds.length} bank guarantee(s) are expired or expiring in less than 45 days. Action is required immediately to prevent liquidation risks or contract default!
                 </p>
               </div>
             </div>
-            <span className="self-start md:self-auto text-[10px] font-extrabold uppercase bg-rose-200/60 dark:bg-rose-950 text-rose-800 dark:text-rose-400 px-3 py-1 rounded-full animate-pulse border border-rose-300 dark:border-rose-900">
+            <span className="self-start md:self-auto text-[9px] font-extrabold uppercase bg-rose-200/60 dark:bg-rose-950 text-rose-800 dark:text-rose-400 px-2.5 py-0.5 rounded-full animate-pulse border border-rose-300 dark:border-rose-900">
               URGENT AUDIT REQUIRED
             </span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 pt-0.5">
             {criticalBonds.map((b, bIdx) => {
               const exp = new Date(b.expireDate);
               const isPast = b.status === 'Expired' || exp < new Date();
               const formattedAmt = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(b.amount).replace(/\.00$/, '');
               return (
-                <div key={bIdx} className="bg-white/80 dark:bg-slate-900/60 border border-rose-100 dark:border-rose-900/40 p-3 rounded-xl flex flex-col justify-between space-y-1.5 shadow-xs">
+                <div key={bIdx} className="bg-white/80 dark:bg-slate-900/60 border border-rose-100 dark:border-rose-900/40 p-2.5 rounded-lg flex flex-col justify-between space-y-1 shadow-xs">
                   <div>
                     <div className="flex items-center justify-between gap-1">
-                      <span className="text-[10px] font-extrabold uppercase bg-rose-50 dark:bg-rose-950 text-rose-700 dark:text-rose-400 px-2 py-0.5 rounded border border-rose-150 dark:border-rose-900/50">
+                      <span className="text-[9px] font-extrabold uppercase bg-rose-50 dark:bg-rose-950 text-rose-700 dark:text-rose-400 px-1.5 py-0.5 rounded border border-rose-150 dark:border-rose-900/50">
                         {isPast ? 'Expired' : 'Expiring Soon'}
                       </span>
-                      <span className="text-[9px] text-slate-400 font-mono">SNo. {b.sno}</span>
+                      <span className="text-[8.5px] text-slate-400 font-mono">SNo. {b.sno}</span>
                     </div>
-                    <h5 className="text-xs font-black text-slate-850 dark:text-zinc-150 mt-1.5 line-clamp-1">{b.type}</h5>
-                    <p className="text-[10px] text-slate-500 dark:text-slate-405 font-medium truncate">Issuer: {b.bank}</p>
+                    <h5 className="text-[11px] font-black text-slate-850 dark:text-zinc-150 mt-1 line-clamp-1">{b.type}</h5>
+                    <p className="text-[9.5px] text-slate-500 dark:text-slate-405 font-medium truncate">Issuer: {b.bank}</p>
                   </div>
-                  <div className="border-t border-slate-100 dark:border-slate-800 pt-2 flex items-center justify-between text-xs mt-1">
+                  <div className="border-t border-slate-100 dark:border-slate-800 pt-1.5 flex items-center justify-between text-[11px] mt-0.5">
                     <div>
-                      <span className="text-[9px] text-slate-400 block font-mono">Escrow Amount</span>
-                      <span className="font-mono font-black text-rose-600 dark:text-rose-400">{formattedAmt} Br</span>
+                      <span className="text-[8.5px] text-slate-400 block font-mono">Escrow Amount</span>
+                      <span className="font-mono font-black text-rose-600 dark:text-rose-400 text-xs">{formattedAmt} Br</span>
                     </div>
                     <div className="text-right">
-                      <span className="text-[9px] text-slate-400 block font-mono">Expiry Date</span>
+                      <span className="text-[8.5px] text-slate-400 block font-mono">Expiry Date</span>
                       <span className="font-mono font-bold text-slate-700 dark:text-slate-350">{b.expireDate}</span>
                     </div>
                   </div>
@@ -1914,40 +1913,40 @@ export default function DashboardView({
         }
 
         return (
-          <div className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/25 dark:to-orange-950/25 border-l-4 border-amber-500 rounded-2xl p-5 shadow-sm space-y-3">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/25 dark:to-orange-950/25 border-l-4 border-amber-500 rounded-xl p-3.5 sm:p-4 shadow-sm space-y-2">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
               <div className="flex items-start gap-2.5">
-                <div className="p-2 bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 rounded-xl mt-0.5 animate-bounce">
-                  <Bell className="w-5 h-5" />
+                <div className="p-1.5 bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 rounded-lg mt-0.5 animate-bounce">
+                  <Bell className="w-4 h-4" />
                 </div>
                 <div>
-                  <h4 className="text-sm font-black text-amber-900 dark:text-amber-300 uppercase tracking-wide">
+                  <h4 className="text-xs sm:text-sm font-black text-amber-900 dark:text-amber-300 uppercase tracking-wide">
                     Project Performance & Completion Alert System
                   </h4>
-                  <p className="text-xs text-amber-700/90 dark:text-amber-400/90 mt-0.5">
+                  <p className="text-[11px] text-amber-700/90 dark:text-amber-400/90 mt-0.5">
                     Automated flags detected for project <strong className="font-bold underline">{project.name}</strong>:
                   </p>
                 </div>
               </div>
-              <span className="self-start md:self-auto text-[10px] font-extrabold uppercase bg-amber-200/80 dark:bg-amber-950 text-amber-900 dark:text-amber-300 px-3 py-1 rounded-full border border-amber-300 dark:border-amber-800">
+              <span className="self-start md:self-auto text-[9px] font-extrabold uppercase bg-amber-200/80 dark:bg-amber-950 text-amber-900 dark:text-amber-300 px-2.5 py-0.5 rounded-full border border-amber-300 dark:border-amber-800">
                 ACTIVE NOTIFICATIONS
               </span>
             </div>
 
-            <div className={`grid grid-cols-1 ${isNearingCompletionAlert && hasSignificantPhysicalSlippage ? 'sm:grid-cols-2' : 'grid-cols-1'} gap-3 pt-1`}>
+            <div className={`grid grid-cols-1 ${isNearingCompletionAlert && hasSignificantPhysicalSlippage ? 'sm:grid-cols-2' : 'grid-cols-1'} gap-2.5 pt-0.5`}>
               {isNearingCompletionAlert && (
-                <div className="bg-white/90 dark:bg-slate-900/80 border border-amber-200 dark:border-amber-900/50 p-4 rounded-xl flex items-start gap-3.5 shadow-xs">
-                  <div className="p-2.5 bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400 rounded-lg shrink-0 mt-0.5">
-                    <Calendar className="w-5 h-5" />
+                <div className="bg-white/90 dark:bg-slate-900/80 border border-amber-200 dark:border-amber-900/50 p-3 rounded-lg flex items-start gap-2.5 shadow-xs">
+                  <div className="p-2 bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400 rounded-lg shrink-0 mt-0.5">
+                    <Calendar className="w-4 h-4" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <span className="text-[10px] font-black uppercase text-amber-700 dark:text-amber-400 tracking-wider">
+                    <span className="text-[9.5px] font-black uppercase text-amber-700 dark:text-amber-400 tracking-wider">
                       Contract Milestone / Timeline Warning
                     </span>
-                    <p className="text-sm font-extrabold text-slate-800 dark:text-slate-100 mt-0.5">
+                    <p className="text-xs font-extrabold text-slate-800 dark:text-slate-100 mt-0.5">
                       {daysToCompletion <= 0 ? `Completion date reached (${Math.abs(daysToCompletion)} days overdue)` : `Estimated completion in ${daysToCompletion} days`}
                     </p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                       Scheduled End Date: <span className="font-semibold text-slate-700 dark:text-slate-300">{estimatedCompletionDate.toLocaleDateString()}</span>
                     </p>
                   </div>
@@ -1955,28 +1954,28 @@ export default function DashboardView({
               )}
 
               {hasSignificantPhysicalSlippage && (
-                <div className="bg-white/95 dark:bg-slate-900/90 border-2 border-orange-300 dark:border-orange-700/60 p-4 rounded-xl flex items-start gap-3.5 shadow-xs">
-                  <div className="p-2.5 bg-orange-100 dark:bg-orange-950/70 text-orange-600 dark:text-orange-400 rounded-xl shrink-0 mt-0.5">
-                    <TrendingDown className="w-5 h-5" />
+                <div className="bg-white/95 dark:bg-slate-900/90 border-2 border-orange-300 dark:border-orange-700/60 p-3 rounded-lg flex items-start gap-2.5 shadow-xs">
+                  <div className="p-2 bg-orange-100 dark:bg-orange-950/70 text-orange-600 dark:text-orange-400 rounded-lg shrink-0 mt-0.5">
+                    <TrendingDown className="w-4 h-4" />
                   </div>
-                  <div className="flex-1 min-w-0 space-y-1">
+                  <div className="flex-1 min-w-0 space-y-0.5">
                     <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <span className="text-[10px] font-black uppercase text-orange-700 dark:text-orange-400 tracking-wider bg-orange-100 dark:bg-orange-950/60 px-2 py-0.5 rounded-md border border-orange-200 dark:border-orange-800">
+                      <span className="text-[9.5px] font-black uppercase text-orange-700 dark:text-orange-400 tracking-wider bg-orange-100 dark:bg-orange-950/60 px-1.5 py-0.5 rounded border border-orange-200 dark:border-orange-800">
                         Critical Slippage &gt; 15% Alert
                       </span>
                       <span className="text-xs font-black text-rose-600 dark:text-rose-400">
                         -{physicalSlippageVal.toFixed(1)}% Gap
                       </span>
                     </div>
-                    <p className="text-sm font-black text-slate-900 dark:text-slate-100">
+                    <p className="text-xs font-black text-slate-900 dark:text-slate-100">
                       Physical Execution Lagging by {physicalSlippageVal.toFixed(1)}% vs {evmMetrics.planLabel || 'Plan'}
                     </p>
-                    <div className="flex items-center gap-4 text-xs font-medium text-slate-600 dark:text-slate-300 pt-0.5">
+                    <div className="flex items-center gap-3 text-[11px] font-medium text-slate-600 dark:text-slate-300 pt-0.5">
                       <span>Actual: <strong className="font-bold text-slate-900 dark:text-white">{project.physicalProgress.toFixed(1)}%</strong></span>
                       <span className="text-slate-300 dark:text-slate-600">•</span>
                       <span>S-Curve {evmMetrics.planLabel || 'Plan'}: <strong className="font-bold text-orange-600 dark:text-orange-400">{evmMetrics.plannedPct.toFixed(1)}%</strong></span>
                     </div>
-                    <p className="text-[10px] text-slate-400 dark:text-slate-500 italic pt-0.5">
+                    <p className="text-[9px] text-slate-400 dark:text-slate-500 italic pt-0.5">
                       S-curve tracking: Evaluated strictly between active {evmMetrics.planLabel || 'Plan'} and actual physical completion.
                     </p>
                   </div>
@@ -2067,11 +2066,11 @@ export default function DashboardView({
       </section>
 
       {/* SECTION A: EXECUTIVE PERFORMANCE INDICATORS (CPI & SPI CONTROL ENGINE) */}
-      <section className="bg-gradient-to-br from-slate-900 via-slate-850 to-indigo-950 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950 text-white p-3.5 sm:p-4 rounded-xl shadow-md border border-slate-800 space-y-3 text-[12px]">
+      <section className="bg-gradient-to-br from-slate-900 via-slate-850 to-indigo-950 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950 text-white p-3 sm:p-3.5 rounded-xl shadow-md border border-slate-800 space-y-2 text-[12px]">
         {/* CPI & SPI Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 sm:gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-2.5">
           {/* 1. CPI Card */}
-          <div className={`p-3.5 rounded-xl border flex flex-col justify-between transition-all ${
+          <div className={`p-2.5 sm:p-3 rounded-lg border flex flex-col justify-between transition-all ${
             CPI >= 1.0 
               ? 'bg-emerald-950/40 border-emerald-500/40 shadow-emerald-950/20' 
               : CPI >= 0.90 
@@ -2080,9 +2079,9 @@ export default function DashboardView({
           }`}>
             <div className="flex justify-between items-start">
               <div>
-                <span className="text-[12px] font-bold text-slate-300 uppercase tracking-wider block">CPI (Cost Performance Index)</span>
+                <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider block">CPI (Cost Performance Index)</span>
               </div>
-              <span className={`px-2 py-0.5 text-[11px] font-extrabold uppercase rounded-full border ${
+              <span className={`px-2 py-0.5 text-[10px] font-extrabold uppercase rounded-full border ${
                 CPI >= 1.0 
                   ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' 
                   : CPI >= 0.90 
@@ -2093,9 +2092,9 @@ export default function DashboardView({
               </span>
             </div>
 
-            <div className="my-1.5 flex items-baseline gap-2">
-              <span className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-white">{CPI.toFixed(3)}</span>
-              <div className="flex items-center text-[12px] font-bold">
+            <div className="my-1 flex items-baseline gap-2">
+              <span className="text-xl sm:text-2xl font-black font-mono tracking-tight text-white">{CPI.toFixed(3)}</span>
+              <div className="flex items-center text-[11px] font-bold">
                 {CPI >= 1.0 ? (
                   <span className="text-emerald-400 flex items-center"><TrendingUp className="w-3.5 h-3.5 mr-0.5" /> Efficient</span>
                 ) : (
@@ -2106,7 +2105,7 @@ export default function DashboardView({
           </div>
 
           {/* 2. SPI Card */}
-          <div className={`p-3.5 rounded-xl border flex flex-col justify-between transition-all ${
+          <div className={`p-2.5 sm:p-3 rounded-lg border flex flex-col justify-between transition-all ${
             SPI >= 1.0 
               ? 'bg-emerald-950/40 border-emerald-500/40 shadow-emerald-950/20' 
               : SPI >= 0.90 
@@ -2115,9 +2114,9 @@ export default function DashboardView({
           }`}>
             <div className="flex justify-between items-start">
               <div>
-                <span className="text-[12px] font-bold text-slate-300 uppercase tracking-wider block">SPI (Schedule Performance Index)</span>
+                <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider block">SPI (Schedule Performance Index)</span>
               </div>
-              <span className={`px-2 py-0.5 text-[11px] font-extrabold uppercase rounded-full border ${
+              <span className={`px-2 py-0.5 text-[10px] font-extrabold uppercase rounded-full border ${
                 SPI >= 1.0 
                   ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' 
                   : SPI >= 0.90 
@@ -2128,9 +2127,9 @@ export default function DashboardView({
               </span>
             </div>
 
-            <div className="my-1.5 flex items-baseline gap-2">
-              <span className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-white">{SPI.toFixed(3)}</span>
-              <div className="flex items-center text-[12px] font-bold">
+            <div className="my-1 flex items-baseline gap-2">
+              <span className="text-xl sm:text-2xl font-black font-mono tracking-tight text-white">{SPI.toFixed(3)}</span>
+              <div className="flex items-center text-[11px] font-bold">
                 {SPI >= 1.0 ? (
                   <span className="text-emerald-400 flex items-center"><TrendingUp className="w-3.5 h-3.5 mr-0.5" /> Ahead</span>
                 ) : (
@@ -2143,22 +2142,22 @@ export default function DashboardView({
       </section>
 
       {/* SECTION B: CONTRACTUAL PAYMENT MATURITY & UNPAID CLAIMS SUMMARY */}
-      <section className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-6 rounded-2xl shadow-sm space-y-6">
+      <section className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-3 sm:p-3.5 rounded-xl shadow-xs space-y-2.5">
         {/* Maturity Summary Indicators Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
           {/* 1. Matured Overdue Unpaid Claims (> 56 Days) - CRITICAL CARD */}
-          <div className={`p-4 rounded-xl border flex flex-col justify-between transition-all ${
+          <div className={`p-3 rounded-lg border flex flex-col justify-between transition-all ${
             maturedIpcCount > 0 
-              ? 'bg-rose-50 dark:bg-rose-950/30 border-rose-300 dark:border-rose-900/60 shadow-sm' 
+              ? 'bg-rose-50 dark:bg-rose-950/30 border-rose-300 dark:border-rose-900/60 shadow-xs' 
               : 'bg-slate-50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-700/60'
           }`}>
             <div>
               <div className="flex justify-between items-start">
-                <span className="text-[11px] font-bold text-rose-800 dark:text-rose-300 uppercase tracking-wider flex items-center gap-1">
+                <span className="text-[10.5px] font-bold text-rose-800 dark:text-rose-300 uppercase tracking-wider flex items-center gap-1">
                   <AlertTriangle className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
                   Matured Overdue Payments
                 </span>
-                <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${
+                <span className={`text-[9.5px] font-extrabold px-1.5 py-0.5 rounded-full border ${
                   maturedIpcCount > 0 
                     ? 'bg-rose-200 dark:bg-rose-900 text-rose-800 dark:text-rose-300 border-rose-300 dark:border-rose-800 animate-pulse' 
                     : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800'
@@ -2166,139 +2165,131 @@ export default function DashboardView({
                   {maturedIpcCount > 0 ? `${maturedIpcCount} IPC Overdue` : 'Zero Overdue'}
                 </span>
               </div>
-              <span className="text-[10px] text-slate-500 dark:text-slate-400 block mt-1"></span>
+              <span className="text-[10px] text-slate-500 dark:text-slate-400 block mt-0.5"></span>
 
-              <div className="mt-3">
-                <span className="text-xl font-black font-mono text-rose-700 dark:text-rose-400 block">
+              <div className="mt-1.5">
+                <span className="text-lg sm:text-xl font-black font-mono text-rose-700 dark:text-rose-400 block">
                   {formatAccounting(maturedUnpaidCombined, 'Br.')}
                 </span>
-                <div className="flex gap-2 text-[11px] font-mono font-semibold text-rose-600/90 dark:text-rose-300/80 mt-1">
+                <div className="flex gap-2 text-[10px] font-mono font-semibold text-rose-600/90 dark:text-rose-300/80 mt-0.5">
                   <span>ETB: {formatAccounting(maturedUnpaidEtbSum, '')}</span>
                   <span>• USD: ${maturedUnpaidUsdSum.toLocaleString()}</span>
                 </div>
               </div>
             </div>
 
-            <div className="mt-3 pt-2 border-t border-rose-200/60 dark:border-rose-900/40 text-[10px] text-rose-700 dark:text-rose-400 font-medium">
+            <div className="mt-2 pt-1 border-t border-rose-200/60 dark:border-rose-900/40 text-[9px] text-rose-700 dark:text-rose-400 font-medium">
             </div>
           </div>
 
           {/* 2. Unpaid Claims Within Maturity Window (<= 56 Days) */}
-          <div className="p-4 rounded-xl border border-amber-200 dark:border-amber-900/50 bg-amber-50/50 dark:bg-amber-950/20 flex flex-col justify-between">
+          <div className="p-3 rounded-lg border border-amber-200 dark:border-amber-900/50 bg-amber-50/50 dark:bg-amber-950/20 flex flex-col justify-between">
             <div>
               <div className="flex justify-between items-start">
-                <span className="text-[11px] font-bold text-amber-800 dark:text-amber-300 uppercase tracking-wider flex items-center gap-1">
+                <span className="text-[10.5px] font-bold text-amber-800 dark:text-amber-300 uppercase tracking-wider flex items-center gap-1">
                   <Clock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                   Within Maturity Window
                 </span>
-                <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                <span className="text-[9.5px] font-extrabold px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
                   {withinMaturityIpcCount} IPC Pending
                 </span>
               </div>
-              <span className="text-[10px] text-slate-500 dark:text-slate-400 block mt-1"></span>
+              <span className="text-[10px] text-slate-500 dark:text-slate-400 block mt-0.5"></span>
 
-              <div className="mt-3">
-                <span className="text-xl font-black font-mono text-amber-700 dark:text-amber-300 block">
+              <div className="mt-1.5">
+                <span className="text-lg sm:text-xl font-black font-mono text-amber-700 dark:text-amber-300 block">
                   {formatAccounting(withinMaturityUnpaidCombined, 'Br.')}
                 </span>
-                <div className="flex gap-2 text-[11px] font-mono font-semibold text-amber-600/90 dark:text-amber-300/80 mt-1">
+                <div className="flex gap-2 text-[10px] font-mono font-semibold text-amber-600/90 dark:text-amber-300/80 mt-0.5">
                   <span>ETB: {formatAccounting(withinMaturityUnpaidEtbSum, '')}</span>
                   <span>• USD: ${withinMaturityUnpaidUsdSum.toLocaleString()}</span>
                 </div>
               </div>
             </div>
 
-            <div className="mt-3 pt-2 border-t border-amber-200/60 dark:border-amber-900/40 text-[10px] text-amber-700 dark:text-amber-400 font-medium">
+            <div className="mt-2 pt-1 border-t border-amber-200/60 dark:border-amber-900/40 text-[9px] text-amber-700 dark:text-amber-400 font-medium">
             </div>
           </div>
 
           {/* 3. Total Unpaid Certified Balance */}
-          <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 flex flex-col justify-between">
+          <div className="p-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 flex flex-col justify-between">
             <div>
               <div className="flex justify-between items-start">
-                <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1">
+                <span className="text-[10.5px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1">
                   <AlertCircle className="w-3.5 h-3.5 text-slate-500" />
                   Total Outstanding Balance
                 </span>
-                <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700">
+                <span className="text-[9.5px] font-extrabold px-1.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700">
                   {unpaidIpcCount} / {totalIpcCount} Unpaid
                 </span>
               </div>
-              <span className="text-[10px] text-slate-500 dark:text-slate-400 block mt-1"></span>
+              <span className="text-[10px] text-slate-500 dark:text-slate-400 block mt-0.5"></span>
 
-              <div className="mt-3">
-                <span className="text-xl font-black font-mono text-slate-800 dark:text-white block">
+              <div className="mt-1.5">
+                <span className="text-lg sm:text-xl font-black font-mono text-slate-800 dark:text-white block">
                   {formatAccounting(totalUnpaidCombined, 'Br.')}
                 </span>
-                <div className="flex gap-2 text-[11px] font-mono font-semibold text-slate-600 dark:text-slate-400 mt-1">
+                <div className="flex gap-2 text-[10px] font-mono font-semibold text-slate-600 dark:text-slate-400 mt-0.5">
                   <span>ETB: {formatAccounting(totalUnpaidEtbSum, '')}</span>
                   <span>• USD: ${totalUnpaidUsdSum.toLocaleString()}</span>
                 </div>
               </div>
             </div>
 
-            <div className="mt-3 pt-2 border-t border-slate-200 dark:border-slate-800 text-[10px] text-slate-500 dark:text-slate-400 font-medium">
-              Representing {totalCertifiedCombined > 0 ? ((totalUnpaidCombined / totalCertifiedCombined) * 100).toFixed(2) : '0.00'}% of total certified claims.
+            <div className="mt-2 pt-1 border-t border-slate-200 dark:border-slate-800 text-[9.5px] text-slate-500 dark:text-slate-400 font-medium">
+              Representing {totalCertifiedCombined > 0 ? ((totalUnpaidCombined / totalCertifiedCombined) * 100).toFixed(2) : '0.00'}% of certified claims.
             </div>
           </div>
 
           {/* 4. Total Paid Certified Claims */}
-          <div className="p-4 rounded-xl border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/40 dark:bg-emerald-950/20 flex flex-col justify-between">
+          <div className="p-3 rounded-lg border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/40 dark:bg-emerald-950/20 flex flex-col justify-between">
             <div>
               <div className="flex justify-between items-start">
-                <span className="text-[11px] font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider flex items-center gap-1">
+                <span className="text-[10.5px] font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider flex items-center gap-1">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                   Paid Certified Claims
                 </span>
-                <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                <span className="text-[9.5px] font-extrabold px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
                   {paidIpcCount} IPC Paid
                 </span>
               </div>
-              <span className="text-[10px] text-slate-500 dark:text-slate-400 block mt-1"></span>
+              <span className="text-[10px] text-slate-500 dark:text-slate-400 block mt-0.5"></span>
 
-              <div className="mt-3">
-                <span className="text-xl font-black font-mono text-emerald-700 dark:text-emerald-400 block">
+              <div className="mt-1.5">
+                <span className="text-lg sm:text-xl font-black font-mono text-emerald-700 dark:text-emerald-400 block">
                   {formatAccounting(totalPaidCombined, 'Br.')}
                 </span>
-                <div className="flex gap-2 text-[11px] font-mono font-semibold text-emerald-600/90 dark:text-emerald-300/80 mt-1">
+                <div className="flex gap-2 text-[10px] font-mono font-semibold text-emerald-600/90 dark:text-emerald-300/80 mt-0.5">
                   <span>ETB: {formatAccounting(totalPaidEtbSum, '')}</span>
                   <span>• USD: ${totalPaidUsdSum.toLocaleString()}</span>
                 </div>
               </div>
             </div>
 
-            <div className="mt-3 pt-2 border-t border-emerald-200/60 dark:border-emerald-900/40 text-[10px] text-emerald-700 dark:text-emerald-400 font-medium">
+            <div className="mt-2 pt-1 border-t border-emerald-200/60 dark:border-emerald-900/40 text-[9.5px] text-emerald-700 dark:text-emerald-400 font-medium">
               Settled {totalCertifiedCombined > 0 ? ((totalPaidCombined / totalCertifiedCombined) * 100).toFixed(2) : '0.00'}% of certified claims.
             </div>
           </div>
         </div>
       </section>
 
-      {/* Section 1 remaining removed */}
-
-      {/* Section 2 removed */}
-
-      {/* Section 3 removed */}
-
-      {/* Section 4 removed */}
-
       {/* Linked Linear Progress Charts Card (Interconnected with Segment Mapping) */}
-      <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-5 rounded-2xl shadow-sm space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-100 dark:border-slate-700/60">
-          <div className="flex items-center gap-2">
+      <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-3.5 sm:p-4 rounded-xl shadow-xs space-y-2.5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-1.5 border-b border-slate-100 dark:border-slate-700/60">
+          <div className="flex items-center gap-1.5">
             <Activity className="w-4 h-4 text-emerald-500" />
-            <h3 className="text-sm font-bold text-slate-800 dark:text-zinc-100">
+            <h3 className="text-xs sm:text-sm font-bold text-slate-800 dark:text-zinc-100">
               Linear Progress
             </h3>
           </div>
 
           {/* Chart View Mode Selector */}
           {hasSpurRoad ? (
-            <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-900 p-1 rounded-xl border border-slate-200/80 dark:border-slate-700/60">
+            <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-900 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700/60">
               <button
                 type="button"
                 onClick={() => setDashboardRoadType('combined')}
-                className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                className={`px-2.5 py-0.5 rounded-md text-[11px] font-bold transition cursor-pointer ${
                   activeRoadType === 'combined'
                     ? 'bg-indigo-600 text-white shadow-xs'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -2309,7 +2300,7 @@ export default function DashboardView({
               <button
                 type="button"
                 onClick={() => setDashboardRoadType('main')}
-                className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                className={`px-2.5 py-0.5 rounded-md text-[11px] font-bold transition cursor-pointer ${
                   activeRoadType === 'main'
                     ? 'bg-blue-600 text-white shadow-xs'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -2320,7 +2311,7 @@ export default function DashboardView({
               <button
                 type="button"
                 onClick={() => setDashboardRoadType('spur')}
-                className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                className={`px-2.5 py-0.5 rounded-md text-[11px] font-bold transition cursor-pointer ${
                   activeRoadType === 'spur'
                     ? 'bg-emerald-600 text-white shadow-xs'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -2330,14 +2321,14 @@ export default function DashboardView({
               </button>
             </div>
           ) : (
-            <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-900 px-3 py-1 rounded-xl border border-slate-200/80 dark:border-slate-700/60 text-xs font-bold text-blue-600 dark:text-blue-400">
+            <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-900 px-2.5 py-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700/60 text-[11px] font-bold text-blue-600 dark:text-blue-400">
               Main Road
             </div>
           )}
         </div>
 
         {/* Linear Layer Progress Bars */}
-        <div className="space-y-3">
+        <div className="space-y-2">
           {dashboardProgressChartData.map((item) => (
             <div key={item.id} className="space-y-1">
               <div className="flex justify-between items-center text-xs font-bold text-slate-600 dark:text-slate-300 flex-wrap gap-1">
@@ -2395,10 +2386,10 @@ export default function DashboardView({
       </div>
 
       {/* Charts Section */}
-      <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <section className="grid grid-cols-1 md:grid-cols-2 gap-2.5 sm:gap-3">
         
         {/* ROW Clearance chart */}
-        <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-4 rounded-2xl shadow-sm space-y-3 min-w-0">
+        <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-3 sm:p-3.5 rounded-xl shadow-xs space-y-2 min-w-0">
           <div className="flex justify-between items-center flex-wrap gap-2">
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-slate-800 dark:text-zinc-150">Right-of-Way (ROW) status</span>
@@ -2424,7 +2415,7 @@ export default function DashboardView({
             </div>
           </div>
 
-          <div className="h-52 w-full min-w-0">
+          <div className="h-48 sm:h-52 w-full min-w-0">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={rowChartData} layout="vertical" margin={{ top: 10, right: 35, left: 10, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-slate-100 dark:stroke-slate-700/30" />
@@ -2476,7 +2467,7 @@ export default function DashboardView({
         </div>
 
         {/* Quantities design vs actual */}
-        <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-4 rounded-2xl shadow-sm space-y-3 min-w-0">
+        <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-3 sm:p-3.5 rounded-xl shadow-xs space-y-2 min-w-0">
           <div className="flex justify-between items-center flex-wrap gap-2">
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-slate-800 dark:text-zinc-150">Quantities: Plan vs Completed</span>
@@ -2500,7 +2491,7 @@ export default function DashboardView({
             </div>
           </div>
 
-          <div className="h-52 w-full min-w-0">
+          <div className="h-48 sm:h-52 w-full min-w-0">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={qtyChartData} margin={{ top: 15, right: 15, left: 10, bottom: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-slate-100/50 dark:stroke-slate-700/30" />
@@ -2530,13 +2521,13 @@ export default function DashboardView({
         </div>
 
         {/* Series Bar Chart */}
-        <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-4 rounded-2xl shadow-sm space-y-3 min-w-0">
+        <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-3 sm:p-3.5 rounded-xl shadow-xs space-y-2 min-w-0">
           <div className="flex justify-between items-center">
             <span className="text-xs font-bold text-slate-800 dark:text-zinc-150">Bill Series Progress</span>
             <span className="text-[10px] text-slate-400 font-medium">To-Date Progress %</span>
           </div>
 
-          <div className="h-72 w-full min-w-0">
+          <div className="h-64 sm:h-72 w-full min-w-0">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart 
                 data={seriesBarData} 
@@ -2586,8 +2577,8 @@ export default function DashboardView({
         </div>
 
         {/* Progress target column chart */}
-        <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-4 rounded-2xl shadow-sm space-y-3 min-w-0">
-          <div className="flex flex-col gap-3 border-b border-slate-100 dark:border-slate-700/50 pb-3">
+        <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-3 sm:p-3.5 rounded-xl shadow-xs space-y-2 min-w-0">
+          <div className="flex flex-col gap-2 border-b border-slate-100 dark:border-slate-700/50 pb-2">
             <div className="flex justify-between items-center flex-wrap gap-2">
               <div className="flex items-center gap-2">
                 <BarChart3 className="w-4 h-4 text-blue-500" />
@@ -2823,7 +2814,7 @@ export default function DashboardView({
       <div className="grid grid-cols-1 gap-4 mb-4">
         
         {/* Annual Physical Progress Chart */}
-        <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-5 rounded-2xl shadow-sm space-y-4 min-w-0">
+        <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-3.5 sm:p-4 rounded-xl shadow-xs space-y-2.5 min-w-0">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-800 dark:text-zinc-150 flex items-center gap-1.5">
               <BarChart2 className="w-4 h-4 text-emerald-500" />
@@ -2834,7 +2825,7 @@ export default function DashboardView({
             </span>
           </div>
 
-          <div className="h-52 w-full min-w-0">
+          <div className="h-48 sm:h-52 w-full min-w-0">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={annualChartData} margin={{ top: 15, right: 15, left: 10, bottom: 10 }}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-slate-100 dark:stroke-slate-700/30" />
@@ -2885,9 +2876,9 @@ export default function DashboardView({
       </div>
 
       {/* Expanded Performance Charts & Core Physical S-Curves */}
-      <section className="space-y-4 font-sans text-xs">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
-          <Activity className="w-4 h-4 text-emerald-500 animate-pulse" />
+      <section className="space-y-2.5 sm:space-y-3 font-sans text-xs">
+        <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
+          <Activity className="w-3.5 h-3.5 text-emerald-500 animate-pulse" />
           Core S-Curve & Financial Disbursement Baselines
         </h3>
 
@@ -2898,17 +2889,17 @@ export default function DashboardView({
         />
 
         {/* Payment Road-Profile-Style Chart */}
-        <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-5 rounded-2xl shadow-sm space-y-4 min-w-0">
+        <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-3.5 sm:p-4 rounded-xl shadow-xs space-y-2.5 min-w-0">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
               <span className="text-xs font-bold text-slate-800 dark:text-zinc-150 block">Payment Chart</span>
             </div>
-            <span className="text-[10px] font-extrabold uppercase bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 px-2.5 py-1 rounded-lg self-start sm:self-auto border border-emerald-100 dark:border-emerald-900/30 font-sans">
+            <span className="text-[10px] font-extrabold uppercase bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 px-2.5 py-0.5 rounded-lg self-start sm:self-auto border border-emerald-100 dark:border-emerald-900/30 font-sans">
               Financial Elevation Map
             </span>
           </div>
 
-          <div className="space-y-4 pt-1">
+          <div className="space-y-2.5 pt-0.5">
             {paymentChartData.map((entry, index) => {
               const bgColors = [
                 'bg-blue-600 dark:bg-blue-500',
@@ -2924,7 +2915,7 @@ export default function DashboardView({
               const amountBirr = entry['Amount (Birr)'];
 
               return (
-                <div key={`ipc-legend-${entry.name || 'e'}-${index}`} className="space-y-1.5">
+                <div key={`ipc-legend-${entry.name || 'e'}-${index}`} className="space-y-1">
                   <div className="flex justify-between items-center text-[10px] font-bold text-slate-500 dark:text-slate-400">
                     <span className="flex items-center gap-1.5 font-sans">
                       <span className={`w-2.5 h-2.5 rounded-sm ${progressColor}`} />
@@ -2939,7 +2930,7 @@ export default function DashboardView({
                   </div>
 
                   {/* Horizontal Linear progression bar - Road Profile Style */}
-                  <div className="w-full h-4.5 bg-slate-100 dark:bg-slate-900/80 rounded-lg overflow-hidden border border-slate-200/40 dark:border-slate-800 relative shadow-inner">
+                  <div className="w-full h-4 bg-slate-100 dark:bg-slate-900/80 rounded-lg overflow-hidden border border-slate-200/40 dark:border-slate-800 relative shadow-inner">
                     <motion.div
                       initial={{ width: 0 }}
                       animate={{ width: `${Math.min(100, (paidPercent !== undefined && paidPercent !== null && !isNaN(Number(paidPercent))) ? Number(paidPercent) : 0)}%` }}
@@ -2963,22 +2954,22 @@ export default function DashboardView({
         </div>
 
         {/* S-Curve Chart (Now beautifully placed as the bottom-most full-width chart option) */}
-        <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-5 rounded-2xl shadow-sm space-y-4 min-w-0">
+        <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-3.5 sm:p-4 rounded-xl shadow-xs space-y-2.5 min-w-0">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
               <span className="text-xs font-bold text-slate-800 dark:text-zinc-150 block">Cumulative S-Curve Performance</span>
             </div>
-            <span className="text-[10px] font-extrabold uppercase bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 px-2.5 py-1 rounded-lg self-start sm:self-auto border border-emerald-105 dark:border-emerald-900/30">
+            <span className="text-[10px] font-extrabold uppercase bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 px-2.5 py-0.5 rounded-lg self-start sm:self-auto border border-emerald-105 dark:border-emerald-900/30">
               Live S-Curve Map
             </span>
           </div>
 
-          <div className="h-80 w-full min-w-0">
+          <div className="h-72 sm:h-80 w-full min-w-0">
             {sCurveChartData.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 text-center p-6 space-y-2">
-                <Activity className="w-8 h-8 text-emerald-500 opacity-60" />
+              <div className="h-full flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 text-center p-4 space-y-1.5">
+                <Activity className="w-7 h-7 text-emerald-500 opacity-60" />
                 <p className="text-xs font-bold text-slate-700 dark:text-slate-300">No Monthly Baseline Curve Points Defined</p>
-                <p className="text-[11px] text-slate-500 max-w-sm">Monthly physical progress targets will populate here automatically once configured.</p>
+                <p className="text-[10.5px] text-slate-500 max-w-sm">Monthly physical progress targets will populate here automatically once configured.</p>
               </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
@@ -3041,12 +3032,12 @@ export default function DashboardView({
       </section>
 
       {/* ERA Key Performance Indicators Gauges (Placed directly below Cumulative S-Curve Performance chart) */}
-      <section className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 p-6 rounded-2xl shadow-sm">
-        <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-4 flex items-center gap-1.5">
+      <section className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 p-3.5 sm:p-4 rounded-xl shadow-xs">
+        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2.5 flex items-center gap-1.5">
           <Layers className="w-4 h-4 text-blue-500" />
           ERA Key Performance Indicators
         </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 sm:gap-3">
           {/* Cost Gauge */}
           <CircularGauge 
             value={costOverrun} 
@@ -3099,7 +3090,7 @@ export default function DashboardView({
           {/* Risk (G8) Custom Gauge Card */}
           <div 
             onClick={() => onSwitchTab && onSwitchTab('risks')}
-            className={`flex flex-col items-center justify-between bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-100 dark:border-slate-700/50 shadow-sm hover:shadow-md transition-all duration-300 w-full cursor-pointer hover:border-blue-400 dark:hover:border-blue-500 relative overflow-hidden text-center min-h-[300px] ${
+            className={`flex flex-col items-center justify-between bg-white dark:bg-slate-800 p-3 sm:p-3.5 rounded-xl border border-slate-100 dark:border-slate-700/50 shadow-2xs hover:shadow-xs transition-all duration-300 w-full cursor-pointer hover:border-blue-400 dark:hover:border-blue-500 relative overflow-hidden text-center min-h-[220px] ${
               hasHighValueRisk 
                 ? 'animate-[pulse_1.8s_infinite] shadow-[0_0_12px_rgba(239,68,68,0.2)] border-rose-300 dark:border-rose-900/50 bg-rose-500/[0.02]' 
                 : ''
@@ -3107,7 +3098,7 @@ export default function DashboardView({
           >
             <div className="absolute inset-0 bg-gradient-to-br from-slate-50/50 to-transparent dark:from-slate-700/10 dark:to-transparent pointer-events-none" />
             
-            <div className="w-full flex flex-col items-center gap-1">
+            <div className="w-full flex flex-col items-center gap-0.5">
               <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block leading-none">Risk (G8)</span>
               
               {/* Top Registered Threats below Risk G8 wording */}
@@ -3115,7 +3106,7 @@ export default function DashboardView({
                 className="block text-rose-500 dark:text-rose-400 font-medium"
                 style={{ 
                   fontFamily: "'Times New Roman', Times, serif", 
-                  fontSize: '11px', 
+                  fontSize: '10.5px', 
                   letterSpacing: '0.02em',
                   lineHeight: '1.2'
                 }}
@@ -3124,7 +3115,7 @@ export default function DashboardView({
               </span>
 
               {/* Numbered Threats List above the gauge */}
-              <div className="w-full flex flex-col items-center gap-1.5 my-2.5">
+              <div className="w-full flex flex-col items-center gap-1 my-1.5">
                 {project.risks && [...project.risks]
                   .sort((a, b) => (b.probability * b.impact) - (a.probability * a.impact))
                   .slice(0, 3)
@@ -3132,10 +3123,10 @@ export default function DashboardView({
                     return (
                       <div 
                         key={risk.id} 
-                        className="text-slate-750 dark:text-zinc-200 leading-none text-center bg-slate-50/60 dark:bg-slate-900/40 px-3 py-1.5 rounded-lg border border-slate-100/50 dark:border-slate-700/30 w-full max-w-[220px]"
+                        className="text-slate-750 dark:text-zinc-200 leading-none text-center bg-slate-50/60 dark:bg-slate-900/40 px-2.5 py-1 rounded border border-slate-100/50 dark:border-slate-700/30 w-full max-w-[220px]"
                         style={{ 
                           fontFamily: "'Times New Roman', Times, serif", 
-                          fontSize: '11px', 
+                          fontSize: '10px', 
                           fontWeight: 'normal'
                         }}
                       >
@@ -3147,7 +3138,7 @@ export default function DashboardView({
             </div>
 
             {/* Gauge visual */}
-            <div className="w-full max-w-[130px] aspect-square flex-shrink-0 relative flex items-center justify-center rounded-2xl mx-auto">
+            <div className="w-full max-w-[120px] aspect-square flex-shrink-0 relative flex items-center justify-center rounded-xl mx-auto">
               <CircularGauge 
                 value={kpiScores.risk} 
                 label="" 
@@ -3158,7 +3149,7 @@ export default function DashboardView({
             </div>
 
             {/* Label text at the bottom matching other gauge labels */}
-            <span className="mt-3 text-xs font-semibold text-slate-600 dark:text-slate-300 text-center tracking-wide group-hover:text-amber-500 dark:group-hover:text-amber-400 transition-colors duration-200">
+            <span className="mt-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 text-center tracking-wide group-hover:text-amber-500 dark:group-hover:text-amber-400 transition-colors duration-200">
               Risk Management
             </span>
           </div>
@@ -3204,8 +3195,8 @@ export default function DashboardView({
 
 
       {/* Drag & Drop Upload gallery */}
-      <section className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 p-5 rounded-2xl shadow-sm space-y-4">
-        <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-700 pb-2">
+      <section className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 p-3.5 sm:p-4 rounded-xl shadow-xs space-y-2.5">
+        <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-700 pb-1.5">
           <span className="font-bold text-xs flex items-center gap-1.5 text-slate-700 dark:text-slate-200">
             <ImageIcon className="w-4 h-4 text-emerald-500 animate-pulse" />
             Field Engineering Image Gallery
@@ -3220,8 +3211,8 @@ export default function DashboardView({
         </div>
 
         {/* Drag Drop Input Section */}
-        <div className="border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl p-6 text-center hover:border-blue-500 transition duration-150 relative">
-          <Upload className="w-8 h-8 text-slate-400 mx-auto mb-2" />
+        <div className="border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-lg p-3.5 sm:p-4 text-center hover:border-blue-500 transition duration-150 relative">
+          <Upload className="w-6 h-6 text-slate-400 mx-auto mb-1.5" />
           <span className="font-semibold block text-xs">Drag and drop site photos here or click below</span>
           <span className="text-[10px] text-slate-400 block mt-0.5">Supports PNG, JPG, WebP formats</span>
           <input 
@@ -3234,7 +3225,7 @@ export default function DashboardView({
         </div>
 
         {/* Grid Lists of Images */}
-        <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 sm:gap-2.5">
           <AnimatePresence>
             {project.images.map((img, idx) => (
               <motion.div
@@ -3243,7 +3234,7 @@ export default function DashboardView({
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.9 }}
-                className="relative group aspect-square rounded-xl overflow-hidden border border-slate-150 dark:border-slate-700 shadow-sm"
+                className="relative group aspect-square rounded-lg overflow-hidden border border-slate-150 dark:border-slate-700 shadow-xs"
               >
                 <img 
                   src={img} 
@@ -3254,10 +3245,10 @@ export default function DashboardView({
                 {/* Remove button */}
                 <button
                   onClick={() => onRemoveImage(idx)}
-                  className="absolute top-1.5 right-1.5 p-1 bg-black/60 hover:bg-rose-600 text-white rounded-lg opacity-0 group-hover:opacity-100 transition"
+                  className="absolute top-1 right-1 p-1 bg-black/60 hover:bg-rose-600 text-white rounded-md opacity-0 group-hover:opacity-100 transition"
                   title="Remove image"
                 >
-                  <Trash2 className="w-3.5 h-3.5" />
+                  <Trash2 className="w-3 h-3" />
                 </button>
               </motion.div>
             ))}
@@ -3265,7 +3256,7 @@ export default function DashboardView({
         </div>
 
         {project.images.length === 0 && (
-          <p className="text-center text-xs text-slate-400 font-medium py-3">
+          <p className="text-center text-xs text-slate-400 font-medium py-2">
             No site photos uploaded. Upload photos to document physical construction developments.
           </p>
         )}

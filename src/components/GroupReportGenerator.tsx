@@ -8608,13 +8608,13 @@ export default function GroupReportGenerator({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -15 }}
       transition={{ duration: 0.25 }}
-      className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-6 rounded-2xl shadow-md space-y-5 overflow-hidden"
+      className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-2.5 sm:p-3 rounded-xl shadow-md space-y-2 sm:space-y-2.5 overflow-hidden"
     >
       {/* Top Title Bar */}
-      <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-3">
+      <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-1.5">
         <div className="space-y-0.5">
-          <h3 className="text-sm font-extrabold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 flex items-center gap-2">
-            <FileText className="w-4 h-4 text-indigo-500" /> Executive Group Report Workspace
+          <h3 className="text-xs font-extrabold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5">
+            <FileText className="w-3.5 h-3.5 text-indigo-500" /> Executive Group Report Workspace
           </h3>
           <p className="text-2xs text-slate-400 dark:text-slate-500 font-medium">
             Generate detailed status dossiers, physical progress benchmarks, and budget statements.
@@ -8622,19 +8622,19 @@ export default function GroupReportGenerator({
         </div>
         <button 
           onClick={onClose}
-          className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200 transition"
+          className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200 transition cursor-pointer"
           title="Close Workspace"
         >
-          <X className="w-4 h-4" />
+          <X className="w-3.5 h-3.5" />
         </button>
       </div>
 
       {/* Report Mode Tabs */}
-      <div className="flex flex-wrap gap-1.5 border-b border-slate-100 dark:border-slate-700/60 pb-3 pt-1">
+      <div className="flex flex-wrap gap-1 border-b border-slate-100 dark:border-slate-700/60 pb-1.5 pt-0.5">
         <button
           onClick={() => setReportMode('performance')}
           id="btn-report-perf"
-          className={`px-3.5 py-2 text-xs font-bold rounded-xl border transition-all flex items-center gap-2 shrink-0 cursor-pointer ${
+          className={`px-2.5 py-1 text-xs font-bold rounded-lg border transition-all flex items-center gap-1.5 shrink-0 cursor-pointer ${
             reportMode === 'performance'
               ? 'bg-indigo-50 border-indigo-200 text-indigo-700 dark:bg-indigo-950/40 dark:border-indigo-800 dark:text-indigo-300 shadow-2xs font-extrabold'
               : 'bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
@@ -8645,7 +8645,7 @@ export default function GroupReportGenerator({
         <button
           onClick={() => setReportMode('audit')}
           id="btn-report-audit"
-          className={`px-3.5 py-2 text-xs font-bold rounded-xl border transition-all flex items-center gap-2 shrink-0 cursor-pointer ${
+          className={`px-2.5 py-1 text-xs font-bold rounded-lg border transition-all flex items-center gap-1.5 shrink-0 cursor-pointer ${
             reportMode === 'audit'
               ? 'bg-indigo-50 border-indigo-200 text-indigo-700 dark:bg-indigo-950/40 dark:border-indigo-800 dark:text-indigo-300 shadow-2xs font-extrabold'
               : 'bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
@@ -8656,7 +8656,7 @@ export default function GroupReportGenerator({
         <button
           onClick={() => setReportMode('payments')}
           id="btn-report-payments"
-          className={`px-3.5 py-2 text-xs font-bold rounded-xl border transition-all flex items-center gap-2 shrink-0 cursor-pointer ${
+          className={`px-2.5 py-1 text-xs font-bold rounded-lg border transition-all flex items-center gap-1.5 shrink-0 cursor-pointer ${
             reportMode === 'payments'
               ? 'bg-indigo-50 border-indigo-200 text-indigo-700 dark:bg-indigo-950/40 dark:border-indigo-800 dark:text-indigo-300 shadow-2xs font-extrabold'
               : 'bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
@@ -8667,7 +8667,7 @@ export default function GroupReportGenerator({
         <button
           onClick={() => setReportMode('bonds')}
           id="btn-report-bonds"
-          className={`px-3.5 py-2 text-xs font-bold rounded-xl border transition-all flex items-center gap-2 shrink-0 cursor-pointer ${
+          className={`px-2.5 py-1 text-xs font-bold rounded-lg border transition-all flex items-center gap-1.5 shrink-0 cursor-pointer ${
             reportMode === 'bonds'
               ? 'bg-indigo-50 border-indigo-200 text-indigo-700 dark:bg-indigo-950/40 dark:border-indigo-800 dark:text-indigo-300 shadow-2xs font-extrabold'
               : 'bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
@@ -8678,7 +8678,7 @@ export default function GroupReportGenerator({
         <button
           onClick={() => setReportMode('firms')}
           id="btn-report-firms"
-          className={`px-3.5 py-2 text-xs font-bold rounded-xl border transition-all flex items-center gap-2 shrink-0 cursor-pointer ${
+          className={`px-2.5 py-1 text-xs font-bold rounded-lg border transition-all flex items-center gap-1.5 shrink-0 cursor-pointer ${
             reportMode === 'firms'
               ? 'bg-amber-50 border-amber-200 text-amber-700 dark:bg-amber-950/40 dark:border-amber-800 dark:text-amber-300 shadow-2xs font-extrabold'
               : 'bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
@@ -8689,7 +8689,7 @@ export default function GroupReportGenerator({
         <button
           onClick={() => setReportMode('supervisionStaff')}
           id="btn-report-supervision-staff"
-          className={`px-3.5 py-2 text-xs font-bold rounded-xl border transition-all flex items-center gap-2 shrink-0 cursor-pointer ${
+          className={`px-2.5 py-1 text-xs font-bold rounded-lg border transition-all flex items-center gap-1.5 shrink-0 cursor-pointer ${
             reportMode === 'supervisionStaff'
               ? 'bg-indigo-50 border-indigo-200 text-indigo-700 dark:bg-indigo-950/40 dark:border-indigo-800 dark:text-indigo-300 shadow-2xs font-extrabold'
               : 'bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
@@ -8700,7 +8700,7 @@ export default function GroupReportGenerator({
         <button
           onClick={() => setReportMode('progressComparison')}
           id="btn-report-progress-comparison"
-          className={`px-3.5 py-2 text-xs font-bold rounded-xl border transition-all flex items-center gap-2 shrink-0 cursor-pointer ${
+          className={`px-2.5 py-1 text-xs font-bold rounded-lg border transition-all flex items-center gap-1.5 shrink-0 cursor-pointer ${
             reportMode === 'progressComparison'
               ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/40 dark:border-blue-800 dark:text-blue-300 shadow-2xs font-extrabold'
               : 'bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
@@ -8720,24 +8720,24 @@ export default function GroupReportGenerator({
         />
       ) : (
         /* Grid Layout Container (Full width for progressComparison landscape view, 12-column grid for others) */
-        <div className={reportMode === 'progressComparison' ? "w-full space-y-6" : "grid grid-cols-1 lg:grid-cols-12 gap-6"}>
+        <div className={reportMode === 'progressComparison' ? "w-full space-y-2.5" : "grid grid-cols-1 lg:grid-cols-12 gap-2.5"}>
         
         {/* Left Control Panel Column (Only displayed for non-progressComparison reports) */}
         {reportMode !== 'progressComparison' && (
-          <div className="lg:col-span-4 space-y-5 border-r border-slate-100 dark:border-slate-700/50 pr-0 lg:pr-6">
+          <div className="lg:col-span-4 space-y-2 border-r border-slate-100 dark:border-slate-700/50 pr-0 lg:pr-2.5">
           
           {/* Dimension Selector */}
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             <label className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-widest block">
               1. GROUPING DIMENSION
             </label>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-1.5">
               <button
                 onClick={() => {
                   setGroupType('directorate');
                   setSelectedGroup('All');
                 }}
-                className={`px-3 py-2.5 rounded-xl text-xs font-bold border transition flex items-center justify-center gap-1.5 ${
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border transition flex items-center justify-center gap-1.5 ${
                   groupType === 'directorate'
                     ? 'bg-indigo-50 border-indigo-200 text-indigo-700 dark:bg-indigo-950/40 dark:border-indigo-900/50 dark:text-indigo-400'
                     : 'bg-slate-50/50 border-slate-200 text-slate-600 dark:bg-slate-900 dark:border-slate-800 dark:text-slate-400'
@@ -8751,7 +8751,7 @@ export default function GroupReportGenerator({
                   setGroupType('pmo');
                   setSelectedGroup('All');
                 }}
-                className={`px-3 py-2.5 rounded-xl text-xs font-bold border transition flex items-center justify-center gap-1.5 ${
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border transition flex items-center justify-center gap-1.5 ${
                   groupType === 'pmo'
                     ? 'bg-purple-50 border-purple-200 text-purple-700 dark:bg-purple-950/40 dark:border-purple-900/50 dark:text-purple-400'
                     : 'bg-slate-50/50 border-slate-200 text-slate-600 dark:bg-slate-900 dark:border-slate-800 dark:text-slate-400'
@@ -8765,7 +8765,7 @@ export default function GroupReportGenerator({
                   setGroupType('contractor');
                   setSelectedGroup('All');
                 }}
-                className={`px-3 py-2.5 rounded-xl text-xs font-bold border transition flex items-center justify-center gap-1.5 ${
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border transition flex items-center justify-center gap-1.5 ${
                   groupType === 'contractor'
                     ? 'bg-amber-50 border-amber-200 text-amber-700 dark:bg-amber-950/40 dark:border-amber-900/50 dark:text-amber-400'
                     : 'bg-slate-50/50 border-slate-200 text-slate-600 dark:bg-slate-900 dark:border-slate-800 dark:text-slate-400'
@@ -8779,7 +8779,7 @@ export default function GroupReportGenerator({
                   setGroupType('consultant');
                   setSelectedGroup('All');
                 }}
-                className={`px-3 py-2.5 rounded-xl text-xs font-bold border transition flex items-center justify-center gap-1.5 ${
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border transition flex items-center justify-center gap-1.5 ${
                   groupType === 'consultant'
                     ? 'bg-teal-50 border-teal-200 text-teal-700 dark:bg-teal-950/40 dark:border-teal-900/50 dark:text-teal-400'
                     : 'bg-slate-50/50 border-slate-200 text-slate-600 dark:bg-slate-900 dark:border-slate-800 dark:text-slate-400'
@@ -8792,14 +8792,14 @@ export default function GroupReportGenerator({
           </div>
 
           {/* Group Value Filter Selector */}
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             <label className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-widest block">
               2. SELECT TARGET VALUE
             </label>
             <select
               value={selectedGroup}
               onChange={(e) => setSelectedGroup(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-xs font-bold outline-none text-slate-700 dark:text-zinc-200 focus:border-indigo-500 transition cursor-pointer"
+              className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none text-slate-700 dark:text-zinc-200 focus:border-indigo-500 transition cursor-pointer"
             >
               <option value="All">🌐 All Groups (Aggregated View)</option>
               {groupType === 'directorate' && programDirectorates.map((pd, idx) => (
@@ -8818,7 +8818,7 @@ export default function GroupReportGenerator({
           </div>
 
           {/* Matured Payments Option Filter */}
-          <div className="space-y-2 p-3 bg-slate-50 dark:bg-slate-900/30 rounded-2xl border border-slate-200 dark:border-slate-800">
+          <div className="space-y-1.5 p-2.5 bg-slate-50 dark:bg-slate-900/30 rounded-xl border border-slate-200 dark:border-slate-800">
             <div className="flex items-center justify-between">
               <div>
                 <label className="text-xs font-bold text-slate-750 dark:text-zinc-200 block">
@@ -8835,21 +8835,21 @@ export default function GroupReportGenerator({
                   checked={maturedFilterOnly}
                   onChange={(e) => setMaturedFilterOnly(e.target.checked)}
                 />
-                <div className="w-10 h-5.5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all dark:border-slate-600 peer-checked:bg-indigo-600"></div>
+                <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-slate-600 peer-checked:bg-indigo-600"></div>
               </label>
             </div>
           </div>
 
           {/* Sorting Controller */}
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             <label className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-widest block">
               3. SORTING CRITERIA
             </label>
-            <div className="flex gap-2">
+            <div className="flex gap-1.5">
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as any)}
-                className="flex-1 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-bold outline-none text-slate-700 dark:text-zinc-200 focus:border-indigo-500 transition cursor-pointer"
+                className="flex-1 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none text-slate-700 dark:text-zinc-200 focus:border-indigo-500 transition cursor-pointer"
               >
                 <option value="name">🔤 Project Name</option>
                 <option value="progress">📊 Physical Progress</option>
@@ -8857,7 +8857,7 @@ export default function GroupReportGenerator({
               </select>
               <button
                 onClick={() => setSortOrder(o => o === 'asc' ? 'desc' : 'asc')}
-                className="px-3 py-2 bg-slate-50 hover:bg-slate-100 dark:bg-slate-900 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-black text-indigo-600 dark:text-indigo-400 transition"
+                className="px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100 dark:bg-slate-900 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-black text-indigo-600 dark:text-indigo-400 transition cursor-pointer"
                 title="Toggle Order"
               >
                 {sortOrder === 'asc' ? '▲' : '▼'}
@@ -8866,8 +8866,8 @@ export default function GroupReportGenerator({
           </div>
 
           {/* Action Export Buttons */}
-          <div className="pt-3 border-t border-slate-100 dark:border-slate-700/50 space-y-2">
-            <label className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-widest block mb-1">
+          <div className="pt-2 border-t border-slate-100 dark:border-slate-700/50 space-y-1.5">
+            <label className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-widest block mb-0.5">
               4. GENERATE DOCUMENTS
             </label>
             {reportMode === 'performance' ? (
@@ -8876,7 +8876,7 @@ export default function GroupReportGenerator({
                   onClick={handleExportPDF}
                   id="btn-export-perf-pdf"
                   disabled={processedProjects.length === 0}
-                  className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white py-2.5 rounded-xl text-xs font-extrabold shadow-sm transition cursor-pointer"
+                  className="w-full flex items-center justify-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white py-2 rounded-lg text-xs font-extrabold shadow-2xs transition cursor-pointer"
                 >
                   <Download className="w-3.5 h-3.5" /> Export Executive PDF
                 </button>
@@ -8884,7 +8884,7 @@ export default function GroupReportGenerator({
                   onClick={handleExportCSV}
                   id="btn-export-perf-csv"
                   disabled={processedProjects.length === 0}
-                  className="w-full flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-650 disabled:opacity-50 text-slate-700 dark:text-slate-200 py-2.5 rounded-xl text-xs font-extrabold transition cursor-pointer border border-slate-200 dark:border-slate-600"
+                  className="w-full flex items-center justify-center gap-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-650 disabled:opacity-50 text-slate-700 dark:text-slate-200 py-2 rounded-lg text-xs font-extrabold transition cursor-pointer border border-slate-200 dark:border-slate-600"
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> Export CSV Sheet
                 </button>
@@ -8895,7 +8895,7 @@ export default function GroupReportGenerator({
                   onClick={handleExportAuditPDF}
                   id="btn-export-audit-pdf"
                   disabled={processedProjects.length === 0}
-                  className="w-full flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white py-2.5 rounded-xl text-xs font-extrabold shadow-sm transition cursor-pointer"
+                  className="w-full flex items-center justify-center gap-1.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white py-2 rounded-lg text-xs font-extrabold shadow-2xs transition cursor-pointer"
                 >
                   <Download className="w-3.5 h-3.5" /> Export Audit PDF
                 </button>
@@ -8903,7 +8903,7 @@ export default function GroupReportGenerator({
                   onClick={handleExportAuditCSV}
                   id="btn-export-audit-csv"
                   disabled={processedProjects.length === 0}
-                  className="w-full flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-650 disabled:opacity-50 text-slate-700 dark:text-slate-200 py-2.5 rounded-xl text-xs font-extrabold transition cursor-pointer border border-slate-200 dark:border-slate-600"
+                  className="w-full flex items-center justify-center gap-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-650 disabled:opacity-50 text-slate-700 dark:text-slate-200 py-2 rounded-lg text-xs font-extrabold transition cursor-pointer border border-slate-200 dark:border-slate-600"
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5 text-red-600 dark:text-rose-450" /> Export Audit CSV Sheet
                 </button>
@@ -8914,7 +8914,7 @@ export default function GroupReportGenerator({
                   onClick={handleExportPaymentsPDF}
                   id="btn-export-payments-pdf"
                   disabled={processedProjects.length === 0}
-                  className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white py-2.5 rounded-xl text-xs font-extrabold shadow-sm transition cursor-pointer"
+                  className="w-full flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white py-2 rounded-lg text-xs font-extrabold shadow-2xs transition cursor-pointer"
                 >
                   <Download className="w-3.5 h-3.5" /> Export Payments PDF
                 </button>
@@ -8922,7 +8922,7 @@ export default function GroupReportGenerator({
                   onClick={handleExportPaymentsCSV}
                   id="btn-export-payments-csv"
                   disabled={processedProjects.length === 0}
-                  className="w-full flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-650 disabled:opacity-50 text-slate-700 dark:text-slate-200 py-2.5 rounded-xl text-xs font-extrabold transition cursor-pointer border border-slate-200 dark:border-slate-600"
+                  className="w-full flex items-center justify-center gap-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-650 disabled:opacity-50 text-slate-700 dark:text-slate-200 py-2 rounded-lg text-xs font-extrabold transition cursor-pointer border border-slate-200 dark:border-slate-600"
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> Export Payments CSV
                 </button>
@@ -8935,16 +8935,16 @@ export default function GroupReportGenerator({
                     setIsInstitutesModalOpen(true);
                   }}
                   id="btn-open-financial-institutes-modal"
-                  className="w-full flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-600 text-white py-2.5 rounded-xl text-xs font-extrabold shadow-sm transition cursor-pointer"
+                  className="w-full flex items-center justify-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-white py-2 rounded-lg text-xs font-extrabold shadow-2xs transition cursor-pointer"
                   title="Register Banks, Insurances, and Guarantee Policy Categories (CAR, Advance, Retention...)"
                 >
-                  <Landmark className="w-3.5 h-3.5" /> Register Banks, Insurances & Policies
+                  <Landmark className="w-3.5 h-3.5" /> Register Banks & Policies
                 </button>
                 <button
                   onClick={handleExportBondsPDF}
                   id="btn-export-bonds-pdf"
                   disabled={processedProjects.length === 0}
-                  className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white py-2.5 rounded-xl text-xs font-extrabold shadow-sm transition cursor-pointer"
+                  className="w-full flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white py-2 rounded-lg text-xs font-extrabold shadow-2xs transition cursor-pointer"
                 >
                   <Download className="w-3.5 h-3.5" /> Export Bonds PDF
                 </button>
@@ -8952,7 +8952,7 @@ export default function GroupReportGenerator({
                   onClick={handleExportBondsCSV}
                   id="btn-export-bonds-csv"
                   disabled={processedProjects.length === 0}
-                  className="w-full flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-650 disabled:opacity-50 text-slate-700 dark:text-slate-200 py-2.5 rounded-xl text-xs font-extrabold transition cursor-pointer border border-slate-200 dark:border-slate-600"
+                  className="w-full flex items-center justify-center gap-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-650 disabled:opacity-50 text-slate-700 dark:text-slate-200 py-2 rounded-lg text-xs font-extrabold transition cursor-pointer border border-slate-200 dark:border-slate-600"
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" /> Export Bonds CSV
                 </button>
@@ -8963,16 +8963,16 @@ export default function GroupReportGenerator({
                   onClick={handleExportProgressComparisonPDF}
                   id="btn-export-comparison-pdf"
                   disabled={groupComparisonMatrix.length === 0 || !activeMilestone}
-                  className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white py-2.5 rounded-xl text-xs font-extrabold shadow-sm transition cursor-pointer"
+                  className="w-full flex items-center justify-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white py-2 rounded-lg text-xs font-extrabold shadow-2xs transition cursor-pointer"
                   title="Export Group Portfolio Comparison Summary PDF for all multiple projects"
                 >
-                  <Printer className="w-3.5 h-3.5" /> Export Portfolio PDF (All Projects)
+                  <Printer className="w-3.5 h-3.5" /> Export Portfolio PDF
                 </button>
                 <button
                   onClick={handleExportDirectoratePmoSummaryPDF}
                   id="btn-export-directorate-pmo-summary-sidebar"
                   disabled={!activeMilestone}
-                  className="w-full flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white py-2 rounded-xl text-xs font-bold shadow-sm transition cursor-pointer"
+                  className="w-full flex items-center justify-center gap-1.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white py-1.5 rounded-lg text-xs font-bold shadow-2xs transition cursor-pointer"
                   title="Export aggregated Directorate & PMO Group Performance Summary PDF"
                 >
                   <Building2 className="w-3.5 h-3.5" /> Export Directorate & PMO PDF
@@ -8981,7 +8981,7 @@ export default function GroupReportGenerator({
                   onClick={handleExportProgressComparisonCSV}
                   id="btn-export-comparison-csv"
                   disabled={groupComparisonMatrix.length === 0 || !activeMilestone}
-                  className="w-full flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-650 disabled:opacity-50 text-slate-700 dark:text-slate-200 py-2 rounded-xl text-xs font-bold transition cursor-pointer border border-slate-200 dark:border-slate-600"
+                  className="w-full flex items-center justify-center gap-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-650 disabled:opacity-50 text-slate-700 dark:text-slate-200 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer border border-slate-200 dark:border-slate-600"
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> Export Comparison CSV
                 </button>
@@ -8992,7 +8992,7 @@ export default function GroupReportGenerator({
                   onClick={handlePrintWorkloadReport}
                   id="btn-print-workload-report"
                   disabled={processedProjects.length === 0}
-                  className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white py-2.5 rounded-xl text-xs font-extrabold shadow-sm transition cursor-pointer"
+                  className="w-full flex items-center justify-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white py-2 rounded-lg text-xs font-extrabold shadow-2xs transition cursor-pointer"
                 >
                   <Printer className="w-3.5 h-3.5" /> Print Workload Report
                 </button>
@@ -9000,7 +9000,7 @@ export default function GroupReportGenerator({
                   onClick={() => setIsPrintWorkloadModalOpen(true)}
                   id="btn-preview-workload-table"
                   disabled={processedProjects.length === 0}
-                  className="w-full flex items-center justify-center gap-2 bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 dark:hover:bg-purple-900/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 disabled:opacity-50 py-2 rounded-xl text-xs font-extrabold transition cursor-pointer"
+                  className="w-full flex items-center justify-center gap-1.5 bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 dark:hover:bg-purple-900/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 disabled:opacity-50 py-1.5 rounded-lg text-xs font-extrabold transition cursor-pointer"
                 >
                   <Eye className="w-3.5 h-3.5" /> Preview Workload Ledger
                 </button>
@@ -9008,15 +9008,15 @@ export default function GroupReportGenerator({
                   onClick={handleExportSupervisionStaffPDF}
                   id="btn-export-supervision-staff-pdf"
                   disabled={processedProjects.length === 0}
-                  className="w-full flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white py-2.5 rounded-xl text-xs font-extrabold shadow-sm transition cursor-pointer"
+                  className="w-full flex items-center justify-center gap-1.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white py-2 rounded-lg text-xs font-extrabold shadow-2xs transition cursor-pointer"
                 >
-                  <Download className="w-3.5 h-3.5" /> Export Supervision Staff PDF
+                  <Download className="w-3.5 h-3.5" /> Export Staff PDF
                 </button>
                 <button
                   onClick={handleExportSupervisionStaffCSV}
                   id="btn-export-supervision-staff-csv"
                   disabled={processedProjects.length === 0}
-                  className="w-full flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-650 disabled:opacity-50 text-slate-700 dark:text-slate-200 py-2.5 rounded-xl text-xs font-extrabold transition cursor-pointer border border-slate-200 dark:border-slate-600"
+                  className="w-full flex items-center justify-center gap-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-650 disabled:opacity-50 text-slate-700 dark:text-slate-200 py-2 rounded-lg text-xs font-extrabold transition cursor-pointer border border-slate-200 dark:border-slate-600"
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" /> Export Staff Roster CSV
                 </button>
@@ -9027,85 +9027,85 @@ export default function GroupReportGenerator({
         )}
 
         {/* Main Display Area (Full width in progressComparison, lg:col-span-8 in others) */}
-        <div className={reportMode === 'progressComparison' ? "w-full space-y-6" : "lg:col-span-8 space-y-5"}>
+        <div className={reportMode === 'progressComparison' ? "w-full space-y-2.5 sm:space-y-3" : "lg:col-span-8 space-y-2.5 sm:space-y-3"}>
 
           {/* Supervision Consultant Performance Evaluation Cohort Switcher: Sole vs JV Separately */}
           {(reportMode === 'audit' && (groupType === 'consultant' || auditPerspective === 'consultant')) && (
-            <div className="p-3.5 rounded-2xl bg-indigo-50/60 dark:bg-indigo-950/40 border border-indigo-200/80 dark:border-indigo-900/60 space-y-2.5">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold text-xs shadow-xs shrink-0">
-                    <Scale className="w-4 h-4" />
+            <div className="p-2.5 rounded-xl bg-indigo-50/60 dark:bg-indigo-950/40 border border-indigo-200/80 dark:border-indigo-900/60 space-y-1.5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold text-xs shadow-xs shrink-0">
+                    <Scale className="w-3.5 h-3.5" />
                   </div>
                   <div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
                       <h4 className="text-xs font-black uppercase tracking-wider text-slate-900 dark:text-zinc-100">
                         Consultant Evaluation Framework
                       </h4>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300">
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300">
                         Separate Cohort Evaluation
                       </span>
                     </div>
-                    <p className="text-[10.5px] text-slate-500 dark:text-slate-400">
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400">
                       Evaluate Sole Consultants and Joint Venture (JV) Consortia separately under their respective contractual frameworks.
                     </p>
                   </div>
                 </div>
 
                 {/* Cohort Toggle Buttons */}
-                <div className="flex items-center gap-1.5 p-1 bg-white dark:bg-slate-900 rounded-xl border border-indigo-200/80 dark:border-indigo-800 shadow-2xs self-start sm:self-auto shrink-0">
+                <div className="flex items-center gap-1 p-0.5 bg-white dark:bg-slate-900 rounded-lg border border-indigo-200/80 dark:border-indigo-800 shadow-2xs self-start sm:self-auto shrink-0">
                   <button
                     type="button"
                     onClick={() => setConsultantCohortFilter('all')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                    className={`px-2.5 py-1 rounded-md text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
                       consultantCohortFilter === 'all'
                         ? 'bg-slate-800 text-white dark:bg-slate-100 dark:text-slate-900 shadow-xs font-black'
                         : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                     }`}
                   >
-                    <Users className="w-3.5 h-3.5" />
+                    <Users className="w-3 h-3" />
                     <span>All ({consultantCohortStats.total})</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => setConsultantCohortFilter('sole')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                    className={`px-2.5 py-1 rounded-md text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
                       consultantCohortFilter === 'sole'
                         ? 'bg-blue-600 text-white shadow-xs font-black'
                         : 'text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/50'
                     }`}
                   >
-                    <span>🏢 Sole Consultants ({consultantCohortStats.soleCount})</span>
+                    <span>🏢 Sole ({consultantCohortStats.soleCount})</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => setConsultantCohortFilter('jv')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                    className={`px-2.5 py-1 rounded-md text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
                       consultantCohortFilter === 'jv'
                         ? 'bg-purple-600 text-white shadow-xs font-black'
                         : 'text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950/50'
                     }`}
                   >
-                    <span>🤝 Joint Ventures ({consultantCohortStats.jvCount})</span>
+                    <span>🤝 JV ({consultantCohortStats.jvCount})</span>
                   </button>
                 </div>
               </div>
 
               {/* Informational Context Banner */}
               {consultantCohortFilter === 'sole' ? (
-                <div className="p-2.5 rounded-xl bg-blue-50/80 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-900/60 text-xs text-blue-900 dark:text-blue-200 flex items-center gap-2">
-                  <span className="text-sm">🏢</span>
+                <div className="p-2 rounded-lg bg-blue-50/80 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-900/60 text-2xs text-blue-900 dark:text-blue-200 flex items-center gap-1.5">
+                  <span className="text-xs">🏢</span>
                   <div>
-                    <strong>Sole Consultant Performance Evaluation Active:</strong> Evaluating single independent consulting firms under direct 100% contractual accountability. Joint venture registration is hidden and not applicable.
+                    <strong>Sole Consultant Performance Active:</strong> Evaluating single independent consulting firms under direct 100% contractual accountability.
                   </div>
                 </div>
               ) : consultantCohortFilter === 'jv' ? (
-                <div className="p-2.5 rounded-xl bg-purple-50/80 dark:bg-purple-950/50 border border-purple-200 dark:border-purple-900/60 text-xs text-purple-900 dark:text-purple-200 flex items-center gap-2">
-                  <span className="text-sm">🤝</span>
+                <div className="p-2 rounded-lg bg-purple-50/80 dark:bg-purple-950/50 border border-purple-200 dark:border-purple-900/60 text-2xs text-purple-900 dark:text-purple-200 flex items-center gap-1.5">
+                  <span className="text-xs">🤝</span>
                   <div>
-                    <strong>Joint Venture (JV) Performance Evaluation Active:</strong> Evaluating multi-firm consortia. Scoring accounts for Lead Partner management, Associate Partner local integration, and consortium SLA turnaround.
+                    <strong>Joint Venture (JV) Performance Active:</strong> Evaluating multi-firm consortia with Lead and Associate Partner weighting.
                   </div>
                 </div>
               ) : null}
@@ -9113,16 +9113,16 @@ export default function GroupReportGenerator({
           )}
           
           {/* KPI Dashboard */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-2.5">
             {reportMode === 'performance' ? (
               <>
                 {/* KPI Block 1 */}
-                <div className="bg-slate-50/60 dark:bg-slate-900/20 p-3.5 rounded-xl border border-slate-150 dark:border-slate-700/40 space-y-1">
+                <div className="bg-slate-50/60 dark:bg-slate-900/20 p-2.5 rounded-xl border border-slate-150 dark:border-slate-700/40 space-y-0.5">
                   <span className="text-[9px] font-extrabold text-slate-400 dark:text-slate-500 block uppercase tracking-wider">
                     ACTIVE CONTRACTS
                   </span>
                   <div className="flex items-baseline gap-1.5">
-                    <span className="text-lg font-black text-slate-800 dark:text-zinc-100">
+                    <span className="text-base font-black text-slate-800 dark:text-zinc-100">
                       {stats.count}
                     </span>
                     <span className="text-2xs text-slate-400 font-bold">contracts</span>
@@ -9133,12 +9133,12 @@ export default function GroupReportGenerator({
                 </div>
 
                 {/* KPI Block 2 */}
-                <div className="bg-slate-50/60 dark:bg-slate-900/20 p-3.5 rounded-xl border border-slate-150 dark:border-slate-700/40 space-y-1">
+                <div className="bg-slate-50/60 dark:bg-slate-900/20 p-2.5 rounded-xl border border-slate-150 dark:border-slate-700/40 space-y-0.5">
                   <span className="text-[9px] font-extrabold text-slate-400 dark:text-slate-500 block uppercase tracking-wider">
                     AVG PHYSICAL PROGRESS
                   </span>
                   <div className="flex items-baseline gap-1.5">
-                    <span className="text-lg font-black text-teal-600 dark:text-teal-400">
+                    <span className="text-base font-black text-teal-600 dark:text-teal-400">
                       {stats.avgProgress.toFixed(2)}%
                     </span>
                     <span className="text-2xs text-slate-400 font-bold">completed</span>
@@ -9149,12 +9149,12 @@ export default function GroupReportGenerator({
                 </div>
 
                 {/* KPI Block 3 */}
-                <div className="bg-slate-50/60 dark:bg-slate-900/20 p-3.5 rounded-xl border border-slate-150 dark:border-slate-700/40 space-y-1">
+                <div className="bg-slate-50/60 dark:bg-slate-900/20 p-2.5 rounded-xl border border-slate-150 dark:border-slate-700/40 space-y-0.5">
                   <span className="text-[9px] font-extrabold text-slate-400 dark:text-slate-500 block uppercase tracking-wider">
                     TOTAL GROUP COMMITMENT
                   </span>
                   <div className="flex items-baseline gap-1 truncate">
-                    <span className="text-sm font-black text-slate-800 dark:text-zinc-100 truncate">
+                    <span className="text-xs font-black text-slate-800 dark:text-zinc-100 truncate">
                       ETB {stats.totalValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                     </span>
                   </div>
@@ -9167,7 +9167,7 @@ export default function GroupReportGenerator({
               groupType === 'consultant' || auditPerspective === 'consultant' ? (
                 <>
                   {/* Consultant Audit KPI Block 1: Average Score & Official Grade */}
-                  <div className="bg-indigo-50/30 dark:bg-indigo-950/10 p-3.5 rounded-xl border border-indigo-150 dark:border-indigo-900/30 space-y-1">
+                  <div className="bg-indigo-50/30 dark:bg-indigo-950/10 p-2.5 rounded-xl border border-indigo-150 dark:border-indigo-900/30 space-y-0.5">
                     <div className="flex items-center justify-between">
                       <span className="text-[9px] font-extrabold text-indigo-600 dark:text-indigo-400 block uppercase tracking-wider">
                         {consultantCohortFilter === 'sole' 
@@ -9176,34 +9176,34 @@ export default function GroupReportGenerator({
                             ? 'JOINT VENTURE (JV) PERFORMANCE AUDIT' 
                             : 'CONSULTANT PERFORMANCE AUDIT'}
                       </span>
-                      <span className={`text-[8.5px] font-black uppercase px-2 py-0.5 rounded-full ${consultantAuditStats.groupGradeThreshold.badgeStyle}`}>
+                      <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded-full ${consultantAuditStats.groupGradeThreshold.badgeStyle}`}>
                         Grade {consultantAuditStats.groupGradeThreshold.grade.replace('Grade ', '')} — {consultantAuditStats.groupGradeThreshold.label}
                       </span>
                     </div>
                     <div className="flex items-baseline gap-1.5">
-                      <span className="text-lg font-black text-indigo-700 dark:text-indigo-300">
+                      <span className="text-base font-black text-indigo-700 dark:text-indigo-300">
                         {consultantAuditStats.avgScore.toFixed(1)}%
                       </span>
                       <span className="text-2xs text-slate-400 font-bold">
                         {consultantCohortFilter === 'sole' 
-                          ? 'sole firms composite score' 
+                          ? 'sole firms composite' 
                           : consultantCohortFilter === 'jv' 
-                            ? 'JV consortia composite score' 
-                            : 'overall composite score'}
+                            ? 'JV consortia composite' 
+                            : 'composite score'}
                       </span>
                     </div>
-                    <div className="text-[9px] text-slate-500 dark:text-slate-400 font-mono">
+                    <div className="text-[8.5px] text-slate-500 dark:text-slate-400 font-mono">
                       [ 5-Dim Matrix: {consultantAuditStats.avgFiveDimScore.toFixed(1)}% (50%) + SLA On-Time: {consultantAuditStats.avgSlaRate.toFixed(1)}% (50%) ]
                     </div>
                   </div>
 
                   {/* Consultant Audit KPI Block 2: Submittal SLA & RFI Turnaround */}
-                  <div className="bg-slate-50/60 dark:bg-slate-900/20 p-3.5 rounded-xl border border-slate-150 dark:border-slate-700/40 space-y-1">
+                  <div className="bg-slate-50/60 dark:bg-slate-900/20 p-2.5 rounded-xl border border-slate-150 dark:border-slate-700/40 space-y-0.5">
                     <span className="text-[9px] font-extrabold text-slate-400 dark:text-slate-500 block uppercase tracking-wider">
                       SUBMITTAL SLA & TURNAROUND
                     </span>
                     <div className="flex items-baseline gap-1.5">
-                      <span className={`text-lg font-black ${
+                      <span className={`text-base font-black ${
                         consultantAuditStats.avgSlaRate >= 80 ? 'text-emerald-600 dark:text-emerald-400' :
                         consultantAuditStats.avgSlaRate >= 60 ? 'text-amber-500' : 'text-red-500'
                       }`}>
@@ -9217,12 +9217,12 @@ export default function GroupReportGenerator({
                   </div>
 
                   {/* Consultant Audit KPI Block 3: Key Personnel Mobilization */}
-                  <div className="bg-slate-50/60 dark:bg-slate-900/20 p-3.5 rounded-xl border border-slate-150 dark:border-slate-700/40 space-y-1">
+                  <div className="bg-slate-50/60 dark:bg-slate-900/20 p-2.5 rounded-xl border border-slate-150 dark:border-slate-700/40 space-y-0.5">
                     <span className="text-[9px] font-extrabold text-slate-400 dark:text-slate-500 block uppercase tracking-wider">
                       KEY STAFF MOBILIZATION
                     </span>
                     <div className="flex items-baseline gap-1.5">
-                      <span className={`text-lg font-black ${
+                      <span className={`text-base font-black ${
                         consultantAuditStats.mobilizationRatePct >= 85 ? 'text-emerald-600 dark:text-emerald-400' :
                         consultantAuditStats.mobilizationRatePct >= 70 ? 'text-amber-500' : 'text-red-500'
                       }`}>
@@ -9238,12 +9238,12 @@ export default function GroupReportGenerator({
               ) : (
                 <>
                   {/* Audit KPI Block 1 */}
-                  <div className="bg-rose-50/30 dark:bg-rose-950/5 p-3.5 rounded-xl border border-rose-150 dark:border-rose-900/30 space-y-1">
+                  <div className="bg-rose-50/30 dark:bg-rose-950/5 p-2.5 rounded-xl border border-rose-150 dark:border-rose-900/30 space-y-0.5">
                     <span className="text-[9px] font-extrabold text-rose-500 dark:text-rose-400 block uppercase tracking-wider">
                       AVG COMPLIANCE SCORE
                     </span>
                     <div className="flex items-baseline gap-1.5">
-                      <span className={`text-lg font-black ${
+                      <span className={`text-base font-black ${
                         auditStats.avgScore >= 80 ? 'text-emerald-600 dark:text-emerald-400' :
                         auditStats.avgScore >= 65 ? 'text-amber-500' : 'text-red-500 dark:text-rose-400'
                       }`}>
@@ -9257,12 +9257,12 @@ export default function GroupReportGenerator({
                   </div>
 
                   {/* Audit KPI Block 2 */}
-                  <div className="bg-slate-50/60 dark:bg-slate-900/20 p-3.5 rounded-xl border border-slate-150 dark:border-slate-700/40 space-y-1">
+                  <div className="bg-slate-50/60 dark:bg-slate-900/20 p-2.5 rounded-xl border border-slate-150 dark:border-slate-700/40 space-y-0.5">
                     <span className="text-[9px] font-extrabold text-slate-400 dark:text-slate-500 block uppercase tracking-wider">
                       SCHEDULE SLIPPAGE RATE
                     </span>
                     <div className="flex items-baseline gap-1.5">
-                      <span className={`text-lg font-black ${auditStats.behindSchedulePct > 35 ? 'text-red-500' : 'text-slate-800 dark:text-zinc-100'}`}>
+                      <span className={`text-base font-black ${auditStats.behindSchedulePct > 35 ? 'text-red-500' : 'text-slate-800 dark:text-zinc-100'}`}>
                         {auditStats.behindSchedulePct.toFixed(2)}%
                       </span>
                       <span className="text-2xs text-slate-400 font-bold">slipping</span>
@@ -9273,12 +9273,12 @@ export default function GroupReportGenerator({
                   </div>
 
                   {/* Audit KPI Block 3 */}
-                  <div className="bg-slate-50/60 dark:bg-slate-900/20 p-3.5 rounded-xl border border-slate-150 dark:border-slate-700/40 space-y-1">
+                  <div className="bg-slate-50/60 dark:bg-slate-900/20 p-2.5 rounded-xl border border-slate-150 dark:border-slate-700/40 space-y-0.5">
                     <span className="text-[9px] font-extrabold text-slate-400 dark:text-slate-500 block uppercase tracking-wider">
                       COMPLIANCE BREACH TRIGGERS
                     </span>
                     <div className="flex items-baseline gap-1.5">
-                      <span className={`text-lg font-black ${auditStats.totalExpiredBonds > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
+                      <span className={`text-base font-black ${auditStats.totalExpiredBonds > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
                         {auditStats.totalExpiredBonds + auditStats.totalCriticalRisks}
                       </span>
                       <span className="text-2xs text-slate-400 font-bold">alerts</span>
@@ -9292,47 +9292,47 @@ export default function GroupReportGenerator({
             ) : reportMode === 'payments' ? (
               <>
                 {/* Payments KPI Block 1 */}
-                <div className="bg-slate-50/60 dark:bg-slate-900/20 p-3.5 rounded-xl border border-slate-150 dark:border-slate-700/40 space-y-1">
+                <div className="bg-slate-50/60 dark:bg-slate-900/20 p-2.5 rounded-xl border border-slate-150 dark:border-slate-700/40 space-y-0.5">
                   <span className="text-[9px] font-extrabold text-slate-400 dark:text-slate-500 block uppercase tracking-wider">
                     TOTAL CERTIFIED CLAIMS
                   </span>
                   <div className="flex flex-col gap-0.5">
-                    <div className="text-xs font-black text-slate-800 dark:text-zinc-100 flex items-center justify-between">
+                    <div className="text-2xs font-black text-slate-800 dark:text-zinc-100 flex items-center justify-between">
                       <span>ETB:</span>
                       <span className="font-mono">{formatAccounting(paymentStats.totalCertifiedEtb, '')}</span>
                     </div>
-                    <div className="text-xs font-black text-slate-800 dark:text-zinc-100 flex items-center justify-between">
+                    <div className="text-2xs font-black text-slate-800 dark:text-zinc-100 flex items-center justify-between">
                       <span>USD:</span>
                       <span className="font-mono">${formatAccounting(paymentStats.totalCertifiedUsd, '')}</span>
                     </div>
-                    <div className="text-[10px] text-slate-450 dark:text-slate-400 font-bold border-t border-slate-200/50 dark:border-slate-700/50 pt-1 mt-0.5">
+                    <div className="text-[9px] text-slate-450 dark:text-slate-400 font-bold border-t border-slate-200/50 dark:border-slate-700/50 pt-0.5 mt-0.5">
                       Eqv: ETB {paymentStats.combinedCertifiedEtb.toLocaleString(undefined, { maximumFractionDigits: 0 })} • {paymentStats.totalIpcCount} IPCs
                     </div>
                   </div>
                 </div>
 
                 {/* Payments KPI Block 2 */}
-                <div className="bg-amber-50/40 dark:bg-amber-950/10 p-3.5 rounded-xl border border-amber-200/60 dark:border-amber-900/30 space-y-1">
+                <div className="bg-amber-50/40 dark:bg-amber-950/10 p-2.5 rounded-xl border border-amber-200/60 dark:border-amber-900/30 space-y-0.5">
                   <span className="text-[9px] font-extrabold text-amber-600 dark:text-amber-500 block uppercase tracking-wider">
                     OUTSTANDING (UNPAID) CLAIMS
                   </span>
                   <div className="flex flex-col gap-0.5">
-                    <div className="text-xs font-black text-amber-700 dark:text-amber-400 flex items-center justify-between">
+                    <div className="text-2xs font-black text-amber-700 dark:text-amber-400 flex items-center justify-between">
                       <span>ETB:</span>
                       <span className="font-mono">{formatAccounting(paymentStats.totalUnpaidEtb, '')}</span>
                     </div>
-                    <div className="text-xs font-black text-amber-700 dark:text-amber-400 flex items-center justify-between">
+                    <div className="text-2xs font-black text-amber-700 dark:text-amber-400 flex items-center justify-between">
                       <span>USD:</span>
                       <span className="font-mono">${formatAccounting(paymentStats.totalUnpaidUsd, '')}</span>
                     </div>
-                    <div className="text-[10px] text-amber-800/80 dark:text-amber-300 font-bold border-t border-amber-200/50 dark:border-amber-800/50 pt-1 mt-0.5">
+                    <div className="text-[9px] text-amber-800/80 dark:text-amber-300 font-bold border-t border-amber-200/50 dark:border-amber-800/50 pt-0.5 mt-0.5">
                       Eqv: ETB {paymentStats.combinedUnpaidEtb.toLocaleString(undefined, { maximumFractionDigits: 0 })} • {paymentStats.unpaidIpcCount} Pending IPCs
                     </div>
                   </div>
                 </div>
 
                 {/* Payments KPI Block 3 */}
-                <div className={`p-3.5 rounded-xl border space-y-1 ${
+                <div className={`p-2.5 rounded-xl border space-y-0.5 ${
                   paymentStats.maturedIpcCount > 0 
                     ? 'bg-rose-50/40 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/40' 
                     : 'bg-slate-50/60 dark:bg-slate-900/20 border-slate-150 dark:border-slate-700/40'
@@ -9343,15 +9343,15 @@ export default function GroupReportGenerator({
                     CRITICAL MATURED OVERDUE (&gt;56 DAYS)
                   </span>
                   <div className="flex flex-col gap-0.5">
-                    <div className={`text-xs font-black flex items-center justify-between ${paymentStats.maturedIpcCount > 0 ? 'text-red-600 dark:text-rose-400' : 'text-slate-700 dark:text-zinc-300'}`}>
+                    <div className={`text-2xs font-black flex items-center justify-between ${paymentStats.maturedIpcCount > 0 ? 'text-red-600 dark:text-rose-400' : 'text-slate-700 dark:text-zinc-300'}`}>
                       <span>ETB:</span>
                       <span className="font-mono">{formatAccounting(paymentStats.totalMaturedEtb, '')}</span>
                     </div>
-                    <div className={`text-xs font-black flex items-center justify-between ${paymentStats.maturedIpcCount > 0 ? 'text-red-600 dark:text-rose-400' : 'text-slate-700 dark:text-zinc-300'}`}>
+                    <div className={`text-2xs font-black flex items-center justify-between ${paymentStats.maturedIpcCount > 0 ? 'text-red-600 dark:text-rose-400' : 'text-slate-700 dark:text-zinc-300'}`}>
                       <span>USD:</span>
                       <span className="font-mono">${formatAccounting(paymentStats.totalMaturedUsd, '')}</span>
                     </div>
-                    <div className={`text-[10px] font-bold border-t pt-1 mt-0.5 ${
+                    <div className={`text-[9px] font-bold border-t pt-0.5 mt-0.5 ${
                       paymentStats.maturedIpcCount > 0 
                         ? 'text-red-600 dark:text-rose-300 border-rose-200/60 dark:border-rose-800/60' 
                         : 'text-slate-400 border-slate-200/50 dark:border-slate-700/50'
@@ -9364,12 +9364,12 @@ export default function GroupReportGenerator({
             ) : reportMode === 'bonds' ? (
               <>
                 {/* Bonds KPI Block 1 */}
-                <div className="bg-slate-50/60 dark:bg-slate-900/20 p-3.5 rounded-xl border border-slate-150 dark:border-slate-700/40 space-y-1">
+                <div className="bg-slate-50/60 dark:bg-slate-900/20 p-2.5 rounded-xl border border-slate-150 dark:border-slate-700/40 space-y-0.5">
                   <span className="text-[9px] font-extrabold text-slate-400 dark:text-slate-500 block uppercase tracking-wider">
                     TOTAL REGISTERED SECURITIES
                   </span>
                   <div className="flex items-baseline gap-1.5">
-                    <span className="text-lg font-black text-slate-800 dark:text-zinc-100">
+                    <span className="text-base font-black text-slate-800 dark:text-zinc-100">
                       {bondStats.totalBondsCount} Guarantees
                     </span>
                   </div>
@@ -9379,12 +9379,12 @@ export default function GroupReportGenerator({
                 </div>
 
                 {/* Bonds KPI Block 2 */}
-                <div className="bg-slate-50/60 dark:bg-slate-900/20 p-3.5 rounded-xl border border-slate-150 dark:border-slate-700/40 space-y-1">
+                <div className="bg-slate-50/60 dark:bg-slate-900/20 p-2.5 rounded-xl border border-slate-150 dark:border-slate-700/40 space-y-0.5">
                   <span className="text-[9px] font-extrabold text-slate-400 dark:text-slate-500 block uppercase tracking-wider">
                     VALID & ACTIVE GUARANTEES
                   </span>
                   <div className="flex items-baseline gap-1.5">
-                    <span className="text-lg font-black text-emerald-600 dark:text-emerald-400">
+                    <span className="text-base font-black text-emerald-600 dark:text-emerald-400">
                       {bondStats.validBondsCount} Valid
                     </span>
                   </div>
@@ -9394,7 +9394,7 @@ export default function GroupReportGenerator({
                 </div>
 
                 {/* Bonds KPI Block 3 */}
-                <div className={`p-3.5 rounded-xl border space-y-1 ${
+                <div className={`p-2.5 rounded-xl border space-y-0.5 ${
                   bondStats.expiredBondsCount > 0 
                     ? 'bg-rose-50/30 dark:bg-rose-950/5 border-rose-150 dark:border-rose-900/30' 
                     : 'bg-slate-50/60 dark:bg-slate-900/20 border-slate-150 dark:border-slate-700/40'
@@ -9405,7 +9405,7 @@ export default function GroupReportGenerator({
                     CRITICAL EXPIRED GUARANTEES
                   </span>
                   <div className="flex items-baseline gap-1.5">
-                    <span className={`text-lg font-black ${
+                    <span className={`text-base font-black ${
                       bondStats.expiredBondsCount > 0 ? 'text-red-500 dark:text-rose-450' : 'text-slate-850 dark:text-zinc-200'
                     }`}>
                       {bondStats.expiredBondsCount} Expired
@@ -9421,28 +9421,28 @@ export default function GroupReportGenerator({
             ) : reportMode === 'progressComparison' ? null : (
               <>
                 {/* Supervision Staff KPI Block 1 */}
-                <div className="bg-slate-50/60 dark:bg-slate-900/20 p-3.5 rounded-xl border border-slate-150 dark:border-slate-700/40 space-y-1">
+                <div className="bg-slate-50/60 dark:bg-slate-900/20 p-2.5 rounded-xl border border-slate-150 dark:border-slate-700/40 space-y-0.5">
                   <span className="text-[9px] font-extrabold text-slate-400 dark:text-slate-500 block uppercase tracking-wider">
                     MOBILIZED SUPERVISION STAFF
                   </span>
                   <div className="flex items-baseline gap-1.5">
-                    <span className="text-lg font-black text-slate-800 dark:text-zinc-100">
+                    <span className="text-base font-black text-slate-800 dark:text-zinc-100">
                       {supervisionStaffStats.activePersonnelCount}
                     </span>
-                    <span className="text-2xs text-slate-400 font-bold">/ {supervisionStaffStats.totalPersonnelCount} total assigned</span>
+                    <span className="text-2xs text-slate-400 font-bold">/ {supervisionStaffStats.totalPersonnelCount} assigned</span>
                   </div>
                   <div className="text-[9px] text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1">
-                    <CheckCircle2 className="w-2.5 h-2.5" /> {supervisionStaffStats.activeStaffPct.toFixed(0)}% mobilization ({supervisionStaffStats.demobilizedPersonnelCount} demobilized)
+                    <CheckCircle2 className="w-2.5 h-2.5" /> {supervisionStaffStats.activeStaffPct.toFixed(0)}% mobilization ({supervisionStaffStats.demobilizedPersonnelCount} demob)
                   </div>
                 </div>
 
                 {/* Supervision Staff KPI Block 2 */}
-                <div className="bg-slate-50/60 dark:bg-slate-900/20 p-3.5 rounded-xl border border-slate-150 dark:border-slate-700/40 space-y-1">
+                <div className="bg-slate-50/60 dark:bg-slate-900/20 p-2.5 rounded-xl border border-slate-150 dark:border-slate-700/40 space-y-0.5">
                   <span className="text-[9px] font-extrabold text-slate-400 dark:text-slate-500 block uppercase tracking-wider">
                     KEY EXPERTS & RESIDENT ENGINEERS
                   </span>
                   <div className="flex items-baseline gap-1.5">
-                    <span className="text-lg font-black text-purple-600 dark:text-purple-400">
+                    <span className="text-base font-black text-purple-600 dark:text-purple-400">
                       {supervisionStaffStats.activeKeyPersonnelCount}
                     </span>
                     <span className="text-2xs text-slate-400 font-bold">active key roles</span>
@@ -9453,12 +9453,12 @@ export default function GroupReportGenerator({
                 </div>
 
                 {/* Supervision Staff KPI Block 3 */}
-                <div className="bg-slate-50/60 dark:bg-slate-900/20 p-3.5 rounded-xl border border-slate-150 dark:border-slate-700/40 space-y-1">
+                <div className="bg-slate-50/60 dark:bg-slate-900/20 p-2.5 rounded-xl border border-slate-150 dark:border-slate-700/40 space-y-0.5">
                   <span className="text-[9px] font-extrabold text-slate-400 dark:text-slate-500 block uppercase tracking-wider">
                     MAN-MONTH (MM) WORKLOAD INPUT
                   </span>
                   <div className="flex items-baseline gap-1.5">
-                    <span className="text-lg font-black text-cyan-600 dark:text-cyan-400">
+                    <span className="text-base font-black text-cyan-600 dark:text-cyan-400">
                       {supervisionStaffStats.totalExpendedMM.toFixed(1)}
                     </span>
                     <span className="text-2xs text-slate-400 font-bold">/ {supervisionStaffStats.totalAllocatedMM.toFixed(1)} MM</span>
@@ -9472,50 +9472,50 @@ export default function GroupReportGenerator({
           </div>
 
           {/* Live Table Panel */}
-          <div className="space-y-3">
+          <div className="space-y-2">
             {reportMode === 'audit' && (
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {/* Grading Domain Selector */}
-                <div className="bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900/60 p-3.5 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xs">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold text-xs shadow-xs">
+                <div className="bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900/60 p-2.5 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-2 shadow-xs">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold text-xs shadow-xs">
                       ⚖️
                     </div>
                     <div>
                       <h4 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wide">
                         Select Grading & Audit Focus Domain
                       </h4>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400">
                         Switch between project contractor performance grading and supervision consultant SLA grading
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 bg-white dark:bg-slate-900 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
+                  <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 p-1 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs">
                     <button
                       onClick={() => setAuditPerspective('contractor')}
-                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
                         auditPerspective === 'contractor'
                           ? 'bg-indigo-600 text-white shadow-xs'
                           : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                       }`}
                     >
-                      <span>🏗️ Project / Contractor Grading</span>
+                      <span>🏗️ Project / Contractor</span>
                     </button>
                     <button
                       onClick={() => setAuditPerspective('consultant')}
-                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
                         auditPerspective === 'consultant'
                           ? 'bg-indigo-600 text-white shadow-xs'
                           : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                       }`}
                     >
-                      <span>👥 Supervision Consultant Grading</span>
+                      <span>👥 Supervision Consultant</span>
                     </button>
                   </div>
                 </div>
 
                 {auditPerspective === 'contractor' && (
-                  <div className="bg-slate-50 dark:bg-slate-900/30 border border-slate-200 dark:border-slate-800 p-3.5 rounded-xl text-2xs space-y-2.5 text-slate-600 dark:text-slate-400">
+                  <div className="bg-slate-50 dark:bg-slate-900/30 border border-slate-200 dark:border-slate-800 p-2.5 rounded-xl text-2xs space-y-1.5 text-slate-600 dark:text-slate-400">
                     <div className="flex items-center justify-between gap-2 flex-wrap">
                       <div className="flex items-center gap-2 font-black uppercase text-slate-700 dark:text-zinc-200 tracking-wider text-[10px]">
                         <span>📋 PROJECT CONTRACTOR COMPLIANCE & GRADE SCORING MODEL WEIGHT DISTRIBUTION</span>
@@ -9528,55 +9528,55 @@ export default function GroupReportGenerator({
                             setTempConsultantWeights(consultantWeights);
                             setIsEditingWeightsModalOpen(true);
                           }}
-                          className="px-2.5 py-1 text-[10px] font-extrabold text-amber-800 dark:text-amber-300 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs group"
+                          className="px-2 py-0.5 text-[9.5px] font-extrabold text-amber-800 dark:text-amber-300 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 rounded-md transition-all flex items-center gap-1 cursor-pointer shadow-2xs group"
                           title="Master Admin Permission: Edit and update weightages for scoring model"
                         >
                           <Sliders className="w-3 h-3 text-amber-600 dark:text-amber-400 group-hover:rotate-45 transition-transform" />
-                          <span>⚙️ Edit Weightages (Master Admin)</span>
+                          <span>⚙️ Edit Weightages</span>
                         </button>
                       )}
                     </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 text-center text-[10px]">
-                      <div className="bg-white dark:bg-slate-900/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
-                        <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{contractorWeights.fidic}% WEIGHT</span>
-                        <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.fidic || '1. FIDIC Compliance'}</span>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-1.5 text-center text-[10px]">
+                      <div className="bg-white dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+                        <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-[11px]">{contractorWeights.fidic}% WEIGHT</span>
+                        <span className="text-[9px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.fidic || '1. FIDIC Compliance'}</span>
                       </div>
-                      <div className="bg-white dark:bg-slate-900/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
-                        <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{contractorWeights.projectMgmt}% WEIGHT</span>
-                        <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.projectMgmt || '2. Project Mgmt (Time)'}</span>
+                      <div className="bg-white dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+                        <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-[11px]">{contractorWeights.projectMgmt}% WEIGHT</span>
+                        <span className="text-[9px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.projectMgmt || '2. Project Mgmt'}</span>
                       </div>
-                      <div className="bg-white dark:bg-slate-900/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
-                        <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{contractorWeights.evm}% WEIGHT</span>
-                        <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.evm || '3. EVM (CPI & SPI)'}</span>
+                      <div className="bg-white dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+                        <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-[11px]">{contractorWeights.evm}% WEIGHT</span>
+                        <span className="text-[9px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.evm || '3. EVM (CPI/SPI)'}</span>
                       </div>
-                      <div className="bg-white dark:bg-slate-900/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
-                        <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{contractorWeights.kpi}% WEIGHT</span>
-                        <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.kpi || '4. KPIs & Quality'}</span>
+                      <div className="bg-white dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+                        <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-[11px]">{contractorWeights.kpi}% WEIGHT</span>
+                        <span className="text-[9px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.kpi || '4. KPIs & Quality'}</span>
                       </div>
-                      <div className="bg-white dark:bg-slate-900/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
-                        <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{contractorWeights.linear}% WEIGHT</span>
-                        <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.linear || '5. Linear Layer Progress'}</span>
+                      <div className="bg-white dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+                        <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-[11px]">{contractorWeights.linear}% WEIGHT</span>
+                        <span className="text-[9px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.linear || '5. Linear Layers'}</span>
                       </div>
-                      <div className="bg-white dark:bg-slate-900/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
-                        <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{contractorWeights.rfi ?? 10}% WEIGHT</span>
-                        <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.rfi || '6. Technical RFIs'}</span>
+                      <div className="bg-white dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+                        <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-[11px]">{contractorWeights.rfi ?? 10}% WEIGHT</span>
+                        <span className="text-[9px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.rfi || '6. Technical RFIs'}</span>
                       </div>
-                      <div className="bg-white dark:bg-slate-900/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
-                        <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{contractorWeights.materialApproval ?? 10}% WEIGHT</span>
-                        <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.materialApproval || '7. Material Approval'}</span>
+                      <div className="bg-white dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+                        <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-[11px]">{contractorWeights.materialApproval ?? 10}% WEIGHT</span>
+                        <span className="text-[9px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.materialApproval || '7. Material Approval'}</span>
                       </div>
-                      <div className="bg-white dark:bg-slate-900/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
-                        <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{contractorWeights.workInspection ?? 5}% WEIGHT</span>
-                        <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.workInspection || '8. Work Inspection (WIR)'}</span>
+                      <div className="bg-white dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+                        <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-[11px]">{contractorWeights.workInspection ?? 5}% WEIGHT</span>
+                        <span className="text-[9px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.workInspection || '8. Work Inspection'}</span>
                       </div>
-                      <div className="bg-white dark:bg-slate-900/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
-                        <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{contractorWeights.resourceMobilization ?? 5}% WEIGHT</span>
-                        <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.resourceMobilization || '9. Resource Mobilization'}</span>
+                      <div className="bg-white dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+                        <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-[11px]">{contractorWeights.resourceMobilization ?? 5}% WEIGHT</span>
+                        <span className="text-[9px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.resourceMobilization || '9. Mobilization'}</span>
                       </div>
                       {(contractorWeights.customCriteria || []).map((c) => (
-                        <div key={c.id} className="bg-indigo-50/50 dark:bg-indigo-950/30 p-2 rounded-xl border border-indigo-200 dark:border-indigo-800 shadow-2xs">
-                          <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-xs">{c.weight}% WEIGHT</span>
-                          <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300 block truncate">{c.label}</span>
+                        <div key={c.id} className="bg-indigo-50/50 dark:bg-indigo-950/30 p-1.5 rounded-lg border border-indigo-200 dark:border-indigo-800 shadow-2xs">
+                          <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-[11px]">{c.weight}% WEIGHT</span>
+                          <span className="text-[9px] font-semibold text-slate-700 dark:text-slate-300 block truncate">{c.label}</span>
                         </div>
                       ))}
                     </div>
@@ -9587,28 +9587,28 @@ export default function GroupReportGenerator({
 
             {/* Progress Comparison Dedicated Controls Header Panel (Above Live Dataset Preview) */}
             {reportMode === 'progressComparison' && (
-              <div className="p-4 sm:p-5 bg-slate-50/90 dark:bg-slate-900/60 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-4">
+              <div className="p-2.5 sm:p-3 bg-slate-50/90 dark:bg-slate-900/60 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs space-y-2">
                 {/* Row 1: 1. GROUPING DIMENSION & 2. SELECT TARGET VALUE */}
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-end">
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-2 items-end">
                   {/* 1. GROUPING DIMENSION */}
-                  <div className="lg:col-span-5 space-y-1.5">
+                  <div className="lg:col-span-5 space-y-1">
                     <label className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-widest block">
                       1. GROUPING DIMENSION
                     </label>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-1">
                       <button
                         type="button"
                         onClick={() => {
                           setGroupType('directorate');
                           setSelectedGroup('All');
                         }}
-                        className={`px-3 py-2 rounded-xl text-xs font-bold border transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                        className={`px-2 py-1 rounded-md text-xs font-bold border transition flex items-center justify-center gap-1 cursor-pointer ${
                           groupType === 'directorate'
                             ? 'bg-indigo-50 border-indigo-200 text-indigo-700 dark:bg-indigo-950/40 dark:border-indigo-900/50 dark:text-indigo-400 font-extrabold'
                             : 'bg-white dark:bg-slate-900 border-slate-200 text-slate-600 dark:border-slate-800 dark:text-slate-400'
                         }`}
                       >
-                        <Building className="w-3.5 h-3.5" />
+                        <Building className="w-3 h-3" />
                         <span>Directorate</span>
                       </button>
                       <button
@@ -9617,14 +9617,14 @@ export default function GroupReportGenerator({
                           setGroupType('pmo');
                           setSelectedGroup('All');
                         }}
-                        className={`px-3 py-2 rounded-xl text-xs font-bold border transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                        className={`px-2 py-1 rounded-md text-xs font-bold border transition flex items-center justify-center gap-1 cursor-pointer ${
                           groupType === 'pmo'
                             ? 'bg-purple-50 border-purple-200 text-purple-700 dark:bg-purple-950/40 dark:border-purple-900/50 dark:text-purple-400 font-extrabold'
                             : 'bg-white dark:bg-slate-900 border-slate-200 text-slate-600 dark:border-slate-800 dark:text-slate-400'
                         }`}
                       >
-                        <Layers className="w-3.5 h-3.5" />
-                        <span>PMO Group</span>
+                        <Layers className="w-3 h-3" />
+                        <span>PMO</span>
                       </button>
                       <button
                         type="button"
@@ -9632,13 +9632,13 @@ export default function GroupReportGenerator({
                           setGroupType('contractor');
                           setSelectedGroup('All');
                         }}
-                        className={`px-3 py-2 rounded-xl text-xs font-bold border transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                        className={`px-2 py-1 rounded-md text-xs font-bold border transition flex items-center justify-center gap-1 cursor-pointer ${
                           groupType === 'contractor'
-                            ? 'bg-amber-50 border-amber-200 text-amber-700 dark:bg-amber-950/40 dark:border-amber-900/50 dark:text-amber-400 font-extrabold'
+                            ? 'bg-amber-50 border-amber-200 text-amber-700 dark:bg-amber-950/40 dark:border-indigo-900/50 dark:text-amber-400 font-extrabold'
                             : 'bg-white dark:bg-slate-900 border-slate-200 text-slate-600 dark:border-slate-800 dark:text-slate-400'
                         }`}
                       >
-                        <Briefcase className="w-3.5 h-3.5" />
+                        <Briefcase className="w-3 h-3" />
                         <span>Contractor</span>
                       </button>
                       <button
@@ -9647,27 +9647,27 @@ export default function GroupReportGenerator({
                           setGroupType('consultant');
                           setSelectedGroup('All');
                         }}
-                        className={`px-3 py-2 rounded-xl text-xs font-bold border transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                        className={`px-2 py-1 rounded-md text-xs font-bold border transition flex items-center justify-center gap-1 cursor-pointer ${
                           groupType === 'consultant'
                             ? 'bg-teal-50 border-teal-200 text-teal-700 dark:bg-teal-950/40 dark:border-teal-900/50 dark:text-teal-400 font-extrabold'
                             : 'bg-white dark:bg-slate-900 border-slate-200 text-slate-600 dark:border-slate-800 dark:text-slate-400'
                         }`}
                       >
-                        <UserCheck className="w-3.5 h-3.5" />
+                        <UserCheck className="w-3 h-3" />
                         <span>Consultant</span>
                       </button>
                     </div>
                   </div>
 
                   {/* 2. SELECT TARGET VALUE - Main Group Select */}
-                  <div className="lg:col-span-7 space-y-1.5">
+                  <div className="lg:col-span-7 space-y-1">
                     <label className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-widest block">
                       2. SELECT TARGET VALUE
                     </label>
                     <select
                       value={selectedGroup}
                       onChange={(e) => setSelectedGroup(e.target.value)}
-                      className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-bold outline-none text-slate-700 dark:text-zinc-200 focus:border-indigo-500 transition cursor-pointer"
+                      className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-xs font-bold outline-none text-slate-700 dark:text-zinc-200 focus:border-indigo-500 transition cursor-pointer"
                     >
                       <option value="All">🌐 All Groups (Aggregated View)</option>
                       {groupType === 'directorate' && programDirectorates.map((pd, idx) => (
@@ -9687,17 +9687,17 @@ export default function GroupReportGenerator({
                 </div>
 
                 {/* Row 3: 3. SORTING CRITERIA and 4. GENERATE DOCUMENTS */}
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 pt-3 border-t border-slate-200/80 dark:border-slate-800 items-end">
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-2 pt-1.5 border-t border-slate-200/80 dark:border-slate-800 items-end">
                   {/* 3. SORTING CRITERIA */}
-                  <div className="lg:col-span-4 space-y-1.5">
+                  <div className="lg:col-span-4 space-y-1">
                     <label className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-widest block">
                       3. SORTING CRITERIA
                     </label>
-                    <div className="flex gap-2">
+                    <div className="flex gap-1">
                       <select
                         value={sortBy}
                         onChange={(e) => setSortBy(e.target.value as any)}
-                        className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-bold outline-none text-slate-700 dark:text-zinc-200 focus:border-indigo-500 transition cursor-pointer"
+                        className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-xs font-bold outline-none text-slate-700 dark:text-zinc-200 focus:border-indigo-500 transition cursor-pointer"
                       >
                         <option value="name">🔤 Project Name</option>
                         <option value="progress">📊 Physical Progress</option>
@@ -9706,7 +9706,7 @@ export default function GroupReportGenerator({
                       <button
                         type="button"
                         onClick={() => setSortOrder(o => o === 'asc' ? 'desc' : 'asc')}
-                        className="px-3 py-2 bg-white hover:bg-slate-100 dark:bg-slate-900 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-black text-indigo-600 dark:text-indigo-400 transition cursor-pointer"
+                        className="px-2 py-1 bg-white hover:bg-slate-100 dark:bg-slate-900 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-black text-indigo-600 dark:text-indigo-400 transition cursor-pointer"
                         title="Toggle Order"
                       >
                         {sortOrder === 'asc' ? '▲' : '▼'}
@@ -9715,42 +9715,42 @@ export default function GroupReportGenerator({
                   </div>
 
                   {/* 4. GENERATE DOCUMENTS */}
-                  <div className="lg:col-span-8 space-y-1.5">
+                  <div className="lg:col-span-8 space-y-1">
                     <label className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-widest block">
                       4. GENERATE DOCUMENTS
                     </label>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-1">
                       <button
                         type="button"
                         onClick={handleExportProgressComparisonPDF}
                         id="btn-export-comparison-pdf-top"
                         disabled={groupComparisonMatrix.length === 0 || !activeMilestone}
-                        className="w-full flex items-center justify-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white py-2 rounded-xl text-xs font-extrabold shadow-sm transition cursor-pointer"
+                        className="w-full flex items-center justify-center gap-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white py-1 rounded-lg text-xs font-extrabold shadow-2xs transition cursor-pointer"
                         title="Export Group Portfolio Comparison Summary PDF for all multiple projects"
                       >
                         <Printer className="w-3.5 h-3.5 shrink-0" />
-                        <span className="truncate">Export Portfolio PDF (All Projects)</span>
+                        <span className="truncate">Export PDF</span>
                       </button>
                       <button
                         type="button"
                         onClick={handleExportDirectoratePmoSummaryPDF}
                         id="btn-export-directorate-pmo-summary-top"
                         disabled={!activeMilestone}
-                        className="w-full flex items-center justify-center gap-1.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white py-2 rounded-xl text-xs font-bold shadow-sm transition cursor-pointer"
+                        className="w-full flex items-center justify-center gap-1 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white py-1 rounded-lg text-xs font-bold shadow-2xs transition cursor-pointer"
                         title="Export aggregated Directorate & PMO Group Performance Summary PDF"
                       >
                         <Building2 className="w-3.5 h-3.5 shrink-0" />
-                        <span className="truncate">Export Directorate & PMO PDF</span>
+                        <span className="truncate">Directorate PDF</span>
                       </button>
                       <button
                         type="button"
                         onClick={handleExportProgressComparisonCSV}
                         id="btn-export-comparison-csv-top"
                         disabled={groupComparisonMatrix.length === 0 || !activeMilestone}
-                        className="w-full flex items-center justify-center gap-1.5 bg-white hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 disabled:opacity-50 text-slate-700 dark:text-slate-200 py-2 rounded-xl text-xs font-bold transition cursor-pointer border border-slate-200 dark:border-slate-700 shadow-2xs"
+                        className="w-full flex items-center justify-center gap-1 bg-white hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 disabled:opacity-50 text-slate-700 dark:text-slate-200 py-1 rounded-lg text-xs font-bold transition cursor-pointer border border-slate-200 dark:border-slate-700 shadow-2xs"
                       >
                         <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                        <span className="truncate">Export Comparison CSV</span>
+                        <span className="truncate">Comparison CSV</span>
                       </button>
                     </div>
                   </div>
@@ -9758,7 +9758,7 @@ export default function GroupReportGenerator({
               </div>
             )}
 
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-wider">
                   Live Dataset Preview ({processedProjects.length} rows)
@@ -9779,12 +9779,12 @@ export default function GroupReportGenerator({
                   placeholder="Filter table..."
                   value={reportSearchQuery}
                   onChange={(e) => setReportSearchQuery(e.target.value)}
-                  className="bg-slate-50 dark:bg-slate-900 text-2xs px-7 py-1.5 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:border-indigo-500 max-w-xs text-slate-800 dark:text-zinc-100"
+                  className="bg-slate-50 dark:bg-slate-900 text-2xs px-7 py-1.5 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:border-indigo-500 max-w-xs text-slate-800 dark:text-zinc-100"
                 />
                 {reportSearchQuery && (
                   <button 
                     onClick={() => setReportSearchQuery('')}
-                    className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 text-3xs font-extrabold"
+                    className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 text-3xs font-extrabold"
                   >
                     ×
                   </button>
@@ -9794,18 +9794,18 @@ export default function GroupReportGenerator({
 
             {/* Structured Table Container */}
             {reportMode === 'progressComparison' ? (
-              <div id="progressComparisonContainer" className="space-y-5">
+              <div id="progressComparisonContainer" className="space-y-3 sm:space-y-3.5">
                 {/* 3. Beginning of Fiscal Year (EFY) Annual Progress Baseline Planning Table */}
-                <div className="border-2 border-indigo-200 dark:border-indigo-800/80 rounded-2xl overflow-hidden bg-white dark:bg-slate-900 shadow-md space-y-0">
+                <div className="border border-indigo-200 dark:border-indigo-800/80 rounded-xl overflow-hidden bg-white dark:bg-slate-900 shadow-sm space-y-0">
                   {/* Header banner */}
-                  <div className="p-4 sm:p-5 bg-gradient-to-r from-indigo-900 via-slate-900 to-blue-950 text-white flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                    <div className="flex items-start gap-3">
-                      <div className="p-2.5 bg-indigo-600/80 rounded-xl border border-indigo-400/40 shadow-inner">
-                        <CalendarRange className="w-5 h-5 text-indigo-200" />
+                  <div className="p-3 sm:p-3.5 bg-gradient-to-r from-indigo-900 via-slate-900 to-blue-950 text-white flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                    <div className="flex items-start gap-2.5">
+                      <div className="p-2 bg-indigo-600/80 rounded-lg border border-indigo-400/40 shadow-inner">
+                        <CalendarRange className="w-4 h-4 text-indigo-200" />
                       </div>
                       <div>
                         <div className="flex items-center gap-2 flex-wrap">
-                          <h3 className="text-sm sm:text-base font-black tracking-tight flex items-center gap-1.5">
+                          <h3 className="text-sm font-black tracking-tight flex items-center gap-1.5">
                             EFY {selectedPlanningEfy} Annual Baseline Plan (ERA & Contractor)
                           </h3>
                         </div>
@@ -9815,7 +9815,7 @@ export default function GroupReportGenerator({
                     {/* Header Controls */}
                     <div className="flex items-center gap-2 flex-wrap self-start lg:self-auto">
                       {/* Target Fiscal Year Selector */}
-                      <div className="flex items-center gap-1.5 bg-slate-800/90 border border-indigo-400/30 rounded-xl px-2.5 py-1 text-xs">
+                      <div className="flex items-center gap-1.5 bg-slate-800/90 border border-indigo-400/30 rounded-lg px-2 py-0.5 text-xs">
                         <span className="text-[10px] uppercase font-bold text-indigo-300">EFY Year:</span>
                         <select
                           value={selectedPlanningEfy}
@@ -9838,7 +9838,7 @@ export default function GroupReportGenerator({
                       <button
                         type="button"
                         onClick={() => setIsViewRecordedModalOpen(true)}
-                        className="px-2.5 py-1.5 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 border border-purple-400/30 text-purple-200 font-bold text-xs flex items-center gap-1 shadow-2xs transition cursor-pointer"
+                        className="px-2 py-1 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 border border-purple-400/30 text-purple-200 font-bold text-xs flex items-center gap-1 shadow-2xs transition cursor-pointer"
                         title="View recorded EFY baseline plans across projects"
                       >
                         <Eye className="w-3.5 h-3.5 text-purple-300" />
