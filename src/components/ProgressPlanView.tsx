@@ -2380,6 +2380,349 @@ export default function ProgressPlanView({ project, currentUserObj, onUpdateProg
         </div>
       </div>
 
+      {/* Persistence, Updating, and Archiving Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Archive / Update Form Card */}
+        <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-5 rounded-2xl shadow-sm space-y-4 lg:col-span-1">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              {activeLoadedRecordId ? (
+                <Edit3 className="w-4.5 h-4.5 text-emerald-600" />
+              ) : (
+                <Save className="w-4.5 h-4.5 text-indigo-500" />
+              )}
+              <span className="text-xs font-bold text-slate-850 dark:text-zinc-150 block uppercase">
+                {activeLoadedRecordId ? 'Update Reloaded Record' : 'Archive Elapsed Month'}
+              </span>
+            </div>
+            {activeLoadedRecordId && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 font-bold font-mono">
+                Active Edit Mode
+              </span>
+            )}
+          </div>
+
+          <p className="text-[11px] text-slate-400 font-medium leading-relaxed">
+            {activeLoadedRecordId 
+              ? `Update figures for ${labels.monthLabel} (EFY ${labels.efyLabel}) or save as a new snapshot under a new label.`
+              : 'Record Contractor program, ERA milestone plan, and Actual completed measurements to lock and secure historical performance for that month.'
+            }
+          </p>
+
+          <div className="space-y-3 pt-1">
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="space-y-1">
+                <label className="text-[10px] text-slate-400 font-semibold block">Month Label</label>
+                <input
+                  type="text"
+                  value={newMonthLabel}
+                  onChange={(e) => {
+                    setNewMonthLabel(e.target.value);
+                    handleLabelChange('monthLabel', e.target.value);
+                  }}
+                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 rounded-xl px-2.5 py-1 text-xs outline-none focus:border-indigo-500 font-medium"
+                  placeholder="e.g. Feb 2026"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] text-slate-400 font-semibold block">EFY Label</label>
+                <input
+                  type="text"
+                  value={newEfyLabel}
+                  onChange={(e) => {
+                    setNewEfyLabel(e.target.value);
+                    handleLabelChange('efyLabel', e.target.value);
+                  }}
+                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 rounded-xl px-2.5 py-1 text-xs outline-none focus:border-indigo-500 font-medium font-mono"
+                  placeholder="e.g. 2018"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1 text-xs">
+              <label className="text-[10px] text-slate-400 font-semibold block">Quarter Label</label>
+              <input
+                type="text"
+                value={newQuarterLabel}
+                onChange={(e) => {
+                  setNewQuarterLabel(e.target.value);
+                  handleLabelChange('quarterLabel', e.target.value);
+                }}
+                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 rounded-xl px-2.5 py-1 text-xs outline-none focus:border-indigo-500 font-medium"
+                placeholder="e.g. Q3 2018 or Jan-Mar 2026"
+              />
+            </div>
+
+            <div className="bg-slate-50/80 dark:bg-slate-900/40 rounded-xl p-3 space-y-2 text-[10px] border border-slate-100 dark:border-slate-700/30">
+              <span className="font-bold text-slate-400 tracking-wide uppercase block pb-1 border-b border-slate-100 dark:border-slate-700/30">
+                Summary of Figures for {labels.monthLabel}:
+              </span>
+              
+              <div className="space-y-1.5">
+                <div>
+                  <div className="flex justify-between items-center text-slate-600 dark:text-slate-300 font-semibold">
+                    <span>Contractor Plan:</span>
+                    <span className="font-mono">{plan.contractor.month.toFixed(2)} Km (Mo) • {plan.contractor.efy.toFixed(2)} Km (EFY)</span>
+                  </div>
+                  <div className="flex justify-between items-center text-[9px] text-blue-600 dark:text-blue-400 font-mono pl-2">
+                    <span>Saved Cumulative:</span>
+                    <span className="font-bold">{plan.contractor.todate.toFixed(2)} Km</span>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex justify-between items-center text-slate-600 dark:text-slate-300 font-semibold">
+                    <span>ERA Milestone Plan:</span>
+                    <span className="font-mono">{plan.era.month.toFixed(2)} Km (Mo) • {plan.era.efy.toFixed(2)} Km (EFY)</span>
+                  </div>
+                  <div className="flex justify-between items-center text-[9px] text-slate-500 dark:text-slate-400 font-mono pl-2">
+                    <span>Saved Cumulative:</span>
+                    <span className="font-bold">{plan.era.todate.toFixed(2)} Km</span>
+                  </div>
+                </div>
+
+                <div className="text-emerald-600 dark:text-emerald-400">
+                  <div className="flex justify-between items-center font-bold">
+                    <span>Actual Completed:</span>
+                    <span className="font-mono">{plan.actual.month.toFixed(2)} Km (Mo) • {plan.actual.efy.toFixed(2)} Km (EFY)</span>
+                  </div>
+                  <div className="flex justify-between items-center text-[9px] font-mono pl-2">
+                    <span>Saved Cumulative:</span>
+                    <span className="font-extrabold">{plan.actual.todate.toFixed(2)} Km ({computedPhysProgress.toFixed(2)}%)</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            {activeLoadedRecordId ? (
+              <div className="space-y-2">
+                <button
+                  onClick={handleUpdateLoadedHistoryItem}
+                  className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 px-4 rounded-xl text-xs transition-colors duration-200 shadow-sm cursor-pointer"
+                >
+                  <Save className="w-4 h-4" />
+                  Save & Update {labels.monthLabel}
+                </button>
+
+                <button
+                  onClick={handleSaveToHistory}
+                  className="w-full flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-semibold py-2 px-4 rounded-xl text-xs transition-colors duration-200 cursor-pointer"
+                >
+                  <PlusCircle className="w-3.5 h-3.5" />
+                  Save as New Archive Snapshot
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={handleSaveToHistory}
+                disabled={!newMonthLabel.trim()}
+                className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold py-2.5 px-4 rounded-xl text-xs transition-colors duration-200 shadow-sm cursor-pointer"
+              >
+                <Save className="w-4 h-4" />
+                Save Month & Cumulative Data
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* History / Archive Table */}
+        <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-5 rounded-2xl shadow-sm space-y-4 lg:col-span-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <History className="w-4.5 h-4.5 text-blue-500" />
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-850 dark:text-zinc-150 block uppercase">
+                    Elapsed Months & EFY Records List
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-[9px] px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold border border-blue-200/60 dark:border-blue-800/40">
+                    <ArrowDownNarrowWide className="w-2.5 h-2.5" />
+                    Descending by Month
+                  </span>
+                </div>
+                <span className="text-[10px] text-slate-400 block">
+                  Click "Load" to restore and edit in table, or click "Edit" to modify any archived record directly.
+                </span>
+              </div>
+            </div>
+            <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-900 text-slate-500 font-mono font-extrabold shrink-0">
+              {historyList.length} Archived
+            </span>
+          </div>
+
+          <div className="overflow-x-auto max-h-[500px] overflow-y-auto border border-slate-100 dark:border-slate-700/50 rounded-xl scroll-smooth">
+            <table className="w-full text-left border-collapse text-xs text-slate-700 dark:text-slate-300">
+              <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-900 shadow-2xs">
+                <tr className="bg-slate-50 dark:bg-slate-900 text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-extrabold border-b border-slate-100 dark:border-slate-700/60">
+                  <th className="p-3">
+                    <div className="flex items-center gap-1">
+                      <span>Period & EFY</span>
+                      <span className="text-[8.5px] px-1 py-0.2 rounded font-sans font-extrabold bg-blue-100/70 text-blue-700 dark:bg-blue-950/70 dark:text-blue-300">
+                        ↓ Newest First
+                      </span>
+                    </div>
+                  </th>
+                  <th className="p-3 text-center">Contractor Plan (Km)</th>
+                  <th className="p-3 text-center">ERA Milestone (Km)</th>
+                  <th className="p-3 text-center">Actual Accomplished (Km)</th>
+                  <th className="p-3 text-center">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-700/40 text-[11px]">
+                {historyList.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="p-8 text-center text-slate-400 dark:text-slate-500">
+                      <CalendarClock className="w-8 h-8 mx-auto stroke-1.5 opacity-40 mb-2 text-slate-400" />
+                      <span className="block font-medium">No archived elapsed records found.</span>
+                      <span className="block text-[10px] text-slate-400/80 mt-1">Use the left form to lock in current tracking figures.</span>
+                    </td>
+                  </tr>
+                ) : (
+                  historyList.map((item) => {
+                    const isCurrentLoaded = activeLoadedRecordId === item.id;
+                    return (
+                      <tr 
+                        key={item.id} 
+                        className={`transition-colors duration-150 ${
+                          isCurrentLoaded 
+                            ? 'bg-blue-50/70 dark:bg-blue-950/30 border-l-3 border-l-blue-500' 
+                            : 'hover:bg-slate-50/50 dark:hover:bg-slate-900/10'
+                        }`}
+                      >
+                        <td className="p-3">
+                          <div className="space-y-1">
+                            <span className="font-bold text-slate-800 dark:text-zinc-200 block text-xs">
+                              {item.monthLabel}
+                            </span>
+                            <div className="flex items-center gap-1 flex-wrap">
+                              <span className="text-[10px] px-1.5 py-0.2 rounded font-semibold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-mono">
+                                EFY {item.efyLabel}
+                              </span>
+                              {item.quarterLabel && (
+                                <span className="text-[9px] text-slate-400 font-medium">
+                                  {item.quarterLabel}
+                                </span>
+                              )}
+                            </div>
+                            {isCurrentLoaded && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                                <Check className="w-2.5 h-2.5 text-emerald-600" /> Active in Table
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* Contractor */}
+                        <td className="p-3 text-center font-mono">
+                          <div className="space-y-0.5">
+                            <div className="text-slate-700 dark:text-slate-300 font-semibold">
+                              <span className="text-[9px] text-slate-400 mr-1 font-sans">Mo:</span>
+                              {item.contractorMonth.toFixed(2)}
+                            </div>
+                            <div className="text-[10px] text-slate-500">
+                              <span className="text-[9px] text-slate-400 mr-1 font-sans">EFY:</span>
+                              {item.contractorEfy.toFixed(2)}
+                            </div>
+                            <div className="text-[10px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50/50 dark:bg-blue-950/30 px-1 rounded">
+                              <span className="text-[9px] text-blue-500/80 mr-1 font-sans">Cum:</span>
+                              {item.contractorTodate !== undefined ? item.contractorTodate.toFixed(2) : '—'}
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* ERA */}
+                        <td className="p-3 text-center font-mono">
+                          <div className="space-y-0.5">
+                            <div className="text-slate-700 dark:text-slate-300 font-semibold">
+                              <span className="text-[9px] text-slate-400 mr-1 font-sans">Mo:</span>
+                              {item.eraMonth.toFixed(2)}
+                            </div>
+                            <div className="text-[10px] text-slate-500">
+                              <span className="text-[9px] text-slate-400 mr-1 font-sans">EFY:</span>
+                              {item.eraEfy.toFixed(2)}
+                            </div>
+                            <div className="text-[10px] font-bold text-slate-600 dark:text-slate-400 bg-slate-100/60 dark:bg-slate-800/60 px-1 rounded">
+                              <span className="text-[9px] text-slate-400 mr-1 font-sans">Cum:</span>
+                              {item.eraTodate !== undefined ? item.eraTodate.toFixed(2) : '—'}
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Actual */}
+                        <td className="p-3 text-center font-mono bg-emerald-50/10 dark:bg-emerald-950/5">
+                          <div className="space-y-0.5">
+                            <div className="text-emerald-700 dark:text-emerald-300 font-bold">
+                              <span className="text-[9px] text-slate-400 mr-1 font-sans">Mo:</span>
+                              {item.actualMonth.toFixed(2)}
+                            </div>
+                            <div className="text-[10px] text-slate-500">
+                              <span className="text-[9px] text-slate-400 mr-1 font-sans">EFY:</span>
+                              {item.actualEfy.toFixed(2)}
+                            </div>
+                            <div className="text-[10px] font-extrabold text-emerald-600 dark:text-emerald-400 bg-emerald-100/50 dark:bg-emerald-950/40 px-1 rounded">
+                              <span className="text-[9px] text-emerald-500/80 mr-1 font-sans">Cum:</span>
+                              {item.actualTodate !== undefined ? item.actualTodate.toFixed(2) : '—'}
+                            </div>
+                            {item.physicalProgress !== undefined && (
+                              <div className="text-[9px] text-emerald-700 dark:text-emerald-400 font-sans font-bold">
+                                {item.physicalProgress.toFixed(2)}% Phys
+                              </div>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* Actions */}
+                        <td className="p-3 text-center">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              onClick={() => handleRestoreHistoryItem(item)}
+                              title={`Reload and edit all saved data for ${item.monthLabel}`}
+                              className={`p-1.5 rounded-lg transition-colors text-[10px] font-bold flex items-center gap-1 px-2.5 cursor-pointer ${
+                                isCurrentLoaded
+                                  ? 'bg-emerald-600 text-white hover:bg-emerald-500 shadow-xs'
+                                  : 'bg-blue-50 hover:bg-blue-100 text-blue-600 dark:bg-blue-950/30 dark:hover:bg-blue-900/40 dark:text-blue-400'
+                              }`}
+                            >
+                              <RefreshCcw className="w-3 h-3" />
+                              {isCurrentLoaded ? 'Editing' : 'Load'}
+                            </button>
+
+                            <button
+                              onClick={() => setEditingModalItem(JSON.parse(JSON.stringify(item)))}
+                              title="Directly edit all fields of this archived record"
+                              className="p-1.5 rounded-lg text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors cursor-pointer"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+
+                            <button
+                              onClick={() => setInspectingItem(item)}
+                              title="View full detailed snapshot for this month"
+                              className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 dark:hover:text-slate-200 transition-colors cursor-pointer"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                            </button>
+
+                            <button
+                              onClick={() => handleDeleteHistoryItem(item.id)}
+                              title="Remove this archived record"
+                              className="bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/30 dark:hover:bg-rose-900/40 dark:text-rose-400 p-1.5 rounded-lg transition-colors cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
       {/* 📅 EFY PLAN 12-Month Grid & Progress Monitoring Section (As per Reference Image) */}
       <div className="bg-white dark:bg-slate-800 border-2 border-blue-400/80 dark:border-blue-700/80 rounded-2xl overflow-hidden shadow-md space-y-0">
         {/* Header Bar */}
