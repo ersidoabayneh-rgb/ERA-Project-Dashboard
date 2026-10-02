@@ -1167,6 +1167,8 @@ export interface ProgressPlanHistoryItem {
   contractorTodate?: number;
   eraTodate?: number;
   physicalProgress?: number;
+  contractorMonths?: number[];
+  eraMonths?: number[];
 }
 
 export interface CustomScoringCriterion {

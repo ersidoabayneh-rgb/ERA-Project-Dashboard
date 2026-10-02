@@ -438,8 +438,16 @@ export default function ProgressPlanView({ project, currentUserObj, onUpdateProg
     if (historyMatch) {
       const cEfy = Number(historyMatch.contractorEfy || 0);
       const eEfy = Number(historyMatch.eraEfy || 0);
-      setContractorMonths(distributeTotalTo12Months(cEfy, 'even'));
-      setEraMonths(distributeTotalTo12Months(eEfy, 'even'));
+      if (historyMatch.contractorMonths && historyMatch.contractorMonths.length >= 12) {
+        setContractorMonths([...historyMatch.contractorMonths]);
+      } else {
+        setContractorMonths(distributeTotalTo12Months(cEfy, 'even'));
+      }
+      if (historyMatch.eraMonths && historyMatch.eraMonths.length >= 12) {
+        setEraMonths([...historyMatch.eraMonths]);
+      } else {
+        setEraMonths(distributeTotalTo12Months(eEfy, 'even'));
+      }
       showToast(`Loaded historical baseline figures for EFY ${cleaned}`);
     } else if (annualMatch) {
       const eEfy = Number(annualMatch.km || annualMatch.amount || 0);
@@ -571,7 +579,7 @@ export default function ProgressPlanView({ project, currentUserObj, onUpdateProg
 
     const updatedLabels = {
       ...labels,
-      efyLabel: isActiveEfy ? targetEfyStr : labels.efyLabel
+      efyLabel: targetEfyStr
     };
 
     // 2. Also record in historical baseline archive (progressPlanHistory) if option enabled
@@ -588,6 +596,8 @@ export default function ProgressPlanView({ project, currentUserObj, onUpdateProg
         eraMonth: eraMonths[0] || 0,
         eraQuarter: eraSums.q1 || 0,
         eraEfy: eraSums.efy || 0,
+        contractorMonths: [...contractorMonths],
+        eraMonths: [...eraMonths],
         actualMonth: 0,
         actualQuarter: 0,
         actualEfy: 0,
@@ -619,30 +629,29 @@ export default function ProgressPlanView({ project, currentUserObj, onUpdateProg
       updatedAnnual.sort((a, b) => b.year - a.year);
     }
 
-    const updatedMonthly = (project.monthly || []).map((m, idx) => {
-      if (isActiveEfy && idx < 12) {
-        return {
-          ...m,
-          revisedPlan: contractorMonths[idx] !== undefined ? contractorMonths[idx] : m.revisedPlan,
-          originalPlan: eraMonths[idx] !== undefined ? eraMonths[idx] : m.originalPlan
-        };
-      }
-      return m;
+    const monthNames = ['Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
+    const currentMonthly = project.monthly || [];
+    const updatedMonthly = monthNames.map((name, idx) => {
+      const existing = currentMonthly[idx] || { month: name };
+      return {
+        ...existing,
+        month: existing.month || name,
+        revisedPlan: contractorMonths[idx] !== undefined ? Number(contractorMonths[idx]) : (typeof existing.revisedPlan === 'number' ? existing.revisedPlan : 0),
+        originalPlan: eraMonths[idx] !== undefined ? Number(eraMonths[idx]) : (typeof existing.originalPlan === 'number' ? existing.originalPlan : 0)
+      };
     });
 
     if (onProjectUpdate) {
       onProjectUpdate({
-        progressPlan: isActiveEfy ? updatedPlan : project.progressPlan,
-        progressPlanLabels: isActiveEfy ? updatedLabels : project.progressPlanLabels,
+        progressPlan: updatedPlan,
+        progressPlanLabels: updatedLabels,
         progressPlanHistory: updatedHistory,
         annual: updatedAnnual,
-        monthly: updatedMonthly.length >= 12 ? updatedMonthly : project.monthly
+        monthly: updatedMonthly
       }, `Updated EFY ${targetEfyStr} Whole Fiscal Year Baseline Plan (Contractor: ${contractorSums.efy.toFixed(2)} Km, ERA: ${eraSums.efy.toFixed(2)} Km)`);
     }
 
-    if (isActiveEfy) {
-      onUpdateProgressPlan(updatedPlan, updatedLabels);
-    }
+    onUpdateProgressPlan(updatedPlan, updatedLabels);
     showToast(`Successfully saved EFY ${targetEfyStr} baseline plan! Contractor: ${contractorSums.efy.toFixed(2)} Km • ERA: ${eraSums.efy.toFixed(2)} Km`);
   };
 

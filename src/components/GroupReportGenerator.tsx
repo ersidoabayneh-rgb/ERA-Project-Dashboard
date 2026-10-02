@@ -374,52 +374,76 @@ export default function GroupReportGenerator({
   };
 
   const getEfyDraft = (p: Project, targetEfy: string = selectedPlanningEfy): EfyProjectDraft => {
-    const yearDrafts = efyDraftMapByYear[targetEfy];
+    const cleanTarget = targetEfy.trim().replace(/^EFY\s*/i, '');
+
+    const yearDrafts = efyDraftMapByYear[targetEfy] || efyDraftMapByYear[cleanTarget];
     if (yearDrafts && yearDrafts[p.id]) {
       return yearDrafts[p.id];
     }
 
     // 1. Check if project has an archived progressPlanHistory item matching this EFY
     const historyMatch = (p.progressPlanHistory || []).find(
-      h => (h.efyLabel || '').trim().toLowerCase() === targetEfy.trim().toLowerCase() ||
-           (h.efyLabel || '').includes(targetEfy) ||
-           (h.monthLabel || '').includes(`EFY ${targetEfy}`)
+      h => (h.efyLabel || '').trim().replace(/^EFY\s*/i, '').toLowerCase() === cleanTarget.toLowerCase() ||
+           (h.efyLabel || '').includes(cleanTarget) ||
+           (h.monthLabel || '').includes(`EFY ${cleanTarget}`) ||
+           (cleanTarget === '2019' && ((h.monthLabel || '').includes('2019') || (h.id || '').includes('2019')))
     );
 
     // 2. Check if project has an annual record matching this EFY
-    const numericYear = parseInt(targetEfy, 10);
+    const numericYear = parseInt(cleanTarget, 10);
     const annualMatch = !isNaN(numericYear) 
       ? (p.annual || []).find(a => a.year === numericYear)
       : undefined;
 
+    let cMonths: number[] = [];
+    let eMonths: number[] = [];
     let ctrEfy = 0;
     let eraEfy = 0;
 
-    if (historyMatch) {
+    const projectEfy = (p.progressPlanLabels?.efyLabel || '').trim().replace(/^EFY\s*/i, '');
+    const isProjectActiveEfy = projectEfy === cleanTarget || (cleanTarget === '2019' && (projectEfy === '' || projectEfy === '2019'));
+
+    // Priority 1: Exact saved 12-month array inside historyMatch from progress comparisons page
+    if (historyMatch && historyMatch.contractorMonths && historyMatch.contractorMonths.length >= 12 &&
+        historyMatch.eraMonths && historyMatch.eraMonths.length >= 12) {
+      cMonths = historyMatch.contractorMonths.map(v => Number(v) || 0);
+      eMonths = historyMatch.eraMonths.map(v => Number(v) || 0);
       ctrEfy = Number(historyMatch.contractorEfy || 0);
       eraEfy = Number(historyMatch.eraEfy || 0);
-    } else if (annualMatch) {
-      eraEfy = Number(annualMatch.km || annualMatch.amount || 0);
-      ctrEfy = Number((eraEfy * 1.1).toFixed(2));
-    } else if (p.progressPlanLabels?.efyLabel === targetEfy && (p.progressPlan?.contractor?.efy || p.progressPlan?.era?.efy)) {
-      ctrEfy = Number(p.progressPlan?.contractor?.efy || 0);
-      eraEfy = Number(p.progressPlan?.era?.efy || 0);
-    } else {
-      // Unrecorded or deleted EFY -> return 0.00
-      ctrEfy = 0;
-      eraEfy = 0;
-    }
-
-    // Derive initial 12 monthly allocations
-    let cMonths: number[] = [];
-    let eMonths: number[] = [];
-
-    if (p.progressPlanLabels?.efyLabel === targetEfy && p.monthly && p.monthly.length >= 12) {
+    } 
+    // Priority 2: Exact saved 12-month targets in project.monthly
+    // On the Progress Comparisons page, project.monthly contains the exact 12-month baseline targets for the active EFY (e.g. EFY 2019)
+    else if (p.monthly && p.monthly.length >= 12 && (isProjectActiveEfy || cleanTarget === '2019')) {
       cMonths = p.monthly.slice(0, 12).map(m => typeof m.revisedPlan === 'number' ? m.revisedPlan : (typeof m.originalPlan === 'number' ? m.originalPlan : 0));
       eMonths = p.monthly.slice(0, 12).map(m => typeof m.originalPlan === 'number' ? m.originalPlan : (typeof m.revisedPlan === 'number' ? m.revisedPlan : 0));
-    } else if (historyMatch || annualMatch) {
+      ctrEfy = Number(p.progressPlan?.contractor?.efy || (historyMatch ? historyMatch.contractorEfy : 0));
+      eraEfy = Number(p.progressPlan?.era?.efy || (historyMatch ? historyMatch.eraEfy : 0));
+    }
+    // Priority 3: History match with total only
+    else if (historyMatch) {
+      ctrEfy = Number(historyMatch.contractorEfy || 0);
+      eraEfy = Number(historyMatch.eraEfy || 0);
       cMonths = distributeTotalTo12Months(ctrEfy, 'even');
       eMonths = distributeTotalTo12Months(eraEfy, 'even');
+    }
+    // Priority 4: Annual match
+    else if (annualMatch) {
+      eraEfy = Number(annualMatch.km || annualMatch.amount || 0);
+      ctrEfy = Number((eraEfy * 1.1).toFixed(2));
+      cMonths = distributeTotalTo12Months(ctrEfy, 'even');
+      eMonths = distributeTotalTo12Months(eraEfy, 'even');
+    }
+    // Priority 5: Active progressPlan
+    else if (p.progressPlan?.contractor?.efy || p.progressPlan?.era?.efy) {
+      ctrEfy = Number(p.progressPlan?.contractor?.efy || 0);
+      eraEfy = Number(p.progressPlan?.era?.efy || 0);
+      cMonths = distributeTotalTo12Months(ctrEfy, 'even');
+      eMonths = distributeTotalTo12Months(eraEfy, 'even');
+    }
+    // Fallback if project.monthly has any entries
+    else if (p.monthly && p.monthly.length >= 12) {
+      cMonths = p.monthly.slice(0, 12).map(m => typeof m.revisedPlan === 'number' ? m.revisedPlan : (typeof m.originalPlan === 'number' ? m.originalPlan : 0));
+      eMonths = p.monthly.slice(0, 12).map(m => typeof m.originalPlan === 'number' ? m.originalPlan : (typeof m.revisedPlan === 'number' ? m.revisedPlan : 0));
     } else {
       cMonths = Array(12).fill(0);
       eMonths = Array(12).fill(0);
@@ -441,7 +465,7 @@ export default function GroupReportGenerator({
       q4Era: eSums.q4,
       contractorMonths: cMonths,
       eraMonths: eMonths,
-      efyLabel: targetEfy
+      efyLabel: cleanTarget
     };
   };
 
@@ -716,6 +740,8 @@ export default function GroupReportGenerator({
         eraMonth: draft.eraMonths[0] || 0,
         eraQuarter: eSums.q1 || 0,
         eraEfy: eSums.efy || draft.eraEfy || 0,
+        contractorMonths: [...(draft.contractorMonths || [])],
+        eraMonths: [...(draft.eraMonths || [])],
         actualMonth: 0,
         actualQuarter: 0,
         actualEfy: 0,
@@ -748,36 +774,23 @@ export default function GroupReportGenerator({
       updatedAnnual.sort((a, b) => b.year - a.year);
     }
 
-    // 4. Update project.monthly S-Curve with cumulative sum (previous months + current month)
-    let updatedMonthly = project.monthly || [];
-    if (isActiveEfy && updatedMonthly.length >= 12) {
-      let cumContractor = 0;
-      let cumEra = 0;
-      const cumulativeContractorMonths = (draft.contractorMonths || []).map(val => {
-        cumContractor += Number(val) || 0;
-        return Number(cumContractor.toFixed(2));
-      });
-      const cumulativeEraMonths = (draft.eraMonths || []).map(val => {
-        cumEra += Number(val) || 0;
-        return Number(cumEra.toFixed(2));
-      });
-
-      updatedMonthly = updatedMonthly.map((m, idx) => {
-        if (idx < 12) {
-          return {
-            ...m,
-            revisedPlan: cumulativeContractorMonths[idx] !== undefined ? cumulativeContractorMonths[idx] : m.revisedPlan,
-            originalPlan: cumulativeEraMonths[idx] !== undefined ? cumulativeEraMonths[idx] : m.originalPlan
-          };
-        }
-        return m;
-      });
-    }
+    // 4. Update project.monthly with exact monthly baseline targets (Jul to Jun)
+    const monthNames = ['Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
+    const currentMonthly = project.monthly || [];
+    const updatedMonthly = monthNames.map((name, idx) => {
+      const existing = currentMonthly[idx] || { month: name };
+      return {
+        ...existing,
+        month: existing.month || name,
+        revisedPlan: draft.contractorMonths[idx] !== undefined ? Number(draft.contractorMonths[idx]) : (typeof existing.revisedPlan === 'number' ? existing.revisedPlan : 0),
+        originalPlan: draft.eraMonths[idx] !== undefined ? Number(draft.eraMonths[idx]) : (typeof existing.originalPlan === 'number' ? existing.originalPlan : 0)
+      };
+    });
 
     const updatedProject: Project = {
       ...project,
-      progressPlan: isActiveEfy ? updatedPlan : project.progressPlan,
-      progressPlanLabels: isActiveEfy ? updatedLabels : project.progressPlanLabels,
+      progressPlan: updatedPlan,
+      progressPlanLabels: updatedLabels,
       progressPlanHistory: updatedHistory,
       annual: updatedAnnual,
       monthly: updatedMonthly
@@ -955,6 +968,8 @@ export default function GroupReportGenerator({
           eraMonth: draft.eraMonths[0] || 0,
           eraQuarter: eSums.q1 || 0,
           eraEfy: eSums.efy || draft.eraEfy || 0,
+          contractorMonths: [...(draft.contractorMonths || [])],
+          eraMonths: [...(draft.eraMonths || [])],
           actualMonth: 0,
           actualQuarter: 0,
           actualEfy: 0,
@@ -986,31 +1001,18 @@ export default function GroupReportGenerator({
         updatedAnnual.sort((a, b) => b.year - a.year);
       }
 
-      // 4. Update project.monthly S-Curve with cumulative sum (previous months + current month)
-      let updatedMonthly = p.monthly || [];
-      if (isActiveEfy && updatedMonthly.length >= 12) {
-        let cumContractor = 0;
-        let cumEra = 0;
-        const cumulativeContractorMonths = (draft.contractorMonths || []).map(val => {
-          cumContractor += Number(val) || 0;
-          return Number(cumContractor.toFixed(2));
-        });
-        const cumulativeEraMonths = (draft.eraMonths || []).map(val => {
-          cumEra += Number(val) || 0;
-          return Number(cumEra.toFixed(2));
-        });
-
-        updatedMonthly = updatedMonthly.map((m, idx) => {
-          if (idx < 12) {
-            return {
-              ...m,
-              revisedPlan: cumulativeContractorMonths[idx] !== undefined ? cumulativeContractorMonths[idx] : m.revisedPlan,
-              originalPlan: cumulativeEraMonths[idx] !== undefined ? cumulativeEraMonths[idx] : m.originalPlan
-            };
-          }
-          return m;
-        });
-      }
+      // 4. Update project.monthly with exact monthly baseline targets (Jul to Jun)
+      const monthNames = ['Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
+      const currentMonthly = p.monthly || [];
+      const updatedMonthly = monthNames.map((name, idx) => {
+        const existing = currentMonthly[idx] || { month: name };
+        return {
+          ...existing,
+          month: existing.month || name,
+          revisedPlan: draft.contractorMonths[idx] !== undefined ? Number(draft.contractorMonths[idx]) : (typeof existing.revisedPlan === 'number' ? existing.revisedPlan : 0),
+          originalPlan: draft.eraMonths[idx] !== undefined ? Number(draft.eraMonths[idx]) : (typeof existing.originalPlan === 'number' ? existing.originalPlan : 0)
+        };
+      });
 
       const updatedProject: Project = {
         ...p,
