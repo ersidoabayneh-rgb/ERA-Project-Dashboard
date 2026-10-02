@@ -3905,40 +3905,40 @@ let isBatchSyncRunning = false;
             {/* Project-Specific Pending Approvals Alert Banner (Displayed within the project when opening it) */}
             {hasApprovalCredentials(currentUserObj) && currentProjectPendingApprovals.length > 0 && showProjectApprovalBanner && (
               <motion.div
-                initial={{ opacity: 0, y: -8 }}
+                initial={{ opacity: 0, y: -6 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="bg-gradient-to-r from-amber-500/15 via-amber-500/10 to-amber-500/5 border border-amber-500/30 dark:border-amber-500/40 rounded-2xl p-3.5 mb-2 flex items-center justify-between flex-wrap gap-3 shadow-xs"
+                className="bg-gradient-to-r from-amber-500/15 via-amber-500/10 to-amber-500/5 border border-amber-500/30 dark:border-amber-500/40 rounded-xl p-2 sm:p-2.5 mb-1.5 flex items-center justify-between flex-wrap gap-2 shadow-2xs"
               >
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs animate-pulse">
-                    <ShieldAlert className="w-5 h-5" />
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-lg bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-2xs animate-pulse">
+                    <ShieldAlert className="w-3.5 h-3.5" />
                   </div>
                   <div>
-                    <div className="font-black text-xs sm:text-sm text-slate-850 dark:text-white flex items-center gap-2">
+                    <div className="font-bold text-[11px] sm:text-xs text-slate-850 dark:text-white flex items-center gap-1.5">
                       <span>{currentProjectPendingApprovals.length} Pending Approval Request{currentProjectPendingApprovals.length > 1 ? 's' : ''} for {currentProject.name}</span>
-                      <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-amber-500 text-white shadow-2xs">
+                      <span className="text-[8.5px] font-black uppercase px-1.5 py-0.2 rounded bg-amber-500 text-white shadow-2xs">
                         Action Required
                       </span>
                     </div>
-                    <div className="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5">
-                      Review submitted field variations for <strong>{currentProject.name}</strong> before committing changes to the live project baseline.
+                    <div className="text-[10px] text-slate-600 dark:text-slate-300">
+                      Review submitted field variations before committing changes to the live project baseline.
                     </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
                   <button
                     onClick={() => setShowApprovals(true)}
-                    className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer"
+                    className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-[10.5px] font-extrabold transition shadow-2xs flex items-center gap-1 cursor-pointer"
                   >
-                    <ShieldCheck className="w-3.5 h-3.5" />
-                    <span>Review Approvals ({currentProjectPendingApprovals.length})</span>
+                    <ShieldCheck className="w-3 h-3" />
+                    <span>Review ({currentProjectPendingApprovals.length})</span>
                   </button>
                   <button
                     onClick={() => setShowProjectApprovalBanner(false)}
-                    className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs p-1.5 rounded-lg hover:bg-slate-200/50 dark:hover:bg-slate-800 transition cursor-pointer"
+                    className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs p-1 rounded-md hover:bg-slate-200/50 dark:hover:bg-slate-800 transition cursor-pointer"
                     title="Dismiss notification"
                   >
-                    <X className="w-4 h-4" />
+                    <X className="w-3.5 h-3.5" />
                   </button>
                 </div>
               </motion.div>

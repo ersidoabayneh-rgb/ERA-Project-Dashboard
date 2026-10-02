@@ -1849,62 +1849,7 @@ export default function DashboardView({
       {/* Printable / Capturable Visual Dashboard Content */}
       <div id="dashboard-view-content" className="space-y-0">
 
-      {hasCriticalBonds && (
-        <div className="bg-gradient-to-r from-rose-50 to-amber-50 dark:from-rose-950/20 dark:to-amber-950/20 border-l-4 border-rose-500 rounded-lg p-2.5 sm:p-3 shadow-2xs space-y-1.5">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
-            <div className="flex items-start gap-2">
-              <div className="p-1.5 bg-rose-100 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 rounded-lg mt-0.5 animate-pulse">
-                <AlertTriangle className="w-4 h-4" />
-              </div>
-              <div>
-                <h4 className="text-xs sm:text-sm font-black text-rose-800 dark:text-rose-300 uppercase tracking-wide">
-                  Critical Bank Security & Guarantee Warning
-                </h4>
-                <p className="text-[11px] text-rose-600/95 dark:text-rose-400/80">
-                  {criticalBonds.length} bank guarantee(s) are expired or expiring in less than 45 days. Action is required immediately to prevent liquidation risks or contract default!
-                </p>
-              </div>
-            </div>
-            <span className="self-start md:self-auto text-[9px] font-extrabold uppercase bg-rose-200/60 dark:bg-rose-950 text-rose-800 dark:text-rose-400 px-2.5 py-0.5 rounded-full animate-pulse border border-rose-300 dark:border-rose-900">
-              URGENT AUDIT REQUIRED
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5 pt-0.5">
-            {criticalBonds.map((b, bIdx) => {
-              const exp = new Date(b.expireDate);
-              const isPast = b.status === 'Expired' || exp < new Date();
-              const formattedAmt = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(b.amount).replace(/\.00$/, '');
-              return (
-                <div key={bIdx} className="bg-white/80 dark:bg-slate-900/60 border border-rose-100 dark:border-rose-900/40 p-2 rounded-lg flex flex-col justify-between space-y-1 shadow-2xs">
-                  <div>
-                    <div className="flex items-center justify-between gap-1">
-                      <span className="text-[9px] font-extrabold uppercase bg-rose-50 dark:bg-rose-950 text-rose-700 dark:text-rose-400 px-1.5 py-0.5 rounded border border-rose-150 dark:border-rose-900/50">
-                        {isPast ? 'Expired' : 'Expiring Soon'}
-                      </span>
-                      <span className="text-[8.5px] text-slate-400 font-mono">SNo. {b.sno}</span>
-                    </div>
-                    <h5 className="text-[11px] font-black text-slate-850 dark:text-zinc-150 mt-1 line-clamp-1">{b.type}</h5>
-                    <p className="text-[9.5px] text-slate-500 dark:text-slate-405 font-medium truncate">Issuer: {b.bank}</p>
-                  </div>
-                  <div className="border-t border-slate-100 dark:border-slate-800 pt-1.5 flex items-center justify-between text-[11px] mt-0.5">
-                    <div>
-                      <span className="text-[8.5px] text-slate-400 block font-mono">Escrow Amount</span>
-                      <span className="font-mono font-black text-rose-600 dark:text-rose-400 text-xs">{formattedAmt} Br</span>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-[8.5px] text-slate-400 block font-mono">Expiry Date</span>
-                      <span className="font-mono font-bold text-slate-700 dark:text-slate-350">{b.expireDate}</span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Project Completion & Performance Slippage Notification System */}
+      {/* Unified Compact Cascade Alerts View (Single Row Layout) */}
       {(() => {
         const evmMetrics = calculateProjectEvm(project);
         const startDateObj = new Date(project.startDate);
@@ -1916,86 +1861,101 @@ export default function DashboardView({
         const physicalSlippageVal = evmMetrics.plannedPct - evmMetrics.actualPct;
         const hasSignificantPhysicalSlippage = physicalSlippageVal > 15;
 
-        if (!isNearingCompletionAlert && !hasSignificantPhysicalSlippage) {
-          return null;
-        }
+        const totalActiveAlerts = (hasCriticalBonds ? 1 : 0) + (isNearingCompletionAlert ? 1 : 0) + (hasSignificantPhysicalSlippage ? 1 : 0);
+        if (totalActiveAlerts === 0) return null;
 
         return (
-          <div className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/25 dark:to-orange-950/25 border-l-4 border-amber-500 rounded-lg p-2.5 sm:p-3 shadow-2xs space-y-1.5">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
-              <div className="flex items-start gap-2">
-                <div className="p-1.5 bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 rounded-lg mt-0.5 animate-bounce">
-                  <Bell className="w-4 h-4" />
+          <div className="mb-2.5">
+            <div className={`grid grid-cols-1 ${
+              totalActiveAlerts === 3 ? 'md:grid-cols-3' : totalActiveAlerts === 2 ? 'md:grid-cols-2' : 'grid-cols-1'
+            } gap-2 items-stretch`}>
+              
+              {/* Alert Card 1: Bank Guarantees */}
+              {hasCriticalBonds && (
+                <div className="bg-gradient-to-r from-rose-50 to-amber-50/80 dark:from-rose-950/30 dark:to-amber-950/30 border-l-3 border-rose-500 rounded-lg p-2 shadow-2xs flex flex-col justify-between">
+                  <div className="flex items-center justify-between gap-1 mb-1">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <AlertTriangle className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400 shrink-0 animate-pulse" />
+                      <span className="text-[10px] font-black uppercase text-rose-900 dark:text-rose-300 truncate">
+                        Bank Guarantees Warning
+                      </span>
+                    </div>
+                    <span className="text-[8px] font-black uppercase bg-rose-200/80 dark:bg-rose-900 text-rose-900 dark:text-rose-200 px-1.5 py-0.2 rounded shrink-0">
+                      URGENT ({criticalBonds.length})
+                    </span>
+                  </div>
+                  <p className="text-[9.5px] text-rose-700 dark:text-rose-300 leading-tight mb-1">
+                    {criticalBonds.length} guarantee(s) expired or expiring &lt; 45 days. Action required!
+                  </p>
+                  <div className="flex flex-wrap gap-1 mt-auto pt-0.5 border-t border-rose-200/50 dark:border-rose-900/40 text-[9px]">
+                    {criticalBonds.slice(0, 2).map((b, bIdx) => (
+                      <span key={bIdx} className="bg-white/90 dark:bg-slate-900/80 px-1 py-0.1 rounded text-[8.5px] font-bold text-slate-700 dark:text-slate-200 truncate max-w-full">
+                        {b.type}: ETB {new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(b.amount)}
+                      </span>
+                    ))}
+                    {criticalBonds.length > 2 && (
+                      <span className="text-[8.5px] font-extrabold text-rose-600 dark:text-rose-400 self-center">
+                        +{criticalBonds.length - 2} more
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div>
-                  <h4 className="text-xs sm:text-sm font-black text-amber-900 dark:text-amber-300 uppercase tracking-wide">
-                    Project Performance & Completion Alert System
-                  </h4>
-                  <p className="text-[11px] text-amber-700/90 dark:text-amber-400/90 mt-0.5">
-                    Automated flags detected for project <strong className="font-bold underline">{project.name}</strong>:
+              )}
+
+              {/* Alert Card 2: Timeline / Milestone */}
+              {isNearingCompletionAlert && (
+                <div className="bg-gradient-to-r from-amber-50 to-amber-100/60 dark:from-amber-950/30 dark:to-amber-900/30 border-l-3 border-amber-500 rounded-lg p-2 shadow-2xs flex flex-col justify-between">
+                  <div className="flex items-center justify-between gap-1 mb-1">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <Calendar className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                      <span className="text-[10px] font-black uppercase text-amber-900 dark:text-amber-300 truncate">
+                        Milestone / Timeline Warning
+                      </span>
+                    </div>
+                    <span className="text-[8px] font-black uppercase bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-200 px-1.5 py-0.2 rounded shrink-0">
+                      SCHEDULE
+                    </span>
+                  </div>
+                  <p className="text-[10.5px] font-extrabold text-slate-800 dark:text-slate-100 leading-tight">
+                    {daysToCompletion <= 0 ? `Overdue by ${Math.abs(daysToCompletion)} days!` : `Completion in ${daysToCompletion} days`}
+                  </p>
+                  <p className="text-[9px] text-slate-500 dark:text-slate-400 mt-auto pt-0.5 border-t border-amber-200/50 dark:border-amber-900/40">
+                    Scheduled End Date: <strong className="text-slate-700 dark:text-slate-200">{estimatedCompletionDate.toLocaleDateString()}</strong>
                   </p>
                 </div>
-              </div>
-              <span className="self-start md:self-auto text-[9px] font-extrabold uppercase bg-amber-200/80 dark:bg-amber-950 text-amber-900 dark:text-amber-300 px-2.5 py-0.5 rounded-full border border-amber-300 dark:border-amber-800">
-                ACTIVE NOTIFICATIONS
-              </span>
-            </div>
-
-            <div className={`grid grid-cols-1 ${isNearingCompletionAlert && hasSignificantPhysicalSlippage ? 'sm:grid-cols-2' : 'grid-cols-1'} gap-1.5 pt-0.5`}>
-              {isNearingCompletionAlert && (
-                <div className="bg-white/90 dark:bg-slate-900/80 border border-amber-200 dark:border-amber-900/50 p-2.5 rounded-lg flex items-start gap-2 shadow-2xs">
-                  <div className="p-1.5 bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400 rounded-lg shrink-0 mt-0.5">
-                    <Calendar className="w-4 h-4" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <span className="text-[9.5px] font-black uppercase text-amber-700 dark:text-amber-400 tracking-wider">
-                      Contract Milestone / Timeline Warning
-                    </span>
-                    <p className="text-xs font-extrabold text-slate-800 dark:text-slate-100 mt-0.5">
-                      {daysToCompletion <= 0 ? `Completion date reached (${Math.abs(daysToCompletion)} days overdue)` : `Estimated completion in ${daysToCompletion} days`}
-                    </p>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                      Scheduled End Date: <span className="font-semibold text-slate-700 dark:text-slate-300">{estimatedCompletionDate.toLocaleDateString()}</span>
-                    </p>
-                  </div>
-                </div>
               )}
 
+              {/* Alert Card 3: Critical Slippage */}
               {hasSignificantPhysicalSlippage && (
-                <div className="bg-white/95 dark:bg-slate-900/90 border-2 border-orange-300 dark:border-orange-700/60 p-2.5 rounded-lg flex items-start gap-2 shadow-2xs">
-                  <div className="p-1.5 bg-orange-100 dark:bg-orange-950/70 text-orange-600 dark:text-orange-400 rounded-lg shrink-0 mt-0.5">
-                    <TrendingDown className="w-4 h-4" />
+                <div className="bg-gradient-to-r from-orange-50 to-rose-50 dark:from-orange-950/30 dark:to-rose-950/30 border-l-3 border-orange-500 rounded-lg p-2 shadow-2xs flex flex-col justify-between">
+                  <div className="flex items-center justify-between gap-1 mb-1">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <TrendingDown className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400 shrink-0" />
+                      <span className="text-[10px] font-black uppercase text-orange-900 dark:text-orange-300 truncate">
+                        Critical Physical Slippage &gt; 15%
+                      </span>
+                    </div>
+                    <span className="text-[8.5px] font-black text-rose-600 dark:text-rose-400 shrink-0">
+                      -{physicalSlippageVal.toFixed(1)}% Gap
+                    </span>
                   </div>
-                  <div className="flex-1 min-w-0 space-y-0.5">
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <span className="text-[9.5px] font-black uppercase text-orange-700 dark:text-orange-400 tracking-wider bg-orange-100 dark:bg-orange-950/60 px-1.5 py-0.5 rounded border border-orange-200 dark:border-orange-800">
-                        Critical Slippage &gt; 15% Alert
-                      </span>
-                      <span className="text-xs font-black text-rose-600 dark:text-rose-400">
-                        -{physicalSlippageVal.toFixed(1)}% Gap
-                      </span>
-                    </div>
-                    <p className="text-xs font-black text-slate-900 dark:text-slate-100">
-                      Physical Execution Lagging by {physicalSlippageVal.toFixed(1)}% vs {evmMetrics.planLabel || 'Plan'}
-                    </p>
-                    <div className="flex items-center gap-3 text-[11px] font-medium text-slate-600 dark:text-slate-300 pt-0.5">
-                      <span>Actual: <strong className="font-bold text-slate-900 dark:text-white">{project.physicalProgress.toFixed(1)}%</strong></span>
-                      <span className="text-slate-300 dark:text-slate-600">•</span>
-                      <span>S-Curve {evmMetrics.planLabel || 'Plan'}: <strong className="font-bold text-orange-600 dark:text-orange-400">{evmMetrics.plannedPct.toFixed(1)}%</strong></span>
-                    </div>
-                    <p className="text-[9px] text-slate-400 dark:text-slate-500 italic pt-0.5">
-                      S-curve tracking: Evaluated strictly between active {evmMetrics.planLabel || 'Plan'} and actual physical completion.
-                    </p>
+                  <p className="text-[10px] font-extrabold text-slate-900 dark:text-slate-100 leading-tight">
+                    Lagging by {physicalSlippageVal.toFixed(1)}% vs {evmMetrics.planLabel || 'Plan'}
+                  </p>
+                  <div className="flex items-center justify-between text-[9px] text-slate-600 dark:text-slate-300 mt-auto pt-0.5 border-t border-orange-200/50 dark:border-orange-900/40">
+                    <span>Actual: <strong className="font-bold text-slate-900 dark:text-white">{project.physicalProgress.toFixed(1)}%</strong></span>
+                    <span>Plan: <strong className="font-bold text-orange-600 dark:text-orange-400">{evmMetrics.plannedPct.toFixed(1)}%</strong></span>
                   </div>
                 </div>
               )}
+
             </div>
           </div>
         );
       })()}
 
       {/* Three prominent Master Gauges */}
-      <section className="grid grid-cols-3 gap-2 sm:gap-2.5 max-w-2xl mx-auto w-full">
+      <section className="grid grid-cols-3 gap-3 sm:gap-4 max-w-4xl sm:max-w-5xl mx-auto w-full my-2 sm:my-3">
         {/* Physical progress gauge */}
         <div className="relative group w-full">
           <CircularGauge 
@@ -3098,7 +3058,7 @@ export default function DashboardView({
           {/* Risk (G8) Custom Gauge Card */}
           <div 
             onClick={() => onSwitchTab && onSwitchTab('risks')}
-            className={`col-span-2 sm:col-span-2 md:col-span-2 flex flex-col justify-between bg-white dark:bg-slate-800 p-2 sm:p-2.5 rounded-xl border border-slate-100 dark:border-slate-700/50 shadow-2xs hover:shadow-xs transition-all duration-300 w-full cursor-pointer hover:border-blue-400 dark:hover:border-blue-500 relative overflow-hidden group min-h-[120px] sm:min-h-[130px] ${
+            className={`col-span-2 sm:col-span-2 md:col-span-2 flex flex-col justify-between bg-white dark:bg-slate-800 p-2.5 sm:p-3 rounded-xl border border-slate-100 dark:border-slate-700/50 shadow-2xs hover:shadow-xs transition-all duration-300 w-full cursor-pointer hover:border-blue-400 dark:hover:border-blue-500 relative overflow-hidden group min-h-[160px] sm:min-h-[185px] ${
               hasHighValueRisk 
                 ? 'animate-[pulse_1.8s_infinite] shadow-[0_0_12px_rgba(239,68,68,0.2)] border-rose-300 dark:border-rose-900/50 bg-rose-500/[0.02]' 
                 : ''
@@ -3158,7 +3118,7 @@ export default function DashboardView({
 
               {/* Right Column: Circular Gauge visual */}
               <div className="sm:col-span-4 flex flex-col items-center justify-center">
-                <div className="w-full max-w-[62px] sm:max-w-[70px] aspect-square relative flex items-center justify-center mx-auto">
+                <div className="w-full max-w-[95px] sm:max-w-[110px] aspect-square relative flex items-center justify-center mx-auto">
                   <CircularGauge 
                     value={kpiScores.risk} 
                     label="" 
