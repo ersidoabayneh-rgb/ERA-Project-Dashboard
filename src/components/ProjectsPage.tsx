@@ -102,6 +102,7 @@ export default function ProjectsPage({
 }: ProjectsPageProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDirectorate, setSelectedDirectorate] = useState('All');
+  const [selectedPmo, setSelectedPmo] = useState('All');
   const [selectedClassification, setSelectedClassification] = useState('All');
   const [selectedContractor, setSelectedContractor] = useState('All');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState('All');
@@ -126,6 +127,16 @@ export default function ProjectsPage({
     }
   });
   const [inspectProjectId, setInspectProjectId] = useState<string | null>(null);
+  const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
+
+  const activeFilterCount = useMemo(() => {
+    return (selectedClassification !== 'All' ? 1 : 0) +
+      (selectedContractor !== 'All' ? 1 : 0) +
+      (selectedDirectorate !== 'All' ? 1 : 0) +
+      (selectedPmo !== 'All' ? 1 : 0) +
+      (selectedStatusFilter !== 'All' ? 1 : 0) +
+      (similarityFilter.type !== 'none' ? 1 : 0);
+  }, [selectedClassification, selectedContractor, selectedDirectorate, selectedPmo, selectedStatusFilter, similarityFilter.type]);
 
   const handleSetViewMode = (mode: 'grid' | 'list') => {
     setViewMode(mode);
@@ -388,12 +399,55 @@ export default function ProjectsPage({
     return Array.from(set).sort();
   }, [projects]);
 
+  const availableDirectorates = useMemo(() => {
+    const set = new Set<string>();
+    projects.forEach(p => {
+      if (p.programDirectorate && p.programDirectorate.trim()) {
+        set.add(p.programDirectorate.trim());
+      }
+    });
+    if (set.size === 0) {
+      programDirectorates.forEach(pd => set.add(pd));
+    }
+    return Array.from(set).sort();
+  }, [projects, programDirectorates]);
+
+  const availablePmos = useMemo(() => {
+    const set = new Set<string>();
+    projects.forEach(p => {
+      if (p.pmo && p.pmo.trim()) {
+        set.add(p.pmo.trim());
+      }
+    });
+    if (set.size === 0) {
+      pmos.forEach(p => set.add(p));
+    }
+    return Array.from(set).sort();
+  }, [projects, pmos]);
+
   const filteredProjects = useMemo(() => {
     return projects
       .filter(isAccessible)
       .filter(p => {
-        if (selectedDirectorate === 'All') return true;
-        return (p.programDirectorate || 'Southern') === selectedDirectorate;
+        if (isDirAdmin) {
+          const matchesDir = (p.programDirectorate || 'Southern') === (currentUserObj.assignedDirectorate || 'Southern');
+          if (!matchesDir) return false;
+          if (selectedPmo === 'All') return true;
+          return (p.pmo || 'PMO 1') === selectedPmo;
+        } else if (isPmoAdmin) {
+          const matchesPmo = (p.pmo || 'PMO 1') === (currentUserObj.assignedPmo || 'PMO 1');
+          if (!matchesPmo) return false;
+          if (selectedDirectorate === 'All') return true;
+          return (p.programDirectorate || 'Southern') === selectedDirectorate;
+        } else {
+          if (selectedDirectorate !== 'All') {
+            if ((p.programDirectorate || 'Southern') !== selectedDirectorate) return false;
+          }
+          if (selectedPmo !== 'All') {
+            if ((p.pmo || 'PMO 1') !== selectedPmo) return false;
+          }
+          return true;
+        }
       })
       .filter(p => {
         if (selectedClassification === 'All') return true;
@@ -450,8 +504,11 @@ export default function ProjectsPage({
   }, [
     projects, 
     isMasterAdmin, 
+    isDirAdmin,
+    isPmoAdmin,
     currentUserObj, 
     selectedDirectorate, 
+    selectedPmo,
     selectedClassification, 
     selectedContractor, 
     selectedStatusFilter, 
@@ -1069,235 +1126,286 @@ export default function ProjectsPage({
         {/* Search & Sort & Directorate Panel */}
         {!hasNoProjects && (
           <div className="space-y-2">
-            {/* Primary Search Bar */}
-            <div className="flex flex-col lg:flex-row gap-2 items-stretch lg:items-center">
-              <div className="relative flex-1 group">
-                <Search className="absolute left-3.5 top-3 w-4 h-4 text-slate-400 dark:text-slate-500 group-focus-within:text-blue-500 transition" />
+            {/* Single-Row Primary Control Bar */}
+            <div className="flex items-center gap-2 w-full flex-nowrap overflow-x-auto pb-0.5 scrollbar-none">
+              {/* 1. Primary Search Bar (flex-1) */}
+              <div className="relative flex-1 min-w-[200px] group">
+                <Search className="absolute left-3.5 top-2.5 w-4 h-4 text-slate-400 dark:text-slate-500 group-focus-within:text-blue-500 transition" />
                 <input
                   ref={searchInputRef}
                   type="text"
-                  placeholder="Search projects by name, contractor, classification (e.g. DS-4), ID..."
+                  placeholder="Search projects by name, contractor, classification..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/80 rounded-2xl py-2.5 pl-11 pr-24 text-sm font-medium text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 shadow-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 dark:focus:border-blue-400 transition"
+                  className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/80 rounded-2xl py-2 pl-10 pr-8 text-xs sm:text-sm font-medium text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 shadow-xs outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 dark:focus:border-blue-400 transition"
                 />
-                <div className="absolute right-2.5 top-2 flex items-center gap-1.5">
-                  {searchQuery ? (
-                    <button
-                      onClick={() => {
-                        setSearchQuery('');
-                        searchInputRef.current?.focus();
-                      }}
-                      className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition cursor-pointer"
-                      title="Clear search query"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  ) : (
-                    <kbd className="hidden sm:inline-flex items-center gap-0.5 px-2 py-0.5 text-[10px] font-mono font-bold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-700/60 border border-slate-200 dark:border-slate-600 rounded-md select-none">
-                      /
-                    </kbd>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                {/* Classification Filter Dropdown */}
-                <div className="flex items-center gap-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/80 p-1.5 rounded-2xl shadow-sm shrink-0">
-                  <span className="text-[10px] font-extrabold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider pl-2 pr-0.5">
-                    Class:
-                  </span>
-                  <select
-                    value={selectedClassification}
-                    onChange={(e) => setSelectedClassification(e.target.value)}
-                    className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-xs font-bold outline-none text-slate-700 dark:text-zinc-200 focus:border-indigo-500 transition cursor-pointer"
-                  >
-                    <option value="All">🛣️ All Classifications</option>
-                    {availableClassifications.map((cls) => (
-                      <option key={`filter-cls-${cls}`} value={cls}>
-                        {cls}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Contractor Filter Dropdown */}
-                <div className="flex items-center gap-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/80 p-1.5 rounded-2xl shadow-sm shrink-0">
-                  <span className="text-[10px] font-extrabold text-amber-600 dark:text-amber-400 uppercase tracking-wider pl-2 pr-0.5">
-                    Contractor:
-                  </span>
-                  <select
-                    value={selectedContractor}
-                    onChange={(e) => setSelectedContractor(e.target.value)}
-                    className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-xs font-bold outline-none text-slate-700 dark:text-zinc-200 focus:border-amber-500 transition cursor-pointer max-w-[170px] truncate"
-                  >
-                    <option value="All">🚜 All Contractors</option>
-                    {availableContractors.map((cName) => (
-                      <option key={`filter-contractor-${cName}`} value={cName}>
-                        {cName}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Program Directorate selector */}
-                {isDirAdmin ? (
-                  <div className="flex items-center gap-2 bg-indigo-50/90 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 px-3 py-1.5 rounded-2xl shadow-sm shrink-0">
-                    <span className="text-[10px] font-extrabold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
-                      Directorate:
-                    </span>
-                    <span className="text-xs font-black text-indigo-900 dark:text-indigo-200">
-                      🏢 {currentUserObj.assignedDirectorate || 'Southern'}
-                    </span>
-                  </div>
-                ) : isPmoAdmin ? (
-                  <div className="flex items-center gap-2 bg-blue-50/90 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/60 px-3 py-1.5 rounded-2xl shadow-sm shrink-0">
-                    <span className="text-[10px] font-extrabold text-blue-600 dark:text-blue-400 uppercase tracking-wider">
-                      PMO:
-                    </span>
-                    <span className="text-xs font-black text-blue-900 dark:text-blue-200">
-                      📁 {currentUserObj.assignedPmo || 'PMO 1'}
-                    </span>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/80 p-1.5 rounded-2xl shadow-sm shrink-0">
-                    <span className="text-[10px] font-extrabold text-indigo-500 uppercase tracking-wider pl-2 pr-0.5">
-                      Directorate:
-                    </span>
-                    <select
-                      value={selectedDirectorate}
-                      onChange={(e) => setSelectedDirectorate(e.target.value)}
-                      className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-xs font-bold outline-none text-slate-700 dark:text-zinc-200 focus:border-indigo-500 transition cursor-pointer"
-                    >
-                      <option value="All">🌐 All Directorates</option>
-                      {programDirectorates.map((pd, pdIdx) => (
-                        <option key={`proj-dir-filter-${pd}-${pdIdx}`} value={pd}>🏢 {pd}</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
-                {/* Quick Portfolio / Archive Toggle Pills */}
-                <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-850 p-1 rounded-2xl border border-slate-200 dark:border-slate-700/60 shrink-0">
+                {searchQuery && (
                   <button
-                    type="button"
-                    onClick={() => setSelectedStatusFilter('All')}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 cursor-pointer ${
-                      selectedStatusFilter === 'All'
-                        ? 'bg-white dark:bg-slate-750 text-blue-600 dark:text-blue-400 shadow-xs'
-                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                    }`}
-                  >
-                    <span>💼 Active</span>
-                    <span className="bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 text-[10px] px-1.5 py-0.2 rounded-md font-bold">
-                      {activeContractsCount}
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setSelectedStatusFilter('Archived')}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 cursor-pointer ${
-                      selectedStatusFilter === 'Archived'
-                        ? 'bg-white dark:bg-slate-750 text-slate-900 dark:text-white shadow-xs'
-                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                    }`}
-                  >
-                    <span>📦 Archived</span>
-                    <span className="bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-[10px] px-1.5 py-0.2 rounded-md font-bold">
-                      {archivedContractsCount}
-                    </span>
-                  </button>
-                </div>
-
-                {/* Status Filter selector */}
-                <div className="flex items-center gap-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/80 p-1.5 rounded-2xl shadow-sm shrink-0">
-                  <span className="text-[10px] font-extrabold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider pl-2 pr-0.5">
-                    Status:
-                  </span>
-                  <select
-                    value={selectedStatusFilter}
-                    onChange={(e) => setSelectedStatusFilter(e.target.value)}
-                    className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-xs font-bold outline-none text-slate-700 dark:text-zinc-200 focus:border-emerald-500 transition cursor-pointer"
-                  >
-                    <option value="All">🌐 Active Portfolio</option>
-                    <option value="In Progress">🟢 In Progress</option>
-                    <option value="Completed">✅ Completed</option>
-                    <option value="Completed and Closed">🔒 Completed & Closed</option>
-                    <option value="Suspended">⏸️ Suspended</option>
-                    <option value="Terminated">🛑 Terminated</option>
-                    <option value="Terminated and Closed">🔒 Terminated & Closed</option>
-                    <option value="Archived">📦 Archived</option>
-                    <option value="All_With_Archived">📁 All (Incl. Archived)</option>
-                  </select>
-                </div>
-
-                {/* Sort Panel */}
-                <div className="flex items-center gap-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/80 p-1.5 rounded-2xl shadow-sm shrink-0">
-                  <span className="text-[10px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-wider pl-2 pr-0.5">
-                    Sort:
-                  </span>
-                  <select
-                    value={sortBy}
-                    onChange={(e) => {
-                      const val = e.target.value as any;
-                      setSortBy(val);
-                      if (val === 'bondWarnings' || val === 'progress' || val === 'budget') {
-                        setSortOrder('desc');
-                      } else {
-                        setSortOrder('asc');
-                      }
+                    onClick={() => {
+                      setSearchQuery('');
+                      searchInputRef.current?.focus();
                     }}
-                    className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-xs font-bold outline-none text-slate-700 dark:text-zinc-200 focus:border-blue-500 transition cursor-pointer"
+                    className="absolute right-2.5 top-2 p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition cursor-pointer"
+                    title="Clear search query"
                   >
-                    <option value="name">🔤 Name</option>
-                    <option value="id">🆔 ID</option>
-                    <option value="directorate">🏢 Directorate</option>
-                    <option value="progress">📊 Progress</option>
-                    <option value="budget">💰 Budget</option>
-                    <option value="length">🛣️ Length</option>
-                    <option value="bondWarnings">⚠️ Bond Warning</option>
-                  </select>
-
-                  <button
-                    onClick={() => setSortOrder(o => o === 'asc' ? 'desc' : 'asc')}
-                    className="px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100 dark:bg-slate-900 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-black text-blue-600 dark:text-blue-400 transition flex items-center gap-1 shrink-0 cursor-pointer"
-                    title="Toggle sort direction asc / desc"
-                  >
-                    {sortOrder === 'asc' ? '▲' : '▼'}
+                    <X className="w-3.5 h-3.5" />
                   </button>
-                </div>
-
-                {/* View Mode Switcher: Grid vs List */}
-                <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-850 p-1 rounded-2xl border border-slate-200 dark:border-slate-700/60 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => handleSetViewMode('grid')}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 cursor-pointer ${
-                      viewMode === 'grid'
-                        ? 'bg-white dark:bg-slate-750 text-blue-600 dark:text-blue-400 shadow-xs'
-                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                    }`}
-                    title="Switch to Grid View (Card Overview)"
-                  >
-                    <LayoutGrid className="w-3.5 h-3.5" />
-                    <span>Grid</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSetViewMode('list')}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 cursor-pointer ${
-                      viewMode === 'list'
-                        ? 'bg-white dark:bg-slate-750 text-blue-600 dark:text-blue-400 shadow-xs'
-                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                    }`}
-                    title="Switch to List View (Compact Interactive Datatable)"
-                  >
-                    <List className="w-3.5 h-3.5" />
-                    <span>List</span>
-                  </button>
-                </div>
+                )}
               </div>
+
+              {/* 2. Unified Filter Button with Popover */}
+              <div className="relative shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setIsFilterMenuOpen(!isFilterMenuOpen)}
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-2xl border text-xs font-bold transition shadow-xs cursor-pointer whitespace-nowrap ${
+                    activeFilterCount > 0
+                      ? 'bg-blue-600 text-white border-blue-600 dark:bg-blue-600 dark:border-blue-500 shadow-blue-500/20'
+                      : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700/80 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-750'
+                  }`}
+                >
+                  <Sliders className="w-3.5 h-3.5" />
+                  <span>Filter</span>
+                  {activeFilterCount > 0 ? (
+                    <span className="bg-white text-blue-700 font-black text-[10px] px-1.5 py-0.2 rounded-full leading-none shadow-xs">
+                      {activeFilterCount}
+                    </span>
+                  ) : (
+                    <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isFilterMenuOpen ? 'rotate-180' : ''}`} />
+                  )}
+                </button>
+
+                {/* Popover Dropdown Panel */}
+                <AnimatePresence>
+                  {isFilterMenuOpen && (
+                    <>
+                      {/* Backdrop to dismiss menu */}
+                      <div 
+                        className="fixed inset-0 z-30" 
+                        onClick={() => setIsFilterMenuOpen(false)} 
+                      />
+                      
+                      <motion.div 
+                        initial={{ opacity: 0, scale: 0.95, y: -4 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.95, y: -4 }}
+                        transition={{ duration: 0.15 }}
+                        className="absolute right-0 top-full mt-2 z-40 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xl p-4 w-[290px] sm:w-[330px] space-y-3.5 text-xs"
+                      >
+                        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700/60 pb-2">
+                          <span className="font-extrabold text-slate-800 dark:text-slate-100 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                            <Sliders className="w-3.5 h-3.5 text-blue-500" /> Filter Contracts
+                          </span>
+                          {activeFilterCount > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedClassification('All');
+                                setSelectedContractor('All');
+                                setSelectedDirectorate('All');
+                                setSelectedPmo('All');
+                                setSelectedStatusFilter('All');
+                                setSimilarityFilter({ type: 'none', value: null });
+                              }}
+                              className="text-[10px] font-bold text-rose-600 dark:text-rose-400 hover:underline cursor-pointer"
+                            >
+                              Reset All ({activeFilterCount})
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Classification */}
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-extrabold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider block">
+                            Road Classification
+                          </label>
+                          <select
+                            value={selectedClassification}
+                            onChange={(e) => setSelectedClassification(e.target.value)}
+                            className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-xs font-bold outline-none text-slate-800 dark:text-zinc-100 cursor-pointer"
+                          >
+                            <option value="All">🛣️ All Classifications</option>
+                            {availableClassifications.map((cls) => (
+                              <option key={`filter-cls-${cls}`} value={cls}>{cls}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Contractor */}
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-extrabold text-amber-600 dark:text-amber-400 uppercase tracking-wider block">
+                            Contractor
+                          </label>
+                          <select
+                            value={selectedContractor}
+                            onChange={(e) => setSelectedContractor(e.target.value)}
+                            className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-xs font-bold outline-none text-slate-800 dark:text-zinc-100 truncate cursor-pointer"
+                          >
+                            <option value="All">🚜 All Contractors</option>
+                            {availableContractors.map((cName) => (
+                              <option key={`filter-contractor-${cName}`} value={cName}>{cName}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Directorate Selector */}
+                        {!isDirAdmin && (
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-extrabold text-indigo-500 uppercase tracking-wider block">
+                              Program Directorate
+                            </label>
+                            <select
+                              value={selectedDirectorate}
+                              onChange={(e) => setSelectedDirectorate(e.target.value)}
+                              className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-xs font-bold outline-none text-slate-800 dark:text-zinc-100 cursor-pointer"
+                            >
+                              <option value="All">🌐 All Directorates</option>
+                              {availableDirectorates.map((pd, pdIdx) => (
+                                <option key={`proj-dir-filter-${pd}-${pdIdx}`} value={pd}>🏢 {pd}</option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+
+                        {/* PMO Selector */}
+                        {!isPmoAdmin && (
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-extrabold text-blue-600 dark:text-blue-400 uppercase tracking-wider block">
+                              PMO {isDirAdmin ? `(Assigned Directorate: ${currentUserObj.assignedDirectorate || 'Southern'})` : ''}
+                            </label>
+                            <select
+                              value={selectedPmo}
+                              onChange={(e) => setSelectedPmo(e.target.value)}
+                              className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-xs font-bold outline-none text-slate-800 dark:text-zinc-100 cursor-pointer"
+                            >
+                              <option value="All">📁 All PMOs</option>
+                              {availablePmos.map((pmo, pmoIdx) => (
+                                <option key={`proj-pmo-filter-${pmo}-${pmoIdx}`} value={pmo}>{pmo}</option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+
+                        {/* Lifecycle Status */}
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-extrabold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider block">
+                            Lifecycle Status
+                          </label>
+                          <select
+                            value={selectedStatusFilter}
+                            onChange={(e) => setSelectedStatusFilter(e.target.value)}
+                            className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-xs font-bold outline-none text-slate-800 dark:text-zinc-100 cursor-pointer"
+                          >
+                            <option value="All">🌐 Active Portfolio</option>
+                            <option value="In Progress">🟢 In Progress</option>
+                            <option value="Completed">✅ Completed</option>
+                            <option value="Completed and Closed">🔒 Completed & Closed</option>
+                            <option value="Suspended">⏸️ Suspended</option>
+                            <option value="Terminated">🛑 Terminated</option>
+                            <option value="Terminated and Closed">🔒 Terminated & Closed</option>
+                            <option value="Archived">📦 Archived</option>
+                            <option value="All_With_Archived">📁 All (Incl. Archived)</option>
+                          </select>
+                        </div>
+
+                        {/* Active / Archived Quick Switcher */}
+                        <div className="pt-2 border-t border-slate-100 dark:border-slate-700/60 flex items-center justify-between gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedStatusFilter('All')}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer ${
+                              selectedStatusFilter === 'All'
+                                ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 font-extrabold'
+                                : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
+                            }`}
+                          >
+                            <span>💼 Active</span>
+                            <span className="text-[9px] font-black">({activeContractsCount})</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setSelectedStatusFilter('Archived')}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer ${
+                              selectedStatusFilter === 'Archived'
+                                ? 'bg-slate-200 text-slate-900 dark:bg-slate-600 dark:text-white font-extrabold'
+                                : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
+                            }`}
+                          >
+                            <span>📦 Archived</span>
+                            <span className="text-[9px] font-black">({archivedContractsCount})</span>
+                          </button>
+                        </div>
+
+                      </motion.div>
+                    </>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* 3. Sort Dropdown (shrink-0) */}
+              <div className="flex items-center gap-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/80 p-1 rounded-2xl shadow-xs shrink-0">
+                <select
+                  value={sortBy}
+                  onChange={(e) => {
+                    const val = e.target.value as any;
+                    setSortBy(val);
+                    if (val === 'bondWarnings' || val === 'progress' || val === 'budget') {
+                      setSortOrder('desc');
+                    } else {
+                      setSortOrder('asc');
+                    }
+                  }}
+                  className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-1 text-xs font-bold outline-none text-slate-700 dark:text-zinc-200 focus:border-blue-500 transition cursor-pointer"
+                >
+                  <option value="name">🔤 Name</option>
+                  <option value="id">🆔 ID</option>
+                  <option value="directorate">🏢 Directorate</option>
+                  <option value="progress">📊 Progress</option>
+                  <option value="budget">💰 Budget</option>
+                  <option value="length">🛣️ Length</option>
+                  <option value="bondWarnings">⚠️ Bond Warning</option>
+                </select>
+
+                <button
+                  onClick={() => setSortOrder(o => o === 'asc' ? 'desc' : 'asc')}
+                  className="px-2 py-1 bg-slate-50 hover:bg-slate-100 dark:bg-slate-900 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-black text-blue-600 dark:text-blue-400 transition flex items-center justify-center shrink-0 cursor-pointer"
+                  title="Toggle sort direction asc / desc"
+                >
+                  {sortOrder === 'asc' ? '▲' : '▼'}
+                </button>
+              </div>
+
+              {/* 4. View Mode Switcher: Grid vs List (shrink-0) */}
+              <div className="flex items-center gap-0.5 bg-slate-100 dark:bg-slate-850 p-1 rounded-2xl border border-slate-200 dark:border-slate-700/60 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => handleSetViewMode('grid')}
+                  className={`px-2.5 py-1 rounded-xl text-xs font-extrabold transition flex items-center gap-1 cursor-pointer ${
+                    viewMode === 'grid'
+                      ? 'bg-white dark:bg-slate-750 text-blue-600 dark:text-blue-400 shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                  title="Switch to Grid View (Card Overview)"
+                >
+                  <LayoutGrid className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Grid</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSetViewMode('list')}
+                  className={`px-2.5 py-1 rounded-xl text-xs font-extrabold transition flex items-center gap-1 cursor-pointer ${
+                    viewMode === 'list'
+                      ? 'bg-white dark:bg-slate-750 text-blue-600 dark:text-blue-400 shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                  title="Switch to List View (Compact Interactive Datatable)"
+                >
+                  <List className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">List</span>
+                </button>
+              </div>
+
             </div>
 
             {/* Filter Status & Count summary bar */}
@@ -1518,12 +1626,34 @@ export default function ProjectsPage({
                               >
                                 {p.classification}
                               </button>
-                              <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-md border bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border-emerald-100 dark:border-emerald-900/30">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedDirectorate(p.programDirectorate || 'Southern');
+                                }}
+                                className={`text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-md border transition flex items-center gap-0.5 cursor-pointer ${
+                                  selectedDirectorate === (p.programDirectorate || 'Southern')
+                                    ? 'bg-emerald-600 text-white border-emerald-600'
+                                    : 'bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border-emerald-100 dark:border-emerald-900/30'
+                                }`}
+                                title="Click to filter portfolio by this Directorate"
+                              >
                                 🏢 {p.programDirectorate || 'Southern'}
-                              </span>
-                              <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-md border bg-purple-50 dark:bg-purple-950/30 text-purple-600 dark:text-purple-400 border-purple-100 dark:border-purple-900/30">
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedPmo(p.pmo || 'PMO 1');
+                                }}
+                                className={`text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-md border transition flex items-center gap-0.5 cursor-pointer ${
+                                  selectedPmo === (p.pmo || 'PMO 1')
+                                    ? 'bg-purple-600 text-white border-purple-600'
+                                    : 'bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/30 text-purple-600 dark:text-purple-400 border-purple-100 dark:border-purple-900/30'
+                                }`}
+                                title="Click to filter portfolio by this PMO"
+                              >
                                 📦 {p.pmo || 'PMO 1'}
-                              </span>
+                              </button>
                               {isRecentlyUpdated(p.lastModifiedAt) && (
                                 <span 
                                   className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md border bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-400/50 flex items-center gap-1 shadow-2xs animate-pulse"
@@ -2015,14 +2145,30 @@ export default function ProjectsPage({
                               )}
                             </td>
 
-                            {/* Directorate / PMO */}
-                            <td className="py-2 px-3 align-middle">
-                              <div className="text-[11px] font-bold text-slate-800 dark:text-slate-200">
+                            {/* Directorate / PMO clickable to filter */}
+                            <td className="py-2 px-3 align-middle" onClick={(e) => e.stopPropagation()}>
+                              <button
+                                onClick={() => setSelectedDirectorate(p.programDirectorate || 'Southern')}
+                                className={`text-[11px] font-bold text-left block hover:text-blue-600 dark:hover:text-blue-400 transition cursor-pointer ${
+                                  selectedDirectorate === (p.programDirectorate || 'Southern')
+                                    ? 'text-emerald-600 dark:text-emerald-400 underline font-black'
+                                    : 'text-slate-800 dark:text-slate-200'
+                                }`}
+                                title="Click to filter portfolio by this Directorate"
+                              >
                                 🏢 {p.programDirectorate || 'Southern'}
-                              </div>
-                              <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                              </button>
+                              <button
+                                onClick={() => setSelectedPmo(p.pmo || 'PMO 1')}
+                                className={`text-[10px] text-left block hover:text-blue-600 dark:hover:text-blue-400 transition cursor-pointer mt-0.5 ${
+                                  selectedPmo === (p.pmo || 'PMO 1')
+                                    ? 'text-purple-600 dark:text-purple-400 underline font-black'
+                                    : 'text-slate-500 dark:text-slate-400'
+                                }`}
+                                title="Click to filter portfolio by this PMO"
+                              >
                                 📁 {p.pmo || 'PMO 1'}
-                              </div>
+                              </button>
                             </td>
 
                             {/* Contractor & Client */}
