@@ -4089,42 +4089,42 @@ let isBatchSyncRunning = false;
             )}
 
             {/* Contract Specifications Cards deck */}
-            <section className="bg-white dark:bg-slate-850 p-4 border border-slate-100 dark:border-slate-800 shadow-sm rounded-3xl grid grid-cols-2 lg:grid-cols-5 gap-4 text-xs font-semibold text-slate-700 dark:text-slate-300">
-              <div className="p-2 border-r border-slate-100 dark:border-slate-800/80">
-                <span className="text-[10px] text-slate-400 font-bold uppercase block tracking-wider mb-0.5">Original Contract Amount</span>
-                <span className="text-sm font-black font-mono text-slate-800 dark:text-white">
+            <section className="bg-white dark:bg-slate-850 py-2 px-4 border border-slate-100 dark:border-slate-800 shadow-sm rounded-2xl grid grid-cols-2 lg:grid-cols-5 gap-3 text-xs font-semibold text-slate-700 dark:text-slate-300">
+              <div className="py-1 px-1 border-r border-slate-100 dark:border-slate-800/80 flex flex-col justify-center">
+                <span className="text-[9px] text-slate-400 font-extrabold uppercase block tracking-wider mb-0.5">Original Contract Amount</span>
+                <span className="text-xs sm:text-sm font-black font-mono text-slate-800 dark:text-white leading-none">
                   <AnimatedCounter value={currentProject.origAmount * 1_000_000} prefix="Br. " />
                 </span>
               </div>
-              <div className="p-2 border-r border-slate-150 dark:border-slate-800/80">
-                <span className="text-[10px] text-slate-400 font-bold uppercase block tracking-wider mb-0.5">Revised Contract Amount</span>
-                <span className="text-sm font-black font-mono text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/20 px-1.5 py-0.5 rounded">
+              <div className="py-1 px-1 border-r border-slate-150 dark:border-slate-800/80 flex flex-col justify-center">
+                <span className="text-[9px] text-slate-400 font-extrabold uppercase block tracking-wider mb-0.5">Revised Contract Amount</span>
+                <span className="text-xs sm:text-sm font-black font-mono text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/20 px-1.5 py-0.5 rounded leading-none w-fit">
                   <AnimatedCounter value={(currentProject.origAmount * 1_000_000) + (currentProject.variation || 0)} prefix="Br. " />
                 </span>
               </div>
-              <div className="p-2 border-r border-slate-150 dark:border-slate-800/80">
-                <span className="text-[10px] text-slate-400 font-bold uppercase block tracking-wider mb-0.5">Commencement Date</span>
-                <span className="text-sm font-black text-amber-600 dark:text-amber-500">
+              <div className="py-1 px-1 border-r border-slate-150 dark:border-slate-800/80 flex flex-col justify-center">
+                <span className="text-[9px] text-slate-400 font-extrabold uppercase block tracking-wider mb-0.5">Commencement Date</span>
+                <span className="text-xs sm:text-sm font-black text-amber-600 dark:text-amber-500 leading-none">
                   {formatDateStr(currentProject.startDate)}
                 </span>
-                <span className="text-[9px] text-slate-400 block mt-0.5 font-normal">
+                <span className="text-[8px] text-slate-400 block mt-0.5 font-normal leading-tight">
                   Project official start date
                 </span>
               </div>
-              <div className="p-2 border-r border-slate-150 dark:border-slate-800/80">
-                <span className="text-[10px] text-slate-400 font-bold uppercase block tracking-wider mb-0.5">Revised Completion Date</span>
-                <span className="text-sm font-black text-rose-500">
+              <div className="py-1 px-1 border-r border-slate-150 dark:border-slate-800/80 flex flex-col justify-center">
+                <span className="text-[9px] text-slate-400 font-extrabold uppercase block tracking-wider mb-0.5">Revised Completion Date</span>
+                <span className="text-xs sm:text-sm font-black text-rose-500 leading-none">
                   {getRevisedCompletionDateStr(currentProject.startDate, currentProject.origDays, currentProject.eotDays, currentProject.interimEotDays)}
                 </span>
-                <span className="text-[9px] text-slate-400 block mt-0.5 font-normal">
+                <span className="text-[8px] text-slate-400 block mt-0.5 font-normal leading-tight">
                   Commencement + {currentProject.origDays || 0}d Orig + {currentProject.eotDays || 0}d Approved EOT + {currentProject.interimEotDays || 0}d Interim EOT
                 </span>
               </div>
-              <div className="p-2">
+              <div className="py-1 px-1 flex flex-col justify-center">
                 <div className="flex items-center gap-1.5 mb-0.5">
-                  <span className="text-[10px] text-slate-400 font-bold uppercase block tracking-wider">Project Delivery Method</span>
+                  <span className="text-[9px] text-slate-400 font-extrabold uppercase block tracking-wider">Project Delivery Method</span>
                 </div>
-                <span className="text-sm font-extrabold uppercase text-blue-600 dark:text-blue-400">
+                <span className="text-xs sm:text-sm font-black uppercase text-blue-600 dark:text-blue-400 leading-none">
                   {currentProject.contractType === 'DB' ? 'Design-Build (DB)' : 'Design-Bid-Build (DBB)'}
                 </span>
               </div>
