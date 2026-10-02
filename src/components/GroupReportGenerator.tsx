@@ -8360,6 +8360,8 @@ export default function GroupReportGenerator({
     }
 
     // --- EXECUTIVE REVIEW & SIGN-OFF SIGNATURE BLOCKS ---
+    // The GroupReportGenerator's drawUniversalSignatureBlock only takes (doc, startY, orientation)
+    // and uses the state's currentUserObj implicitly.
     y = drawUniversalSignatureBlock(doc, y, 'l');
 
     // Write page numbers on all pages

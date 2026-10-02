@@ -167,6 +167,8 @@ export interface ValidatedEfyInputProps {
 
 export function ValidatedEfyInput({
   value,
+  onChange,
+  onBlur,
   project,
   baseClassName = 'w-24 border rounded-lg text-center font-mono py-1.5 text-xs font-semibold outline-none transition',
   normalBorderClass = 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 focus:ring-1 focus:ring-blue-500',
@@ -176,12 +178,18 @@ export function ValidatedEfyInput({
   disabled,
   ...rest
 }: ValidatedEfyInputProps) {
-  const validation = validateEfyPlanValue(value, project);
+  const [localValue, setLocalValue] = useState(value.toString());
+  
+  useEffect(() => {
+    setLocalValue(value.toString());
+  }, [value]);
+
+  const validation = validateEfyPlanValue(localValue, project);
 
   return (
     <div className={`relative group inline-flex items-center justify-center ${containerClassName}`}>
       <input
-        value={value}
+        value={localValue}
         disabled={disabled}
         title={disabled ? "🔒 Saved baseline plan is locked. Master Admin or CPM Admin access is required to edit." : (validation.isExceeded ? validation.message : (rest.title || undefined))}
         aria-invalid={validation.isExceeded}
@@ -193,6 +201,11 @@ export function ValidatedEfyInput({
                 ? '!border-red-500 !border-2 !ring-2 !ring-red-500/60 !bg-red-50/90 dark:!bg-red-950/50 !text-red-700 dark:!text-red-300 font-bold focus:!border-red-600 focus:!ring-red-600 shadow-xs'
                 : normalBorderClass)
         } ${className}`}
+        onChange={(e) => setLocalValue(e.target.value)}
+        onBlur={(e) => {
+          if (onChange) onChange(e);
+          if (onBlur) onBlur(e);
+        }}
         {...rest}
       />
       {validation.isExceeded && (
@@ -625,25 +638,26 @@ export default function ProgressPlanView({ project, currentUserObj, onUpdateProg
   };
 
   const handleSaveAndApplyEfyPlan = () => {
+    if (currentUserObj?.role !== 'master_admin' && currentUserObj?.role !== 'directorate_admin') {
+      showToast('Only Admins can edit the EFY plan after saving.', 'success');
+      return;
+    }
+
+    // Validate Actuals against total length
+    if (actualSums.efy > (project.lengthKm || 0)) {
+      showToast('Actual EFY accomplishment cannot exceed total project length.', 'success');
+      return;
+    }
+
     const targetEfyStr = planningEfyYear.trim() || labels.efyLabel || '2019';
     const numericYear = parseInt(targetEfyStr, 10);
     const isActiveEfy = (labels.efyLabel || '').trim() === targetEfyStr;
 
     const updatedPlan: ProgressPlan = {
-      contractor: {
-        ...plan.contractor,
-        month: isActiveEfy ? (contractorMonths[1] || contractorMonths[0] || plan.contractor.month) : plan.contractor.month,
-        quarter: isActiveEfy ? contractorSums.q1 : plan.contractor.quarter,
-        efy: isActiveEfy ? contractorSums.efy : plan.contractor.efy
-      },
-      era: {
-        ...plan.era,
-        month: isActiveEfy ? (eraMonths[1] || eraMonths[0] || plan.era.month) : plan.era.month,
-        quarter: isActiveEfy ? eraSums.q1 : plan.era.quarter,
-        efy: isActiveEfy ? eraSums.efy : plan.era.efy
-      },
+      ...plan,
       actual: {
-        ...plan.actual
+        ...plan.actual,
+        efy: actualSums.efy
       }
     };
 
@@ -1483,6 +1497,38 @@ export default function ProgressPlanView({ project, currentUserObj, onUpdateProg
       doc.text(totStr, totX + colTotalW / 2, curY + 14, { align: 'center' });
 
       curY += dataRowH;
+    });
+
+    // Add Quarterly Summaries
+    curY += 20;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.text("AGGREGATED QUARTERLY PROGRESS:", startX, curY);
+    curY += 15;
+    
+    const quarters = [
+      { name: "Quarter 1", era: eraSums.q1, ctr: contractorSums.q1, act: actualSums.q1 },
+      { name: "Quarter 2", era: eraSums.q2, ctr: contractorSums.q2, act: actualSums.q2 },
+      { name: "Quarter 3", era: eraSums.q3, ctr: contractorSums.q3, act: actualSums.q3 },
+      { name: "Quarter 4", era: eraSums.q4, ctr: contractorSums.q4, act: actualSums.q4 }
+    ];
+
+    doc.setFontSize(7.5);
+    quarters.forEach((q) => {
+      doc.text(`${q.name}: ERA Plan: ${q.era.toFixed(2)} Km | Ctr Plan: ${q.ctr.toFixed(2)} Km | Actual: ${q.act.toFixed(2)} Km`, startX, curY);
+      curY += 12;
+    });
+
+    curY += 10;
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Total EFY ${planningEfyYear} | ERA Total: ${eraSums.efy.toFixed(2)} Km | Ctr Total: ${contractorSums.efy.toFixed(2)} Km | Actual Total: ${actualSums.efy.toFixed(2)} Km`, startX, curY);
+
+    curY += 20;
+    drawUniversalSignatureBlock(doc, currentUserObj, {
+      y: curY + 20,
+      margin: startX,
+      contentWidth: pageWidth - 80,
+      orientation: 'l'
     });
 
     doc.save(`ERA_EFY_${planningEfyYear}_Plan_${project.name.replace(/\s+/g, '_')}.pdf`);
