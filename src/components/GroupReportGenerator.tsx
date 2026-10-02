@@ -238,6 +238,125 @@ export default function GroupReportGenerator({
 
   const canAccessGroupReport = !isConsultantOrContractor;
 
+  // Universal Signature / Sign-Off Block builder supporting dynamic credentials and orientations
+  const drawUniversalSignatureBlock = (doc: any, startY: number, orientation: 'p' | 'l' = 'p') => {
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+
+    // Check if drawing fits on the page
+    const requiredHeight = 70;
+    let y = startY;
+    if (y + requiredHeight > pageHeight - 40) {
+      doc.addPage();
+      y = 60;
+    }
+
+    y += 15;
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(1);
+    doc.line(40, y, pageWidth - 40, y);
+
+    y += 12;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(100, 116, 139);
+    doc.text("EXECUTIVE REVIEW & SIGN-OFF", 40, y);
+
+    y += 35;
+
+    // Determine roles and signature texts dynamically based on user credentials
+    let col1Text = "Printed By: Administrator";
+    let col2Text = "Verified By: Program Director";
+    let col3Text = "Approved By: CPM DDG";
+
+    if (currentUserObj?.role === 'pmo_admin') {
+      col1Text = "Printed By: PMO Admin";
+      col2Text = "Verified By: Project Manager";
+      col3Text = "Approved By: Program Director";
+    } else if (currentUserObj?.role === 'directorate_admin') {
+      col1Text = "Printed By: Directorate Admin";
+      col2Text = "Verified By: Program Director";
+      col3Text = "Approved By: CPM DDG";
+    } else {
+      const friendlyRole = currentUserObj?.role === 'master_admin' ? 'Master Admin' : (currentUserObj?.role ? String(currentUserObj.role).replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase()) : 'System Admin');
+      col1Text = `Printed By: ${friendlyRole}`;
+      col2Text = "Verified By: Program Director";
+      col3Text = "Approved By: CPM DDG";
+    }
+
+    doc.setDrawColor(148, 163, 184);
+    doc.setLineWidth(0.75);
+
+    if (orientation === 'l') {
+      // 3 wide columns for landscape
+      // Col 1: Printed By
+      doc.line(40, y, 220, y);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7);
+      doc.setTextColor(51, 65, 85);
+      doc.text(col1Text, 40, y + 10);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(5.5);
+      doc.setTextColor(148, 163, 184);
+      doc.text("Signature / Timestamp", 40, y + 18);
+
+      // Col 2: Verified By
+      doc.line(330.94, y, 510.94, y);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7);
+      doc.setTextColor(51, 65, 85);
+      doc.text(col2Text, 330.94, y + 10);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(5.5);
+      doc.setTextColor(148, 163, 184);
+      doc.text("Signature / Timestamp", 330.94, y + 18);
+
+      // Col 3: Approved By
+      doc.line(621.89, y, 801.89, y);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7);
+      doc.setTextColor(51, 65, 85);
+      doc.text(col3Text, 621.89, y + 10);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(5.5);
+      doc.setTextColor(148, 163, 184);
+      doc.text("Signature / Signature seal", 621.89, y + 18);
+    } else {
+      // 3 slightly tighter columns for portrait
+      doc.line(40, y, 180, y);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.5);
+      doc.setTextColor(51, 65, 85);
+      doc.text(col1Text, 40, y + 10);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(5);
+      doc.setTextColor(148, 163, 184);
+      doc.text("Signature / Timestamp", 40, y + 17);
+
+      doc.line(227.64, y, 367.64, y);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.5);
+      doc.setTextColor(51, 65, 85);
+      doc.text(col2Text, 227.64, y + 10);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(5);
+      doc.setTextColor(148, 163, 184);
+      doc.text("Signature / Timestamp", 227.64, y + 17);
+
+      doc.line(415.28, y, 555.28, y);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.5);
+      doc.setTextColor(51, 65, 85);
+      doc.text(col3Text, 415.28, y + 10);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(5);
+      doc.setTextColor(148, 163, 184);
+      doc.text("Signature / Signature seal", 415.28, y + 17);
+    }
+    
+    return y + requiredHeight;
+  };
+
   if (!canAccessGroupReport) {
     return null;
   }
@@ -3585,27 +3704,7 @@ export default function GroupReportGenerator({
       drawHeaderFooter();
     }
 
-    curY += 25;
-    doc.setDrawColor(226, 232, 240);
-    doc.line(40, curY, pageWidth - 40, curY);
-    curY += 15;
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    doc.setTextColor(100, 116, 139);
-    doc.text("EXECUTIVE REVIEW & SIGN-OFF", 40, curY);
-
-    curY += 35;
-    // Sign line 1
-    doc.setDrawColor(148, 163, 184);
-    doc.line(40, curY, 220, curY);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
-    doc.text("Prepared By: CMS System Officer", 40, curY + 12);
-
-    // Sign line 2
-    doc.line(pageWidth - 220, curY, pageWidth - 40, curY);
-    doc.text("Approved By: Program Director / CPM DDG", pageWidth - 220, curY + 12);
+    curY = drawUniversalSignatureBlock(doc, curY, 'p');
 
     // Ensure page counts are correct in footer for all pages
     for (let j = 1; j <= pageCount; j++) {
@@ -4521,27 +4620,7 @@ export default function GroupReportGenerator({
       drawHeaderFooter();
     }
 
-    curY += 25;
-    doc.setDrawColor(226, 232, 240);
-    doc.line(40, curY, pageWidth - 40, curY);
-    curY += 15;
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    doc.setTextColor(100, 116, 139);
-    doc.text("OFFICIAL ERA COMPLIANCE AUDIT SIGN-OFF", 40, curY);
-
-    curY += 35;
-    // Sign line 1
-    doc.setDrawColor(148, 163, 184);
-    doc.line(40, curY, 220, curY);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
-    doc.text("Prepared By: Project Management Auditor", 40, curY + 12);
-
-    // Sign line 2
-    doc.line(pageWidth - 220, curY, pageWidth - 40, curY);
-    doc.text("Approved By: Chief Auditor / Program Director", pageWidth - 220, curY + 12);
+    curY = drawUniversalSignatureBlock(doc, curY, 'p');
 
     // Ensure page counts are correct in footer for all pages
     for (let j = 1; j <= pageCount; j++) {
@@ -5257,27 +5336,7 @@ export default function GroupReportGenerator({
       drawHeaderFooter();
     }
 
-    curY += 20;
-    doc.setDrawColor(226, 232, 240);
-    doc.line(40, curY, pageWidth - 40, curY);
-    curY += 12;
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    doc.setTextColor(100, 116, 139);
-    doc.text("OFFICIAL ERA SECURITIES & BANK GUARANTEES AUDIT SIGN-OFF", 40, curY);
-
-    curY += 30;
-    // Sign line 1 (Report Generator)
-    doc.setDrawColor(148, 163, 184);
-    doc.line(40, curY, 220, curY);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
-    doc.text("Report Generator: Program Director", 40, curY + 12);
-
-    // Sign line 2 (Approver)
-    doc.line(pageWidth - 220, curY, pageWidth - 40, curY);
-    doc.text("Approver: CPM DDG", pageWidth - 220, curY + 12);
+    curY = drawUniversalSignatureBlock(doc, curY, 'p');
 
     // Ensure page counts are correct in footer for all pages
     for (let j = 1; j <= pageCount; j++) {
@@ -6064,27 +6123,7 @@ export default function GroupReportGenerator({
       drawHeaderFooter();
     }
 
-    curY += 20;
-    doc.setDrawColor(226, 232, 240);
-    doc.line(40, curY, pageWidth - 40, curY);
-    curY += 12;
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    doc.setTextColor(100, 116, 139);
-    doc.text("OFFICIAL ERA MATURED PAYMENTS AUDIT SIGN-OFF", 40, curY);
-
-    curY += 30;
-    // Sign line 1 (Report Generator)
-    doc.setDrawColor(148, 163, 184);
-    doc.line(40, curY, 220, curY);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
-    doc.text("Report Generator: Program Director", 40, curY + 12);
-
-    // Sign line 2 (Approver)
-    doc.line(pageWidth - 220, curY, pageWidth - 40, curY);
-    doc.text("Approver: CPM DDG", pageWidth - 220, curY + 12);
+    curY = drawUniversalSignatureBlock(doc, curY, 'l');
 
     // Ensure page counts are correct in footer for all pages
     for (let j = 1; j <= pageCount; j++) {
@@ -6521,6 +6560,8 @@ export default function GroupReportGenerator({
 
       curY += rowHeight;
     });
+
+    curY = drawUniversalSignatureBlock(doc, curY, 'l');
 
     // Save PDF
     const gName = selectedGroup.replace(/\s+/g, '_');
@@ -7799,46 +7840,7 @@ export default function GroupReportGenerator({
       curY += rowHeight;
     });
 
-    // Check space for sign-off block
-    if (curY + 50 > pageHeight - 55) {
-      doc.addPage();
-      pageNumber++;
-      drawPageHeader(pageNumber);
-      curY = 55;
-    } else {
-      curY += 12;
-    }
-
-    // Sign-Off Block at bottom of report
-    const signY = Math.max(curY, pageHeight - 68);
-    const signBoxW = (pageWidth - 100) / 2;
-
-    const signBoxes = [
-      { label: "ERA PROJECT MANAGER", subtitle: "Verified Execution Verification" },
-      { label: "ERA PROGRAM DIRECTORATE DIRECTOR", subtitle: "Approved for Contract Administration" }
-    ];
-
-    signBoxes.forEach((sb, sIdx) => {
-      const sX = 40 + sIdx * (signBoxW + 20);
-      doc.setFillColor(255, 255, 255);
-      doc.setDrawColor(203, 213, 225);
-      doc.setLineWidth(0.5);
-      doc.roundedRect(sX, signY, signBoxW, 36, 2, 2, 'DF');
-
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(5.5);
-      doc.setTextColor(71, 85, 105);
-      doc.text(sb.label, sX + 6, signY + 10);
-
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(4.5);
-      doc.setTextColor(148, 163, 184);
-      doc.text(sb.subtitle, sX + 6, signY + 17);
-
-      doc.setDrawColor(226, 232, 240);
-      doc.line(sX + 6, signY + 28, sX + signBoxW - 6, signY + 28);
-      doc.text("Signature & Official Stamp / Date", sX + 6, signY + 33);
-    });
+    curY = drawUniversalSignatureBlock(doc, curY, 'l');
 
     // Footer page count on all pages
     const totalPages = pageNumber;
@@ -8263,6 +8265,9 @@ export default function GroupReportGenerator({
       doc.line(40, y, pageWidth - 40, y);
     }
 
+    // --- EXECUTIVE REVIEW & SIGN-OFF SIGNATURE BLOCKS ---
+    y = drawUniversalSignatureBlock(doc, y, 'l');
+
     // Write page numbers on all pages
     for (let p = 1; p <= pageNumber; p++) {
       doc.setPage(p);
@@ -8598,41 +8603,7 @@ export default function GroupReportGenerator({
     renderGroupRows(filteredPmos, `PMO GROUPINGS (${filteredPmos.length} PMO OFFICES)`);
 
     // Sign-off block
-    if (curY + 50 > pageHeight - 55) {
-      doc.addPage();
-      pageNumber++;
-      drawPageHeader(pageNumber);
-      curY = 55;
-    } else {
-      curY += 12;
-    }
-
-    const signY = Math.max(curY, pageHeight - 65);
-    const signBoxW = (pageWidth - 100) / 2;
-
-    const signBoxes = [
-      { label: "VERIFIED BY: PMO COORDINATOR", subtitle: "Performance Metrics Verified" },
-      { label: "APPROVED BY: PROGRAM DIRECTOR", subtitle: "Approved for Distribution" }
-    ];
-
-    signBoxes.forEach((sb, sIdx) => {
-      const sX = 40 + sIdx * (signBoxW + 20);
-      doc.setFillColor(255, 255, 255);
-      doc.setDrawColor(200, 200, 200);
-      doc.setLineWidth(0.5);
-      doc.roundedRect(sX, signY, signBoxW, 34, 2, 2, 'DF');
-
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(5.5);
-      doc.setTextColor(0, 0, 0);
-      doc.text(sb.label, sX + 6, signY + 11);
-
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(5);
-      doc.text(sb.subtitle, sX + 6, signY + 18);
-
-      doc.line(sX + 6, signY + 29, sX + signBoxW - 6, signY + 29);
-    });
+    curY = drawUniversalSignatureBlock(doc, curY, 'l');
 
     for (let j = 1; j <= pageNumber; j++) {
       doc.setPage(j);
@@ -8943,35 +8914,7 @@ export default function GroupReportGenerator({
     doc.text(wrappedNarrative, 50, curY + 22);
 
     // Sign-Off Block at bottom of page
-    const signY = pageHeight - 65;
-    const signBoxW = (pageWidth - 110) / 3;
-
-    const signBoxes = [
-      { label: "SUPERVISION CONSULTANT / RE", subtitle: "Certified Progress Accomplishment" },
-      { label: "ERA PROJECT MANAGER", subtitle: "Verified Execution Verification" },
-      { label: "ERA PROGRAM DIRECTORATE DIRECTOR", subtitle: "Approved for Contract Administration" }
-    ];
-
-    signBoxes.forEach((sb, sIdx) => {
-      const sX = 40 + sIdx * (signBoxW + 15);
-      doc.setDrawColor(203, 213, 225);
-      doc.setLineWidth(0.5);
-      doc.roundedRect(sX, signY, signBoxW, 36, 2, 2, 'S');
-
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(5.5);
-      doc.setTextColor(71, 85, 105);
-      doc.text(sb.label, sX + 6, signY + 10);
-
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(4.5);
-      doc.setTextColor(148, 163, 184);
-      doc.text(sb.subtitle, sX + 6, signY + 17);
-
-      doc.setDrawColor(226, 232, 240);
-      doc.line(sX + 6, signY + 28, sX + signBoxW - 6, signY + 28);
-      doc.text("Signature & Official Stamp / Date", sX + 6, signY + 33);
-    });
+    curY = drawUniversalSignatureBlock(doc, pageHeight - 110, 'l');
 
     const fileName = `ERA_Progress_Comparison_${activeComparisonProject.name.replace(/[^a-zA-Z0-9]/g, '_')}_${activeMilestone.monthLabel.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
     doc.save(fileName);
