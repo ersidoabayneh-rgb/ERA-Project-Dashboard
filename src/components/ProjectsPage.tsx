@@ -1591,43 +1591,6 @@ export default function ProjectsPage({
                                 </span>
                               )}
                             </h3>
-                            <div className="text-[11px] text-slate-400 dark:text-slate-500 flex flex-wrap items-center gap-1.5 mt-0.5">
-                              <span className="flex items-center gap-1 bg-slate-50 dark:bg-slate-900/40 px-1.5 py-0.5 rounded border border-slate-100 dark:border-slate-800">
-                                <Building className="w-2.5 h-2.5 text-slate-400" />
-                                <span className="font-semibold text-slate-400 mr-0.5">Client:</span>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setSimilarityFilter({ type: 'client', value: p.client });
-                                  }}
-                                  className={`font-semibold underline ${
-                                    similarityFilter.type === 'client' && similarityFilter.value === p.client
-                                      ? 'text-blue-600 font-extrabold'
-                                      : 'text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300'
-                                  }`}
-                                  title="Click to filter similar Client networks"
-                                >
-                                  {p.client}
-                                </button>
-                              </span>
-                              <span className="flex items-center gap-1 bg-slate-50 dark:bg-slate-900/40 px-1.5 py-0.5 rounded border border-slate-100 dark:border-slate-800">
-                                <span className="font-semibold text-slate-400 mr-0.5">Contractor:</span>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setSimilarityFilter({ type: 'contractor', value: p.contractor });
-                                  }}
-                                  className={`font-semibold underline ${
-                                    similarityFilter.type === 'contractor' && similarityFilter.value === p.contractor
-                                      ? 'text-amber-600 font-extrabold'
-                                      : 'text-amber-500 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300'
-                                  }`}
-                                  title="Click to filter similar Contractor networks"
-                                >
-                                  {p.contractor}
-                                </button>
-                              </span>
-                            </div>
                           </div>
 
                           {/* Project Lifecycle Status Governance */}

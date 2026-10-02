@@ -1839,7 +1839,7 @@ export default function DashboardView({
       </div>
 
       {/* Printable / Capturable Visual Dashboard Content */}
-      <div id="dashboard-view-content" className="space-y-1 sm:space-y-1.5">
+      <div id="dashboard-view-content" className="space-y-0.5">
 
       {hasCriticalBonds && (
         <div className="bg-gradient-to-r from-rose-50 to-amber-50 dark:from-rose-950/20 dark:to-amber-950/20 border-l-4 border-rose-500 rounded-lg p-2.5 sm:p-3 shadow-2xs space-y-1.5">
