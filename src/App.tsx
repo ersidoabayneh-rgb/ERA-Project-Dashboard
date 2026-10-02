@@ -3655,8 +3655,8 @@ let isBatchSyncRunning = false;
             className="flex-grow max-w-7xl mx-auto p-3 md:p-5 w-full space-y-3 sm:space-y-4 relative z-10"
           >
             {/* Project Cockpit Header */}
-            <header className="bg-white dark:bg-slate-850 px-3.5 py-2 sm:px-4 sm:py-2.5 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-2xs space-y-1.5">
-              {/* Row 1: Dedicated Row for Project Name */}
+            <header className="bg-white dark:bg-slate-850 px-3.5 py-2 sm:px-4 sm:py-2 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-2xs flex flex-col gap-1.5">
+              {/* Row 1: Dedicated Row for Project Name Container */}
               <div className="flex items-center gap-2.5 w-full">
                 <button
                   onClick={() => {

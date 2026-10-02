@@ -484,6 +484,14 @@ export default function DashboardView({
     r => r.status === 'Active' && (r.probability * r.impact) >= 15
   );
 
+  const topCriticalRisks = React.useMemo(() => {
+    const list = project.risks || [];
+    return [...list]
+      .filter(r => r.status !== 'Retired')
+      .sort((a, b) => (b.probability * b.impact) - (a.probability * a.impact))
+      .slice(0, 3);
+  }, [project.risks]);
+
   // Building progress plan data dynamically
   const progressPlanChartData: any[] = [];
   const historyList = React.useMemo(() => {
@@ -1987,7 +1995,7 @@ export default function DashboardView({
       })()}
 
       {/* Three prominent Master Gauges */}
-      <section className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3.5">
+      <section className="grid grid-cols-3 gap-2 sm:gap-2.5 max-w-2xl mx-auto w-full">
         {/* Physical progress gauge */}
         <div className="relative group w-full">
           <CircularGauge 
@@ -3037,7 +3045,7 @@ export default function DashboardView({
           <Layers className="w-4 h-4 text-blue-500" />
           ERA Key Performance Indicators
         </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 sm:gap-3.5">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 sm:gap-2.5">
           {/* Cost Gauge */}
           <CircularGauge 
             value={costOverrun} 
@@ -3090,68 +3098,84 @@ export default function DashboardView({
           {/* Risk (G8) Custom Gauge Card */}
           <div 
             onClick={() => onSwitchTab && onSwitchTab('risks')}
-            className={`flex flex-col items-center justify-between bg-white dark:bg-slate-800 p-2.5 sm:p-3 rounded-lg border border-slate-100 dark:border-slate-700/50 shadow-2xs hover:shadow-xs transition-all duration-300 w-full cursor-pointer hover:border-blue-400 dark:hover:border-blue-500 relative overflow-hidden text-center min-h-[200px] ${
+            className={`col-span-2 sm:col-span-2 md:col-span-2 flex flex-col justify-between bg-white dark:bg-slate-800 p-2 sm:p-2.5 rounded-xl border border-slate-100 dark:border-slate-700/50 shadow-2xs hover:shadow-xs transition-all duration-300 w-full cursor-pointer hover:border-blue-400 dark:hover:border-blue-500 relative overflow-hidden group min-h-[120px] sm:min-h-[130px] ${
               hasHighValueRisk 
                 ? 'animate-[pulse_1.8s_infinite] shadow-[0_0_12px_rgba(239,68,68,0.2)] border-rose-300 dark:border-rose-900/50 bg-rose-500/[0.02]' 
                 : ''
             }`}
+            title="Click to view & manage full Risk Register"
           >
             <div className="absolute inset-0 bg-gradient-to-br from-slate-50/50 to-transparent dark:from-slate-700/10 dark:to-transparent pointer-events-none" />
             
-            <div className="w-full flex flex-col items-center gap-0.5">
-              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block leading-none">Risk (G8)</span>
-              
-              {/* Top Registered Threats below Risk G8 wording */}
-              <span 
-                className="block text-rose-500 dark:text-rose-400 font-medium"
-                style={{ 
-                  fontFamily: "'Times New Roman', Times, serif", 
-                  fontSize: '10.5px', 
-                  letterSpacing: '0.02em',
-                  lineHeight: '1.2'
-                }}
-              >
-                Top Registered Threats (Hazard Category Only)
+            <div className="w-full flex items-center justify-between border-b border-slate-100 dark:border-slate-700/60 pb-1 mb-0.5">
+              <span className="text-[9.5px] sm:text-[10.5px] font-black uppercase text-slate-800 dark:text-slate-100 flex items-center gap-1">
+                <AlertTriangle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                <span>Risk Management (G8)</span>
               </span>
+              <span className="text-[8.5px] font-extrabold text-rose-600 dark:text-rose-400 uppercase bg-rose-50 dark:bg-rose-950/40 px-1.5 py-0.2 rounded border border-rose-200 dark:border-rose-900/40">
+                Top 3 Critical Risks
+              </span>
+            </div>
 
-              {/* Numbered Threats List above the gauge */}
-              <div className="w-full flex flex-col items-center gap-1 my-1">
-                {project.risks && [...project.risks]
-                  .sort((a, b) => (b.probability * b.impact) - (a.probability * a.impact))
-                  .slice(0, 3)
-                  .map((risk, index) => {
+            <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5 items-center flex-1 my-0.5">
+              {/* Left Column: Top 3 Critical Risks List */}
+              <div className="sm:col-span-8 flex flex-col gap-1 text-left w-full">
+                {topCriticalRisks.length > 0 ? (
+                  topCriticalRisks.map((risk, index) => {
+                    const score = risk.probability * risk.impact;
+                    const isHigh = score >= 15;
+                    const isMedium = score >= 9;
                     return (
                       <div 
-                        key={risk.id} 
-                        className="text-slate-750 dark:text-zinc-200 leading-none text-center bg-slate-50/60 dark:bg-slate-900/40 px-2 py-0.5 rounded border border-slate-100/50 dark:border-slate-700/30 w-full max-w-[220px]"
-                        style={{ 
-                          fontFamily: "'Times New Roman', Times, serif", 
-                          fontSize: '9.5px', 
-                          fontWeight: 'normal'
-                        }}
+                        key={risk.id || index}
+                        className="flex items-center justify-between gap-1 bg-slate-50/80 dark:bg-slate-900/60 px-1.5 py-0.5 rounded border border-slate-100 dark:border-slate-700/40 w-full"
                       >
-                        {index + 1}. {risk.category.trim()}
+                        <div className="min-w-0 flex-1 flex items-center gap-1">
+                          <span className="text-[8.5px] font-black text-slate-400 shrink-0">#{index + 1}</span>
+                          <div className="min-w-0 flex-1 text-[9px] leading-snug truncate">
+                            <strong className="text-slate-900 dark:text-slate-100 font-extrabold">{risk.category}:</strong>{' '}
+                            <span className="text-slate-600 dark:text-slate-300 font-medium">{risk.description}</span>
+                          </div>
+                        </div>
+                        <span className={`text-[8px] font-black px-1 py-0.1 rounded shrink-0 leading-none ${
+                          isHigh 
+                            ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-400/30' 
+                            : isMedium 
+                              ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-400/30'
+                              : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-400/30'
+                        }`}>
+                          Score: {score}
+                        </span>
                       </div>
                     );
-                  })}
+                  })
+                ) : (
+                  <div className="text-[9px] text-slate-400 italic py-1 text-center bg-slate-50 dark:bg-slate-900/40 rounded">
+                    No active critical risks registered
+                  </div>
+                )}
+              </div>
+
+              {/* Right Column: Circular Gauge visual */}
+              <div className="sm:col-span-4 flex flex-col items-center justify-center">
+                <div className="w-full max-w-[62px] sm:max-w-[70px] aspect-square relative flex items-center justify-center mx-auto">
+                  <CircularGauge 
+                    value={kpiScores.risk} 
+                    label="" 
+                    kpiCode="G8"
+                    kpiScore={getKpiGoalScore('G8')}
+                    variant="compact"
+                  />
+                </div>
+                <span className="text-[8.5px] font-bold text-slate-500 dark:text-slate-400 mt-0.5">
+                  KPI: {getKpiGoalScore('G8') !== null ? `${getKpiGoalScore('G8')}%` : `${kpiScores.risk.toFixed(1)}%`}
+                </span>
               </div>
             </div>
 
-            {/* Gauge visual */}
-            <div className="w-full max-w-[110px] aspect-square flex-shrink-0 relative flex items-center justify-center rounded-lg mx-auto">
-              <CircularGauge 
-                value={kpiScores.risk} 
-                label="" 
-                kpiCode="G8"
-                kpiScore={getKpiGoalScore('G8')}
-                variant="compact"
-              />
+            <div className="w-full text-right text-[8px] font-bold text-slate-400 group-hover:text-blue-500 transition-colors pt-0.5 border-t border-slate-100 dark:border-slate-700/40">
+              Click to view & manage Risk Register ➔
             </div>
-
-            {/* Label text at the bottom matching other gauge labels */}
-            <span className="mt-1 text-xs font-semibold text-slate-600 dark:text-slate-300 text-center tracking-wide group-hover:text-amber-500 dark:group-hover:text-amber-400 transition-colors duration-200">
-              Risk Management
-            </span>
           </div>
 
           {/* ESOHS Gauge */}
