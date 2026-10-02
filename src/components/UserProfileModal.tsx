@@ -175,7 +175,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
       case 'admin':
         return { label: '⭐ Master Admin', style: 'bg-amber-100 text-amber-900 dark:bg-amber-950/70 dark:text-amber-300 border-amber-300 dark:border-amber-800' };
       case 'directorate_admin':
-        return { label: '🏢 Directorate Admin', style: 'bg-indigo-100 text-indigo-900 dark:bg-indigo-950/70 dark:text-indigo-300 border-indigo-300 dark:border-indigo-800' };
+        return { label: '🏢 PMO Admin', style: 'bg-indigo-100 text-indigo-900 dark:bg-indigo-950/70 dark:text-indigo-300 border-indigo-300 dark:border-indigo-800' };
       case 'pmo_admin':
         return { label: '📁 PMO Admin', style: 'bg-cyan-100 text-cyan-900 dark:bg-cyan-950/70 dark:text-cyan-300 border-cyan-300 dark:border-cyan-800' };
       case 'approver':
@@ -245,7 +245,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
               {currentUser.assignedDirectorate && (
                 <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400">
                   <Building className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                  <span className="truncate">Directorate: <strong className="text-slate-800 dark:text-slate-200">{currentUser.assignedDirectorate}</strong></span>
+                  <span className="truncate">{currentUser.role === 'directorate_admin' ? 'PMO' : 'Directorate'}: <strong className="text-slate-800 dark:text-slate-200">{currentUser.assignedDirectorate}</strong></span>
                 </div>
               )}
               {currentUser.assignedPmo && (

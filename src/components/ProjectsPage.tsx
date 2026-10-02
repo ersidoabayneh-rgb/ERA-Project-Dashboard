@@ -102,6 +102,7 @@ export default function ProjectsPage({
 }: ProjectsPageProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDirectorate, setSelectedDirectorate] = useState('All');
+  const [selectedPmoFilter, setSelectedPmoFilter] = useState('All');
   const [selectedClassification, setSelectedClassification] = useState('All');
   const [selectedContractor, setSelectedContractor] = useState('All');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState('All');
@@ -394,6 +395,10 @@ export default function ProjectsPage({
       .filter(p => {
         if (selectedDirectorate === 'All') return true;
         return (p.programDirectorate || 'Southern') === selectedDirectorate;
+      })
+      .filter(p => {
+        if (selectedPmoFilter === 'All') return true;
+        return (p.pmo || 'PMO 1') === selectedPmoFilter;
       })
       .filter(p => {
         if (selectedClassification === 'All') return true;
@@ -1100,13 +1105,20 @@ export default function ProjectsPage({
               <div className="flex flex-wrap items-center gap-1.5 w-full">
                 {/* Program Directorate selector */}
                 {isDirAdmin ? (
-                  <div className="flex items-center gap-2 bg-indigo-50/90 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 px-3 py-1.5 rounded-xl shadow-sm shrink-0">
-                    <span className="text-[10px] font-extrabold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
-                      Directorate:
+                  <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-1.5 rounded-xl shadow-sm shrink-0">
+                    <span className="text-[10px] font-extrabold text-indigo-500 uppercase tracking-wider pl-1.5 pr-0.5">
+                      PMO Group:
                     </span>
-                    <span className="text-xs font-black text-indigo-900 dark:text-indigo-200">
-                      🏢 {currentUserObj.assignedDirectorate || 'Southern'}
-                    </span>
+                    <select
+                      value={selectedPmoFilter}
+                      onChange={(e) => setSelectedPmoFilter(e.target.value)}
+                      className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-xs font-bold outline-none text-slate-700 dark:text-zinc-200 focus:border-indigo-500 transition cursor-pointer"
+                    >
+                      <option value="All">🚜 All PMO Groups</option>
+                      {pmos.map((p, pIdx) => (
+                        <option key={`proj-pmo-select-${p}-${pIdx}`} value={p}>{p}</option>
+                      ))}
+                    </select>
                   </div>
                 ) : isPmoAdmin ? (
                   <div className="flex items-center gap-2 bg-blue-50/90 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/60 px-3 py-1.5 rounded-xl shadow-sm shrink-0">
@@ -1298,6 +1310,12 @@ export default function ProjectsPage({
                     <button onClick={() => setSelectedDirectorate('All')} className="hover:text-indigo-900 dark:hover:text-white cursor-pointer ml-0.5">✕</button>
                   </span>
                 )}
+                {selectedPmoFilter !== 'All' && (
+                  <span className="bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/50 px-2 py-0.5 rounded-md font-semibold text-[11px] flex items-center gap-1">
+                    PMO Group: {selectedPmoFilter}
+                    <button onClick={() => setSelectedPmoFilter('All')} className="hover:text-indigo-900 dark:hover:text-white cursor-pointer ml-0.5">✕</button>
+                  </span>
+                )}
                 {selectedStatusFilter !== 'All' && (
                   <span className="bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/50 px-2 py-0.5 rounded-md font-semibold text-[11px] flex items-center gap-1">
                     Status: {selectedStatusFilter === 'All_With_Archived' ? 'All (Including Archived)' : selectedStatusFilter}
@@ -1318,13 +1336,14 @@ export default function ProjectsPage({
                 )}
               </div>
 
-              {(searchQuery || selectedClassification !== 'All' || selectedContractor !== 'All' || selectedDirectorate !== 'All' || selectedStatusFilter !== 'All' || similarityFilter.type !== 'none' || filterPendingApprovalsOnly) && (
+              {(searchQuery || selectedClassification !== 'All' || selectedContractor !== 'All' || selectedDirectorate !== 'All' || selectedPmoFilter !== 'All' || selectedStatusFilter !== 'All' || similarityFilter.type !== 'none' || filterPendingApprovalsOnly) && (
                 <button
                   onClick={() => {
                     setSearchQuery('');
                     setSelectedClassification('All');
                     setSelectedContractor('All');
                     setSelectedDirectorate('All');
+                    setSelectedPmoFilter('All');
                     setSelectedStatusFilter('All');
                     setSimilarityFilter({ type: 'none', value: null });
                     setFilterPendingApprovalsOnly(false);
@@ -2220,7 +2239,7 @@ export default function ProjectsPage({
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-slate-400 dark:text-zinc-400 tracking-wider uppercase block">
-                    Program Directorate
+                    {isDirAdmin ? 'PMO' : 'Program Directorate'}
                   </label>
                   <select
                     value={isDirAdmin ? (currentUserObj.assignedDirectorate || newProjectDirectorate) : newProjectDirectorate}
