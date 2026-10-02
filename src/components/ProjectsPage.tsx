@@ -819,6 +819,32 @@ export default function ProjectsPage({
           </div>
 
           <div className="flex flex-wrap items-center gap-1.5 self-start md:self-auto">
+            {!hasNoProjects && (
+              <div className="relative group w-48 sm:w-60 shrink-0">
+                <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400 dark:text-slate-500 group-focus-within:text-blue-500 transition" />
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  placeholder="Search contracts..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl py-1.5 pl-8.5 pr-8 text-xs font-semibold text-slate-850 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => {
+                      setSearchQuery('');
+                      searchInputRef.current?.focus();
+                    }}
+                    className="absolute right-2 top-2 p-0.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition cursor-pointer"
+                    title="Clear search query"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+            )}
+
             <button 
               onClick={onOpenProfile}
               className="flex items-center gap-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer"
@@ -1066,42 +1092,12 @@ export default function ProjectsPage({
           )}
         </AnimatePresence>
 
-        {/* Search & Sort & Directorate Panel */}
+        {/* Filters Panel */}
         {!hasNoProjects && (
           <div className="space-y-2">
-            {/* Primary Search Bar & Filters in a single clean row */}
-            <div className="flex flex-col xl:flex-row gap-2 items-stretch xl:items-center bg-white dark:bg-slate-800/40 p-2 rounded-2xl border border-slate-100 dark:border-slate-700/60 shadow-sm">
-              <div className="relative flex-1 group min-w-[200px]">
-                <Search className="absolute left-3.5 top-3 w-4 h-4 text-slate-400 dark:text-slate-500 group-focus-within:text-blue-500 transition" />
-                <input
-                  ref={searchInputRef}
-                  type="text"
-                  placeholder="Search projects by name, classification (e.g. DS-4), ID..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-slate-50/60 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 rounded-xl py-2 pl-11 pr-24 text-xs font-semibold text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 dark:focus:border-blue-400 transition"
-                />
-                <div className="absolute right-2.5 top-2 flex items-center gap-1.5">
-                  {searchQuery ? (
-                    <button
-                      onClick={() => {
-                        setSearchQuery('');
-                        searchInputRef.current?.focus();
-                      }}
-                      className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition cursor-pointer"
-                      title="Clear search query"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  ) : (
-                    <kbd className="hidden sm:inline-flex items-center gap-0.5 px-2 py-0.5 text-[10px] font-mono font-bold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-700/60 border border-slate-200 dark:border-slate-600 rounded-md select-none">
-                      /
-                    </kbd>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+            {/* Primary Filters in a single clean row */}
+            <div className="flex flex-wrap items-center gap-2 bg-white dark:bg-slate-800/40 p-2 rounded-2xl border border-slate-100 dark:border-slate-700/60 shadow-sm w-full">
+              <div className="flex flex-wrap items-center gap-1.5 w-full">
                 {/* Program Directorate selector */}
                 {isDirAdmin ? (
                   <div className="flex items-center gap-2 bg-indigo-50/90 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 px-3 py-1.5 rounded-xl shadow-sm shrink-0">
