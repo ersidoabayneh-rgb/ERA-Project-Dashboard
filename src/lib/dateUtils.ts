@@ -72,3 +72,113 @@ export function toInputDateStr(dateInput: string | Date | null | undefined): str
   const day = String(d.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
+
+/**
+ * Checks whether a project has commenced on or before a specified Ethiopian Fiscal Year (EFY).
+ * EFY year N corresponds to the 12-month period from approx July 8, (N + 7) to July 7, (N + 8).
+ * If a project's commitment / commencement date (startDate or signDate) is strictly after July 7, (N + 8),
+ * then the project has NOT commenced on that fiscal year and should be excluded from that specific fiscal group table and report.
+ */
+export function isProjectCommencedInEfy(
+  project?: { startDate?: string; signDate?: string; progressPlanHistory?: any[]; annual?: any[] } | null,
+  efyYearInput?: string | number | null
+): boolean {
+  if (!project) return false;
+  if (!efyYearInput) return true;
+
+  const efyNum = typeof efyYearInput === 'number'
+    ? efyYearInput
+    : parseInt(String(efyYearInput).trim().replace(/^EFY\s*/i, ''), 10);
+
+  if (isNaN(efyNum) || efyNum <= 0) return true;
+
+  // EFY N corresponds to Gregorian: July 8, (N + 7) to July 7, (N + 8).
+  // The fiscal year boundary cutoff is the end of that fiscal year: July 8, (N + 8) 23:59:59.
+  const efyEndYearGregorian = efyNum + 8;
+  const efyEndDate = new Date(efyEndYearGregorian, 6, 8, 23, 59, 59);
+
+  // Retrieve commitment / commencement date: prioritize startDate (commencement date), fallback to signDate (commitment date)
+  const commitmentDateStr = project.startDate || project.signDate;
+  if (!commitmentDateStr) {
+    // If no explicit date is registered, check if project has an explicit history entry or annual plan for this EFY
+    const hasHistory = (project.progressPlanHistory || []).some(
+      h => (h.efyLabel || '').trim() === String(efyNum) || (h.monthLabel || '').includes(`EFY ${efyNum}`)
+    );
+    const hasAnnual = (project.annual || []).some(a => a.year === efyNum);
+    return hasHistory || hasAnnual;
+  }
+
+  const parsedDate = parseLocalDate(commitmentDateStr);
+  if (!parsedDate) return true;
+
+  // If project commencement date is strictly after this fiscal year's end date, it has NOT commenced in that fiscal year
+  if (parsedDate.getTime() > efyEndDate.getTime()) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Shared Global EFY Year Synchronization
+ * Ensures any change to the selected EFY on Progress Comparisons or Group Report is synchronized in real-time.
+ */
+export const EFY_STORAGE_KEY = 'era_selected_efy_year';
+export const EFY_EVENT_NAME = 'era_efy_year_changed';
+
+export function getStoredEfyYear(fallback: string = '2019'): string {
+  try {
+    const stored = localStorage.getItem(EFY_STORAGE_KEY);
+    if (stored) {
+      const cleaned = stored.trim().replace(/^EFY\s*/i, '');
+      if (cleaned) return cleaned;
+    }
+  } catch (e) {
+    console.warn('Could not read stored EFY year:', e);
+  }
+  return fallback;
+}
+
+export function setStoredEfyYear(year: string): void {
+  const cleaned = (year || '').trim().replace(/^EFY\s*/i, '');
+  if (!cleaned) return;
+  try {
+    localStorage.setItem(EFY_STORAGE_KEY, cleaned);
+  } catch (e) {
+    console.warn('Could not write stored EFY year:', e);
+  }
+
+  // Dispatch custom window event so all mounted components in the current tab react immediately
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(EFY_EVENT_NAME, { detail: cleaned }));
+  }
+}
+
+export function subscribeEfyYearChange(callback: (year: string) => void): () => void {
+  if (typeof window === 'undefined') return () => {};
+
+  const handleCustomEvent = (e: Event) => {
+    const customEvent = e as CustomEvent<string>;
+    if (customEvent.detail) {
+      callback(customEvent.detail);
+    }
+  };
+
+  const handleStorageEvent = (e: StorageEvent) => {
+    if (e.key === EFY_STORAGE_KEY && e.newValue) {
+      const cleaned = e.newValue.trim().replace(/^EFY\s*/i, '');
+      if (cleaned) {
+        callback(cleaned);
+      }
+    }
+  };
+
+  window.addEventListener(EFY_EVENT_NAME, handleCustomEvent);
+  window.addEventListener('storage', handleStorageEvent);
+
+  return () => {
+    window.removeEventListener(EFY_EVENT_NAME, handleCustomEvent);
+    window.removeEventListener('storage', handleStorageEvent);
+  };
+}
+

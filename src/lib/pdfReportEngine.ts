@@ -539,3 +539,91 @@ export function drawSafeTable(
 
   return curY + 8;
 }
+
+export interface CredentialSignatureTitles {
+  printedBy: string;
+  verifiedBy: string;
+  approvedBy: string;
+}
+
+export function getCredentialSignatures(user?: any): CredentialSignatureTitles {
+  const role = user?.role;
+  if (role === 'pmo_admin') {
+    return {
+      printedBy: "Printed By: PMO Admin",
+      verifiedBy: "Verified By: Project Manager",
+      approvedBy: "Approved By: Program Director",
+    };
+  }
+  if (role === 'directorate_admin') {
+    return {
+      printedBy: "Printed By: Directorate Admin",
+      verifiedBy: "Verified By: Program Director",
+      approvedBy: "Approved By: CPM DDG",
+    };
+  }
+  return {
+    printedBy: "Printed By: Master Admin / Admin",
+    verifiedBy: "Verified By: Program Director",
+    approvedBy: "Approved By: CPM DDG",
+  };
+}
+
+export function drawUniversalSignatureBlock(
+  doc: jsPDF,
+  user?: any,
+  options: {
+    y?: number;
+    margin?: number;
+    contentWidth?: number;
+    orientation?: 'p' | 'l' | 'portrait' | 'landscape';
+  } = {}
+): number {
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const margin = options.margin !== undefined ? options.margin : 36;
+  const contentWidth = options.contentWidth || (pageWidth - margin * 2);
+  let y = options.y !== undefined ? options.y : doc.internal.pageSize.getHeight() - 60;
+  const isLandscape = options.orientation === 'l' || options.orientation === 'landscape' || pageWidth > 600;
+
+  y += 15;
+  doc.setDrawColor(203, 213, 225);
+  doc.setLineWidth(1);
+  doc.line(margin, y, margin + contentWidth, y);
+
+  y += 12;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(100, 116, 139);
+  doc.text("EXECUTIVE REVIEW & SIGN-OFF", margin, y);
+
+  y += 28;
+
+  const sigs = getCredentialSignatures(user);
+  const boxWidth = (contentWidth - 20) / 3;
+
+  const boxes = [
+    { label: sigs.printedBy, sub: "Signature / Timestamp" },
+    { label: sigs.verifiedBy, sub: "Signature / Timestamp" },
+    { label: sigs.approvedBy, sub: "Signature & Official Seal" }
+  ];
+
+  boxes.forEach((b, idx) => {
+    const bX = margin + idx * (boxWidth + 10);
+    doc.setDrawColor(148, 163, 184);
+    doc.setLineWidth(0.75);
+    doc.line(bX, y, bX + boxWidth, y);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(isLandscape ? 7 : 6.5);
+    doc.setTextColor(51, 65, 85);
+    doc.text(b.label, bX, y + 10);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(isLandscape ? 5.5 : 5);
+    doc.setTextColor(148, 163, 184);
+    doc.text(b.sub, bX, y + 18);
+  });
+
+  return y + 30;
+}
+
