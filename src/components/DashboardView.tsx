@@ -1987,7 +1987,7 @@ export default function DashboardView({
       })()}
 
       {/* Three prominent Master Gauges */}
-      <section className="grid grid-cols-3 gap-0">
+      <section className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3.5">
         {/* Physical progress gauge */}
         <div className="relative group w-full">
           <CircularGauge 
@@ -3037,7 +3037,7 @@ export default function DashboardView({
           <Layers className="w-4 h-4 text-blue-500" />
           ERA Key Performance Indicators
         </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-0">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 sm:gap-3.5">
           {/* Cost Gauge */}
           <CircularGauge 
             value={costOverrun} 
