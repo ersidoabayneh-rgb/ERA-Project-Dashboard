@@ -1955,7 +1955,7 @@ export default function DashboardView({
       })()}
 
       {/* Three prominent Master Gauges */}
-      <section className="grid grid-cols-3 gap-3 sm:gap-4 max-w-4xl sm:max-w-5xl mx-auto w-full my-2 sm:my-3">
+      <section className="grid grid-cols-3 gap-3 sm:gap-5 max-w-5xl mx-auto w-full my-3 sm:my-4">
         {/* Physical progress gauge */}
         <div className="relative group w-full">
           <CircularGauge 
@@ -1964,6 +1964,7 @@ export default function DashboardView({
             kpiCode="G1"
             kpiScore={getKpiGoalScore('G1')}
             onKpiClick={() => onSwitchTab && onSwitchTab('seriesEditor')}
+            variant="master"
           />
           {/* Inline Editor (Disabled when project is closed) */}
           {!isClosed && (
@@ -2021,6 +2022,7 @@ export default function DashboardView({
           kpiCode="G4"
           kpiScore={getKpiGoalScore('G4')}
           onKpiClick={() => onSwitchTab && onSwitchTab('progressPlanEditor')}
+          variant="master"
         />
 
         {/* Progress vs Elapsed Gauge */}
@@ -2030,6 +2032,7 @@ export default function DashboardView({
           kpiCode="G2"
           kpiScore={getKpiGoalScore('G2')}
           onKpiClick={() => onSwitchTab && onSwitchTab('kpiEditor')}
+          variant="master"
         />
       </section>
 
@@ -3135,7 +3138,7 @@ export default function DashboardView({
                   initial={{ scale: 0.95, opacity: 0.85 }}
                   animate={{ scale: 1, opacity: 1 }}
                   transition={{ duration: 0.45, ease: [0.34, 1.56, 0.64, 1] }}
-                  className="w-full max-w-[85px] sm:max-w-[95px] aspect-square relative flex items-center justify-center mx-auto"
+                  className="w-full max-w-[108px] sm:max-w-[128px] aspect-square relative flex items-center justify-center mx-auto"
                 >
                   <CircularGauge 
                     value={kpiScores.risk} 

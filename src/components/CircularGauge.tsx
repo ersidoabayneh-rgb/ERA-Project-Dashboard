@@ -9,7 +9,7 @@ interface CircularGaugeProps {
   kpiCode?: string;       // e.g. 'G1'
   kpiScore?: number;      // e.g. 84.5
   onKpiClick?: () => void; // cross-navigation function
-  variant?: 'default' | 'compact';
+  variant?: 'default' | 'compact' | 'master';
 }
 
 export default function CircularGauge({
@@ -79,6 +79,7 @@ export default function CircularGauge({
   const strokeStyle = isYellow ? { stroke: '#ffff00' } : {};
   
   const isCompact = variant === 'compact';
+  const isMaster = variant === 'master';
   
   const valueStr = displayValue.toFixed(2);
 
@@ -91,14 +92,18 @@ export default function CircularGauge({
       onClick={onKpiClick}
       className={isCompact 
         ? `flex flex-col items-center justify-center w-full group relative ${onKpiClick ? 'cursor-pointer' : ''}`
-        : `flex flex-col items-center justify-between bg-white dark:bg-slate-800 p-3 sm:p-3.5 rounded-xl border border-slate-100 dark:border-slate-700/50 shadow-2xs hover:shadow-xs transition-all duration-300 w-full h-[160px] sm:h-[185px] group relative overflow-hidden ${onKpiClick ? 'cursor-pointer hover:border-blue-400 dark:hover:border-blue-500' : ''}`
+        : isMaster
+          ? `flex flex-col items-center justify-between bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl border border-slate-100 dark:border-slate-700/50 shadow-sm hover:shadow-md transition-all duration-300 w-full h-[195px] sm:h-[225px] group relative overflow-hidden ${onKpiClick ? 'cursor-pointer hover:border-blue-400 dark:hover:border-blue-500' : ''}`
+          : `flex flex-col items-center justify-between bg-white dark:bg-slate-800 p-3 sm:p-3.5 rounded-xl border border-slate-100 dark:border-slate-700/50 shadow-2xs hover:shadow-xs transition-all duration-300 w-full h-[160px] sm:h-[185px] group relative overflow-hidden ${onKpiClick ? 'cursor-pointer hover:border-blue-400 dark:hover:border-blue-500' : ''}`
       }
     >
       {!isCompact && (
         <div className="absolute inset-0 bg-gradient-to-br from-slate-50/50 to-transparent dark:from-slate-700/10 dark:to-transparent pointer-events-none" />
       )}
 
-      <div className="relative w-full max-w-[108px] sm:max-w-[128px] aspect-square flex items-center justify-center my-auto">
+      <div className={`relative w-full aspect-square flex items-center justify-center my-auto ${
+        isMaster ? 'max-w-[135px] sm:max-w-[160px]' : 'max-w-[108px] sm:max-w-[128px]'
+      }`}>
         <svg className="w-full h-full" viewBox="0 0 120 120">
           <g transform="rotate(-225 60 60)">
             {/* Background circle track */}
@@ -159,7 +164,9 @@ export default function CircularGauge({
       
       {/* Label outside arc */}
       {!isCompact && label && (
-        <span className="text-[10.5px] sm:text-[12px] font-bold text-slate-700 dark:text-slate-200 text-center tracking-tight group-hover:text-amber-500 dark:group-hover:text-amber-400 transition-colors duration-200 line-clamp-1 px-1 mt-auto pt-1">
+        <span className={`font-bold text-slate-700 dark:text-slate-200 text-center tracking-tight group-hover:text-amber-500 dark:group-hover:text-amber-400 transition-colors duration-200 line-clamp-1 px-1 mt-auto pt-1 ${
+          isMaster ? 'text-xs sm:text-sm font-extrabold' : 'text-[10.5px] sm:text-[12px]'
+        }`}>
           {label}
         </span>
       )}
