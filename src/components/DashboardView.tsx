@@ -3077,9 +3077,10 @@ export default function DashboardView({
               </span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5 items-center flex-1 my-0.5">
-              {/* Left Column: Top 3 Critical Risks List */}
-              <div className="sm:col-span-8 flex flex-col gap-1 text-left w-full">
+            {/* Vertical Layout: Top 3 Critical Risks AT THE TOP of the Gauge */}
+            <div className="flex flex-col gap-2 flex-1 w-full justify-between my-0.5">
+              {/* 1. TOP SECTION: Top 3 Critical Risks List */}
+              <div className="flex flex-col gap-1 text-left w-full">
                 <AnimatePresence mode="wait">
                   <motion.div 
                     key={topCriticalRisks.map(r => `${r.id}-${r.probability * r.impact}`).join('_')}
@@ -3127,14 +3128,14 @@ export default function DashboardView({
                 </AnimatePresence>
               </div>
 
-              {/* Right Column: Circular Gauge visual only (no KPI value label) */}
-              <div className="sm:col-span-4 flex flex-col items-center justify-center">
+              {/* 2. BOTTOM SECTION: Circular Gauge visual (located underneath the top 3 risks) */}
+              <div className="flex flex-col items-center justify-center w-full pt-1">
                 <motion.div 
                   key={`risk-gauge-${kpiScores.risk}`}
                   initial={{ scale: 0.95, opacity: 0.85 }}
                   animate={{ scale: 1, opacity: 1 }}
                   transition={{ duration: 0.45, ease: [0.34, 1.56, 0.64, 1] }}
-                  className="w-full max-w-[95px] sm:max-w-[110px] aspect-square relative flex items-center justify-center mx-auto"
+                  className="w-full max-w-[85px] sm:max-w-[95px] aspect-square relative flex items-center justify-center mx-auto"
                 >
                   <CircularGauge 
                     value={kpiScores.risk} 
