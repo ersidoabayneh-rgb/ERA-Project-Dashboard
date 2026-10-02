@@ -602,7 +602,9 @@ export default function App() {
   const [editEnableUsdPayments, setEditEnableUsdPayments] = useState(false);
   const [editLengthKm, setEditLengthKm] = useState(0);
   const [editClassification, setEditClassification] = useState('');
-  const [editContractType, setEditContractType] = useState<'DB' | 'DBB'>('DBB');
+  const [editContractType, setEditContractType] = useState<string>('DBB');
+  const [isCustomContractType, setIsCustomContractType] = useState<boolean>(false);
+  const [customContractTypeInput, setCustomContractTypeInput] = useState<string>('');
   const [editProgramDirectorate, setEditProgramDirectorate] = useState('');
   const [editPmo, setEditPmo] = useState('');
   const [editFidicContractType, setEditFidicContractType] = useState('');
@@ -647,7 +649,15 @@ export default function App() {
       setEditEnableUsdPayments(currentProject.enableUsdPayments !== undefined ? Boolean(currentProject.enableUsdPayments) : Boolean(currentProject.supervisionConsultant?.enableUsdPayments));
       setEditLengthKm(currentProject.lengthKm || 0);
       setEditClassification(currentProject.classification || '');
-      setEditContractType(currentProject.contractType || 'DBB');
+      const cType = currentProject.contractType || 'DBB';
+      setEditContractType(cType);
+      if (['DB', 'DBB', 'EPC', 'BOOT', 'ItemRate'].includes(cType)) {
+        setIsCustomContractType(false);
+        setCustomContractTypeInput('');
+      } else {
+        setIsCustomContractType(true);
+        setCustomContractTypeInput(cType);
+      }
       setEditProgramDirectorate(currentProject.programDirectorate || 'Southern');
       setEditPmo(currentProject.pmo || 'PMO 1');
       setEditFidicContractType(currentProject.fidicContractType || '');
@@ -4246,7 +4256,7 @@ let isBatchSyncRunning = false;
 
                           <div className="space-y-1">
                             <div className="flex items-center justify-between">
-                              <span className="text-[9px] text-slate-400 block font-mono">SUPERVISING CONSULTANT</span>
+                              <span className="text-[9px] text-slate-400 block font-mono">CONSTRUCTION SUPERVISION CONSULTANT</span>
                               <span className="text-[8.5px] font-semibold text-emerald-600 dark:text-emerald-400 font-mono flex items-center gap-0.5" title="Bidirectionally linked with Supervision Agreement & Contractual Terms">
                                 🔗 Linked
                               </span>
@@ -4257,7 +4267,7 @@ let isBatchSyncRunning = false;
                           </div>
 
                           <div className="space-y-1">
-                            <span className="text-[9px] text-slate-400 block font-mono">MAIN CONTRACTOR</span>
+                            <span className="text-[9px] text-slate-400 block font-mono">CONTRACTOR</span>
                             <span className="text-slate-800 dark:text-zinc-150 block truncate font-bold" title={currentProject.contractor}>{currentProject.contractor}</span>
                           </div>
 
@@ -4382,7 +4392,17 @@ let isBatchSyncRunning = false;
                               <span className="text-[9px] text-slate-400 block font-sans font-bold">Project Delivery & FIDIC Contract</span>
                             </div>
                             <span className="text-blue-600 dark:text-blue-400 block font-bold">
-                              {currentProject.contractType === 'DB' ? 'Design-Build (DB)' : 'Design-Bid-Build (DBB)'}
+                              {currentProject.contractType === 'DB'
+                                ? 'Design-Build (DB)'
+                                : currentProject.contractType === 'DBB'
+                                  ? 'Design-Bid-Build (DBB)'
+                                  : currentProject.contractType === 'EPC'
+                                    ? 'EPC / Turnkey'
+                                    : currentProject.contractType === 'BOOT'
+                                      ? 'BOOT / PPP'
+                                      : currentProject.contractType === 'ItemRate'
+                                        ? 'Item Rate Contract'
+                                        : currentProject.contractType || 'Design-Bid-Build (DBB)'}
                             </span>
                             <span className="text-slate-800 dark:text-zinc-150 block text-[11px] font-bold mt-1">
                               📕 {currentProject.fidicContractType || getFidicOptions(currentProject.contractType)[0]}
@@ -4435,7 +4455,7 @@ let isBatchSyncRunning = false;
 
                           <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
                             <div className="flex items-center justify-between">
-                              <label className="text-[9px] text-slate-400 block font-mono">SUPERVISING CONSULTANT</label>
+                              <label className="text-[9px] text-slate-400 block font-mono">CONSTRUCTION SUPERVISION CONSULTANT</label>
                               <span className="text-[8.5px] font-mono text-emerald-600 dark:text-emerald-400">🔗 Syncs with Agreement</span>
                             </div>
                             <input
@@ -4448,7 +4468,7 @@ let isBatchSyncRunning = false;
                           </div>
 
                           <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
-                            <label className="text-[9px] text-slate-400 block font-mono">MAIN CONTRACTOR</label>
+                            <label className="text-[9px] text-slate-400 block font-mono">CONTRACTOR</label>
                             <input
                               type="text"
                               value={editContractor}
@@ -4652,20 +4672,54 @@ let isBatchSyncRunning = false;
                           <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
                             <label className="text-[9px] text-slate-400 block font-mono">ORIGINAL CONTRACT TYPE</label>
                             <select
-                              value={editContractType}
+                              value={
+                                isCustomContractType 
+                                  ? 'Other' 
+                                  : (['DB', 'DBB', 'EPC', 'BOOT', 'ItemRate'].includes(editContractType) ? editContractType : 'Other')
+                              }
                               onChange={(e) => {
-                                const nextVal = e.target.value as 'DB' | 'DBB';
-                                setEditContractType(nextVal);
-                                const opts = getFidicOptions(nextVal);
-                                if (!opts.includes(editFidicContractType)) {
-                                  setEditFidicContractType(opts[0]);
+                                const nextVal = e.target.value;
+                                if (nextVal === 'Other') {
+                                  setIsCustomContractType(true);
+                                  const customVal = customContractTypeInput || 'Custom Contract';
+                                  setEditContractType(customVal);
+                                } else {
+                                  setIsCustomContractType(false);
+                                  setEditContractType(nextVal);
+                                  const opts = getFidicOptions(nextVal);
+                                  if (!opts.includes(editFidicContractType)) {
+                                    setEditFidicContractType(opts[0]);
+                                  }
                                 }
                               }}
                               className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-705 px-2 py-1 rounded-lg text-slate-850 dark:text-zinc-100 outline-none font-bold"
                             >
                               <option value="DB">Design-Build (DB)</option>
                               <option value="DBB">Design-Bid-Build (DBB)</option>
+                              <option value="EPC">EPC / Turnkey</option>
+                              <option value="BOOT">BOOT / PPP</option>
+                              <option value="ItemRate">Item Rate Contract</option>
+                              <option value="Other">Other / Add Custom Contract Type...</option>
                             </select>
+
+                            {(isCustomContractType || !['DB', 'DBB', 'EPC', 'BOOT', 'ItemRate'].includes(editContractType)) && (
+                              <div className="pt-1 space-y-0.5">
+                                <input
+                                  type="text"
+                                  value={customContractTypeInput}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setCustomContractTypeInput(val);
+                                    setEditContractType(val || 'Custom Contract');
+                                  }}
+                                  placeholder="Enter custom contract type (e.g. Alliance, Framework...)"
+                                  className="w-full bg-white dark:bg-slate-900 border border-blue-400 dark:border-blue-600 px-2 py-1 rounded-lg text-slate-850 dark:text-zinc-100 outline-none font-bold text-xs"
+                                />
+                                <span className="text-[8px] text-slate-400 block font-sans">
+                                  Specify your custom contract type name.
+                                </span>
+                              </div>
+                            )}
                           </div>
 
                           <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
