@@ -3080,45 +3080,62 @@ export default function DashboardView({
             <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5 items-center flex-1 my-0.5">
               {/* Left Column: Top 3 Critical Risks List */}
               <div className="sm:col-span-8 flex flex-col gap-1 text-left w-full">
-                {topCriticalRisks.length > 0 ? (
-                  topCriticalRisks.map((risk, index) => {
-                    const score = risk.probability * risk.impact;
-                    const isHigh = score >= 15;
-                    const isMedium = score >= 9;
-                    return (
-                      <div 
-                        key={risk.id || index}
-                        className="flex items-center justify-between gap-1 bg-slate-50/80 dark:bg-slate-900/60 px-1.5 py-0.5 rounded border border-slate-100 dark:border-slate-700/40 w-full"
-                      >
-                        <div className="min-w-0 flex-1 flex items-center gap-1">
-                          <span className="text-[8.5px] font-black text-slate-400 shrink-0">#{index + 1}</span>
-                          <div className="min-w-0 flex-1 text-[9px] leading-snug truncate">
-                            <strong className="text-slate-900 dark:text-slate-100 font-extrabold">{risk.category}:</strong>{' '}
-                            <span className="text-slate-600 dark:text-slate-300 font-medium">{risk.description}</span>
+                <AnimatePresence mode="wait">
+                  <motion.div 
+                    key={topCriticalRisks.map(r => `${r.id}-${r.probability * r.impact}`).join('_')}
+                    initial={{ opacity: 0, y: 3 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -3 }}
+                    transition={{ duration: 0.35, ease: 'easeOut' }}
+                    className="flex flex-col gap-1 w-full"
+                  >
+                    {topCriticalRisks.length > 0 ? (
+                      topCriticalRisks.map((risk, index) => {
+                        const score = risk.probability * risk.impact;
+                        const isHigh = score >= 15;
+                        const isMedium = score >= 9;
+                        return (
+                          <div 
+                            key={risk.id || index}
+                            className="flex items-center justify-between gap-1 bg-slate-50/80 dark:bg-slate-900/60 px-1.5 py-0.5 rounded border border-slate-100 dark:border-slate-700/40 w-full transition-all duration-300"
+                          >
+                            <div className="min-w-0 flex-1 flex items-center gap-1">
+                              <span className="text-[8.5px] font-black text-slate-400 shrink-0">#{index + 1}</span>
+                              <div className="min-w-0 flex-1 text-[9px] leading-snug truncate">
+                                <strong className="text-slate-900 dark:text-slate-100 font-extrabold">{risk.category}:</strong>{' '}
+                                <span className="text-slate-600 dark:text-slate-300 font-medium">{risk.description}</span>
+                              </div>
+                            </div>
+                            <span className={`text-[8px] font-black px-1 py-0.1 rounded shrink-0 leading-none ${
+                              isHigh 
+                                ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-400/30' 
+                                : isMedium 
+                                  ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-400/30'
+                                  : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-400/30'
+                            }`}>
+                              Score: {score}
+                            </span>
                           </div>
-                        </div>
-                        <span className={`text-[8px] font-black px-1 py-0.1 rounded shrink-0 leading-none ${
-                          isHigh 
-                            ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-400/30' 
-                            : isMedium 
-                              ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-400/30'
-                              : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-400/30'
-                        }`}>
-                          Score: {score}
-                        </span>
+                        );
+                      })
+                    ) : (
+                      <div className="text-[9px] text-slate-400 italic py-1 text-center bg-slate-50 dark:bg-slate-900/40 rounded">
+                        No active critical risks registered
                       </div>
-                    );
-                  })
-                ) : (
-                  <div className="text-[9px] text-slate-400 italic py-1 text-center bg-slate-50 dark:bg-slate-900/40 rounded">
-                    No active critical risks registered
-                  </div>
-                )}
+                    )}
+                  </motion.div>
+                </AnimatePresence>
               </div>
 
-              {/* Right Column: Circular Gauge visual */}
+              {/* Right Column: Circular Gauge visual only (no KPI value label) */}
               <div className="sm:col-span-4 flex flex-col items-center justify-center">
-                <div className="w-full max-w-[95px] sm:max-w-[110px] aspect-square relative flex items-center justify-center mx-auto">
+                <motion.div 
+                  key={`risk-gauge-${kpiScores.risk}`}
+                  initial={{ scale: 0.95, opacity: 0.85 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ duration: 0.45, ease: [0.34, 1.56, 0.64, 1] }}
+                  className="w-full max-w-[95px] sm:max-w-[110px] aspect-square relative flex items-center justify-center mx-auto"
+                >
                   <CircularGauge 
                     value={kpiScores.risk} 
                     label="" 
@@ -3126,10 +3143,7 @@ export default function DashboardView({
                     kpiScore={getKpiGoalScore('G8')}
                     variant="compact"
                   />
-                </div>
-                <span className="text-[8.5px] font-bold text-slate-500 dark:text-slate-400 mt-0.5">
-                  KPI: {getKpiGoalScore('G8') !== null ? `${getKpiGoalScore('G8')}%` : `${kpiScores.risk.toFixed(1)}%`}
-                </span>
+                </motion.div>
               </div>
             </div>
 

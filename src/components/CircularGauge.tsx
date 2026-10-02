@@ -111,13 +111,16 @@ export default function CircularGauge({
               strokeDasharray={`${arcLength} ${circumference}`}
               strokeLinecap="round"
             />
-            {/* Active colored arc */}
+            {/* Active colored arc with smooth transition animation */}
             <circle
               cx="60"
               cy="60"
               r={radius}
-              className={`fill-none ${isYellow ? '' : color} transition-all duration-1000 ease-out`}
-              style={strokeStyle}
+              className={`fill-none ${isYellow ? '' : color}`}
+              style={{
+                ...strokeStyle,
+                transition: 'stroke-dashoffset 1.2s cubic-bezier(0.34, 1.56, 0.64, 1), stroke 0.8s ease-in-out'
+              }}
               strokeWidth={strokeWidth + 0.5}
               strokeDasharray={`${arcLength} ${circumference}`}
               strokeDashoffset={strokeDashoffset}

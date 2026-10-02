@@ -356,57 +356,6 @@ export default function RowStatusView({
           </div>
         </div>
 
-        {/* Evaluation Comparison Progress Bar & FIDIC Note */}
-        <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-5 rounded-2xl shadow-sm space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-700/50 pb-2.5">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-4 bg-blue-600 rounded-xs" />
-              <h3 className="text-xs font-black uppercase text-slate-800 dark:text-zinc-100 tracking-wider">
-                ROW Evaluation: Clearance Ratio vs. Contractor Demand
-              </h3>
-            </div>
-            <span className="text-xs font-mono font-bold text-slate-500 dark:text-slate-400">
-              Evaluation Formula: <strong className="text-emerald-600 dark:text-emerald-400">[ROW Obstruction free Section]</strong> ÷ <strong className="text-indigo-600 dark:text-indigo-400">[ROW Request By Contractor]</strong>
-            </span>
-          </div>
-
-          <div className="space-y-1.5">
-            <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-mono">
-              <span className="text-slate-600 dark:text-slate-300 font-bold flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" />
-                Cleared: <strong className="text-emerald-600 dark:text-emerald-400">{clearedKm.toFixed(2)} Km</strong>
-              </span>
-              <span className="text-slate-600 dark:text-slate-300 font-bold flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block" />
-                Pending: <strong className="text-amber-600 dark:text-amber-400">{pendingKm.toFixed(2)} Km</strong>
-              </span>
-              <span className="text-slate-600 dark:text-slate-300 font-bold flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 inline-block" />
-                Total Demand: <strong className="text-indigo-600 dark:text-indigo-400">{requestedKm.toFixed(2)} Km</strong> ({clearanceRate.toFixed(1)}%)
-              </span>
-            </div>
-
-            <div className="w-full h-3.5 bg-slate-100 dark:bg-slate-900 rounded-full overflow-hidden p-0.5 border border-slate-200/60 dark:border-slate-700/60 flex">
-              <div
-                className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-l-full transition-all duration-500"
-                style={{ width: `${Math.min(100, clearanceRate)}%` }}
-                title={`Obstruction-Free Cleared: ${clearedKm.toFixed(2)} Km (${clearanceRate.toFixed(1)}%)`}
-              />
-              {pendingKm > 0 && requestedKm > 0 && (
-                <div
-                  className="h-full bg-gradient-to-r from-amber-400 to-rose-400 rounded-r-full transition-all duration-500"
-                  style={{ width: `${Math.max(0, 100 - Math.min(100, clearanceRate))}%` }}
-                  title={`Pending Handover: ${pendingKm.toFixed(2)} Km`}
-                />
-              )}
-            </div>
-          </div>
-
-          <p className="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
-            <strong className="text-slate-700 dark:text-slate-300">Contractual Evaluation Standard:</strong> In accordance with Ethiopian Roads Administration (ERA) specifications and FIDIC Clause 2.1 (Right of Access to the Site), progress evaluation is benchmarked strictly between <em>ROW Request By Contractor ({requestedKm.toFixed(2)} Km)</em> and <em>ROW Obstruction free Section ({clearedKm.toFixed(2)} Km)</em>. Current possession provides <em>{clearedKm.toFixed(2)} Km</em> ({clearanceRate.toFixed(1)}% clearance rate), leaving <em>{pendingKm.toFixed(2)} Km</em> pending corridor handover.
-          </p>
-        </div>
-
         {/* Spreadsheet Tables */}
         <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 rounded-2xl overflow-hidden shadow-sm">
           <div className="overflow-x-auto max-h-[500px] overflow-y-auto scroll-smooth">
