@@ -13,6 +13,7 @@ import {
   MonthlyGradingRecord, 
   isProjectClosed 
 } from '../types';
+import { parseLocalDate, addDaysToDate } from '../lib/dateUtils';
 import { calculateProjectEvm } from '../lib/evmCalculations';
 import { resolveCurrentMonthKey, isSameMonth } from '../lib/monthlySync';
 import { getProjectConsultantEvaluation } from './consultantEvaluationMatrix';
@@ -903,9 +904,9 @@ export function generateKpiAllocated(ct: 'DB' | 'DBB', zeroDefault: boolean = fa
 export function getIntegratedKpiAllocated(project: Project): KpiAllocatedItem[] {
   // 1. Core Elapsed progress calculations
   const isClosed = isProjectClosed(project.status);
-  const s = new Date(project.startDate);
+  const s = parseLocalDate(project.startDate) || new Date();
   const totalDays = project.origDays + (project.eotDays || 0) + (project.interimEotDays || 0);
-  const rc = new Date(s.getTime() + totalDays * 86400000);
+  const rc = addDaysToDate(s, totalDays);
   const now = new Date();
   
   let elapsed = 0;

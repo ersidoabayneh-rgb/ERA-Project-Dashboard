@@ -1766,9 +1766,7 @@ export default function ProjectsPage({
                                   onClick={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
-                                    if (confirm(`🛑 DELETE PROJECT CONFIRMATION\n\nAre you sure you want to permanently delete project "${p.name}" (ID: ${p.id}) from the system?\n\nThis action cannot be undone.`)) {
-                                      onDeleteProject(p.id);
-                                    }
+                                    onDeleteProject(p.id);
                                   }}
                                   className="flex items-center gap-1 px-2 py-0.5 text-[11px] font-bold text-rose-600 dark:text-rose-400 hover:text-white bg-rose-50 hover:bg-rose-600 dark:bg-rose-950/30 dark:hover:bg-rose-600 border border-rose-200 dark:border-rose-900/50 rounded-lg transition-all duration-200 shadow-2xs cursor-pointer"
                                   title="Permanently Delete Project"
@@ -2108,9 +2106,7 @@ export default function ProjectsPage({
                                     type="button"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      if (confirm(`🛑 DELETE PROJECT CONFIRMATION\n\nAre you sure you want to permanently delete project "${p.name}" (ID: ${p.id}) from the system?\n\nThis action cannot be undone.`)) {
-                                        onDeleteProject(p.id);
-                                      }
+                                      onDeleteProject(p.id);
                                     }}
                                     className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition cursor-pointer"
                                     title="Delete Project"

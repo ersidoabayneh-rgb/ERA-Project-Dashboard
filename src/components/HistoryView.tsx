@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { parseLocalDate, addDaysToDate } from '../lib/dateUtils';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   History, Save, Sparkles, Trash2, Printer, CheckCircle, AlertTriangle, ShieldCheck, 
@@ -90,8 +91,8 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
       ? Math.max(0, (p.monthly[p.monthly.length - 1].actual as number) - (p.monthly[p.monthly.length - 2].actual as number))
       : 0);
   const elDays = p.origDays + (p.eotDays || 0) + (p.interimEotDays || 0);
-  const ocDate = new Date(p.startDate || new Date());
-  const rcDate = new Date(ocDate.getTime() + elDays * 86400000);
+  const ocDate = parseLocalDate(p.startDate) || new Date();
+  const rcDate = addDaysToDate(ocDate, elDays);
   
   // Use unified EVM calculation engine
   const evm = calculateProjectEvm(p);

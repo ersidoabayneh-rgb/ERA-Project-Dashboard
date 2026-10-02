@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { formatDateStr, getRevisedCompletionDateStr, parseLocalDate } from './lib/dateUtils';
 import { motion, AnimatePresence, animate } from 'motion/react';
 import { 
   HardHat, 
@@ -269,6 +270,7 @@ import AiAssistantChat from './components/AiAssistantChat';
 import UserGuideManualModal from './components/UserGuideManualModal';
 import ThemeCustomizerModal from './components/ThemeCustomizerModal';
 import { UserProfileModal } from './components/UserProfileModal';
+import DeleteProjectModal from './components/DeleteProjectModal';
 import ApprovalWorkflowManager from './components/ApprovalWorkflowManager';
 import eraLogo from './assets/logo.png';
 
@@ -817,6 +819,7 @@ export default function App() {
   const [showApprovals, setShowApprovals] = useState(false);
   const [showDraftsPlayground, setShowDraftsPlayground] = useState(false);
   const [showProjectApprovalBanner, setShowProjectApprovalBanner] = useState(true);
+  const [projectToDeletePending, setProjectToDeletePending] = useState<Project | null>(null);
 
   // Compute total pending approval requests across all projects for the current user
   const totalUserPendingApprovals = useMemo(() => {
@@ -2682,6 +2685,13 @@ let isBatchSyncRunning = false;
       return;
     }
 
+    setProjectToDeletePending(projToDelete);
+  };
+
+  const handleConfirmExecuteDeleteProject = (id: string) => {
+    const projToDelete = projects.find(p => p.id === id);
+    if (!projToDelete) return;
+
     // Record deleted ID and filter from offline queue so sync daemon doesn't push it back
     try {
       const delStr = localStorage.getItem('era_deleted_project_ids') || '[]';
@@ -2737,7 +2747,8 @@ let isBatchSyncRunning = false;
       localStorage.removeItem('era_current_project_id');
     }
 
-    alert(`Project "${projToDelete.name}" (ID: ${id}) has been successfully deleted from the system.`);
+    setProjectToDeletePending(null);
+    alert(`Project "${projToDelete.name}" (ID: ${id}) has been permanently deleted from the system.`);
   };
 
   const handleUpdateProjectStatus = (id: string, newStatus: ProjectLifecycleStatus) => {
@@ -3338,34 +3349,6 @@ let isBatchSyncRunning = false;
     return ((proj as any).contractClaimsList || [])
       .filter((c: any) => c.status?.toLowerCase() === 'approved')
       .reduce((sum: number, c: any) => sum + (c.costApproved || 0), 0);
-  };
-
-  const getRevisedCompletionDateStr = (startDateStr: string, origDays: number, eotDays: number, interimEotDays: number = 0) => {
-    if (!startDateStr) return 'N/A';
-    try {
-      const totalDays = (origDays || 0) + (eotDays || 0) + (interimEotDays || 0);
-      const pts = startDateStr.split('-');
-      if (pts.length === 3) {
-        const y = parseInt(pts[0], 10);
-        const m = parseInt(pts[1], 10) - 1;
-        const d = parseInt(pts[2], 10);
-        const date = new Date(y, m, d + totalDays);
-        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-      }
-      const date = new Date(new Date(startDateStr).getTime() + totalDays * 86400000);
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    } catch {
-      return 'N/A';
-    }
-  };
-
-  const formatDateStr = (dateStr: string) => {
-    try {
-      if (!dateStr) return 'N/A';
-      return new Date(dateStr).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-    } catch {
-      return dateStr;
-    }
   };
 
 
@@ -5018,6 +5001,7 @@ let isBatchSyncRunning = false;
               {activeTab === 'progressPlanEditor' && (
                 <ProgressPlanView
                   project={currentProject}
+                  currentUserObj={currentUserObj}
                   onUpdateProgressPlan={(progressPlan, progressPlanLabels) => handleProjectUpdate({ progressPlan, progressPlanLabels }, 'Progress plans modified')}
                   onProjectUpdate={handleProjectUpdate}
                 />
@@ -5250,6 +5234,14 @@ let isBatchSyncRunning = false;
           />
         )}
       </AnimatePresence>
+
+      {/* Delete Project Confirmation Dialog */}
+      <DeleteProjectModal
+        project={projectToDeletePending}
+        isOpen={Boolean(projectToDeletePending)}
+        onClose={() => setProjectToDeletePending(null)}
+        onConfirmDelete={handleConfirmExecuteDeleteProject}
+      />
 
       {/* User Profile & Security Settings Modal */}
       {showProfile && currentUserObj && (

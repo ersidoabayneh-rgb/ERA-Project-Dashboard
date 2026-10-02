@@ -37,6 +37,7 @@ import {
   Sliders,
   RotateCcw,
   Save,
+  Archive,
   CheckCircle,
   Settings,
   Plus,
@@ -331,6 +332,7 @@ export default function GroupReportGenerator({
   const [isDeleteYearModalOpen, setIsDeleteYearModalOpen] = useState<boolean>(false);
   const [isViewRecordedModalOpen, setIsViewRecordedModalOpen] = useState<boolean>(false);
   const [efySaveToast, setEfySaveToast] = useState<{ message: string; type: 'success' | 'info' } | null>(null);
+  const [recordEfyOnArchive, setRecordEfyOnArchive] = useState<boolean>(true);
 
   // Live editable state for Progress Plan Mileage Comparisons (Km)
   const [comparisonMonthTrackingPeriod, setComparisonMonthTrackingPeriod] = useState<string>('Aug 2026');
@@ -412,12 +414,12 @@ export default function GroupReportGenerator({
     let cMonths: number[] = [];
     let eMonths: number[] = [];
 
-    if (historyMatch || annualMatch) {
-      cMonths = distributeTotalTo12Months(ctrEfy, 'even');
-      eMonths = distributeTotalTo12Months(eraEfy, 'even');
-    } else if (p.progressPlanLabels?.efyLabel === targetEfy && p.monthly && p.monthly.length >= 12) {
+    if (p.progressPlanLabels?.efyLabel === targetEfy && p.monthly && p.monthly.length >= 12) {
       cMonths = p.monthly.slice(0, 12).map(m => typeof m.revisedPlan === 'number' ? m.revisedPlan : (typeof m.originalPlan === 'number' ? m.originalPlan : 0));
       eMonths = p.monthly.slice(0, 12).map(m => typeof m.originalPlan === 'number' ? m.originalPlan : (typeof m.revisedPlan === 'number' ? m.revisedPlan : 0));
+    } else if (historyMatch || annualMatch) {
+      cMonths = distributeTotalTo12Months(ctrEfy, 'even');
+      eMonths = distributeTotalTo12Months(eraEfy, 'even');
     } else {
       cMonths = Array(12).fill(0);
       eMonths = Array(12).fill(0);
@@ -697,30 +699,36 @@ export default function GroupReportGenerator({
       efyLabel: isActiveEfy ? efyYearStr : (project.progressPlanLabels?.efyLabel || '2019')
     };
 
-    // 2. Also record in historical baseline archive (progressPlanHistory)
-    const historyItem: ProgressPlanHistoryItem = {
-      id: `efy_${efyYearStr}_plan_${project.id}`,
-      monthLabel: `EFY ${efyYearStr} Baseline Plan`,
-      quarterLabel: `Q1-Q4 (EFY ${efyYearStr})`,
-      efyLabel: efyYearStr,
-      contractorMonth: draft.contractorMonths[0] || 0,
-      contractorQuarter: draft.q1Contractor || 0,
-      contractorEfy: draft.contractorEfy || 0,
-      eraMonth: draft.eraMonths[0] || 0,
-      eraQuarter: draft.q1Era || 0,
-      eraEfy: draft.eraEfy || 0,
-      actualMonth: 0,
-      actualQuarter: 0,
-      actualEfy: 0,
-      actualTodate: 0,
-      contractorTodate: 0,
-      eraTodate: 0,
-      physicalProgress: 0
-    };
+    // 2. Also record in historical baseline archive (progressPlanHistory) if option enabled
+    let updatedHistory = project.progressPlanHistory || [];
+    if (recordEfyOnArchive) {
+      const cSums = calculateQuarterlyAndEfyFromMonths(draft.contractorMonths || []);
+      const eSums = calculateQuarterlyAndEfyFromMonths(draft.eraMonths || []);
 
-    const existingHistory = project.progressPlanHistory || [];
-    const filteredHistory = existingHistory.filter(h => h.id !== historyItem.id && h.monthLabel !== historyItem.monthLabel);
-    const updatedHistory = sortProgressPlanHistoryDescending([historyItem, ...filteredHistory]);
+      const historyItem: ProgressPlanHistoryItem = {
+        id: `efy_${efyYearStr}_plan_${project.id}`,
+        monthLabel: `EFY ${efyYearStr} Baseline Plan`,
+        quarterLabel: `Q1-Q4 (EFY ${efyYearStr})`,
+        efyLabel: efyYearStr,
+        contractorMonth: draft.contractorMonths[0] || 0,
+        contractorQuarter: cSums.q1 || 0,
+        contractorEfy: cSums.efy || draft.contractorEfy || 0,
+        eraMonth: draft.eraMonths[0] || 0,
+        eraQuarter: eSums.q1 || 0,
+        eraEfy: eSums.efy || draft.eraEfy || 0,
+        actualMonth: 0,
+        actualQuarter: 0,
+        actualEfy: 0,
+        actualTodate: 0,
+        contractorTodate: 0,
+        eraTodate: 0,
+        physicalProgress: 0
+      };
+
+      const existingHistory = project.progressPlanHistory || [];
+      const filteredHistory = existingHistory.filter(h => h.id !== historyItem.id && h.monthLabel !== historyItem.monthLabel);
+      updatedHistory = sortProgressPlanHistoryDescending([historyItem, ...filteredHistory]);
+    }
 
     // 3. Update project.annual list
     let updatedAnnual = [...(project.annual || [])];
@@ -931,29 +939,35 @@ export default function GroupReportGenerator({
         efyLabel: isActiveEfy ? efyYearStr : (p.progressPlanLabels?.efyLabel || '2019')
       };
 
-      const historyItem: ProgressPlanHistoryItem = {
-        id: `efy_${efyYearStr}_plan_${p.id}`,
-        monthLabel: `EFY ${efyYearStr} Baseline Plan`,
-        quarterLabel: `Q1-Q4 (EFY ${efyYearStr})`,
-        efyLabel: efyYearStr,
-        contractorMonth: draft.contractorMonths[0] || 0,
-        contractorQuarter: draft.q1Contractor || 0,
-        contractorEfy: draft.contractorEfy || 0,
-        eraMonth: draft.eraMonths[0] || 0,
-        eraQuarter: draft.q1Era || 0,
-        eraEfy: draft.eraEfy || 0,
-        actualMonth: 0,
-        actualQuarter: 0,
-        actualEfy: 0,
-        actualTodate: 0,
-        contractorTodate: 0,
-        eraTodate: 0,
-        physicalProgress: 0
-      };
+      let updatedHistory = p.progressPlanHistory || [];
+      if (recordEfyOnArchive) {
+        const cSums = calculateQuarterlyAndEfyFromMonths(draft.contractorMonths || []);
+        const eSums = calculateQuarterlyAndEfyFromMonths(draft.eraMonths || []);
 
-      const existingHistory = p.progressPlanHistory || [];
-      const filteredHistory = existingHistory.filter(h => h.id !== historyItem.id && h.monthLabel !== historyItem.monthLabel);
-      const updatedHistory = sortProgressPlanHistoryDescending([historyItem, ...filteredHistory]);
+        const historyItem: ProgressPlanHistoryItem = {
+          id: `efy_${efyYearStr}_plan_${p.id}`,
+          monthLabel: `EFY ${efyYearStr} Baseline Plan`,
+          quarterLabel: `Q1-Q4 (EFY ${efyYearStr})`,
+          efyLabel: efyYearStr,
+          contractorMonth: draft.contractorMonths[0] || 0,
+          contractorQuarter: cSums.q1 || 0,
+          contractorEfy: cSums.efy || draft.contractorEfy || 0,
+          eraMonth: draft.eraMonths[0] || 0,
+          eraQuarter: eSums.q1 || 0,
+          eraEfy: eSums.efy || draft.eraEfy || 0,
+          actualMonth: 0,
+          actualQuarter: 0,
+          actualEfy: 0,
+          actualTodate: 0,
+          contractorTodate: 0,
+          eraTodate: 0,
+          physicalProgress: 0
+        };
+
+        const existingHistory = p.progressPlanHistory || [];
+        const filteredHistory = existingHistory.filter(h => h.id !== historyItem.id && h.monthLabel !== historyItem.monthLabel);
+        updatedHistory = sortProgressPlanHistoryDescending([historyItem, ...filteredHistory]);
+      }
 
       let updatedAnnual = [...(p.annual || [])];
       if (!isNaN(numericYear)) {
@@ -3288,7 +3302,8 @@ export default function GroupReportGenerator({
           baseDate = new Date(startDateStr);
         }
         if (isNaN(baseDate.getTime())) return 'N/A';
-        const targetDate = new Date(baseDate.getTime() + daysToAdd * 86400000);
+        const targetDate = new Date(baseDate);
+        targetDate.setDate(targetDate.getDate() + daysToAdd);
         return targetDate.toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' });
       } catch {
         return 'N/A';
@@ -3653,7 +3668,7 @@ export default function GroupReportGenerator({
     const addDaysToStartDate = (startDateStr: string, daysToAdd: number): string => {
       if (!startDateStr) return '';
       try {
-        const parts = startDateStr.split('-');
+        const parts = startDateStr.split('T')[0].split('-');
         if (parts.length === 3) {
           const y = parseInt(parts[0], 10);
           const m = parseInt(parts[1], 10) - 1;
@@ -3661,7 +3676,8 @@ export default function GroupReportGenerator({
           const targetDate = new Date(y, m, d + daysToAdd);
           return `${targetDate.getMonth() + 1}/${targetDate.getDate()}/${targetDate.getFullYear()}`;
         } else {
-          const targetDate = new Date(new Date(startDateStr).getTime() + daysToAdd * 86400000);
+          const targetDate = new Date(startDateStr);
+          targetDate.setDate(targetDate.getDate() + daysToAdd);
           return `${targetDate.getMonth() + 1}/${targetDate.getDate()}/${targetDate.getFullYear()}`;
         }
       } catch {
@@ -4602,7 +4618,7 @@ export default function GroupReportGenerator({
     const addDaysToStartDate = (startDateStr: string, daysToAdd: number): string => {
       if (!startDateStr) return '';
       try {
-        const parts = startDateStr.split('-');
+        const parts = startDateStr.split('T')[0].split('-');
         if (parts.length === 3) {
           const y = parseInt(parts[0], 10);
           const m = parseInt(parts[1], 10) - 1;
@@ -4610,7 +4626,8 @@ export default function GroupReportGenerator({
           const targetDate = new Date(y, m, d + daysToAdd);
           return `${targetDate.getMonth() + 1}/${targetDate.getDate()}/${targetDate.getFullYear()}`;
         } else {
-          const targetDate = new Date(new Date(startDateStr).getTime() + daysToAdd * 86400000);
+          const targetDate = new Date(startDateStr);
+          targetDate.setDate(targetDate.getDate() + daysToAdd);
           return `${targetDate.getMonth() + 1}/${targetDate.getDate()}/${targetDate.getFullYear()}`;
         }
       } catch {
@@ -9833,17 +9850,6 @@ export default function GroupReportGenerator({
                           })}
                         </select>
                       </div>
-
-                      {/* Show Recorded EFY Plans button */}
-                      <button
-                        type="button"
-                        onClick={() => setIsViewRecordedModalOpen(true)}
-                        className="px-2 py-1 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 border border-purple-400/30 text-purple-200 font-bold text-xs flex items-center gap-1 shadow-2xs transition cursor-pointer"
-                        title="View recorded EFY baseline plans across projects"
-                      >
-                        <Eye className="w-3.5 h-3.5 text-purple-300" />
-                        <span>Recorded EFY Plans</span>
-                      </button>
 
                       {/* Toggle Quarterly Columns */}
                       <button

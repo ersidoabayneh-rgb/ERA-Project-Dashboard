@@ -12,6 +12,10 @@ import {
   Eye, 
   X, 
   RotateCcw, 
+  Archive,
+  Lock,
+  Unlock,
+  ShieldAlert,
   Edit3,
   Check,
   PlusCircle,
@@ -36,7 +40,7 @@ import {
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { drawEraLogo } from '../lib/pdfReportEngine';
-import { Project, ProgressPlan, ProgressPlanHistoryItem } from '../types';
+import { Project, ProgressPlan, ProgressPlanHistoryItem, User } from '../types';
 import { parseMonthKey } from '../lib/monthlySync';
 
 export interface EfyPlanValidation {
@@ -160,6 +164,7 @@ export function ValidatedEfyInput({
   tooltipPosition = 'top',
   containerClassName = '',
   className = '',
+  disabled,
   ...rest
 }: ValidatedEfyInputProps) {
   const validation = validateEfyPlanValue(value, project);
@@ -168,13 +173,16 @@ export function ValidatedEfyInput({
     <div className={`relative group inline-flex items-center justify-center ${containerClassName}`}>
       <input
         value={value}
-        title={validation.isExceeded ? validation.message : (rest.title || undefined)}
+        disabled={disabled}
+        title={disabled ? "🔒 Saved baseline plan is locked. Master Admin or CPM Admin access is required to edit." : (validation.isExceeded ? validation.message : (rest.title || undefined))}
         aria-invalid={validation.isExceeded}
         data-invalid={validation.isExceeded ? "true" : undefined}
         className={`${baseClassName} ${
-          validation.isExceeded
-            ? '!border-red-500 !border-2 !ring-2 !ring-red-500/60 !bg-red-50/90 dark:!bg-red-950/50 !text-red-700 dark:!text-red-300 font-bold focus:!border-red-600 focus:!ring-red-600 shadow-xs'
-            : normalBorderClass
+          disabled
+            ? '!bg-slate-100 dark:!bg-slate-800/90 !text-slate-500 dark:!text-slate-400 !border-slate-300 dark:!border-slate-700/80 font-extrabold cursor-not-allowed opacity-90'
+            : (validation.isExceeded
+                ? '!border-red-500 !border-2 !ring-2 !ring-red-500/60 !bg-red-50/90 dark:!bg-red-950/50 !text-red-700 dark:!text-red-300 font-bold focus:!border-red-600 focus:!ring-red-600 shadow-xs'
+                : normalBorderClass)
         } ${className}`}
         {...rest}
       />
@@ -302,11 +310,12 @@ export const sortProgressPlanHistoryDescending = (items: ProgressPlanHistoryItem
 
 interface ProgressPlanViewProps {
   project: Project;
+  currentUserObj?: User | null;
   onUpdateProgressPlan: (plan: ProgressPlan, labels: { monthLabel: string; quarterLabel: string; efyLabel: string }) => void;
   onProjectUpdate?: (fields: Partial<Project>, sectionName: string) => void;
 }
 
-export default function ProgressPlanView({ project, onUpdateProgressPlan, onProjectUpdate }: ProgressPlanViewProps) {
+export default function ProgressPlanView({ project, currentUserObj, onUpdateProgressPlan, onProjectUpdate }: ProgressPlanViewProps) {
   const plan: ProgressPlan = project.progressPlan || {
     contractor: { month: 0, quarter: 0, efy: 0, todate: 0 },
     era: { month: 0, quarter: 0, efy: 0, todate: 0 },
@@ -380,12 +389,39 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
   const [isAddEfyModalOpen, setIsAddEfyModalOpen] = useState<boolean>(false);
   const [isViewRecordedEfyModalOpen, setIsViewRecordedEfyModalOpen] = useState<boolean>(false);
   const [isDeleteEfyModalOpen, setIsDeleteEfyModalOpen] = useState<boolean>(false);
+  const [recordEfyOnArchive, setRecordEfyOnArchive] = useState<boolean>(true);
   const [customEfyInput, setCustomEfyInput] = useState<string>('');
   const [selectedQuarterView, setSelectedQuarterView] = useState<'all' | 'Q1' | 'Q2' | 'Q3' | 'Q4'>('all');
 
   // Real-time Sum calculations for Quarterly & EFY from Monthly Plans
   const contractorSums = useMemo(() => calculateQuarterlyAndEfyFromMonths(contractorMonths), [contractorMonths]);
   const eraSums = useMemo(() => calculateQuarterlyAndEfyFromMonths(eraMonths), [eraMonths]);
+
+  // User Permission & Lock State for EFY Baseline Plan
+  const isCpmOrMaster = useMemo(() => {
+    return currentUserObj?.role === 'master_admin' || 
+           currentUserObj?.role === 'cpm_admin' || 
+           currentUserObj?.role === 'admin' ||
+           currentUserObj?.username === 'proj_1781786415663' ||
+           Boolean(currentUserObj?.username && currentUserObj.username.toLowerCase().includes('ersido'));
+  }, [currentUserObj]);
+
+  const currentEfyHistoryMatch = useMemo(() => {
+    return (project.progressPlanHistory || []).find(
+      h => (h.efyLabel || '').trim() === planningEfyYear || (h.monthLabel || '').includes(`EFY ${planningEfyYear}`)
+    );
+  }, [project.progressPlanHistory, planningEfyYear]);
+
+  const isEfyPlanSaved = useMemo(() => {
+    return Boolean(
+      currentEfyHistoryMatch || 
+      (labels.efyLabel === planningEfyYear && (plan.contractor.efy > 0 || plan.era.efy > 0))
+    );
+  }, [currentEfyHistoryMatch, labels.efyLabel, planningEfyYear, plan.contractor.efy, plan.era.efy]);
+
+  const isEfyPlanLocked = useMemo(() => {
+    return isEfyPlanSaved && !isCpmOrMaster;
+  }, [isEfyPlanSaved, isCpmOrMaster]);
 
   const handleSwitchPlanningEfyYear = (targetYear: string) => {
     const cleaned = targetYear.trim().replace(/^EFY\s*/i, '');
@@ -538,29 +574,33 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
       efyLabel: isActiveEfy ? targetEfyStr : labels.efyLabel
     };
 
-    const historyItem: ProgressPlanHistoryItem = {
-      id: `efy_${targetEfyStr}_plan_${project.id}`,
-      monthLabel: `EFY ${targetEfyStr} Baseline Plan`,
-      quarterLabel: `Q1-Q4 (EFY ${targetEfyStr})`,
-      efyLabel: targetEfyStr,
-      contractorMonth: contractorMonths[0] || 0,
-      contractorQuarter: contractorSums.q1 || 0,
-      contractorEfy: contractorSums.efy || 0,
-      eraMonth: eraMonths[0] || 0,
-      eraQuarter: eraSums.q1 || 0,
-      eraEfy: eraSums.efy || 0,
-      actualMonth: 0,
-      actualQuarter: 0,
-      actualEfy: 0,
-      actualTodate: 0,
-      contractorTodate: 0,
-      eraTodate: 0,
-      physicalProgress: 0
-    };
+    // 2. Also record in historical baseline archive (progressPlanHistory) if option enabled
+    let updatedHistory = project.progressPlanHistory || [];
+    if (recordEfyOnArchive) {
+      const historyItem: ProgressPlanHistoryItem = {
+        id: `efy_${targetEfyStr}_plan_${project.id}`,
+        monthLabel: `EFY ${targetEfyStr} Baseline Plan`,
+        quarterLabel: `Q1-Q4 (EFY ${targetEfyStr})`,
+        efyLabel: targetEfyStr,
+        contractorMonth: contractorMonths[0] || 0,
+        contractorQuarter: contractorSums.q1 || 0,
+        contractorEfy: contractorSums.efy || 0,
+        eraMonth: eraMonths[0] || 0,
+        eraQuarter: eraSums.q1 || 0,
+        eraEfy: eraSums.efy || 0,
+        actualMonth: 0,
+        actualQuarter: 0,
+        actualEfy: 0,
+        actualTodate: 0,
+        contractorTodate: 0,
+        eraTodate: 0,
+        physicalProgress: 0
+      };
 
-    const existingHistory = project.progressPlanHistory || [];
-    const filteredHistory = existingHistory.filter(h => h.id !== historyItem.id && h.monthLabel !== historyItem.monthLabel);
-    const updatedHistory = sortProgressPlanHistoryDescending([historyItem, ...filteredHistory]);
+      const existingHistory = project.progressPlanHistory || [];
+      const filteredHistory = existingHistory.filter(h => h.id !== historyItem.id && h.monthLabel !== historyItem.monthLabel);
+      updatedHistory = sortProgressPlanHistoryDescending([historyItem, ...filteredHistory]);
+    }
 
     let updatedAnnual = [...(project.annual || [])];
     if (!isNaN(numericYear)) {
@@ -2016,9 +2056,23 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
                 <h3 className="text-sm sm:text-base font-black tracking-tight flex items-center gap-1.5">
                   EFY {planningEfyYear} Annual Baseline Plan (ERA & Contractor)
                 </h3>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-500/30 text-indigo-200 border border-indigo-400/30">
-                  Whole Fiscal Year Setup (M1 - M12)
-                </span>
+                {isEfyPlanSaved ? (
+                  isCpmOrMaster ? (
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/30 text-emerald-200 border border-emerald-400/40 flex items-center gap-1 shadow-xs">
+                      <Unlock className="w-3 h-3 text-emerald-300" />
+                      <span>Saved Baseline (Unlocked for Master/CPM Admin)</span>
+                    </span>
+                  ) : (
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-rose-500/30 text-rose-200 border border-rose-400/40 flex items-center gap-1 shadow-xs">
+                      <Lock className="w-3 h-3 text-rose-300" />
+                      <span>Saved Baseline Locked (Master/CPM Admin Only)</span>
+                    </span>
+                  )
+                ) : (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-500/30 text-indigo-200 border border-indigo-400/30">
+                    Whole Fiscal Year Setup (M1 - M12)
+                  </span>
+                )}
               </div>
               <p className="text-[11px] text-indigo-200/80 mt-0.5 leading-relaxed">
                 Add and edit monthly target allocations at the beginning of the fiscal year. <strong>Quarterly (Q1-Q4) and Total EFY sums are calculated automatically in real time from the 12 monthly inputs.</strong>
@@ -2080,15 +2134,44 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
               <span>Delete Recorded EFY</span>
             </button>
 
-            {/* Save & Apply Button */}
-            <button
-              onClick={handleSaveAndApplyEfyPlan}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-black transition-all shadow-md active:scale-98 cursor-pointer"
-              title="Save whole fiscal year plan & synchronize with active project tracking"
+            {/* Option to Record EFY Plan on Archive */}
+            <label 
+              className={`px-2.5 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 shadow-2xs transition cursor-pointer select-none ${
+                recordEfyOnArchive
+                  ? 'bg-emerald-500/20 border-emerald-400/50 text-emerald-200'
+                  : 'bg-slate-800/80 border-slate-700 text-slate-400'
+              }`}
+              title="When checked, saving the EFY baseline plan automatically records a snapshot entry into the project's historical baseline archive"
             >
-              <Save className="w-3.5 h-3.5" />
-              <span>Save EFY Plan to Project</span>
-            </button>
+              <input
+                type="checkbox"
+                checked={recordEfyOnArchive}
+                onChange={(e) => setRecordEfyOnArchive(e.target.checked)}
+                className="w-3.5 h-3.5 accent-emerald-500 rounded cursor-pointer"
+              />
+              <Archive className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span>Record on Archive</span>
+            </label>
+
+            {/* Save & Apply Button or Lock Indicator */}
+            {isEfyPlanLocked ? (
+              <div
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-950/80 border border-rose-800 text-rose-300 text-xs font-bold shadow-xs select-none cursor-not-allowed"
+                title="EFY Baseline Plan is saved and locked. Master Admin or CPM Admin access is required to edit."
+              >
+                <Lock className="w-3.5 h-3.5 text-rose-400" />
+                <span>Locked (Saved Baseline)</span>
+              </div>
+            ) : (
+              <button
+                onClick={handleSaveAndApplyEfyPlan}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-black transition-all shadow-md active:scale-98 cursor-pointer"
+                title="Save whole fiscal year plan & synchronize with active project tracking and Cloud Database"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>Save EFY Plan to Project</span>
+              </button>
+            )}
 
             {/* Expand / Collapse Button */}
             <button
@@ -2523,6 +2606,7 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
                             type="number"
                             step="0.01"
                             value={contractorMonths[0] ?? 0}
+                            disabled={isEfyPlanLocked}
                             onChange={(e) => handleContractorMonthChange(0, e.target.value)}
                             project={project}
                             baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
@@ -2534,6 +2618,7 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
                             type="number"
                             step="0.01"
                             value={contractorMonths[1] ?? 0}
+                            disabled={isEfyPlanLocked}
                             onChange={(e) => handleContractorMonthChange(1, e.target.value)}
                             project={project}
                             baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
@@ -2545,6 +2630,7 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
                             type="number"
                             step="0.01"
                             value={contractorMonths[2] ?? 0}
+                            disabled={isEfyPlanLocked}
                             onChange={(e) => handleContractorMonthChange(2, e.target.value)}
                             project={project}
                             baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
@@ -2568,6 +2654,7 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
                             type="number"
                             step="0.01"
                             value={contractorMonths[3] ?? 0}
+                            disabled={isEfyPlanLocked}
                             onChange={(e) => handleContractorMonthChange(3, e.target.value)}
                             project={project}
                             baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
@@ -2579,6 +2666,7 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
                             type="number"
                             step="0.01"
                             value={contractorMonths[4] ?? 0}
+                            disabled={isEfyPlanLocked}
                             onChange={(e) => handleContractorMonthChange(4, e.target.value)}
                             project={project}
                             baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
@@ -2590,6 +2678,7 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
                             type="number"
                             step="0.01"
                             value={contractorMonths[5] ?? 0}
+                            disabled={isEfyPlanLocked}
                             onChange={(e) => handleContractorMonthChange(5, e.target.value)}
                             project={project}
                             baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
@@ -2613,6 +2702,7 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
                             type="number"
                             step="0.01"
                             value={contractorMonths[6] ?? 0}
+                            disabled={isEfyPlanLocked}
                             onChange={(e) => handleContractorMonthChange(6, e.target.value)}
                             project={project}
                             baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
@@ -2624,6 +2714,7 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
                             type="number"
                             step="0.01"
                             value={contractorMonths[7] ?? 0}
+                            disabled={isEfyPlanLocked}
                             onChange={(e) => handleContractorMonthChange(7, e.target.value)}
                             project={project}
                             baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
@@ -2635,6 +2726,7 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
                             type="number"
                             step="0.01"
                             value={contractorMonths[8] ?? 0}
+                            disabled={isEfyPlanLocked}
                             onChange={(e) => handleContractorMonthChange(8, e.target.value)}
                             project={project}
                             baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
@@ -2658,6 +2750,7 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
                             type="number"
                             step="0.01"
                             value={contractorMonths[9] ?? 0}
+                            disabled={isEfyPlanLocked}
                             onChange={(e) => handleContractorMonthChange(9, e.target.value)}
                             project={project}
                             baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
@@ -2669,6 +2762,7 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
                             type="number"
                             step="0.01"
                             value={contractorMonths[10] ?? 0}
+                            disabled={isEfyPlanLocked}
                             onChange={(e) => handleContractorMonthChange(10, e.target.value)}
                             project={project}
                             baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
@@ -2680,6 +2774,7 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
                             type="number"
                             step="0.01"
                             value={contractorMonths[11] ?? 0}
+                            disabled={isEfyPlanLocked}
                             onChange={(e) => handleContractorMonthChange(11, e.target.value)}
                             project={project}
                             baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
@@ -2739,6 +2834,7 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
                             type="number"
                             step="0.01"
                             value={eraMonths[0] ?? 0}
+                            disabled={isEfyPlanLocked}
                             onChange={(e) => handleEraMonthChange(0, e.target.value)}
                             project={project}
                             baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
@@ -2750,6 +2846,7 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
                             type="number"
                             step="0.01"
                             value={eraMonths[1] ?? 0}
+                            disabled={isEfyPlanLocked}
                             onChange={(e) => handleEraMonthChange(1, e.target.value)}
                             project={project}
                             baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
@@ -2761,6 +2858,7 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
                             type="number"
                             step="0.01"
                             value={eraMonths[2] ?? 0}
+                            disabled={isEfyPlanLocked}
                             onChange={(e) => handleEraMonthChange(2, e.target.value)}
                             project={project}
                             baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
@@ -2784,6 +2882,7 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
                             type="number"
                             step="0.01"
                             value={eraMonths[3] ?? 0}
+                            disabled={isEfyPlanLocked}
                             onChange={(e) => handleEraMonthChange(3, e.target.value)}
                             project={project}
                             baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
@@ -2795,6 +2894,7 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
                             type="number"
                             step="0.01"
                             value={eraMonths[4] ?? 0}
+                            disabled={isEfyPlanLocked}
                             onChange={(e) => handleEraMonthChange(4, e.target.value)}
                             project={project}
                             baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
@@ -2806,6 +2906,7 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
                             type="number"
                             step="0.01"
                             value={eraMonths[5] ?? 0}
+                            disabled={isEfyPlanLocked}
                             onChange={(e) => handleEraMonthChange(5, e.target.value)}
                             project={project}
                             baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
@@ -2829,6 +2930,7 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
                             type="number"
                             step="0.01"
                             value={eraMonths[6] ?? 0}
+                            disabled={isEfyPlanLocked}
                             onChange={(e) => handleEraMonthChange(6, e.target.value)}
                             project={project}
                             baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
@@ -2840,6 +2942,7 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
                             type="number"
                             step="0.01"
                             value={eraMonths[7] ?? 0}
+                            disabled={isEfyPlanLocked}
                             onChange={(e) => handleEraMonthChange(7, e.target.value)}
                             project={project}
                             baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
@@ -2851,6 +2954,7 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
                             type="number"
                             step="0.01"
                             value={eraMonths[8] ?? 0}
+                            disabled={isEfyPlanLocked}
                             onChange={(e) => handleEraMonthChange(8, e.target.value)}
                             project={project}
                             baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
@@ -2874,6 +2978,7 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
                             type="number"
                             step="0.01"
                             value={eraMonths[9] ?? 0}
+                            disabled={isEfyPlanLocked}
                             onChange={(e) => handleEraMonthChange(9, e.target.value)}
                             project={project}
                             baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
@@ -2885,6 +2990,7 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
                             type="number"
                             step="0.01"
                             value={eraMonths[10] ?? 0}
+                            disabled={isEfyPlanLocked}
                             onChange={(e) => handleEraMonthChange(10, e.target.value)}
                             project={project}
                             baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"
@@ -2896,6 +3002,7 @@ export default function ProgressPlanView({ project, onUpdateProgressPlan, onProj
                             type="number"
                             step="0.01"
                             value={eraMonths[11] ?? 0}
+                            disabled={isEfyPlanLocked}
                             onChange={(e) => handleEraMonthChange(11, e.target.value)}
                             project={project}
                             baseClassName="w-16 bg-white dark:bg-slate-900 border rounded-lg text-center font-mono py-1 text-xs font-semibold outline-none transition"

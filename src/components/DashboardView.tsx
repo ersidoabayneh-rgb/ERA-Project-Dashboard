@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { formatDateStr, getRevisedCompletionDateStr, parseLocalDate } from '../lib/dateUtils';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { drawEraLogo, drawSafeText } from '../lib/pdfReportEngine';
@@ -892,14 +893,6 @@ export default function DashboardView({
 
   const formattedMoney = (v: number) => 
     formatAccounting(v, '');
-
-  const formatDateStr = (dateStr: string) => {
-    try {
-      return new Date(dateStr).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-    } catch {
-      return dateStr;
-    }
-  };
 
   // Integrated Performance calculations for Alerts and Reports via unified EVM engine
   const evm = calculateProjectEvm(project);
@@ -1831,10 +1824,7 @@ export default function DashboardView({
             return canDelete && (
               <button
                 onClick={() => {
-                  if (window.confirm(`🛑 DELETE PROJECT CONFIRMATION\n\nAre you sure you want to permanently delete project "${project.name}" (ID: ${project.id}) from the system?\n\nThis action cannot be undone.`)) {
-                    if (onDeleteProject) onDeleteProject(project.id);
-                    if (onSwitchTab) onSwitchTab('projects');
-                  }
+                  if (onDeleteProject) onDeleteProject(project.id);
                 }}
                 className="flex items-center gap-1.5 px-2.5 py-1 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-900/60 rounded-xl text-[12px] font-bold transition cursor-pointer"
                 title="Permanently Delete Project (CPM Admins & Master Admin only)"
