@@ -4742,6 +4742,7 @@ let isBatchSyncRunning = false;
                 { id: 'dash', label: '📊 Dashboard' },
                 { id: 'seriesEditor', label: '📋 Financial Data' },
                 { id: 'issueLog', label: '🚩 Issue Log' },
+                { id: 'dailyActivities', label: '🚜 Daily Activities' },
                 { id: 'variationClaim', label: '🚧 Variation & Claim' },
                 { id: 'linear', label: '📏 Linear diagram' },
                 { id: 'rowEditor', label: '🛣️ Utilities & ROW' },
@@ -4755,7 +4756,6 @@ let isBatchSyncRunning = false;
                 { id: 'risks', label: '⚠️ Project Risks' },
                 { id: 'consultant', label: '👔 Supervision Consultant' },
                 { id: 'submittalLog', label: '📋 Submittal Log' },
-                { id: 'dailyActivities', label: '🚜 Daily Activities' },
                 /* { id: 'workspace', label: '☁️ Workspace' }, */
                 { id: 'analysis', label: '📊 Comprehensive analysis' },
                 { id: 'documentation', label: '📁 Documentation' },
