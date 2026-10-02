@@ -637,8 +637,8 @@ export default function GroupReportGenerator({
     if (cMonths.every(v => v === 0) && (p.progressPlan?.contractor?.efy || p.progressPlan?.era?.efy)) {
       ctrEfy = Number(p.progressPlan?.contractor?.efy || 0);
       eraEfy = Number(p.progressPlan?.era?.efy || 0);
-      cMonths = distributeTotalTo12Months(ctrEfy || 6.5, 'even');
-      eMonths = distributeTotalTo12Months(eraEfy || 5.0, 'even');
+      cMonths = distributeTotalTo12Months(ctrEfy, 'even');
+      eMonths = distributeTotalTo12Months(eraEfy, 'even');
     }
 
     const cSums = calculateQuarterlyAndEfyFromMonths(cMonths);
@@ -740,8 +740,8 @@ export default function GroupReportGenerator({
     if (!proj) return;
     const current = getEfyDraft(proj, selectedPlanningEfy);
 
-    const cTotal = current.contractorEfy || 6.5;
-    const eTotal = current.eraEfy || 5.0;
+    const cTotal = current.contractorEfy || 0;
+    const eTotal = current.eraEfy || 0;
 
     const newCMonths = (tier === 'all' || tier === 'contractor') ? distributeTotalTo12Months(cTotal, preset) : current.contractorMonths;
     const newEMonths = (tier === 'all' || tier === 'era') ? distributeTotalTo12Months(eTotal, preset) : current.eraMonths;

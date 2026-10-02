@@ -413,7 +413,7 @@ export default function ProgressPlanView({ project, currentUserObj, onUpdateProg
   });
 
   const [availableEfyYears, setAvailableEfyYears] = useState<string[]>([
-    '2022', '2021', '2020', '2019', '2018', '2017', '2016', '2015', '2014', '2013', '2012'
+    '2019', '2018', '2017', '2016', '2015', '2014', '2013', '2012'
   ]);
   const [planningEfyYear, setPlanningEfyYear] = useState<string>(() => getStoredEfyYear(labels.efyLabel || '2019'));
   const [isAnnualEfyTableOpen, setIsAnnualEfyTableOpen] = useState<boolean>(true);
@@ -590,8 +590,8 @@ export default function ProgressPlanView({ project, currentUserObj, onUpdateProg
       setContractorMonths(project.monthly.slice(0, 12).map(m => typeof m.revisedPlan === 'number' ? m.revisedPlan : (typeof m.originalPlan === 'number' ? m.originalPlan : 0)));
       setEraMonths(project.monthly.slice(0, 12).map(m => typeof m.originalPlan === 'number' ? m.originalPlan : (typeof m.revisedPlan === 'number' ? m.revisedPlan : 0)));
     } else {
-      setContractorMonths(distributeTotalTo12Months(freshPlan.contractor.efy || 6.5, 'even'));
-      setEraMonths(distributeTotalTo12Months(freshPlan.era.efy || 5.0, 'even'));
+      setContractorMonths(Array(12).fill(0));
+      setEraMonths(Array(12).fill(0));
     }
     setPlanningEfyYear(freshLabels.efyLabel || '2019');
   }, [project.id]);
@@ -2601,6 +2601,22 @@ export default function ProgressPlanView({ project, currentUserObj, onUpdateProg
                   );
                 })}
               </select>
+              <button
+                type="button"
+                onClick={() => setIsAddEfyModalOpen(true)}
+                className="text-emerald-400 hover:text-emerald-300 transition"
+                title="Add new EFY year"
+              >
+                <Plus className="w-3 h-3" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsDeleteEfyModalOpen(true)}
+                className="text-rose-400 hover:text-rose-300 transition"
+                title="Delete current EFY year"
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
             </div>
 
             {/* Presets Quick Action */}
