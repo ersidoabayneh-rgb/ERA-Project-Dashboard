@@ -3730,20 +3730,6 @@ let isBatchSyncRunning = false;
                     </div>
                   ) : (
                     <div className="space-y-0 min-w-0">
-                      <div className="flex items-center gap-1 text-[9px] uppercase font-mono tracking-wider text-slate-400 dark:text-slate-500 font-bold leading-tight">
-                        <span 
-                          onClick={() => {
-                            setCurrentPage('projects');
-                            setCurrentProject(null);
-                            setCurrentProjectId(null);
-                          }}
-                          className="hover:text-blue-500 transition cursor-pointer flex items-center gap-1"
-                        >
-                          💼 Contracts Selection
-                        </span>
-                        <span>/</span>
-                        <span className="text-blue-600 dark:text-blue-400 font-semibold">Active Workspace</span>
-                      </div>
                       <div className="flex items-center gap-1.5 group/title flex-wrap">
                         <h1 
                           onClick={() => {

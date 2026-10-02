@@ -204,6 +204,7 @@ export default function DashboardView({
   const [progressSuccess, setProgressSuccess] = useState<string | null>(null);
   const [isKpiHistoryOpen, setIsKpiHistoryOpen] = useState(false);
   const [dashboardRoadType, setDashboardRoadType] = useState<'combined' | 'main' | 'spur'>('combined');
+  const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null);
 
   const currentMonthKey = resolveCurrentMonthKey(project);
   const lastActualInfo = getLastActualProgress(project.monthly, currentMonthKey);
@@ -3236,18 +3237,23 @@ export default function DashboardView({
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.9 }}
-                className="relative group aspect-square rounded-lg overflow-hidden border border-slate-150 dark:border-slate-700 shadow-2xs"
+                className="relative group aspect-square rounded-lg overflow-hidden border border-slate-150 dark:border-slate-700 shadow-2xs cursor-pointer"
+                onClick={() => setSelectedImageIndex(idx)}
               >
                 <img 
                   src={img} 
                   alt={`road-site-${idx}`}
                   className="w-full h-full object-cover transition duration-300 group-hover:scale-105"
+                  title="Click to view full-screen"
                 />
                 
                 {/* Remove button */}
                 <button
-                  onClick={() => onRemoveImage(idx)}
-                  className="absolute top-1 right-1 p-1 bg-black/60 hover:bg-rose-600 text-white rounded-md opacity-0 group-hover:opacity-100 transition"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRemoveImage(idx);
+                  }}
+                  className="absolute top-1 right-1 p-1 bg-black/60 hover:bg-rose-600 text-white rounded-md opacity-0 group-hover:opacity-100 transition z-10"
                   title="Remove image"
                 >
                   <Trash2 className="w-3 h-3" />
@@ -3263,6 +3269,101 @@ export default function DashboardView({
           </p>
         )}
       </section>
+
+      {/* Full-Screen Image Lightbox Modal */}
+      <AnimatePresence>
+        {selectedImageIndex !== null && project.images[selectedImageIndex] && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/95 backdrop-blur-md z-[100] flex flex-col items-center justify-center p-4 md:p-8"
+          >
+            {/* Close Button */}
+            <button
+              onClick={() => setSelectedImageIndex(null)}
+              className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 text-white rounded-full transition cursor-pointer z-50"
+              title="Close modal"
+            >
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            {/* Navigation Left */}
+            {selectedImageIndex > 0 && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedImageIndex(selectedImageIndex - 1);
+                }}
+                className="absolute left-4 p-3 bg-white/10 hover:bg-white/20 text-white rounded-full transition cursor-pointer z-50"
+                title="Previous Image"
+              >
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+            )}
+
+            {/* Navigation Right */}
+            {selectedImageIndex < project.images.length - 1 && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedImageIndex(selectedImageIndex + 1);
+                }}
+                className="absolute right-4 p-3 bg-white/10 hover:bg-white/20 text-white rounded-full transition cursor-pointer z-50"
+                title="Next Image"
+              >
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            )}
+
+            {/* Image Container with Title / Meta info */}
+            <div className="relative flex flex-col items-center max-w-5xl max-h-[85vh] gap-3">
+              <motion.img
+                key={selectedImageIndex}
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                src={project.images[selectedImageIndex]}
+                alt={`road-site-full-${selectedImageIndex}`}
+                className="max-w-full max-h-[70vh] object-contain rounded-xl shadow-2xl border border-white/10"
+              />
+              
+              <div className="text-center text-white/90">
+                <p className="text-xs font-semibold tracking-wider uppercase opacity-60">
+                  Field Site Photo {selectedImageIndex + 1} of {project.images.length}
+                </p>
+                <p className="text-sm font-bold text-slate-300 mt-1">
+                  {project.name} · Contract #{project.id}
+                </p>
+              </div>
+            </div>
+
+            {/* Thumbnail Navigation Row */}
+            <div className="absolute bottom-6 flex items-center justify-center gap-2 overflow-x-auto max-w-full px-4 py-2 bg-white/5 rounded-2xl border border-white/10 backdrop-blur-xs">
+              {project.images.map((img, idx) => (
+                <button
+                  key={`thumb-${idx}`}
+                  onClick={() => setSelectedImageIndex(idx)}
+                  className={`relative w-12 h-12 rounded-lg overflow-hidden border-2 transition ${
+                    idx === selectedImageIndex
+                      ? 'border-blue-500 scale-105 shadow-md'
+                      : 'border-transparent opacity-60 hover:opacity-100'
+                  }`}
+                >
+                  <img src={img} alt={`thumb-${idx}`} className="w-full h-full object-cover" />
+                </button>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       </div>
     </div>
