@@ -397,10 +397,10 @@ export default function ProgressPlanView({ project, currentUserObj, onUpdateProg
   const contractorSums = useMemo(() => calculateQuarterlyAndEfyFromMonths(contractorMonths), [contractorMonths]);
   const eraSums = useMemo(() => calculateQuarterlyAndEfyFromMonths(eraMonths), [eraMonths]);
 
-  // User Permission & Lock State for EFY Baseline Plan
-  const isCpmOrMaster = useMemo(() => {
+  // User Permission & Lock State for EFY Baseline Plan: Directorate admin and Master admin only
+  const isEfyAdmin = useMemo(() => {
     return currentUserObj?.role === 'master_admin' || 
-           currentUserObj?.role === 'cpm_admin' || 
+           currentUserObj?.role === 'directorate_admin' || 
            currentUserObj?.role === 'admin' ||
            currentUserObj?.username === 'proj_1781786415663' ||
            Boolean(currentUserObj?.username && currentUserObj.username.toLowerCase().includes('ersido'));
@@ -420,8 +420,8 @@ export default function ProgressPlanView({ project, currentUserObj, onUpdateProg
   }, [currentEfyHistoryMatch, labels.efyLabel, planningEfyYear, plan.contractor.efy, plan.era.efy]);
 
   const isEfyPlanLocked = useMemo(() => {
-    return isEfyPlanSaved && !isCpmOrMaster;
-  }, [isEfyPlanSaved, isCpmOrMaster]);
+    return isEfyPlanSaved && !isEfyAdmin;
+  }, [isEfyPlanSaved, isEfyAdmin]);
 
   const handleSwitchPlanningEfyYear = (targetYear: string) => {
     const cleaned = targetYear.trim().replace(/^EFY\s*/i, '');
@@ -2066,15 +2066,15 @@ export default function ProgressPlanView({ project, currentUserObj, onUpdateProg
                   EFY {planningEfyYear} Annual Baseline Plan (ERA & Contractor)
                 </h3>
                 {isEfyPlanSaved ? (
-                  isCpmOrMaster ? (
+                  isEfyAdmin ? (
                     <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/30 text-emerald-200 border border-emerald-400/40 flex items-center gap-1 shadow-xs">
                       <Unlock className="w-3 h-3 text-emerald-300" />
-                      <span>Saved Baseline (Unlocked for Master/CPM Admin)</span>
+                      <span>Saved Baseline (Unlocked for Master/Directorate Admin)</span>
                     </span>
                   ) : (
                     <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-rose-500/30 text-rose-200 border border-rose-400/40 flex items-center gap-1 shadow-xs">
                       <Lock className="w-3 h-3 text-rose-300" />
-                      <span>Saved Baseline Locked (Master/CPM Admin Only)</span>
+                      <span>Saved Baseline Locked (Master/Directorate Admin Only)</span>
                     </span>
                   )
                 ) : (
@@ -2166,7 +2166,7 @@ export default function ProgressPlanView({ project, currentUserObj, onUpdateProg
             {isEfyPlanLocked ? (
               <div
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-950/80 border border-rose-800 text-rose-300 text-xs font-bold shadow-xs select-none cursor-not-allowed"
-                title="EFY Baseline Plan is saved and locked. Master Admin or CPM Admin access is required to edit."
+                title="EFY Baseline Plan is saved and locked. Master Admin or Directorate Admin access is required to edit."
               >
                 <Lock className="w-3.5 h-3.5 text-rose-400" />
                 <span>Locked (Saved Baseline)</span>

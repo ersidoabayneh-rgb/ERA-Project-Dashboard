@@ -2358,20 +2358,6 @@ export default function GroupReportGenerator({
     const today = new Date();
     return projects.filter(p => {
       if (!isAccessible(p)) return false;
-      
-      // Filter out explicitly removed project "Bonosha- Achamo"
-      const nameLower = (p.name || '').toLowerCase();
-      const idLower = (p.id || '').toLowerCase();
-      const contractorLower = (p.contractor || '').toLowerCase();
-
-      if (
-        nameLower.includes('bonosha') ||
-        nameLower.includes('achamo') ||
-        idLower.includes('w-137') ||
-        contractorLower.includes('yirgalem construction')
-      ) {
-        return false;
-      }
 
       let isMatch = false;
       if (groupType === 'directorate') {
@@ -2612,6 +2598,14 @@ export default function GroupReportGenerator({
       return sortOrder === 'asc' ? comparison : -comparison;
     });
   }, [rawGroupProjects, reportSearchQuery, sortBy, sortOrder]);
+
+  // EFY Baseline Plan table projects list based on user credentials (shows all assigned projects first, or filters if none assigned)
+  const efyTableProjects = useMemo(() => {
+    if (currentUserObj?.accessibleProjects && Array.isArray(currentUserObj.accessibleProjects) && currentUserObj.accessibleProjects.length > 0) {
+      return projects.filter(p => currentUserObj.accessibleProjects.includes(p.id));
+    }
+    return processedProjects;
+  }, [projects, currentUserObj, processedProjects]);
 
   // Derived statistics for the selected group
   const stats = useMemo(() => {
@@ -7865,6 +7859,428 @@ export default function GroupReportGenerator({
     doc.save(fileName);
   };
 
+  // Print/Export EFY Baseline Plan Table to Landscape PDF
+  const handleExportEfyBaselinePlanPDF = () => {
+    if (efyTableProjects.length === 0) return;
+
+    const doc = new jsPDF('l', 'pt', 'a4'); // Landscape A4 (841.89 pt x 595.28 pt)
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+
+    // Columns structure
+    const staticW = {
+      no: 20,
+      name: 145,
+      actor: 55
+    };
+
+    let dynamicCols: { label: string; width: number; isSum?: boolean; isHighlight?: boolean; key: string }[] = [];
+
+    if (baselineQuarterView === 'all') {
+      // 12 months + 4 quarters + EFY + Length % + Reflection Status
+      const months = ['Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
+      months.forEach((m, idx) => {
+        dynamicCols.push({ label: m, width: 26, key: `m_${idx}` });
+        if (idx === 2) dynamicCols.push({ label: 'Q1 Sum', width: 31, isSum: true, key: 'q1' });
+        if (idx === 5) dynamicCols.push({ label: 'Q2 Sum', width: 31, isSum: true, key: 'q2' });
+        if (idx === 8) dynamicCols.push({ label: 'Q3 Sum', width: 31, isSum: true, key: 'q3' });
+        if (idx === 11) dynamicCols.push({ label: 'Q4 Sum', width: 31, isSum: true, key: 'q4' });
+      });
+      dynamicCols.push({ label: `EFY ${selectedPlanningEfy}`, width: 38, isHighlight: true, key: 'efy' });
+      dynamicCols.push({ label: 'Length %', width: 40, key: 'pct' });
+      dynamicCols.push({ label: 'Reflection Status', width: 45, key: 'status' });
+    } else {
+      // 1 Specific Quarter layout
+      let startIdx = 0;
+      let qKey = 'q1';
+      let qTitle = 'Q1 Sum';
+      if (baselineQuarterView === 'Q1') { startIdx = 0; qKey = 'q1'; qTitle = 'Q1 Sum'; }
+      else if (baselineQuarterView === 'Q2') { startIdx = 3; qKey = 'q2'; qTitle = 'Q2 Sum'; }
+      else if (baselineQuarterView === 'Q3') { startIdx = 6; qKey = 'q3'; qTitle = 'Q3 Sum'; }
+      else { startIdx = 9; qKey = 'q4'; qTitle = 'Q4 Sum'; }
+
+      const months = ['Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
+      for (let i = 0; i < 3; i++) {
+        dynamicCols.push({ label: months[startIdx + i], width: 80, key: `m_${startIdx + i}` });
+      }
+      dynamicCols.push({ label: qTitle, width: 85, isSum: true, key: qKey });
+      dynamicCols.push({ label: `EFY ${selectedPlanningEfy}`, width: 80, isHighlight: true, key: 'efy' });
+      dynamicCols.push({ label: 'Length %', width: 75, key: 'pct' });
+      dynamicCols.push({ label: 'Reflection Status', width: 80, key: 'status' });
+    }
+
+    let pageNumber = 1;
+
+    const drawPageHeader = (pNum: number) => {
+      // Clean page border
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.75);
+      doc.roundedRect(30, 16, pageWidth - 60, pageHeight - 32, 4, 4, 'S');
+
+      // Gold accent top bar
+      doc.setDrawColor(194, 120, 3);
+      doc.setLineWidth(3);
+      doc.line(40, 24, pageWidth - 40, 24);
+
+      if (pNum === 1) {
+        // Official ERA Logo
+        drawEraLogo(doc, 40, 28, 26, {
+          withContainer: true,
+          containerBg: [255, 255, 255],
+          containerBorder: [226, 232, 240],
+          borderRadius: 3
+        });
+
+        // Audit Stamp Box
+        const dsW = 190;
+        const dsX = pageWidth - 40 - dsW;
+        doc.setFillColor(248, 250, 252);
+        doc.setDrawColor(200, 200, 200);
+        doc.setLineWidth(0.75);
+        doc.roundedRect(dsX, 28, dsW, 28, 3, 3, 'DF');
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(6.5);
+        doc.setTextColor(0, 0, 0);
+        doc.text("OFFICIAL PORTFOLIO PLAN REPORT", dsX + 6, 36);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(5);
+        doc.setTextColor(100, 116, 139);
+        doc.text(`Generated: ${new Date().toLocaleString()}`, dsX + 6, 44);
+        doc.text(`Authenticated Target Year: EFY ${selectedPlanningEfy}`, dsX + 6, 50);
+
+        // Header titles
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(11);
+        doc.setTextColor(15, 23, 42);
+        doc.text("ETHIOPIAN ROADS ADMINISTRATION", 80, 38);
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8.5);
+        doc.setTextColor(67, 56, 202);
+        doc.text(`PORTFOLIO ANNUAL PROGRESS BASELINE PLAN - EFY ${selectedPlanningEfy}`, 80, 50);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(6.5);
+        doc.setTextColor(71, 85, 105);
+        doc.text(`Group Level: ${groupType.toUpperCase()} - ${selectedGroup.toUpperCase()} • All figures in Kilometers (Km)`, 80, 59);
+      } else {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.setTextColor(67, 56, 202);
+        doc.text(`PORTFOLIO ANNUAL PROGRESS BASELINE PLAN (Cont.) - EFY ${selectedPlanningEfy}`, 40, 38);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(6);
+        doc.setTextColor(100, 116, 139);
+        doc.text(`Group Level: ${groupType.toUpperCase()} - ${selectedGroup.toUpperCase()}`, 40, 47);
+      }
+    };
+
+    drawPageHeader(1);
+
+    // Table Header Row helper
+    const drawTableHeader = (startY: number) => {
+      doc.setFillColor(30, 41, 59);
+      doc.rect(40, startY, pageWidth - 80, 22, 'F');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6);
+      doc.setTextColor(255, 255, 255);
+
+      let currX = 40;
+      doc.text("No.", currX + 3, startY + 14);
+      currX += staticW.no;
+
+      doc.text("Project Name & Scope", currX + 5, startY + 14);
+      currX += staticW.name;
+
+      doc.text("Actor", currX + 5, startY + 14);
+      currX += staticW.actor;
+
+      dynamicCols.forEach(col => {
+        const textW = doc.getTextWidth(col.label);
+        const padding = (col.width - textW) / 2;
+        if (col.isSum || col.isHighlight) {
+          doc.setFont('helvetica', 'bold');
+        } else {
+          doc.setFont('helvetica', 'normal');
+        }
+        doc.text(col.label, currX + padding, startY + 14);
+        currX += col.width;
+      });
+    };
+
+    let y = 72;
+    drawTableHeader(y);
+    y += 22;
+
+    const rowHeight = 15; // 15 pt per actor row, 30 pt per project row (Contractor + ERA Approved)
+
+    efyTableProjects.forEach((p, idx) => {
+      // Check for page overflow
+      if (y + 30 > pageHeight - 40) {
+        // Footer page numbering
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(5.5);
+        doc.setTextColor(148, 163, 184);
+        doc.text(
+          `Page ${pageNumber} • Ethiopian Roads Administration CMS`,
+          pageWidth / 2,
+          pageHeight - 20,
+          { align: 'center' }
+        );
+
+        doc.addPage();
+        pageNumber++;
+        drawPageHeader(pageNumber);
+        y = 60;
+        drawTableHeader(y);
+        y += 22;
+      }
+
+      const draft = getEfyDraft(p, selectedPlanningEfy);
+      const totalKm = p.lengthKm || 65.0;
+
+      // Draw horizontal line at start of project
+      doc.setDrawColor(203, 213, 225);
+      doc.setLineWidth(0.5);
+      doc.line(40, y, pageWidth - 40, y);
+
+      // Project Name cell wrap
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(5.5);
+      doc.setTextColor(15, 23, 42);
+      
+      const wrappedName = doc.splitTextToSize(p.name, staticW.name - 10);
+      const cellText = wrappedName.slice(0, 3); // max 3 lines
+      
+      // Draw No & Name
+      doc.text(`${idx + 1}`, 40 + 3, y + 12);
+      
+      let textY = y + 10;
+      cellText.forEach((line) => {
+        doc.text(line, 40 + staticW.no + 4, textY);
+        textY += 7.5;
+      });
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(4.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`${p.id.toUpperCase()} • Scope: ${totalKm.toFixed(2)} Km`, 40 + staticW.no + 4, y + 26);
+
+      // --- ROW 1: Contractor Program Plan ---
+      doc.setFillColor(248, 250, 252);
+      doc.rect(40 + staticW.no + staticW.name, y, pageWidth - 80 - staticW.no - staticW.name, rowHeight, 'F');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(5);
+      doc.setTextColor(29, 78, 216); // Blue for Contractor
+      doc.text("Contractor Plan", 40 + staticW.no + staticW.name + 4, y + 9.5);
+
+      let currX = 40 + staticW.no + staticW.name + staticW.actor;
+
+      dynamicCols.forEach(col => {
+        let valStr = '0.00';
+        if (col.key.startsWith('m_')) {
+          const mIdx = parseInt(col.key.split('_')[1], 10);
+          valStr = (draft.contractorMonths?.[mIdx] ?? 0).toFixed(2);
+        } else if (col.key === 'q1') {
+          valStr = calculateQuarterlyAndEfyFromMonths(draft.contractorMonths || []).q1.toFixed(2);
+        } else if (col.key === 'q2') {
+          valStr = calculateQuarterlyAndEfyFromMonths(draft.contractorMonths || []).q2.toFixed(2);
+        } else if (col.key === 'q3') {
+          valStr = calculateQuarterlyAndEfyFromMonths(draft.contractorMonths || []).q3.toFixed(2);
+        } else if (col.key === 'q4') {
+          valStr = calculateQuarterlyAndEfyFromMonths(draft.contractorMonths || []).q4.toFixed(2);
+        } else if (col.key === 'efy') {
+          valStr = (draft.contractorEfy || 0).toFixed(2);
+        } else if (col.key === 'pct') {
+          valStr = totalKm > 0 ? `${((draft.contractorEfy / totalKm) * 100).toFixed(1)}%` : '0.0%';
+        } else if (col.key === 'status') {
+          const slippage = (draft.contractorEfy || 0) - (draft.eraEfy || 0);
+          valStr = slippage >= 0 ? `Aligned (+${slippage.toFixed(1)})` : `Gap (${slippage.toFixed(1)})`;
+        }
+
+        doc.setFont('helvetica', col.isSum || col.isHighlight ? 'bold' : 'normal');
+        doc.setFontSize(col.key === 'status' ? 4.5 : 5.5);
+        doc.setTextColor(col.isSum || col.isHighlight ? 15 : 71);
+        const textW = doc.getTextWidth(valStr);
+        doc.text(valStr, currX + col.width - textW - 4, y + 9.5);
+        currX += col.width;
+      });
+
+      y += rowHeight;
+
+      // --- ROW 2: ERA Approved Milestone Plan ---
+      doc.setFillColor(254, 244, 255); // soft purple
+      doc.rect(40 + staticW.no + staticW.name, y, pageWidth - 80 - staticW.no - staticW.name, rowHeight, 'F');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(5);
+      doc.setTextColor(109, 40, 217); // Purple for ERA
+      doc.text("Approved ERA Plan", 40 + staticW.no + staticW.name + 4, y + 9.5);
+
+      currX = 40 + staticW.no + staticW.name + staticW.actor;
+
+      dynamicCols.forEach(col => {
+        let valStr = '0.00';
+        if (col.key.startsWith('m_')) {
+          const mIdx = parseInt(col.key.split('_')[1], 10);
+          valStr = (draft.eraMonths?.[mIdx] ?? 0).toFixed(2);
+        } else if (col.key === 'q1') {
+          valStr = calculateQuarterlyAndEfyFromMonths(draft.eraMonths || []).q1.toFixed(2);
+        } else if (col.key === 'q2') {
+          valStr = calculateQuarterlyAndEfyFromMonths(draft.eraMonths || []).q2.toFixed(2);
+        } else if (col.key === 'q3') {
+          valStr = calculateQuarterlyAndEfyFromMonths(draft.eraMonths || []).q3.toFixed(2);
+        } else if (col.key === 'q4') {
+          valStr = calculateQuarterlyAndEfyFromMonths(draft.eraMonths || []).q4.toFixed(2);
+        } else if (col.key === 'efy') {
+          valStr = (draft.eraEfy || 0).toFixed(2);
+        } else if (col.key === 'pct') {
+          valStr = totalKm > 0 ? `${((draft.eraEfy / totalKm) * 100).toFixed(1)}%` : '0.0%';
+        } else if (col.key === 'status') {
+          valStr = 'Approval Target';
+        }
+
+        doc.setFont('helvetica', col.isSum || col.isHighlight ? 'bold' : 'normal');
+        doc.setFontSize(col.key === 'status' ? 4.5 : 5.5);
+        doc.setTextColor(col.isSum || col.isHighlight ? 15 : 71);
+        const textW = doc.getTextWidth(valStr);
+        doc.text(valStr, currX + col.width - textW - 4, y + 9.5);
+        currX += col.width;
+      });
+
+      y += rowHeight;
+    });
+
+    // Draw final table bottom line
+    doc.setDrawColor(148, 163, 184);
+    doc.setLineWidth(1);
+    doc.line(40, y, pageWidth - 40, y);
+
+    // --- PORTFOLIO TOTAL FOOTER ROWS ---
+    if (y + 35 < pageHeight - 40) {
+      // Contractor Portfolio Total
+      doc.setFillColor(239, 246, 255);
+      doc.rect(40, y, pageWidth - 80, 12, 'F');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(5.5);
+      doc.setTextColor(30, 58, 138);
+      doc.text("Portfolio Total (Contractor Plan)", 40 + staticW.no + 4, y + 8.5);
+      doc.text(`${efyTableProjects.length} Projects`, 40 + staticW.no + staticW.name + 4, y + 8.5);
+
+      let currX = 40 + staticW.no + staticW.name + staticW.actor;
+
+      dynamicCols.forEach(col => {
+        let valSum = 0;
+        efyTableProjects.forEach(p => {
+          const d = getEfyDraft(p, selectedPlanningEfy);
+          if (col.key.startsWith('m_')) {
+            const mIdx = parseInt(col.key.split('_')[1], 10);
+            valSum += Number(d.contractorMonths?.[mIdx] || 0);
+          } else if (col.key === 'q1') {
+            valSum += calculateQuarterlyAndEfyFromMonths(d.contractorMonths || []).q1;
+          } else if (col.key === 'q2') {
+            valSum += calculateQuarterlyAndEfyFromMonths(d.contractorMonths || []).q2;
+          } else if (col.key === 'q3') {
+            valSum += calculateQuarterlyAndEfyFromMonths(d.contractorMonths || []).q3;
+          } else if (col.key === 'q4') {
+            valSum += calculateQuarterlyAndEfyFromMonths(d.contractorMonths || []).q4;
+          } else if (col.key === 'efy') {
+            valSum += Number(d.contractorEfy || 0);
+          }
+        });
+
+        let valStr = valSum.toFixed(2);
+        if (col.key === 'pct') {
+          const totalScope = efyTableProjects.reduce((acc, proj) => acc + (proj.lengthKm || 65.0), 0);
+          const totalCtr = efyTableProjects.reduce((acc, proj) => acc + calculateQuarterlyAndEfyFromMonths(getEfyDraft(proj, selectedPlanningEfy).contractorMonths || []).efy, 0);
+          valStr = totalScope > 0 ? `${((totalCtr / totalScope) * 100).toFixed(1)}%` : '—';
+        } else if (col.key === 'status') {
+          valStr = 'Contractor Aggregate';
+        }
+
+        const textW = doc.getTextWidth(valStr);
+        doc.text(valStr, currX + col.width - textW - 4, y + 8.5);
+        currX += col.width;
+      });
+
+      y += 12;
+
+      // ERA Portfolio Total
+      doc.setFillColor(253, 242, 253);
+      doc.rect(40, y, pageWidth - 80, 12, 'F');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(5.5);
+      doc.setTextColor(88, 28, 135);
+      doc.text("Portfolio Total (Approved ERA Plan)", 40 + staticW.no + 4, y + 8.5);
+      doc.text(`${efyTableProjects.length} Projects`, 40 + staticW.no + staticW.name + 4, y + 8.5);
+
+      currX = 40 + staticW.no + staticW.name + staticW.actor;
+
+      dynamicCols.forEach(col => {
+        let valSum = 0;
+        efyTableProjects.forEach(p => {
+          const d = getEfyDraft(p, selectedPlanningEfy);
+          if (col.key.startsWith('m_')) {
+            const mIdx = parseInt(col.key.split('_')[1], 10);
+            valSum += Number(d.eraMonths?.[mIdx] || 0);
+          } else if (col.key === 'q1') {
+            valSum += calculateQuarterlyAndEfyFromMonths(d.eraMonths || []).q1;
+          } else if (col.key === 'q2') {
+            valSum += calculateQuarterlyAndEfyFromMonths(d.eraMonths || []).q2;
+          } else if (col.key === 'q3') {
+            valSum += calculateQuarterlyAndEfyFromMonths(d.eraMonths || []).q3;
+          } else if (col.key === 'q4') {
+            valSum += calculateQuarterlyAndEfyFromMonths(d.eraMonths || []).q4;
+          } else if (col.key === 'efy') {
+            valSum += Number(d.eraEfy || 0);
+          }
+        });
+
+        let valStr = valSum.toFixed(2);
+        if (col.key === 'pct') {
+          const totalScope = efyTableProjects.reduce((acc, proj) => acc + (proj.lengthKm || 65.0), 0);
+          const totalEra = efyTableProjects.reduce((acc, proj) => acc + calculateQuarterlyAndEfyFromMonths(getEfyDraft(proj, selectedPlanningEfy).eraMonths || []).efy, 0);
+          valStr = totalScope > 0 ? `${((totalEra / totalScope) * 100).toFixed(1)}%` : '—';
+        } else if (col.key === 'status') {
+          valStr = 'ERA Aggregate';
+        }
+
+        const textW = doc.getTextWidth(valStr);
+        doc.text(valStr, currX + col.width - textW - 4, y + 8.5);
+        currX += col.width;
+      });
+
+      y += 12;
+      doc.setDrawColor(148, 163, 184);
+      doc.setLineWidth(1);
+      doc.line(40, y, pageWidth - 40, y);
+    }
+
+    // Write page numbers on all pages
+    for (let p = 1; p <= pageNumber; p++) {
+      doc.setPage(p);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(5.5);
+      doc.setTextColor(148, 163, 184);
+      doc.text(
+        `Page ${p} of ${pageNumber} • Ethiopian Roads Administration CMS • Annual Progress Baseline Plan`,
+        pageWidth / 2,
+        pageHeight - 20,
+        { align: 'center' }
+      );
+    }
+
+    const fileName = `ERA_Annual_Baseline_Plan_${(selectedGroup || 'Southern').replace(/[^a-zA-Z0-9]/g, '_')}_EFY_${selectedPlanningEfy}.pdf`;
+    doc.save(fileName);
+  };
+
   // Export Directorate & PMO Group Performance Summary PDF separately
   const handleExportDirectoratePmoSummaryPDF = () => {
     if (!activeMilestone) return;
@@ -9868,6 +10284,18 @@ export default function GroupReportGenerator({
                         <span>{isQuarterlyPlanningExpanded ? 'Hide Quarters' : 'Show Quarters (Q1-Q4)'}</span>
                       </button>
 
+                      {/* PDF Export Button */}
+                      <button
+                        type="button"
+                        onClick={handleExportEfyBaselinePlanPDF}
+                        disabled={efyTableProjects.length === 0}
+                        className="px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white border border-rose-400/30 cursor-pointer shadow-xs active:scale-98"
+                        title="Export EFY Annual Progress Baseline Plan Table to Landscape PDF"
+                      >
+                        <Printer className="w-3.5 h-3.5" />
+                        <span>Export PDF</span>
+                      </button>
+
                       {/* Expand / Collapse Section */}
                       <button
                         type="button"
@@ -10392,7 +10820,7 @@ export default function GroupReportGenerator({
                           </thead>
 
                           <tbody className="divide-y divide-slate-200 dark:divide-slate-700/60">
-                            {processedProjects.map((p, pIdx) => {
+                            {efyTableProjects.map((p, pIdx) => {
                               const draft = getEfyDraft(p, selectedPlanningEfy);
                               const totalKm = p.lengthKm || 65.0;
                               const contractorMonths = draft.contractorMonths || Array(12).fill(0);
@@ -10628,14 +11056,14 @@ export default function GroupReportGenerator({
                                 Portfolio Total (Contractor Plan)
                               </td>
                               <td className="p-2 text-left border-r border-blue-200 dark:border-blue-800">
-                                {processedProjects.length} Projects
+                                {efyTableProjects.length} Projects
                               </td>
 
                               {/* Q1 Total Contractor */}
                               {(baselineQuarterView === 'all' || baselineQuarterView === 'Q1') && (
                                 <>
                                   {[0, 1, 2].map((mIdx) => {
-                                    const sumM = processedProjects.reduce((acc, p) => {
+                                    const sumM = efyTableProjects.reduce((acc, p) => {
                                       const d = getEfyDraft(p, selectedPlanningEfy);
                                       return acc + (d.contractorMonths?.[mIdx] || 0);
                                     }, 0);
@@ -10646,7 +11074,7 @@ export default function GroupReportGenerator({
                                     );
                                   })}
                                   <td className="p-1.5 text-center font-mono font-black text-blue-800 dark:text-blue-200 bg-blue-200/70 dark:bg-blue-900/60 border-r border-blue-300 dark:border-blue-700">
-                                    {processedProjects.reduce((acc, p) => {
+                                    {efyTableProjects.reduce((acc, p) => {
                                       const d = getEfyDraft(p, selectedPlanningEfy);
                                       const s = calculateQuarterlyAndEfyFromMonths(d.contractorMonths || []);
                                       return acc + s.q1;
@@ -10659,7 +11087,7 @@ export default function GroupReportGenerator({
                               {(baselineQuarterView === 'all' || baselineQuarterView === 'Q2') && (
                                 <>
                                   {[3, 4, 5].map((mIdx) => {
-                                    const sumM = processedProjects.reduce((acc, p) => {
+                                    const sumM = efyTableProjects.reduce((acc, p) => {
                                       const d = getEfyDraft(p, selectedPlanningEfy);
                                       return acc + (d.contractorMonths?.[mIdx] || 0);
                                     }, 0);
@@ -10670,7 +11098,7 @@ export default function GroupReportGenerator({
                                     );
                                   })}
                                   <td className="p-1.5 text-center font-mono font-black text-cyan-800 dark:text-cyan-200 bg-cyan-200/70 dark:bg-cyan-900/60 border-r border-cyan-300 dark:border-cyan-700">
-                                    {processedProjects.reduce((acc, p) => {
+                                    {efyTableProjects.reduce((acc, p) => {
                                       const d = getEfyDraft(p, selectedPlanningEfy);
                                       const s = calculateQuarterlyAndEfyFromMonths(d.contractorMonths || []);
                                       return acc + s.q2;
@@ -10683,7 +11111,7 @@ export default function GroupReportGenerator({
                               {(baselineQuarterView === 'all' || baselineQuarterView === 'Q3') && (
                                 <>
                                   {[6, 7, 8].map((mIdx) => {
-                                    const sumM = processedProjects.reduce((acc, p) => {
+                                    const sumM = efyTableProjects.reduce((acc, p) => {
                                       const d = getEfyDraft(p, selectedPlanningEfy);
                                       return acc + (d.contractorMonths?.[mIdx] || 0);
                                     }, 0);
@@ -10694,7 +11122,7 @@ export default function GroupReportGenerator({
                                     );
                                   })}
                                   <td className="p-1.5 text-center font-mono font-black text-indigo-800 dark:text-indigo-200 bg-indigo-200/70 dark:bg-indigo-900/60 border-r border-indigo-300 dark:border-indigo-700">
-                                    {processedProjects.reduce((acc, p) => {
+                                    {efyTableProjects.reduce((acc, p) => {
                                       const d = getEfyDraft(p, selectedPlanningEfy);
                                       const s = calculateQuarterlyAndEfyFromMonths(d.contractorMonths || []);
                                       return acc + s.q3;
@@ -10707,7 +11135,7 @@ export default function GroupReportGenerator({
                               {(baselineQuarterView === 'all' || baselineQuarterView === 'Q4') && (
                                 <>
                                   {[9, 10, 11].map((mIdx) => {
-                                    const sumM = processedProjects.reduce((acc, p) => {
+                                    const sumM = efyTableProjects.reduce((acc, p) => {
                                       const d = getEfyDraft(p, selectedPlanningEfy);
                                       return acc + (d.contractorMonths?.[mIdx] || 0);
                                     }, 0);
@@ -10718,7 +11146,7 @@ export default function GroupReportGenerator({
                                     );
                                   })}
                                   <td className="p-1.5 text-center font-mono font-black text-purple-800 dark:text-purple-200 bg-purple-200/70 dark:bg-purple-900/60 border-r border-purple-300 dark:border-purple-700">
-                                    {processedProjects.reduce((acc, p) => {
+                                    {efyTableProjects.reduce((acc, p) => {
                                       const d = getEfyDraft(p, selectedPlanningEfy);
                                       const s = calculateQuarterlyAndEfyFromMonths(d.contractorMonths || []);
                                       return acc + s.q4;
@@ -10729,7 +11157,7 @@ export default function GroupReportGenerator({
 
                               {/* EFY Total Contractor */}
                               <td className="p-2 text-center font-mono font-black text-xs bg-blue-200/80 dark:bg-blue-900/80 border-r border-blue-300 dark:border-blue-700">
-                                {processedProjects.reduce((acc, p) => {
+                                {efyTableProjects.reduce((acc, p) => {
                                   const d = getEfyDraft(p, selectedPlanningEfy);
                                   const s = calculateQuarterlyAndEfyFromMonths(d.contractorMonths || []);
                                   return acc + s.efy;
@@ -10738,8 +11166,8 @@ export default function GroupReportGenerator({
 
                               <td className="p-2 text-center font-mono font-bold text-xs bg-blue-100 dark:bg-blue-950 border-r border-blue-300 dark:border-blue-700">
                                 {(() => {
-                                  const totalScope = processedProjects.reduce((acc, p) => acc + (p.lengthKm || 65.0), 0);
-                                  const totalCtr = processedProjects.reduce((acc, p) => {
+                                  const totalScope = efyTableProjects.reduce((acc, p) => acc + (p.lengthKm || 65.0), 0);
+                                  const totalCtr = efyTableProjects.reduce((acc, p) => {
                                     const d = getEfyDraft(p, selectedPlanningEfy);
                                     const s = calculateQuarterlyAndEfyFromMonths(d.contractorMonths || []);
                                     return acc + s.efy;
@@ -10759,14 +11187,14 @@ export default function GroupReportGenerator({
                                 Portfolio Total (ERA Plan)
                               </td>
                               <td className="p-2 text-left border-r border-purple-200 dark:border-purple-800">
-                                {processedProjects.length} Projects
+                                {efyTableProjects.length} Projects
                               </td>
 
                               {/* Q1 Total ERA */}
                               {(baselineQuarterView === 'all' || baselineQuarterView === 'Q1') && (
                                 <>
                                   {[0, 1, 2].map((mIdx) => {
-                                    const sumM = processedProjects.reduce((acc, p) => {
+                                    const sumM = efyTableProjects.reduce((acc, p) => {
                                       const d = getEfyDraft(p, selectedPlanningEfy);
                                       return acc + (d.eraMonths?.[mIdx] || 0);
                                     }, 0);
@@ -10777,7 +11205,7 @@ export default function GroupReportGenerator({
                                     );
                                   })}
                                   <td className="p-1.5 text-center font-mono font-black text-purple-800 dark:text-purple-200 bg-purple-200/70 dark:bg-purple-900/60 border-r border-purple-300 dark:border-purple-700">
-                                    {processedProjects.reduce((acc, p) => {
+                                    {efyTableProjects.reduce((acc, p) => {
                                       const d = getEfyDraft(p, selectedPlanningEfy);
                                       const s = calculateQuarterlyAndEfyFromMonths(d.eraMonths || []);
                                       return acc + s.q1;
@@ -10790,7 +11218,7 @@ export default function GroupReportGenerator({
                               {(baselineQuarterView === 'all' || baselineQuarterView === 'Q2') && (
                                 <>
                                   {[3, 4, 5].map((mIdx) => {
-                                    const sumM = processedProjects.reduce((acc, p) => {
+                                    const sumM = efyTableProjects.reduce((acc, p) => {
                                       const d = getEfyDraft(p, selectedPlanningEfy);
                                       return acc + (d.eraMonths?.[mIdx] || 0);
                                     }, 0);
@@ -10801,7 +11229,7 @@ export default function GroupReportGenerator({
                                     );
                                   })}
                                   <td className="p-1.5 text-center font-mono font-black text-purple-800 dark:text-purple-200 bg-purple-200/70 dark:bg-purple-900/60 border-r border-purple-300 dark:border-purple-700">
-                                    {processedProjects.reduce((acc, p) => {
+                                    {efyTableProjects.reduce((acc, p) => {
                                       const d = getEfyDraft(p, selectedPlanningEfy);
                                       const s = calculateQuarterlyAndEfyFromMonths(d.eraMonths || []);
                                       return acc + s.q2;
@@ -10814,7 +11242,7 @@ export default function GroupReportGenerator({
                               {(baselineQuarterView === 'all' || baselineQuarterView === 'Q3') && (
                                 <>
                                   {[6, 7, 8].map((mIdx) => {
-                                    const sumM = processedProjects.reduce((acc, p) => {
+                                    const sumM = efyTableProjects.reduce((acc, p) => {
                                       const d = getEfyDraft(p, selectedPlanningEfy);
                                       return acc + (d.eraMonths?.[mIdx] || 0);
                                     }, 0);
@@ -10825,7 +11253,7 @@ export default function GroupReportGenerator({
                                     );
                                   })}
                                   <td className="p-1.5 text-center font-mono font-black text-purple-800 dark:text-purple-200 bg-purple-200/70 dark:bg-purple-900/60 border-r border-purple-300 dark:border-purple-700">
-                                    {processedProjects.reduce((acc, p) => {
+                                    {efyTableProjects.reduce((acc, p) => {
                                       const d = getEfyDraft(p, selectedPlanningEfy);
                                       const s = calculateQuarterlyAndEfyFromMonths(d.eraMonths || []);
                                       return acc + s.q3;
@@ -10838,7 +11266,7 @@ export default function GroupReportGenerator({
                               {(baselineQuarterView === 'all' || baselineQuarterView === 'Q4') && (
                                 <>
                                   {[9, 10, 11].map((mIdx) => {
-                                    const sumM = processedProjects.reduce((acc, p) => {
+                                    const sumM = efyTableProjects.reduce((acc, p) => {
                                       const d = getEfyDraft(p, selectedPlanningEfy);
                                       return acc + (d.eraMonths?.[mIdx] || 0);
                                     }, 0);
@@ -10849,7 +11277,7 @@ export default function GroupReportGenerator({
                                     );
                                   })}
                                   <td className="p-1.5 text-center font-mono font-black text-purple-800 dark:text-purple-200 bg-purple-200/70 dark:bg-purple-900/60 border-r border-purple-300 dark:border-purple-700">
-                                    {processedProjects.reduce((acc, p) => {
+                                    {efyTableProjects.reduce((acc, p) => {
                                       const d = getEfyDraft(p, selectedPlanningEfy);
                                       const s = calculateQuarterlyAndEfyFromMonths(d.eraMonths || []);
                                       return acc + s.q4;
@@ -10860,7 +11288,7 @@ export default function GroupReportGenerator({
 
                               {/* EFY Total ERA */}
                               <td className="p-2 text-center font-mono font-black text-xs bg-purple-200/80 dark:bg-purple-900/80 border-r border-purple-300 dark:border-purple-700">
-                                {processedProjects.reduce((acc, p) => {
+                                {efyTableProjects.reduce((acc, p) => {
                                   const d = getEfyDraft(p, selectedPlanningEfy);
                                   const s = calculateQuarterlyAndEfyFromMonths(d.eraMonths || []);
                                   return acc + s.efy;
@@ -10869,8 +11297,8 @@ export default function GroupReportGenerator({
 
                               <td className="p-2 text-center font-mono font-bold text-xs bg-purple-100 dark:bg-purple-950 border-r border-purple-300 dark:border-purple-700">
                                 {(() => {
-                                  const totalScope = processedProjects.reduce((acc, p) => acc + (p.lengthKm || 65.0), 0);
-                                  const totalEra = processedProjects.reduce((acc, p) => {
+                                  const totalScope = efyTableProjects.reduce((acc, p) => acc + (p.lengthKm || 65.0), 0);
+                                  const totalEra = efyTableProjects.reduce((acc, p) => {
                                     const d = getEfyDraft(p, selectedPlanningEfy);
                                     const s = calculateQuarterlyAndEfyFromMonths(d.eraMonths || []);
                                     return acc + s.efy;
