@@ -1737,10 +1737,10 @@ export default function DashboardView({
 
 
   return (
-    <div className="space-y-0.5 sm:space-y-1">
+    <div className="space-y-0">
 
       {/* Page Header - One Single Row with Title, Status, Export, and Delete */}
-      <div className="flex flex-wrap items-center justify-between gap-1.5 sm:gap-2 border-b border-slate-100 dark:border-slate-800 pb-1.5 text-[12px]">
+      <div className="flex flex-wrap items-center justify-between gap-1 border-b border-slate-100 dark:border-slate-800 pb-1 mb-0 text-[12px]">
         <div>
           <h1 className="text-base sm:text-lg font-bold text-slate-800 dark:text-white uppercase tracking-tight flex items-center gap-2">
             Project Executive Dashboard
@@ -1839,7 +1839,7 @@ export default function DashboardView({
       </div>
 
       {/* Printable / Capturable Visual Dashboard Content */}
-      <div id="dashboard-view-content" className="space-y-0.5">
+      <div id="dashboard-view-content" className="space-y-0">
 
       {hasCriticalBonds && (
         <div className="bg-gradient-to-r from-rose-50 to-amber-50 dark:from-rose-950/20 dark:to-amber-950/20 border-l-4 border-rose-500 rounded-lg p-2.5 sm:p-3 shadow-2xs space-y-1.5">
@@ -1987,7 +1987,7 @@ export default function DashboardView({
       })()}
 
       {/* Three prominent Master Gauges */}
-      <section className="grid grid-cols-3 gap-1 sm:gap-1.5">
+      <section className="grid grid-cols-3 gap-0">
         {/* Physical progress gauge */}
         <div className="relative group w-full">
           <CircularGauge 
@@ -2066,9 +2066,9 @@ export default function DashboardView({
       </section>
 
       {/* SECTION A: EXECUTIVE PERFORMANCE INDICATORS (CPI & SPI CONTROL ENGINE) */}
-      <section className="bg-gradient-to-br from-slate-900 via-slate-850 to-indigo-950 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950 text-white p-2.5 sm:p-3 rounded-lg shadow-sm border border-slate-800 space-y-1.5 text-[12px]">
+      <section className="bg-gradient-to-br from-slate-900 via-slate-850 to-indigo-950 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950 text-white p-2.5 sm:p-3 rounded-lg shadow-sm border border-slate-800 text-[12px]">
         {/* CPI & SPI Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5 sm:gap-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-0">
           {/* 1. CPI Card */}
           <div className={`p-2.5 sm:p-3 rounded-lg border flex flex-col justify-between transition-all ${
             CPI >= 1.0 
@@ -2142,9 +2142,9 @@ export default function DashboardView({
       </section>
 
       {/* SECTION B: CONTRACTUAL PAYMENT MATURITY & UNPAID CLAIMS SUMMARY */}
-      <section className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-2.5 sm:p-3 rounded-lg shadow-2xs space-y-1.5">
+      <section className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-2.5 sm:p-3 rounded-lg shadow-2xs">
         {/* Maturity Summary Indicators Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-1.5 sm:gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-0">
           {/* 1. Matured Overdue Unpaid Claims (> 56 Days) - CRITICAL CARD */}
           <div className={`p-2.5 rounded-lg border flex flex-col justify-between transition-all ${
             maturedIpcCount > 0 
@@ -2386,7 +2386,7 @@ export default function DashboardView({
       </div>
 
       {/* Charts Section */}
-      <section className="grid grid-cols-1 md:grid-cols-2 gap-1.5 sm:gap-2">
+      <section className="grid grid-cols-1 md:grid-cols-2 gap-0">
         
         {/* ROW Clearance chart */}
         <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-3 sm:p-3.5 rounded-xl shadow-xs space-y-2 min-w-0">
@@ -2425,7 +2425,7 @@ export default function DashboardView({
                   formatter={(v: any, name: any) => [
                     v !== null && v !== undefined && !isNaN(Number(v)) ? Number(v).toFixed(2) : '0.00', 
                     name
-                  ]}
+                  ]} 
                   contentStyle={{ backgroundColor: '#0f172a', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '10px' }} 
                 />
                 <Legend iconSize={10} wrapperStyle={{ fontSize: '10px' }} />
@@ -2811,7 +2811,7 @@ export default function DashboardView({
       </section>
 
       {/* Row for Annual Progress Accomplishment */}
-      <div className="grid grid-cols-1 gap-1.5 sm:gap-2">
+      <div className="grid grid-cols-1 gap-0">
         
         {/* Annual Physical Progress Chart */}
         <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-2.5 sm:p-3 rounded-lg shadow-2xs space-y-1.5 min-w-0">
@@ -2876,7 +2876,7 @@ export default function DashboardView({
       </div>
 
       {/* Expanded Performance Charts & Core Physical S-Curves */}
-      <section className="space-y-1.5 sm:space-y-2 font-sans text-xs">
+      <section className="space-y-0 font-sans text-xs">
         <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
           <Activity className="w-3.5 h-3.5 text-emerald-500 animate-pulse" />
           Core S-Curve & Financial Disbursement Baselines
@@ -3037,7 +3037,7 @@ export default function DashboardView({
           <Layers className="w-4 h-4 text-blue-500" />
           ERA Key Performance Indicators
         </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-1.5 sm:gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-0">
           {/* Cost Gauge */}
           <CircularGauge 
             value={costOverrun} 
@@ -3225,7 +3225,7 @@ export default function DashboardView({
         </div>
 
         {/* Grid Lists of Images */}
-        <div className="grid grid-cols-2 sm:grid-cols-6 gap-1.5 sm:gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-6 gap-0">
           <AnimatePresence>
             {project.images.map((img, idx) => (
               <motion.div

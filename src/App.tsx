@@ -3766,17 +3766,13 @@ let isBatchSyncRunning = false;
                       </div>
                     </div>
                   )}
-                  <p className="text-[10px] md:text-xs text-slate-500 dark:text-slate-400 font-semibold tracking-wide flex items-center gap-1.5 flex-wrap mt-1">
-                    <span>Classification: {currentProject.classification}</span>
-                    {currentProject.approvedBy && (
-                      <>
-                        {' '}•{' '}
-                        <span className="text-emerald-600 dark:text-emerald-400 font-extrabold bg-emerald-50 dark:bg-emerald-950/20 px-2 py-0.5 rounded-md border border-emerald-100 dark:border-emerald-900/30">
-                          ⚖️ Approved By: {currentProject.approvedBy} ({currentProject.approverRole || 'Approver'}) at {new Date(currentProject.approvedAt || '').toLocaleDateString()}
-                        </span>
-                      </>
-                    )}
-                  </p>
+                  {currentProject.approvedBy && (
+                    <p className="text-[10px] md:text-xs text-slate-500 dark:text-slate-400 font-semibold tracking-wide flex items-center gap-1.5 flex-wrap mt-1">
+                      <span className="text-emerald-600 dark:text-emerald-400 font-extrabold bg-emerald-50 dark:bg-emerald-950/20 px-2 py-0.5 rounded-md border border-emerald-100 dark:border-emerald-900/30">
+                        ⚖️ Approved By: {currentProject.approvedBy} ({currentProject.approverRole || 'Approver'}) at {new Date(currentProject.approvedAt || '').toLocaleDateString()}
+                      </span>
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -4781,7 +4777,7 @@ let isBatchSyncRunning = false;
             </div>
 
             {/* Tab Views Swappers */}
-            <div className="space-y-4">
+            <div className={activeTab === 'dash' ? "space-y-0" : "space-y-4"}>
               {!canUserViewPage(currentUserObj, activeTab) ? (
                 <div className="bg-white dark:bg-slate-850 p-12 rounded-3xl border border-slate-200 dark:border-slate-800 text-center space-y-4 my-8">
                   <div className="w-16 h-16 bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 rounded-2xl flex items-center justify-center mx-auto text-2xl font-black shadow-xs">
