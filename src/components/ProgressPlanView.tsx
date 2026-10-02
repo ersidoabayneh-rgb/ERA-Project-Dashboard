@@ -415,6 +415,26 @@ export default function ProgressPlanView({ project, currentUserObj, onUpdateProg
   const [availableEfyYears, setAvailableEfyYears] = useState<string[]>([
     '2019', '2018', '2017', '2016', '2015', '2014', '2013', '2012'
   ]);
+
+  // Sync availableEfyYears dynamically with project progressPlanHistory & annual records
+  useEffect(() => {
+    const defaultYears = ['2019', '2018', '2017', '2016', '2015', '2014', '2013', '2012'];
+    const historyYears = (project.progressPlanHistory || [])
+      .map(h => (h.efyLabel || '').trim())
+      .filter(yr => yr !== '');
+    const annualYears = (project.annual || [])
+      .map(a => String(a.year).trim())
+      .filter(yr => yr !== '');
+    
+    const combined = Array.from(new Set([...defaultYears, ...historyYears, ...annualYears]))
+      .sort((a, b) => {
+        const numA = parseInt(a, 10) || 0;
+        const numB = parseInt(b, 10) || 0;
+        return numB - numA;
+      });
+    setAvailableEfyYears(combined);
+  }, [project.progressPlanHistory, project.annual]);
+
   const [planningEfyYear, setPlanningEfyYear] = useState<string>(() => getStoredEfyYear(labels.efyLabel || '2019'));
   const [isAnnualEfyTableOpen, setIsAnnualEfyTableOpen] = useState<boolean>(true);
   const [isAddEfyModalOpen, setIsAddEfyModalOpen] = useState<boolean>(false);
@@ -422,6 +442,7 @@ export default function ProgressPlanView({ project, currentUserObj, onUpdateProg
   const [isDeleteEfyModalOpen, setIsDeleteEfyModalOpen] = useState<boolean>(false);
   const [recordEfyOnArchive, setRecordEfyOnArchive] = useState<boolean>(true);
   const [customEfyInput, setCustomEfyInput] = useState<string>('');
+  const [deleteEfyInput, setDeleteEfyInput] = useState<string>('');
   const [selectedQuarterView, setSelectedQuarterView] = useState<'all' | 'Q1' | 'Q2' | 'Q3' | 'Q4'>('all');
 
   // Real-time synchronization: listen for EFY changes made on Group Report or other components
@@ -739,14 +760,21 @@ export default function ProgressPlanView({ project, currentUserObj, onUpdateProg
     showToast(`Successfully saved EFY ${targetEfyStr} baseline plan! Contractor: ${contractorSums.efy.toFixed(2)} Km • ERA: ${eraSums.efy.toFixed(2)} Km`);
   };
 
-  const handleDeleteRecordedEfyPlan = () => {
-    const targetEfyStr = planningEfyYear.trim() || '2019';
+  const handleDeleteRecordedEfyPlan = (specificEfy?: string) => {
+    const targetEfyStr = (specificEfy || deleteEfyInput || planningEfyYear).trim();
+    if (!targetEfyStr) {
+      showToast('Please specify a valid EFY year to delete.', 'info');
+      return;
+    }
     const numericYear = parseInt(targetEfyStr, 10);
     const isActiveEfy = (labels.efyLabel || '').trim() === targetEfyStr;
 
-    // Reset current active monthly inputs
-    setContractorMonths(Array(12).fill(0));
-    setEraMonths(Array(12).fill(0));
+    // Reset current active monthly inputs only if we are deleting the active planning year
+    const isCurrentlyPlanningThisYear = planningEfyYear === targetEfyStr;
+    if (isCurrentlyPlanningThisYear) {
+      setContractorMonths(Array(12).fill(0));
+      setEraMonths(Array(12).fill(0));
+    }
 
     // Filter out from history
     const existingHistory = project.progressPlanHistory || [];
@@ -785,6 +813,7 @@ export default function ProgressPlanView({ project, currentUserObj, onUpdateProg
     }
 
     setIsDeleteEfyModalOpen(false);
+    setDeleteEfyInput('');
     showToast(`🗑️ Deleted recorded EFY ${targetEfyStr} baseline plan for ${project.name}`);
   };
 
@@ -3385,6 +3414,201 @@ export default function ProgressPlanView({ project, currentUserObj, onUpdateProg
                 >
                   <RefreshCcw className="w-3.5 h-3.5" />
                   Reload & Edit This Record
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Add Custom EFY Modal */}
+      <AnimatePresence>
+        {isAddEfyModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200 dark:border-slate-700"
+            >
+              <div className="px-5 py-4 bg-slate-50 dark:bg-slate-900/60 border-b border-slate-150 dark:border-slate-700/60 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 rounded-xl">
+                    <Plus className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">
+                      Add Custom EFY Plan
+                    </h3>
+                    <p className="text-[10.5px] text-slate-500">
+                      Create a new baseline planning table for a custom EFY.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setIsAddEfyModalOpen(false);
+                    setCustomEfyInput('');
+                  }}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="p-5 space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10.5px] text-slate-500 font-bold uppercase tracking-wider block">
+                    Ethiopian Fiscal Year (EFY):
+                  </label>
+                  <input
+                    type="text"
+                    value={customEfyInput}
+                    onChange={(e) => setCustomEfyInput(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-mono font-bold outline-none focus:border-indigo-500 dark:focus:border-indigo-500 text-slate-800 dark:text-slate-100"
+                    placeholder="e.g., 2020 or 2023"
+                  />
+                </div>
+
+                {customEfyInput && !isNaN(parseInt(customEfyInput, 10)) && (
+                  <div className="p-3 bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/50 rounded-xl text-[11px] text-blue-700 dark:text-blue-300 flex items-center gap-2">
+                    <Info className="w-4 h-4 text-blue-500 shrink-0" />
+                    <span>
+                      This corresponds to <strong>{parseInt(customEfyInput, 10) + 7}/{parseInt(customEfyInput, 10) + 8}</strong> in the Gregorian Calendar (Jul to Jun).
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <div className="px-5 py-3.5 bg-slate-50 dark:bg-slate-900/60 border-t border-slate-150 dark:border-slate-700/60 flex items-center justify-end gap-2">
+                <button
+                  onClick={() => {
+                    setIsAddEfyModalOpen(false);
+                    setCustomEfyInput('');
+                  }}
+                  className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    const parsed = parseInt(customEfyInput, 10);
+                    if (isNaN(parsed) || parsed < 1900 || parsed > 2100) {
+                      showToast('Please enter a valid 4-digit Ethiopian Fiscal Year (e.g. 2012 to 2030).', 'info');
+                      return;
+                    }
+                    handleAddNewEfyYear(customEfyInput);
+                  }}
+                  className="px-4 py-1.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors shadow-sm"
+                >
+                  Create Plan Table
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Delete EFY Modal */}
+      <AnimatePresence>
+        {isDeleteEfyModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200 dark:border-slate-700"
+            >
+              <div className="px-5 py-4 bg-slate-50 dark:bg-slate-900/60 border-b border-slate-150 dark:border-slate-700/60 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 rounded-xl">
+                    <Trash2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">
+                      Delete EFY Plan Table
+                    </h3>
+                    <p className="text-[10.5px] text-slate-500">
+                      Remove baseline targets and snapshot records for an EFY year.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setIsDeleteEfyModalOpen(false);
+                    setDeleteEfyInput('');
+                  }}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="p-5 space-y-4">
+                <div className="p-3 bg-amber-50/50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/50 rounded-xl text-[11px] text-amber-700 dark:text-amber-300 flex gap-2">
+                  <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
+                  <span>
+                    Warning: Deleting a plan table clears its saved contractor & ERA targets, annual target records, and archived baseline snaps for this project.
+                  </span>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10.5px] text-slate-500 font-bold uppercase tracking-wider block">
+                    Choose EFY Plan to Delete:
+                  </label>
+                  <select
+                    value={deleteEfyInput || planningEfyYear}
+                    onChange={(e) => setDeleteEfyInput(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-mono font-bold outline-none text-slate-800 dark:text-slate-100"
+                  >
+                    {availableEfyYears.map(yr => {
+                      const num = parseInt(yr, 10);
+                      const gregorian = !isNaN(num) ? `(${num + 7}/${num + 8})` : '';
+                      return (
+                        <option key={yr} value={yr} className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100">
+                          EFY {yr} {gregorian}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10.5px] text-slate-500 font-bold uppercase tracking-wider block">
+                    Or Type Specific Year to Delete:
+                  </label>
+                  <input
+                    type="text"
+                    value={deleteEfyInput}
+                    onChange={(e) => setDeleteEfyInput(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-mono font-bold outline-none focus:border-indigo-500 dark:focus:border-indigo-500 text-slate-800 dark:text-slate-100"
+                    placeholder="e.g., 2019"
+                  />
+                </div>
+              </div>
+
+              <div className="px-5 py-3.5 bg-slate-50 dark:bg-slate-900/60 border-t border-slate-150 dark:border-slate-700/60 flex items-center justify-end gap-2">
+                <button
+                  onClick={() => {
+                    setIsDeleteEfyModalOpen(false);
+                    setDeleteEfyInput('');
+                  }}
+                  className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    const targetYear = deleteEfyInput || planningEfyYear;
+                    if (!targetYear) {
+                      showToast('Please specify a valid EFY year to delete.', 'info');
+                      return;
+                    }
+                    handleDeleteRecordedEfyPlan(targetYear);
+                  }}
+                  className="px-4 py-1.5 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white transition-colors shadow-sm"
+                >
+                  Confirm Delete
                 </button>
               </div>
             </motion.div>
