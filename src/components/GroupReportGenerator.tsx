@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { db } from '../lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { safeSyncScoringWeights } from '../lib/apiSync';
@@ -56,7 +56,8 @@ import {
   Check,
   Calculator,
   Link,
-  ExternalLink
+  ExternalLink,
+  Info
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { drawEraLogo } from '../lib/pdfReportEngine';
@@ -245,6 +246,11 @@ export default function GroupReportGenerator({
     usernameStr.includes('consultant') ||
     usernameStr.includes('contractor')
   );
+
+  const isAdmin = 
+    currentUserObj?.role === 'master_admin' || 
+    currentUserObj?.role === 'directorate_admin' || 
+    currentUserObj?.role === 'cpm_admin';
 
   const canAccessGroupReport = !isConsultantOrContractor;
 
@@ -446,7 +452,9 @@ export default function GroupReportGenerator({
   ]);
   const [selectedPlanningEfy, setSelectedPlanningEfy] = useState<string>(() => getStoredEfyYear('2019'));
   const [isAddEfyModalOpen, setIsAddEfyModalOpen] = useState<boolean>(false);
+  const [isDeleteEfyModalOpen, setIsDeleteEfyModalOpen] = useState<boolean>(false);
   const [customEfyInput, setCustomEfyInput] = useState<string>('');
+  const [deleteEfyInput, setDeleteEfyInput] = useState<string>('');
 
   // Synchronized EFY Year Handler: Updates state, stores globally, and notifies Progress Comparisons page
   const handleSelectPlanningEfy = (targetYear: string, broadcast: boolean = true) => {
@@ -457,6 +465,46 @@ export default function GroupReportGenerator({
     if (broadcast) {
       setStoredEfyYear(cleaned);
     }
+  };
+
+  const handleAddNewEfyYear = (newYear: string) => {
+    const cleaned = newYear.trim().replace(/^EFY\s*/i, '');
+    if (!cleaned) return;
+    if (!availableEfyYears.includes(cleaned)) {
+      const updatedList = Array.from(new Set([cleaned, ...availableEfyYears])).sort((a, b) => {
+        const numA = parseInt(a, 10) || 0;
+        const numB = parseInt(b, 10) || 0;
+        return numB - numA;
+      });
+      setAvailableEfyYears(updatedList);
+    }
+    handleSelectPlanningEfy(cleaned, true);
+    setIsAddEfyModalOpen(false);
+    setCustomEfyInput('');
+    showEfyToast(`Added EFY ${cleaned} baseline planning configuration!`);
+  };
+
+  const handleDeleteRecordedEfyPlan = (specificEfy?: string) => {
+    const targetEfyStr = (specificEfy || deleteEfyInput || selectedPlanningEfy).trim();
+    if (!targetEfyStr) {
+      showEfyToast('Please specify a valid EFY year to delete.', 'info');
+      return;
+    }
+
+    // Remove from availableEfyYears if present
+    setAvailableEfyYears(prev => prev.filter(y => y !== targetEfyStr));
+
+    // Switch to another year if we deleted the currently selected one
+    if (selectedPlanningEfy === targetEfyStr) {
+      const remaining = availableEfyYears.filter(y => y !== targetEfyStr);
+      if (remaining.length > 0) {
+        handleSelectPlanningEfy(remaining[0], true);
+      }
+    }
+
+    setIsDeleteEfyModalOpen(false);
+    setDeleteEfyInput('');
+    showEfyToast(`🗑️ Deleted recorded EFY ${targetEfyStr} baseline plan configuration!`);
   };
 
   // Real-time synchronization: listen for EFY changes made on Progress Comparisons or other components
@@ -659,23 +707,6 @@ export default function GroupReportGenerator({
       eraMonths: eMonths,
       efyLabel: cleanTarget
     };
-  };
-
-  const handleAddNewEfyYear = (newYear: string) => {
-    const cleaned = newYear.trim().replace(/^EFY\s*/i, '');
-    if (!cleaned) return;
-    if (!availableEfyYears.includes(cleaned)) {
-      const updatedList = Array.from(new Set([cleaned, ...availableEfyYears])).sort((a, b) => {
-        const numA = parseInt(a, 10) || 0;
-        const numB = parseInt(b, 10) || 0;
-        return numB - numA;
-      });
-      setAvailableEfyYears(updatedList);
-    }
-    setSelectedPlanningEfy(cleaned);
-    setIsAddEfyModalOpen(false);
-    setCustomEfyInput('');
-    showEfyToast(`Added & switched to EFY ${cleaned} Progress Baseline Plan!`);
   };
 
   const updateEfyMonthValue = (projectId: string, tier: 'contractor' | 'era', monthIdx: number, val: number) => {
@@ -11133,6 +11164,26 @@ export default function GroupReportGenerator({
                               );
                             })}
                           </select>
+                          {isAdmin && (
+                            <div className="flex items-center gap-1 ml-1.5 border-l border-blue-400/30 pl-2">
+                              <button
+                                type="button"
+                                onClick={() => setIsAddEfyModalOpen(true)}
+                                className="p-1 rounded-lg bg-emerald-600/80 hover:bg-emerald-600 text-white transition"
+                                title="Add New EFY Plan Table"
+                              >
+                                <Plus className="w-3 h-3" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setIsDeleteEfyModalOpen(true)}
+                                className="p-1 rounded-lg bg-rose-600/80 hover:bg-rose-600 text-white transition"
+                                title="Delete Current EFY Plan Table"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </div>
+                          )}
                         </div>
 
                         {/* Quarter Filter View */}
@@ -13825,6 +13876,201 @@ export default function GroupReportGenerator({
           </motion.div>
         </div>
       )}
+
+      {/* Add Custom EFY Modal */}
+      <AnimatePresence>
+        {isAddEfyModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200 dark:border-slate-700"
+            >
+              <div className="px-5 py-4 bg-slate-50 dark:bg-slate-900/60 border-b border-slate-150 dark:border-slate-700/60 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 rounded-xl">
+                    <Plus className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">
+                      Add Custom EFY Plan
+                    </h3>
+                    <p className="text-[10.5px] text-slate-500">
+                      Create a new baseline planning table for a custom EFY in group reports.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setIsAddEfyModalOpen(false);
+                    setCustomEfyInput('');
+                  }}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="p-5 space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10.5px] text-slate-500 font-bold uppercase tracking-wider block">
+                    Ethiopian Fiscal Year (EFY):
+                  </label>
+                  <input
+                    type="text"
+                    value={customEfyInput}
+                    onChange={(e) => setCustomEfyInput(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-mono font-bold outline-none focus:border-indigo-500 dark:focus:border-indigo-500 text-slate-800 dark:text-slate-100"
+                    placeholder="e.g., 2020 or 2023"
+                  />
+                </div>
+
+                {customEfyInput && !isNaN(parseInt(customEfyInput, 10)) && (
+                  <div className="p-3 bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/50 rounded-xl text-[11px] text-blue-700 dark:text-blue-300 flex items-center gap-2">
+                    <Info className="w-4 h-4 text-blue-500 shrink-0" />
+                    <span>
+                      This corresponds to <strong>{parseInt(customEfyInput, 10) + 7}/{parseInt(customEfyInput, 10) + 8}</strong> in the Gregorian Calendar (Jul to Jun).
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <div className="px-5 py-3.5 bg-slate-50 dark:bg-slate-900/60 border-t border-slate-150 dark:border-slate-700/60 flex items-center justify-end gap-2">
+                <button
+                  onClick={() => {
+                    setIsAddEfyModalOpen(false);
+                    setCustomEfyInput('');
+                  }}
+                  className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    const parsed = parseInt(customEfyInput, 10);
+                    if (isNaN(parsed) || parsed < 1900 || parsed > 2100) {
+                      showEfyToast('Please enter a valid 4-digit Ethiopian Fiscal Year (e.g. 2012 to 2030).', 'info');
+                      return;
+                    }
+                    handleAddNewEfyYear(customEfyInput);
+                  }}
+                  className="px-4 py-1.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors shadow-sm"
+                >
+                  Create Plan Table
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Delete EFY Modal */}
+      <AnimatePresence>
+        {isDeleteEfyModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200 dark:border-slate-700"
+            >
+              <div className="px-5 py-4 bg-slate-50 dark:bg-slate-900/60 border-b border-slate-150 dark:border-slate-700/60 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 rounded-xl">
+                    <Trash2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">
+                      Delete EFY Plan Table
+                    </h3>
+                    <p className="text-[10.5px] text-slate-500">
+                      Remove baseline targets and configuration for an EFY year.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setIsDeleteEfyModalOpen(false);
+                    setDeleteEfyInput('');
+                  }}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="p-5 space-y-4">
+                <div className="p-3 bg-amber-50/50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/50 rounded-xl text-[11px] text-amber-700 dark:text-amber-300 flex gap-2">
+                  <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
+                  <span>
+                    Warning: Deleting a plan table clears its view configuration for this group report session.
+                  </span>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10.5px] text-slate-500 font-bold uppercase tracking-wider block">
+                    Choose EFY Plan to Delete:
+                  </label>
+                  <select
+                    value={deleteEfyInput || selectedPlanningEfy}
+                    onChange={(e) => setDeleteEfyInput(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-mono font-bold outline-none text-slate-800 dark:text-slate-100"
+                  >
+                    {availableEfyYears.map(yr => {
+                      const num = parseInt(yr, 10);
+                      const gregorian = !isNaN(num) ? `(${num + 7}/${num + 8})` : '';
+                      return (
+                        <option key={yr} value={yr} className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100">
+                          EFY {yr} {gregorian}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10.5px] text-slate-500 font-bold uppercase tracking-wider block">
+                    Or Type Specific Year to Delete:
+                  </label>
+                  <input
+                    type="text"
+                    value={deleteEfyInput}
+                    onChange={(e) => setDeleteEfyInput(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-mono font-bold outline-none focus:border-indigo-500 dark:focus:border-indigo-500 text-slate-800 dark:text-slate-100"
+                    placeholder="e.g., 2019"
+                  />
+                </div>
+              </div>
+
+              <div className="px-5 py-3.5 bg-slate-50 dark:bg-slate-900/60 border-t border-slate-150 dark:border-slate-700/60 flex items-center justify-end gap-2">
+                <button
+                  onClick={() => {
+                    setIsDeleteEfyModalOpen(false);
+                    setDeleteEfyInput('');
+                  }}
+                  className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    const targetYear = deleteEfyInput || selectedPlanningEfy;
+                    if (!targetYear) {
+                      showEfyToast('Please specify a valid EFY year to delete.', 'info');
+                      return;
+                    }
+                    handleDeleteRecordedEfyPlan(targetYear);
+                  }}
+                  className="px-4 py-1.5 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white transition-colors shadow-sm"
+                >
+                  Confirm Delete
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
