@@ -1,9 +1,7 @@
 import { jsPDF } from 'jspdf';
-import { Project, User, ProgressPlan, ProgressPlanHistoryItem, formatAccounting } from '../types';
+import { Project, User, ProgressPlan, ProgressPlanHistoryItem } from '../types';
 import { 
-  drawEraLogo, 
   drawStandardPdfPageFrame, 
-  drawStandardDocumentHeader, 
   drawSafeTable, 
   getCredentialSignatures 
 } from './pdfReportEngine';
@@ -49,62 +47,57 @@ export function generateProgressComparisonPdf({
   const totalPagesEstimate = includeHistoryTable && historyList.length > 5 ? 2 : 1;
 
   // Draw Page 1 Frame & Header
-  drawStandardPdfPageFrame(doc, pageNumber, totalPagesEstimate, {
+  const frame = drawStandardPdfPageFrame(doc, pageNumber, totalPagesEstimate, {
     margin,
-    title: "ETHIOPIAN ROADS ADMINISTRATION (ERA) • PMO EXECUTIVE PORTFOLIO",
-    subtitle: `PROJECT: ${(project.name || '').toUpperCase()}`,
+    title: "PROGRESS PLAN & MILEAGE COMPARISONS (KM) AUDIT REPORT",
+    subtitle: `PROJECT: ${(project.name || '').toUpperCase()} • TRACKING PERIOD: ${monthLabel.toUpperCase()} (${quarterLabel.toUpperCase()} • ${efyLabel.toUpperCase()})`,
+    projectCode: `ERA-PMO-PPR-${project.id.slice(0, 8).toUpperCase()}`,
     footerText: "CONFIDENTIAL • ETHIOPIAN ROADS ADMINISTRATION • OFFICIAL EXECUTIVE MILEAGE AUDIT RECORD"
   });
 
-  let curY = margin + 20;
+  let curY = frame.contentY;
 
-  // Standard Document Header
-  curY = drawStandardDocumentHeader(doc, {
-    margin,
-    curY,
-    contentWidth,
-    documentTitle: "PROGRESS PLAN & MILEAGE COMPARISONS (KM) AUDIT REPORT",
-    subtitle: `MILESTONE TRACKING PERIOD: ${monthLabel.toUpperCase()} • ${quarterLabel.toUpperCase()} • ${efyLabel.toUpperCase()}`,
-    referenceNo: `ERA-PMO-PPR-${project.id.slice(0, 8).toUpperCase()}-${new Date().getFullYear()}`,
-    statusBadge: "AUDITED MILESTONE",
-    dateStamp: new Date()
-  });
-
-  // Project Summary Info Bar
+  // Project & Milestone Information Summary Ribbon
+  const ribbonHeight = 32;
   doc.setFillColor(248, 250, 252); // slate-50
   doc.setDrawColor(226, 232, 240); // slate-200
   doc.setLineWidth(0.75);
-  doc.roundedRect(margin, curY, contentWidth, 38, 4, 4, 'FD');
+  doc.roundedRect(margin, curY, contentWidth, ribbonHeight, 4, 4, 'FD');
 
+  const halfWidth = (contentWidth - 24) / 2;
+
+  // Left column: Project Name & Directorate/PMO Scope
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7.5);
-  doc.setTextColor(30, 41, 59); // slate-800
-  doc.text(`PROJECT NAME: ${(project.name || '').toUpperCase()}`, margin + 10, curY + 14);
+  doc.setTextColor(15, 23, 42); // slate-900
+  const projNameText = `PROJECT: ${(project.name || '').toUpperCase()}`;
+  const wrappedProj = doc.splitTextToSize(projNameText, halfWidth);
+  doc.text(wrappedProj[0] || projNameText, margin + 10, curY + 13);
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7);
+  doc.setFontSize(6.5);
   doc.setTextColor(71, 85, 105); // slate-600
-  const infoCol1 = `Total Contract Length: ${totalLength} Km  |  Program Directorate: ${project.programDirectorate || 'Southern'}  |  PMO: ${project.pmo || 'PMO 1'}`;
-  const infoCol2 = `Cumulative Road Completed: ${activePlan.actual.todate.toFixed(2)} Km (${toPct(activePlan.actual.todate)})  |  Physical Progress: ${project.physicalProgress ? `${project.physicalProgress.toFixed(2)}%` : toPct(activePlan.actual.todate)}`;
-  doc.text(infoCol1, margin + 10, curY + 25);
-  doc.text(infoCol2, margin + 10, curY + 34);
+  const scopeText = `Total Length: ${totalLength} Km  |  Directorate: ${project.programDirectorate || 'Southern'}  |  PMO: ${project.pmo || 'PMO 1'}`;
+  const wrappedScope = doc.splitTextToSize(scopeText, halfWidth);
+  doc.text(wrappedScope[0] || scopeText, margin + 10, curY + 23);
 
-  // Financial info on the right side of the banner
-  const pAny = project as any;
-  const finAmount = pAny.revisedAmount || project.revisedContractAmountEtb || pAny.contractAmount || project.contractAmountEtb || ((project.origAmount || 0) * 1000000);
-  const totalDays = (project.origDays || 0) + (project.eotDays || 0) + (project.interimEotDays || 0) || 1096;
-  const elapsedPct = pAny.timeElapsed !== undefined ? pAny.timeElapsed : (pAny.origDays && pAny.remainingDays !== undefined ? Math.max(0, 100 - (pAny.remainingDays / totalDays) * 100) : 6.11);
-
+  // Right column: Milestone Period & Road Accomplishment
+  const rightX = margin + (contentWidth / 2) + 6;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7.5);
   doc.setTextColor(15, 23, 42);
-  doc.text(`FINANCIAL PLAN: ETB ${formatAccounting(finAmount, '')}`, margin + contentWidth - 12, curY + 14, { align: 'right' });
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7);
-  doc.setTextColor(100, 116, 139);
-  doc.text(`Contract Duration: ${totalDays} Days | Elapsed: ${typeof elapsedPct === 'number' ? elapsedPct.toFixed(2) : elapsedPct}%`, margin + contentWidth - 12, curY + 26, { align: 'right' });
+  const milestoneText = `TARGET MILESTONE: ${monthLabel.toUpperCase()} (${quarterLabel.toUpperCase()})`;
+  const wrappedMilestone = doc.splitTextToSize(milestoneText, halfWidth);
+  doc.text(wrappedMilestone[0] || milestoneText, rightX, curY + 13);
 
-  curY += 46;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.5);
+  doc.setTextColor(71, 85, 105);
+  const perfText = `Fiscal Year: EFY ${efyLabel}  |  Road Completed: ${activePlan.actual.todate.toFixed(2)} Km (${toPct(activePlan.actual.todate)})`;
+  const wrappedPerf = doc.splitTextToSize(perfText, halfWidth);
+  doc.text(wrappedPerf[0] || perfText, rightX, curY + 23);
+
+  curY += ribbonHeight + 12;
 
   // Section 1: Active Milestone Mileage Comparisons (Km)
   doc.setFont('helvetica', 'bold');

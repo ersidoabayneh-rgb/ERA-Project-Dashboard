@@ -176,25 +176,25 @@ export function drawStandardPdfPageFrame(
 
   // Organization Main Title
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10.5);
+  doc.setFontSize(10);
   doc.setTextColor(15, 23, 42); // slate-900
-  doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA)", textStartX, margin + 16);
+  doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA)", textStartX, margin + 15);
 
   // Standard Document Title
-  const titleText = options.title || "CONTRACT MONITORING & EXECUTIVE PERFORMANCE AUDIT";
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8.5);
   doc.setTextColor(30, 64, 175); // blue-800
+  const titleText = options.title || "CONTRACT MONITORING & EXECUTIVE PERFORMANCE AUDIT";
   const wrappedTitle = doc.splitTextToSize(titleText, textMaxWidth);
-  doc.text(wrappedTitle[0] || titleText, textStartX, margin + 27);
+  doc.text(wrappedTitle[0] || titleText, textStartX, margin + 26);
 
-  if (options.subtitle || wrappedTitle.length > 1) {
+  // Subtitle / Reference info
+  if (options.subtitle) {
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7);
+    doc.setFontSize(6.8);
     doc.setTextColor(100, 116, 139); // slate-500
-    const subText = wrappedTitle.length > 1 ? wrappedTitle[1] : (options.subtitle || '');
-    const wrappedSub = doc.splitTextToSize(subText, textMaxWidth);
-    doc.text(wrappedSub[0] || subText, textStartX, margin + 37);
+    const wrappedSub = doc.splitTextToSize(options.subtitle, textMaxWidth);
+    doc.text(wrappedSub[0] || options.subtitle, textStartX, margin + 37);
   }
 
   // Header bottom dividing line

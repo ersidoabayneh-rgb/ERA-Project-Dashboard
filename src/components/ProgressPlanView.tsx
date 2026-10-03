@@ -10,7 +10,7 @@ import {
 import { 
   TrendingUp, 
   Calendar, 
-  RefreshCw, 
+  RefreshCw,
   Download, 
   Save, 
   Edit, 
@@ -318,56 +318,6 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
     todate: activePlan.era.todate > 0 ? (activePlan.actual.todate / activePlan.era.todate) * 100 : 0
   };
 
-  // Sync actuals from monthly progress
-  const handleResync = () => {
-    let cumActual = 0;
-    let latestMonthPlan = 1.20;
-    let latestEraPlan = 0.85;
-    let latestActual = 0.50;
-
-    if (project.monthly && project.monthly.length > 0) {
-      project.monthly.forEach(m => {
-        const act = typeof m.actual === 'number' ? m.actual : parseFloat(String(m.actual || '0')) || 0;
-        cumActual += act;
-        if (act > 0) latestActual = act;
-        const p = typeof m.revisedPlan === 'number' ? m.revisedPlan : (typeof m.originalPlan === 'number' ? m.originalPlan : 0);
-        if (p > 0) latestMonthPlan = p;
-      });
-    }
-
-    const updated: ProgressPlan = {
-      contractor: {
-        ...activePlan.contractor,
-        month: latestMonthPlan,
-        quarter: Number((latestMonthPlan * 3).toFixed(2)),
-        efy: Number((latestMonthPlan * 8).toFixed(2)),
-        todate: activePlan.contractor.todate || totalLength
-      },
-      era: {
-        ...activePlan.era,
-        month: latestEraPlan,
-        quarter: Number((latestEraPlan * 3).toFixed(2)),
-        efy: Number((latestEraPlan * 8).toFixed(2)),
-        todate: activePlan.era.todate || Number((totalLength * 0.88).toFixed(2))
-      },
-      actual: {
-        month: latestActual,
-        quarter: Number((latestActual * 2.3).toFixed(2)),
-        efy: Number((latestActual * 5).toFixed(2)),
-        todate: cumActual > 0 ? Number(cumActual.toFixed(2)) : (project.physicalProgress ? Number(((project.physicalProgress / 100) * totalLength).toFixed(2)) : activePlan.actual.todate)
-      }
-    };
-
-    setActivePlan(updated);
-    onUpdateProject({
-      progressPlan: updated,
-      progressPlanLabels: { monthLabel, quarterLabel, efyLabel }
-    }, 'Comparison data re-synchronized from project monthly progress');
-
-    setSaveSuccessMsg('Comparison data synchronized successfully!');
-    setTimeout(() => setSaveSuccessMsg(null), 3000);
-  };
-
   // Save current active plan snapshot to history
   const handleSaveActiveToSnapshot = () => {
     const calculatedPhysicalProgress = totalLength > 0 
@@ -570,15 +520,6 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
           </div>
 
           <div className="flex items-center gap-2.5 shrink-0">
-            <button
-              onClick={handleResync}
-              className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-black uppercase tracking-wide flex items-center gap-2 transition cursor-pointer shadow-xs"
-              title="Synchronize from monthly cumulative records"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-              <span>Re-sync Comparison Data</span>
-            </button>
-
             <button
               onClick={handleExportCsv}
               className="px-3.5 py-2 rounded-xl bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 text-white text-xs font-black uppercase tracking-wide flex items-center gap-2 transition cursor-pointer shadow-xs border border-slate-700"
