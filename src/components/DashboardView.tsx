@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { formatDateStr, getRevisedCompletionDateStr, parseLocalDate } from '../lib/dateUtils';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
@@ -22,6 +22,7 @@ import {
   AlertCircle,
   CheckCircle2,
   ShieldAlert,
+  ShieldCheck,
   CreditCard,
   Calendar,
   ExternalLink,
@@ -30,7 +31,10 @@ import {
   BarChart3,
   BarChart2,
   Bell,
-  Download
+  Download,
+  Timer,
+  Settings,
+  Plus
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -51,8 +55,10 @@ import {
 import { Project, KpiAllocatedItem, LinearData, formatAccounting, User, ProjectLifecycleStatus, isProjectClosed, isCpmOrMasterAdmin, PdfReportConfig, DEFAULT_PDF_REPORT_CONFIG, ProgressPlanHistoryItem } from '../types';
 import CircularGauge from './CircularGauge';
 import BillSummaryPriceAdjChart from './BillSummaryPriceAdjChart';
+import DlpDefectModal from './DlpDefectModal';
 import { buildKpiHierarchy, getIntegratedKpiAllocated, parseStation } from '../data/defaultProject';
 import { calculateProjectEvm } from '../lib/evmCalculations';
+import { getProjectDlpInfo, calculateCappedElapsedTimePct } from '../lib/dlpUtils';
 import { resolveCurrentMonthKey, getLastActualProgress, isSameMonth } from '../lib/monthlySync';
 import { QtyItem } from '../types';
 
@@ -225,6 +231,18 @@ export default function DashboardView({
   const [dashboardRoadType, setDashboardRoadType] = useState<'combined' | 'main' | 'spur'>('combined');
   const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null);
 
+  // Real-time automated countdown ticker (updates every second)
+  const [currentTick, setCurrentTick] = useState<Date>(() => new Date());
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTick(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // DLP Detail & Defect Logging Modal State
+  const [isDlpDefectModalOpen, setIsDlpDefectModalOpen] = useState(false);
+
   const currentMonthKey = resolveCurrentMonthKey(project);
   const lastActualInfo = getLastActualProgress(project.monthly, currentMonthKey);
 
@@ -273,16 +291,9 @@ export default function DashboardView({
 
   const isClosed = isProjectClosed(project.status);
 
-  // Calculates elapsed progress ratio
+  // Calculates elapsed progress ratio (capped strictly at 100% when completed or duration reached)
   const getElapsedPercent = () => {
-    if (isClosed) return 100;
-    if (project.status === 'Suspended' || project.status === 'Terminated') return project.physicalProgress || 100; // Freeze SPI to 1.0 or similar
-    const s = new Date(project.startDate);
-    const totalDays = project.origDays + (project.eotDays || 0) + (project.interimEotDays || 0);
-    const rc = new Date(s.getTime() + totalDays * 86400000);
-    const now = new Date();
-    if (rc.getTime() - s.getTime() <= 0) return 0;
-    return Math.max(0, ((now.getTime() - s.getTime()) / (rc.getTime() - s.getTime())) * 100);
+    return calculateCappedElapsedTimePct(project, currentTick);
   };
 
   const elapsed = getElapsedPercent();
@@ -1860,25 +1871,104 @@ export default function DashboardView({
 
       {/* Unified Compact Cascade Alerts View (Single Row Layout) */}
       {(() => {
+        const dlpInfo = getProjectDlpInfo(project, currentTick);
         const evmMetrics = calculateProjectEvm(project);
         const startDateObj = new Date(project.startDate);
         const totalDurationDays = project.origDays + (project.eotDays || 0) + (project.interimEotDays || 0);
         const estimatedCompletionDate = new Date(startDateObj.getTime() + totalDurationDays * 86400000);
-        const daysToCompletion = Math.ceil((estimatedCompletionDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+        const daysToCompletion = Math.ceil((estimatedCompletionDate.getTime() - currentTick.getTime()) / (1000 * 60 * 60 * 24));
         
-        const isNearingCompletionAlert = !isClosed && daysToCompletion <= 60 && daysToCompletion >= -180;
+        const isCompletedLifecycle = project.status === 'Completed' || project.status === 'Completed and Closed' || isClosed;
+        const isNearingCompletionAlert = !isCompletedLifecycle && daysToCompletion <= 60 && daysToCompletion >= -180;
         const physicalSlippageVal = evmMetrics.plannedPct - evmMetrics.actualPct;
-        const hasSignificantPhysicalSlippage = physicalSlippageVal > 15;
+        const hasSignificantPhysicalSlippage = !isCompletedLifecycle && physicalSlippageVal > 15;
 
-        const totalActiveAlerts = (hasCriticalBonds ? 1 : 0) + (isNearingCompletionAlert ? 1 : 0) + (hasSignificantPhysicalSlippage ? 1 : 0);
+        // Show DLP Alert Card ONLY when project lifecycle is Completed or Completed and Closed
+        const showDlpAlert = isCompletedLifecycle;
+
+        const totalActiveAlerts = (hasCriticalBonds ? 1 : 0) + (isNearingCompletionAlert ? 1 : 0) + (hasSignificantPhysicalSlippage ? 1 : 0) + (showDlpAlert ? 1 : 0);
         if (totalActiveAlerts === 0) return null;
+
+        const pad = (n: number) => String(n).padStart(2, '0');
+        const defectsCount = (project.dlpDefects || []).length;
 
         return (
           <div className="mb-2.5">
             <div className={`grid grid-cols-1 ${
-              totalActiveAlerts === 3 ? 'md:grid-cols-3' : totalActiveAlerts === 2 ? 'md:grid-cols-2' : 'grid-cols-1'
+              totalActiveAlerts >= 3 ? 'md:grid-cols-3' : totalActiveAlerts === 2 ? 'md:grid-cols-2' : 'grid-cols-1'
             } gap-2 items-stretch`}>
               
+              {/* Alert Card: Defect Liability Period (DLP) Countdown */}
+              {showDlpAlert && (
+                <div 
+                  onClick={() => setIsDlpDefectModalOpen(true)}
+                  className={`border-l-3 rounded-lg p-2 shadow-2xs flex flex-col justify-between cursor-pointer transition hover:scale-[1.01] hover:shadow-md ${
+                    dlpInfo.isExpired
+                      ? 'bg-gradient-to-r from-slate-50 to-blue-50/70 dark:from-slate-900/60 dark:to-blue-950/40 border-blue-500'
+                      : dlpInfo.isNearExpiry
+                        ? 'bg-gradient-to-r from-amber-50 to-rose-50/80 dark:from-amber-950/40 dark:to-rose-950/30 border-amber-500'
+                        : 'bg-gradient-to-r from-emerald-50 to-teal-50/80 dark:from-emerald-950/40 dark:to-teal-950/30 border-emerald-500'
+                  }`}
+                  title="Click to view full DLP details, real-time countdown clock, and report/flag defects"
+                >
+                  <div className="flex items-center justify-between gap-1 mb-1">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <ShieldCheck className={`w-3.5 h-3.5 shrink-0 ${
+                        dlpInfo.isExpired ? 'text-blue-600 dark:text-blue-400' : dlpInfo.isNearExpiry ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'
+                      }`} />
+                      <span className={`text-[10px] font-black uppercase truncate ${
+                        dlpInfo.isExpired ? 'text-blue-950 dark:text-blue-200' : dlpInfo.isNearExpiry ? 'text-amber-950 dark:text-amber-200' : 'text-emerald-950 dark:text-emerald-200'
+                      }`}>
+                        Defect Liability Period (DLP)
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {defectsCount > 0 && (
+                        <span className="text-[7.5px] font-extrabold bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300 px-1 py-0.2 rounded border border-rose-200 dark:border-rose-900">
+                          {defectsCount} Defect{defectsCount > 1 ? 's' : ''}
+                        </span>
+                      )}
+                      <span className={`text-[8px] font-black uppercase px-1.5 py-0.2 rounded ${
+                        dlpInfo.isExpired
+                          ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/80 dark:text-blue-200'
+                          : dlpInfo.isNearExpiry
+                            ? 'bg-amber-200 text-amber-900 dark:bg-amber-900 dark:text-amber-200 animate-pulse'
+                            : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/80 dark:text-emerald-200'
+                      }`}>
+                        {dlpInfo.statusLabel}
+                      </span>
+                    </div>
+                  </div>
+
+                  <p className="text-[10px] font-extrabold text-slate-850 dark:text-slate-100 leading-tight mb-1">
+                    {dlpInfo.isExpired ? (
+                      `DLP Ended (${dlpInfo.dlpDays} days passed). Eligible for Final Acceptance Certificate (FAC).`
+                    ) : (
+                      <span>
+                        Countdown: <strong className="font-mono text-emerald-700 dark:text-emerald-300">{dlpInfo.daysRemaining}d {pad(dlpInfo.hoursRemaining)}h {pad(dlpInfo.minutesRemaining)}m {pad(dlpInfo.secondsRemaining)}s</strong> (Ends: {dlpInfo.endDateStr})
+                      </span>
+                    )}
+                  </p>
+
+                  <div className="space-y-1 mt-auto pt-1 border-t border-slate-200/60 dark:border-slate-800/60 text-[8.5px]">
+                    <div className="flex justify-between items-center text-slate-500 dark:text-slate-400 font-mono">
+                      <span>DLP Duration: {dlpInfo.dlpDays} Days</span>
+                      <span className="text-emerald-600 dark:text-emerald-400 font-bold underline">
+                        Click for Details & Defect Log →
+                      </span>
+                    </div>
+                    <div className="w-full bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${
+                          dlpInfo.isExpired ? 'bg-blue-500' : dlpInfo.isNearExpiry ? 'bg-amber-500' : 'bg-emerald-500'
+                        }`}
+                        style={{ width: `${dlpInfo.elapsedPct}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Alert Card 1: Bank Guarantees */}
               {hasCriticalBonds && (
                 <div className="bg-gradient-to-r from-rose-50 to-amber-50/80 dark:from-rose-950/30 dark:to-amber-950/30 border-l-3 border-rose-500 rounded-lg p-2 shadow-2xs flex flex-col justify-between">
@@ -1958,6 +2048,167 @@ export default function DashboardView({
                 </div>
               )}
 
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Defect Liability Period (DLP) Automated Countdown Timer Component - ONLY rendered when project lifecycle is Completed or Completed and Closed */}
+      {(project.status === 'Completed' || project.status === 'Completed and Closed' || isClosed) && (() => {
+        const dlpInfo = getProjectDlpInfo(project, currentTick);
+        const pad = (n: number) => String(n).padStart(2, '0');
+        const defectsList = project.dlpDefects || [];
+        const openDefects = defectsList.filter(d => d.status === 'Open' || d.status === 'Under Rectification').length;
+
+        return (
+          <div className="mb-3">
+            <div className={`p-3.5 sm:p-4 rounded-2xl border shadow-xs transition-all ${
+              dlpInfo.isExpired
+                ? 'bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 border-blue-500/40 text-white'
+                : dlpInfo.isNearExpiry
+                  ? 'bg-gradient-to-br from-slate-900 via-amber-950 to-slate-900 border-amber-500/50 text-white'
+                  : 'bg-gradient-to-br from-slate-900 via-emerald-950 to-slate-900 border-emerald-500/40 text-white'
+            }`}>
+              {/* Header row */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-3 border-b border-white/10">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className={`p-2.5 rounded-xl shrink-0 ${
+                    dlpInfo.isExpired 
+                      ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' 
+                      : dlpInfo.isNearExpiry 
+                        ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30 animate-pulse' 
+                        : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                  }`}>
+                    <Timer className="w-5 h-5 sm:w-6 sm:h-6" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-xs sm:text-sm font-black uppercase tracking-wider text-white">
+                        Defect Liability Period (DLP) Countdown Timer
+                      </h3>
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase border ${
+                        dlpInfo.isExpired
+                          ? 'bg-blue-500/20 text-blue-300 border-blue-500/40'
+                          : dlpInfo.isNearExpiry
+                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse'
+                            : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                      }`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${
+                          dlpInfo.isExpired ? 'bg-blue-400' : dlpInfo.isNearExpiry ? 'bg-amber-400 animate-ping' : 'bg-emerald-400 animate-pulse'
+                        }`} />
+                        {dlpInfo.isCountingDown ? (dlpInfo.isExpired ? 'DLP Concluded' : dlpInfo.isNearExpiry ? 'Expiring in < 30 Days' : 'Live Countdown Ticking') : 'Standby / Configured'}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-300 font-medium mt-0.5 truncate">
+                      Start Date: <strong className="text-white font-mono">{dlpInfo.startDateStr}</strong> • Expiry Target: <strong className="text-white font-mono">{dlpInfo.endDateStr}</strong> • Duration: <strong className="text-white font-mono">{dlpInfo.dlpDays} Days</strong>
+                    </p>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+                  <button
+                    onClick={() => setIsDlpDefectModalOpen(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Report / View Defects ({defectsList.length})</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Ticker Grid - Clicking anywhere on ticker opens modal */}
+              <div 
+                onClick={() => setIsDlpDefectModalOpen(true)}
+                className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 my-3 cursor-pointer group"
+                title="Click to view full DLP details, countdown status, and log defects"
+              >
+                {/* Days */}
+                <div className="bg-black/40 group-hover:bg-black/60 p-2.5 sm:p-3 rounded-xl border border-white/10 flex flex-col items-center justify-center transition">
+                  <span className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-white group-hover:scale-105 transition">
+                    {dlpInfo.daysRemaining}
+                  </span>
+                  <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 mt-0.5">
+                    Days Remaining
+                  </span>
+                </div>
+
+                {/* Hours */}
+                <div className="bg-black/40 group-hover:bg-black/60 p-2.5 sm:p-3 rounded-xl border border-white/10 flex flex-col items-center justify-center transition">
+                  <span className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-white group-hover:scale-105 transition">
+                    {pad(dlpInfo.hoursRemaining)}
+                  </span>
+                  <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 mt-0.5">
+                    Hours Remaining
+                  </span>
+                </div>
+
+                {/* Minutes */}
+                <div className="bg-black/40 group-hover:bg-black/60 p-2.5 sm:p-3 rounded-xl border border-white/10 flex flex-col items-center justify-center transition">
+                  <span className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-white group-hover:scale-105 transition">
+                    {pad(dlpInfo.minutesRemaining)}
+                  </span>
+                  <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 mt-0.5">
+                    Minutes Remaining
+                  </span>
+                </div>
+
+                {/* Seconds */}
+                <div className="bg-black/40 group-hover:bg-black/60 p-2.5 sm:p-3 rounded-xl border border-white/10 flex flex-col items-center justify-center transition">
+                  <span className={`text-2xl sm:text-3xl font-black font-mono tracking-tight group-hover:scale-105 transition ${
+                    dlpInfo.isExpired ? 'text-blue-400' : dlpInfo.isNearExpiry ? 'text-amber-400' : 'text-emerald-400'
+                  }`}>
+                    {pad(dlpInfo.secondsRemaining)}
+                  </span>
+                  <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 mt-0.5">
+                    Seconds (Live)
+                  </span>
+                </div>
+              </div>
+
+              {/* Progress bar */}
+              <div className="space-y-1">
+                <div className="flex justify-between items-center text-[10px] font-mono">
+                  <span className="text-slate-300">
+                    Elapsed: <strong className="text-white font-bold">{dlpInfo.daysElapsed} Days</strong> ({dlpInfo.elapsedPct.toFixed(1)}%)
+                  </span>
+                  <span className="text-slate-300">
+                    Defects Logged: <strong className={openDefects > 0 ? 'text-rose-400 font-bold' : 'text-emerald-400 font-bold'}>{defectsList.length} ({openDefects} Open)</strong>
+                  </span>
+                </div>
+                <div className="w-full bg-black/50 h-2 rounded-full overflow-hidden border border-white/10">
+                  <div
+                    className={`h-full rounded-full transition-all duration-300 ${
+                      dlpInfo.isExpired 
+                        ? 'bg-blue-500' 
+                        : dlpInfo.isNearExpiry 
+                          ? 'bg-gradient-to-r from-amber-500 to-rose-500' 
+                          : 'bg-gradient-to-r from-emerald-500 to-teal-400'
+                    }`}
+                    style={{ width: `${dlpInfo.elapsedPct}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Banner text & trigger */}
+              <div 
+                onClick={() => setIsDlpDefectModalOpen(true)}
+                className={`mt-2.5 p-2 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2 cursor-pointer transition ${
+                  dlpInfo.isExpired
+                    ? 'bg-blue-950/60 border-blue-500/40 text-blue-200 hover:bg-blue-900/60'
+                    : dlpInfo.isNearExpiry
+                      ? 'bg-amber-950/60 border-amber-500/40 text-amber-200 hover:bg-amber-900/60'
+                      : 'bg-emerald-950/60 border-emerald-500/40 text-emerald-200 hover:bg-emerald-900/60'
+                }`}
+              >
+                <div className="flex items-center gap-2 text-[10.5px]">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{dlpInfo.alertMessage}</span>
+                </div>
+                <span className="text-[9.5px] font-extrabold underline text-white hover:text-emerald-300 shrink-0 font-mono">
+                  Open DLP Countdown & Defect Modal →
+                </span>
+              </div>
             </div>
           </div>
         );
@@ -3372,6 +3623,16 @@ export default function DashboardView({
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Dedicated DLP Detail & Defect Logging Modal */}
+      <DlpDefectModal
+        isOpen={isDlpDefectModalOpen}
+        onClose={() => setIsDlpDefectModalOpen(false)}
+        project={project}
+        currentUserObj={currentUserObj}
+        onUpdateProject={onProjectUpdate}
+        onUpdateProjectStatus={onUpdateProjectStatus}
+      />
 
       </div>
     </div>

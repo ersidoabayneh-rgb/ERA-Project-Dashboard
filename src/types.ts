@@ -533,6 +533,20 @@ export function formatRelativeTime(lastModifiedAt?: string | null): string {
   return date.toLocaleDateString();
 }
 
+export interface DlpDefect {
+  id: string;
+  description: string;
+  severity: 'Low' | 'Medium' | 'High' | 'Critical';
+  locationStation?: string; // e.g. 'Km 14+200', 'Bridge Abutment 1', etc.
+  reportedBy: string;
+  reportedAt: string; // ISO string or timestamp format
+  status: 'Open' | 'Under Rectification' | 'Rectified' | 'Closed';
+  rectifiedAt?: string;
+  rectifiedBy?: string;
+  photoUrl?: string;
+  remarks?: string;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -545,6 +559,9 @@ export interface Project {
   origDays: number;
   eotDays: number;
   interimEotDays?: number;
+  dlpDays?: number; // Defect Liability Period in Calendar Days (e.g. 365 days)
+  completionDate?: string; // Actual or official project completion date (YYYY-MM-DD)
+  dlpStartDate?: string; // Date when DLP commenced (YYYY-MM-DD)
   variation: number; // In Birr (as-is number in accounting format with two decimal places, NOT in millions)
   origAmount: number; // In millions of Birr
   revisedContractAmountEtb?: number;
@@ -603,6 +620,7 @@ export interface Project {
   risks?: RiskItem[];
   issues?: IssueLogItem[];
   dailyActivities?: DailyActivityRecord[];
+  dlpDefects?: DlpDefect[];
   aiChatHistory?: any[];
   documents?: ProjectDocument[];
   supervisionConsultant?: SupervisionConsultantInfo;

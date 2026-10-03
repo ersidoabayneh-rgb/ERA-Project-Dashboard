@@ -904,16 +904,17 @@ export function generateKpiAllocated(ct: 'DB' | 'DBB', zeroDefault: boolean = fa
 export function getIntegratedKpiAllocated(project: Project): KpiAllocatedItem[] {
   // 1. Core Elapsed progress calculations
   const isClosed = isProjectClosed(project.status);
+  const isCompleted = project.status === 'Completed' || isClosed;
   const s = parseLocalDate(project.startDate) || new Date();
   const totalDays = project.origDays + (project.eotDays || 0) + (project.interimEotDays || 0);
   const rc = addDaysToDate(s, totalDays);
   const now = new Date();
   
   let elapsed = 0;
-  if (isClosed) {
+  if (isCompleted || isClosed) {
     elapsed = 100;
   } else if (rc.getTime() - s.getTime() > 0) {
-    elapsed = Math.max(0, ((now.getTime() - s.getTime()) / (rc.getTime() - s.getTime())) * 100);
+    elapsed = Math.min(100, Math.max(0, ((now.getTime() - s.getTime()) / (rc.getTime() - s.getTime())) * 100));
   }
   const ratio = elapsed > 0 ? (project.physicalProgress / elapsed) * 100 : 0;
   
@@ -2265,6 +2266,7 @@ export function defaultProjectTemplate(): Project {
     origDays: 1095,
     eotDays: 730,
     interimEotDays: 0,
+    dlpDays: 365,
     variation: 72163600.00, // In Birr (as-is number format with two decimal places)
     origAmount: 1555.70816788, // In Millions
     lengthKm: 65,

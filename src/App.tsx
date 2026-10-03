@@ -55,6 +55,8 @@ import {
 
 import { Project, User, ApprovalRequest, PrivateDraft, WorkflowAuditLogEntry, KpiAllocatedItem, SeriesItem, MonthlyProgress, LinearData, RowMetric, ProgressPlan, PaymentItem, AnnualItem, WorkProgramActivity, BondGuarantee, formatAccounting, ProjectDocument, ALL_EDITABLE_PAGES, EditablePageOption, ProjectLifecycleStatus, isProjectClosed, isCpmOrMasterAdmin, isRecentlyUpdated, formatRelativeTime, ContractorScoringWeights, ConsultantScoringWeights, DEFAULT_CONTRACTOR_SCORING_WEIGHTS, DEFAULT_CONSULTANT_SCORING_WEIGHTS, SupervisionConsultantInfo, ThemeSettings, DEFAULT_THEME_SETTINGS, PdfReportConfig, DEFAULT_PDF_REPORT_CONFIG } from './types';
 import { createProjectHistoryEntry } from './lib/projectAuditDiff';
+import { getProjectDlpInfo, calculateCappedElapsedTimePct } from './lib/dlpUtils';
+import DlpDefectModal from './components/DlpDefectModal';
 
 export function hasApprovalCredentials(user: User | null): boolean {
   if (!user) return false;
@@ -597,6 +599,9 @@ export default function App() {
   const [editOrigDays, setEditOrigDays] = useState(0);
   const [editEotDays, setEditEotDays] = useState(0);
   const [editInterimEotDays, setEditInterimEotDays] = useState(0);
+  const [editDlpDays, setEditDlpDays] = useState(365);
+  const [editDlpStartDate, setEditDlpStartDate] = useState('');
+  const [isDlpDefectModalOpenDossier, setIsDlpDefectModalOpenDossier] = useState(false);
   const [editOrigAmount, setEditOrigAmount] = useState(0);
   const [editProvisionalSum, setEditProvisionalSum] = useState(0);
   const [editVariation, setEditVariation] = useState(0);
@@ -643,6 +648,8 @@ export default function App() {
       setEditOrigDays(currentProject.origDays || 0);
       setEditEotDays(currentProject.eotDays || 0);
       setEditInterimEotDays(currentProject.interimEotDays || 0);
+      setEditDlpDays(currentProject.dlpDays !== undefined ? currentProject.dlpDays : 365);
+      setEditDlpStartDate(currentProject.dlpStartDate || '');
       setEditOrigAmount(currentProject.origAmount || 0);
       setEditProvisionalSum(currentProject.provisionalSum || 0);
       const vVal = currentProject.variation || 0;
@@ -2781,9 +2788,18 @@ let isBatchSyncRunning = false;
 
     const updatedList = projects.map(p => {
       if (p.id === id) {
+        const isNowCompleted = newStatus === 'Completed' || newStatus === 'Completed and Closed';
+        const wasCompleted = p.status === 'Completed' || p.status === 'Completed and Closed';
+        const compDate = (isNowCompleted && !wasCompleted) 
+          ? (p.completionDate || new Date().toISOString().split('T')[0]) 
+          : (p.completionDate || (isNowCompleted ? new Date().toISOString().split('T')[0] : undefined));
+
         return {
           ...p,
           status: newStatus,
+          completionDate: compDate,
+          dlpStartDate: p.dlpStartDate || compDate,
+          dlpDays: typeof p.dlpDays === 'number' ? p.dlpDays : 365,
           lastModifiedBy: currentUserObj?.username || 'Administrator',
           lastModifiedAt: new Date().toISOString(),
           lastModifiedSection: `Project Status updated to ${newStatus}`
@@ -3329,6 +3345,8 @@ let isBatchSyncRunning = false;
       origDays: editOrigDays,
       eotDays: editEotDays,
       interimEotDays: editInterimEotDays,
+      dlpDays: editDlpDays,
+      dlpStartDate: editDlpStartDate.trim() ? editDlpStartDate.trim() : undefined,
       origAmount: editOrigAmount,
       provisionalSum: editProvisionalSum,
       variation: editVariation,
@@ -4294,6 +4312,69 @@ let isBatchSyncRunning = false;
                               Commencement + {currentProject.origDays || 0}d Orig + {currentProject.eotDays || 0}d Approved EOT + {currentProject.interimEotDays || 0}d Interim EOT
                             </span>
                           </div>
+
+                          {/* Defect Liability Period (DLP) Information in View Mode - ONLY shown when Completed or Completed & Closed */}
+                          {(currentProject.status === 'Completed' || currentProject.status === 'Completed and Closed' || isProjectClosed(currentProject.status)) && (() => {
+                            const curDlp = getProjectDlpInfo(currentProject);
+                            return (
+                              <div 
+                                onClick={() => setIsDlpDefectModalOpenDossier(true)}
+                                className="space-y-1.5 border-t border-dashed border-slate-200 dark:border-slate-800 pt-2.5 mt-2.5 cursor-pointer hover:bg-slate-50/50 dark:hover:bg-slate-900/30 p-1.5 rounded-lg transition"
+                                title="Click to view real-time DLP countdown clock, full details, and log defects"
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[9px] text-emerald-600 dark:text-emerald-400 block font-mono font-bold flex items-center gap-1">
+                                    <span>DEFECT LIABILITY PERIOD (DLP)</span>
+                                    {(currentProject.dlpDefects || []).length > 0 && (
+                                      <span className="bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300 px-1 py-0.2 rounded text-[7.5px] font-extrabold">
+                                        {(currentProject.dlpDefects || []).length} Defects
+                                      </span>
+                                    )}
+                                  </span>
+                                  <span className={`text-[8.5px] font-mono font-bold px-1.5 py-0.2 rounded ${
+                                    curDlp.isCountingDown
+                                      ? (curDlp.isExpired
+                                          ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
+                                          : curDlp.isNearExpiry
+                                            ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200 dark:border-amber-800 animate-pulse'
+                                            : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800')
+                                      : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                                  }`}>
+                                    {curDlp.isCountingDown ? curDlp.countdownText : `${curDlp.dlpDays} Days (Standby)`}
+                                  </span>
+                                </div>
+                                <div className="grid grid-cols-2 gap-1.5 text-2xs font-mono">
+                                  <div className="bg-slate-50 dark:bg-slate-900/60 p-1.5 rounded border border-slate-100 dark:border-slate-800">
+                                    <span className="text-[7.5px] text-slate-400 block uppercase font-mono">DLP Duration</span>
+                                    <span className="text-slate-800 dark:text-zinc-200 font-bold block">{curDlp.dlpDays} Calendar Days</span>
+                                  </div>
+                                  <div className="bg-slate-50 dark:bg-slate-900/60 p-1.5 rounded border border-slate-100 dark:border-slate-800">
+                                    <span className="text-[7.5px] text-slate-400 block uppercase font-mono">Assigned Start Date</span>
+                                    <span className="text-slate-800 dark:text-zinc-200 font-bold block truncate" title={currentProject.dlpStartDate || currentProject.completionDate || 'Not Assigned'}>
+                                      {currentProject.dlpStartDate || (currentProject.completionDate ? `${currentProject.completionDate}` : 'Not Assigned')}
+                                    </span>
+                                  </div>
+                                </div>
+                                {curDlp.isCountingDown && (
+                                  <div className="bg-emerald-50/60 dark:bg-emerald-950/30 p-1.5 rounded border border-emerald-100 dark:border-emerald-900/40 text-[8.5px] space-y-1">
+                                    <div className="flex justify-between items-center text-emerald-800 dark:text-emerald-300 font-mono font-bold">
+                                      <span>{curDlp.daysRemaining}d {curDlp.hoursRemaining}h {curDlp.minutesRemaining}m Remaining</span>
+                                      <span className="underline font-bold text-emerald-600 dark:text-emerald-400">View & Report Defects →</span>
+                                    </div>
+                                    <div className="w-full bg-emerald-200/50 dark:bg-emerald-900/50 h-1.5 rounded-full overflow-hidden">
+                                      <div 
+                                        className="h-full bg-emerald-500 rounded-full" 
+                                        style={{ width: `${curDlp.elapsedPct}%` }}
+                                      />
+                                    </div>
+                                    <span className="text-[8px] text-slate-500 dark:text-slate-400 block leading-tight font-sans">
+                                      {curDlp.alertMessage}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </div>
 
                         {/* Section 3: Value Outlay Structure */}
@@ -4526,6 +4607,110 @@ let isBatchSyncRunning = false;
                                 className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-705 text-center py-0.5 rounded font-mono text-slate-850 text-2xs outline-none"
                               />
                             </div>
+                          </div>
+
+                          {/* Defect Liability Period (DLP) Edit Inputs: Start Date & Settings */}
+                          <div className="space-y-2 bg-emerald-50/30 dark:bg-emerald-950/20 p-2.5 rounded-xl border border-emerald-200/60 dark:border-emerald-900/50">
+                            <div className="flex items-center justify-between">
+                              <label className="text-[9.5px] text-emerald-700 dark:text-emerald-300 block font-mono font-bold">
+                                DEFECT LIABILITY PERIOD (DLP SETTINGS)
+                              </label>
+                              <span className="text-[8px] font-mono text-emerald-600 dark:text-emerald-400 font-semibold">
+                                Automated Countdown
+                              </span>
+                            </div>
+
+                            {/* DLP Start Date Input */}
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between">
+                                <label className="text-[8.5px] font-mono font-semibold text-slate-600 dark:text-slate-300">
+                                  Assign DLP Start Date
+                                </label>
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditDlpStartDate(new Date().toISOString().split('T')[0])}
+                                    className="text-[7.5px] font-mono px-1.5 py-0.5 bg-white dark:bg-slate-800 hover:bg-slate-100 text-slate-700 dark:text-slate-300 rounded border border-slate-200 dark:border-slate-700 cursor-pointer transition"
+                                  >
+                                    Today
+                                  </button>
+                                  {currentProject.completionDate && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setEditDlpStartDate(currentProject.completionDate || '')}
+                                      className="text-[7.5px] font-mono px-1.5 py-0.5 bg-emerald-100 dark:bg-emerald-900/60 hover:bg-emerald-200 text-emerald-800 dark:text-emerald-300 rounded border border-emerald-300 dark:border-emerald-800 cursor-pointer transition"
+                                      title={`Use recorded completion date: ${currentProject.completionDate}`}
+                                    >
+                                      Use Comp Date
+                                    </button>
+                                  )}
+                                  {editDlpStartDate && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setEditDlpStartDate('')}
+                                      className="text-[7.5px] font-mono px-1.5 py-0.5 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 text-rose-600 dark:text-rose-400 rounded border border-rose-200 dark:border-rose-900 cursor-pointer transition"
+                                    >
+                                      Clear
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                              <input
+                                type="date"
+                                value={editDlpStartDate}
+                                onChange={(e) => setEditDlpStartDate(e.target.value)}
+                                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1 text-slate-850 dark:text-zinc-150 outline-none font-mono text-xs rounded focus:ring-1 focus:ring-emerald-500"
+                              />
+                            </div>
+
+                            {/* DLP Duration in Days Input */}
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between">
+                                <label className="text-[8.5px] font-mono font-semibold text-slate-600 dark:text-slate-300">
+                                  DLP Duration (Calendar Days)
+                                </label>
+                                <span className="text-[8px] font-mono text-slate-400">Settings</span>
+                              </div>
+                              <div className="relative flex items-center">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={editDlpDays}
+                                  onChange={(e) => setEditDlpDays(Math.max(0, parseInt(e.target.value) || 0))}
+                                  placeholder="e.g. 365"
+                                  className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1 text-slate-850 dark:text-zinc-150 outline-none font-mono font-bold text-xs rounded focus:ring-1 focus:ring-emerald-500"
+                                />
+                                <span className="absolute right-2 text-[10px] font-mono font-bold text-slate-400 select-none pointer-events-none">
+                                  Days
+                                </span>
+                              </div>
+                              {/* Quick Presets */}
+                              <div className="flex items-center gap-1 pt-0.5 flex-wrap">
+                                {[
+                                  { label: '1 Year (365d)', days: 365 },
+                                  { label: '2 Years (730d)', days: 730 },
+                                  { label: '3 Years (1095d)', days: 1095 },
+                                  { label: '548d (1.5 Yrs)', days: 548 }
+                                ].map((preset) => (
+                                  <button
+                                    key={preset.days}
+                                    type="button"
+                                    onClick={() => setEditDlpDays(preset.days)}
+                                    className={`text-[7.5px] font-mono px-1.5 py-0.5 rounded border transition cursor-pointer ${
+                                      editDlpDays === preset.days
+                                        ? 'bg-emerald-600 text-white border-emerald-600 font-bold'
+                                        : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:border-emerald-400'
+                                    }`}
+                                  >
+                                    {preset.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
+                            <p className="text-[8px] text-slate-500 dark:text-slate-400 leading-tight">
+                              Countdown calculates automatically on the dashboard when a DLP start date is assigned or project lifecycle is changed to Completed.
+                            </p>
                           </div>
                         </div>
 
@@ -7887,6 +8072,18 @@ let isBatchSyncRunning = false;
         onUpdateTheme={handleUpdateTheme}
         onResetTheme={handleResetTheme}
       />
+
+      {/* DLP Detail & Defect Logging Modal in Dossier context */}
+      {currentProject && (
+        <DlpDefectModal
+          isOpen={isDlpDefectModalOpenDossier}
+          onClose={() => setIsDlpDefectModalOpenDossier(false)}
+          project={currentProject}
+          currentUserObj={currentUserObj}
+          onUpdateProject={handleProjectUpdate}
+          onUpdateProjectStatus={(id, st) => handleUpdateProjectStatus(id, st)}
+        />
+      )}
 
     </div>
   );
