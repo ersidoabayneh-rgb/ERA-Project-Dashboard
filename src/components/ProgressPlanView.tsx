@@ -42,10 +42,58 @@ import {
   Grid,
   Search,
   ShieldCheck,
-  Award
+  Award,
+  History,
+  Sparkles,
+  AlertTriangle
 } from 'lucide-react';
 import { generateProgressComparisonPdf } from '../lib/progressComparisonPdfGenerator';
 import { getCredentialSignatures } from '../lib/pdfReportEngine';
+
+export const getPreviousPeriodSuggestion = (
+  existingList: ProgressPlanHistoryItem[], 
+  activeMonth: string, 
+  activeQuarter: string, 
+  activeEfy: string
+) => {
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  
+  // Find earliest recorded month or use activeMonth
+  let refLabel = activeMonth;
+  if (existingList.length > 0) {
+    const sortedDesc = sortProgressPlanHistoryDescending(existingList);
+    const earliest = sortedDesc[sortedDesc.length - 1];
+    if (earliest && earliest.monthLabel) {
+      refLabel = earliest.monthLabel;
+    }
+  }
+  
+  const clean = refLabel.trim().replace(/['’]/g, '');
+  const parts = clean.split(/[\s-]+/);
+  const mStr = parts[0];
+  let yStr = parts[1] || '2024';
+  if (yStr.length === 2) yStr = `20${yStr}`;
+  let y = parseInt(yStr, 10) || 2024;
+  let mIdx = months.findIndex(m => mStr.toLowerCase().startsWith(m.toLowerCase()));
+  if (mIdx === -1) mIdx = 8; // Sep default
+
+  // Step back 1 month
+  mIdx -= 1;
+  if (mIdx < 0) {
+    mIdx = 11; // Dec
+    y -= 1;
+  }
+
+  const prevMonthName = months[mIdx];
+  const shortYear = String(y).slice(-2);
+  const prevMonthLabel = `${prevMonthName} '${shortYear}`;
+  
+  return {
+    monthLabel: prevMonthLabel,
+    quarterLabel: activeQuarter,
+    efyLabel: activeEfy
+  };
+};
 
 export const sortProgressPlanHistoryDescending = (items: ProgressPlanHistoryItem[]): ProgressPlanHistoryItem[] => {
   return [...(items || [])].sort((a, b) => {
@@ -145,8 +193,9 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
     return historyList.find(h => h.id === selectedArchivedKey) || historyList[0] || null;
   }, [historyList, selectedArchivedKey]);
 
-  // Modal State for Editing Archived Milestone Record
+  // Modal State for Editing / Adding Previous Milestone Record
   const [editingItem, setEditingItem] = useState<ProgressPlanHistoryItem | null>(null);
+  const [modalMode, setModalMode] = useState<'edit' | 'add_previous'>('edit');
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
 
@@ -333,6 +382,50 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
   const handleOpenEditModal = (item: ProgressPlanHistoryItem, e: React.MouseEvent) => {
     e.stopPropagation();
     setEditingItem({ ...item });
+    setModalMode('edit');
+    setIsModalOpen(true);
+  };
+
+  // Open Add Previous Milestone Modal with Smart Lower Defaults
+  const handleOpenAddPreviousModal = () => {
+    // Find reference baseline values from earliest history record or activePlan
+    const sortedDesc = sortProgressPlanHistoryDescending(historyList);
+    const earliestItem = sortedDesc.length > 0 ? sortedDesc[sortedDesc.length - 1] : null;
+
+    const baseContractorTodate = earliestItem ? (earliestItem.contractorTodate || 0) : activePlan.contractor.todate;
+    const baseEraTodate = earliestItem ? (earliestItem.eraTodate || 0) : activePlan.era.todate;
+    const baseActualTodate = earliestItem ? (earliestItem.actualTodate || 0) : activePlan.actual.todate;
+
+    const periodSuggestion = getPreviousPeriodSuggestion(historyList, monthLabel, quarterLabel, efyLabel);
+
+    // Compute previous values strictly lower than current progress (decrement by ~1.0 - 1.5 Km)
+    const prevContractorTodate = Number(Math.max(0, baseContractorTodate - 1.5).toFixed(2));
+    const prevEraTodate = Number(Math.max(0, baseEraTodate - 1.2).toFixed(2));
+    const prevActualTodate = Number(Math.max(0, baseActualTodate - 1.0).toFixed(2));
+
+    const newId = `hist_${Date.now()}`;
+    const prevItem: ProgressPlanHistoryItem = {
+      id: newId,
+      monthLabel: periodSuggestion.monthLabel,
+      quarterLabel: periodSuggestion.quarterLabel,
+      efyLabel: periodSuggestion.efyLabel,
+      contractorMonth: 1.10,
+      contractorQuarter: 2.20,
+      contractorEfy: 4.50,
+      contractorTodate: prevContractorTodate,
+      eraMonth: 0.80,
+      eraQuarter: 1.60,
+      eraEfy: 3.20,
+      eraTodate: prevEraTodate,
+      actualMonth: 0.40,
+      actualQuarter: 0.90,
+      actualEfy: 2.10,
+      actualTodate: prevActualTodate,
+      physicalProgress: Number(((prevActualTodate / totalLength) * 100).toFixed(2))
+    };
+
+    setEditingItem(prevItem);
+    setModalMode('add_previous');
     setIsModalOpen(true);
   };
 
@@ -351,11 +444,17 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
     };
 
     const existing = project.progressPlanHistory || historyList;
-    const updatedHistory = existing.map(h => h.id === updatedItem.id ? updatedItem : h);
+    let updatedHistory: ProgressPlanHistoryItem[];
+    if (existing.some(h => h.id === updatedItem.id)) {
+      updatedHistory = existing.map(h => h.id === updatedItem.id ? updatedItem : h);
+    } else {
+      updatedHistory = [updatedItem, ...existing.filter(h => h.id !== updatedItem.id && h.monthLabel !== updatedItem.monthLabel)];
+    }
 
+    const sortedHistory = sortProgressPlanHistoryDescending(updatedHistory);
     const isCurrentlyActive = updatedItem.monthLabel === monthLabel;
     const projectUpdates: Partial<Project> = {
-      progressPlanHistory: sortProgressPlanHistoryDescending(updatedHistory)
+      progressPlanHistory: sortedHistory
     };
 
     if (isCurrentlyActive) {
@@ -383,10 +482,11 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
       setActivePlan(projectUpdates.progressPlan);
     }
 
-    onUpdateProject(projectUpdates, `Milestone record ${updatedItem.monthLabel} updated`);
+    onUpdateProject(projectUpdates, modalMode === 'add_previous' ? `Added previous milestone record for ${updatedItem.monthLabel}` : `Milestone record ${updatedItem.monthLabel} updated`);
+    setSelectedArchivedKey(updatedItem.id);
     setIsModalOpen(false);
     setEditingItem(null);
-    setSaveSuccessMsg(`Milestone record ${updatedItem.monthLabel} updated successfully!`);
+    setSaveSuccessMsg(modalMode === 'add_previous' ? `Previous milestone record for ${updatedItem.monthLabel} added successfully!` : `Milestone record ${updatedItem.monthLabel} updated successfully!`);
     setTimeout(() => setSaveSuccessMsg(null), 3000);
   };
 
@@ -949,14 +1049,25 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                 </button>
               </div>
 
-              {/* Add Snapshot Button */}
+              {/* Add Previous Data Button (Lower than current progress) */}
+              <button
+                type="button"
+                onClick={handleOpenAddPreviousModal}
+                className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-black uppercase tracking-wide flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+                title="Add historical baseline data lower than current project progress"
+              >
+                <History className="w-3.5 h-3.5" />
+                <span>Add Previous Data</span>
+              </button>
+
+              {/* Record Snapshot Button */}
               <button
                 type="button"
                 onClick={() => {
                   const newId = `hist_${Date.now()}`;
                   const newItem: ProgressPlanHistoryItem = {
                     id: newId,
-                    monthLabel: `New Month`,
+                    monthLabel: monthLabel,
                     quarterLabel: quarterLabel,
                     efyLabel: efyLabel,
                     contractorMonth: activePlan.contractor.month,
@@ -974,9 +1085,11 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                     physicalProgress: Number(((activePlan.actual.todate / totalLength) * 100).toFixed(2))
                   };
                   setEditingItem(newItem);
+                  setModalMode('edit');
                   setIsModalOpen(true);
                 }}
-                className="px-3 py-1 rounded-xl bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 text-white text-xs font-black uppercase tracking-wide flex items-center gap-1.5 transition cursor-pointer"
+                className="px-3 py-1.5 rounded-xl bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 text-white text-xs font-black uppercase tracking-wide flex items-center gap-1.5 transition cursor-pointer"
+                title="Capture custom milestone snapshot"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>Record</span>
@@ -987,7 +1100,7 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                 <button
                   type="button"
                   onClick={handleClearThisProjectHistory}
-                  className="px-2.5 py-1 rounded-xl bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border border-rose-200 dark:border-rose-900/50"
+                  className="px-2.5 py-1.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border border-rose-200 dark:border-rose-900/50"
                   title="Delete all elapsed history records for this project"
                 >
                   <Trash2 className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
@@ -998,7 +1111,7 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
               <button
                 type="button"
                 onClick={handleClearAllProjectsHistory}
-                className="px-2.5 py-1 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-black uppercase tracking-wide transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                className="px-2.5 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-black uppercase tracking-wide transition flex items-center gap-1.5 cursor-pointer shadow-xs"
                 title="Delete all elapsed months & EFY history records across all projects"
               >
                 <Trash2 className="w-3.5 h-3.5" />
@@ -1014,9 +1127,9 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
               : 'space-y-3'
           }`}>
             {filteredHistoryList.length === 0 ? (
-              <div className="p-8 text-center bg-slate-50 dark:bg-slate-900/40 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 space-y-2">
-                <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 flex items-center justify-center mx-auto">
-                  <Clock className="w-5 h-5 text-slate-400" />
+              <div className="p-8 text-center bg-slate-50 dark:bg-slate-900/40 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 space-y-3">
+                <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 flex items-center justify-center mx-auto shadow-xs">
+                  <History className="w-6 h-6" />
                 </div>
                 {historySearchQuery ? (
                   <>
@@ -1030,12 +1143,32 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                   </>
                 ) : (
                   <>
-                    <p className="text-xs text-slate-700 dark:text-slate-200 font-black uppercase tracking-tight">
-                      No elapsed months & EFY history records exist
-                    </p>
-                    <p className="text-[11px] text-slate-400 max-w-sm mx-auto">
-                      All historical milestone records have been deleted. You can record a new milestone anytime using "Record" or "Save & Update".
-                    </p>
+                    <div>
+                      <p className="text-xs text-slate-800 dark:text-slate-200 font-black uppercase tracking-tight">
+                        No elapsed months & EFY history records exist
+                      </p>
+                      <p className="text-[11px] text-slate-400 max-w-md mx-auto mt-1">
+                        You can add previous historical milestones (with values lower than current progress) to build chronological S-curves and audit comparisons.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-center gap-2.5 pt-2">
+                      <button
+                        type="button"
+                        onClick={handleOpenAddPreviousModal}
+                        className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-black uppercase tracking-wide flex items-center gap-2 transition cursor-pointer shadow-xs"
+                      >
+                        <History className="w-4 h-4" />
+                        <span>Add Previous Data (Lower Than Current)</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSaveActiveToSnapshot}
+                        className="px-4 py-2 rounded-xl bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 text-white text-xs font-black uppercase tracking-wide flex items-center gap-2 transition cursor-pointer"
+                      >
+                        <Save className="w-4 h-4" />
+                        <span>Save Current Active Period ({monthLabel})</span>
+                      </button>
+                    </div>
                   </>
                 )}
               </div>
@@ -1422,23 +1555,35 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
         </div>
       </section>
 
-      {/* 4. MODAL: EDIT ARCHIVED MILESTONE RECORD */}
+      {/* 4. MODAL: ADD PREVIOUS / EDIT ARCHIVED MILESTONE RECORD */}
       {isModalOpen && editingItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white dark:bg-slate-850 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl max-w-2xl w-full p-6 space-y-6 animate-in zoom-in-95">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in overflow-y-auto">
+          <div className="bg-white dark:bg-slate-850 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl max-w-3xl w-full p-6 space-y-5 animate-in zoom-in-95 my-6">
             {/* Modal Header */}
             <div className="flex items-start justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
-              <div>
-                <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-                  <Edit className="w-4 h-4" />
-                  Edit Archived Milestone Record
+              <div className="flex items-start gap-3">
+                <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${
+                  modalMode === 'add_previous' 
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20' 
+                    : 'bg-emerald-600 text-white shadow-md shadow-emerald-500/20'
+                }`}>
+                  {modalMode === 'add_previous' ? <History className="w-5 h-5" /> : <Edit className="w-5 h-5" />}
                 </div>
-                <h3 className="text-lg font-black text-slate-900 dark:text-white mt-1">
-                  {editingItem.monthLabel}
-                </h3>
-                <p className="text-xs text-slate-400">
-                  Update recorded values for this snapshot period. All plans and actuals can be adjusted for this month.
-                </p>
+                <div>
+                  <div className={`text-[10px] font-black uppercase tracking-wider ${
+                    modalMode === 'add_previous' ? 'text-blue-600 dark:text-blue-400' : 'text-emerald-600 dark:text-emerald-400'
+                  }`}>
+                    {modalMode === 'add_previous' ? 'Previous Milestone Data Entry' : 'Archived Milestone Record'}
+                  </div>
+                  <h3 className="text-lg font-black text-slate-900 dark:text-white mt-0.5">
+                    {modalMode === 'add_previous' ? 'Add Previous Milestone (Historical Data)' : `Edit Snapshot: ${editingItem.monthLabel}`}
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    {modalMode === 'add_previous' 
+                      ? `Add earlier historical progress data lower than the current project progress (${activePlan.actual.todate.toFixed(2)} Km / ${toPct(activePlan.actual.todate)}).`
+                      : 'Update recorded values for this snapshot period. All plans and actuals can be adjusted for this month.'}
+                  </p>
+                </div>
               </div>
               <button
                 onClick={() => setIsModalOpen(false)}
@@ -1446,6 +1591,73 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
               >
                 <X className="w-5 h-5" />
               </button>
+            </div>
+
+            {/* Current Project Progress Benchmark Banner */}
+            <div className="p-3.5 bg-gradient-to-r from-blue-50/90 to-indigo-50/90 dark:from-blue-950/40 dark:to-indigo-950/40 rounded-2xl border border-blue-200 dark:border-blue-900/50 space-y-2.5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-blue-900 dark:text-blue-200">
+                  <Activity className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                  <span>Current Project Active Progress Benchmark:</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 bg-blue-600 text-white rounded-md text-[10px] font-black uppercase">
+                    Active: {monthLabel}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const decrActual = Math.max(0, Number((activePlan.actual.todate - 1.0).toFixed(2)));
+                      const decrContr = Math.max(0, Number((activePlan.contractor.todate - 1.5).toFixed(2)));
+                      const decrEra = Math.max(0, Number((activePlan.era.todate - 1.2).toFixed(2)));
+                      setEditingItem({
+                        ...editingItem,
+                        actualTodate: decrActual,
+                        contractorTodate: decrContr,
+                        eraTodate: decrEra,
+                        physicalProgress: Number(((decrActual / totalLength) * 100).toFixed(2))
+                      });
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-blue-700 hover:bg-blue-800 text-white text-[10px] font-black uppercase tracking-wide transition cursor-pointer flex items-center gap-1 shadow-xs"
+                    title="Set safe previous values lower by 1.0 Km"
+                  >
+                    <Sparkles className="w-3 h-3" />
+                    <span>Auto-Lower (-1.0 Km)</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2.5 text-xs">
+                <div className="bg-white/80 dark:bg-slate-900/80 p-2.5 rounded-xl border border-blue-100 dark:border-blue-900/40">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase">Actual Completed (Current)</div>
+                  <div className="text-sm font-black text-indigo-700 dark:text-indigo-300">
+                    {activePlan.actual.todate.toFixed(2)} Km
+                  </div>
+                  <div className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                    {toPct(activePlan.actual.todate)} Physical
+                  </div>
+                </div>
+
+                <div className="bg-white/80 dark:bg-slate-900/80 p-2.5 rounded-xl border border-blue-100 dark:border-blue-900/40">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase">Contractor Plan (Current)</div>
+                  <div className="text-sm font-black text-blue-700 dark:text-blue-300">
+                    {activePlan.contractor.todate.toFixed(2)} Km
+                  </div>
+                  <div className="text-[10px] font-bold text-slate-500">
+                    {toPct(activePlan.contractor.todate)}
+                  </div>
+                </div>
+
+                <div className="bg-white/80 dark:bg-slate-900/80 p-2.5 rounded-xl border border-blue-100 dark:border-blue-900/40">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase">ERA Milestone (Current)</div>
+                  <div className="text-sm font-black text-emerald-700 dark:text-emerald-300">
+                    {activePlan.era.todate.toFixed(2)} Km
+                  </div>
+                  <div className="text-[10px] font-bold text-slate-500">
+                    {toPct(activePlan.era.todate)}
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* Period Labels Inputs */}
@@ -1456,7 +1668,8 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                   type="text"
                   value={editingItem.monthLabel}
                   onChange={(e) => setEditingItem({ ...editingItem, monthLabel: e.target.value })}
-                  className="w-full px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold"
+                  placeholder="e.g. Aug '24"
+                  className="w-full px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-white"
                 />
               </div>
               <div>
@@ -1465,7 +1678,8 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                   type="text"
                   value={editingItem.quarterLabel || ''}
                   onChange={(e) => setEditingItem({ ...editingItem, quarterLabel: e.target.value })}
-                  className="w-full px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold"
+                  placeholder="e.g. July 2024-September 2024"
+                  className="w-full px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-white"
                 />
               </div>
               <div>
@@ -1474,7 +1688,8 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                   type="text"
                   value={editingItem.efyLabel}
                   onChange={(e) => setEditingItem({ ...editingItem, efyLabel: e.target.value })}
-                  className="w-full px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold"
+                  placeholder="e.g. EFY 2017"
+                  className="w-full px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-white"
                 />
               </div>
             </div>
@@ -1485,23 +1700,28 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                 <thead>
                   <tr className="bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 text-[10px] font-black uppercase tracking-wider text-slate-500">
                     <th className="p-3">Category</th>
-                    <th className="p-3 text-center">Current Month (Km)</th>
-                    <th className="p-3 text-center">Current Quarter (Km)</th>
-                    <th className="p-3 text-center">Current EFY (Km)</th>
-                    <th className="p-3 text-center">Cumulative To Date (Km)</th>
+                    <th className="p-3 text-center">Month (Km)</th>
+                    <th className="p-3 text-center">Quarter (Km)</th>
+                    <th className="p-3 text-center">EFY (Km)</th>
+                    <th className="p-3 text-center bg-blue-50/50 dark:bg-blue-950/20">Cumulative To Date (Km)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
                   {/* Contractor */}
                   <tr>
-                    <td className="p-3 font-bold text-slate-850 dark:text-slate-100">Contractor Plan</td>
+                    <td className="p-3 font-bold text-slate-850 dark:text-slate-100">
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                        <span>Contractor Plan</span>
+                      </div>
+                    </td>
                     <td className="p-3 text-center">
                       <input
                         type="number"
                         step="0.01"
                         value={editingItem.contractorMonth}
                         onChange={(e) => setEditingItem({ ...editingItem, contractorMonth: parseFloat(e.target.value) || 0 })}
-                        className="w-20 text-center px-2 py-1 bg-slate-50 dark:bg-slate-800 border rounded-lg text-xs font-bold"
+                        className="w-20 text-center px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold"
                       />
                     </td>
                     <td className="p-3 text-center">
@@ -1510,7 +1730,7 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                         step="0.01"
                         value={editingItem.contractorQuarter || 0}
                         onChange={(e) => setEditingItem({ ...editingItem, contractorQuarter: parseFloat(e.target.value) || 0 })}
-                        className="w-20 text-center px-2 py-1 bg-slate-50 dark:bg-slate-800 border rounded-lg text-xs font-bold"
+                        className="w-20 text-center px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold"
                       />
                     </td>
                     <td className="p-3 text-center">
@@ -1519,30 +1739,42 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                         step="0.01"
                         value={editingItem.contractorEfy}
                         onChange={(e) => setEditingItem({ ...editingItem, contractorEfy: parseFloat(e.target.value) || 0 })}
-                        className="w-20 text-center px-2 py-1 bg-slate-50 dark:bg-slate-800 border rounded-lg text-xs font-bold"
+                        className="w-20 text-center px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold"
                       />
                     </td>
-                    <td className="p-3 text-center">
+                    <td className="p-3 text-center bg-blue-50/30 dark:bg-blue-950/10">
                       <input
                         type="number"
                         step="0.01"
                         value={editingItem.contractorTodate || 0}
                         onChange={(e) => setEditingItem({ ...editingItem, contractorTodate: parseFloat(e.target.value) || 0 })}
-                        className="w-20 text-center px-2 py-1 bg-slate-50 dark:bg-slate-800 border rounded-lg text-xs font-bold"
+                        className="w-24 text-center px-2 py-1 bg-white dark:bg-slate-800 border border-blue-300 dark:border-blue-700 rounded-lg text-xs font-bold text-blue-900 dark:text-blue-100"
                       />
+                      <div className="text-[9px] mt-1 font-bold">
+                        {editingItem.contractorTodate !== undefined && editingItem.contractorTodate <= activePlan.contractor.todate ? (
+                          <span className="text-emerald-600 dark:text-emerald-400">✓ {(activePlan.contractor.todate - editingItem.contractorTodate).toFixed(2)} Km lower</span>
+                        ) : (
+                          <span className="text-amber-600 dark:text-amber-400">▲ Higher than active</span>
+                        )}
+                      </div>
                     </td>
                   </tr>
 
                   {/* ERA */}
                   <tr>
-                    <td className="p-3 font-bold text-slate-850 dark:text-slate-100">ERA Milestone</td>
+                    <td className="p-3 font-bold text-slate-850 dark:text-slate-100">
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                        <span>ERA Milestone</span>
+                      </div>
+                    </td>
                     <td className="p-3 text-center">
                       <input
                         type="number"
                         step="0.01"
                         value={editingItem.eraMonth}
                         onChange={(e) => setEditingItem({ ...editingItem, eraMonth: parseFloat(e.target.value) || 0 })}
-                        className="w-20 text-center px-2 py-1 bg-slate-50 dark:bg-slate-800 border rounded-lg text-xs font-bold"
+                        className="w-20 text-center px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold"
                       />
                     </td>
                     <td className="p-3 text-center">
@@ -1551,7 +1783,7 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                         step="0.01"
                         value={editingItem.eraQuarter || 0}
                         onChange={(e) => setEditingItem({ ...editingItem, eraQuarter: parseFloat(e.target.value) || 0 })}
-                        className="w-20 text-center px-2 py-1 bg-slate-50 dark:bg-slate-800 border rounded-lg text-xs font-bold"
+                        className="w-20 text-center px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold"
                       />
                     </td>
                     <td className="p-3 text-center">
@@ -1560,30 +1792,42 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                         step="0.01"
                         value={editingItem.eraEfy}
                         onChange={(e) => setEditingItem({ ...editingItem, eraEfy: parseFloat(e.target.value) || 0 })}
-                        className="w-20 text-center px-2 py-1 bg-slate-50 dark:bg-slate-800 border rounded-lg text-xs font-bold"
+                        className="w-20 text-center px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold"
                       />
                     </td>
-                    <td className="p-3 text-center">
+                    <td className="p-3 text-center bg-blue-50/30 dark:bg-blue-950/10">
                       <input
                         type="number"
                         step="0.01"
                         value={editingItem.eraTodate || 0}
                         onChange={(e) => setEditingItem({ ...editingItem, eraTodate: parseFloat(e.target.value) || 0 })}
-                        className="w-20 text-center px-2 py-1 bg-slate-50 dark:bg-slate-800 border rounded-lg text-xs font-bold"
+                        className="w-24 text-center px-2 py-1 bg-white dark:bg-slate-800 border border-emerald-300 dark:border-emerald-700 rounded-lg text-xs font-bold text-emerald-900 dark:text-emerald-100"
                       />
+                      <div className="text-[9px] mt-1 font-bold">
+                        {editingItem.eraTodate !== undefined && editingItem.eraTodate <= activePlan.era.todate ? (
+                          <span className="text-emerald-600 dark:text-emerald-400">✓ {(activePlan.era.todate - editingItem.eraTodate).toFixed(2)} Km lower</span>
+                        ) : (
+                          <span className="text-amber-600 dark:text-amber-400">▲ Higher than active</span>
+                        )}
+                      </div>
                     </td>
                   </tr>
 
-                  {/* Actual */}
-                  <tr className="bg-indigo-50/30 dark:bg-indigo-950/20">
-                    <td className="p-3 font-black text-indigo-700 dark:text-indigo-300">Actual Completed</td>
+                  {/* Actual Completed */}
+                  <tr className="bg-indigo-50/40 dark:bg-indigo-950/20">
+                    <td className="p-3 font-black text-indigo-700 dark:text-indigo-300">
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-indigo-600"></span>
+                        <span>Actual Completed (Km)</span>
+                      </div>
+                    </td>
                     <td className="p-3 text-center">
                       <input
                         type="number"
                         step="0.01"
                         value={editingItem.actualMonth}
                         onChange={(e) => setEditingItem({ ...editingItem, actualMonth: parseFloat(e.target.value) || 0 })}
-                        className="w-20 text-center px-2 py-1 bg-white dark:bg-slate-800 border border-indigo-400 rounded-lg text-xs font-black text-indigo-700 dark:text-indigo-300"
+                        className="w-20 text-center px-2 py-1 bg-white dark:bg-slate-800 border border-indigo-400 rounded-lg text-xs font-black text-indigo-700 dark:text-indigo-300 shadow-2xs"
                       />
                     </td>
                     <td className="p-3 text-center">
@@ -1592,7 +1836,7 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                         step="0.01"
                         value={editingItem.actualQuarter || 0}
                         onChange={(e) => setEditingItem({ ...editingItem, actualQuarter: parseFloat(e.target.value) || 0 })}
-                        className="w-20 text-center px-2 py-1 bg-white dark:bg-slate-800 border border-indigo-400 rounded-lg text-xs font-black text-indigo-700 dark:text-indigo-300"
+                        className="w-20 text-center px-2 py-1 bg-white dark:bg-slate-800 border border-indigo-400 rounded-lg text-xs font-black text-indigo-700 dark:text-indigo-300 shadow-2xs"
                       />
                     </td>
                     <td className="p-3 text-center">
@@ -1601,31 +1845,56 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                         step="0.01"
                         value={editingItem.actualEfy}
                         onChange={(e) => setEditingItem({ ...editingItem, actualEfy: parseFloat(e.target.value) || 0 })}
-                        className="w-20 text-center px-2 py-1 bg-white dark:bg-slate-800 border border-indigo-400 rounded-lg text-xs font-black text-indigo-700 dark:text-indigo-300"
+                        className="w-20 text-center px-2 py-1 bg-white dark:bg-slate-800 border border-indigo-400 rounded-lg text-xs font-black text-indigo-700 dark:text-indigo-300 shadow-2xs"
                       />
                     </td>
-                    <td className="p-3 text-center">
+                    <td className="p-3 text-center bg-indigo-100/40 dark:bg-indigo-900/30">
                       <input
                         type="number"
                         step="0.01"
                         value={editingItem.actualTodate || 0}
-                        onChange={(e) => setEditingItem({ ...editingItem, actualTodate: parseFloat(e.target.value) || 0 })}
-                        className="w-20 text-center px-2 py-1 bg-indigo-600 text-white rounded-lg text-xs font-black"
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0;
+                          setEditingItem({ 
+                            ...editingItem, 
+                            actualTodate: val,
+                            physicalProgress: totalLength > 0 ? Number(((val / totalLength) * 100).toFixed(2)) : 0
+                          });
+                        }}
+                        className="w-24 text-center px-2 py-1 bg-indigo-600 text-white rounded-lg text-xs font-black shadow-xs"
                       />
+                      <div className="text-[9px] mt-1 font-bold">
+                        {editingItem.actualTodate !== undefined && editingItem.actualTodate <= activePlan.actual.todate ? (
+                          <span className="text-emerald-700 dark:text-emerald-300">✓ {(activePlan.actual.todate - editingItem.actualTodate).toFixed(2)} Km lower than current</span>
+                        ) : (
+                          <span className="text-rose-600 dark:text-rose-400 font-black">⚠️ {(editingItem.actualTodate! - activePlan.actual.todate).toFixed(2)} Km above current</span>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 </tbody>
               </table>
             </div>
 
-            {/* Physical Progress indicator */}
-            <div className="flex items-center justify-between px-4 py-3 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-100 dark:border-slate-800">
-              <span className="text-xs font-bold text-slate-500">Calculated Physical Progress:</span>
-              <span className="text-sm font-black text-emerald-600 dark:text-emerald-400">
-                {totalLength > 0 && editingItem.actualTodate !== undefined
-                  ? `${((editingItem.actualTodate / totalLength) * 100).toFixed(2)}%`
-                  : `${editingItem.physicalProgress || 0}%`}
-              </span>
+            {/* Physical Progress indicator and Warning if higher */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between px-4 py-3 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-100 dark:border-slate-800">
+                <span className="text-xs font-bold text-slate-500">Calculated Physical Progress for this Milestone:</span>
+                <span className="text-sm font-black text-emerald-600 dark:text-emerald-400">
+                  {totalLength > 0 && editingItem.actualTodate !== undefined
+                    ? `${((editingItem.actualTodate / totalLength) * 100).toFixed(2)}%`
+                    : `${editingItem.physicalProgress || 0}%`}
+                </span>
+              </div>
+
+              {editingItem.actualTodate !== undefined && editingItem.actualTodate > activePlan.actual.todate && (
+                <div className="p-3 bg-rose-50 dark:bg-rose-950/30 rounded-xl border border-rose-200 dark:border-rose-900/50 flex items-start gap-2 text-xs text-rose-800 dark:text-rose-300">
+                  <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold">Note:</span> The entered cumulative actual ({editingItem.actualTodate.toFixed(2)} Km) is higher than the current project progress ({activePlan.actual.todate.toFixed(2)} Km). For previous historical milestones, values are typically lower.
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Modal Actions */}
@@ -1640,10 +1909,10 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
               <button
                 type="button"
                 onClick={handleSaveModalUpdates}
-                className="px-5 py-2 rounded-xl text-xs font-black uppercase tracking-wide bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+                className="px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wide bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-xs transition flex items-center gap-1.5 cursor-pointer"
               >
                 <Check className="w-4 h-4" />
-                <span>Save Updates</span>
+                <span>{modalMode === 'add_previous' ? 'Save Previous Milestone Record' : 'Save Updates'}</span>
               </button>
             </div>
           </div>
