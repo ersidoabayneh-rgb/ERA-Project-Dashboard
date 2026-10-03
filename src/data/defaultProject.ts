@@ -2329,46 +2329,7 @@ export function defaultProjectTemplate(): Project {
       era: { month: 1.50, quarter: 3.00, efy: 4.00, todate: 34.50 }, 
       actual: { month: 2.28, quarter: 3.73, efy: 4.80, todate: 27.29 } 
     },
-    progressPlanHistory: [
-      {
-        id: 'hist_jan_2026',
-        monthLabel: 'Jan 2026',
-        quarterLabel: 'Jan-Mar 2026',
-        efyLabel: '2018',
-        contractorMonth: 2.50,
-        contractorQuarter: 4.80,
-        contractorEfy: 6.10,
-        eraMonth: 1.40,
-        eraQuarter: 2.70,
-        eraEfy: 3.50,
-        actualMonth: 2.05,
-        actualQuarter: 3.45,
-        actualEfy: 4.35,
-        actualTodate: 24.99,
-        contractorTodate: 62.65,
-        eraTodate: 33.20,
-        physicalProgress: 38.45
-      },
-      {
-        id: 'hist_dec_2025',
-        monthLabel: 'Dec 2025',
-        quarterLabel: 'Oct-Dec 2025',
-        efyLabel: '2018',
-        contractorMonth: 2.10,
-        contractorQuarter: 4.20,
-        contractorEfy: 4.50,
-        eraMonth: 1.20,
-        eraQuarter: 2.40,
-        eraEfy: 2.80,
-        actualMonth: 1.85,
-        actualQuarter: 3.10,
-        actualEfy: 3.90,
-        actualTodate: 23.66,
-        contractorTodate: 60.15,
-        eraTodate: 31.80,
-        physicalProgress: 36.40
-      }
-    ],
+    progressPlanHistory: [],
     payment: [
       { item: 'Advance Repayment', amount: 142813055.14, percent: 11.80 },
       { item: 'Advance Payment', amount: 242100998.82, percent: 20.00 },

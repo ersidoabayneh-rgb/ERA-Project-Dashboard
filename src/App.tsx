@@ -2422,7 +2422,8 @@ let isBatchSyncRunning = false;
       projList = [dp];
     }
 
-    const normalizedLocal = projList.map(syncProjectPayment);
+    // Ensure all elapsed history records across all projects are cleared
+    const normalizedLocal = projList.map(p => ({ ...p, progressPlanHistory: [] })).map(syncProjectPayment);
     setProjects(normalizedLocal);
 
     // Dynamic asynchronous initialization from Cloud Databases (parallelized for zero delay)
@@ -2440,7 +2441,7 @@ let isBatchSyncRunning = false;
         const cleanLocal = normalizedLocal.filter(p => !delSet.has(p.id));
 
         if (cloudData && cloudData.length > 0) {
-          const normalizedCloud = cloudData.filter(p => !delSet.has(p.id)).map(syncProjectPayment);
+          const normalizedCloud = cloudData.filter(p => !delSet.has(p.id)).map(p => ({ ...p, progressPlanHistory: [] })).map(syncProjectPayment);
           
           // Merge local and cloud projects ensuring conflict resolution with newer modification timestamp
           const merged = [...cleanLocal];
@@ -2458,7 +2459,7 @@ let isBatchSyncRunning = false;
             }
           });
 
-          const filteredMerged = merged.filter(p => !delSet.has(p.id));
+          const filteredMerged = merged.filter(p => !delSet.has(p.id)).map(p => ({ ...p, progressPlanHistory: [] }));
 
           // Sync back local-only projects in the background without blocking UI
           const projectsToSyncBack = filteredMerged.filter(p => !normalizedCloud.some(cp => cp.id === p.id));
@@ -4978,6 +4979,24 @@ let isBatchSyncRunning = false;
                   onUpdateProject={handleProjectUpdate}
                   currentUser={currentUserObj}
                   onSwitchTab={setActiveTab}
+                  projects={projects}
+                  onClearAllProjectsHistory={() => {
+                    const updated = projects.map(p => ({
+                      ...p,
+                      progressPlanHistory: []
+                    }));
+                    setProjects(updated);
+                    safeSetItem('era_proj_v28', JSON.stringify(updated));
+                    updated.forEach(p => {
+                      safeSyncProject(p).catch(() => {});
+                    });
+                    if (currentProject) {
+                      setCurrentProject({
+                        ...currentProject,
+                        progressPlanHistory: []
+                      });
+                    }
+                  }}
                 />
               )}
 

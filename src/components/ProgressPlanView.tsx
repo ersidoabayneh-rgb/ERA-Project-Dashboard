@@ -75,13 +75,17 @@ interface ProgressPlanViewProps {
   onUpdateProject: (updates: Partial<Project>, reason?: string) => void;
   currentUser?: User | null;
   onSwitchTab?: (tab: string) => void;
+  projects?: Project[];
+  onClearAllProjectsHistory?: () => void;
 }
 
 export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
   project,
   onUpdateProject,
   currentUser,
-  onSwitchTab
+  onSwitchTab,
+  projects,
+  onClearAllProjectsHistory
 }) => {
   // 1. Initial State Resolution
   const totalLength = project.lengthKm || 65.0;
@@ -124,109 +128,12 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
 
   const [activePlan, setActivePlan] = useState<ProgressPlan>(initialPlan);
 
-  // Milestone History resolution
+  // Milestone History resolution - returns actual saved history or empty list
   const historyList: ProgressPlanHistoryItem[] = useMemo(() => {
     if (project.progressPlanHistory && project.progressPlanHistory.length > 0) {
       return sortProgressPlanHistoryDescending(project.progressPlanHistory);
     }
-    // Seed with realistic baseline snapshots if none exist
-    return [
-      {
-        id: 'hist_sep_24',
-        monthLabel: "Sep '24",
-        quarterLabel: "July 2024-September 2024",
-        efyLabel: "EFY 2017",
-        contractorMonth: 1.20,
-        contractorQuarter: 3.70,
-        contractorEfy: 7.87,
-        contractorTodate: 85.12,
-        eraMonth: 0.85,
-        eraQuarter: 1.42,
-        eraEfy: 3.80,
-        eraTodate: 73.11,
-        actualMonth: 0.50,
-        actualQuarter: 1.15,
-        actualEfy: 2.50,
-        actualTodate: 67.42,
-        physicalProgress: 67.42
-      },
-      {
-        id: 'hist_aug_24',
-        monthLabel: "Aug '24",
-        quarterLabel: "July 2024-September 2024",
-        efyLabel: "EFY 2017",
-        contractorMonth: 1.25,
-        contractorQuarter: 2.50,
-        contractorEfy: 6.67,
-        contractorTodate: 83.92,
-        eraMonth: 0.80,
-        eraQuarter: 0.57,
-        eraEfy: 2.95,
-        eraTodate: 72.26,
-        actualMonth: 0.45,
-        actualQuarter: 0.65,
-        actualEfy: 2.00,
-        actualTodate: 66.92,
-        physicalProgress: 66.92
-      },
-      {
-        id: 'hist_jul_24',
-        monthLabel: "Jul '24",
-        quarterLabel: "July 2024-September 2024",
-        efyLabel: "EFY 2017",
-        contractorMonth: 1.25,
-        contractorQuarter: 1.25,
-        contractorEfy: 5.42,
-        contractorTodate: 82.67,
-        eraMonth: 0.57,
-        eraQuarter: 0.57,
-        eraEfy: 2.15,
-        eraTodate: 71.46,
-        actualMonth: 0.20,
-        actualQuarter: 0.20,
-        actualEfy: 1.55,
-        actualTodate: 66.47,
-        physicalProgress: 66.47
-      },
-      {
-        id: 'hist_jun_24',
-        monthLabel: "Jun '24",
-        quarterLabel: "April 2024-June 2024",
-        efyLabel: "EFY 2016",
-        contractorMonth: 1.10,
-        contractorQuarter: 3.40,
-        contractorEfy: 14.50,
-        contractorTodate: 81.42,
-        eraMonth: 0.75,
-        eraQuarter: 2.20,
-        eraEfy: 9.80,
-        eraTodate: 70.89,
-        actualMonth: 0.42,
-        actualQuarter: 1.30,
-        actualEfy: 6.10,
-        actualTodate: 66.27,
-        physicalProgress: 66.27
-      },
-      {
-        id: 'hist_may_24',
-        monthLabel: "May '24",
-        quarterLabel: "April 2024-June 2024",
-        efyLabel: "EFY 2016",
-        contractorMonth: 1.15,
-        contractorQuarter: 2.30,
-        contractorEfy: 13.40,
-        contractorTodate: 80.32,
-        eraMonth: 0.70,
-        eraQuarter: 1.45,
-        eraEfy: 9.05,
-        eraTodate: 70.14,
-        actualMonth: 0.40,
-        actualQuarter: 0.88,
-        actualEfy: 5.68,
-        actualTodate: 65.85,
-        physicalProgress: 65.85
-      }
-    ];
+    return [];
   }, [project.progressPlanHistory]);
 
   // Selected Archived Item for Left Panel
@@ -395,9 +302,31 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
     const existing = project.progressPlanHistory || historyList;
     const updatedHistory = existing.filter(h => h.id !== id);
     onUpdateProject({ progressPlanHistory: updatedHistory }, 'Archived milestone record deleted');
-    if (selectedArchivedKey === id && updatedHistory.length > 0) {
-      setSelectedArchivedKey(updatedHistory[0].id);
+    if (selectedArchivedKey === id) {
+      setSelectedArchivedKey(updatedHistory.length > 0 ? updatedHistory[0].id : 'live');
     }
+  };
+
+  // Delete all history records from this project
+  const handleClearThisProjectHistory = () => {
+    if (!window.confirm(`Are you sure you want to delete all elapsed months & EFY history records for project "${project.name || 'this project'}"?`)) return;
+    onUpdateProject({ progressPlanHistory: [] }, 'All elapsed months & EFY history records deleted');
+    setSelectedArchivedKey('live');
+    setSaveSuccessMsg('All elapsed history records for this project have been deleted.');
+    setTimeout(() => setSaveSuccessMsg(null), 3000);
+  };
+
+  // Delete all history records from all projects
+  const handleClearAllProjectsHistory = () => {
+    if (!window.confirm('Are you sure you want to delete all elapsed months & EFY history records across ALL projects? This action cannot be undone.')) return;
+    if (onClearAllProjectsHistory) {
+      onClearAllProjectsHistory();
+    } else {
+      onUpdateProject({ progressPlanHistory: [] }, 'All elapsed months & EFY history records deleted');
+    }
+    setSelectedArchivedKey('live');
+    setSaveSuccessMsg('All elapsed months & EFY history records cleared from all projects!');
+    setTimeout(() => setSaveSuccessMsg(null), 3000);
   };
 
   // Open Edit Modal
@@ -1052,6 +981,29 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                 <Plus className="w-3.5 h-3.5" />
                 <span>Record</span>
               </button>
+
+              {/* Clear History Buttons */}
+              {historyList.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleClearThisProjectHistory}
+                  className="px-2.5 py-1 rounded-xl bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border border-rose-200 dark:border-rose-900/50"
+                  title="Delete all elapsed history records for this project"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+                  <span>Clear Project History</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={handleClearAllProjectsHistory}
+                className="px-2.5 py-1 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-black uppercase tracking-wide transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                title="Delete all elapsed months & EFY history records across all projects"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete All Projects Records</span>
+              </button>
             </div>
           </div>
 
@@ -1062,14 +1014,30 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
               : 'space-y-3'
           }`}>
             {filteredHistoryList.length === 0 ? (
-              <div className="p-8 text-center bg-slate-50 dark:bg-slate-900/40 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800">
-                <p className="text-xs text-slate-500 font-bold">No milestone snapshots match your search filter.</p>
-                <button
-                  onClick={() => setHistorySearchQuery('')}
-                  className="mt-2 text-xs text-blue-600 font-bold hover:underline"
-                >
-                  Clear filter
-                </button>
+              <div className="p-8 text-center bg-slate-50 dark:bg-slate-900/40 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 space-y-2">
+                <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 flex items-center justify-center mx-auto">
+                  <Clock className="w-5 h-5 text-slate-400" />
+                </div>
+                {historySearchQuery ? (
+                  <>
+                    <p className="text-xs text-slate-500 font-bold">No milestone snapshots match your search filter.</p>
+                    <button
+                      onClick={() => setHistorySearchQuery('')}
+                      className="mt-2 text-xs text-blue-600 font-bold hover:underline cursor-pointer"
+                    >
+                      Clear filter
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xs text-slate-700 dark:text-slate-200 font-black uppercase tracking-tight">
+                      No elapsed months & EFY history records exist
+                    </p>
+                    <p className="text-[11px] text-slate-400 max-w-sm mx-auto">
+                      All historical milestone records have been deleted. You can record a new milestone anytime using "Record" or "Save & Update".
+                    </p>
+                  </>
+                )}
               </div>
             ) : historyLayout === 'grid' ? (
               /* Grid Layout */
