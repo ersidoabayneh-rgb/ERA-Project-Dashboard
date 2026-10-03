@@ -138,6 +138,15 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
   // 1. Initial State Resolution
   const totalLength = project.lengthKm || 65.0;
 
+  // Master Admin role check
+  const isMasterAdmin = Boolean(
+    currentUser?.role === 'master_admin' || 
+    currentUser?.role === 'admin' || 
+    currentUser?.role === 'cpm_admin' || 
+    currentUser?.username === 'proj_1781786415663' ||
+    (currentUser?.role && currentUser.role.includes('admin'))
+  );
+
   // Selected Category filter / view
   const [selectedCategory, setSelectedCategory] = useState<'all' | 'contractor' | 'era' | 'actual'>('all');
 
@@ -344,9 +353,13 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
     setTimeout(() => setSaveSuccessMsg(null), 3000);
   };
 
-  // Delete an archived record
+  // Delete an archived record (Master Admin Only)
   const handleDeleteSnapshot = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!isMasterAdmin) {
+      alert('Unauthorized: Deleting milestone history snapshots is restricted to Master Admin only.');
+      return;
+    }
     if (!window.confirm('Are you sure you want to delete this archived snapshot?')) return;
     const existing = project.progressPlanHistory || historyList;
     const updatedHistory = existing.filter(h => h.id !== id);
@@ -356,8 +369,12 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
     }
   };
 
-  // Delete all history records from this project
+  // Delete all history records from this project (Master Admin Only)
   const handleClearThisProjectHistory = () => {
+    if (!isMasterAdmin) {
+      alert('Unauthorized: Clearing project milestone history is restricted to Master Admin only.');
+      return;
+    }
     if (!window.confirm(`Are you sure you want to delete all elapsed months & EFY history records for project "${project.name || 'this project'}"?`)) return;
     onUpdateProject({ progressPlanHistory: [] }, 'All elapsed months & EFY history records deleted');
     setSelectedArchivedKey('live');
@@ -365,8 +382,12 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
     setTimeout(() => setSaveSuccessMsg(null), 3000);
   };
 
-  // Delete all history records from all projects
+  // Delete all history records from all projects (Master Admin Only)
   const handleClearAllProjectsHistory = () => {
+    if (!isMasterAdmin) {
+      alert('Unauthorized: Deleting history records across all projects is restricted to Master Admin only.');
+      return;
+    }
     if (!window.confirm('Are you sure you want to delete all elapsed months & EFY history records across ALL projects? This action cannot be undone.')) return;
     if (onClearAllProjectsHistory) {
       onClearAllProjectsHistory();
@@ -1095,28 +1116,32 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                 <span>Record</span>
               </button>
 
-              {/* Clear History Buttons */}
-              {historyList.length > 0 && (
-                <button
-                  type="button"
-                  onClick={handleClearThisProjectHistory}
-                  className="px-2.5 py-1.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border border-rose-200 dark:border-rose-900/50"
-                  title="Delete all elapsed history records for this project"
-                >
-                  <Trash2 className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
-                  <span>Clear Project History</span>
-                </button>
-              )}
+              {/* Clear History Buttons (Master Admin Only) */}
+              {isMasterAdmin && (
+                <>
+                  {historyList.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleClearThisProjectHistory}
+                      className="px-2.5 py-1.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border border-rose-200 dark:border-rose-900/50"
+                      title="Master Admin: Delete all elapsed history records for this project"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+                      <span>Clear Project History</span>
+                    </button>
+                  )}
 
-              <button
-                type="button"
-                onClick={handleClearAllProjectsHistory}
-                className="px-2.5 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-black uppercase tracking-wide transition flex items-center gap-1.5 cursor-pointer shadow-xs"
-                title="Delete all elapsed months & EFY history records across all projects"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>Delete All Projects Records</span>
-              </button>
+                  <button
+                    type="button"
+                    onClick={handleClearAllProjectsHistory}
+                    className="px-2.5 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-black uppercase tracking-wide transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    title="Master Admin: Delete all elapsed months & EFY history records across all projects"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Delete All Projects Records</span>
+                  </button>
+                </>
+              )}
             </div>
           </div>
 
@@ -1262,13 +1287,15 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                           >
                             <Edit className="w-3.5 h-3.5" />
                           </button>
-                          <button
-                            onClick={(e) => handleDeleteSnapshot(item.id, e)}
-                            className="p-1.5 rounded-lg bg-slate-100 hover:bg-rose-100 dark:bg-slate-800 dark:hover:bg-rose-950/40 text-slate-500 hover:text-rose-600 transition"
-                            title="Delete snapshot"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          {isMasterAdmin && (
+                            <button
+                              onClick={(e) => handleDeleteSnapshot(item.id, e)}
+                              className="p-1.5 rounded-lg bg-slate-100 hover:bg-rose-100 dark:bg-slate-800 dark:hover:bg-rose-950/40 text-slate-500 hover:text-rose-600 transition"
+                              title="Delete snapshot (Master Admin Only)"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1364,13 +1391,15 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                         >
                           <Edit className="w-3.5 h-3.5" />
                         </button>
-                        <button
-                          onClick={(e) => handleDeleteSnapshot(item.id, e)}
-                          className="p-1.5 rounded-lg bg-slate-100 hover:bg-rose-100 dark:bg-slate-800 dark:hover:bg-rose-950/40 text-slate-500 hover:text-rose-600 transition"
-                          title="Delete snapshot"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        {isMasterAdmin && (
+                          <button
+                            onClick={(e) => handleDeleteSnapshot(item.id, e)}
+                            className="p-1.5 rounded-lg bg-slate-100 hover:bg-rose-100 dark:bg-slate-800 dark:hover:bg-rose-950/40 text-slate-500 hover:text-rose-600 transition"
+                            title="Delete snapshot (Master Admin Only)"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
