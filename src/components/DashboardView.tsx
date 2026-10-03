@@ -48,14 +48,32 @@ import {
   Line,
   LabelList
 } from 'recharts';
-import { Project, KpiAllocatedItem, LinearData, formatAccounting, User, ProjectLifecycleStatus, isProjectClosed, isCpmOrMasterAdmin, PdfReportConfig, DEFAULT_PDF_REPORT_CONFIG } from '../types';
+import { Project, KpiAllocatedItem, LinearData, formatAccounting, User, ProjectLifecycleStatus, isProjectClosed, isCpmOrMasterAdmin, PdfReportConfig, DEFAULT_PDF_REPORT_CONFIG, ProgressPlanHistoryItem } from '../types';
 import CircularGauge from './CircularGauge';
 import BillSummaryPriceAdjChart from './BillSummaryPriceAdjChart';
 import { buildKpiHierarchy, getIntegratedKpiAllocated, parseStation } from '../data/defaultProject';
 import { calculateProjectEvm } from '../lib/evmCalculations';
 import { resolveCurrentMonthKey, getLastActualProgress, isSameMonth } from '../lib/monthlySync';
-import { sortProgressPlanHistoryDescending } from './ProgressPlanView';
 import { QtyItem } from '../types';
+
+export const sortProgressPlanHistoryDescending = (items: ProgressPlanHistoryItem[]): ProgressPlanHistoryItem[] => {
+  return [...(items || [])].sort((a, b) => {
+    const parseM = (lbl?: string) => {
+      if (!lbl) return 0;
+      const parts = lbl.trim().split(' ');
+      const monthStr = parts[0];
+      const yearStr = parts[1] || '2026';
+      const monthsMap: Record<string, number> = {
+        Jan: 1, Feb: 2, Mar: 3, Apr: 4, May: 5, Jun: 6,
+        Jul: 7, Aug: 8, Sep: 9, Oct: 10, Nov: 11, Dec: 12
+      };
+      const m = monthsMap[monthStr] || 1;
+      const y = parseInt(yearStr, 10) || 2026;
+      return y * 12 + m;
+    };
+    return parseM(b.monthLabel) - parseM(a.monthLabel);
+  });
+};
 
 interface CriticalQtyAnalysis {
   name: string;

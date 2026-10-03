@@ -69,7 +69,7 @@ import {
   subscribeEfyYearChange 
 } from '../lib/dateUtils';
 import { Project, User, formatAccounting, isProjectClosed, ContractorScoringWeights, DEFAULT_CONTRACTOR_SCORING_WEIGHTS, ConsultantScoringWeights, DEFAULT_CONSULTANT_SCORING_WEIGHTS, CustomScoringCriterion, SupervisionConsultantInfo, ProgressPlan, ProgressPlanHistoryItem } from '../types';
-import { sortProgressPlanHistoryDescending, ValidatedEfyInput, validateEfyPlanValue } from './ProgressPlanView';
+import { sortProgressPlanHistoryDescending } from './DashboardView';
 import { buildKpiHierarchy, getIntegratedKpiAllocated } from '../data/defaultProject';
 import { QtyItem } from '../types';
 import { calculateIpcMaturation } from '../lib/ipcCalculations';
@@ -7536,14 +7536,14 @@ export default function GroupReportGenerator({
 
     // Landscape Columns widths (Total A4 width: 841.89 pt, printable width: 761.89 pt with 40 pt margin)
     const colW = {
-      name: 135,
-      contractor: 105,
-      consultant: 115,
-      month: 84,
-      quarter: 72,
-      efy: 68,
-      todate: 114,
-      status: 68.89
+      name: 124,
+      contractor: 84,
+      consultant: 84,
+      month: 94,
+      quarter: 94,
+      efy: 94,
+      todate: 134,
+      status: 53.89
     };
 
     const colX = {
@@ -7586,7 +7586,31 @@ export default function GroupReportGenerator({
           safeWords.push(w);
         }
       }
-      return doc.splitTextToSize(safeWords.join(' '), maxWidth);
+      return doc.splitTextToSize(safeWords.join(' '), Math.max(10, maxWidth));
+    };
+
+    // Safe single line renderer that guarantees text strictly never overflows cell maxWidth
+    const drawSafeCellLine = (
+      text: string, 
+      x: number, 
+      y: number, 
+      maxWidth: number, 
+      fontSize: number, 
+      isBold: boolean = false, 
+      color: [number, number, number] = [0, 0, 0]
+    ) => {
+      doc.setFont('helvetica', isBold ? 'bold' : 'normal');
+      doc.setFontSize(fontSize);
+      doc.setTextColor(color[0], color[1], color[2]);
+      const availableW = Math.max(10, maxWidth - 4);
+      let str = text;
+      if (doc.getTextWidth(str) > availableW) {
+        while (doc.getTextWidth(str + '..') > availableW && str.length > 2) {
+          str = str.slice(0, -1);
+        }
+        str += '..';
+      }
+      doc.text(str, x, y);
     };
 
     const drawPageHeader = (pNum: number) => {
@@ -7737,86 +7761,37 @@ export default function GroupReportGenerator({
       doc.line(colX.todate, y, colX.todate, y + headerH);
       doc.line(colX.status, y, colX.status, y + headerH);
 
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(6.5);
-      doc.setTextColor(255, 255, 255);
-
       // Col 1: Project ID & Title
-      doc.text("PROJECT ID & TITLE", colX.name + 6, y + 11);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(5);
-      doc.setTextColor(230, 230, 230);
-      doc.text("Name, Code & Length", colX.name + 6, y + 20);
+      drawSafeCellLine("PROJECT ID & TITLE", colX.name + 5, y + 11, colW.name - 10, 6.5, true, [255, 255, 255]);
+      drawSafeCellLine("Name, Code & Length", colX.name + 5, y + 20, colW.name - 10, 5, false, [230, 230, 230]);
 
       // Col 2: Contractor
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(6.5);
-      doc.setTextColor(255, 255, 255);
-      doc.text("MAIN CONTRACTOR", colX.contractor + 5, y + 11);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(5);
-      doc.setTextColor(230, 230, 230);
-      doc.text("Executing Firm", colX.contractor + 5, y + 20);
+      drawSafeCellLine("CONTRACTOR", colX.contractor + 5, y + 11, colW.contractor - 10, 6.5, true, [255, 255, 255]);
+      drawSafeCellLine("Executing Firm", colX.contractor + 5, y + 20, colW.contractor - 10, 5, false, [230, 230, 230]);
 
       // Col 3: Supervision Consultant
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(6.5);
-      doc.setTextColor(255, 255, 255);
-      doc.text("SUPERVISION CONSULTANT", colX.consultant + 5, y + 11);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(5);
-      doc.setTextColor(230, 230, 230);
-      doc.text("Supervising Engineer", colX.consultant + 5, y + 20);
+      drawSafeCellLine("CONSULTANT", colX.consultant + 5, y + 11, colW.consultant - 10, 6.5, true, [255, 255, 255]);
+      drawSafeCellLine("Supervising Firm", colX.consultant + 5, y + 20, colW.consultant - 10, 5, false, [230, 230, 230]);
 
       // Col 4: Month
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(6);
-      doc.setTextColor(255, 255, 255);
-      doc.text("MONTHLY EXECUTION", colX.month + 5, y + 11);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(5);
-      doc.setTextColor(230, 230, 230);
-      doc.text(`(${activeMilestone.monthLabel.toUpperCase()})`, colX.month + 5, y + 20);
+      drawSafeCellLine("MONTH EXECUTION", colX.month + 5, y + 11, colW.month - 10, 6, true, [255, 255, 255]);
+      drawSafeCellLine(`(${activeMilestone.monthLabel.toUpperCase()})`, colX.month + 5, y + 20, colW.month - 10, 5, false, [230, 230, 230]);
 
       // Col 5: Quarter
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(6);
-      doc.setTextColor(255, 255, 255);
-      doc.text("QUARTER PLAN", colX.quarter + 5, y + 11);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(5);
-      doc.setTextColor(230, 230, 230);
-      doc.text(`(${activeMilestone.quarterLabel.toUpperCase()})`, colX.quarter + 5, y + 20);
+      drawSafeCellLine("QUARTER PLAN", colX.quarter + 5, y + 11, colW.quarter - 10, 6, true, [255, 255, 255]);
+      drawSafeCellLine(`(${activeMilestone.quarterLabel.toUpperCase()})`, colX.quarter + 5, y + 20, colW.quarter - 10, 5, false, [230, 230, 230]);
 
       // Col 6: EFY
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(6);
-      doc.setTextColor(255, 255, 255);
-      doc.text("EFY TARGET", colX.efy + 5, y + 11);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(5);
-      doc.setTextColor(230, 230, 230);
-      doc.text(`(EFY ${activeMilestone.efyLabel})`, colX.efy + 5, y + 20);
+      drawSafeCellLine("EFY TARGET", colX.efy + 5, y + 11, colW.efy - 10, 6, true, [255, 255, 255]);
+      drawSafeCellLine(`(EFY ${activeMilestone.efyLabel})`, colX.efy + 5, y + 20, colW.efy - 10, 5, false, [230, 230, 230]);
 
       // Col 7: Cumulative To-Date
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(6);
-      doc.setTextColor(255, 255, 255);
-      doc.text("CUMULATIVE TO-DATE", colX.todate + 5, y + 11);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(5);
-      doc.setTextColor(230, 230, 230);
-      doc.text("Plan vs Actual vs % Accomplished", colX.todate + 5, y + 20);
+      drawSafeCellLine("CUMULATIVE TO-DATE", colX.todate + 5, y + 11, colW.todate - 10, 6, true, [255, 255, 255]);
+      drawSafeCellLine("Plan vs Act vs % Accomplished", colX.todate + 5, y + 20, colW.todate - 10, 5, false, [230, 230, 230]);
 
       // Col 8: Status
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(6.5);
-      doc.setTextColor(255, 255, 255);
-      doc.text("STATUS", colX.status + 5, y + 11);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(5);
-      doc.setTextColor(230, 230, 230);
-      doc.text("Health", colX.status + 5, y + 20);
+      drawSafeCellLine("STATUS", colX.status + 5, y + 11, colW.status - 10, 6.5, true, [255, 255, 255]);
+      drawSafeCellLine("Health", colX.status + 5, y + 20, colW.status - 10, 5, false, [230, 230, 230]);
 
       return headerH;
     };
@@ -7838,9 +7813,9 @@ export default function GroupReportGenerator({
       const col1H = 8 + titleLines.length * 8.5 + 3 + idLines.length * 7 + 6;
       const col2H = 8 + contrLines.length * 8 + 8;
       const col3H = 8 + consLines.length * 7.5 + 8;
-      const metricsH = 46; // 4 rows of 9pt step
+      const metricsH = 50; // 5 stacked metric rows: Ctr, ERA, Act, Act/ERA %, Act/Ctr %
 
-      const rowHeight = Math.max(col1H, col2H, col3H, metricsH, 46);
+      const rowHeight = Math.max(col1H, col2H, col3H, metricsH, 50);
 
       // Check page break
       if (curY + rowHeight > pageHeight - 55) {
@@ -7872,83 +7847,62 @@ export default function GroupReportGenerator({
       doc.setFontSize(6.5);
       doc.setTextColor(0, 0, 0);
       titleLines.forEach((tLine: string, tIdx: number) => {
-        doc.text(tLine, colX.name + 6, curY + 10 + tIdx * 8.5);
+        drawSafeCellLine(tLine, colX.name + 5, curY + 10 + tIdx * 8.5, colW.name - 8, 6.5, true);
       });
       const idStartY = curY + 10 + titleLines.length * 8.5 + 3;
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(5);
-      doc.setTextColor(0, 0, 0);
       idLines.forEach((idL: string, idIdx: number) => {
-        doc.text(idL, colX.name + 6, idStartY + idIdx * 7);
+        drawSafeCellLine(idL, colX.name + 5, idStartY + idIdx * 7, colW.name - 8, 5, false);
       });
 
       // 2. Contractor
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(6);
-      doc.setTextColor(0, 0, 0);
       contrLines.forEach((cLine: string, cIdx: number) => {
-        doc.text(cLine, colX.contractor + 5, curY + 10 + cIdx * 8);
+        drawSafeCellLine(cLine, colX.contractor + 5, curY + 10 + cIdx * 8, colW.contractor - 8, 6, true);
       });
 
       // 3. Supervision Consultant
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(5.5);
-      doc.setTextColor(0, 0, 0);
       consLines.forEach((csLine: string, csIdx: number) => {
-        doc.text(csLine, colX.consultant + 5, curY + 10 + csIdx * 7.5);
+        drawSafeCellLine(csLine, colX.consultant + 5, curY + 10 + csIdx * 7.5, colW.consultant - 8, 5.5, false);
       });
 
-      // 4. Month (Monochrome Black Text)
-      const mY = curY + 10;
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(5.5);
-      doc.setTextColor(0, 0, 0);
-      doc.text(`Ctr: ${item.contractor.month.toFixed(2)} Km`, colX.month + 5, mY);
-      doc.text(`ERA: ${item.era.month.toFixed(2)} Km`, colX.month + 5, mY + 9);
-      doc.setFont('helvetica', 'bold');
-      doc.text(`Act: ${item.actual.month.toFixed(2)} Km`, colX.month + 5, mY + 18);
+      // 4. Month (Cleanly stacked 5 lines, guaranteed zero column overlap)
+      const mY = curY + 9;
       const mVsCtr = item.contractor.month > 0 ? (item.actual.month / item.contractor.month) * 100 : 0;
-      doc.text(`Act/Ctr: ${mVsCtr.toFixed(1)}% | Act/ERA: ${item.monthRatio.toFixed(1)}%`, colX.month + 5, mY + 27);
+      drawSafeCellLine(`Ctr: ${item.contractor.month.toFixed(2)} Km`, colX.month + 5, mY, colW.month - 8, 5.5, false);
+      drawSafeCellLine(`ERA: ${item.era.month.toFixed(2)} Km`, colX.month + 5, mY + 8, colW.month - 8, 5.5, false);
+      drawSafeCellLine(`Act: ${item.actual.month.toFixed(2)} Km`, colX.month + 5, mY + 16, colW.month - 8, 5.5, true);
+      drawSafeCellLine(`Act/ERA: ${item.monthRatio.toFixed(1)}%`, colX.month + 5, mY + 24, colW.month - 8, 5.5, true);
+      drawSafeCellLine(`Act/Ctr: ${mVsCtr.toFixed(1)}%`, colX.month + 5, mY + 32, colW.month - 8, 5.2, false);
 
-      // 5. Quarter (Monochrome Black Text)
-      const qY = curY + 10;
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(5.5);
-      doc.setTextColor(0, 0, 0);
-      doc.text(`Ctr: ${item.contractor.quarter.toFixed(2)} Km`, colX.quarter + 5, qY);
-      doc.text(`ERA: ${item.era.quarter.toFixed(2)} Km`, colX.quarter + 5, qY + 9);
-      doc.setFont('helvetica', 'bold');
-      doc.text(`Act: ${item.actual.quarter.toFixed(2)} Km`, colX.quarter + 5, qY + 18);
+      // 5. Quarter (Cleanly stacked 5 lines)
+      const qY = curY + 9;
       const qVsCtr = item.contractor.quarter > 0 ? (item.actual.quarter / item.contractor.quarter) * 100 : 0;
-      doc.text(`Act/Ctr: ${qVsCtr.toFixed(1)}% | Act/ERA: ${item.quarterRatio.toFixed(1)}%`, colX.quarter + 5, qY + 27);
+      drawSafeCellLine(`Ctr: ${item.contractor.quarter.toFixed(2)} Km`, colX.quarter + 5, qY, colW.quarter - 8, 5.5, false);
+      drawSafeCellLine(`ERA: ${item.era.quarter.toFixed(2)} Km`, colX.quarter + 5, qY + 8, colW.quarter - 8, 5.5, false);
+      drawSafeCellLine(`Act: ${item.actual.quarter.toFixed(2)} Km`, colX.quarter + 5, qY + 16, colW.quarter - 8, 5.5, true);
+      drawSafeCellLine(`Act/ERA: ${item.quarterRatio.toFixed(1)}%`, colX.quarter + 5, qY + 24, colW.quarter - 8, 5.5, true);
+      drawSafeCellLine(`Act/Ctr: ${qVsCtr.toFixed(1)}%`, colX.quarter + 5, qY + 32, colW.quarter - 8, 5.2, false);
 
-      // 6. EFY (Monochrome Black Text)
-      const eY = curY + 10;
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(5.5);
-      doc.setTextColor(0, 0, 0);
-      doc.text(`Ctr: ${item.contractor.efy.toFixed(2)} Km`, colX.efy + 5, eY);
-      doc.text(`ERA: ${item.era.efy.toFixed(2)} Km`, colX.efy + 5, eY + 9);
-      doc.setFont('helvetica', 'bold');
-      doc.text(`Act: ${item.actual.efy.toFixed(2)} Km`, colX.efy + 5, eY + 18);
+      // 6. EFY (Cleanly stacked 5 lines)
+      const eY = curY + 9;
       const eVsCtr = item.contractor.efy > 0 ? (item.actual.efy / item.contractor.efy) * 100 : 0;
-      doc.text(`Act/Ctr: ${eVsCtr.toFixed(1)}% | Act/ERA: ${item.efyRatio.toFixed(1)}%`, colX.efy + 5, eY + 27);
+      drawSafeCellLine(`Ctr: ${item.contractor.efy.toFixed(2)} Km`, colX.efy + 5, eY, colW.efy - 8, 5.5, false);
+      drawSafeCellLine(`ERA: ${item.era.efy.toFixed(2)} Km`, colX.efy + 5, eY + 8, colW.efy - 8, 5.5, false);
+      drawSafeCellLine(`Act: ${item.actual.efy.toFixed(2)} Km`, colX.efy + 5, eY + 16, colW.efy - 8, 5.5, true);
+      drawSafeCellLine(`Act/ERA: ${item.efyRatio.toFixed(1)}%`, colX.efy + 5, eY + 24, colW.efy - 8, 5.5, true);
+      drawSafeCellLine(`Act/Ctr: ${eVsCtr.toFixed(1)}%`, colX.efy + 5, eY + 32, colW.efy - 8, 5.2, false);
 
-      // 7. Cumulative To-Date (Monochrome Black Text)
-      const tY = curY + 10;
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(5.5);
-      doc.setTextColor(0, 0, 0);
-      doc.text(`Ctr: ${item.contractor.todate.toFixed(2)} Km`, colX.todate + 5, tY);
-      doc.text(`ERA: ${item.era.todate.toFixed(2)} Km`, colX.todate + 5, tY + 9);
-      doc.setFont('helvetica', 'bold');
-      doc.text(`Act: ${item.actual.todate.toFixed(2)} Km`, colX.todate + 5, tY + 18);
+      // 7. Cumulative To-Date (Cleanly stacked 5 lines)
+      const tY = curY + 9;
       const tdVsCtr = item.contractor.todate > 0 ? (item.actual.todate / item.contractor.todate) * 100 : 0;
-      doc.text(`Act/Ctr: ${tdVsCtr.toFixed(1)}% | Act/ERA: ${item.todateRatio.toFixed(1)}%`, colX.todate + 5, tY + 27);
+      drawSafeCellLine(`Ctr: ${item.contractor.todate.toFixed(2)} Km`, colX.todate + 5, tY, colW.todate - 8, 5.5, false);
+      drawSafeCellLine(`ERA: ${item.era.todate.toFixed(2)} Km`, colX.todate + 5, tY + 8, colW.todate - 8, 5.5, false);
+      drawSafeCellLine(`Act: ${item.actual.todate.toFixed(2)} Km`, colX.todate + 5, tY + 16, colW.todate - 8, 5.5, true);
+      drawSafeCellLine(`Act/ERA: ${item.todateRatio.toFixed(1)}%`, colX.todate + 5, tY + 24, colW.todate - 8, 5.5, true);
+      drawSafeCellLine(`Act/Ctr: ${tdVsCtr.toFixed(1)}%`, colX.todate + 5, tY + 32, colW.todate - 8, 5.2, false);
 
       // 8. Status Badge (Black text on light grey background)
-      const statusX = colX.status + 5;
-      const statusW = colW.status - 10;
+      const statusX = colX.status + 4;
+      const statusW = colW.status - 8;
       const statusH = 15;
       const statusY = curY + (rowHeight - statusH) / 2;
       doc.setFillColor(242, 242, 242);
@@ -7959,7 +7913,7 @@ export default function GroupReportGenerator({
 
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(5.5);
-      doc.text(item.healthStatus.toUpperCase(), statusX + statusW / 2, statusY + 10, { align: 'center' });
+      doc.text(item.healthStatus.toUpperCase(), statusX + statusW / 2, statusY + 9.5, { align: 'center' });
 
       curY += rowHeight;
     });
@@ -8564,12 +8518,12 @@ export default function GroupReportGenerator({
     };
 
     const colW = {
-      name: 170,
-      scope: 90,
-      month: 160,
-      quarter: 160,
-      efy: 121.89,
-      status: 60
+      name: 150,
+      scope: 80,
+      month: 145,
+      quarter: 145,
+      efy: 145,
+      status: 96.89
     };
 
     const colX = {
@@ -8686,23 +8640,23 @@ export default function GroupReportGenerator({
         // 3. Monthly
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(6.5);
-        doc.text(`ERA Plan: ${eraM.toFixed(2)} Km  |  Actual: ${actM.toFixed(2)} Km`, colX.month + 6, curY + 12);
+        doc.text(`ERA: ${eraM.toFixed(2)} Km  |  Act: ${actM.toFixed(2)} Km`, colX.month + 6, curY + 12);
         doc.setFont('helvetica', 'bold');
-        doc.text(`% Accomplishment / ERA Plan: ${grp.monthRatio.toFixed(1)}%`, colX.month + 6, curY + 23);
+        doc.text(`% vs ERA Plan: ${grp.monthRatio.toFixed(1)}%`, colX.month + 6, curY + 23);
 
         // 4. Quarterly
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(6.5);
-        doc.text(`ERA Plan: ${eraQ.toFixed(2)} Km  |  Actual: ${actQ.toFixed(2)} Km`, colX.quarter + 6, curY + 12);
+        doc.text(`ERA: ${eraQ.toFixed(2)} Km  |  Act: ${actQ.toFixed(2)} Km`, colX.quarter + 6, curY + 12);
         doc.setFont('helvetica', 'bold');
-        doc.text(`% Accomplishment / ERA Plan: ${grp.quarterRatio.toFixed(1)}%`, colX.quarter + 6, curY + 23);
+        doc.text(`% vs ERA Plan: ${grp.quarterRatio.toFixed(1)}%`, colX.quarter + 6, curY + 23);
 
         // 5. EFY
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(6.5);
-        doc.text(`Plan: ${eraE.toFixed(2)} Km  |  Act: ${actE.toFixed(2)} Km`, colX.efy + 6, curY + 12);
+        doc.text(`ERA: ${eraE.toFixed(2)} Km  |  Act: ${actE.toFixed(2)} Km`, colX.efy + 6, curY + 12);
         doc.setFont('helvetica', 'bold');
-        doc.text(`% Accomplishment / ERA Plan: ${grp.efyRatio.toFixed(1)}%`, colX.efy + 6, curY + 23);
+        doc.text(`% vs ERA Plan: ${grp.efyRatio.toFixed(1)}%`, colX.efy + 6, curY + 23);
 
         // 6. Health Badge
         const statusX = colX.status + 4;
@@ -8867,11 +8821,11 @@ export default function GroupReportGenerator({
     const tableX = 40;
     const tableW = pageWidth - 80;
     const colWidths = {
-      tier: 181.89,
-      month: 145,
-      quarter: 145,
-      efy: 145,
-      todate: 145
+      tier: 201.89,
+      month: 140,
+      quarter: 140,
+      efy: 140,
+      todate: 140
     };
 
     // Table Header
@@ -8930,8 +8884,8 @@ export default function GroupReportGenerator({
         isRatio: false
       },
       {
-        tier: "% Accomplishment vs Contractor Plan (Actual / Contractor Plan)",
-        subtier: "% Accomplishment divided by Contractor Plan Target",
+        tier: "% Accomplishment vs Contractor Plan",
+        subtier: "% Accomplished / Contractor Plan Target",
         bg: [255, 255, 255],
         textColor: [30, 58, 138],
         m: comparisonTableData.ratioVsContractor.month,
@@ -8941,8 +8895,8 @@ export default function GroupReportGenerator({
         isRatio: true
       },
       {
-        tier: "% Accomplishment vs ERA Plan (Actual / ERA Plan)",
-        subtier: "% Accomplishment divided by ERA Approved Target",
+        tier: "% Accomplishment vs ERA Approved Plan",
+        subtier: "% Accomplished / ERA Approved Target",
         bg: [248, 250, 252],
         textColor: [76, 29, 149],
         m: comparisonTableData.ratioVsEra.month,
@@ -8964,12 +8918,14 @@ export default function GroupReportGenerator({
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(7);
       doc.setTextColor(r.textColor[0], r.textColor[1], r.textColor[2]);
-      doc.text(r.tier, rX + 8, curY + 11);
+      const tierLines = doc.splitTextToSize(r.tier, colWidths.tier - 12);
+      doc.text(tierLines[0] || r.tier, rX + 8, curY + 11);
 
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(5.5);
       doc.setTextColor(148, 163, 184);
-      doc.text(r.subtier, rX + 8, curY + 18);
+      const subtierLines = doc.splitTextToSize(r.subtier, colWidths.tier - 12);
+      doc.text(subtierLines[0] || r.subtier, rX + 8, curY + 18);
 
       const renderVal = (val: number, isRatio: boolean, curValX: number) => {
         if (isRatio) {

@@ -247,9 +247,9 @@ import KpiEditorView from './components/KpiEditorView';
 import SeriesEditorView from './components/SeriesEditorView';
 import WorkProgramView from './components/WorkProgramView';
 import MonthlyScurveView from './components/MonthlyScurveView';
+import ProgressPlanView from './components/ProgressPlanView';
 import LinearDiagramView from './components/LinearDiagramView';
 import RowStatusView from './components/RowStatusView';
-import ProgressPlanView from './components/ProgressPlanView';
 import QuantityEditorView from './components/QuantityEditorView';
 import BondsGuaranteeView from './components/BondsGuaranteeView';
 import VariationAndClaimView from './components/VariationAndClaimView';
@@ -4769,11 +4769,11 @@ let isBatchSyncRunning = false;
                 { id: 'variationClaim', label: '🚧 Variation & Claim' },
                 { id: 'linear', label: '📏 Linear diagram' },
                 { id: 'rowEditor', label: '🛣️ Utilities & ROW' },
-                { id: 'progressPlanEditor', label: '📈 Progress Comparisons' },
                 { id: 'qtyEditor', label: '📐 Quantities log' },
                 { id: 'bonds', label: '🔒 Bonds' },
                 { id: 'kpiEditor', label: '🎯 KPIs' },
                 { id: 'monthly', label: '📅 Monthly Cumulative' },
+                { id: 'progressPlanEditor', label: '📈 Progress Comparisons' },
                 { id: 'workProgram', label: '📅 Work Program CPM' },
                 { id: 'resourceMobilization', label: '🚚 Logistics & Resources' },
                 { id: 'risks', label: '⚠️ Project Risks' },
@@ -4972,6 +4972,15 @@ let isBatchSyncRunning = false;
                 />
               )}
 
+              {activeTab === 'progressPlanEditor' && (
+                <ProgressPlanView
+                  project={currentProject}
+                  onUpdateProject={handleProjectUpdate}
+                  currentUser={currentUserObj}
+                  onSwitchTab={setActiveTab}
+                />
+              )}
+
               {activeTab === 'linear' && (
                 <LinearDiagramView
                   project={currentProject}
@@ -4998,14 +5007,6 @@ let isBatchSyncRunning = false;
                 />
               )}
 
-              {activeTab === 'progressPlanEditor' && (
-                <ProgressPlanView
-                  project={currentProject}
-                  currentUserObj={currentUserObj}
-                  onUpdateProgressPlan={(progressPlan, progressPlanLabels) => handleProjectUpdate({ progressPlan, progressPlanLabels }, 'Progress plans modified')}
-                  onProjectUpdate={handleProjectUpdate}
-                />
-              )}
 
               {activeTab === 'qtyEditor' && (
                 <QuantityEditorView

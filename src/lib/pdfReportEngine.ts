@@ -435,8 +435,44 @@ export function drawSafeTable(
     colsWithWidth = colsWithWidth.map(c => ({ ...c, width: (c.width || 0) * ratio }));
   }
 
+  // Helper to split text safely, breaking excessively long words if necessary
+  const safeSplit = (text: string, maxWidth: number, fSize: number, isBold: boolean = false): string[] => {
+    if (!text || text.trim() === '') return ['-'];
+    doc.setFont('helvetica', isBold ? 'bold' : 'normal');
+    doc.setFontSize(fSize);
+    const words = String(text).split(/\s+/);
+    const safeWords: string[] = [];
+    for (const w of words) {
+      if (doc.getTextWidth(w) > maxWidth) {
+        let chunk = '';
+        for (let i = 0; i < w.length; i++) {
+          const test = chunk + w[i];
+          if (doc.getTextWidth(test + '-') > maxWidth) {
+            if (chunk) safeWords.push(chunk + '-');
+            chunk = w[i];
+          } else {
+            chunk = test;
+          }
+        }
+        if (chunk) safeWords.push(chunk);
+      } else {
+        safeWords.push(w);
+      }
+    }
+    return doc.splitTextToSize(safeWords.join(' '), Math.max(10, maxWidth));
+  };
+
   const drawTableHeader = (y: number): number => {
-    const headerHeight = headerFontSize + padding * 2.2;
+    // 1. Calculate max lines across all headers to set header height dynamically
+    let maxHeaderLines = 1;
+    colsWithWidth.forEach(col => {
+      const colW = col.width || 50;
+      const maxTextW = colW - (padding * 2);
+      const lines = safeSplit(String(col.header || ''), maxTextW, headerFontSize, true);
+      if (lines.length > maxHeaderLines) maxHeaderLines = lines.length;
+    });
+
+    const headerHeight = Math.max(16, (maxHeaderLines * (headerFontSize * 1.25)) + (padding * 2));
     doc.setFillColor(headerBg[0], headerBg[1], headerBg[2]);
     doc.rect(margin, y, contentWidth, headerHeight, 'F');
     doc.setDrawColor(headerBg[0], headerBg[1], headerBg[2]);
@@ -451,11 +487,17 @@ export function drawSafeTable(
 
       const cellText = String(col.header || '');
       const maxTextW = colW - (padding * 2);
-      const wrapped = doc.splitTextToSize(cellText, Math.max(10, maxTextW));
+      const lines = safeSplit(cellText, maxTextW, headerFontSize, true);
       
       const align = col.align || 'left';
       const textX = align === 'right' ? colX + colW - padding : (align === 'center' ? colX + colW / 2 : colX + padding);
-      doc.text(wrapped[0] || cellText, textX, y + headerFontSize + padding * 0.7, { align });
+      
+      const textBlockHeight = lines.length * (headerFontSize * 1.25);
+      const startTextY = y + (headerHeight - textBlockHeight) / 2 + headerFontSize;
+
+      lines.forEach((line: string, lIdx: number) => {
+        doc.text(line, textX, startTextY + (lIdx * headerFontSize * 1.25), { align });
+      });
 
       // Subtle column separator
       doc.setDrawColor(51, 65, 85); // slate-700
@@ -477,7 +519,7 @@ export function drawSafeTable(
       const colW = col.width || 50;
       const cellVal = row[col.dataKey] !== undefined && row[col.dataKey] !== null ? String(row[col.dataKey]) : '-';
       const maxTextW = colW - (padding * 2);
-      const lines = doc.splitTextToSize(cellVal, Math.max(10, maxTextW));
+      const lines = safeSplit(cellVal, maxTextW, fontSize, false);
       if (lines.length > maxLines) maxLines = lines.length;
     });
 
@@ -511,7 +553,7 @@ export function drawSafeTable(
       const colW = col.width || 50;
       const cellVal = row[col.dataKey] !== undefined && row[col.dataKey] !== null ? String(row[col.dataKey]) : '-';
       const maxTextW = colW - (padding * 2);
-      const lines = doc.splitTextToSize(cellVal, Math.max(10, maxTextW));
+      const lines = safeSplit(cellVal, maxTextW, fontSize, false);
 
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(fontSize);
