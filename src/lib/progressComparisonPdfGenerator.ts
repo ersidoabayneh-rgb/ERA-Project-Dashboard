@@ -49,10 +49,10 @@ export function generateProgressComparisonPdf({
   // Draw Page 1 Frame & Header
   const frame = drawStandardPdfPageFrame(doc, pageNumber, totalPagesEstimate, {
     margin,
-    title: "PROGRESS PLAN & MILEAGE COMPARISONS (KM) AUDIT REPORT",
+    title: "MONTHLY STATUS REPORT",
     subtitle: `PROJECT: ${(project.name || '').toUpperCase()} • TRACKING PERIOD: ${monthLabel.toUpperCase()} (${quarterLabel.toUpperCase()} • ${efyLabel.toUpperCase()})`,
-    projectCode: `ERA-PMO-PPR-${project.id.slice(0, 8).toUpperCase()}`,
-    footerText: "CONFIDENTIAL • ETHIOPIAN ROADS ADMINISTRATION • OFFICIAL EXECUTIVE MILEAGE AUDIT RECORD"
+    projectCode: `ERA-PMO-MSR-${project.id.slice(0, 8).toUpperCase()}`,
+    footerText: "CONFIDENTIAL • ETHIOPIAN ROADS ADMINISTRATION • OFFICIAL MONTHLY STATUS AUDIT RECORD"
   });
 
   let curY = frame.contentY;
@@ -99,11 +99,11 @@ export function generateProgressComparisonPdf({
 
   curY += ribbonHeight + 12;
 
-  // Section 1: Active Milestone Mileage Comparisons (Km)
+  // Section 1: Monthly Status Report Matrix (Km)
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8.5);
   doc.setTextColor(15, 23, 42); // slate-900
-  doc.text("1. MILEAGE COMPARISONS MATRIX (CONTRACTOR vs ERA vs ACTUAL)", margin, curY);
+  doc.text("1. MONTHLY STATUS REPORT MATRIX (CONTRACTOR vs ERA vs ACTUAL)", margin, curY);
 
   curY += 8;
 
@@ -150,7 +150,7 @@ export function generateProgressComparisonPdf({
     fontSize: 7,
     rowPadding: 3.5,
     columns: [
-      { header: "Progress Plan Category", dataKey: "category", widthPercent: 28, align: "left" },
+      { header: "Monthly Status Category", dataKey: "category", widthPercent: 28, align: "left" },
       { header: `Current Month (${monthLabel})`, dataKey: "month", widthPercent: 18, align: "center" },
       { header: `Current Quarter (${quarterLabel})`, dataKey: "quarter", widthPercent: 18, align: "center" },
       { header: `Current EFY (${efyLabel})`, dataKey: "efy", widthPercent: 18, align: "center" },
@@ -169,9 +169,9 @@ export function generateProgressComparisonPdf({
       pageNumber++;
       drawStandardPdfPageFrame(doc, pageNumber, 2, {
         margin,
-        title: "ETHIOPIAN ROADS ADMINISTRATION (ERA) • MILESTONE AUDIT TRAIL",
+        title: "ETHIOPIAN ROADS ADMINISTRATION (ERA) • MONTHLY STATUS AUDIT TRAIL",
         subtitle: `PROJECT: ${(project.name || '').toUpperCase()}`,
-        footerText: "CONFIDENTIAL • ETHIOPIAN ROADS ADMINISTRATION • OFFICIAL EXECUTIVE MILEAGE AUDIT RECORD"
+        footerText: "CONFIDENTIAL • ETHIOPIAN ROADS ADMINISTRATION • OFFICIAL MONTHLY STATUS AUDIT RECORD"
       });
       curY = margin + 35;
     }
@@ -225,7 +225,7 @@ export function generateProgressComparisonPdf({
         margin,
         title: "ETHIOPIAN ROADS ADMINISTRATION (ERA) • REVIEW & SIGN-OFF",
         subtitle: `PROJECT: ${(project.name || '').toUpperCase()}`,
-        footerText: "CONFIDENTIAL • ETHIOPIAN ROADS ADMINISTRATION • OFFICIAL EXECUTIVE MILEAGE AUDIT RECORD"
+        footerText: "CONFIDENTIAL • ETHIOPIAN ROADS ADMINISTRATION • OFFICIAL MONTHLY STATUS AUDIT RECORD"
       });
       curY = margin + 35;
     }

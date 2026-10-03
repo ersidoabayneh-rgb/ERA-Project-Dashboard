@@ -1,5 +1,15 @@
 import React, { useState, useMemo } from 'react';
 import { 
+  ResponsiveContainer, 
+  LineChart, 
+  Line, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip as RechartsTooltip, 
+  Legend as RechartsLegend 
+} from 'recharts';
+import { 
   Project, 
   User, 
   ProgressPlan, 
@@ -244,6 +254,23 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
   const [includeVerificationInPdf, setIncludeVerificationInPdf] = useState<boolean>(true);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState<boolean>(false);
 
+  // Trend Chart View Mode: Cumulative to-date (Km) vs Monthly Incremental (Km)
+  const [chartViewMode, setChartViewMode] = useState<'cumulative' | 'monthly'>('cumulative');
+
+  const chartData = useMemo(() => {
+    // Reverse the history list so we render chronologically (oldest to newest)
+    return [...historyList].reverse().map(h => ({
+      name: h.monthLabel,
+      "Contractor Schedule (Km)": h.contractorTodate || 0,
+      "ERA Approved Plan (Km)": h.eraTodate || 0,
+      "Actual Completed (Km)": h.actualTodate || 0,
+      "Contractor Monthly (Km)": h.contractorMonth || 0,
+      "ERA Monthly (Km)": h.eraMonth || 0,
+      "Actual Monthly (Km)": h.actualMonth || 0,
+      "Progress Pct": h.physicalProgress || 0
+    }));
+  }, [historyList]);
+
   // Filtered History List
   const filteredHistoryList = useMemo(() => {
     if (!historySearchQuery.trim()) return historyList;
@@ -270,7 +297,7 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
         includeHistoryTable: includeHistoryInPdf,
         includeVerificationStamps: includeVerificationInPdf
       });
-      const fileName = `${(project.name || 'Project').replace(/[^a-zA-Z0-9]/g, '_')}_Progress_Comparisons_Audit_Report.pdf`;
+      const fileName = `${(project.name || 'Project').replace(/[^a-zA-Z0-9]/g, '_')}_Monthly_Status_Report.pdf`;
       doc.save(fileName);
       setSaveSuccessMsg('Official PDF Report generated successfully!');
       setTimeout(() => setSaveSuccessMsg(null), 3000);
@@ -485,7 +512,7 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `${project.name.replace(/[^a-zA-Z0-9]/g, '_')}_Progress_Comparisons.csv`);
+    link.setAttribute('download', `${project.name.replace(/[^a-zA-Z0-9]/g, '_')}_Monthly_Status_Report.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -501,7 +528,7 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
         </div>
       )}
 
-      {/* MAIN PROGRESS PLAN / MILEAGE COMPARISONS (KM) CARD */}
+      {/* MAIN MONTHLY STATUS REPORT CARD */}
       <section className="bg-white dark:bg-slate-850 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-xs space-y-6">
         {/* Card Header & Actions */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-5">
@@ -511,7 +538,7 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
             </div>
             <div>
               <h2 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight flex items-center gap-2">
-                Progress Plan / Mileage Comparisons (Km)
+                Monthly Status Report
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
                 Compare Contractor Program Schedule vs ERA Approved Milestone Plan vs Actual Road Completed with dynamic period selection
@@ -1261,6 +1288,172 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
         </section>
       </div>
 
+      {/* PROGRESS COMPARISONS TREND CHART CARD */}
+      <section className="bg-white dark:bg-slate-850 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-xs space-y-4 mt-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
+          <div>
+            <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-tight flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-indigo-600" />
+              Monthly Status Progress Trends
+            </h3>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-0.5">
+              Chronological progress tracking of Contractor, ERA Plan, and Actual completed road (oldest to newest)
+            </p>
+          </div>
+
+          {/* Toggle buttons for Cumulative vs Incremental */}
+          <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-900 p-1 rounded-xl border border-slate-200 dark:border-slate-800 self-start sm:self-auto">
+            <button
+              onClick={() => setChartViewMode('cumulative')}
+              className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wide transition cursor-pointer ${
+                chartViewMode === 'cumulative'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'
+              }`}
+            >
+              Cumulative (Km)
+            </button>
+            <button
+              onClick={() => setChartViewMode('monthly')}
+              className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wide transition cursor-pointer ${
+                chartViewMode === 'monthly'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'
+              }`}
+            >
+              Monthly Incremental (Km)
+            </button>
+          </div>
+        </div>
+
+        {/* Chart Box */}
+        <div className="h-[280px] w-full pt-2">
+          {chartData.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 gap-2">
+              <Activity className="w-8 h-8 animate-pulse text-slate-300" />
+              <span className="text-xs font-bold">No historical data available to plot</span>
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart
+                data={chartData}
+                margin={{ top: 5, right: 25, left: -10, bottom: 5 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.12)" />
+                <XAxis 
+                  dataKey="name" 
+                  stroke="rgba(148, 163, 184, 0.6)"
+                  fontSize={10}
+                  fontWeight="bold"
+                  tickLine={false}
+                />
+                <YAxis 
+                  stroke="rgba(148, 163, 184, 0.6)"
+                  fontSize={10}
+                  fontWeight="bold"
+                  tickLine={false}
+                  tickFormatter={(val) => `${val} Km`}
+                />
+                <RechartsTooltip
+                  contentStyle={{
+                    backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                    borderRadius: '12px',
+                    border: '1px solid rgba(51, 65, 85, 0.8)',
+                    boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.3)',
+                    padding: '10px 14px',
+                    fontFamily: 'monospace'
+                  }}
+                  itemStyle={{
+                    fontSize: '11px',
+                    fontWeight: 'bold',
+                    padding: '2px 0'
+                  }}
+                  labelStyle={{
+                    fontSize: '11px',
+                    fontWeight: 'black',
+                    color: '#94a3b8',
+                    marginBottom: '6px',
+                    textTransform: 'uppercase'
+                  }}
+                />
+                <RechartsLegend 
+                  verticalAlign="top" 
+                  height={36}
+                  iconType="circle"
+                  iconSize={8}
+                  wrapperStyle={{
+                    fontSize: '11px',
+                    fontWeight: 'bold',
+                    fontFamily: 'monospace',
+                    color: 'rgba(148, 163, 184, 0.8)'
+                  }}
+                />
+                {chartViewMode === 'cumulative' ? (
+                  <>
+                    <Line
+                      type="monotone"
+                      dataKey="Contractor Schedule (Km)"
+                      stroke="#3b82f6"
+                      strokeWidth={3}
+                      dot={{ r: 3, strokeWidth: 1 }}
+                      activeDot={{ r: 6, strokeWidth: 0 }}
+                      name="Contractor Schedule (Km)"
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="ERA Approved Plan (Km)"
+                      stroke="#10b981"
+                      strokeWidth={3}
+                      dot={{ r: 3, strokeWidth: 1 }}
+                      activeDot={{ r: 6, strokeWidth: 0 }}
+                      name="ERA Plan (Km)"
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="Actual Completed (Km)"
+                      stroke="#6366f1"
+                      strokeWidth={3}
+                      dot={{ r: 4, strokeWidth: 1 }}
+                      activeDot={{ r: 7, strokeWidth: 0 }}
+                      name="Actual Completed (Km)"
+                    />
+                  </>
+                ) : (
+                  <>
+                    <Line
+                      type="monotone"
+                      dataKey="Contractor Monthly (Km)"
+                      stroke="#3b82f6"
+                      strokeWidth={2.5}
+                      strokeDasharray="4 4"
+                      dot={{ r: 3 }}
+                      name="Contractor Monthly (Km)"
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="ERA Monthly (Km)"
+                      stroke="#10b981"
+                      strokeWidth={2.5}
+                      strokeDasharray="4 4"
+                      dot={{ r: 3 }}
+                      name="ERA Monthly (Km)"
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="Actual Monthly (Km)"
+                      stroke="#6366f1"
+                      strokeWidth={3}
+                      dot={{ r: 4 }}
+                      name="Actual Monthly (Km)"
+                    />
+                  </>
+                )}
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </section>
+
       {/* 4. MODAL: EDIT ARCHIVED MILESTONE RECORD */}
       {isModalOpen && editingItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
@@ -1504,7 +1697,7 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                     Official Executive Milestone Report
                   </div>
                   <h3 className="text-lg font-black text-slate-900 dark:text-white">
-                    Progress Plan & Mileage Comparisons PDF
+                    Monthly Status Report PDF
                   </h3>
                   <p className="text-xs text-slate-400 mt-0.5">
                     Generate standardized ERA audit document in landscape A4 with statutory verification and approval sign-off stamps.
