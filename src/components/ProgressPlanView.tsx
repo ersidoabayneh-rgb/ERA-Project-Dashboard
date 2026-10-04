@@ -17,6 +17,7 @@ import {
   PlanSet, 
   formatAccounting 
 } from '../types';
+import { getProgressHealth } from '../lib/healthUtils';
 import { 
   TrendingUp, 
   Calendar, 
@@ -913,6 +914,42 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                   <span className="text-sm font-black text-emerald-800 dark:text-emerald-200">
                     {activePlan.era.todate > 0 ? `${((activePlan.actual.todate / activePlan.era.todate) * 100).toFixed(2)}%` : '0.00%'}
                   </span>
+                </td>
+              </tr>
+
+              {/* Health Status vs ERA Plan (<50% Critical, 50-60 Lagging, 60-80 Needs Improvement, 80-99 Good, >=100 On Track) */}
+              <tr className="bg-slate-50 dark:bg-slate-900 text-xs font-bold border-t border-slate-200 dark:border-slate-800">
+                <td className="p-3.5 pl-6 font-black text-slate-850 dark:text-slate-100 flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-blue-600"></span>
+                  Health Status (vs ERA Plan)
+                </td>
+                <td className="p-3.5 text-center">
+                  {(() => {
+                    const ratio = activePlan.era.month > 0 ? (activePlan.actual.month / activePlan.era.month) * 100 : 0;
+                    const h = getProgressHealth(ratio);
+                    return <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase inline-block ${h.badgeClass}`}>{h.label}</span>;
+                  })()}
+                </td>
+                <td className="p-3.5 text-center">
+                  {(() => {
+                    const ratio = activePlan.era.quarter > 0 ? (activePlan.actual.quarter / activePlan.era.quarter) * 100 : 0;
+                    const h = getProgressHealth(ratio);
+                    return <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase inline-block ${h.badgeClass}`}>{h.label}</span>;
+                  })()}
+                </td>
+                <td className="p-3.5 text-center">
+                  {(() => {
+                    const ratio = activePlan.era.efy > 0 ? (activePlan.actual.efy / activePlan.era.efy) * 100 : 0;
+                    const h = getProgressHealth(ratio);
+                    return <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase inline-block ${h.badgeClass}`}>{h.label}</span>;
+                  })()}
+                </td>
+                <td className="p-3.5 text-center bg-blue-50/30 dark:bg-blue-950/20">
+                  {(() => {
+                    const ratio = activePlan.era.todate > 0 ? (activePlan.actual.todate / activePlan.era.todate) * 100 : 0;
+                    const h = getProgressHealth(ratio);
+                    return <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase inline-block ${h.badgeClass}`}>{h.label}</span>;
+                  })()}
                 </td>
               </tr>
             </tbody>

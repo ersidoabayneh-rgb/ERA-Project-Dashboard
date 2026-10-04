@@ -69,6 +69,7 @@ import {
   subscribeEfyYearChange 
 } from '../lib/dateUtils';
 import { Project, User, formatAccounting, isProjectClosed, ContractorScoringWeights, DEFAULT_CONTRACTOR_SCORING_WEIGHTS, ConsultantScoringWeights, DEFAULT_CONSULTANT_SCORING_WEIGHTS, CustomScoringCriterion, SupervisionConsultantInfo, ProgressPlan, ProgressPlanHistoryItem } from '../types';
+import { getProgressHealth } from '../lib/healthUtils';
 import { sortProgressPlanHistoryDescending } from './DashboardView';
 import { buildKpiHierarchy, getIntegratedKpiAllocated } from '../data/defaultProject';
 import { QtyItem } from '../types';
