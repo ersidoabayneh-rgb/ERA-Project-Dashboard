@@ -547,6 +547,10 @@ export interface DlpDefect {
   remarks?: string;
 }
 
+export type DlpDefectItem = DlpDefect;
+export type DefectSeverity = 'Low' | 'Medium' | 'High' | 'Critical';
+export type DefectStatus = 'Open' | 'Under Rectification' | 'Rectified' | 'Closed';
+
 export interface Project {
   id: string;
   name: string;

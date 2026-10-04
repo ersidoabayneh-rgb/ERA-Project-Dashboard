@@ -57,6 +57,7 @@ import { Project, User, ApprovalRequest, PrivateDraft, WorkflowAuditLogEntry, Kp
 import { createProjectHistoryEntry } from './lib/projectAuditDiff';
 import { getProjectDlpInfo, calculateCappedElapsedTimePct } from './lib/dlpUtils';
 import DlpDefectModal from './components/DlpDefectModal';
+import DatabaseSavedPopupModal from './components/DatabaseSavedPopupModal';
 
 export function hasApprovalCredentials(user: User | null): boolean {
   if (!user) return false;
@@ -602,6 +603,25 @@ export default function App() {
   const [editDlpDays, setEditDlpDays] = useState(365);
   const [editDlpStartDate, setEditDlpStartDate] = useState('');
   const [isDlpDefectModalOpenDossier, setIsDlpDefectModalOpenDossier] = useState(false);
+  const [dbSavedPopup, setDbSavedPopup] = useState<{
+    isOpen: boolean;
+    title?: string;
+    message?: string;
+    details?: string;
+    timestamp?: string;
+  }>({
+    isOpen: false
+  });
+
+  const triggerDbSavedPopup = (options?: { title?: string; message?: string; details?: string }) => {
+    setDbSavedPopup({
+      isOpen: true,
+      title: options?.title || 'Saved on Database',
+      message: options?.message || 'Data has been successfully saved on the database.',
+      details: options?.details,
+      timestamp: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    });
+  };
   const [editOrigAmount, setEditOrigAmount] = useState(0);
   const [editProvisionalSum, setEditProvisionalSum] = useState(0);
   const [editVariation, setEditVariation] = useState(0);
@@ -3229,6 +3249,13 @@ let isBatchSyncRunning = false;
     safeSyncProject(updatedProject).catch(err => {
       console.warn('Project update cloud sync fell back to local storage:', err);
     });
+
+    // Trigger Pop-up confirming saved on database
+    triggerDbSavedPopup({
+      title: 'Saved on Database',
+      message: `Changes for '${sectionName || 'Project Parameters'}' have been successfully committed and saved on the database.`,
+      details: `Project: ${updatedProject.name} (ID: ${updatedProject.id})`
+    });
   };
 
   const handleAddDirectorate = (name: string) => {
@@ -3813,7 +3840,12 @@ let isBatchSyncRunning = false;
                       const updatedProjs = projects.map(p => p.id === weightedProject.id ? weightedProject : p);
                       setProjects(updatedProjs);
                       safeSetItem('era_proj_v28', JSON.stringify(updatedProjs));
-                      alert('💾 DATA RECORDED & SAVED TO DATABASE!\n\nAll modified project parameters have been synchronized and recorded into the unified database.');
+                      
+                      triggerDbSavedPopup({
+                        title: 'Saved on Database',
+                        message: 'All modified project parameters and metrics have been synchronized and saved on the database.',
+                        details: `Project: ${weightedProject.name} (ID: ${weightedProject.id})`
+                      });
                     } catch (err) {
                       console.error('Failed to sync to database:', err);
                       alert('Failed to sync to the database. Please try again.');
@@ -8084,6 +8116,16 @@ let isBatchSyncRunning = false;
           onUpdateProjectStatus={(id, st) => handleUpdateProjectStatus(id, st)}
         />
       )}
+
+      {/* Global Saved on Database Pop-up Modal */}
+      <DatabaseSavedPopupModal
+        isOpen={dbSavedPopup.isOpen}
+        onClose={() => setDbSavedPopup(prev => ({ ...prev, isOpen: false }))}
+        title={dbSavedPopup.title}
+        message={dbSavedPopup.message}
+        details={dbSavedPopup.details}
+        timestamp={dbSavedPopup.timestamp}
+      />
 
     </div>
   );

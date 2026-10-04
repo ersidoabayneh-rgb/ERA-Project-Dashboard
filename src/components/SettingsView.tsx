@@ -48,6 +48,7 @@ import {
   DEFAULT_PDF_REPORT_CONFIG
 } from '../types';
 import { safeSyncScoringWeights } from '../lib/apiSync';
+import DatabaseSavedPopupModal from './DatabaseSavedPopupModal';
 
 const CONTRACTOR_CRITERIA_META: Array<{ key: string; defaultLabel: string; defaultDesc: string; defaultWeight: number }> = [
   { key: 'fidic', defaultLabel: '1. FIDIC Contract Compliance', defaultDesc: 'Performance/Mobilization Guarantees & Risk notices', defaultWeight: 15 },
@@ -136,6 +137,7 @@ export default function SettingsView({
   const [tempConsultantWeights, setTempConsultantWeights] = useState<ConsultantScoringWeights>(consultantWeights);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
+  const [isDbSavedPopupOpen, setIsDbSavedPopupOpen] = useState(false);
 
   // PDF Report Configuration State
   const [pdfConfig, setPdfConfig] = useState<PdfReportConfig>(() => {
@@ -232,6 +234,7 @@ export default function SettingsView({
       }
 
       setSaveSuccessMessage('Scoring model weightages successfully updated and saved to configuration database!');
+      setIsDbSavedPopupOpen(true);
       setTimeout(() => setSaveSuccessMessage(null), 5000);
       setIsModalOpen(false);
     } catch (e) {
@@ -1253,6 +1256,14 @@ export default function SettingsView({
           </motion.div>
         </div>
       )}
+
+      {/* Database Saved Pop-up Modal */}
+      <DatabaseSavedPopupModal
+        isOpen={isDbSavedPopupOpen}
+        onClose={() => setIsDbSavedPopupOpen(false)}
+        title="Saved on Configuration Database"
+        message="Scoring model weightages and configuration parameters have been successfully saved on the database!"
+      />
 
     </div>
   );

@@ -5,6 +5,7 @@ import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tool
 import { Project, SeriesItem, IpcItem, PaymentItem, AnnualItem, formatAccounting } from '../types';
 import { MILLION } from '../data/defaultProject';
 import MonthlyPaymentIpcSummaryTable from './MonthlyPaymentIpcSummaryTable';
+import DatabaseSavedPopupModal from './DatabaseSavedPopupModal';
 
 interface AmountInputProps {
   value: number;
@@ -139,6 +140,7 @@ export default function SeriesEditorView({ project, onUpdateSeries, onProjectUpd
   const [draftSeries, setDraftSeries] = useState<SeriesItem[]>(project.series || []);
   const [draftProvisionalSum, setDraftProvisionalSum] = useState<number>(project.provisionalSum || 0);
   const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
+  const [isDbSavedPopupOpen, setIsDbSavedPopupOpen] = useState<boolean>(false);
 
   // Sync draft state when the project ID or external project changes
   const prevProjectIdRef = useRef(project.id);
@@ -238,6 +240,7 @@ export default function SeriesEditorView({ project, onUpdateSeries, onProjectUpd
 
     onUpdateSeries(cleanedSeries, cleanedPs);
     setSaveSuccessMessage('Division Work Quantities & Financial Data saved to database successfully!');
+    setIsDbSavedPopupOpen(true);
     setTimeout(() => {
       setSaveSuccessMessage(null);
     }, 4000);
@@ -1022,6 +1025,15 @@ export default function SeriesEditorView({ project, onUpdateSeries, onProjectUpd
         project={project}
         onUpdateIpcTracker={handleIpcTrackerUpdate}
         onProjectUpdate={onProjectUpdate}
+      />
+
+      {/* Database Saved Pop-up Modal */}
+      <DatabaseSavedPopupModal
+        isOpen={isDbSavedPopupOpen}
+        onClose={() => setIsDbSavedPopupOpen(false)}
+        title="Saved on Database"
+        message="Division Work Quantities & Financial Data saved on the database successfully!"
+        details={`Project: ${project.name} (ID: ${project.id})`}
       />
     </div>
   );
