@@ -21,17 +21,17 @@ export default function DatabaseSavedPopupModal({
   timestamp,
   autoCloseMs = 3500
 }: DatabaseSavedPopupProps) {
-  const [secondsLeft, setSecondsLeft] = useState(20);
+  const [secondsLeft, setSecondsLeft] = useState(2);
   const [isSavingPhase, setIsSavingPhase] = useState(true);
 
   useEffect(() => {
     if (!isOpen) {
-      setSecondsLeft(20);
+      setSecondsLeft(2);
       setIsSavingPhase(true);
       return;
     }
 
-    setSecondsLeft(20);
+    setSecondsLeft(2);
     setIsSavingPhase(true);
 
     const interval = setInterval(() => {
@@ -65,7 +65,7 @@ export default function DatabaseSavedPopupModal({
     second: '2-digit'
   });
 
-  const progressPct = ((20 - secondsLeft) / 20) * 100;
+  const progressPct = ((2 - secondsLeft) / 2) * 100;
 
   return (
     <AnimatePresence>
@@ -113,7 +113,7 @@ export default function DatabaseSavedPopupModal({
                 <div className="flex items-center gap-1.5">
                   <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-white/20 text-white border border-white/30 flex items-center gap-1">
                     <Sparkles className="w-2.5 h-2.5" />
-                    {isSavingPhase ? '20s Database Gap & Sync' : 'Database Sync Complete'}
+                    {isSavingPhase ? '2s Database Gap & Sync' : 'Database Sync Complete'}
                   </span>
                 </div>
                 <h3 className="text-base font-black tracking-wide text-white mt-0.5">
@@ -130,7 +130,7 @@ export default function DatabaseSavedPopupModal({
                 <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
                   <span className="flex items-center gap-1.5">
                     <Clock className="w-4 h-4 text-blue-600 animate-pulse" />
-                    Required 20-second sync gap:
+                    Required 2-second sync gap:
                   </span>
                   <span className="font-mono text-sm text-blue-600 dark:text-blue-400 font-black">
                     {secondsLeft}s remaining
@@ -145,7 +145,7 @@ export default function DatabaseSavedPopupModal({
                 </div>
 
                 <p className="text-[11px] font-medium text-slate-600 dark:text-slate-400 leading-relaxed bg-blue-50 dark:bg-blue-950/40 p-2.5 rounded-xl border border-blue-200 dark:border-blue-900/60">
-                  Please hold on during the 20-second database serialization and cloud persistence gap before records are finalized.
+                  Please hold on during the 2-second database serialization and cloud persistence gap before records are finalized.
                 </p>
               </div>
             ) : (
@@ -181,7 +181,7 @@ export default function DatabaseSavedPopupModal({
               disabled={isSavingPhase}
               className="px-5 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 active:scale-95 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
             >
-              {isSavingPhase ? 'Saving in Progress (20s)...' : 'OK / Continue'}
+              {isSavingPhase ? 'Saving in Progress (2s)...' : 'OK / Continue'}
             </button>
           </div>
         </motion.div>
