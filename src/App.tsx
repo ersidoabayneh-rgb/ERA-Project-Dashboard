@@ -3249,13 +3249,6 @@ let isBatchSyncRunning = false;
     safeSyncProject(updatedProject).catch(err => {
       console.warn('Project update cloud sync fell back to local storage:', err);
     });
-
-    // Trigger Pop-up confirming saved on database
-    triggerDbSavedPopup({
-      title: 'Saved on Database',
-      message: `Changes for '${sectionName || 'Project Parameters'}' have been successfully committed and saved on the database.`,
-      details: `Project: ${updatedProject.name} (ID: ${updatedProject.id})`
-    });
   };
 
   const handleAddDirectorate = (name: string) => {
