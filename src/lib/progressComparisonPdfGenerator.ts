@@ -305,10 +305,6 @@ export function generateProgressComparisonPdf({
     doc.setFontSize(6.5);
     doc.setTextColor(30, 41, 59);
     doc.text(sigs.verifiedBy, b2X + 8, curY + 28);
-    doc.setFont('helvetica', 'italic');
-    doc.setFontSize(5.5);
-    doc.setTextColor(71, 85, 105);
-    doc.text("Conforms with site inspection & verified IPC records.", b2X + 8, curY + 38);
 
     doc.setDrawColor(96, 165, 250);
     doc.setLineWidth(0.5);
@@ -344,10 +340,6 @@ export function generateProgressComparisonPdf({
     doc.setFontSize(6.5);
     doc.setTextColor(30, 41, 59);
     doc.text(sigs.approvedBy, b3X + 8, curY + 28);
-    doc.setFont('helvetica', 'italic');
-    doc.setFontSize(5.5);
-    doc.setTextColor(71, 85, 105);
-    doc.text("Approved for executive portfolio & statutory reporting.", b3X + 8, curY + 38);
 
     doc.setDrawColor(52, 211, 153);
     doc.setLineWidth(0.5);

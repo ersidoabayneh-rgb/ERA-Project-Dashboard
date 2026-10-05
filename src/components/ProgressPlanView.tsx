@@ -2123,9 +2123,6 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                   <div className="font-bold text-blue-900 dark:text-blue-200">
                     {getCredentialSignatures(currentUser).verifiedBy}
                   </div>
-                  <div className="text-[10px] text-slate-500">
-                    Conforms with verified IPC & site records
-                  </div>
                   <div className="pt-2 border-t border-blue-200 dark:border-blue-800 text-[9px] text-blue-600 dark:text-blue-400 italic">
                     Verification Signature Line & Stamp
                   </div>
@@ -2143,9 +2140,6 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                   </div>
                   <div className="font-bold text-emerald-900 dark:text-emerald-200">
                     {getCredentialSignatures(currentUser).approvedBy}
-                  </div>
-                  <div className="text-[10px] text-slate-500">
-                    Executive Portfolio & Statutory Review
                   </div>
                   <div className="pt-2 border-t border-emerald-200 dark:border-emerald-800 text-[9px] text-emerald-600 dark:text-emerald-400 italic">
                     Executive Seal & Statutory Stamp

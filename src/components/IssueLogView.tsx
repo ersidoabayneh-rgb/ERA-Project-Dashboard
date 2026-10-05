@@ -2204,57 +2204,25 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
     const contentWidth = pageWidth - (margin * 2);
     let curY = 40;
 
-    let pageCount = 0;
-    const drawPageDecorations = () => {
-      pageCount++;
-      doc.setFillColor(37, 99, 235);
-      doc.rect(margin, 20, contentWidth, 3, 'F');
-
-      // Page border
-      doc.setDrawColor(226, 232, 240);
-      doc.setLineWidth(0.75);
-      doc.roundedRect(margin - 10, 14, contentWidth + 20, pageHeight - 28, 3, 3, 'S');
-
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7);
-      doc.setTextColor(148, 163, 184);
-      doc.setDrawColor(226, 232, 240);
-      doc.line(margin, pageHeight - 35, pageWidth - margin, pageHeight - 35);
-
-      doc.text(
-        `ETHIOPIAN ROADS ADMINISTRATION • OFFICIAL CONTRACTUAL ISSUE DOSSIER • REF: ${item.issueCode}`,
-        margin,
-        pageHeight - 22
-      );
-      doc.text(
-        `CONFIDENTIAL • Page ${pageCount}`,
-        pageWidth - margin,
-        pageHeight - 22,
-        { align: 'right' }
-      );
-    };
-
     const checkSpace = (needed: number) => {
+      // Generous bottom margin ensures content never collides with footer divider and text
       if (curY + needed > pageHeight - 50) {
         doc.addPage();
-        curY = 45;
-        drawPageDecorations();
+        curY = 42;
       }
     };
 
     const drawSectionHeader = (title: string, color = [37, 99, 235]) => {
-      checkSpace(35);
+      checkSpace(32);
       doc.setFillColor(color[0], color[1], color[2]);
       doc.rect(margin, curY - 9, 4, 12, 'F');
 
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(10);
+      doc.setFontSize(9.5);
       doc.setTextColor(15, 23, 42);
       doc.text(title, margin + 9, curY);
-      curY += 18;
+      curY += 16;
     };
-
-    drawPageDecorations();
 
     // Standard Document Header: Official ERA Logo, Standard Title & Aligned Date Stamp
     curY = drawStandardDocumentHeader(doc, {
@@ -2266,29 +2234,43 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
       referenceNo: item.issueCode,
       titleColor: [37, 99, 235], // Blue
       statusBadge: `STATUS: ${item.currentStatus}`,
+      dateStamp: item.submittedDate || new Date()
     });
 
-    // Project Info Card
+    // Project Info Card (Dynamic multi-line safe wrapping)
+    const projNameLines = doc.splitTextToSize(`PROJECT: ${project.name}`, contentWidth - 20);
+    const subProjLines = doc.splitTextToSize(
+      `Contractor: ${project.contractor || 'N/A'}   |   Consultant: ${project.consultant || 'N/A'}   |   Type: ${project.contractType || 'N/A'}`,
+      contentWidth - 20
+    );
+    const projCardH = 12 + (projNameLines.length * 10) + (subProjLines.length * 9.5) + 6;
+    checkSpace(projCardH + 6);
     doc.setFillColor(248, 250, 252);
     doc.setDrawColor(226, 232, 240);
-    doc.roundedRect(margin, curY, contentWidth, 34, 4, 4, 'DF');
+    doc.roundedRect(margin, curY, contentWidth, projCardH, 4, 4, 'DF');
 
+    let pInnerY = curY + 13;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
     doc.setTextColor(30, 41, 59);
-    doc.text(`PROJECT: ${project.name}`, margin + 10, curY + 14);
+    projNameLines.forEach((l: string) => {
+      doc.text(l, margin + 10, pInnerY);
+      pInnerY += 10;
+    });
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7.5);
     doc.setTextColor(71, 85, 105);
-    doc.text(`Contractor: ${project.contractor || 'N/A'}   |   Consultant: ${project.consultant || 'N/A'}   |   Type: ${project.contractType}`, margin + 10, curY + 26);
+    subProjLines.forEach((l: string) => {
+      doc.text(l, margin + 10, pInnerY);
+      pInnerY += 9.5;
+    });
+    curY += projCardH + 8;
 
-    curY += 44;
-
-    // Issue Title Banner
+    // Issue Title Banner (Dynamic multi-line safe wrapping)
     const titleLines = doc.splitTextToSize(`ISSUE: ${item.title}`, contentWidth - 20);
-    const titleBannerH = Math.max(34, (titleLines.length * 11) + 14);
-    checkSpace(titleBannerH + 8);
+    const titleBannerH = Math.max(28, (titleLines.length * 11) + 14);
+    checkSpace(titleBannerH + 6);
     doc.setFillColor(238, 242, 255);
     doc.setDrawColor(199, 210, 254);
     doc.roundedRect(margin, curY, contentWidth, titleBannerH, 4, 4, 'DF');
@@ -2297,12 +2279,11 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
     doc.setFontSize(9.5);
     doc.setTextColor(30, 27, 75);
     titleLines.forEach((tl: string, tli: number) => {
-      doc.text(tl, margin + 10, curY + 15 + (tli * 11));
+      doc.text(tl, margin + 10, curY + 14 + (tli * 11));
     });
-
     curY += titleBannerH + 10;
 
-    // 1. Key Particulars
+    // 1. Key Particulars & Financial/Time Impact
     drawSectionHeader("1. Key Particulars & Financial/Time Impact");
 
     const colWidth = (contentWidth - 15) / 4;
@@ -2315,7 +2296,8 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
 
     const keyBoxLines = keyBoxes.map(b => doc.splitTextToSize(b.val, colWidth - 12));
     const maxKeyBoxLines = Math.max(...keyBoxLines.map(lines => lines.length));
-    const keyBoxH = Math.max(32, (maxKeyBoxLines * 9) + 18);
+    const keyBoxH = Math.max(30, (maxKeyBoxLines * 9) + 18);
+    checkSpace(keyBoxH + 36);
 
     keyBoxes.forEach((box, i) => {
       const x = margin + i * (colWidth + 5);
@@ -2333,223 +2315,353 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
       doc.setTextColor(box.color[0], box.color[1], box.color[2]);
       const lines = keyBoxLines[i];
       lines.forEach((l: string, li: number) => {
-        doc.text(l, x + 8, curY + 22 + (li * 9));
+        doc.text(l, x + 8, curY + 21 + (li * 9));
       });
     });
 
-    curY += keyBoxH + 8;
+    curY += keyBoxH + 6;
 
-    // Impact Row
+    // Impact Row (Financial & EOT Time)
     const halfWidth = (contentWidth - 8) / 2;
     doc.setFillColor(254, 242, 242);
     doc.setDrawColor(254, 202, 202);
-    doc.roundedRect(margin, curY, halfWidth, 32, 4, 4, 'DF');
+    doc.roundedRect(margin, curY, halfWidth, 30, 4, 4, 'DF');
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(6.5);
     doc.setTextColor(153, 27, 27);
-    doc.text("CLAIMED FINANCIAL EXPOSURE (ETB)", margin + 10, curY + 11);
-    doc.setFontSize(9);
-    doc.text(formatAccounting(item.financialImpactEtb || 0, 'ETB'), margin + 10, curY + 24);
+    doc.text("CLAIMED FINANCIAL EXPOSURE (ETB)", margin + 10, curY + 10);
+    doc.setFontSize(8.5);
+    doc.text(formatAccounting(item.financialImpactEtb || 0, 'ETB'), margin + 10, curY + 22);
 
     doc.setFillColor(255, 251, 235);
     doc.setDrawColor(253, 230, 138);
-    doc.roundedRect(margin + halfWidth + 8, curY, halfWidth, 32, 4, 4, 'DF');
+    doc.roundedRect(margin + halfWidth + 8, curY, halfWidth, 30, 4, 4, 'DF');
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(6.5);
     doc.setTextColor(146, 64, 14);
-    doc.text("CLAIMED EXTENSION OF TIME (EOT)", margin + halfWidth + 18, curY + 11);
-    doc.setFontSize(9);
-    doc.text(item.timeImpactDays ? `${item.timeImpactDays} Calendar Days` : '0 Days (No EOT Claimed)', margin + halfWidth + 18, curY + 24);
+    doc.text("CLAIMED EXTENSION OF TIME (EOT)", margin + halfWidth + 18, curY + 10);
+    doc.setFontSize(8.5);
+    doc.text(item.timeImpactDays ? `${item.timeImpactDays} Calendar Days` : '0 Days (No EOT Claimed)', margin + halfWidth + 18, curY + 22);
 
-    curY += 40;
+    curY += 38;
 
-    // 2. Initial Description
+    // 2. Initial Description & Context (Safely wrapped with multi-line date metadata)
     drawSectionHeader("2. Initial Issue Description & Context");
 
-    const descLines = doc.splitTextToSize(item.initialDescription || 'No initial description provided.', contentWidth - 20);
-    const descBoxHeight = Math.max(40, (descLines.length * 10) + 26);
+    // Dynamic metadata lines - each line wrapped to prevent any word overlap even with long date format (Month in word DD, YYYY)
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    const metaRow1 = `SUBMITTED DATE: ${item.submittedDate}     •     LAST UPDATED: ${item.lastUpdated || item.submittedDate}`;
+    const metaRow2 = `SUBMITTED BY: ${item.submittedBy}     •     ASSIGNED TO: ${item.submittedTo || 'Initial Reviewing Team'}`;
+    const metaRow1Lines = doc.splitTextToSize(metaRow1, contentWidth - 24);
+    const metaRow2Lines = doc.splitTextToSize(metaRow2, contentWidth - 24);
 
-    checkSpace(descBoxHeight + 10);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    const descLines = doc.splitTextToSize(item.initialDescription || 'No initial description provided.', contentWidth - 24);
+
+    const metaBlockHeight = (metaRow1Lines.length * 9.5) + (metaRow2Lines.length * 9.5) + 8;
+    const descBoxHeight = 12 + metaBlockHeight + 6 + (descLines.length * 10) + 12;
+
+    checkSpace(descBoxHeight + 8);
     doc.setFillColor(248, 250, 252);
     doc.setDrawColor(226, 232, 240);
     doc.roundedRect(margin, curY, contentWidth, descBoxHeight, 4, 4, 'DF');
 
+    // Draw metadata section
+    let descCurY = curY + 12;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7);
     doc.setTextColor(71, 85, 105);
-    doc.text(`Date Submitted: ${item.submittedDate}   |   Created: ${item.createdDate || item.submittedDate}   |   Last Updated: ${item.lastUpdated || item.submittedDate}   |   By: ${item.submittedBy}`, margin + 10, curY + 13);
+    metaRow1Lines.forEach((l: string) => {
+      doc.text(l, margin + 10, descCurY);
+      descCurY += 9.5;
+    });
+    metaRow2Lines.forEach((l: string) => {
+      doc.text(l, margin + 10, descCurY);
+      descCurY += 9.5;
+    });
 
+    // Divider line between metadata and description
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.5);
+    doc.line(margin + 10, descCurY + 2, margin + contentWidth - 10, descCurY + 2);
+    descCurY += 10;
+
+    // Draw description body
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     doc.setTextColor(30, 41, 59);
-    doc.text(descLines, margin + 10, curY + 25);
+    descLines.forEach((dl: string) => {
+      doc.text(dl, margin + 10, descCurY);
+      descCurY += 10;
+    });
 
-    curY += descBoxHeight + 14;
+    curY += descBoxHeight + 12;
 
-    // 3. Current Stage & Bottleneck
+    // 3. Current Stage & Bottleneck (Safely wrapped)
     drawSectionHeader("3. Current Milestone Stage & Active Bottlenecks", [16, 185, 129]);
 
-    const progressLines = doc.splitTextToSize(`Progress Summary: ${item.latestProgressSummary || 'N/A'}`, contentWidth - 20);
+    const statusLineText = `CURRENT STATUS: ${item.currentStatus}   •   ACTIVE STAGE: ${item.currentStage}`;
+    const statusLines = doc.splitTextToSize(statusLineText, contentWidth - 24);
+    const progressLines = doc.splitTextToSize(`Progress Summary: ${item.latestProgressSummary || 'N/A'}`, contentWidth - 24);
     const bottleLines = item.currentBottleneck 
-      ? doc.splitTextToSize(`Bottleneck: ${item.currentBottleneck}`, contentWidth - 20) 
+      ? doc.splitTextToSize(`Active Bottleneck: ${item.currentBottleneck}`, contentWidth - 24) 
       : [];
-    const stageCardH = Math.max(48, 20 + (progressLines.length * 9.5) + (bottleLines.length > 0 ? (bottleLines.length * 9.5) + 6 : 0) + 6);
-    checkSpace(stageCardH + 10);
+
+    const stageCardH = 12 + (statusLines.length * 10) + 6 + (progressLines.length * 9.5) + (bottleLines.length > 0 ? (bottleLines.length * 9.5) + 6 : 0) + 8;
+    checkSpace(stageCardH + 8);
     doc.setFillColor(240, 253, 244);
     doc.setDrawColor(187, 247, 208);
     doc.roundedRect(margin, curY, contentWidth, stageCardH, 4, 4, 'DF');
 
+    let stageInnerY = curY + 13;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
     doc.setTextColor(22, 101, 52);
-    doc.text(`Current Status: ${item.currentStatus}   |   Stage: ${item.currentStage}`, margin + 10, curY + 14);
+    statusLines.forEach((sl: string) => {
+      doc.text(sl, margin + 10, stageInnerY);
+      stageInnerY += 10;
+    });
+
+    // Subtle divider
+    doc.setDrawColor(187, 247, 208);
+    doc.setLineWidth(0.5);
+    doc.line(margin + 10, stageInnerY + 1, margin + contentWidth - 10, stageInnerY + 1);
+    stageInnerY += 7;
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7.5);
     doc.setTextColor(51, 65, 85);
-    let cardInnerY = curY + 26;
-    progressLines.forEach((pl: string, pli: number) => {
-      doc.text(pl, margin + 10, cardInnerY + (pli * 9.5));
+    progressLines.forEach((pl: string) => {
+      doc.text(pl, margin + 10, stageInnerY);
+      stageInnerY += 9.5;
     });
-    cardInnerY += (progressLines.length * 9.5) + 4;
 
     if (bottleLines.length > 0) {
+      stageInnerY += 3;
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(185, 28, 28);
-      bottleLines.forEach((bl: string, bli: number) => {
-        doc.text(bl, margin + 10, cardInnerY + (bli * 9.5));
+      bottleLines.forEach((bl: string) => {
+        doc.text(bl, margin + 10, stageInnerY);
+        stageInnerY += 9.5;
       });
     }
 
     curY += stageCardH + 12;
 
-    // 4. Team Transfer Log
+    // 4. Chronological Team Transfer & Handover Audit Log (Safely wrapped with multi-line dates & route)
     drawSectionHeader("4. Chronological Team Transfer & Handover Audit Log", [147, 51, 234]);
 
     if (item.transfers && item.transfers.length > 0) {
-      item.transfers.forEach((tr, index) => {
-        const trReasonLines = doc.splitTextToSize(`Reason: ${tr.transferReason}`, contentWidth - 24);
-        const trActionLines = doc.splitTextToSize(`Actions Taken: ${tr.actionTakenByPreviousTeam}`, contentWidth - 24);
-        const trRecLines = doc.splitTextToSize(`Recommended Course: ${tr.recommendedCourseOfAction}`, contentWidth - 24);
+      const deptRecs = getDepartmentTimeRecords(item);
 
-        const blockHeight = 35 + (trReasonLines.length * 9) + (trActionLines.length * 9) + (trRecLines.length * 9);
+      item.transfers.forEach((tr, index) => {
+        const stepNum = index + 1;
+        const transferDateStr = tr.transferDate || 'N/A';
+        const stepRec = deptRecs[index];
+        const deptTimeText = stepRec
+          ? `Time in Previous Dept: ${stepRec.daysTaken} Calendar Days   (${stepRec.startDate} → ${stepRec.endDate})`
+          : '';
+
+        // Safe multi-line text splits for headers, route, reason, action, and recommended course
+        const stepTitleText = `TRANSFER STEP #${stepNum}   •   DATE OF HANDOVER: ${transferDateStr}`;
+        const stepTitleLines = doc.splitTextToSize(stepTitleText, contentWidth - 24);
+        const deptTimeLines = deptTimeText ? doc.splitTextToSize(deptTimeText, contentWidth - 24) : [];
+        const routeText = `ROUTE: FROM [${tr.transferredFrom || 'Originating Team'}]  ➔  TO [${tr.transferredTo || 'Assigned Team'}]`;
+        const routeLines = doc.splitTextToSize(routeText, contentWidth - 24);
+
+        const reasonLines = doc.splitTextToSize(tr.transferReason || 'No explicit reason specified.', contentWidth - 28);
+        const actionLines = doc.splitTextToSize(tr.actionTakenByPreviousTeam || 'No previous actions documented.', contentWidth - 28);
+        const recLines = doc.splitTextToSize(tr.recommendedCourseOfAction || 'No recommendation logged.', contentWidth - 28);
+
+        // Calculate card height dynamically so no text ever overlaps
+        let blockHeight = 12; // top padding
+        blockHeight += (stepTitleLines.length * 10);
+        if (deptTimeLines.length > 0) {
+          blockHeight += (deptTimeLines.length * 9) + 2;
+        }
+        blockHeight += (routeLines.length * 9.5) + 4; // route
+        blockHeight += 8; // divider line + spacing
+        blockHeight += 9 + (reasonLines.length * 9) + 4; // reason
+        blockHeight += 9 + (actionLines.length * 9) + 4; // action
+        blockHeight += 9 + (recLines.length * 9) + 10; // recommendation + bottom padding
+
         checkSpace(blockHeight + 10);
 
         doc.setFillColor(250, 245, 255);
-        doc.setDrawColor(233, 213, 255);
+        doc.setDrawColor(216, 180, 254);
         doc.roundedRect(margin, curY, contentWidth, blockHeight, 4, 4, 'DF');
 
+        let cardY = curY + 12;
+
+        // Step Title Line(s)
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(8);
-        doc.setTextColor(107, 33, 168);
-        const deptRecs = getDepartmentTimeRecords(item);
-        const stepRec = deptRecs[index];
-        const daysText = stepRec ? `  •  TIME IN DEPT: ${stepRec.daysTaken} Days (${stepRec.startDate} → ${stepRec.endDate})` : '';
+        doc.setFontSize(8.5);
+        doc.setTextColor(107, 33, 168); // purple-800
+        stepTitleLines.forEach((l: string) => {
+          doc.text(l, margin + 10, cardY);
+          cardY += 10;
+        });
 
-        doc.text(`TRANSFER STEP #${index + 1}   •   DATE: ${tr.transferDate}${daysText}`, margin + 10, curY + 13);
+        // Department Time Line(s)
+        if (deptTimeLines.length > 0) {
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(7.5);
+          doc.setTextColor(126, 34, 206); // purple-700
+          deptTimeLines.forEach((l: string) => {
+            doc.text(l, margin + 10, cardY);
+            cardY += 9;
+          });
+          cardY += 2;
+        }
 
+        // Route Line(s)
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(7.5);
-        doc.setTextColor(30, 41, 59);
-        doc.text(`FROM: ${tr.transferredFrom}    --->    TO: ${tr.transferredTo}`, margin + 10, curY + 24);
+        doc.setTextColor(30, 41, 59); // slate-800
+        routeLines.forEach((l: string) => {
+          doc.text(l, margin + 10, cardY);
+          cardY += 9.5;
+        });
 
-        let innerY = curY + 35;
+        // Inner Divider Line
+        doc.setDrawColor(233, 213, 255);
+        doc.setLineWidth(0.5);
+        doc.line(margin + 10, cardY + 2, margin + contentWidth - 10, cardY + 2);
+        cardY += 8;
 
+        // Reason Block
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7);
+        doc.setTextColor(88, 28, 135); // purple-900
+        doc.text("• REASON FOR TRANSFER / HANDOVER:", margin + 10, cardY);
+        cardY += 8.5;
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(7.5);
-        doc.setTextColor(71, 85, 105);
-        doc.text(trReasonLines, margin + 10, innerY);
-        innerY += (trReasonLines.length * 9);
+        doc.setTextColor(51, 65, 85);
+        reasonLines.forEach((l: string) => {
+          doc.text(l, margin + 14, cardY);
+          cardY += 9;
+        });
+        cardY += 4;
 
-        doc.text(trActionLines, margin + 10, innerY);
-        innerY += (trActionLines.length * 9);
-
+        // Action Block
         doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7);
+        doc.setTextColor(88, 28, 135);
+        doc.text("• ACTIONS TAKEN BY PREVIOUS TEAM:", margin + 10, cardY);
+        cardY += 8.5;
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
+        doc.setTextColor(51, 65, 85);
+        actionLines.forEach((l: string) => {
+          doc.text(l, margin + 14, cardY);
+          cardY += 9;
+        });
+        cardY += 4;
+
+        // Recommendation Block
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7);
         doc.setTextColor(126, 34, 206);
-        doc.text(trRecLines, margin + 10, innerY);
+        doc.text("• RECOMMENDED COURSE OF ACTION:", margin + 10, cardY);
+        cardY += 8.5;
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.setTextColor(107, 33, 168);
+        recLines.forEach((l: string) => {
+          doc.text(l, margin + 14, cardY);
+          cardY += 9;
+        });
 
         curY += blockHeight + 10;
       });
     } else {
-      checkSpace(30);
+      checkSpace(34);
       doc.setFillColor(248, 250, 252);
       doc.setDrawColor(226, 232, 240);
-      doc.roundedRect(margin, curY, contentWidth, 26, 4, 4, 'DF');
+      doc.roundedRect(margin, curY, contentWidth, 28, 4, 4, 'DF');
 
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8);
       doc.setTextColor(100, 116, 139);
-      doc.text("No official team transfers recorded yet. Issue remains under initial reviewing authority.", margin + 10, curY + 16);
+      const noTrMsg = doc.splitTextToSize("No official team transfers recorded yet. Issue remains under initial reviewing authority.", contentWidth - 24);
+      noTrMsg.forEach((l: string, li: number) => {
+        doc.text(l, margin + 10, curY + 16 + (li * 9.5));
+      });
       curY += 36;
     }
 
-    // 5. Lessons Learned & Retrospective Review
-    drawSectionHeader("5. Lessons Learned & Retrospective Review", [13, 148, 136]);
-    const turnaroundInfo = getIssueTurnaroundInfo(item);
-    const turnaroundDurationText = `Total Issue Turnaround: ${turnaroundInfo.turnaroundDays} Calendar Days (${turnaroundInfo.displayText})`;
-    const lessonsText = item.lessonsLearned 
-      ? `[${turnaroundDurationText}]\n\n${item.lessonsLearned}`
-      : `[${turnaroundDurationText}]\n\nNo explicit lesson learned or retrospective review logged for this issue entry yet.`;
-    const lessonsLines = doc.splitTextToSize(lessonsText, contentWidth - 24);
-    const lessonsBoxHeight = Math.max(36, (lessonsLines.length * 9) + 22);
-
-    checkSpace(lessonsBoxHeight + 10);
-    doc.setFillColor(240, 253, 250);
-    doc.setDrawColor(153, 246, 228);
-    doc.roundedRect(margin, curY, contentWidth, lessonsBoxHeight, 4, 4, 'DF');
+    // Formal Verification & Endorsement Box at conclusion of Section 4 (Sections 1 – 4 Only)
+    checkSpace(44);
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.75);
+    doc.roundedRect(margin, curY, contentWidth, 36, 3, 3, 'DF');
 
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7.5);
-    doc.setTextColor(15, 118, 110);
-    const lessonAuthorText = item.lessonsLearnedUpdatedBy ? `   (Recorded by: ${item.lessonsLearnedUpdatedBy} on ${item.lessonsLearnedUpdatedAt || ''})` : '';
-    doc.text(`KEY LESSON & STRATEGIC RECOMMENDATION${lessonAuthorText}`, margin + 10, curY + 13);
+    doc.setFontSize(7);
+    doc.setTextColor(71, 85, 105);
+    doc.text("CONTRACTUAL ISSUE DOSSIER VERIFICATION & AUDIT CLOSE-OUT (SECTIONS 1 – 4)", margin + 10, curY + 11);
 
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
+    doc.setFontSize(6.5);
+    doc.setTextColor(100, 116, 139);
+    doc.text(`Official dossier verified under ERA Contract Administration procedures. Issued for Ref: ${item.issueCode} • ${project.name}`, margin + 10, curY + 20);
+
+    const printDateStr = new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'long', year: 'numeric' });
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.5);
     doc.setTextColor(30, 41, 59);
-    doc.text(lessonsLines, margin + 10, curY + 24);
+    doc.text(`Generated: ${printDateStr}   |   Review Authority: ${item.submittedTo || 'ERA Directorate'}   |   Current Status: ${item.currentStatus}`, margin + 10, curY + 29);
 
-    curY += lessonsBoxHeight + 12;
+    curY += 44;
 
-    // 6. Complete Status History & User Audit Log
-    drawSectionHeader("6. Status History & User Audit Log Trail", [37, 99, 235]);
-    if (item.history && item.history.length > 0) {
-      item.history.forEach((hist, hIdx) => {
-        const histNotes = doc.splitTextToSize(`Notes: ${hist.notes}`, contentWidth - 24);
-        const histBoxHeight = Math.max(28, (histNotes.length * 8) + 20);
+    // Post-processing Loop: Draw Crisp Proper Page Borders and Footers across ALL pages
+    const totalPages = doc.getNumberOfPages();
+    for (let p = 1; p <= totalPages; p++) {
+      doc.setPage(p);
 
-        checkSpace(histBoxHeight + 6);
-        doc.setFillColor(248, 250, 252);
-        doc.setDrawColor(226, 232, 240);
-        doc.roundedRect(margin, curY, contentWidth, histBoxHeight, 3, 3, 'DF');
+      // 1. Crisp Professional Outer Page Border
+      doc.setDrawColor(180, 195, 215); // slate-400
+      doc.setLineWidth(1);
+      doc.roundedRect(26, 18, pageWidth - 52, pageHeight - 36, 4, 4, 'S');
 
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(7);
-        doc.setTextColor(30, 41, 59);
-        doc.text(`[${hist.timestamp}]  ${hist.user}  •  Type: ${hist.changeType}  •  Status: ${hist.previousStatus} ---> ${hist.newStatus}`, margin + 8, curY + 11);
+      // 2. Inner Framing Border Line
+      doc.setDrawColor(226, 232, 240); // slate-200
+      doc.setLineWidth(0.5);
+      doc.roundedRect(29, 21, pageWidth - 58, pageHeight - 42, 3, 3, 'S');
 
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(7);
-        doc.setTextColor(71, 85, 105);
-        doc.text(histNotes, margin + 8, curY + 20);
+      // 3. Top Blue Accent Bar
+      doc.setFillColor(37, 99, 235); // ERA Blue
+      doc.rect(30, 21, pageWidth - 60, 3, 'F');
 
-        curY += histBoxHeight + 6;
-      });
-    } else {
-      checkSpace(24);
-      doc.setFillColor(248, 250, 252);
-      doc.setDrawColor(226, 232, 240);
-      doc.roundedRect(margin, curY, contentWidth, 20, 3, 3, 'DF');
+      // 4. Bottom Divider Line
+      doc.setDrawColor(203, 213, 225); // slate-300
+      doc.setLineWidth(0.75);
+      doc.line(30, pageHeight - 34, pageWidth - 30, pageHeight - 34);
+
+      // 5. Bottom Footer Text
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7.5);
+      doc.setFontSize(7);
       doc.setTextColor(100, 116, 139);
-      doc.text("Initial submission audit history record auto-logged.", margin + 8, curY + 13);
-      curY += 26;
-    }
+      doc.text(
+        `ETHIOPIAN ROADS ADMINISTRATION • OFFICIAL CONTRACTUAL ISSUE DOSSIER • REF: ${item.issueCode}`,
+        34,
+        pageHeight - 22
+      );
 
-    curY += 8;
+      doc.setFont('helvetica', 'bold');
+      doc.text(
+        `CONFIDENTIAL • Page ${p} of ${totalPages}`,
+        pageWidth - 34,
+        pageHeight - 22,
+        { align: 'right' }
+      );
+    }
 
     const filename = `${item.issueCode.replace(/[^a-zA-Z0-9-]/g, '_')}_Dossier_Report.pdf`;
     doc.save(filename);
