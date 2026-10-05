@@ -1,6 +1,13 @@
 import { jsPDF } from 'jspdf';
 import { ERA_LOGO_BASE64 } from '../assets/eraLogoBase64';
 
+/**
+ * Standard 1-inch border padding in standard PDF points (1 inch = 72 pt = 25.4 mm).
+ * All exported project PDF reports apply this strict margin to guarantee that content
+ * remains securely inside printable boundaries on all physical printers and paper sizes.
+ */
+export const STRICT_1_INCH_MARGIN = 72;
+
 export interface PageLayoutConfig {
   margin?: number;
   orientation?: 'portrait' | 'landscape';
@@ -113,25 +120,25 @@ export function drawStandardPdfPageFrame(
 ): { contentX: number; contentY: number; contentWidth: number; contentBottom: number } {
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
-  const margin = options.margin || 36;
+  const margin = options.margin !== undefined ? options.margin : STRICT_1_INCH_MARGIN;
   const contentWidth = pageWidth - margin * 2;
   const accentColor = options.accentColor || [194, 120, 3]; // ERA Gold #c27803
   const headerHeight = options.headerHeight || 54;
-  const footerY = pageHeight - 34;
+  const footerY = pageHeight - margin - 22;
 
-  // 1. Professional Outer Border keeping all content safe and bounded
+  // 1. Professional Outer Border keeping all content safe and bounded strictly inside 1-inch printable margins
   doc.setDrawColor(226, 232, 240); // slate-200
   doc.setLineWidth(0.75);
-  doc.roundedRect(margin - 8, margin - 8, contentWidth + 16, pageHeight - (margin * 2) + 16, 4, 4, 'S');
+  doc.roundedRect(margin, margin, contentWidth, pageHeight - (margin * 2), 4, 4, 'S');
 
   // 2. Top Accent Line
   doc.setFillColor(accentColor[0], accentColor[1], accentColor[2]);
-  doc.rect(margin, margin - 4, contentWidth, 2.5, 'F');
+  doc.rect(margin + 2, margin + 1, contentWidth - 4, 2.5, 'F');
 
   // 3. Top Header with ERA Logo & Aligned Official Date Stamp
   const logoSize = 36;
   if (options.showLogo !== false) {
-    drawEraLogo(doc, margin, margin + 4, logoSize, {
+    drawEraLogo(doc, margin + 6, margin + 6, logoSize, {
       withContainer: true,
       containerBg: [255, 255, 255],
       containerBorder: [226, 232, 240],
@@ -142,12 +149,12 @@ export function drawStandardPdfPageFrame(
   // Official Date Stamp Container (Top-Right, aligned with ERA Logo)
   const dateStampWidth = 118;
   const dateStampHeight = 36;
-  const dateStampX = pageWidth - margin - dateStampWidth;
+  const dateStampX = pageWidth - margin - dateStampWidth - 6;
 
   doc.setFillColor(248, 250, 252); // slate-50
   doc.setDrawColor(226, 232, 240); // slate-200
   doc.setLineWidth(0.75);
-  doc.roundedRect(dateStampX, margin + 4, dateStampWidth, dateStampHeight, 4, 4, 'DF');
+  doc.roundedRect(dateStampX, margin + 6, dateStampWidth, dateStampHeight, 4, 4, 'DF');
 
   // Date Stamp details
   const dateStr = new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -156,29 +163,29 @@ export function drawStandardPdfPageFrame(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(6);
   doc.setTextColor(100, 116, 139); // slate-500
-  doc.text("OFFICIAL DATE STAMP", dateStampX + 8, margin + 14);
+  doc.text("OFFICIAL DATE STAMP", dateStampX + 8, margin + 16);
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8.5);
   doc.setTextColor(15, 23, 42); // slate-900
-  doc.text(dateStr, dateStampX + 8, margin + 24);
+  doc.text(dateStr, dateStampX + 8, margin + 26);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6);
   doc.setTextColor(71, 85, 105);
   const stampFooter = options.projectCode ? `REF: ${options.projectCode}` : `${timeStr} • ERA RECORD`;
   const wrappedStampFooter = doc.splitTextToSize(stampFooter, dateStampWidth - 14);
-  doc.text(wrappedStampFooter[0], dateStampX + 8, margin + 33);
+  doc.text(wrappedStampFooter[0], dateStampX + 8, margin + 35);
 
   // Center Header: Institution & Standard Document Title (wrapped strictly before Date Stamp)
-  const textStartX = options.showLogo !== false ? margin + logoSize + 10 : margin;
+  const textStartX = options.showLogo !== false ? margin + logoSize + 14 : margin + 8;
   const textMaxWidth = dateStampX - textStartX - 10;
 
   // Organization Main Title
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
   doc.setTextColor(15, 23, 42); // slate-900
-  doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA)", textStartX, margin + 15);
+  doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA)", textStartX, margin + 17);
 
   // Standard Document Title
   doc.setFont('helvetica', 'bold');
@@ -186,7 +193,7 @@ export function drawStandardPdfPageFrame(
   doc.setTextColor(30, 64, 175); // blue-800
   const titleText = options.title || "CONTRACT MONITORING & EXECUTIVE PERFORMANCE AUDIT";
   const wrappedTitle = doc.splitTextToSize(titleText, textMaxWidth);
-  doc.text(wrappedTitle[0] || titleText, textStartX, margin + 26);
+  doc.text(wrappedTitle[0] || titleText, textStartX, margin + 28);
 
   // Subtitle / Reference info
   if (options.subtitle) {
@@ -194,35 +201,35 @@ export function drawStandardPdfPageFrame(
     doc.setFontSize(6.8);
     doc.setTextColor(100, 116, 139); // slate-500
     const wrappedSub = doc.splitTextToSize(options.subtitle, textMaxWidth);
-    doc.text(wrappedSub[0] || options.subtitle, textStartX, margin + 37);
+    doc.text(wrappedSub[0] || options.subtitle, textStartX, margin + 39);
   }
 
   // Header bottom dividing line
   doc.setDrawColor(226, 232, 240);
   doc.setLineWidth(0.75);
-  doc.line(margin, margin + headerHeight, pageWidth - margin, margin + headerHeight);
+  doc.line(margin + 2, margin + headerHeight, pageWidth - margin - 2, margin + headerHeight);
 
   // 4. Bottom Footer with page numbers and confidentiality clause
   doc.setDrawColor(226, 232, 240);
   doc.setLineWidth(0.75);
-  doc.line(margin, footerY, pageWidth - margin, footerY);
+  doc.line(margin + 2, footerY, pageWidth - margin - 2, footerY);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7);
   doc.setTextColor(148, 163, 184); // slate-400
   const footerNotice = options.footerText || "CONFIDENTIAL • ETHIOPIAN ROADS ADMINISTRATION • FOR AUTHORIZED PROJECT STAKEHOLDERS ONLY";
   const wrappedFooter = doc.splitTextToSize(footerNotice, contentWidth - 80);
-  doc.text(wrappedFooter[0] || footerNotice, margin, footerY + 13);
+  doc.text(wrappedFooter[0] || footerNotice, margin + 6, footerY + 12);
 
   const pageStr = totalPages > 0 ? `Page ${pageNo} of ${totalPages}` : `Page ${pageNo}`;
   doc.setFont('helvetica', 'bold');
-  doc.text(pageStr, pageWidth - margin, footerY + 13, { align: 'right' });
+  doc.text(pageStr, pageWidth - margin - 6, footerY + 12, { align: 'right' });
 
   return {
-    contentX: margin,
+    contentX: margin + 6,
     contentY: margin + headerHeight + 12,
-    contentWidth,
-    contentBottom: footerY - 10,
+    contentWidth: contentWidth - 12,
+    contentBottom: footerY - 8,
   };
 }
 
@@ -251,12 +258,12 @@ export function drawStandardDocumentHeader(
   doc: jsPDF,
   options: StandardDocumentHeaderConfig
 ): number {
-  const margin = options.margin || 36;
+  const margin = options.margin !== undefined ? options.margin : STRICT_1_INCH_MARGIN;
   const curY = options.curY;
-  const contentWidth = options.contentWidth;
+  const contentWidth = options.contentWidth || (doc.internal.pageSize.getWidth() - margin * 2);
   const logoSize = 36;
-  const dateStampWidth = 118;
-  const dateStampHeight = 36;
+  const dateStampWidth = 124;
+  const dateStampHeight = 38;
   const dateStampX = margin + contentWidth - dateStampWidth;
 
   // 1. Official ERA Logo on the left
@@ -292,9 +299,10 @@ export function drawStandardDocumentHeader(
   doc.text("OFFICIAL DATE STAMP", dateStampX + 8, curY + 10);
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
+  doc.setFontSize(7.5);
   doc.setTextColor(15, 23, 42); // slate-900
-  doc.text(formattedDate, dateStampX + 8, curY + 20);
+  const dateLines = doc.splitTextToSize(formattedDate, dateStampWidth - 16);
+  doc.text(dateLines[0] || formattedDate, dateStampX + 8, curY + 20);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6);
@@ -302,8 +310,8 @@ export function drawStandardDocumentHeader(
   const stampFooter = options.referenceNo
     ? `REF: ${options.referenceNo}`
     : (options.statusBadge || `${formattedTime} • ERA RECORD`);
-  const wrappedStampFooter = doc.splitTextToSize(stampFooter, dateStampWidth - 14);
-  doc.text(wrappedStampFooter[0], dateStampX + 8, curY + 29);
+  const wrappedStampFooter = doc.splitTextToSize(stampFooter, dateStampWidth - 16);
+  doc.text(wrappedStampFooter[0], dateStampX + 8, curY + 30);
 
   // 3. Institution & Standard Document Title in the center (wrapped strictly)
   const textStartX = margin + logoSize + 10;
@@ -327,19 +335,26 @@ export function drawStandardDocumentHeader(
   let subY = curY + 32;
   if (wrappedTitle.length > 1) {
     doc.text(wrappedTitle[1], textStartX, curY + 31);
-    subY = curY + 40;
+    subY = curY + 41;
   }
 
+  let subLinesCount = 0;
   if (options.subtitle) {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7);
     doc.setTextColor(100, 116, 139);
     const wrappedSub = doc.splitTextToSize(options.subtitle, maxTitleWidth);
-    doc.text(wrappedSub[0] || options.subtitle, textStartX, subY);
+    wrappedSub.slice(0, 2).forEach((sl: string, sli: number) => {
+      doc.text(sl, textStartX, subY + (sli * 8.5));
+      subLinesCount++;
+    });
   }
 
   // Header bottom boundary divider line
-  const neededHeight = wrappedTitle.length > 1 ? 52 : (options.headerHeight || 44);
+  const neededHeight = Math.max(
+    dateStampHeight + 6,
+    wrappedTitle.length > 1 ? (subLinesCount > 1 ? 58 : 52) : (subLinesCount > 1 ? 48 : (options.headerHeight || 44))
+  );
   const dividerY = curY + neededHeight;
 
   doc.setDrawColor(226, 232, 240);
@@ -399,7 +414,7 @@ export function drawSafeTable(
 ): number {
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
-  const margin = config.margin || 36;
+  const margin = config.margin !== undefined ? config.margin : STRICT_1_INCH_MARGIN;
   const contentWidth = config.maxWidth || (pageWidth - margin * 2);
   let curY = config.startY;
 
@@ -622,7 +637,7 @@ export function drawUniversalSignatureBlock(
   } = {}
 ): number {
   const pageWidth = doc.internal.pageSize.getWidth();
-  const margin = options.margin !== undefined ? options.margin : 36;
+  const margin = options.margin !== undefined ? options.margin : STRICT_1_INCH_MARGIN;
   const contentWidth = options.contentWidth || (pageWidth - margin * 2);
   let y = options.y !== undefined ? options.y : doc.internal.pageSize.getHeight() - 60;
   const isLandscape = options.orientation === 'l' || options.orientation === 'landscape' || pageWidth > 600;

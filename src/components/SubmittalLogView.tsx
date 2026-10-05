@@ -37,7 +37,7 @@ import {
   MessageSquare
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
-import { drawEraLogo, drawStandardDocumentHeader } from '../lib/pdfReportEngine';
+import { drawEraLogo, drawStandardDocumentHeader, STRICT_1_INCH_MARGIN } from '../lib/pdfReportEngine';
 import RfiLogComponent from './RfiLogComponent';
 import {
   Project,
@@ -683,39 +683,40 @@ export default function SubmittalLogView({
 
     const pageWidth = doc.internal.pageSize.getWidth(); // 841.89 pt
     const pageHeight = doc.internal.pageSize.getHeight(); // 595.28 pt
-    const margin = 36;
-    const contentWidth = pageWidth - (margin * 2); // 769.89 pt
-    let curY = 40;
+    const margin = STRICT_1_INCH_MARGIN; // Strict 1-inch border padding (72 pt)
+    const contentWidth = pageWidth - (margin * 2); // 697.89 pt
+    let curY = margin + 14;
     let pageCount = 0;
 
     const drawPageDecorations = () => {
       pageCount++;
-      // Top colored border strip (Royal Indigo style)
-      doc.setFillColor(79, 70, 229);
-      doc.rect(margin, 20, contentWidth, 3, 'F');
 
-      // Clean page border
+      // Strict 1-inch Page Border Frame
       doc.setDrawColor(226, 232, 240);
       doc.setLineWidth(0.75);
-      doc.roundedRect(margin - 10, 14, contentWidth + 20, pageHeight - 28, 3, 3, 'S');
+      doc.roundedRect(margin, margin, contentWidth, pageHeight - (margin * 2), 4, 4, 'S');
+
+      // Top colored border strip (Royal Indigo style)
+      doc.setFillColor(79, 70, 229);
+      doc.rect(margin + 2, margin + 1, contentWidth - 4, 3, 'F');
 
       // Bottom footer line
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7);
       doc.setTextColor(148, 163, 184); // slate-400
       doc.setDrawColor(226, 232, 240); // slate-200
-      doc.line(margin, pageHeight - 35, pageWidth - margin, pageHeight - 35);
+      doc.line(margin + 2, pageHeight - margin - 22, pageWidth - margin - 2, pageHeight - margin - 22);
 
       // Footer texts
       doc.text(
         `ETHIOPIAN ROADS ADMINISTRATION • TECHNICAL SUBMITTAL REGISTER • ${project.name || 'ERA PROJECT'}`,
-        margin,
-        pageHeight - 22
+        margin + 6,
+        pageHeight - margin - 10
       );
       doc.text(
         `OFFLINE PROJECT DOCUMENTATION • Page ${pageCount}`,
-        pageWidth - margin,
-        pageHeight - 22,
+        pageWidth - margin - 6,
+        pageHeight - margin - 10,
         { align: 'right' }
       );
     };
@@ -723,9 +724,9 @@ export default function SubmittalLogView({
     let drawTableHeader = () => {};
 
     const checkSpace = (needed: number, isTableContext: boolean = false) => {
-      if (curY + needed > pageHeight - 50) {
+      if (curY + needed > pageHeight - margin - 28) {
         doc.addPage();
-        curY = 45;
+        curY = margin + 16;
         drawPageDecorations();
         if (isTableContext) {
           drawTableHeader();
@@ -797,7 +798,7 @@ export default function SubmittalLogView({
     curY += 46;
 
     // Table Column Widths
-    const tableCols = [
+    const baseTableCols = [
       { id: 'subNo', title: "SUBMITTAL #", width: 68 },
       { id: 'category', title: "CATEGORY", width: 86 },
       { id: 'title', title: "SUBJECT / DESCRIPTION", width: 216 },
@@ -807,6 +808,11 @@ export default function SubmittalLogView({
       { id: 'status', title: "STATUS", width: 105 },
       { id: 'engineer', title: "ASSIGNED RE", width: 108 }
     ];
+    const totalBaseColWidth = baseTableCols.reduce((sum, c) => sum + c.width, 0);
+    const tableCols = baseTableCols.map(c => ({
+      ...c,
+      width: (c.width / totalBaseColWidth) * contentWidth
+    }));
 
     drawTableHeader = () => {
       doc.setFillColor(15, 23, 42); // slate-900

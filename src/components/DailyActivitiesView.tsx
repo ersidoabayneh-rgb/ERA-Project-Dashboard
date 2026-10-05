@@ -51,6 +51,7 @@ import {
   Square
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
+import { STRICT_1_INCH_MARGIN } from '../lib/pdfReportEngine';
 import {
   Project,
   DailyActivityRecord,
@@ -950,83 +951,91 @@ export default function DailyActivitiesView({
 
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
-    const margin = 36;
-    const contentWidth = pageWidth - margin * 2;
-    let curY = 35;
+    const margin = STRICT_1_INCH_MARGIN; // Strict 1-inch border padding (72 pt)
+    const contentWidth = pageWidth - margin * 2; // 697.89 pt
+    let curY = margin + 14;
     let pageCount = 0;
 
     const drawHeader = () => {
       pageCount++;
-      // Top colored bar
-      doc.setFillColor(30, 58, 138); // blue-900
-      doc.rect(margin, 18, contentWidth, 4, 'F');
-
-      // Outer border
+      // Outer border strictly at 1-inch margin
       doc.setDrawColor(203, 213, 225);
       doc.setLineWidth(0.75);
-      doc.roundedRect(margin - 8, 12, contentWidth + 16, pageHeight - 24, 3, 3, 'S');
+      doc.roundedRect(margin, margin, contentWidth, pageHeight - (margin * 2), 4, 4, 'S');
+
+      // Top colored bar
+      doc.setFillColor(30, 58, 138); // blue-900
+      doc.rect(margin + 2, margin + 1, contentWidth - 4, 3, 'F');
 
       // Title & Emblem
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(13);
+      doc.setFontSize(12);
       doc.setTextColor(15, 23, 42);
-      doc.text('ETHIOPIAN ROADS ADMINISTRATION (ERA)', margin, curY);
+      doc.text('ETHIOPIAN ROADS ADMINISTRATION (ERA)', margin + 6, curY + 2);
 
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(10);
+      doc.setFontSize(9);
       doc.setTextColor(30, 58, 138);
-      doc.text('DAILY ROAD CONSTRUCTION ACTIVITIES & WIR INSPECTION REPORT', margin, curY + 14);
+      doc.text('DAILY ROAD CONSTRUCTION ACTIVITIES & WIR INSPECTION REPORT', margin + 6, curY + 14);
 
       // Meta box on right
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8);
+      doc.setFontSize(7.5);
       doc.setTextColor(100, 116, 139);
-      doc.text(`Project: ${project.name || 'ERA Road Project'}`, pageWidth - margin, curY, { align: 'right' });
-      doc.text(`Contractor: ${project.contractor || 'N/A'} | Consultant: ${project.consultant || 'N/A'}`, pageWidth - margin, curY + 11, { align: 'right' });
-      doc.text(`Total Length: ${totalLengthKm} Km | Export Date: ${new Date().toISOString().split('T')[0]}`, pageWidth - margin, curY + 22, { align: 'right' });
+      doc.text(`Project: ${project.name || 'ERA Road Project'}`, pageWidth - margin - 6, curY + 2, { align: 'right' });
+      doc.text(`Contractor: ${project.contractor || 'N/A'} | Consultant: ${project.consultant || 'N/A'}`, pageWidth - margin - 6, curY + 12, { align: 'right' });
+      doc.text(`Total Length: ${totalLengthKm} Km | Export Date: ${new Date().toISOString().split('T')[0]}`, pageWidth - margin - 6, curY + 22, { align: 'right' });
 
-      curY += 34;
       doc.setDrawColor(226, 232, 240);
-      doc.line(margin, curY, pageWidth - margin, curY);
-      curY += 12;
+      doc.line(margin + 2, curY + 30, pageWidth - margin - 2, curY + 30);
+      curY += 38;
     };
 
     const drawFooter = () => {
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7.5);
+      doc.setFontSize(7);
       doc.setTextColor(148, 163, 184);
-      doc.line(margin, pageHeight - 32, pageWidth - margin, pageHeight - 32);
-      doc.text(`ETHIOPIAN ROADS ADMINISTRATION • OFFICIAL SITE DAILY RECORD • ${project.name}`, margin, pageHeight - 20);
-      doc.text(`Page ${pageCount}`, pageWidth - margin, pageHeight - 20, { align: 'right' });
+      doc.setDrawColor(226, 232, 240);
+      doc.line(margin + 2, pageHeight - margin - 20, pageWidth - margin - 2, pageHeight - margin - 20);
+      doc.text(`ETHIOPIAN ROADS ADMINISTRATION • OFFICIAL SITE DAILY RECORD • ${project.name}`, margin + 6, pageHeight - margin - 8);
+      doc.text(`Page ${pageCount}`, pageWidth - margin - 6, pageHeight - margin - 8, { align: 'right' });
     };
 
     const checkSpace = (needed: number) => {
-      if (curY + needed > pageHeight - 55) {
+      if (curY + needed > pageHeight - margin - 28) {
         drawFooter();
         doc.addPage();
-        curY = 35;
+        curY = margin + 14;
         drawHeader();
       }
     };
 
     drawHeader();
 
-    // Table Header
+    // Table Header with scaled column widths fitting contentWidth exactly
     doc.setFillColor(241, 245, 249);
     doc.rect(margin, curY, contentWidth, 20, 'F');
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7.5);
     doc.setTextColor(51, 65, 85);
 
-    const cols = [
-      { label: 'Date / Shift', x: margin + 6, w: 75 },
-      { label: 'Activity Type & Scope', x: margin + 85, w: 165 },
-      { label: 'Station Location / Side', x: margin + 255, w: 110 },
-      { label: 'Executed Qty', x: margin + 370, w: 65 },
-      { label: 'Submittal / RFI Link', x: margin + 440, w: 115 },
-      { label: 'QC / WIR Status', x: margin + 560, w: 105 },
-      { label: 'Inspector / Remarks', x: margin + 670, w: 90 }
+    const baseCols = [
+      { label: 'Date / Shift', w: 75 },
+      { label: 'Activity Type & Scope', w: 160 },
+      { label: 'Station Location / Side', w: 105 },
+      { label: 'Executed Qty', w: 65 },
+      { label: 'Submittal / RFI Link', w: 110 },
+      { label: 'QC / WIR Status', w: 100 },
+      { label: 'Inspector / Remarks', w: 85 }
     ];
+    const totalBaseW = baseCols.reduce((acc, c) => acc + c.w, 0);
+    let currentX = margin + 4;
+    const cols = baseCols.map(c => {
+      const scaledW = (c.w / totalBaseW) * (contentWidth - 8);
+      const colObj = { label: c.label, x: currentX, w: scaledW };
+      currentX += scaledW;
+      return colObj;
+    });
 
     cols.forEach(c => {
       doc.text(c.label, c.x, curY + 13);

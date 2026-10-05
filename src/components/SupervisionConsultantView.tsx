@@ -1525,33 +1525,33 @@ export default function SupervisionConsultantView({
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
-      const margin = 14;
-      let y = 16;
+      const margin = 25.4; // Strict 1-inch border padding (25.4 mm)
+      const contentWidth = pageWidth - (margin * 2);
       let pageNum = 1;
 
       const drawPageFrame = (currPage: number) => {
-        // Page border
+        // Strict 1-inch Page border
         doc.setDrawColor(226, 232, 240);
         doc.setLineWidth(0.3);
-        doc.roundedRect(margin - 4, 6, pageWidth - (margin * 2) + 8, pageHeight - 12, 2, 2, 'S');
+        doc.roundedRect(margin, margin, contentWidth, pageHeight - (margin * 2), 2, 2, 'S');
 
         // Running Footer
         doc.setFontSize(6.5);
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(148, 163, 184);
         doc.setDrawColor(226, 232, 240);
-        doc.line(margin, pageHeight - 10, pageWidth - margin, pageHeight - 10);
-        doc.text(`ETHIOPIAN ROADS ADMINISTRATION • SUPERVISION CONSULTANT AUDIT • ${project.name || 'Project'}`, margin, pageHeight - 7);
-        doc.text(`Page ${currPage}`, pageWidth - margin, pageHeight - 7, { align: 'right' });
+        doc.line(margin + 2, pageHeight - margin - 8, pageWidth - margin - 2, pageHeight - margin - 8);
+        doc.text(`ETHIOPIAN ROADS ADMINISTRATION • SUPERVISION CONSULTANT AUDIT • ${project.name || 'Project'}`, margin + 2, pageHeight - margin - 3);
+        doc.text(`Page ${currPage}`, pageWidth - margin - 2, pageHeight - margin - 3, { align: 'right' });
       };
 
       drawPageFrame(pageNum);
 
       // Header Banner
       doc.setFillColor(15, 23, 42); // slate-900
-      doc.roundedRect(margin, 8, pageWidth - (margin * 2), 24, 3, 3, 'F');
+      doc.roundedRect(margin + 2, margin + 2, contentWidth - 4, 22, 2, 2, 'F');
       
-      drawEraLogo(doc, margin + 2, 9, 22, {
+      drawEraLogo(doc, margin + 4, margin + 3.5, 19, {
         withContainer: true,
         containerBg: [255, 255, 255],
         containerBorder: [226, 232, 240],
@@ -1559,75 +1559,76 @@ export default function SupervisionConsultantView({
       });
 
       // Official Date Stamp (Top-Right, aligned with ERA Logo)
-      const dsWidth = 42;
-      const dsX = pageWidth - margin - dsWidth - 2;
+      const dsWidth = 38;
+      const dsX = pageWidth - margin - dsWidth - 4;
       doc.setFillColor(30, 41, 59); // slate-800
       doc.setDrawColor(71, 85, 105);
       doc.setLineWidth(0.3);
-      doc.roundedRect(dsX, 10, dsWidth, 20, 2, 2, 'DF');
+      doc.roundedRect(dsX, margin + 3.5, dsWidth, 19, 2, 2, 'DF');
 
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(5);
       doc.setTextColor(148, 163, 184);
-      doc.text("OFFICIAL DATE STAMP", dsX + 3, 14.5);
+      doc.text("OFFICIAL DATE STAMP", dsX + 3, margin + 7.5);
 
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7.5);
+      doc.setFontSize(7);
       doc.setTextColor(255, 255, 255);
       const dsStr = new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' });
-      doc.text(dsStr, dsX + 3, 20);
+      doc.text(dsStr, dsX + 3, margin + 12.5);
 
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(5);
       doc.setTextColor(203, 213, 225);
-      doc.text("STATUS: OFFICIAL DOSSIER", dsX + 3, 26);
+      doc.text("STATUS: OFFICIAL DOSSIER", dsX + 3, margin + 18);
 
       // Title & Subtitle aligned between ERA Logo and Date Stamp
-      const titleMaxW = dsX - (margin + 27) - 3;
+      const titleStart = margin + 26;
+      const titleMaxW = dsX - titleStart - 3;
       doc.setTextColor(255, 255, 255);
-      doc.setFontSize(11);
+      doc.setFontSize(9.5);
       doc.setFont('helvetica', 'bold');
-      doc.text('ETHIOPIAN ROADS ADMINISTRATION (ERA)', margin + 27, 16.5);
+      doc.text('ETHIOPIAN ROADS ADMINISTRATION (ERA)', titleStart, margin + 8.5);
       
       doc.setFontSize(7);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(245, 158, 11); // Amber
       const titleLines = doc.splitTextToSize("SUPERVISION CONSULTANT & STAFFING DOSSIER", titleMaxW);
-      doc.text(titleLines[0], margin + 27, 21.5);
+      doc.text(titleLines[0], titleStart, margin + 13.5);
 
-      doc.setFontSize(6.5);
+      doc.setFontSize(6);
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(203, 213, 225);
       const projSub = doc.splitTextToSize(`PROJECT: ${(project.name || 'Project').slice(0, 35)} • FIRM: ${(consultant.firmName || 'Consultant').slice(0, 25)}`, titleMaxW);
-      doc.text(projSub[0], margin + 27, 26.5);
+      doc.text(projSub[0], titleStart, margin + 18.5);
 
-      y = 38;
+      let y = margin + 28;
 
       // Consultant Basic Details Box
       doc.setFillColor(248, 250, 252);
       doc.setDrawColor(226, 232, 240);
-      doc.roundedRect(margin, y, pageWidth - (margin * 2), 32, 2, 2, 'FD');
+      doc.roundedRect(margin, y, contentWidth, 30, 2, 2, 'FD');
 
       doc.setTextColor(30, 41, 59);
-      doc.setFontSize(11);
+      doc.setFontSize(10);
       doc.setFont('helvetica', 'bold');
-      doc.text(consultant.firmName || 'Supervision Consultant', margin + 4, y + 7);
+      doc.text(consultant.firmName || 'Supervision Consultant', margin + 4, y + 6);
 
-      doc.setFontSize(8);
+      doc.setFontSize(7.5);
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(71, 85, 105);
-      doc.text(`Contract Ref: ${consultant.contractRefNo || 'N/A'}`, margin + 4, y + 14);
-      doc.text(`Type: ${consultant.associationType || 'Joint Venture'} (${consultant.contractType || 'Time-Based'})`, margin + 4, y + 19);
-      doc.text(`Commencement Date: ${consultant.commencementDate || 'N/A'}`, margin + 4, y + 24);
+      doc.text(`Contract Ref: ${consultant.contractRefNo || 'N/A'}`, margin + 4, y + 13);
+      doc.text(`Type: ${consultant.associationType || 'Joint Venture'} (${consultant.contractType || 'Time-Based'})`, margin + 4, y + 18);
+      doc.text(`Commencement Date: ${consultant.commencementDate || 'N/A'}`, margin + 4, y + 23);
 
-      doc.text(`Resident Engineer: ${consultant.residentEngineerName || 'N/A'}`, margin + 85, y + 14);
-      doc.text(`Site Camp: ${consultant.siteOfficeLocation || 'N/A'}`, margin + 85, y + 19);
-      doc.text(`Original Fee: ETB ${formatAccounting(consultant.originalFeeEtb || 0, '')}`, margin + 85, y + 24);
+      doc.text(`Resident Engineer: ${consultant.residentEngineerName || 'N/A'}`, margin + 75, y + 13);
+      doc.text(`Site Camp: ${consultant.siteOfficeLocation || 'N/A'}`, margin + 75, y + 18);
+      doc.text(`Original Fee: ETB ${formatAccounting(consultant.originalFeeEtb || 0, '')}`, margin + 75, y + 23);
 
-      y += 40;
+      y += 36;
 
       // Section: Assigned Personnel
-      doc.setFontSize(11);
+      doc.setFontSize(10);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(15, 23, 42);
       doc.text(`ASSIGNED SUPERVISION PERSONNEL (${(consultant.personnel || []).length} Staff Members)`, margin, y);
@@ -1635,35 +1636,35 @@ export default function SupervisionConsultantView({
 
       // Personnel Table Headers
       doc.setFillColor(241, 245, 249);
-      doc.rect(margin, y, pageWidth - (margin * 2), 7, 'F');
-      doc.setFontSize(7.5);
+      doc.rect(margin, y, contentWidth, 7, 'F');
+      doc.setFontSize(7);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(51, 65, 85);
       doc.text('#', margin + 2, y + 5);
       doc.text('Personnel Name', margin + 8, y + 5);
-      doc.text('Specific Position', margin + 50, y + 5);
-      doc.text('Date of Assignment', margin + 98, y + 5);
-      doc.text('Qualifications / Role', margin + 130, y + 5);
-      doc.text('Status', margin + 168, y + 5);
+      doc.text('Specific Position', margin + 45, y + 5);
+      doc.text('Date of Assignment', margin + 85, y + 5);
+      doc.text('Qualifications / Role', margin + 115, y + 5);
+      doc.text('Status', margin + 145, y + 5);
       y += 8;
 
       // Personnel Table Rows
       doc.setFont('helvetica', 'normal');
       (consultant.personnel || []).forEach((p, idx) => {
-        if (y > 270) {
+        if (y > pageHeight - margin - 20) {
           doc.addPage();
           pageNum++;
           drawPageFrame(pageNum);
-          y = 20;
+          y = margin + 10;
         }
-        doc.setFontSize(7);
+        doc.setFontSize(6.5);
         doc.setTextColor(30, 41, 59);
         doc.text(String(idx + 1), margin + 2, y + 4);
         doc.text(p.name || '-', margin + 8, y + 4);
-        doc.text(p.position || '-', margin + 50, y + 4);
-        doc.text(p.assignmentDate || '-', margin + 98, y + 4);
-        doc.text((p.qualification || p.category || '-').substring(0, 24), margin + 130, y + 4);
-        doc.text(p.status || 'Active', margin + 168, y + 4);
+        doc.text(p.position || '-', margin + 45, y + 4);
+        doc.text(p.assignmentDate || '-', margin + 85, y + 4);
+        doc.text((p.qualification || p.category || '-').substring(0, 20), margin + 115, y + 4);
+        doc.text(p.status || 'Active', margin + 145, y + 4);
 
         doc.setDrawColor(241, 245, 249);
         doc.line(margin, y + 6, pageWidth - margin, y + 6);
@@ -1671,15 +1672,15 @@ export default function SupervisionConsultantView({
       });
 
       y += 8;
-      if (y > 240) {
+      if (y > pageHeight - margin - 35) {
         doc.addPage();
         pageNum++;
         drawPageFrame(pageNum);
-        y = 20;
+        y = margin + 10;
       }
 
       // Section: Consultant Invoices
-      doc.setFontSize(11);
+      doc.setFontSize(10);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(15, 23, 42);
       doc.text(`CONSULTANT INVOICES & FEE CERTIFICATES (${(consultant.invoices || []).length} Invoices)`, margin, y);
@@ -1687,37 +1688,37 @@ export default function SupervisionConsultantView({
 
       // Invoice Table Headers
       doc.setFillColor(241, 245, 249);
-      doc.rect(margin, y, pageWidth - (margin * 2), 7, 'F');
-      doc.setFontSize(7.5);
+      doc.rect(margin, y, contentWidth, 7, 'F');
+      doc.setFontSize(7);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(51, 65, 85);
       doc.text('Invoice #', margin + 2, y + 5);
-      doc.text('Period', margin + 28, y + 5);
-      doc.text('Submission', margin + 52, y + 5);
-      doc.text('Gross Amount (ETB)', margin + 78, y + 5);
-      doc.text('Net Payable (ETB)', margin + 115, y + 5);
-      doc.text('USD', margin + 150, y + 5);
-      doc.text('Status', margin + 168, y + 5);
+      doc.text('Period', margin + 24, y + 5);
+      doc.text('Submission', margin + 46, y + 5);
+      doc.text('Gross Amount (ETB)', margin + 68, y + 5);
+      doc.text('Net Payable (ETB)', margin + 98, y + 5);
+      doc.text('USD', margin + 128, y + 5);
+      doc.text('Status', margin + 144, y + 5);
       y += 8;
 
       // Invoice Table Rows
       doc.setFont('helvetica', 'normal');
       (consultant.invoices || []).forEach((inv) => {
-        if (y > 270) {
+        if (y > pageHeight - margin - 20) {
           doc.addPage();
           pageNum++;
           drawPageFrame(pageNum);
-          y = 20;
+          y = margin + 10;
         }
-        doc.setFontSize(7);
+        doc.setFontSize(6.5);
         doc.setTextColor(30, 41, 59);
         doc.text(inv.invoiceNo || '-', margin + 2, y + 4);
-        doc.text(inv.billingPeriod || '-', margin + 28, y + 4);
-        doc.text(inv.submissionDate || '-', margin + 52, y + 4);
-        doc.text(formatAccounting(inv.grossAmountEtb || 0, ''), margin + 78, y + 4);
-        doc.text(formatAccounting(inv.netAmountEtb || 0, ''), margin + 115, y + 4);
-        doc.text(`$${formatAccounting(inv.foreignCurrencyAmount || 0, '')}`, margin + 150, y + 4);
-        doc.text(inv.status || 'Submitted', margin + 168, y + 4);
+        doc.text(inv.billingPeriod || '-', margin + 24, y + 4);
+        doc.text(inv.submissionDate || '-', margin + 46, y + 4);
+        doc.text(formatAccounting(inv.grossAmountEtb || 0, ''), margin + 68, y + 4);
+        doc.text(formatAccounting(inv.netAmountEtb || 0, ''), margin + 98, y + 4);
+        doc.text(`$${formatAccounting(inv.foreignCurrencyAmount || 0, '')}`, margin + 128, y + 4);
+        doc.text(inv.status || 'Submitted', margin + 144, y + 4);
 
         doc.setDrawColor(241, 245, 249);
         doc.line(margin, y + 6, pageWidth - margin, y + 6);

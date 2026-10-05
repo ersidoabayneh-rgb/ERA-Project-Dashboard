@@ -29,7 +29,7 @@ import {
 import { Project, DlpDefect, User, ProjectLifecycleStatus } from '../types';
 import { getProjectDlpInfo } from '../lib/dlpUtils';
 import { formatDateStr } from '../lib/dateUtils';
-import { drawEraLogo, drawSafeTable, drawUniversalSignatureBlock } from '../lib/pdfReportEngine';
+import { drawEraLogo, drawSafeTable, drawUniversalSignatureBlock, STRICT_1_INCH_MARGIN } from '../lib/pdfReportEngine';
 
 interface DlpDefectModalProps {
   isOpen: boolean;
@@ -227,75 +227,78 @@ export default function DlpDefectModal({
 
     const pageWidth = doc.internal.pageSize.getWidth(); // 595.28 pt
     const pageHeight = doc.internal.pageSize.getHeight(); // 841.89 pt
-    const margin = 36;
-    const contentWidth = pageWidth - margin * 2; // 523.28 pt
+    const margin = STRICT_1_INCH_MARGIN; // Strict 1-inch border padding (72 pt)
+    const contentWidth = pageWidth - margin * 2; // 451.28 pt
 
     // 1. Header & ERA Logo
-    drawEraLogo(doc, margin, 26, 36, {
+    drawEraLogo(doc, margin + 4, margin + 4, 36, {
       withContainer: true,
       containerBg: [255, 255, 255],
       containerBorder: [16, 185, 129]
     });
 
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(13);
+    doc.setFontSize(12);
     doc.setTextColor(15, 23, 42); // slate-900
-    doc.text("ETHIOPIAN ROADS ADMINISTRATION", margin + 48, 40);
+    doc.text("ETHIOPIAN ROADS ADMINISTRATION", margin + 48, margin + 16);
 
-    doc.setFontSize(8.5);
+    doc.setFontSize(8);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(5, 150, 105); // emerald-600
-    doc.text("DEFECT LIABILITY PERIOD (DLP) REGISTER & INSPECTION REPORT", margin + 48, 53);
+    doc.text("DEFECT LIABILITY PERIOD (DLP) REGISTER & INSPECTION REPORT", margin + 48, margin + 28);
 
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
+    doc.setFontSize(7);
     doc.setTextColor(100, 116, 139);
-    doc.text(`Doc Ref: ERA/DLP/${project.id.slice(-8)}/${Date.now().toString().slice(-6)} • Date: ${new Date().toLocaleDateString('en-US', { dateStyle: 'full' })}`, margin + 48, 65);
+    doc.text(`Doc Ref: ERA/DLP/${project.id.slice(-8)}/${Date.now().toString().slice(-6)} • Date: ${new Date().toLocaleDateString('en-US', { dateStyle: 'full' })}`, margin + 48, margin + 38);
 
     // Divider line
     doc.setDrawColor(16, 185, 129);
-    doc.setLineWidth(1.5);
-    doc.line(margin, 74, margin + contentWidth, 74);
+    doc.setLineWidth(1.25);
+    doc.line(margin + 2, margin + 46, margin + contentWidth - 2, margin + 46);
 
-    let curY = 86;
+    let curY = margin + 54;
 
     // 2. Project Metadata Summary Card Box
     doc.setFillColor(248, 250, 252); // slate-50
     doc.setDrawColor(226, 232, 240); // slate-200
     doc.setLineWidth(0.75);
-    doc.roundedRect(margin, curY, contentWidth, 80, 6, 6, 'FD');
+    doc.roundedRect(margin, curY, contentWidth, 80, 4, 4, 'FD');
 
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9);
+    doc.setFontSize(8.5);
     doc.setTextColor(15, 23, 42);
-    doc.text(`PROJECT: ${project.name.toUpperCase()}`, margin + 10, curY + 16);
+    doc.text(`PROJECT: ${project.name.toUpperCase()}`, margin + 10, curY + 16, { maxWidth: contentWidth - 20 });
 
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
+    doc.setFontSize(7);
     doc.setTextColor(51, 65, 85);
 
+    const halfW = (contentWidth - 20) / 2;
+    const col2X = margin + halfW + 10;
+
     // Line 1: Employer & Contractor
-    doc.text(`Employer / Client: Ethiopian Roads Administration (ERA)`, margin + 10, curY + 30);
-    doc.text(`Contractor: ${project.contractor || 'N/A'}`, margin + 270, curY + 30);
+    doc.text(`Employer: Ethiopian Roads Administration (ERA)`, margin + 10, curY + 30);
+    doc.text(`Contractor: ${project.contractor || 'N/A'}`, col2X, curY + 30, { maxWidth: halfW });
 
     // Line 2: Consultant & Start Date
-    doc.text(`Supervision Consultant: ${project.consultant || 'N/A'}`, margin + 10, curY + 43);
-    doc.text(`DLP Start Date: ${dlpInfo.startDateStr}`, margin + 270, curY + 43);
+    doc.text(`Supervision Consultant: ${project.consultant || 'N/A'}`, margin + 10, curY + 43, { maxWidth: halfW - 10 });
+    doc.text(`DLP Start Date: ${dlpInfo.startDateStr}`, col2X, curY + 43);
 
     // Line 3: Expiry & Time Remaining
-    doc.text(`DLP Expiry Target: ${dlpInfo.endDateStr} (${dlpInfo.dlpDays} Calendar Days)`, margin + 10, curY + 56);
-    doc.text(`Time Remaining: ${dlpInfo.daysRemaining} Days (${dlpInfo.elapsedPct.toFixed(1)}% Elapsed)`, margin + 270, curY + 56);
+    doc.text(`DLP Expiry Target: ${dlpInfo.endDateStr} (${dlpInfo.dlpDays} Days)`, margin + 10, curY + 56);
+    doc.text(`Remaining: ${dlpInfo.daysRemaining} Days (${dlpInfo.elapsedPct.toFixed(1)}% Elapsed)`, col2X, curY + 56);
 
     // Line 4: Defects Summary
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(5, 150, 105);
-    doc.text(`Defects Register Summary: ${defectsList.length} Total Logged (${openCount} Open/Pending, ${rectifiedCount} Rectified)`, margin + 10, curY + 69);
+    doc.text(`Defects Register: ${defectsList.length} Total (${openCount} Open, ${rectifiedCount} Rectified)`, margin + 10, curY + 69);
 
-    curY += 92;
+    curY += 90;
 
     // 3. Defects Register Section Title
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9.5);
+    doc.setFontSize(9);
     doc.setTextColor(15, 23, 42);
     doc.text("REGISTERED DEFECTS & SITE DISTRESS LOG", margin, curY);
 
@@ -313,7 +316,7 @@ export default function DlpDefectModal({
 
     if (tableRows.length === 0) {
       doc.setFont('helvetica', 'italic');
-      doc.setFontSize(8.5);
+      doc.setFontSize(8);
       doc.setTextColor(100, 116, 139);
       doc.text("No defects currently logged for this project's Defect Liability Period.", margin, curY + 20);
       curY += 40;
@@ -325,39 +328,58 @@ export default function DlpDefectModal({
         headerBgColor: [15, 23, 42],
         headerTextColor: [255, 255, 255],
         columns: [
-          { header: '#', dataKey: 'no', width: 22, align: 'center' },
-          { header: 'Location / Station', dataKey: 'location', width: 85, align: 'left' },
-          { header: 'Severity', dataKey: 'severity', width: 52, align: 'center' },
-          { header: 'Defect Description & Contractor Action Required', dataKey: 'description', width: 215, align: 'left' },
-          { header: 'Reported By & Timestamp', dataKey: 'reportedBy', width: 88, align: 'left' },
-          { header: 'Status', dataKey: 'status', width: 61, align: 'center' },
+          { header: '#', dataKey: 'no', widthPercent: 6, align: 'center' },
+          { header: 'Location / Station', dataKey: 'location', widthPercent: 18, align: 'left' },
+          { header: 'Severity', dataKey: 'severity', widthPercent: 12, align: 'center' },
+          { header: 'Defect Description & Contractor Action Required', dataKey: 'description', widthPercent: 40, align: 'left' },
+          { header: 'Reported By & Timestamp', dataKey: 'reportedBy', widthPercent: 14, align: 'left' },
+          { header: 'Status', dataKey: 'status', widthPercent: 10, align: 'center' },
         ],
         rows: tableRows,
-        fontSize: 7,
-        headerFontSize: 7.5,
-        rowPadding: 4
+        fontSize: 6.5,
+        headerFontSize: 7,
+        rowPadding: 3
       });
     }
 
     // 4. Executive Signatures
     drawUniversalSignatureBlock(doc, currentUserObj, {
-      y: Math.max(curY + 10, pageHeight - 95),
+      y: Math.max(curY + 10, pageHeight - margin - 75),
       margin,
       contentWidth
     });
 
-    // Footer page numbers
-    const totalPages = doc.internal.pages.length - 1;
+    // 5. Post-processing Loop: Draw Strict 1-inch Page Borders and Footers across ALL pages
+    const totalPages = doc.getNumberOfPages();
     for (let i = 1; i <= totalPages; i++) {
       doc.setPage(i);
+
+      // Strict 1-inch Outer Page Border Frame
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.75);
+      doc.roundedRect(margin, margin, contentWidth, pageHeight - (margin * 2), 4, 4, 'S');
+
+      // Top green accent bar
+      doc.setFillColor(16, 185, 129);
+      doc.rect(margin + 2, margin + 1, contentWidth - 4, 3, 'F');
+
+      // Bottom footer line
+      doc.setDrawColor(226, 232, 240);
+      doc.line(margin + 2, pageHeight - margin - 20, pageWidth - margin - 2, pageHeight - margin - 20);
+
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(6.5);
       doc.setTextColor(148, 163, 184);
       doc.text(
-        `Ethiopian Roads Administration PMIS • DLP Defect Summary Report • Page ${i} of ${totalPages}`,
-        pageWidth / 2,
-        pageHeight - 12,
-        { align: 'center' }
+        `Ethiopian Roads Administration PMIS • DLP Defect Summary Report • ${project.name}`,
+        margin + 6,
+        pageHeight - margin - 8
+      );
+      doc.text(
+        `Page ${i} of ${totalPages}`,
+        pageWidth - margin - 6,
+        pageHeight - margin - 8,
+        { align: 'right' }
       );
     }
 

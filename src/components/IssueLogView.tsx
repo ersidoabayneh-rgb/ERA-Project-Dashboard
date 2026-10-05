@@ -375,6 +375,52 @@ const defaultSampleIssues: IssueLogItem[] = [
   }
 ];
 
+// Safe Date Parsing Helper that handles ISO, standard, and Month-in-word formats
+export function parseDateSafe(dStr?: string): Date {
+  if (!dStr) return new Date();
+  const trimmed = String(dStr).trim();
+  if (!trimmed) return new Date();
+  
+  // YYYY-MM-DD
+  const isoMatch = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (isoMatch) {
+    const year = parseInt(isoMatch[1], 10);
+    const month = parseInt(isoMatch[2], 10) - 1;
+    const day = parseInt(isoMatch[3], 10);
+    return new Date(year, month, day);
+  }
+
+  // DD-MM-YYYY or DD/MM/YYYY
+  const euMatch = trimmed.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+  if (euMatch) {
+    const day = parseInt(euMatch[1], 10);
+    const month = parseInt(euMatch[2], 10) - 1;
+    const year = parseInt(euMatch[3], 10);
+    return new Date(year, month, day);
+  }
+
+  const d = new Date(trimmed);
+  return isNaN(d.getTime()) ? new Date() : d;
+}
+
+// Consistent Month in Word format helper: e.g. "October 14, 2026"
+export function formatMonthWordDateYear(dateInput: any): string {
+  if (!dateInput) return 'N/A';
+  if (typeof dateInput === 'string') {
+    const trimmed = dateInput.trim();
+    if (!trimmed) return 'N/A';
+    const parsed = parseDateSafe(trimmed);
+    if (!isNaN(parsed.getTime())) {
+      return parsed.toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric' });
+    }
+    return trimmed;
+  }
+  if (dateInput instanceof Date && !isNaN(dateInput.getTime())) {
+    return dateInput.toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric' });
+  }
+  return String(dateInput);
+}
+
 export function getDepartmentTimeRecords(item: IssueLogItem): DeptTimeRecord[] {
   if (!item) return [];
 
@@ -387,18 +433,7 @@ export function getDepartmentTimeRecords(item: IssueLogItem): DeptTimeRecord[] {
 
   const resolvedDate = item.resolvedDate || (isClosed ? todayStr : undefined);
 
-  const parseDate = (dStr: string) => {
-    if (!dStr) return new Date();
-    const parts = dStr.split('-');
-    if (parts.length === 3) {
-      const year = parseInt(parts[0], 10);
-      const month = parseInt(parts[1], 10) - 1;
-      const day = parseInt(parts[2], 10);
-      return new Date(year, month, day);
-    }
-    const d = new Date(dStr);
-    return isNaN(d.getTime()) ? new Date() : d;
-  };
+  const parseDate = (dStr: string) => parseDateSafe(dStr);
 
   const getDiffDays = (startStr: string, endStr: string) => {
     const start = parseDate(startStr);
@@ -2187,7 +2222,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
     setHistoryNewStatusInput('');
   };
 
-  // Structured PDF Export for Single Issue Dossier
+  // Structured PDF Export for Single Issue Dossier (Sections 1 – 4 Only)
   const handleExportSingleIssuePdf = (issueToExport?: IssueLogItem) => {
     const item = issueToExport || selectedIssue;
     if (!item) return;
@@ -2208,7 +2243,18 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
       // Generous bottom margin ensures content never collides with footer divider and text
       if (curY + needed > pageHeight - 50) {
         doc.addPage();
-        curY = 42;
+        curY = 36;
+        // Running header on continuation pages for clean document framing
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7);
+        doc.setTextColor(100, 116, 139);
+        doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA) • ISSUE ESCALATION & TEAM TRANSFER DOSSIER", margin, curY);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`REF: ${item.issueCode}`, pageWidth - margin, curY, { align: 'right' });
+        doc.setDrawColor(226, 232, 240);
+        doc.setLineWidth(0.5);
+        doc.line(margin, curY + 4, margin + contentWidth, curY + 4);
+        curY += 16;
       }
     };
 
@@ -2225,6 +2271,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
     };
 
     // Standard Document Header: Official ERA Logo, Standard Title & Aligned Date Stamp
+    const submittedDateFormatted = formatMonthWordDateYear(item.submittedDate || new Date());
     curY = drawStandardDocumentHeader(doc, {
       margin,
       curY,
@@ -2234,11 +2281,16 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
       referenceNo: item.issueCode,
       titleColor: [37, 99, 235], // Blue
       statusBadge: `STATUS: ${item.currentStatus}`,
-      dateStamp: item.submittedDate || new Date()
+      dateStamp: submittedDateFormatted
     });
 
     // Project Info Card (Dynamic multi-line safe wrapping)
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
     const projNameLines = doc.splitTextToSize(`PROJECT: ${project.name}`, contentWidth - 20);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
     const subProjLines = doc.splitTextToSize(
       `Contractor: ${project.contractor || 'N/A'}   |   Consultant: ${project.consultant || 'N/A'}   |   Type: ${project.contractType || 'N/A'}`,
       contentWidth - 20
@@ -2268,6 +2320,8 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
     curY += projCardH + 8;
 
     // Issue Title Banner (Dynamic multi-line safe wrapping)
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9.5);
     const titleLines = doc.splitTextToSize(`ISSUE: ${item.title}`, contentWidth - 20);
     const titleBannerH = Math.max(28, (titleLines.length * 11) + 14);
     checkSpace(titleBannerH + 6);
@@ -2294,6 +2348,8 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
       { label: "CLAUSE REF", val: item.clauseReference || 'N/A', color: [15, 23, 42] },
     ];
 
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
     const keyBoxLines = keyBoxes.map(b => doc.splitTextToSize(b.val, colWidth - 12));
     const maxKeyBoxLines = Math.max(...keyBoxLines.map(lines => lines.length));
     const keyBoxH = Math.max(30, (maxKeyBoxLines * 9) + 18);
@@ -2347,23 +2403,30 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
 
     curY += 38;
 
-    // 2. Initial Description & Context (Safely wrapped with multi-line date metadata)
+    // 2. Initial Description & Context (Structured 2-column metadata to prevent any word overlap with Month-in-word dates)
     drawSectionHeader("2. Initial Issue Description & Context");
 
-    // Dynamic metadata lines - each line wrapped to prevent any word overlap even with long date format (Month in word DD, YYYY)
+    const submittedDateStr = formatMonthWordDateYear(item.submittedDate);
+    const lastUpdatedStr = formatMonthWordDateYear(item.lastUpdated || item.submittedDate);
+
+    // Dedicated two-column layout for metadata guarantees that long Month-in-word dates NEVER overlap other labels
+    const halfContentW = (contentWidth - 28) / 2;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7);
-    const metaRow1 = `SUBMITTED DATE: ${item.submittedDate}     •     LAST UPDATED: ${item.lastUpdated || item.submittedDate}`;
-    const metaRow2 = `SUBMITTED BY: ${item.submittedBy}     •     ASSIGNED TO: ${item.submittedTo || 'Initial Reviewing Team'}`;
-    const metaRow1Lines = doc.splitTextToSize(metaRow1, contentWidth - 24);
-    const metaRow2Lines = doc.splitTextToSize(metaRow2, contentWidth - 24);
+    const subDateLines = doc.splitTextToSize(`SUBMITTED DATE: ${submittedDateStr}`, halfContentW);
+    const updatedDateLines = doc.splitTextToSize(`LAST UPDATED: ${lastUpdatedStr}`, halfContentW);
+    const subByLines = doc.splitTextToSize(`SUBMITTED BY: ${item.submittedBy || 'N/A'}`, halfContentW);
+    const assignedToLines = doc.splitTextToSize(`ASSIGNED TO: ${item.submittedTo || 'Initial Reviewing Team'}`, halfContentW);
+
+    const row1LinesMax = Math.max(subDateLines.length, updatedDateLines.length);
+    const row2LinesMax = Math.max(subByLines.length, assignedToLines.length);
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     const descLines = doc.splitTextToSize(item.initialDescription || 'No initial description provided.', contentWidth - 24);
 
-    const metaBlockHeight = (metaRow1Lines.length * 9.5) + (metaRow2Lines.length * 9.5) + 8;
-    const descBoxHeight = 12 + metaBlockHeight + 6 + (descLines.length * 10) + 12;
+    const metaBlockHeight = (row1LinesMax * 9.5) + (row2LinesMax * 9.5) + 6;
+    const descBoxHeight = 12 + metaBlockHeight + 8 + (descLines.length * 10) + 12;
 
     checkSpace(descBoxHeight + 8);
     doc.setFillColor(248, 250, 252);
@@ -2375,14 +2438,21 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7);
     doc.setTextColor(71, 85, 105);
-    metaRow1Lines.forEach((l: string) => {
-      doc.text(l, margin + 10, descCurY);
+
+    // Row 1: Submitted Date (left) and Last Updated (right)
+    const rightColX = margin + 14 + halfContentW + 10;
+    for (let r = 0; r < row1LinesMax; r++) {
+      if (subDateLines[r]) doc.text(subDateLines[r], margin + 10, descCurY);
+      if (updatedDateLines[r]) doc.text(updatedDateLines[r], rightColX, descCurY);
       descCurY += 9.5;
-    });
-    metaRow2Lines.forEach((l: string) => {
-      doc.text(l, margin + 10, descCurY);
+    }
+
+    // Row 2: Submitted By (left) and Assigned To (right)
+    for (let r = 0; r < row2LinesMax; r++) {
+      if (subByLines[r]) doc.text(subByLines[r], margin + 10, descCurY);
+      if (assignedToLines[r]) doc.text(assignedToLines[r], rightColX, descCurY);
       descCurY += 9.5;
-    });
+    }
 
     // Divider line between metadata and description
     doc.setDrawColor(226, 232, 240);
@@ -2404,8 +2474,13 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
     // 3. Current Stage & Bottleneck (Safely wrapped)
     drawSectionHeader("3. Current Milestone Stage & Active Bottlenecks", [16, 185, 129]);
 
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
     const statusLineText = `CURRENT STATUS: ${item.currentStatus}   •   ACTIVE STAGE: ${item.currentStage}`;
     const statusLines = doc.splitTextToSize(statusLineText, contentWidth - 24);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
     const progressLines = doc.splitTextToSize(`Progress Summary: ${item.latestProgressSummary || 'N/A'}`, contentWidth - 24);
     const bottleLines = item.currentBottleneck 
       ? doc.splitTextToSize(`Active Bottleneck: ${item.currentBottleneck}`, contentWidth - 24) 
@@ -2460,34 +2535,48 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
 
       item.transfers.forEach((tr, index) => {
         const stepNum = index + 1;
-        const transferDateStr = tr.transferDate || 'N/A';
+        const transferDateFormatted = formatMonthWordDateYear(tr.transferDate);
         const stepRec = deptRecs[index];
+        const startDateFormatted = formatMonthWordDateYear(stepRec ? stepRec.startDate : item.submittedDate);
+        const endDateFormatted = formatMonthWordDateYear(stepRec ? stepRec.endDate : tr.transferDate);
         const deptTimeText = stepRec
-          ? `Time in Previous Dept: ${stepRec.daysTaken} Calendar Days   (${stepRec.startDate} → ${stepRec.endDate})`
+          ? `Time in Previous Dept: ${stepRec.daysTaken} Calendar Days   (${startDateFormatted} -> ${endDateFormatted})`
           : '';
 
-        // Safe multi-line text splits for headers, route, reason, action, and recommended course
-        const stepTitleText = `TRANSFER STEP #${stepNum}   •   DATE OF HANDOVER: ${transferDateStr}`;
+        // Explicitly set font and fontSize BEFORE splitting text so split sizes are exact
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8.5);
+        const stepTitleText = `TRANSFER STEP #${stepNum}   •   DATE OF HANDOVER: ${transferDateFormatted}`;
         const stepTitleLines = doc.splitTextToSize(stepTitleText, contentWidth - 24);
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
         const deptTimeLines = deptTimeText ? doc.splitTextToSize(deptTimeText, contentWidth - 24) : [];
-        const routeText = `ROUTE: FROM [${tr.transferredFrom || 'Originating Team'}]  ➔  TO [${tr.transferredTo || 'Assigned Team'}]`;
+        const fromTeam = tr.transferredFrom || 'Originating Team';
+        const toTeam = tr.transferredTo || 'Assigned Team';
+        const routeText = `ROUTE: FROM [${fromTeam}] -> TO [${toTeam}]`;
         const routeLines = doc.splitTextToSize(routeText, contentWidth - 24);
 
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
         const reasonLines = doc.splitTextToSize(tr.transferReason || 'No explicit reason specified.', contentWidth - 28);
         const actionLines = doc.splitTextToSize(tr.actionTakenByPreviousTeam || 'No previous actions documented.', contentWidth - 28);
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
         const recLines = doc.splitTextToSize(tr.recommendedCourseOfAction || 'No recommendation logged.', contentWidth - 28);
 
         // Calculate card height dynamically so no text ever overlaps
         let blockHeight = 12; // top padding
         blockHeight += (stepTitleLines.length * 10);
         if (deptTimeLines.length > 0) {
-          blockHeight += (deptTimeLines.length * 9) + 2;
+          blockHeight += (deptTimeLines.length * 9.5) + 3;
         }
         blockHeight += (routeLines.length * 9.5) + 4; // route
         blockHeight += 8; // divider line + spacing
         blockHeight += 9 + (reasonLines.length * 9) + 4; // reason
         blockHeight += 9 + (actionLines.length * 9) + 4; // action
-        blockHeight += 9 + (recLines.length * 9) + 10; // recommendation + bottom padding
+        blockHeight += 9 + (recLines.length * 9) + 12; // recommendation + bottom padding
 
         checkSpace(blockHeight + 10);
 
@@ -2502,7 +2591,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
         doc.setFontSize(8.5);
         doc.setTextColor(107, 33, 168); // purple-800
         stepTitleLines.forEach((l: string) => {
-          doc.text(l, margin + 10, cardY);
+          doc.text(l, margin + 10, cardY, { maxWidth: contentWidth - 24 });
           cardY += 10;
         });
 
@@ -2512,10 +2601,10 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
           doc.setFontSize(7.5);
           doc.setTextColor(126, 34, 206); // purple-700
           deptTimeLines.forEach((l: string) => {
-            doc.text(l, margin + 10, cardY);
-            cardY += 9;
+            doc.text(l, margin + 10, cardY, { maxWidth: contentWidth - 24 });
+            cardY += 9.5;
           });
-          cardY += 2;
+          cardY += 3;
         }
 
         // Route Line(s)
@@ -2523,7 +2612,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
         doc.setFontSize(7.5);
         doc.setTextColor(30, 41, 59); // slate-800
         routeLines.forEach((l: string) => {
-          doc.text(l, margin + 10, cardY);
+          doc.text(l, margin + 10, cardY, { maxWidth: contentWidth - 24 });
           cardY += 9.5;
         });
 
@@ -2596,29 +2685,49 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
     }
 
     // Formal Verification & Endorsement Box at conclusion of Section 4 (Sections 1 – 4 Only)
-    checkSpace(44);
+    const printDateStr = formatMonthWordDateYear(new Date());
+    const closeoutHeader = "CONTRACTUAL ISSUE DOSSIER VERIFICATION & AUDIT CLOSE-OUT (SECTIONS 1 – 4)";
+    const closeoutSub1 = `Official dossier verified under ERA Contract Administration procedures. Issued for Ref: ${item.issueCode} • ${project.name}`;
+    const closeoutSub2 = `Generated: ${printDateStr}   |   Review Authority: ${item.submittedTo || 'ERA Directorate'}   |   Current Status: ${item.currentStatus}`;
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    const sub1Lines = doc.splitTextToSize(closeoutSub1, contentWidth - 20);
+    const sub2Lines = doc.splitTextToSize(closeoutSub2, contentWidth - 20);
+
+    const closeoutBoxH = 12 + 10 + 4 + (sub1Lines.length * 9) + 4 + (sub2Lines.length * 9) + 8;
+    checkSpace(closeoutBoxH + 10);
+
     doc.setFillColor(248, 250, 252);
     doc.setDrawColor(203, 213, 225);
     doc.setLineWidth(0.75);
-    doc.roundedRect(margin, curY, contentWidth, 36, 3, 3, 'DF');
+    doc.roundedRect(margin, curY, contentWidth, closeoutBoxH, 3, 3, 'DF');
 
+    let closeoutY = curY + 11;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7);
     doc.setTextColor(71, 85, 105);
-    doc.text("CONTRACTUAL ISSUE DOSSIER VERIFICATION & AUDIT CLOSE-OUT (SECTIONS 1 – 4)", margin + 10, curY + 11);
+    doc.text(closeoutHeader, margin + 10, closeoutY);
+    closeoutY += 10;
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(6.5);
     doc.setTextColor(100, 116, 139);
-    doc.text(`Official dossier verified under ERA Contract Administration procedures. Issued for Ref: ${item.issueCode} • ${project.name}`, margin + 10, curY + 20);
+    sub1Lines.forEach((l: string) => {
+      doc.text(l, margin + 10, closeoutY);
+      closeoutY += 9;
+    });
+    closeoutY += 3;
 
-    const printDateStr = new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'long', year: 'numeric' });
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(6.5);
     doc.setTextColor(30, 41, 59);
-    doc.text(`Generated: ${printDateStr}   |   Review Authority: ${item.submittedTo || 'ERA Directorate'}   |   Current Status: ${item.currentStatus}`, margin + 10, curY + 29);
+    sub2Lines.forEach((l: string) => {
+      doc.text(l, margin + 10, closeoutY);
+      closeoutY += 9;
+    });
 
-    curY += 44;
+    curY += closeoutBoxH + 12;
 
     // Post-processing Loop: Draw Crisp Proper Page Borders and Footers across ALL pages
     const totalPages = doc.getNumberOfPages();

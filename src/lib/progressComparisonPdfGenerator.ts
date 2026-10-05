@@ -3,7 +3,8 @@ import { Project, User, ProgressPlan, ProgressPlanHistoryItem } from '../types';
 import { 
   drawStandardPdfPageFrame, 
   drawSafeTable, 
-  getCredentialSignatures 
+  getCredentialSignatures,
+  STRICT_1_INCH_MARGIN
 } from './pdfReportEngine';
 
 export interface ProgressComparisonPdfOptions {
@@ -33,7 +34,7 @@ export function generateProgressComparisonPdf({
   const doc = new jsPDF('l', 'pt', 'a4');
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
-  const margin = 36;
+  const margin = STRICT_1_INCH_MARGIN; // Strict 1-inch border padding (72 pt)
   const contentWidth = pageWidth - (margin * 2);
   const totalLength = project.lengthKm || 65.0;
 
@@ -164,16 +165,16 @@ export function generateProgressComparisonPdf({
   // Section 2: Complete Historical Milestone Snapshots Record
   if (includeHistoryTable && historyList.length > 0) {
     // If not enough room on page 1, add page 2
-    if (curY + (historyList.length * 14) + 120 > pageHeight - 60) {
+    if (curY + (historyList.length * 14) + 120 > pageHeight - margin - 35) {
       doc.addPage();
       pageNumber++;
-      drawStandardPdfPageFrame(doc, pageNumber, 2, {
+      const frame2 = drawStandardPdfPageFrame(doc, pageNumber, 2, {
         margin,
         title: "ETHIOPIAN ROADS ADMINISTRATION (ERA) • MONTHLY STATUS AUDIT TRAIL",
         subtitle: `PROJECT: ${(project.name || '').toUpperCase()}`,
         footerText: "CONFIDENTIAL • ETHIOPIAN ROADS ADMINISTRATION • OFFICIAL MONTHLY STATUS AUDIT RECORD"
       });
-      curY = margin + 35;
+      curY = frame2.contentY;
     }
 
     doc.setFont('helvetica', 'bold');
@@ -218,16 +219,16 @@ export function generateProgressComparisonPdf({
   // Section 3: Necessary Verification & Approval Views on the PDF
   if (includeVerificationStamps) {
     const requiredStampHeight = 90;
-    if (curY + requiredStampHeight > pageHeight - 45) {
+    if (curY + requiredStampHeight > pageHeight - margin - 35) {
       doc.addPage();
       pageNumber++;
-      drawStandardPdfPageFrame(doc, pageNumber, pageNumber, {
+      const frame3 = drawStandardPdfPageFrame(doc, pageNumber, pageNumber, {
         margin,
         title: "ETHIOPIAN ROADS ADMINISTRATION (ERA) • REVIEW & SIGN-OFF",
         subtitle: `PROJECT: ${(project.name || '').toUpperCase()}`,
         footerText: "CONFIDENTIAL • ETHIOPIAN ROADS ADMINISTRATION • OFFICIAL MONTHLY STATUS AUDIT RECORD"
       });
-      curY = margin + 35;
+      curY = frame3.contentY;
     }
 
     doc.setDrawColor(203, 213, 225); // slate-300

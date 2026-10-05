@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { formatDateStr, getRevisedCompletionDateStr, parseLocalDate } from '../lib/dateUtils';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
-import { drawEraLogo, drawSafeText } from '../lib/pdfReportEngine';
+import { drawEraLogo, drawSafeText, STRICT_1_INCH_MARGIN } from '../lib/pdfReportEngine';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Building, 
@@ -1230,24 +1230,26 @@ export default function DashboardView({
 
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
+        const margin = STRICT_1_INCH_MARGIN; // Strict 1-inch border padding (72 pt)
+        const contentWidth = pageWidth - (margin * 2);
         const p = project;
 
-        let curY = 40;
+        let curY = margin + 54;
 
         const drawHeaderAndBorders = () => {
           if (!pdfConfig.includeHeaderBorders) return;
 
-          // Outer boundary frame
+          // Outer boundary frame strictly at 1-inch margin
           doc.setDrawColor(226, 232, 240);
           doc.setLineWidth(0.75);
-          doc.roundedRect(30, 30, pageWidth - 60, pageHeight - 60, 4, 4, 'S');
+          doc.roundedRect(margin, margin, contentWidth, pageHeight - (margin * 2), 4, 4, 'S');
 
           // Top Header Box
           doc.setFillColor(15, 23, 42); // slate-900
-          doc.roundedRect(40, 40, pageWidth - 80, 44, 4, 4, 'F');
+          doc.roundedRect(margin + 4, margin + 4, contentWidth - 8, 44, 4, 4, 'F');
           
           // ERA Logo
-          drawEraLogo(doc, 46, 44, 36, {
+          drawEraLogo(doc, margin + 10, margin + 8, 36, {
             withContainer: true,
             containerBg: [255, 255, 255],
             containerBorder: [226, 232, 240],
@@ -1256,47 +1258,48 @@ export default function DashboardView({
 
           // Date Stamp
           const dsW = 105;
-          const dsX = pageWidth - 40 - dsW - 6;
+          const dsX = pageWidth - margin - dsW - 10;
           doc.setFillColor(30, 41, 59);
           doc.setDrawColor(71, 85, 105);
           doc.setLineWidth(0.75);
-          doc.roundedRect(dsX, 44, dsW, 36, 3, 3, 'DF');
+          doc.roundedRect(dsX, margin + 8, dsW, 36, 3, 3, 'DF');
 
           doc.setFont('helvetica', 'bold');
           doc.setFontSize(5.5);
           doc.setTextColor(148, 163, 184);
-          doc.text("OFFICIAL DATE STAMP", dsX + 6, 54);
+          doc.text("OFFICIAL DATE STAMP", dsX + 6, margin + 18);
 
           doc.setFont('helvetica', 'bold');
           doc.setFontSize(8);
           doc.setTextColor(255, 255, 255);
-          doc.text(new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' }), dsX + 6, 64);
+          doc.text(new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' }), dsX + 6, margin + 28);
 
           doc.setFont('helvetica', 'normal');
           doc.setFontSize(5.5);
           doc.setTextColor(203, 213, 225);
-          doc.text("PMO EXECUTIVE AUDIT", dsX + 6, 73);
+          doc.text("PMO EXECUTIVE AUDIT", dsX + 6, margin + 37);
 
+          const titleStartX = margin + 52;
           doc.setTextColor(255, 255, 255);
           doc.setFont('helvetica', 'bold');
-          doc.setFontSize(11);
-          doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA)", 90, 58);
+          doc.setFontSize(10.5);
+          doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA)", titleStartX, margin + 22);
 
           doc.setFont('helvetica', 'normal');
-          doc.setFontSize(8);
+          doc.setFontSize(7.5);
           doc.setTextColor(203, 213, 225);
-          doc.text(`FEDERAL EXECUTIVE PMO • PROJECT: ${(p.name || '').slice(0, 30).toUpperCase()}`, 90, 71);
+          doc.text(`FEDERAL EXECUTIVE PMO • PROJECT: ${(p.name || '').slice(0, 30).toUpperCase()}`, titleStartX, margin + 35);
 
-          curY = 96;
+          curY = margin + 54;
         };
 
         const ensureSpace = (neededHeight: number) => {
-          if (curY === 40 && pdfConfig.includeHeaderBorders) {
+          if (curY === margin + 54 && pdfConfig.includeHeaderBorders) {
             drawHeaderAndBorders();
           }
-          if (curY + neededHeight > pageHeight - 65) {
+          if (curY + neededHeight > pageHeight - margin - 28) {
             doc.addPage();
-            curY = 40;
+            curY = margin + 54;
             if (pdfConfig.includeHeaderBorders) {
               drawHeaderAndBorders();
             }
@@ -1307,7 +1310,7 @@ export default function DashboardView({
         if (pdfConfig.includeHeaderBorders) {
           drawHeaderAndBorders();
         } else {
-          curY = 40;
+          curY = margin + 14;
         }
 
         // 1. Module 1: Project Metadata Profile
@@ -1738,20 +1741,20 @@ export default function DashboardView({
           doc.setPage(i);
 
           if (pdfConfig.includeHeaderBorders) {
-            // Clean outer page border
+            // Clean outer page border strictly at 1-inch margin
             doc.setDrawColor(226, 232, 240);
             doc.setLineWidth(0.75);
-            doc.roundedRect(30, 30, pageWidth - 60, pageHeight - 60, 4, 4, 'S');
+            doc.roundedRect(margin, margin, contentWidth, pageHeight - (margin * 2), 4, 4, 'S');
 
             // Bottom footer line and text
             doc.setDrawColor(226, 232, 240);
-            doc.line(40, pageHeight - 45, pageWidth - 40, pageHeight - 45);
+            doc.line(margin + 2, pageHeight - margin - 20, pageWidth - margin - 2, pageHeight - margin - 20);
             doc.setFont('helvetica', 'normal');
             doc.setFontSize(7);
             doc.setTextColor(148, 163, 184);
-            doc.text("CONFIDENTIAL • ETHIOPIAN ROADS ADMINISTRATION • OFFICIAL EXECUTIVE AUDIT DOSSIER", 40, pageHeight - 32);
+            doc.text("CONFIDENTIAL • ETHIOPIAN ROADS ADMINISTRATION • OFFICIAL EXECUTIVE AUDIT DOSSIER", margin + 6, pageHeight - margin - 8);
             doc.setFont('helvetica', 'bold');
-            doc.text(`Page ${i} of ${totalPages}`, pageWidth - 40, pageHeight - 32, { align: 'right' });
+            doc.text(`Page ${i} of ${totalPages}`, pageWidth - margin - 6, pageHeight - margin - 8, { align: 'right' });
           }
         }
 

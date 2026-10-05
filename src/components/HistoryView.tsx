@@ -31,7 +31,7 @@ import {
   getFidicRecommendations 
 } from '../lib/fidicClauseEngine';
 import eraLogo from '../assets/logo.png';
-import { drawEraLogo } from '../lib/pdfReportEngine';
+import { drawEraLogo, STRICT_1_INCH_MARGIN } from '../lib/pdfReportEngine';
 import ChangelogAuditHistory from './ChangelogAuditHistory';
 
 export interface InconsistencyAlert {
@@ -929,45 +929,51 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
 
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = STRICT_1_INCH_MARGIN; // Strict 1-inch border padding (72 pt)
+    const contentWidth = pageWidth - (margin * 2);
     
-    let curY = 115;
+    let curY = margin + 56;
     let pageCount = 1;
 
     const drawPageDecorations = () => {
       // Running Header (from page 2 onwards)
       if (pageCount > 1) {
-        drawEraLogo(doc, 40, 24, 18, { withContainer: true, borderRadius: 2 });
+        drawEraLogo(doc, margin + 4, margin + 4, 18, { withContainer: true, borderRadius: 2 });
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(7);
         doc.setTextColor(15, 23, 42); // slate-900
-        doc.text("ETHIOPIAN ROADS ADMINISTRATION", 64, 34);
+        doc.text("ETHIOPIAN ROADS ADMINISTRATION", margin + 26, margin + 14);
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(100, 116, 139); // slate-500
-        doc.text("• CONTRACT COMPLIANCE & PERFORMANCE AUDIT", 205, 34);
+        doc.text("• CONTRACT COMPLIANCE & PERFORMANCE AUDIT", margin + 175, margin + 14);
         doc.setDrawColor(226, 232, 240); // slate-200
-        doc.line(40, 44, pageWidth - 40, 44);
+        doc.line(margin + 2, margin + 24, pageWidth - margin - 2, margin + 24);
       }
 
-      // Page border
+      // Page border strictly at 1-inch (72 pt) margin
       doc.setDrawColor(226, 232, 240);
       doc.setLineWidth(0.75);
-      doc.roundedRect(30, 18, pageWidth - 60, pageHeight - 36, 3, 3, 'S');
+      doc.roundedRect(margin, margin, contentWidth, pageHeight - (margin * 2), 4, 4, 'S');
+
+      // Top colored accent bar
+      doc.setFillColor(37, 99, 235);
+      doc.rect(margin + 2, margin + 1, contentWidth - 4, 3, 'F');
 
       // Running Footer
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7);
       doc.setTextColor(148, 163, 184); // slate-400
       doc.setDrawColor(226, 232, 240);
-      doc.line(40, pageHeight - 40, pageWidth - 40, pageHeight - 40);
-      doc.text(`CONFIDENTIAL - BOARD REGULATORY REPORT • PROJECT: ${(p.name || 'Untitled Project').toUpperCase()}`, 40, pageHeight - 28);
-      doc.text(`Page ${pageCount}`, pageWidth - 70, pageHeight - 28);
+      doc.line(margin + 2, pageHeight - margin - 20, pageWidth - margin - 2, pageHeight - margin - 20);
+      doc.text(`CONFIDENTIAL - BOARD REGULATORY REPORT • PROJECT: ${(p.name || 'Untitled Project').toUpperCase()}`, margin + 6, pageHeight - margin - 8);
+      doc.text(`Page ${pageCount}`, pageWidth - margin - 6, pageHeight - margin - 8, { align: 'right' });
       pageCount++;
     };
 
     const checkSpace = (needed: number) => {
-      if (curY + needed > pageHeight - 65) {
+      if (curY + needed > pageHeight - margin - 28) {
         doc.addPage();
-        curY = 60;
+        curY = margin + 32;
         drawPageDecorations();
       }
     };
@@ -975,12 +981,12 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     const drawSectionHeader = (title: string) => {
       checkSpace(40);
       doc.setFillColor(37, 99, 235); // blue-600
-      doc.rect(40, curY - 9, 3.5, 11, 'F'); // draw vertical rectangle
+      doc.rect(margin, curY - 9, 3.5, 11, 'F'); // draw vertical rectangle
       
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(9.5);
       doc.setTextColor(15, 23, 42); // slate-900
-      doc.text(title, 48, curY);
+      doc.text(title, margin + 8, curY);
       curY += 18;
     };
 
@@ -988,7 +994,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     drawPageDecorations(); // Initializes pageCount to 1, sets up first footer
 
     // Draw official ERA Logo
-    drawEraLogo(doc, 40, 46, 36, {
+    drawEraLogo(doc, margin + 4, margin + 6, 36, {
       withContainer: true,
       containerBg: [255, 255, 255],
       containerBorder: [226, 232, 240],
@@ -997,50 +1003,51 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
 
     // Official Date Stamp Container (Top-Right, aligned with ERA Logo)
     const dateStampW = 120;
-    const dateStampX = pageWidth - 40 - dateStampW;
+    const dateStampX = pageWidth - margin - dateStampW - 4;
     doc.setFillColor(248, 250, 252);
     doc.setDrawColor(226, 232, 240);
     doc.setLineWidth(0.75);
-    doc.roundedRect(dateStampX, 46, dateStampW, 36, 4, 4, 'DF');
+    doc.roundedRect(dateStampX, margin + 6, dateStampW, 36, 4, 4, 'DF');
 
     const auditDateStr = new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' });
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(6);
     doc.setTextColor(100, 116, 139);
-    doc.text("OFFICIAL DATE STAMP", dateStampX + 8, 56);
+    doc.text("OFFICIAL DATE STAMP", dateStampX + 8, margin + 16);
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8.5);
     doc.setTextColor(15, 23, 42);
-    doc.text(auditDateStr, dateStampX + 8, 66);
+    doc.text(auditDateStr, dateStampX + 8, margin + 26);
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(6);
     doc.setTextColor(71, 85, 105);
-    doc.text(`REF: ERA-AUD-${new Date().getFullYear()} • OFFICIAL`, dateStampX + 8, 75);
+    doc.text(`REF: ERA-AUD-${new Date().getFullYear()} • OFFICIAL`, dateStampX + 8, margin + 35);
 
     // Header Title Text matching print layout precisely
-    const titleMaxWidth = dateStampX - 85 - 10;
+    const titleStartX = margin + 48;
+    const titleMaxWidth = dateStampX - titleStartX - 10;
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(11);
+    doc.setFontSize(10.5);
     doc.setTextColor(15, 23, 42);
-    doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA)", 85, 57);
+    doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA)", titleStartX, margin + 17);
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8.5);
     doc.setTextColor(37, 99, 235); // blue-600
     const splitTitle = doc.splitTextToSize("FEDERAL ROAD PROJECT COMPLIANCE & PERFORMANCE AUDIT REPORT", titleMaxWidth);
-    doc.text(splitTitle[0], 85, 68);
+    doc.text(splitTitle[0], titleStartX, margin + 28);
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7);
     doc.setTextColor(100, 116, 139); // slate-500
     const subTitleProj = doc.splitTextToSize(`PROJECT: ${(p.name || 'Untitled').slice(0, 45)}   •   STATUS: OFFICIAL AUDIT`, titleMaxWidth);
-    doc.text(subTitleProj[0], 85, 78);
+    doc.text(subTitleProj[0], titleStartX, margin + 38);
 
     // Solid border partition below main header
     doc.setFillColor(30, 41, 59); // slate-800
-    doc.rect(40, 94, pageWidth - 80, 1.5, 'F');
+    doc.rect(margin + 2, margin + 48, contentWidth - 4, 1.5, 'F');
 
     // Section 1: Project Identification Profile
     drawSectionHeader("1. Project Identification Profile");
@@ -1049,7 +1056,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     // Profile card container rectangle
     doc.setFillColor(248, 250, 252); // slate-50
     doc.setDrawColor(226, 232, 240); // slate-200
-    doc.rect(40, curY, pageWidth - 80, 85, 'DF');
+    doc.rect(margin, curY, contentWidth, 85, 'DF');
 
     doc.setFontSize(7.5);
     
@@ -1637,14 +1644,14 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     const doc = new jsPDF('p', 'pt', 'a4');
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
-    const margin = 36;
-    const usableWidth = pageWidth - (margin * 2); // 523.28 pt
-    let curY = 36;
+    const margin = STRICT_1_INCH_MARGIN; // Strict 1-inch border padding (72 pt)
+    const usableWidth = pageWidth - (margin * 2); // 451.28 pt
+    let curY = margin + 14;
 
     const checkSpace = (needed: number) => {
-      if (curY + needed > pageHeight - 45) {
+      if (curY + needed > pageHeight - margin - 28) {
         doc.addPage();
-        curY = 36;
+        curY = margin + 16;
         return true;
       }
       return false;
@@ -1897,18 +1904,40 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7.5);
     doc.setTextColor(100, 116, 139);
-    doc.text("VERIFIED BY LEAD RESIDENT ENGINEER / PMO", margin + 15, curY + 12);
-    doc.text("ENDORSED BY CPMP DIRECTOR / ERA AUDIT", margin + 285, curY + 12);
+    const halfSignW = (usableWidth - 30) / 2;
+    doc.text("VERIFIED BY LEAD RESIDENT ENGINEER / PMO", margin + 10, curY + 12);
+    doc.text("ENDORSED BY CPMP DIRECTOR / ERA AUDIT", margin + halfSignW + 20, curY + 12);
 
     doc.setDrawColor(203, 213, 225);
-    doc.line(margin + 15, curY + 34, margin + 210, curY + 34);
-    doc.line(margin + 285, curY + 34, margin + 480, curY + 34);
+    doc.line(margin + 10, curY + 34, margin + 10 + halfSignW, curY + 34);
+    doc.line(margin + halfSignW + 20, curY + 34, margin + usableWidth - 10, curY + 34);
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(6.5);
     doc.setTextColor(148, 163, 184);
-    doc.text("SIGNATURE & OFFICIAL SEAL", margin + 15, curY + 43);
-    doc.text("SIGNATURE & OFFICIAL CPMP STAMP", margin + 285, curY + 43);
+    doc.text("SIGNATURE & OFFICIAL SEAL", margin + 10, curY + 43);
+    doc.text("SIGNATURE & OFFICIAL CPMP STAMP", margin + halfSignW + 20, curY + 43);
+
+    // Strict 1-inch Border Frame on all pages
+    const totalPages = doc.getNumberOfPages();
+    for (let pIdx = 1; pIdx <= totalPages; pIdx++) {
+      doc.setPage(pIdx);
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.75);
+      doc.roundedRect(margin, margin, usableWidth, pageHeight - (margin * 2), 4, 4, 'S');
+
+      // Top colored accent bar
+      doc.setFillColor(245, 158, 11); // Amber
+      doc.rect(margin + 2, margin + 1, usableWidth - 4, 3, 'F');
+
+      // Bottom footer line
+      doc.line(margin + 2, pageHeight - margin - 20, pageWidth - margin - 2, pageHeight - margin - 20);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.5);
+      doc.setTextColor(148, 163, 184);
+      doc.text(`ETHIOPIAN ROADS ADMINISTRATION • CONTRACTOR PERFORMANCE LEDGER • ${p.name || 'PROJECT'}`, margin + 6, pageHeight - margin - 8);
+      doc.text(`Page ${pIdx} of ${totalPages}`, pageWidth - margin - 6, pageHeight - margin - 8, { align: 'right' });
+    }
 
     const titleClean = customSemesterTitle ? customSemesterTitle.replace(/[^a-zA-Z0-9]/g, '_') : (p.name ? p.name.replace(/\s+/g, '_') : 'Project');
     doc.save(`ERA_Contractor_Grading_${titleClean}.pdf`);
@@ -1923,14 +1952,14 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     const doc = new jsPDF('p', 'pt', 'a4');
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
-    const margin = 36;
-    const usableWidth = pageWidth - (margin * 2); // 523.28 pt
-    let curY = 36;
+    const margin = STRICT_1_INCH_MARGIN; // Strict 1-inch border padding (72 pt)
+    const usableWidth = pageWidth - (margin * 2); // 451.28 pt
+    let curY = margin + 14;
 
     const checkSpace = (needed: number) => {
-      if (curY + needed > pageHeight - 45) {
+      if (curY + needed > pageHeight - margin - 28) {
         doc.addPage();
-        curY = 36;
+        curY = margin + 16;
         return true;
       }
       return false;
@@ -2188,18 +2217,40 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7.5);
     doc.setTextColor(100, 116, 139);
-    doc.text("VERIFIED BY LEAD RESIDENT ENGINEER / PMO", margin + 15, curY + 12);
-    doc.text("ENDORSED BY CPMP DIRECTOR / ERA AUDIT", margin + 285, curY + 12);
+    const halfSignW = (usableWidth - 30) / 2;
+    doc.text("VERIFIED BY LEAD RESIDENT ENGINEER / PMO", margin + 10, curY + 12);
+    doc.text("ENDORSED BY CPMP DIRECTOR / ERA AUDIT", margin + halfSignW + 20, curY + 12);
 
     doc.setDrawColor(203, 213, 225);
-    doc.line(margin + 15, curY + 34, margin + 210, curY + 34);
-    doc.line(margin + 285, curY + 34, margin + 480, curY + 34);
+    doc.line(margin + 10, curY + 34, margin + 10 + halfSignW, curY + 34);
+    doc.line(margin + halfSignW + 20, curY + 34, margin + usableWidth - 10, curY + 34);
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(6.5);
     doc.setTextColor(148, 163, 184);
-    doc.text("SIGNATURE & OFFICIAL SEAL", margin + 15, curY + 43);
-    doc.text("SIGNATURE & OFFICIAL CPMP STAMP", margin + 285, curY + 43);
+    doc.text("SIGNATURE & OFFICIAL SEAL", margin + 10, curY + 43);
+    doc.text("SIGNATURE & OFFICIAL CPMP STAMP", margin + halfSignW + 20, curY + 43);
+
+    // Strict 1-inch Border Frame on all pages
+    const totalPages = doc.getNumberOfPages();
+    for (let pIdx = 1; pIdx <= totalPages; pIdx++) {
+      doc.setPage(pIdx);
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.75);
+      doc.roundedRect(margin, margin, usableWidth, pageHeight - (margin * 2), 4, 4, 'S');
+
+      // Top colored accent bar
+      doc.setFillColor(79, 70, 229); // Indigo
+      doc.rect(margin + 2, margin + 1, usableWidth - 4, 3, 'F');
+
+      // Bottom footer line
+      doc.line(margin + 2, pageHeight - margin - 20, pageWidth - margin - 2, pageHeight - margin - 20);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.5);
+      doc.setTextColor(148, 163, 184);
+      doc.text(`ETHIOPIAN ROADS ADMINISTRATION • SUPERVISION CONSULTANT PERFORMANCE LEDGER • ${p.name || 'PROJECT'}`, margin + 6, pageHeight - margin - 8);
+      doc.text(`Page ${pIdx} of ${totalPages}`, pageWidth - margin - 6, pageHeight - margin - 8, { align: 'right' });
+    }
 
     const titleClean = customSemesterTitle ? customSemesterTitle.replace(/[^a-zA-Z0-9]/g, '_') : (p.name ? p.name.replace(/\s+/g, '_') : 'Project');
     doc.save(`ERA_Supervision_Consultant_Grading_${titleClean}.pdf`);
@@ -2214,14 +2265,14 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     const doc = new jsPDF('p', 'pt', 'a4');
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
-    const margin = 36;
-    const usableWidth = pageWidth - (margin * 2); // 523.28 pt
-    let curY = 36;
+    const margin = STRICT_1_INCH_MARGIN; // Strict 1-inch border padding (72 pt)
+    const usableWidth = pageWidth - (margin * 2); // 451.28 pt
+    let curY = margin + 14;
 
     const checkSpace = (needed: number) => {
-      if (curY + needed > pageHeight - 45) {
+      if (curY + needed > pageHeight - margin - 28) {
         doc.addPage();
-        curY = 36;
+        curY = margin + 16;
         return true;
       }
       return false;
@@ -2517,18 +2568,40 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7.5);
     doc.setTextColor(100, 116, 139);
-    doc.text("VERIFIED BY LEAD RESIDENT ENGINEER / PMO", margin + 15, curY + 12);
-    doc.text("ENDORSED BY CPMP DIRECTOR / ERA AUDIT", margin + 285, curY + 12);
+    const halfSignW = (usableWidth - 30) / 2;
+    doc.text("VERIFIED BY LEAD RESIDENT ENGINEER / PMO", margin + 10, curY + 12);
+    doc.text("ENDORSED BY CPMP DIRECTOR / ERA AUDIT", margin + halfSignW + 20, curY + 12);
 
     doc.setDrawColor(203, 213, 225);
-    doc.line(margin + 15, curY + 34, margin + 210, curY + 34);
-    doc.line(margin + 285, curY + 34, margin + 480, curY + 34);
+    doc.line(margin + 10, curY + 34, margin + 10 + halfSignW, curY + 34);
+    doc.line(margin + halfSignW + 20, curY + 34, margin + usableWidth - 10, curY + 34);
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(6.5);
     doc.setTextColor(148, 163, 184);
-    doc.text("SIGNATURE & OFFICIAL SEAL", margin + 15, curY + 43);
-    doc.text("SIGNATURE & OFFICIAL CPMP STAMP", margin + 285, curY + 43);
+    doc.text("SIGNATURE & OFFICIAL SEAL", margin + 10, curY + 43);
+    doc.text("SIGNATURE & OFFICIAL CPMP STAMP", margin + halfSignW + 20, curY + 43);
+
+    // Strict 1-inch Border Frame on all pages
+    const totalPages = doc.getNumberOfPages();
+    for (let pIdx = 1; pIdx <= totalPages; pIdx++) {
+      doc.setPage(pIdx);
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.75);
+      doc.roundedRect(margin, margin, usableWidth, pageHeight - (margin * 2), 4, 4, 'S');
+
+      // Top colored accent bar
+      doc.setFillColor(15, 23, 42); // Slate-900
+      doc.rect(margin + 2, margin + 1, usableWidth - 4, 3, 'F');
+
+      // Bottom footer line
+      doc.line(margin + 2, pageHeight - margin - 20, pageWidth - margin - 2, pageHeight - margin - 20);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.5);
+      doc.setTextColor(148, 163, 184);
+      doc.text(`ETHIOPIAN ROADS ADMINISTRATION • CONSOLIDATED PERFORMANCE LEDGER • ${p.name || 'PROJECT'}`, margin + 6, pageHeight - margin - 8);
+      doc.text(`Page ${pIdx} of ${totalPages}`, pageWidth - margin - 6, pageHeight - margin - 8, { align: 'right' });
+    }
 
     doc.save(`ERA_Consolidated_Monthly_Grading_Ledger_${p.name ? p.name.replace(/\s+/g, '_') : 'Project'}.pdf`);
   };

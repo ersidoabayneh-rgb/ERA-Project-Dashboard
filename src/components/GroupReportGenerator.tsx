@@ -68,7 +68,7 @@ import {
   setStoredEfyYear, 
   subscribeEfyYearChange 
 } from '../lib/dateUtils';
-import { Project, User, formatAccounting, isProjectClosed, ContractorScoringWeights, DEFAULT_CONTRACTOR_SCORING_WEIGHTS, ConsultantScoringWeights, DEFAULT_CONSULTANT_SCORING_WEIGHTS, CustomScoringCriterion, SupervisionConsultantInfo, ProgressPlan, ProgressPlanHistoryItem } from '../types';
+import { Project, User, formatAccounting, isProjectClosed, ContractorScoringWeights, DEFAULT_CONTRACTOR_SCORING_WEIGHTS, ConsultantScoringWeights, DEFAULT_CONSULTANT_SCORING_WEIGHTS, CustomScoringCriterion, SupervisionConsultantInfo, ProgressPlan, ProgressPlanHistoryItem, ConsultantInvoice } from '../types';
 import { getProgressHealth, getHealthBadgeClass } from '../lib/healthUtils';
 import { sortProgressPlanHistoryDescending } from './DashboardView';
 import { buildKpiHierarchy, getIntegratedKpiAllocated } from '../data/defaultProject';
@@ -2895,6 +2895,67 @@ export default function GroupReportGenerator({
   }, [rawGroupProjects]);
 
   // Derived payment and matured outstanding claims statistics
+  // Helper to calculate project supervision consultant payment & invoice metrics
+  const getProjectConsultantPaymentMetrics = (p: Project) => {
+    const consultantFirm = getExactConsultantName(p) || p.consultant || 'N/A';
+    const sc = p.supervisionConsultant;
+    const invoices: ConsultantInvoice[] = sc?.invoices || [];
+    const rate = p.usdExchangeRate || 28.0;
+
+    const totalInvoicesCount = invoices.length;
+    const paidInvoices = invoices.filter(inv => inv.status === 'Paid');
+    const unpaidInvoices = invoices.filter(inv => inv.status !== 'Paid');
+    const submittedInvoices = unpaidInvoices.filter(inv => inv.status === 'Submitted' || inv.status === 'Pending');
+    const certifiedInvoices = unpaidInvoices.filter(inv => inv.status === 'Certified');
+    const rejectedInvoices = unpaidInvoices.filter(inv => inv.status === 'Rejected');
+
+    const unpaidCount = unpaidInvoices.length;
+    const unpaidGrossEtb = unpaidInvoices.reduce((acc, inv) => acc + (inv.grossAmountEtb || 0), 0);
+    const unpaidNetEtb = unpaidInvoices.reduce((acc, inv) => acc + (inv.netAmountEtb || 0), 0);
+    const unpaidUsd = unpaidInvoices.reduce((acc, inv) => acc + (inv.foreignCurrencyAmount || 0), 0);
+    const combinedUnpaidEtb = unpaidNetEtb + (unpaidUsd * rate);
+
+    const certifiedUnpaidEtb = certifiedInvoices.reduce((acc, inv) => acc + (inv.netAmountEtb || 0), 0);
+    const certifiedUnpaidUsd = certifiedInvoices.reduce((acc, inv) => acc + (inv.foreignCurrencyAmount || 0), 0);
+    const submittedUnpaidEtb = submittedInvoices.reduce((acc, inv) => acc + (inv.netAmountEtb || 0), 0);
+    const submittedUnpaidUsd = submittedInvoices.reduce((acc, inv) => acc + (inv.foreignCurrencyAmount || 0), 0);
+
+    const totalGrossInvoiced = invoices.reduce((acc, inv) => acc + (inv.grossAmountEtb || 0), 0);
+    const totalNetInvoiced = invoices.reduce((acc, inv) => acc + (inv.netAmountEtb || 0), 0);
+    const totalPaidNetEtb = paidInvoices.reduce((acc, inv) => acc + (inv.netAmountEtb || 0), 0);
+    const totalPaidUsd = paidInvoices.reduce((acc, inv) => acc + (inv.foreignCurrencyAmount || 0), 0);
+
+    const unpaidInvoiceNos = unpaidInvoices.map(inv => inv.invoiceNo || 'INV').join(', ');
+    const latestUnpaid = unpaidInvoices.length > 0 ? unpaidInvoices[unpaidInvoices.length - 1] : null;
+
+    return {
+      consultantFirm,
+      invoices,
+      totalInvoicesCount,
+      paidInvoices,
+      unpaidInvoices,
+      submittedInvoices,
+      certifiedInvoices,
+      rejectedInvoices,
+      unpaidCount,
+      unpaidGrossEtb,
+      unpaidNetEtb,
+      unpaidUsd,
+      combinedUnpaidEtb,
+      certifiedUnpaidEtb,
+      certifiedUnpaidUsd,
+      submittedUnpaidEtb,
+      submittedUnpaidUsd,
+      totalGrossInvoiced,
+      totalNetInvoiced,
+      totalPaidNetEtb,
+      totalPaidUsd,
+      unpaidInvoiceNos,
+      latestUnpaid
+    };
+  };
+
+  // Derived financial & matured payment statistics across the group (Contractor IPCs & Supervision Consultant Invoices)
   const paymentStats = useMemo(() => {
     // Exclude completed & closed projects from matured payment status & amounts
     const activeProjects = rawGroupProjects.filter(p => !isProjectClosed(p.status));
@@ -2920,6 +2981,13 @@ export default function GroupReportGenerator({
         maturedIpcCount: 0,
         totalIpcCount: 0,
         unpaidIpcCount: 0,
+        totalConsultantInvoicesCount: 0,
+        totalConsultantUnpaidCount: 0,
+        totalConsultantUnpaidNetEtb: 0,
+        totalConsultantUnpaidGrossEtb: 0,
+        totalConsultantUnpaidUsd: 0,
+        combinedConsultantUnpaidEtb: 0,
+        projectsWithUnpaidConsultantCount: 0,
       };
     }
 
@@ -2943,6 +3011,14 @@ export default function GroupReportGenerator({
     let totalIpcCount = 0;
     let unpaidIpcCount = 0;
 
+    let totalConsultantInvoicesCount = 0;
+    let totalConsultantUnpaidCount = 0;
+    let totalConsultantUnpaidNetEtb = 0;
+    let totalConsultantUnpaidGrossEtb = 0;
+    let totalConsultantUnpaidUsd = 0;
+    let combinedConsultantUnpaidEtb = 0;
+    let projectsWithUnpaidConsultantCount = 0;
+
     const today = new Date();
 
     activeProjects.forEach(p => {
@@ -2950,6 +3026,7 @@ export default function GroupReportGenerator({
       const rate = p.usdExchangeRate || 28.0;
       const annualRate = p.annualInterestRate !== undefined ? p.annualInterestRate : 16.50;
 
+      // Contractor IPCs
       tracker.forEach(item => {
         totalIpcCount++;
         const maturation = calculateIpcMaturation(item, annualRate, rate, today);
@@ -2986,6 +3063,18 @@ export default function GroupReportGenerator({
           combinedAccruedInterestEtb += maturation.accruedInterestEqvEtb;
         }
       });
+
+      // Supervision Consultant Invoices
+      const cM = getProjectConsultantPaymentMetrics(p);
+      totalConsultantInvoicesCount += cM.totalInvoicesCount;
+      totalConsultantUnpaidCount += cM.unpaidCount;
+      totalConsultantUnpaidNetEtb += cM.unpaidNetEtb;
+      totalConsultantUnpaidGrossEtb += cM.unpaidGrossEtb;
+      totalConsultantUnpaidUsd += cM.unpaidUsd;
+      combinedConsultantUnpaidEtb += cM.combinedUnpaidEtb;
+      if (cM.unpaidCount > 0) {
+        projectsWithUnpaidConsultantCount++;
+      }
     });
 
     combinedClaimableEtb = combinedUnpaidEtb + combinedAccruedInterestEtb;
@@ -3010,6 +3099,13 @@ export default function GroupReportGenerator({
       maturedIpcCount,
       totalIpcCount,
       unpaidIpcCount,
+      totalConsultantInvoicesCount,
+      totalConsultantUnpaidCount,
+      totalConsultantUnpaidNetEtb,
+      totalConsultantUnpaidGrossEtb,
+      totalConsultantUnpaidUsd,
+      combinedConsultantUnpaidEtb,
+      projectsWithUnpaidConsultantCount,
     };
   }, [rawGroupProjects]);
 
@@ -4996,11 +5092,19 @@ export default function GroupReportGenerator({
       'Combined Certified Amount (ETB equivalent)',
       'Combined Outstanding Amount (ETB equivalent)',
       'Combined Matured Amount (ETB equivalent)',
-      'Payment Compliance Status'
+      'Payment Compliance Status',
+      'Supervision Consultant Firm',
+      'Consultant Total Invoices Count',
+      'Consultant Unpaid Invoices Count',
+      'Consultant Unpaid Net Amount (ETB)',
+      'Consultant Unpaid Amount (USD)',
+      'Consultant Combined Unpaid (ETB equivalent)',
+      'Consultant Unpaid Invoice Numbers'
     ];
 
     const rows = processedProjects.map(p => {
       const m = getProjectPaymentMetrics(p);
+      const cM = getProjectConsultantPaymentMetrics(p);
       return [
         p.name || 'Untitled Project',
         p.client || 'N/A',
@@ -5025,7 +5129,14 @@ export default function GroupReportGenerator({
         m.combinedPaid,
         m.combinedUnpaid,
         m.combinedMatured,
-        m.statusLabel
+        m.statusLabel,
+        cM.consultantFirm,
+        cM.totalInvoicesCount,
+        cM.unpaidCount,
+        cM.unpaidNetEtb,
+        cM.unpaidUsd,
+        cM.combinedUnpaidEtb,
+        cM.unpaidInvoiceNos || 'None'
       ];
     });
 
@@ -5679,11 +5790,12 @@ export default function GroupReportGenerator({
     doc.text(c4Eqv[0] || '', card4X + cardInnerPad, cardY + 52);
 
     const colWidths = {
-      name: 210,
-      ipcCount: 95,
-      certified: 150,
-      outstanding: 150,
-      matured: 156.89
+      name: 170,
+      ipcCount: 80,
+      certified: 120,
+      outstanding: 120,
+      consultantUnpaid: 145,
+      matured: 126.89
     };
 
     const colX = {
@@ -5691,7 +5803,8 @@ export default function GroupReportGenerator({
       ipcCount: 40 + colWidths.name,
       certified: 40 + colWidths.name + colWidths.ipcCount,
       outstanding: 40 + colWidths.name + colWidths.ipcCount + colWidths.certified,
-      matured: 40 + colWidths.name + colWidths.ipcCount + colWidths.certified + colWidths.outstanding
+      consultantUnpaid: 40 + colWidths.name + colWidths.ipcCount + colWidths.certified + colWidths.outstanding,
+      matured: 40 + colWidths.name + colWidths.ipcCount + colWidths.certified + colWidths.outstanding + colWidths.consultantUnpaid
     };
 
     const drawTableHeader = (y: number) => {
@@ -5699,15 +5812,17 @@ export default function GroupReportGenerator({
       doc.setFontSize(7.5);
       const headerNameLines = doc.splitTextToSize("CONTRACT TITLE & CONTRACTOR", colWidths.name - 14);
       const headerIpcLines = doc.splitTextToSize("IPC COUNT & STATUS", colWidths.ipcCount - 14);
-      const headerCertifiedLines = doc.splitTextToSize("TOTAL CERTIFIED VALUE (ETB & USD)", colWidths.certified - 14);
-      const headerOutstandingLines = doc.splitTextToSize("OUTSTANDING CLAIMS (ETB & USD)", colWidths.outstanding - 14);
-      const headerMaturedLines = doc.splitTextToSize("MATURED OVERDUE (>56d) (ETB & USD)", colWidths.matured - 14);
+      const headerCertifiedLines = doc.splitTextToSize("CONTRACTOR CERTIFIED", colWidths.certified - 14);
+      const headerOutstandingLines = doc.splitTextToSize("CONTRACTOR UNPAID", colWidths.outstanding - 14);
+      const headerConsultantLines = doc.splitTextToSize("CONSULTANT UNPAID INVS", colWidths.consultantUnpaid - 14);
+      const headerMaturedLines = doc.splitTextToSize("MATURED OVERDUE (>56d)", colWidths.matured - 14);
 
       const maxHeaderLines = Math.max(
         headerNameLines.length,
         headerIpcLines.length,
         headerCertifiedLines.length,
         headerOutstandingLines.length,
+        headerConsultantLines.length,
         headerMaturedLines.length
       );
       const headerHeight = maxHeaderLines * 9.5 + 10;
@@ -5730,6 +5845,7 @@ export default function GroupReportGenerator({
       drawHeaderCellLines(headerIpcLines, colX.ipcCount);
       drawHeaderCellLines(headerCertifiedLines, colX.certified);
       drawHeaderCellLines(headerOutstandingLines, colX.outstanding);
+      drawHeaderCellLines(headerConsultantLines, colX.consultantUnpaid);
       drawHeaderCellLines(headerMaturedLines, colX.matured);
 
       // Header border line
@@ -5744,6 +5860,7 @@ export default function GroupReportGenerator({
       doc.line(colX.ipcCount, y, colX.ipcCount, y + headerHeight);
       doc.line(colX.certified, y, colX.certified, y + headerHeight);
       doc.line(colX.outstanding, y, colX.outstanding, y + headerHeight);
+      doc.line(colX.consultantUnpaid, y, colX.consultantUnpaid, y + headerHeight);
       doc.line(colX.matured, y, colX.matured, y + headerHeight);
 
       return headerHeight;
@@ -5755,6 +5872,7 @@ export default function GroupReportGenerator({
 
     processedProjects.forEach((p, idx) => {
       const m = getProjectPaymentMetrics(p);
+      const cM = getProjectConsultantPaymentMetrics(p);
 
       // Pre-calculate wrapped lines for Column 1
       const combinedTitle = p.name || 'Untitled Project';
@@ -5798,7 +5916,7 @@ export default function GroupReportGenerator({
       doc.setFontSize(6.5);
       const certEqvLines = doc.splitTextToSize(`Eqv: ETB ${m.combinedCertified.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, colWidths.certified - 14);
 
-      // Pre-calculate wrapped lines for Column 4 (Outstanding)
+      // Pre-calculate wrapped lines for Column 4 (Outstanding Contractor)
       const isOutstanding = m.combinedUnpaid > 0 || m.unpaidEtb > 0 || m.unpaidUsd > 0;
       doc.setFont('helvetica', isOutstanding ? 'bold' : 'normal');
       doc.setFontSize(isOutstanding ? 7.5 : 6.5);
@@ -5813,7 +5931,25 @@ export default function GroupReportGenerator({
         colWidths.outstanding - 14
       );
 
-      // Pre-calculate wrapped lines for Column 5 (Matured)
+      // Pre-calculate wrapped lines for Column 5 (Supervision Consultant Unpaid Invoices)
+      const isConsultantUnpaid = cM.unpaidCount > 0;
+      doc.setFont('helvetica', isConsultantUnpaid ? 'bold' : 'normal');
+      doc.setFontSize(isConsultantUnpaid ? 7.5 : 6.5);
+      const consEtbLines = doc.splitTextToSize(isConsultantUnpaid ? `ETB: ${formatAccounting(cM.unpaidNetEtb, '')}` : `ETB: 0.00`, colWidths.consultantUnpaid - 14);
+      const consUsdLines = cM.unpaidUsd > 0 ? doc.splitTextToSize(`USD: $${formatAccounting(cM.unpaidUsd, '')}`, colWidths.consultantUnpaid - 14) : [];
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6);
+      const consFirmLines = doc.splitTextToSize(`Cons: ${cM.consultantFirm}`, colWidths.consultantUnpaid - 14);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.5);
+      const consBadgeLines = doc.splitTextToSize(
+        isConsultantUnpaid 
+          ? `! ${cM.unpaidCount} Unpaid (${cM.certifiedInvoices.length} Cert, ${cM.submittedInvoices.length} Sub)` 
+          : cM.totalInvoicesCount > 0 ? `Fully Paid (${cM.totalInvoicesCount} Invs)` : `0 Invoices Logged`,
+        colWidths.consultantUnpaid - 14
+      );
+
+      // Pre-calculate wrapped lines for Column 6 (Matured)
       const isMatured = m.combinedMatured > 0 || m.maturedEtb > 0 || m.maturedUsd > 0;
       doc.setFont('helvetica', isMatured ? 'bold' : 'normal');
       doc.setFontSize(isMatured ? 7.5 : 6.5);
@@ -5836,9 +5972,10 @@ export default function GroupReportGenerator({
       const col2Height = (ipcLines.length * 8.5) + (ipcSubLines.length * 7.5) + (ipcBadgeLines.length * 7.5) + 12;
       const col3Height = (certEtbLines.length * 8.5) + (certUsdLines.length * 8.5) + (certEqvLines.length * 7.5) + 12;
       const col4Height = (outEtbLines.length * 8) + (outUsdLines.length * 8) + (outEqvLines.length * 7.5) + 12;
-      const col5Height = (matEtbLines.length * 8) + (matUsdLines.length * 8) + (matEqvLines.length * 7.5) + (matBadgeLines.length * 7.5) + 12;
+      const col5Height = (consEtbLines.length * 8) + (consUsdLines.length * 8) + (consFirmLines.length * 7) + (consBadgeLines.length * 7.5) + 12;
+      const col6Height = (matEtbLines.length * 8) + (matUsdLines.length * 8) + (matEqvLines.length * 7.5) + (matBadgeLines.length * 7.5) + 12;
 
-      const rowHeight = Math.max(col1Height, col2Height, col3Height, col4Height, col5Height, 42);
+      const rowHeight = Math.max(col1Height, col2Height, col3Height, col4Height, col5Height, col6Height, 42);
 
       // Page break check with exact dynamic row height
       if (curY + rowHeight > pageHeight - 50) {
@@ -5868,6 +6005,7 @@ export default function GroupReportGenerator({
       doc.line(colX.ipcCount, curY, colX.ipcCount, curY + rowHeight);
       doc.line(colX.certified, curY, colX.certified, curY + rowHeight);
       doc.line(colX.outstanding, curY, colX.outstanding, curY + rowHeight);
+      doc.line(colX.consultantUnpaid, curY, colX.consultantUnpaid, curY + rowHeight);
       doc.line(colX.matured, curY, colX.matured, curY + rowHeight);
 
       // Render Column 1 (Title, Contractor, Directorate/PMO)
@@ -5995,51 +6133,103 @@ export default function GroupReportGenerator({
         });
       }
 
-      // Render Column 5 (Matured Overdue: exact ETB & USD)
+      // Render Column 5 (Supervision Consultant Unpaid Invoices)
       let col5Y = curY + 9;
-      if (isMatured) {
+      if (isConsultantUnpaid) {
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(7.5);
-        doc.setTextColor(185, 28, 28); // red-700
-        matEtbLines.forEach((line: string) => {
-          doc.text(line, colX.matured + 7, col5Y);
+        doc.setTextColor(126, 34, 206); // purple-700
+        consEtbLines.forEach((line: string) => {
+          doc.text(line, colX.consultantUnpaid + 7, col5Y);
           col5Y += 8;
         });
-        matUsdLines.forEach((line: string) => {
-          doc.text(line, colX.matured + 7, col5Y);
+        consUsdLines.forEach((line: string) => {
+          doc.text(line, colX.consultantUnpaid + 7, col5Y);
           col5Y += 8;
         });
-        
         doc.setFont('helvetica', 'normal');
-        doc.setFontSize(6.5);
-        doc.setTextColor(153, 27, 27);
-        matEqvLines.forEach((line: string) => {
-          doc.text(line, colX.matured + 7, col5Y);
-          col5Y += 7.5;
+        doc.setFontSize(6);
+        doc.setTextColor(100, 116, 139);
+        consFirmLines.forEach((line: string) => {
+          doc.text(line, colX.consultantUnpaid + 7, col5Y);
+          col5Y += 7;
         });
-
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(6.5);
-        doc.setTextColor(220, 38, 38);
-        matBadgeLines.forEach((line: string) => {
-          doc.text(line, colX.matured + 7, col5Y);
+        doc.setTextColor(107, 33, 168); // purple-800
+        consBadgeLines.forEach((line: string) => {
+          doc.text(line, colX.consultantUnpaid + 7, col5Y);
           col5Y += 7.5;
         });
       } else {
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(6.5);
         doc.setTextColor(148, 163, 184);
-        matEtbLines.forEach((line: string) => {
-          doc.text(line, colX.matured + 7, col5Y);
+        consEtbLines.forEach((line: string) => {
+          doc.text(line, colX.consultantUnpaid + 7, col5Y);
           col5Y += 7.5;
+        });
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(6);
+        doc.setTextColor(148, 163, 184);
+        consFirmLines.forEach((line: string) => {
+          doc.text(line, colX.consultantUnpaid + 7, col5Y);
+          col5Y += 7;
+        });
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(6.5);
+        doc.setTextColor(16, 185, 129); // emerald-600
+        consBadgeLines.forEach((line: string) => {
+          doc.text(line, colX.consultantUnpaid + 7, col5Y);
+          col5Y += 7.5;
+        });
+      }
+
+      // Render Column 6 (Matured Overdue: exact ETB & USD)
+      let col6Y = curY + 9;
+      if (isMatured) {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.setTextColor(185, 28, 28); // red-700
+        matEtbLines.forEach((line: string) => {
+          doc.text(line, colX.matured + 7, col6Y);
+          col6Y += 8;
         });
         matUsdLines.forEach((line: string) => {
-          doc.text(line, colX.matured + 7, col5Y);
-          col5Y += 7.5;
+          doc.text(line, colX.matured + 7, col6Y);
+          col6Y += 8;
+        });
+        
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(6.5);
+        doc.setTextColor(153, 27, 27);
+        matEqvLines.forEach((line: string) => {
+          doc.text(line, colX.matured + 7, col6Y);
+          col6Y += 7.5;
+        });
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(6.5);
+        doc.setTextColor(220, 38, 38);
+        matBadgeLines.forEach((line: string) => {
+          doc.text(line, colX.matured + 7, col6Y);
+          col6Y += 7.5;
+        });
+      } else {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(6.5);
+        doc.setTextColor(148, 163, 184);
+        matEtbLines.forEach((line: string) => {
+          doc.text(line, colX.matured + 7, col6Y);
+          col6Y += 7.5;
+        });
+        matUsdLines.forEach((line: string) => {
+          doc.text(line, colX.matured + 7, col6Y);
+          col6Y += 7.5;
         });
         matEqvLines.forEach((line: string) => {
-          doc.text(line, colX.matured + 7, col5Y);
-          col5Y += 7.5;
+          doc.text(line, colX.matured + 7, col6Y);
+          col6Y += 7.5;
         });
       }
 
@@ -6080,6 +6270,15 @@ export default function GroupReportGenerator({
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7.5);
+    const sConsEtbLines = doc.splitTextToSize(`ETB: ${formatAccounting(paymentStats.totalConsultantUnpaidNetEtb, '')}`, colWidths.consultantUnpaid - 14);
+    const sConsUsdLines = paymentStats.totalConsultantUnpaidUsd > 0 ? doc.splitTextToSize(`USD: $${formatAccounting(paymentStats.totalConsultantUnpaidUsd, '')}`, colWidths.consultantUnpaid - 14) : [];
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    const sConsEqvLines = doc.splitTextToSize(`Eqv: ETB ${paymentStats.combinedConsultantUnpaidEtb.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, colWidths.consultantUnpaid - 14);
+    const sConsBadgeLines = doc.splitTextToSize(`! ${paymentStats.totalConsultantUnpaidCount} Total Unpaid Invs`, colWidths.consultantUnpaid - 14);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
     const sMatEtbLines = doc.splitTextToSize(`ETB: ${formatAccounting(paymentStats.totalMaturedEtb, '')}`, colWidths.matured - 14);
     const sMatUsdLines = doc.splitTextToSize(`USD: $${formatAccounting(paymentStats.totalMaturedUsd, '')}`, colWidths.matured - 14);
     doc.setFont('helvetica', 'normal');
@@ -6091,8 +6290,9 @@ export default function GroupReportGenerator({
     const sCol2H = (sIpcLines.length * 8.5) + (sIpcSubLines.length * 7.5) + (sOverdueLines.length * 7.5) + 14;
     const sCol3H = (sCertEtbLines.length * 8.5) + (sCertUsdLines.length * 8.5) + (sCertEqvLines.length * 7.5) + 14;
     const sCol4H = (sOutEtbLines.length * 8.5) + (sOutUsdLines.length * 8.5) + (sOutEqvLines.length * 7.5) + 14;
-    const sCol5H = (sMatEtbLines.length * 8.5) + (sMatUsdLines.length * 8.5) + (sMatEqvLines.length * 7.5) + (sMatBadgeLines.length * 7.5) + 14;
-    const summaryRowHeight = Math.max(sCol1H, sCol2H, sCol3H, sCol4H, sCol5H, 48);
+    const sCol5H = (sConsEtbLines.length * 8.5) + (sConsUsdLines.length * 8.5) + (sConsEqvLines.length * 7.5) + (sConsBadgeLines.length * 7.5) + 14;
+    const sCol6H = (sMatEtbLines.length * 8.5) + (sMatUsdLines.length * 8.5) + (sMatEqvLines.length * 7.5) + (sMatBadgeLines.length * 7.5) + 14;
+    const summaryRowHeight = Math.max(sCol1H, sCol2H, sCol3H, sCol4H, sCol5H, sCol6H, 48);
 
     if (curY + summaryRowHeight > pageHeight - 50) {
       doc.addPage();
@@ -6113,6 +6313,7 @@ export default function GroupReportGenerator({
     doc.line(colX.ipcCount, curY, colX.ipcCount, curY + summaryRowHeight);
     doc.line(colX.certified, curY, colX.certified, curY + summaryRowHeight);
     doc.line(colX.outstanding, curY, colX.outstanding, curY + summaryRowHeight);
+    doc.line(colX.consultantUnpaid, curY, colX.consultantUnpaid, curY + summaryRowHeight);
     doc.line(colX.matured, curY, colX.matured, curY + summaryRowHeight);
 
     // Summary Col 1
@@ -6199,33 +6400,61 @@ export default function GroupReportGenerator({
       sCol4Y += 7.5;
     });
 
-    // Summary Col 5
+    // Summary Col 5 (Consultant Unpaid)
     let sCol5Y = curY + 10;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(216, 180, 254); // purple-300
+    sConsEtbLines.forEach((line: string) => {
+      doc.text(line, colX.consultantUnpaid + 7, sCol5Y);
+      sCol5Y += 8.5;
+    });
+    sConsUsdLines.forEach((line: string) => {
+      doc.text(line, colX.consultantUnpaid + 7, sCol5Y);
+      sCol5Y += 8.5;
+    });
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(233, 213, 255);
+    sConsEqvLines.forEach((line: string) => {
+      doc.text(line, colX.consultantUnpaid + 7, sCol5Y);
+      sCol5Y += 7.5;
+    });
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.5);
+    doc.setTextColor(243, 232, 255);
+    sConsBadgeLines.forEach((line: string) => {
+      doc.text(line, colX.consultantUnpaid + 7, sCol5Y);
+      sCol5Y += 7.5;
+    });
+
+    // Summary Col 6 (Matured Overdue)
+    let sCol6Y = curY + 10;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7.5);
     doc.setTextColor(248, 113, 113); // red-400
     sMatEtbLines.forEach((line: string) => {
-      doc.text(line, colX.matured + 7, sCol5Y);
-      sCol5Y += 8.5;
+      doc.text(line, colX.matured + 7, sCol6Y);
+      sCol6Y += 8.5;
     });
     sMatUsdLines.forEach((line: string) => {
-      doc.text(line, colX.matured + 7, sCol5Y);
-      sCol5Y += 8.5;
+      doc.text(line, colX.matured + 7, sCol6Y);
+      sCol6Y += 8.5;
     });
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(6.5);
     doc.setTextColor(254, 202, 202);
     sMatEqvLines.forEach((line: string) => {
-      doc.text(line, colX.matured + 7, sCol5Y);
-      sCol5Y += 7.5;
+      doc.text(line, colX.matured + 7, sCol6Y);
+      sCol6Y += 7.5;
     });
     if (paymentStats.maturedIpcCount > 0) {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(6.5);
       doc.setTextColor(254, 226, 226);
       sMatBadgeLines.forEach((line: string) => {
-        doc.text(line, colX.matured + 7, sCol5Y);
-        sCol5Y += 7.5;
+        doc.text(line, colX.matured + 7, sCol6Y);
+        sCol6Y += 7.5;
       });
     }
 
@@ -9542,7 +9771,9 @@ export default function GroupReportGenerator({
           )}
           
           {/* KPI Dashboard */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-2.5">
+          <div className={`grid grid-cols-1 gap-2 sm:gap-2.5 ${
+            reportMode === 'payments' ? 'sm:grid-cols-2 lg:grid-cols-4' : 'sm:grid-cols-3'
+          }`}>
             {reportMode === 'performance' ? (
               <>
                 {/* KPI Block 1 */}
@@ -9740,10 +9971,10 @@ export default function GroupReportGenerator({
                   </div>
                 </div>
 
-                {/* Payments KPI Block 2 */}
+                {/* Payments KPI Block 2: Contractor Outstanding */}
                 <div className="bg-amber-50/40 dark:bg-amber-950/10 p-2.5 rounded-xl border border-amber-200/60 dark:border-amber-900/30 space-y-0.5">
                   <span className="text-[9px] font-extrabold text-amber-600 dark:text-amber-500 block uppercase tracking-wider">
-                    OUTSTANDING (UNPAID) CLAIMS
+                    CONTRACTOR UNPAID CLAIMS
                   </span>
                   <div className="flex flex-col gap-0.5">
                     <div className="text-2xs font-black text-amber-700 dark:text-amber-400 flex items-center justify-between">
@@ -9760,7 +9991,37 @@ export default function GroupReportGenerator({
                   </div>
                 </div>
 
-                {/* Payments KPI Block 3 */}
+                {/* Payments KPI Block 3: Supervision Consultant Unpaid Invoices */}
+                <div className={`p-2.5 rounded-xl border space-y-0.5 ${
+                  paymentStats.totalConsultantUnpaidCount > 0
+                    ? 'bg-purple-50/50 dark:bg-purple-950/20 border-purple-200 dark:border-purple-900/40'
+                    : 'bg-slate-50/60 dark:bg-slate-900/20 border-slate-150 dark:border-slate-700/40'
+                }`}>
+                  <span className={`text-[9px] font-extrabold block uppercase tracking-wider ${
+                    paymentStats.totalConsultantUnpaidCount > 0 ? 'text-purple-700 dark:text-purple-400' : 'text-slate-400 dark:text-slate-500'
+                  }`}>
+                    CONSULTANT UNPAID INVOICES
+                  </span>
+                  <div className="flex flex-col gap-0.5">
+                    <div className={`text-2xs font-black flex items-center justify-between ${paymentStats.totalConsultantUnpaidCount > 0 ? 'text-purple-800 dark:text-purple-300' : 'text-slate-700 dark:text-zinc-300'}`}>
+                      <span>ETB:</span>
+                      <span className="font-mono">{formatAccounting(paymentStats.totalConsultantUnpaidNetEtb, '')}</span>
+                    </div>
+                    <div className={`text-2xs font-black flex items-center justify-between ${paymentStats.totalConsultantUnpaidCount > 0 ? 'text-purple-800 dark:text-purple-300' : 'text-slate-700 dark:text-zinc-300'}`}>
+                      <span>USD:</span>
+                      <span className="font-mono">${formatAccounting(paymentStats.totalConsultantUnpaidUsd, '')}</span>
+                    </div>
+                    <div className={`text-[9px] font-bold border-t pt-0.5 mt-0.5 ${
+                      paymentStats.totalConsultantUnpaidCount > 0
+                        ? 'text-purple-700 dark:text-purple-300 border-purple-200/60 dark:border-purple-800/60'
+                        : 'text-slate-400 border-slate-200/50 dark:border-slate-700/50'
+                    }`}>
+                      Eqv: ETB {paymentStats.combinedConsultantUnpaidEtb.toLocaleString(undefined, { maximumFractionDigits: 0 })} • {paymentStats.totalConsultantUnpaidCount} Unpaid Invs
+                    </div>
+                  </div>
+                </div>
+
+                {/* Payments KPI Block 4: Critical Matured Overdue */}
                 <div className={`p-2.5 rounded-xl border space-y-0.5 ${
                   paymentStats.maturedIpcCount > 0 
                     ? 'bg-rose-50/40 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/40' 
@@ -11064,8 +11325,9 @@ export default function GroupReportGenerator({
                     ) : reportMode === 'payments' ? (
                       <tr className="bg-slate-50 dark:bg-slate-800/60 text-[9px] font-extrabold text-slate-400 dark:text-slate-500 uppercase border-b border-slate-150 dark:border-slate-700/50">
                         <th className="px-3 py-2">Project ID & Title</th>
-                        <th className="px-3 py-2">Total Certified Amount</th>
-                        <th className="px-3 py-2 text-right">Outstanding (Unpaid)</th>
+                        <th className="px-3 py-2">Contractor Certified IPCs</th>
+                        <th className="px-3 py-2 text-right">Contractor Unpaid</th>
+                        <th className="px-3 py-2 text-right">Consultant Unpaid Invoices</th>
                         <th className="px-3 py-2 text-right">Matured Overdue (&gt;56d)</th>
                       </tr>
                     ) : reportMode === 'bonds' ? (
@@ -11087,7 +11349,7 @@ export default function GroupReportGenerator({
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-750 text-xs">
                     {processedProjects.length === 0 ? (
                       <tr>
-                        <td colSpan={4} className="px-3 py-8 text-center text-slate-400 dark:text-slate-500 font-medium">
+                        <td colSpan={reportMode === 'payments' ? 5 : 4} className="px-3 py-8 text-center text-slate-400 dark:text-slate-500 font-medium">
                           No active contracts match your filters.
                         </td>
                       </tr>
@@ -11912,6 +12174,7 @@ export default function GroupReportGenerator({
                     ) : reportMode === 'payments' ? (
                       processedProjects.map((p, pIdx) => {
                         const m = getProjectPaymentMetrics(p);
+                        const cM = getProjectConsultantPaymentMetrics(p);
                         const isExpanded = expandedProjectId === p.id;
                         const today = new Date();
                         return (
@@ -11924,7 +12187,7 @@ export default function GroupReportGenerator({
                                 <div className="font-extrabold text-slate-700 dark:text-zinc-200 truncate max-w-[200px]">{p.name}</div>
                                 <div className="text-[10px] text-slate-400 dark:text-slate-500 font-mono flex items-center gap-1">
                                   <span>ID: {p.id.substring(0, 10).toUpperCase()}</span>
-                                  <span className="text-indigo-500 text-[9px] font-bold">(Click for IPC Details)</span>
+                                  <span className="text-indigo-500 text-[9px] font-bold">(Click for IPC & Consultant Invoices)</span>
                                 </div>
                               </td>
                               <td className="px-3 py-2.5 space-y-1">
@@ -11960,6 +12223,44 @@ export default function GroupReportGenerator({
                                 )}
                               </td>
                               <td className="px-3 py-2.5 text-right font-mono">
+                                {cM.unpaidCount > 0 ? (
+                                  <div className="flex flex-col items-end gap-0.5">
+                                    <div className="text-[10px] font-extrabold text-purple-700 dark:text-purple-400">
+                                      ETB {formatAccounting(cM.unpaidNetEtb, '')}
+                                    </div>
+                                    {cM.unpaidUsd > 0 && (
+                                      <div className="text-[10px] font-extrabold text-purple-700 dark:text-purple-400">
+                                        USD ${formatAccounting(cM.unpaidUsd, '')}
+                                      </div>
+                                    )}
+                                    <span className="text-[8px] bg-purple-50 text-purple-750 dark:bg-purple-950/30 dark:text-purple-300 border border-purple-200 dark:border-purple-800/40 px-1.5 py-0.5 rounded font-black mt-0.5">
+                                      ⏳ {cM.unpaidCount} Unpaid Inv{cM.unpaidCount > 1 ? 's' : ''}
+                                    </span>
+                                    <div className="text-[8px] text-slate-500 dark:text-slate-400 font-medium font-sans truncate max-w-[150px]" title={cM.consultantFirm}>
+                                      {cM.consultantFirm}
+                                    </div>
+                                  </div>
+                                ) : cM.totalInvoicesCount > 0 ? (
+                                  <div className="flex flex-col items-end gap-0.5">
+                                    <span className="text-[9.5px] font-extrabold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/20 px-2 py-0.5 rounded">
+                                      Fully Paid ({cM.totalInvoicesCount} Invs)
+                                    </span>
+                                    <div className="text-[8px] text-slate-400 font-sans truncate max-w-[150px]">
+                                      {cM.consultantFirm}
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="flex flex-col items-end gap-0.5">
+                                    <span className="text-[9.5px] font-bold text-slate-400">
+                                      0 Invoices
+                                    </span>
+                                    <div className="text-[8px] text-slate-400 font-sans truncate max-w-[150px]">
+                                      {cM.consultantFirm}
+                                    </div>
+                                  </div>
+                                )}
+                              </td>
+                              <td className="px-3 py-2.5 text-right font-mono">
                                 {m.combinedMatured > 0 ? (
                                   <div className="flex flex-col items-end gap-0.5">
                                     <div className="text-[10px] font-extrabold text-red-600 dark:text-rose-400">
@@ -11981,118 +12282,224 @@ export default function GroupReportGenerator({
                             </tr>
                             {isExpanded && (
                               <tr className="bg-slate-50/70 dark:bg-slate-900/60">
-                                <td colSpan={4} className="p-4 border-t border-b border-slate-200 dark:border-slate-800">
-                                  <div className="space-y-4">
-                                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-2 border-b border-slate-250 dark:border-slate-800 pb-2">
-                                      <div>
-                                        <h4 className="text-xs font-black uppercase text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
-                                          <DollarSign className="w-3.5 h-3.5" /> Interim Payment Certificate (IPC) Tracker Ledger
-                                        </h4>
-                                        <p className="text-[10px] text-slate-450 dark:text-slate-500 font-bold uppercase mt-0.5">
-                                          Contractor: {p.contractor || 'N/A'} • Exchange Rate: 1 USD = {p.usdExchangeRate || 28.0} ETB
-                                        </p>
+                                <td colSpan={5} className="p-4 border-t border-b border-slate-200 dark:border-slate-800">
+                                  <div className="space-y-5">
+                                    {/* SECTION 1: Contractor IPC Tracker Ledger */}
+                                    <div className="space-y-3">
+                                      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-2 border-b border-slate-250 dark:border-slate-800 pb-2">
+                                        <div>
+                                          <h4 className="text-xs font-black uppercase text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                                            <DollarSign className="w-3.5 h-3.5" /> Contractor Interim Payment Certificate (IPC) Tracker Ledger
+                                          </h4>
+                                          <p className="text-[10px] text-slate-450 dark:text-slate-500 font-bold uppercase mt-0.5">
+                                            Contractor: {p.contractor || 'N/A'} • Exchange Rate: 1 USD = {p.usdExchangeRate || 28.0} ETB
+                                          </p>
+                                        </div>
+                                        <span className="text-[9px] bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold px-2 py-1 rounded">
+                                          Total IPCs: {m.totalIpcs} ({m.paidIpcs} Paid, {m.unpaidIpcs} Outstanding)
+                                        </span>
                                       </div>
-                                      <span className="text-[9px] bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold px-2 py-1 rounded">
-                                        Total IPCs: {m.totalIpcs} ({m.paidIpcs} Paid, {m.unpaidIpcs} Outstanding)
-                                      </span>
-                                    </div>
 
-                                    {/* Detailed IPC List */}
-                                    {(p.ipcTracker || []).length === 0 ? (
-                                      <div className="text-center py-4 text-slate-400 dark:text-slate-500 text-2xs font-medium">
-                                        No Interim Payment Certificates have been submitted or tracked for this project.
-                                      </div>
-                                    ) : (
-                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                        {(p.ipcTracker || []).map((ipc, ipcIdx) => {
-                                          const isEtbUnpaid = (ipc.statusEtb || ipc.status) === 'Unpaid';
-                                          const isUsdUnpaid = (ipc.statusUsd || ipc.status) === 'Unpaid';
-                                          const isUnpaid = isEtbUnpaid || isUsdUnpaid;
-                                          
-                                          let ageDays = 0;
-                                          let isMaturedOverdue = false;
-                                          if (ipc.submissionDate) {
-                                            const subDate = new Date(ipc.submissionDate);
-                                            if (!isNaN(subDate.getTime())) {
-                                              ageDays = Math.floor((today.getTime() - subDate.getTime()) / (1000 * 60 * 60 * 24));
-                                              if (ageDays > 56 && isUnpaid) {
-                                                isMaturedOverdue = true;
+                                      {/* Detailed IPC List */}
+                                      {(p.ipcTracker || []).length === 0 ? (
+                                        <div className="text-center py-4 text-slate-400 dark:text-slate-500 text-2xs font-medium">
+                                          No Interim Payment Certificates have been submitted or tracked for this project.
+                                        </div>
+                                      ) : (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                          {(p.ipcTracker || []).map((ipc, ipcIdx) => {
+                                            const isEtbUnpaid = (ipc.statusEtb || ipc.status) === 'Unpaid';
+                                            const isUsdUnpaid = (ipc.statusUsd || ipc.status) === 'Unpaid';
+                                            const isUnpaid = isEtbUnpaid || isUsdUnpaid;
+                                            
+                                            let ageDays = 0;
+                                            let isMaturedOverdue = false;
+                                            if (ipc.submissionDate) {
+                                              const subDate = new Date(ipc.submissionDate);
+                                              if (!isNaN(subDate.getTime())) {
+                                                ageDays = Math.floor((today.getTime() - subDate.getTime()) / (1000 * 60 * 60 * 24));
+                                                if (ageDays > 56 && isUnpaid) {
+                                                  isMaturedOverdue = true;
+                                                }
                                               }
                                             }
-                                          }
 
-                                          return (
-                                            <div 
-                                              key={`${p.id}_ipc_${ipc.id || ipcIdx}_${ipcIdx}`} 
-                                              className={`p-3 rounded-xl border flex flex-col justify-between gap-2 transition-all ${
-                                                isMaturedOverdue 
-                                                  ? 'bg-rose-50/20 dark:bg-rose-950/10 border-rose-150 dark:border-rose-900/30' 
-                                                  : isUnpaid
-                                                  ? 'bg-amber-50/10 dark:bg-amber-950/5 border-amber-150 dark:border-amber-900/20'
-                                                  : 'bg-white dark:bg-slate-900 border-slate-150 dark:border-slate-800'
-                                              }`}
-                                            >
-                                              <div className="flex items-start justify-between gap-1.5">
-                                                <div>
-                                                  <span className="text-[10px] font-black uppercase text-slate-700 dark:text-zinc-200">
-                                                    {ipc.paymentNo}
-                                                  </span>
-                                                  <span className="text-[9px] text-slate-400 dark:text-slate-500 block">
-                                                    Contractor Submitted: {ipc.submissionDate || 'N/A'} {ipc.submissionDate && `(${ageDays}d elapsed)`}
-                                                  </span>
-                                                  {ipc.certificationDate && (
-                                                    <span className="text-[9px] text-indigo-500 dark:text-indigo-400 block font-mono">
-                                                      Engineer Certified: {ipc.certificationDate}
+                                            return (
+                                              <div 
+                                                key={`${p.id}_ipc_${ipc.id || ipcIdx}_${ipcIdx}`} 
+                                                className={`p-3 rounded-xl border flex flex-col justify-between gap-2 transition-all ${
+                                                  isMaturedOverdue 
+                                                    ? 'bg-rose-50/20 dark:bg-rose-950/10 border-rose-150 dark:border-rose-900/30' 
+                                                    : isUnpaid
+                                                    ? 'bg-amber-50/10 dark:bg-amber-950/5 border-amber-150 dark:border-amber-900/20'
+                                                    : 'bg-white dark:bg-slate-900 border-slate-150 dark:border-slate-800'
+                                                }`}
+                                              >
+                                                <div className="flex items-start justify-between gap-1.5">
+                                                  <div>
+                                                    <span className="text-[10px] font-black uppercase text-slate-700 dark:text-zinc-200">
+                                                      {ipc.paymentNo}
                                                     </span>
-                                                  )}
-                                                  {ipc.paymentDate && (
-                                                    <span className="text-[9px] text-emerald-600 dark:text-emerald-400 block font-mono">
-                                                      Disbursed / Paid: {ipc.paymentDate}
+                                                    <span className="text-[9px] text-slate-400 dark:text-slate-500 block">
+                                                      Contractor Submitted: {ipc.submissionDate || 'N/A'} {ipc.submissionDate && `(${ageDays}d elapsed)`}
                                                     </span>
-                                                  )}
+                                                    {ipc.certificationDate && (
+                                                      <span className="text-[9px] text-indigo-500 dark:text-indigo-400 block font-mono">
+                                                        Engineer Certified: {ipc.certificationDate}
+                                                      </span>
+                                                    )}
+                                                    {ipc.paymentDate && (
+                                                      <span className="text-[9px] text-emerald-600 dark:text-emerald-400 block font-mono">
+                                                        Disbursed / Paid: {ipc.paymentDate}
+                                                      </span>
+                                                    )}
+                                                  </div>
+                                                  <div className="flex flex-col items-end gap-1">
+                                                    {isMaturedOverdue ? (
+                                                      <span className="text-[8px] font-black bg-red-600 text-white px-1.5 py-0.5 rounded border border-red-700 animate-pulse">
+                                                        ⚠️ OVERDUE MATURED CLAIM ({ageDays}d)
+                                                      </span>
+                                                    ) : isUnpaid ? (
+                                                      <span className="text-[8px] font-black bg-amber-500 text-white px-1.5 py-0.5 rounded">
+                                                        ⏳ PENDING PAYMENT ({ageDays}d)
+                                                      </span>
+                                                    ) : (
+                                                      <span className="text-[8px] font-extrabold bg-emerald-500 text-white px-1.5 py-0.5 rounded">
+                                                        ✓ PAID
+                                                      </span>
+                                                    )}
+                                                  </div>
                                                 </div>
-                                                <div className="flex flex-col items-end gap-1">
-                                                  {isMaturedOverdue ? (
-                                                    <span className="text-[8px] font-black bg-red-600 text-white px-1.5 py-0.5 rounded border border-red-700 animate-pulse">
-                                                      ⚠️ OVERDUE MATURED CLAIM ({ageDays}d)
+
+                                                <div className="grid grid-cols-2 gap-2 border-t border-slate-100 dark:border-slate-800/80 pt-2 text-[10px]">
+                                                  <div>
+                                                    <span className="text-slate-400 block text-[8px] uppercase font-bold">Certified ETB</span>
+                                                    <span className="font-mono font-extrabold text-slate-700 dark:text-zinc-300 font-sans">
+                                                      {formatAccounting(ipc.certifiedEtb || 0, '')}
                                                     </span>
-                                                  ) : isUnpaid ? (
-                                                    <span className="text-[8px] font-black bg-amber-500 text-white px-1.5 py-0.5 rounded">
-                                                      ⏳ PENDING PAYMENT ({ageDays}d)
+                                                    <span className={`text-[8px] font-bold block ${isEtbUnpaid ? 'text-amber-600' : 'text-emerald-600'}`}>
+                                                      {isEtbUnpaid ? 'Unpaid' : 'Paid'}
                                                     </span>
-                                                  ) : (
-                                                    <span className="text-[8px] font-extrabold bg-emerald-500 text-white px-1.5 py-0.5 rounded">
-                                                      ✓ PAID
+                                                  </div>
+                                                  <div>
+                                                    <span className="text-slate-400 block text-[8px] uppercase font-bold">Certified USD</span>
+                                                    <span className="font-mono font-extrabold text-slate-700 dark:text-zinc-300 font-sans">
+                                                      ${formatAccounting(ipc.certifiedUsd || 0, '')}
                                                     </span>
-                                                  )}
+                                                    <span className={`text-[8px] font-bold block ${isUsdUnpaid ? 'text-amber-600' : 'text-emerald-600'}`}>
+                                                      {isUsdUnpaid ? 'Unpaid' : 'Paid'}
+                                                    </span>
+                                                  </div>
                                                 </div>
                                               </div>
+                                            );
+                                          })}
+                                        </div>
+                                      )}
+                                    </div>
 
-                                              <div className="grid grid-cols-2 gap-2 border-t border-slate-100 dark:border-slate-800/80 pt-2 text-[10px]">
-                                                <div>
-                                                  <span className="text-slate-400 block text-[8px] uppercase font-bold">Certified ETB</span>
-                                                  <span className="font-mono font-extrabold text-slate-700 dark:text-zinc-300 font-sans">
-                                                    {formatAccounting(ipc.certifiedEtb || 0, '')}
-                                                  </span>
-                                                  <span className={`text-[8px] font-bold block ${isEtbUnpaid ? 'text-amber-600' : 'text-emerald-600'}`}>
-                                                    {isEtbUnpaid ? 'Unpaid' : 'Paid'}
-                                                  </span>
-                                                </div>
-                                                <div>
-                                                  <span className="text-slate-400 block text-[8px] uppercase font-bold">Certified USD</span>
-                                                  <span className="font-mono font-extrabold text-slate-700 dark:text-zinc-300 font-sans">
-                                                    ${formatAccounting(ipc.certifiedUsd || 0, '')}
-                                                  </span>
-                                                  <span className={`text-[8px] font-bold block ${isUsdUnpaid ? 'text-amber-600' : 'text-emerald-600'}`}>
-                                                    {isUsdUnpaid ? 'Unpaid' : 'Paid'}
-                                                  </span>
-                                                </div>
-                                              </div>
-                                            </div>
-                                          );
-                                        })}
+                                    {/* SECTION 2: Supervision Consultant Fee Invoices & Unpaid Claims Ledger */}
+                                    <div className="space-y-3 border-t border-slate-200 dark:border-slate-800 pt-4">
+                                      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-2 border-b border-purple-200/60 dark:border-purple-900/40 pb-2">
+                                        <div>
+                                          <h4 className="text-xs font-black uppercase text-purple-700 dark:text-purple-400 flex items-center gap-1.5">
+                                            <Award className="w-3.5 h-3.5" /> Supervision Consultant Fee & Unpaid Invoices Ledger
+                                          </h4>
+                                          <p className="text-[10px] text-slate-450 dark:text-slate-500 font-bold uppercase mt-0.5">
+                                            Supervision Firm: <strong className="text-slate-700 dark:text-zinc-300">{cM.consultantFirm}</strong> • Invoices: {cM.totalInvoicesCount} Total ({cM.unpaidCount} Unpaid / Outstanding, {cM.paidInvoices.length} Paid)
+                                          </p>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          {cM.unpaidCount > 0 ? (
+                                            <span className="text-[9px] bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300 font-bold px-2 py-1 rounded">
+                                              Total Consultant Unpaid: ETB {formatAccounting(cM.unpaidNetEtb, '')} {cM.unpaidUsd > 0 ? `+ USD $${formatAccounting(cM.unpaidUsd, '')}` : ''}
+                                            </span>
+                                          ) : (
+                                            <span className="text-[9px] bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 font-bold px-2 py-1 rounded">
+                                              All Consultant Invoices Settled
+                                            </span>
+                                          )}
+                                        </div>
                                       </div>
-                                    )}
+
+                                      {cM.invoices.length === 0 ? (
+                                        <div className="text-center py-4 text-slate-400 dark:text-slate-500 text-2xs font-medium">
+                                          No supervision consultant fee invoices recorded for this project.
+                                        </div>
+                                      ) : (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                          {cM.invoices.map((inv, invIdx) => {
+                                            const isUnpaid = inv.status !== 'Paid';
+                                            const isCertified = inv.status === 'Certified';
+                                            const isSubmitted = inv.status === 'Submitted' || inv.status === 'Pending';
+                                            return (
+                                              <div
+                                                key={`${p.id}_cinv_${inv.id || invIdx}_${invIdx}`}
+                                                className={`p-3 rounded-xl border flex flex-col justify-between gap-2 transition-all ${
+                                                  isCertified
+                                                    ? 'bg-purple-50/20 dark:bg-purple-950/15 border-purple-200 dark:border-purple-800/40'
+                                                    : isSubmitted
+                                                    ? 'bg-amber-50/15 dark:bg-amber-950/10 border-amber-200 dark:border-amber-800/30'
+                                                    : 'bg-white dark:bg-slate-900 border-slate-150 dark:border-slate-800'
+                                                }`}
+                                              >
+                                                <div className="flex items-start justify-between gap-1.5">
+                                                  <div>
+                                                    <span className="text-[10px] font-black uppercase text-slate-700 dark:text-zinc-200">
+                                                      {inv.invoiceNo}
+                                                    </span>
+                                                    <span className="text-[9px] text-slate-400 dark:text-slate-500 block">
+                                                      Period: <strong className="text-slate-600 dark:text-slate-300">{inv.billingPeriod || 'N/A'}</strong> • Submitted: {inv.submissionDate || 'N/A'}
+                                                    </span>
+                                                    {inv.certificationDate && (
+                                                      <span className="text-[9px] text-purple-600 dark:text-purple-400 block font-mono">
+                                                        Certified: {inv.certificationDate}
+                                                      </span>
+                                                    )}
+                                                    {inv.paymentDate && (
+                                                      <span className="text-[9px] text-emerald-600 dark:text-emerald-400 block font-mono">
+                                                        Disbursed / Paid: {inv.paymentDate}
+                                                      </span>
+                                                    )}
+                                                  </div>
+                                                  <span className={`text-[8.5px] font-black uppercase px-2 py-0.5 rounded-full border ${
+                                                    inv.status === 'Paid'
+                                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800'
+                                                      : inv.status === 'Certified'
+                                                      ? 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800'
+                                                      : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800'
+                                                  }`}>
+                                                    {inv.status === 'Paid' ? '✓ Paid' : inv.status === 'Certified' ? '⏳ Certified (Unpaid)' : '⏳ Submitted (Unpaid)'}
+                                                  </span>
+                                                </div>
+
+                                                <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-2xs">
+                                                  <div>
+                                                    <span className="text-slate-400 block text-[8px]">Gross: ETB {(inv.grossAmountEtb || 0).toLocaleString()}</span>
+                                                    <span className="font-extrabold text-slate-700 dark:text-zinc-200">
+                                                      Net: ETB {(inv.netAmountEtb || 0).toLocaleString()}
+                                                    </span>
+                                                  </div>
+                                                  {(inv.foreignCurrencyAmount || 0) > 0 && (
+                                                    <div className="text-right">
+                                                      <span className="text-slate-400 block text-[8px]">Foreign Currency</span>
+                                                      <span className="font-extrabold text-purple-600 dark:text-purple-400 font-mono">
+                                                        ${(inv.foreignCurrencyAmount || 0).toLocaleString()} {inv.foreignCurrencyCode || 'USD'}
+                                                      </span>
+                                                    </div>
+                                                  )}
+                                                </div>
+                                                {inv.remarks && (
+                                                  <p className="text-[8.5px] text-slate-500 dark:text-slate-400 italic bg-slate-50/80 dark:bg-slate-800/40 p-1.5 rounded">
+                                                    "{inv.remarks}"
+                                                  </p>
+                                                )}
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      )}
+                                    </div>
                                   </div>
                                 </td>
                               </tr>
