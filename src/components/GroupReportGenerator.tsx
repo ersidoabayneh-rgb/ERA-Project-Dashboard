@@ -69,7 +69,7 @@ import {
   subscribeEfyYearChange 
 } from '../lib/dateUtils';
 import { Project, User, formatAccounting, isProjectClosed, ContractorScoringWeights, DEFAULT_CONTRACTOR_SCORING_WEIGHTS, ConsultantScoringWeights, DEFAULT_CONSULTANT_SCORING_WEIGHTS, CustomScoringCriterion, SupervisionConsultantInfo, ProgressPlan, ProgressPlanHistoryItem } from '../types';
-import { getProgressHealth } from '../lib/healthUtils';
+import { getProgressHealth, getHealthBadgeClass } from '../lib/healthUtils';
 import { sortProgressPlanHistoryDescending } from './DashboardView';
 import { buildKpiHierarchy, getIntegratedKpiAllocated } from '../data/defaultProject';
 import { QtyItem } from '../types';
@@ -7197,11 +7197,7 @@ export default function GroupReportGenerator({
       const todateRatio = eraTodate > 0 ? (actTodate / eraTodate) * 100 : (actTodate > 0 ? 100 : 0);
       const todatePct = todateRatio; // Consistent (Actual / ERA Plan) * 100
 
-      let healthStatus: 'Ahead' | 'On Track' | 'Lagging' | 'Critical' = 'On Track';
-      if (monthVariance > 0.1) healthStatus = 'Ahead';
-      else if (monthVariance >= -0.05) healthStatus = 'On Track';
-      else if (monthVariance >= -0.5) healthStatus = 'Lagging';
-      else healthStatus = 'Critical';
+      const healthStatus = getProgressHealth(efyRatio).label;
 
       return {
         project: p,
@@ -7308,11 +7304,7 @@ export default function GroupReportGenerator({
       const todateRatio = aEraTd > 0 ? (aActTd / aEraTd) * 100 : (aActTd > 0 ? 100 : 0);
       const avgTodatePct = todateRatio;
 
-      let healthStatus: 'Ahead' | 'On Track' | 'Lagging' | 'Critical' = 'On Track';
-      if (avgMonthVar > 0.05) healthStatus = 'Ahead';
-      else if (avgMonthVar >= -0.05) healthStatus = 'On Track';
-      else if (avgMonthVar >= -0.4) healthStatus = 'Lagging';
-      else healthStatus = 'Critical';
+      const healthStatus = getProgressHealth(efyRatio).label;
 
       return {
         name,
@@ -7395,11 +7387,7 @@ export default function GroupReportGenerator({
       const todateRatio = aEraTd > 0 ? (aActTd / aEraTd) * 100 : (aActTd > 0 ? 100 : 0);
       const avgTodatePct = todateRatio;
 
-      let healthStatus: 'Ahead' | 'On Track' | 'Lagging' | 'Critical' = 'On Track';
-      if (avgMonthVar > 0.05) healthStatus = 'Ahead';
-      else if (avgMonthVar >= -0.05) healthStatus = 'On Track';
-      else if (avgMonthVar >= -0.4) healthStatus = 'Lagging';
-      else healthStatus = 'Critical';
+      const healthStatus = getProgressHealth(efyRatio).label;
 
       return {
         name,

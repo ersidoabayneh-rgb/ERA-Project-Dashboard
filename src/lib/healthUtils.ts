@@ -37,3 +37,21 @@ export function getProgressHealth(percentage: number): {
     };
   }
 }
+
+export function getHealthBadgeClass(status: string): string {
+  switch (status) {
+    case 'Ahead':
+      return 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border border-blue-300 dark:border-blue-700';
+    case 'On Track':
+      return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700';
+    case 'Good':
+      return 'bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300 border border-sky-300 dark:border-sky-700';
+    case 'Needs Improvement':
+      return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-950 dark:text-yellow-300 border border-yellow-300 dark:border-yellow-700';
+    case 'Lagging':
+      return 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-700';
+    case 'Critical':
+    default:
+      return 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 border border-rose-300 dark:border-rose-700';
+  }
+}

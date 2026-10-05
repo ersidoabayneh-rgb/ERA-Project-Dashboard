@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   ResponsiveContainer, 
   LineChart, 
@@ -187,13 +187,29 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
 
   const [activePlan, setActivePlan] = useState<ProgressPlan>(initialPlan);
 
-  // Milestone History resolution - returns actual saved history or empty list
+  // Milestone History resolution - returns actual saved history or empty list, with robust persistent backup fallback
   const historyList: ProgressPlanHistoryItem[] = useMemo(() => {
     if (project.progressPlanHistory && project.progressPlanHistory.length > 0) {
       return sortProgressPlanHistoryDescending(project.progressPlanHistory);
     }
+    try {
+      const b = localStorage.getItem(`era_hist_backup_${project.id}`);
+      if (b) {
+        const parsed = JSON.parse(b);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return sortProgressPlanHistoryDescending(parsed);
+        }
+      }
+    } catch {}
     return [];
-  }, [project.progressPlanHistory]);
+  }, [project.progressPlanHistory, project.id]);
+
+  // Auto-heal project if history exists in persistent backup but was missing from current project instance
+  useEffect(() => {
+    if ((!project.progressPlanHistory || project.progressPlanHistory.length === 0) && historyList.length > 0) {
+      onUpdateProject({ progressPlanHistory: historyList }, 'Restored saved history records from persistent backup');
+    }
+  }, [project.id, project.progressPlanHistory, historyList, onUpdateProject]);
 
   // Selected Archived Item for Left Panel
   const [selectedArchivedKey, setSelectedArchivedKey] = useState<string>(
@@ -339,9 +355,13 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
       physicalProgress: calculatedPhysicalProgress
     };
 
-    const existing = project.progressPlanHistory || historyList;
+    const existing = project.progressPlanHistory && project.progressPlanHistory.length > 0 ? project.progressPlanHistory : historyList;
     const filtered = existing.filter(h => h.id !== snapshotId && h.monthLabel !== monthLabel);
     const updatedHistory = sortProgressPlanHistoryDescending([newSnapshot, ...filtered]);
+
+    try {
+      localStorage.setItem(`era_hist_backup_${project.id}`, JSON.stringify(updatedHistory));
+    } catch {}
 
     onUpdateProject({
       progressPlan: activePlan,
@@ -363,8 +383,11 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
       return;
     }
     if (!window.confirm('Are you sure you want to delete this archived snapshot?')) return;
-    const existing = project.progressPlanHistory || historyList;
+    const existing = project.progressPlanHistory && project.progressPlanHistory.length > 0 ? project.progressPlanHistory : historyList;
     const updatedHistory = existing.filter(h => h.id !== id);
+    try {
+      localStorage.setItem(`era_hist_backup_${project.id}`, JSON.stringify(updatedHistory));
+    } catch {}
     onUpdateProject({ progressPlanHistory: updatedHistory }, 'Archived milestone record deleted');
     if (selectedArchivedKey === id) {
       setSelectedArchivedKey(updatedHistory.length > 0 ? updatedHistory[0].id : 'live');
@@ -378,6 +401,9 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
       return;
     }
     if (!window.confirm(`Are you sure you want to delete all elapsed months & EFY history records for project "${project.name || 'this project'}"?`)) return;
+    try {
+      localStorage.removeItem(`era_hist_backup_${project.id}`);
+    } catch {}
     onUpdateProject({ progressPlanHistory: [] }, 'All elapsed months & EFY history records deleted');
     setSelectedArchivedKey('live');
     setSaveSuccessMsg('All elapsed history records for this project have been deleted.');
@@ -391,6 +417,12 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
       return;
     }
     if (!window.confirm('Are you sure you want to delete all elapsed months & EFY history records across ALL projects? This action cannot be undone.')) return;
+    try {
+      (projects || []).forEach(p => {
+        localStorage.removeItem(`era_hist_backup_${p.id}`);
+      });
+      localStorage.removeItem(`era_hist_backup_${project.id}`);
+    } catch {}
     if (onClearAllProjectsHistory) {
       onClearAllProjectsHistory();
     } else {
@@ -475,6 +507,9 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
     }
 
     const sortedHistory = sortProgressPlanHistoryDescending(updatedHistory);
+    try {
+      localStorage.setItem(`era_hist_backup_${project.id}`, JSON.stringify(sortedHistory));
+    } catch {}
     const isCurrentlyActive = updatedItem.monthLabel === monthLabel;
     const projectUpdates: Partial<Project> = {
       progressPlanHistory: sortedHistory

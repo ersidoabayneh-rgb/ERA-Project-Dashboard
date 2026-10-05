@@ -204,6 +204,7 @@ export function normalizeProject(p: any): Project {
     quantities: Array.isArray(p.quantities) && p.quantities.length > 0 ? p.quantities : tmpl.quantities,
     series: Array.isArray(p.series) ? p.series : tmpl.series,
     monthly: Array.isArray(p.monthly) ? p.monthly : tmpl.monthly,
+    progressPlanHistory: Array.isArray(p.progressPlanHistory) ? p.progressPlanHistory : (Array.isArray(tmpl.progressPlanHistory) ? tmpl.progressPlanHistory : []),
     payment: Array.isArray(p.payment) ? p.payment : tmpl.payment,
     bonds: Array.isArray(p.bonds) ? p.bonds : (p.id === 'proj_default' ? tmpl.bonds : []),
     ipcTracker: Array.isArray(p.ipcTracker) ? p.ipcTracker : tmpl.ipcTracker,
@@ -552,8 +553,24 @@ export async function safeFetchProjects(): Promise<Project[] | null> {
             } else {
               const existingTime = existing.lastModifiedAt ? new Date(existing.lastModifiedAt).getTime() : 0;
               const fsTime = p.lastModifiedAt ? new Date(p.lastModifiedAt).getTime() : 0;
+              
+              // Ensure no progressPlanHistory records are lost during project sync
+              const existingHist = existing.progressPlanHistory || [];
+              const fsHist = p.progressPlanHistory || [];
+              let combinedHist = fsHist;
+              if (existingHist.length > 0 && fsHist.length === 0) {
+                combinedHist = existingHist;
+              } else if (existingHist.length > 0 && fsHist.length > 0) {
+                const hMap = new Map<string, any>();
+                existingHist.forEach(h => { if (h?.id) hMap.set(h.id, h); });
+                fsHist.forEach(h => { if (h?.id) hMap.set(h.id, h); });
+                combinedHist = Array.from(hMap.values());
+              }
+
               if (fsTime >= existingTime) {
-                map.set(p.id, { ...existing, ...p });
+                map.set(p.id, { ...existing, ...p, progressPlanHistory: combinedHist });
+              } else {
+                map.set(p.id, { ...p, ...existing, progressPlanHistory: combinedHist });
               }
             }
           });

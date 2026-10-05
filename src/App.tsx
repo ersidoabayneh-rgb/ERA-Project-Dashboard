@@ -496,7 +496,18 @@ export default function App() {
         if (storedProjects) {
           const parsed = JSON.parse(storedProjects);
           const found = parsed.find((p: any) => p.id === storedId);
-          if (found) return found;
+          if (found) {
+            if (!found.progressPlanHistory || found.progressPlanHistory.length === 0) {
+              const b = localStorage.getItem(`era_hist_backup_${found.id}`);
+              if (b) {
+                const parsedB = JSON.parse(b);
+                if (Array.isArray(parsedB) && parsedB.length > 0) {
+                  found.progressPlanHistory = parsedB;
+                }
+              }
+            }
+            return found;
+          }
         }
       }
     } catch {}
@@ -514,8 +525,25 @@ export default function App() {
           }
           const prevTime = prev.lastModifiedAt ? new Date(prev.lastModifiedAt).getTime() : 0;
           const foundTime = found.lastModifiedAt ? new Date(found.lastModifiedAt).getTime() : 0;
+          
+          // Guarantee zero loss of progressPlanHistory records unless explicitly deleted
+          const prevHist = prev.progressPlanHistory || [];
+          const foundHist = found.progressPlanHistory || [];
+          let combinedHist = foundHist;
+          if (prevHist.length > 0 && foundHist.length === 0) {
+            combinedHist = prevHist;
+          } else if (prevHist.length > 0 && foundHist.length > 0) {
+            const hMap = new Map<string, any>();
+            prevHist.forEach(h => { if (h?.id) hMap.set(h.id, h); });
+            foundHist.forEach(h => { if (h?.id) hMap.set(h.id, h); });
+            combinedHist = Array.from(hMap.values());
+          }
+
           if (foundTime > prevTime || JSON.stringify(prev) !== JSON.stringify(found)) {
-            return found;
+            return {
+              ...found,
+              progressPlanHistory: combinedHist
+            };
           }
           return prev;
         });
@@ -2449,8 +2477,22 @@ let isBatchSyncRunning = false;
       projList = [dp];
     }
 
-    // Ensure all elapsed history records across all projects are cleared
-    const normalizedLocal = projList.map(p => ({ ...p, progressPlanHistory: [] })).map(syncProjectPayment);
+    // Ensure all elapsed history records across all projects are preserved
+    const normalizedLocal = projList.map(p => {
+      let history = Array.isArray(p.progressPlanHistory) ? p.progressPlanHistory : [];
+      if (history.length === 0) {
+        try {
+          const b = localStorage.getItem(`era_hist_backup_${p.id}`);
+          if (b) {
+            const parsed = JSON.parse(b);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              history = parsed;
+            }
+          }
+        } catch {}
+      }
+      return { ...p, progressPlanHistory: history };
+    }).map(syncProjectPayment);
     setProjects(normalizedLocal);
 
     // Dynamic asynchronous initialization from Cloud Databases (parallelized for zero delay)
@@ -2468,9 +2510,23 @@ let isBatchSyncRunning = false;
         const cleanLocal = normalizedLocal.filter(p => !delSet.has(p.id));
 
         if (cloudData && cloudData.length > 0) {
-          const normalizedCloud = cloudData.filter(p => !delSet.has(p.id)).map(p => ({ ...p, progressPlanHistory: [] })).map(syncProjectPayment);
+          const normalizedCloud = cloudData.filter(p => !delSet.has(p.id)).map(p => {
+            let history = Array.isArray(p.progressPlanHistory) ? p.progressPlanHistory : [];
+            if (history.length === 0) {
+              try {
+                const b = localStorage.getItem(`era_hist_backup_${p.id}`);
+                if (b) {
+                  const parsed = JSON.parse(b);
+                  if (Array.isArray(parsed) && parsed.length > 0) {
+                    history = parsed;
+                  }
+                }
+              } catch {}
+            }
+            return { ...p, progressPlanHistory: history };
+          }).map(syncProjectPayment);
           
-          // Merge local and cloud projects ensuring conflict resolution with newer modification timestamp
+          // Merge local and cloud projects ensuring conflict resolution with newer modification timestamp and zero history loss
           const merged = [...cleanLocal];
           normalizedCloud.forEach(cloudProj => {
             const idx = merged.findIndex(p => p.id === cloudProj.id);
@@ -2480,13 +2536,22 @@ let isBatchSyncRunning = false;
               const existing = merged[idx];
               const existingTime = existing.lastModifiedAt ? new Date(existing.lastModifiedAt).getTime() : 0;
               const cloudTime = cloudProj.lastModifiedAt ? new Date(cloudProj.lastModifiedAt).getTime() : 0;
-              if (cloudTime >= existingTime) {
-                merged[idx] = cloudProj;
-              }
+
+              // Intelligent history preservation: union existing and cloud history records by ID so no saved record is ever lost
+              const historyMap = new Map<string, any>();
+              (existing.progressPlanHistory || []).forEach(h => { if (h?.id) historyMap.set(h.id, h); });
+              (cloudProj.progressPlanHistory || []).forEach(h => { if (h?.id) historyMap.set(h.id, h); });
+              const mergedHistory = Array.from(historyMap.values());
+
+              const base = cloudTime >= existingTime ? cloudProj : existing;
+              merged[idx] = {
+                ...base,
+                progressPlanHistory: mergedHistory.length > 0 ? mergedHistory : (base.progressPlanHistory || [])
+              };
             }
           });
 
-          const filteredMerged = merged.filter(p => !delSet.has(p.id)).map(p => ({ ...p, progressPlanHistory: [] }));
+          const filteredMerged = merged.filter(p => !delSet.has(p.id));
 
           // Sync back local-only projects in the background without blocking UI
           const projectsToSyncBack = filteredMerged.filter(p => !normalizedCloud.some(cp => cp.id === p.id));
@@ -2890,6 +2955,35 @@ let isBatchSyncRunning = false;
       lastModifiedAt: new Date().toISOString(),
       lastModifiedSection: sectionName
     };
+
+    // Safeguard: Ensure ELAPSED MONTHS & EFY HISTORY is never unintentionally lost
+    if (fields.progressPlanHistory === undefined) {
+      if (!updatedProject.progressPlanHistory || updatedProject.progressPlanHistory.length === 0) {
+        const inList = projects.find(p => p.id === currentProject.id);
+        if (inList?.progressPlanHistory && inList.progressPlanHistory.length > 0) {
+          updatedProject.progressPlanHistory = inList.progressPlanHistory;
+        } else {
+          try {
+            const b = localStorage.getItem(`era_hist_backup_${currentProject.id}`);
+            if (b) {
+              const parsed = JSON.parse(b);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                updatedProject.progressPlanHistory = parsed;
+              }
+            }
+          } catch {}
+        }
+      }
+    } else if (Array.isArray(fields.progressPlanHistory) && fields.progressPlanHistory.length > 0) {
+      try {
+        localStorage.setItem(`era_hist_backup_${currentProject.id}`, JSON.stringify(fields.progressPlanHistory));
+      } catch {}
+    } else if (Array.isArray(fields.progressPlanHistory) && fields.progressPlanHistory.length === 0) {
+      // Explicit deletion by authorized admin
+      try {
+        localStorage.removeItem(`era_hist_backup_${currentProject.id}`);
+      } catch {}
+    }
 
     // 0. Automatic bidirectional link: Supervising Consultant on Project Information & Supervision Agreement Consulting Firm
     if (fields.consultant !== undefined || fields.supervisionConsultant !== undefined) {
@@ -3827,6 +3921,17 @@ let isBatchSyncRunning = false;
                         approvedAt: new Date().toISOString(),
                         approverRole: currentUserObj.role
                       };
+                      if (!weightedProject.progressPlanHistory || weightedProject.progressPlanHistory.length === 0) {
+                        try {
+                          const b = localStorage.getItem(`era_hist_backup_${currentProject.id}`);
+                          if (b) {
+                            const parsed = JSON.parse(b);
+                            if (Array.isArray(parsed) && parsed.length > 0) {
+                              weightedProject.progressPlanHistory = parsed;
+                            }
+                          }
+                        } catch {}
+                      }
                       await safeSyncProject(weightedProject);
                       
                       setCurrentProject(weightedProject);
@@ -5191,6 +5296,11 @@ let isBatchSyncRunning = false;
                   onSwitchTab={setActiveTab}
                   projects={projects}
                   onClearAllProjectsHistory={() => {
+                    projects.forEach(p => {
+                      try {
+                        localStorage.removeItem(`era_hist_backup_${p.id}`);
+                      } catch {}
+                    });
                     const updated = projects.map(p => ({
                       ...p,
                       progressPlanHistory: []
