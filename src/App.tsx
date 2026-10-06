@@ -514,43 +514,6 @@ export default function App() {
     return null;
   });
 
-  // Keep currentProject in sync with real-time updates from the projects list (Firestore onSnapshot)
-  useEffect(() => {
-    if (currentProjectId) {
-      const found = projects.find(p => p.id === currentProjectId);
-      if (found) {
-        setCurrentProject(prev => {
-          if (!prev || prev.id !== found.id) {
-            return found;
-          }
-          const prevTime = prev.lastModifiedAt ? new Date(prev.lastModifiedAt).getTime() : 0;
-          const foundTime = found.lastModifiedAt ? new Date(found.lastModifiedAt).getTime() : 0;
-          
-          // Guarantee zero loss of progressPlanHistory records unless explicitly deleted
-          const prevHist = prev.progressPlanHistory || [];
-          const foundHist = found.progressPlanHistory || [];
-          let combinedHist = foundHist;
-          if (prevHist.length > 0 && foundHist.length === 0) {
-            combinedHist = prevHist;
-          } else if (prevHist.length > 0 && foundHist.length > 0) {
-            const hMap = new Map<string, any>();
-            prevHist.forEach(h => { if (h?.id) hMap.set(h.id, h); });
-            foundHist.forEach(h => { if (h?.id) hMap.set(h.id, h); });
-            combinedHist = Array.from(hMap.values());
-          }
-
-          if (foundTime > prevTime || JSON.stringify(prev) !== JSON.stringify(found)) {
-            return {
-              ...found,
-              progressPlanHistory: combinedHist
-            };
-          }
-          return prev;
-        });
-      }
-    }
-  }, [projects, currentProjectId]);
-
   // User Guide Modal state
   const [isUserGuideOpen, setIsUserGuideOpen] = useState(false);
 
@@ -834,23 +797,47 @@ export default function App() {
     return initialSampleDrafts;
   });
 
-  // Synchronize currentProject when projects array updates in real-time, and merge active, unsubmitted, unexpired editor drafts
+  // Synchronize currentProject when projects array updates in real-time, preserve history and merge active drafts
   useEffect(() => {
-    if (currentProjectId && projects.length > 0) {
-      const updated = projects.find(p => p.id === currentProjectId);
-      if (updated) {
-        // Automatically merge any active, unsubmitted private drafts that are under 10 minutes old
-        const integrated = getIntegratedProjectWithDrafts(updated, privateDrafts, currentUserObj);
-        
-        setCurrentProject(prev => {
-          if (!prev || JSON.stringify(prev) !== JSON.stringify(integrated)) {
-            return integrated;
-          }
-          return prev;
-        });
+    if (!currentProjectId || projects.length === 0) return;
+    const base = projects.find(p => p.id === currentProjectId);
+    if (!base) return;
+
+    // Automatically merge any active, unsubmitted private drafts that are under 10 minutes old
+    const integrated = getIntegratedProjectWithDrafts(base, privateDrafts, currentUserObj) || base;
+
+    setCurrentProject(prev => {
+      if (!prev || prev.id !== integrated.id) {
+        return integrated;
       }
-    }
-  }, [projects, currentProjectId, privateDrafts, currentUserObj, nowTimer]);
+
+      const prevTime = prev.lastModifiedAt ? new Date(prev.lastModifiedAt).getTime() : 0;
+      const integratedTime = integrated.lastModifiedAt ? new Date(integrated.lastModifiedAt).getTime() : 0;
+
+      // Guarantee zero loss of progressPlanHistory records unless explicitly deleted
+      const prevHist = prev.progressPlanHistory || [];
+      const newHist = integrated.progressPlanHistory || [];
+      let combinedHist = newHist;
+      if (prevHist.length > 0 && newHist.length === 0) {
+        combinedHist = prevHist;
+      } else if (prevHist.length > 0 && newHist.length > 0) {
+        const hMap = new Map<string, any>();
+        prevHist.forEach(h => { if (h?.id) hMap.set(h.id, h); });
+        newHist.forEach(h => { if (h?.id) hMap.set(h.id, h); });
+        combinedHist = Array.from(hMap.values());
+      }
+
+      const nextProject: Project = {
+        ...integrated,
+        progressPlanHistory: combinedHist
+      };
+
+      if (integratedTime > prevTime || JSON.stringify(prev) !== JSON.stringify(nextProject)) {
+        return nextProject;
+      }
+      return prev;
+    });
+  }, [projects, currentProjectId, privateDrafts, currentUserObj]);
 
   const [workflowAuditLogs, setWorkflowAuditLogs] = useState<WorkflowAuditLogEntry[]>(() => {
     try {

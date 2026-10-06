@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Award,
@@ -690,13 +690,18 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
     return evaluateQualitativeGrade(weightedJvScore, customThresholds);
   }, [weightedJvScore, customThresholds]);
 
+  const lastScoreRef = useRef<number | null>(null);
+
   // Synchronize live Section 2 evaluation score to the parent component in real-time
   useEffect(() => {
     if (onScoreChange) {
       const activeFiveDimScore = !isSoleConsultant
         ? Number(((leadScoreResult.fiveDimScore * (leadSharePct / 100)) + (partnerScoreResult.fiveDimScore * (partnerSharePct / 100))).toFixed(1))
         : evaluationResult.fiveDimScore;
-      onScoreChange(activeFiveDimScore);
+      if (lastScoreRef.current !== activeFiveDimScore) {
+        lastScoreRef.current = activeFiveDimScore;
+        onScoreChange(activeFiveDimScore);
+      }
     }
   }, [isSoleConsultant, leadScoreResult.fiveDimScore, partnerScoreResult.fiveDimScore, leadSharePct, partnerSharePct, evaluationResult.fiveDimScore, onScoreChange]);
 

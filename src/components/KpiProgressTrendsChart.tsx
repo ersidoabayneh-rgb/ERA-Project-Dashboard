@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion } from 'motion/react';
 import {
   TrendingUp,
@@ -80,9 +80,12 @@ export default function KpiProgressTrendsChart({
   getGoalScore: externalGetGoalScore,
   onProjectUpdate
 }: KpiProgressTrendsChartProps) {
+  const hasArchivedRef = useRef<string | null>(null);
+
   // Auto-archive logic when records reach 12 months or when a month is completed and within one week after completion
   useEffect(() => {
     if (!onProjectUpdate || !project.monthly || project.monthly.length === 0) return;
+    if (hasArchivedRef.current === project.id) return;
 
     const historyList = project.progressPlanHistory || [];
     let updatedHistory = [...historyList];
@@ -119,12 +122,15 @@ export default function KpiProgressTrendsChart({
     }
 
     if (needsUpdate) {
+      hasArchivedRef.current = project.id;
       onProjectUpdate(
         { progressPlanHistory: updatedHistory },
         'Auto-archived 12-month KPI progress records into history logs (locked after 1-week window)'
       );
+    } else {
+      hasArchivedRef.current = project.id;
     }
-  }, [project.monthly, project.progressPlanHistory, onProjectUpdate]);
+  }, [project.id, project.monthly?.length, project.progressPlanHistory?.length]);
   // Local state for internal group selection if not externally controlled
   const [internalGroupId, setInternalGroupId] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'cumulative' | 'incremental' | 'comparison'>('cumulative');

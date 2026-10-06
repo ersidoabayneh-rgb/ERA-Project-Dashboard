@@ -118,6 +118,8 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
     return ensureLiveRowForActual(project.monthly || [], currentMonthKey, project.physicalProgress, project.status);
   });
 
+  const lastSyncedHashRef = React.useRef<string>('');
+
   React.useEffect(() => {
     const ensured = ensureLiveRowForActual(project.monthly || [], currentMonthKey, project.physicalProgress, project.status);
     setMonths(ensured);
@@ -131,7 +133,11 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
         m.originalPlan !== ensured[i]?.originalPlan || 
         m.revisedPlan !== ensured[i]?.revisedPlan
       );
-    if (isDifferent) {
+
+    const ensuredHash = `${project.id}_${ensured.length}_${ensured.map(m => `${m.month}:${m.actual}:${m.originalPlan}:${m.revisedPlan}`).join(';')}`;
+
+    if (isDifferent && lastSyncedHashRef.current !== ensuredHash) {
+      lastSyncedHashRef.current = ensuredHash;
       onUpdateMonthly(ensured);
     }
   }, [project.id, currentMonthKey, project.status, project.monthly]);

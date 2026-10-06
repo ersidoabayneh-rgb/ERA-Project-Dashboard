@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   ResponsiveContainer, 
   LineChart, 
@@ -205,11 +205,14 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
   }, [project.progressPlanHistory, project.id]);
 
   // Auto-heal project if history exists in persistent backup but was missing from current project instance
+  const hasRestoredHistoryRef = useRef<string | null>(null);
   useEffect(() => {
+    if (hasRestoredHistoryRef.current === project.id) return;
     if ((!project.progressPlanHistory || project.progressPlanHistory.length === 0) && historyList.length > 0) {
+      hasRestoredHistoryRef.current = project.id;
       onUpdateProject({ progressPlanHistory: historyList }, 'Restored saved history records from persistent backup');
     }
-  }, [project.id, project.progressPlanHistory, historyList, onUpdateProject]);
+  }, [project.id, project.progressPlanHistory?.length, historyList.length]);
 
   // Selected Archived Item for Left Panel
   const [selectedArchivedKey, setSelectedArchivedKey] = useState<string>(
