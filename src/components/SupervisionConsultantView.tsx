@@ -1525,12 +1525,12 @@ export default function SupervisionConsultantView({
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
-      const margin = 25.4; // Strict 1-inch border padding (25.4 mm)
+      const margin = 12.7; // Standard border padding (12.7 mm / 36 pt)
       const contentWidth = pageWidth - (margin * 2);
       let pageNum = 1;
 
       const drawPageFrame = (currPage: number) => {
-        // Strict 1-inch Page border
+        // Standard Page border
         doc.setDrawColor(226, 232, 240);
         doc.setLineWidth(0.3);
         doc.roundedRect(margin, margin, contentWidth, pageHeight - (margin * 2), 2, 2, 'S');

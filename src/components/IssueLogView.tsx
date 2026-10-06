@@ -2632,7 +2632,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
         doc.setFontSize(7.5);
         doc.setTextColor(51, 65, 85);
         reasonLines.forEach((l: string) => {
-          doc.text(l, margin + 14, cardY);
+          doc.text(l, margin + 14, cardY, { maxWidth: contentWidth - 28 });
           cardY += 9;
         });
         cardY += 4;
@@ -2647,7 +2647,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
         doc.setFontSize(7.5);
         doc.setTextColor(51, 65, 85);
         actionLines.forEach((l: string) => {
-          doc.text(l, margin + 14, cardY);
+          doc.text(l, margin + 14, cardY, { maxWidth: contentWidth - 28 });
           cardY += 9;
         });
         cardY += 4;
@@ -2662,7 +2662,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
         doc.setFontSize(7.5);
         doc.setTextColor(107, 33, 168);
         recLines.forEach((l: string) => {
-          doc.text(l, margin + 14, cardY);
+          doc.text(l, margin + 14, cardY, { maxWidth: contentWidth - 28 });
           cardY += 9;
         });
 

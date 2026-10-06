@@ -683,15 +683,15 @@ export default function SubmittalLogView({
 
     const pageWidth = doc.internal.pageSize.getWidth(); // 841.89 pt
     const pageHeight = doc.internal.pageSize.getHeight(); // 595.28 pt
-    const margin = STRICT_1_INCH_MARGIN; // Strict 1-inch border padding (72 pt)
-    const contentWidth = pageWidth - (margin * 2); // 697.89 pt
+    const margin = STRICT_1_INCH_MARGIN; // Standard border padding (36 pt)
+    const contentWidth = pageWidth - (margin * 2); // 769.89 pt
     let curY = margin + 14;
     let pageCount = 0;
 
     const drawPageDecorations = () => {
       pageCount++;
 
-      // Strict 1-inch Page Border Frame
+      // Standard Page Border Frame
       doc.setDrawColor(226, 232, 240);
       doc.setLineWidth(0.75);
       doc.roundedRect(margin, margin, contentWidth, pageHeight - (margin * 2), 4, 4, 'S');

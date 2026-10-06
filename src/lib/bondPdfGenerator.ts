@@ -11,10 +11,10 @@ export function generateBondGuaranteePdf(bond: BondGuarantee, project: Project):
 
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
-  const margin = 25.4; // Strict 1-inch border padding (25.4 mm)
+  const margin = 12.7; // Standard border padding (12.7 mm / 36 pt)
   const contentWidth = pageWidth - margin * 2;
 
-  // Outer Security Frame / Border strictly at 1-inch margin
+  // Outer Security Frame / Border at standard margin
   doc.setDrawColor(218, 165, 32); // Gold / Amber border
   doc.setLineWidth(1.0);
   doc.rect(margin, margin, contentWidth, pageHeight - margin * 2);

@@ -1230,7 +1230,7 @@ export default function DashboardView({
 
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
-        const margin = STRICT_1_INCH_MARGIN; // Strict 1-inch border padding (72 pt)
+        const margin = STRICT_1_INCH_MARGIN; // Standard border padding (36 pt)
         const contentWidth = pageWidth - (margin * 2);
         const p = project;
 
@@ -1239,7 +1239,7 @@ export default function DashboardView({
         const drawHeaderAndBorders = () => {
           if (!pdfConfig.includeHeaderBorders) return;
 
-          // Outer boundary frame strictly at 1-inch margin
+          // Outer boundary frame at standard margin
           doc.setDrawColor(226, 232, 240);
           doc.setLineWidth(0.75);
           doc.roundedRect(margin, margin, contentWidth, pageHeight - (margin * 2), 4, 4, 'S');

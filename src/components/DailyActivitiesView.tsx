@@ -951,14 +951,14 @@ export default function DailyActivitiesView({
 
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
-    const margin = STRICT_1_INCH_MARGIN; // Strict 1-inch border padding (72 pt)
-    const contentWidth = pageWidth - margin * 2; // 697.89 pt
+    const margin = STRICT_1_INCH_MARGIN; // Standard border padding (36 pt)
+    const contentWidth = pageWidth - margin * 2; // 769.89 pt
     let curY = margin + 14;
     let pageCount = 0;
 
     const drawHeader = () => {
       pageCount++;
-      // Outer border strictly at 1-inch margin
+      // Outer border at standard margin
       doc.setDrawColor(203, 213, 225);
       doc.setLineWidth(0.75);
       doc.roundedRect(margin, margin, contentWidth, pageHeight - (margin * 2), 4, 4, 'S');

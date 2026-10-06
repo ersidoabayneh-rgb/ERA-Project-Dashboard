@@ -2,11 +2,11 @@ import { jsPDF } from 'jspdf';
 import { ERA_LOGO_BASE64 } from '../assets/eraLogoBase64';
 
 /**
- * Standard 1-inch border padding in standard PDF points (1 inch = 72 pt = 25.4 mm).
- * All exported project PDF reports apply this strict margin to guarantee that content
- * remains securely inside printable boundaries on all physical printers and paper sizes.
+ * Standard PDF border padding in standard PDF points (36 pt = 0.5 inch / 12.7 mm).
+ * Provides clean, generous printable area without the excessive restriction of a 1-inch (72 pt) margin.
  */
-export const STRICT_1_INCH_MARGIN = 72;
+export const STANDARD_PDF_MARGIN = 36;
+export const STRICT_1_INCH_MARGIN = STANDARD_PDF_MARGIN; // backward-compatibility alias
 
 export interface PageLayoutConfig {
   margin?: number;

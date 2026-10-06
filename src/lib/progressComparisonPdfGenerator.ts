@@ -34,7 +34,7 @@ export function generateProgressComparisonPdf({
   const doc = new jsPDF('l', 'pt', 'a4');
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
-  const margin = STRICT_1_INCH_MARGIN; // Strict 1-inch border padding (72 pt)
+  const margin = STRICT_1_INCH_MARGIN; // Standard border padding (36 pt)
   const contentWidth = pageWidth - (margin * 2);
   const totalLength = project.lengthKm || 65.0;
 

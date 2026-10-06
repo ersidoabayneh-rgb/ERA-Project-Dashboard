@@ -227,8 +227,8 @@ export default function DlpDefectModal({
 
     const pageWidth = doc.internal.pageSize.getWidth(); // 595.28 pt
     const pageHeight = doc.internal.pageSize.getHeight(); // 841.89 pt
-    const margin = STRICT_1_INCH_MARGIN; // Strict 1-inch border padding (72 pt)
-    const contentWidth = pageWidth - margin * 2; // 451.28 pt
+    const margin = STRICT_1_INCH_MARGIN; // Standard border padding (36 pt)
+    const contentWidth = pageWidth - margin * 2; // 523.28 pt
 
     // 1. Header & ERA Logo
     drawEraLogo(doc, margin + 4, margin + 4, 36, {
