@@ -2902,34 +2902,66 @@ export default function GroupReportGenerator({
     const invoices: ConsultantInvoice[] = sc?.invoices || [];
     const rate = p.usdExchangeRate || 28.0;
 
+    // Determine whether USD payments are active on this contract (strictly matching SupervisionConsultantView)
+    const hasUsdPayments = (() => {
+      if (sc?.enableUsdPayments === false || p.enableUsdPayments === false) {
+        return false;
+      }
+      if (sc?.enableUsdPayments === true || p.enableUsdPayments === true) {
+        const hasUsdBudget = (sc?.revisedFeeUsd || sc?.originalFeeUsd || 0) > 0;
+        const hasUsdInvoices = invoices.some(inv => (inv.foreignCurrencyAmount || 0) > 0);
+        return hasUsdBudget || hasUsdInvoices;
+      }
+      return Boolean(invoices.some(inv => (inv.foreignCurrencyAmount || 0) > 0));
+    })();
+
     const totalInvoicesCount = invoices.length;
     const paidInvoices = invoices.filter(inv => inv.status === 'Paid');
-    const unpaidInvoices = invoices.filter(inv => inv.status !== 'Paid');
+    const unpaidInvoices = invoices.filter(inv => inv.status !== 'Paid' && inv.status !== 'Rejected');
     const submittedInvoices = unpaidInvoices.filter(inv => inv.status === 'Submitted' || inv.status === 'Pending');
     const certifiedInvoices = unpaidInvoices.filter(inv => inv.status === 'Certified');
-    const rejectedInvoices = unpaidInvoices.filter(inv => inv.status === 'Rejected');
+    const rejectedInvoices = invoices.filter(inv => inv.status === 'Rejected');
 
     const unpaidCount = unpaidInvoices.length;
     const unpaidGrossEtb = unpaidInvoices.reduce((acc, inv) => acc + (inv.grossAmountEtb || 0), 0);
     const unpaidNetEtb = unpaidInvoices.reduce((acc, inv) => acc + (inv.netAmountEtb || 0), 0);
-    const unpaidUsd = unpaidInvoices.reduce((acc, inv) => acc + (inv.foreignCurrencyAmount || 0), 0);
+    const unpaidUsd = hasUsdPayments ? unpaidInvoices.reduce((acc, inv) => acc + (inv.foreignCurrencyAmount || 0), 0) : 0;
     const combinedUnpaidEtb = unpaidNetEtb + (unpaidUsd * rate);
 
     const certifiedUnpaidEtb = certifiedInvoices.reduce((acc, inv) => acc + (inv.netAmountEtb || 0), 0);
-    const certifiedUnpaidUsd = certifiedInvoices.reduce((acc, inv) => acc + (inv.foreignCurrencyAmount || 0), 0);
+    const certifiedUnpaidUsd = hasUsdPayments ? certifiedInvoices.reduce((acc, inv) => acc + (inv.foreignCurrencyAmount || 0), 0) : 0;
     const submittedUnpaidEtb = submittedInvoices.reduce((acc, inv) => acc + (inv.netAmountEtb || 0), 0);
-    const submittedUnpaidUsd = submittedInvoices.reduce((acc, inv) => acc + (inv.foreignCurrencyAmount || 0), 0);
+    const submittedUnpaidUsd = hasUsdPayments ? submittedInvoices.reduce((acc, inv) => acc + (inv.foreignCurrencyAmount || 0), 0) : 0;
 
     const totalGrossInvoiced = invoices.reduce((acc, inv) => acc + (inv.grossAmountEtb || 0), 0);
     const totalNetInvoiced = invoices.reduce((acc, inv) => acc + (inv.netAmountEtb || 0), 0);
     const totalPaidNetEtb = paidInvoices.reduce((acc, inv) => acc + (inv.netAmountEtb || 0), 0);
-    const totalPaidUsd = paidInvoices.reduce((acc, inv) => acc + (inv.foreignCurrencyAmount || 0), 0);
+    const totalPaidUsd = hasUsdPayments ? paidInvoices.reduce((acc, inv) => acc + (inv.foreignCurrencyAmount || 0), 0) : 0;
+
+    // Matured Overdue (>56 days) Fee Invoices for Supervision Consultant (matching SupervisionConsultantView)
+    const today = new Date();
+    const maturedInvoices = unpaidInvoices.filter(inv => {
+      const refDateStr = inv.submissionDate || inv.certificationDate;
+      if (refDateStr) {
+        const d = new Date(refDateStr);
+        if (!isNaN(d.getTime())) {
+          const days = Math.floor((today.getTime() - d.getTime()) / (1000 * 60 * 60 * 24));
+          return days > 56;
+        }
+      }
+      return false;
+    });
+    const maturedCount = maturedInvoices.length;
+    const maturedNetEtb = maturedInvoices.reduce((acc, inv) => acc + (inv.netAmountEtb || 0), 0);
+    const maturedUsd = hasUsdPayments ? maturedInvoices.reduce((acc, inv) => acc + (inv.foreignCurrencyAmount || 0), 0) : 0;
+    const combinedMaturedEtb = maturedNetEtb + (maturedUsd * rate);
 
     const unpaidInvoiceNos = unpaidInvoices.map(inv => inv.invoiceNo || 'INV').join(', ');
     const latestUnpaid = unpaidInvoices.length > 0 ? unpaidInvoices[unpaidInvoices.length - 1] : null;
 
     return {
       consultantFirm,
+      hasUsdPayments,
       invoices,
       totalInvoicesCount,
       paidInvoices,
@@ -2946,6 +2978,11 @@ export default function GroupReportGenerator({
       certifiedUnpaidUsd,
       submittedUnpaidEtb,
       submittedUnpaidUsd,
+      maturedInvoices,
+      maturedCount,
+      maturedNetEtb,
+      maturedUsd,
+      combinedMaturedEtb,
       totalGrossInvoiced,
       totalNetInvoiced,
       totalPaidNetEtb,
@@ -2987,6 +3024,14 @@ export default function GroupReportGenerator({
         totalConsultantUnpaidGrossEtb: 0,
         totalConsultantUnpaidUsd: 0,
         combinedConsultantUnpaidEtb: 0,
+        totalConsultantMaturedCount: 0,
+        totalConsultantMaturedEtb: 0,
+        totalConsultantMaturedUsd: 0,
+        combinedConsultantMaturedEtb: 0,
+        totalAllMaturedCount: 0,
+        totalAllMaturedEtb: 0,
+        totalAllMaturedUsd: 0,
+        combinedAllMaturedEtb: 0,
         projectsWithUnpaidConsultantCount: 0,
       };
     }
@@ -3017,6 +3062,10 @@ export default function GroupReportGenerator({
     let totalConsultantUnpaidGrossEtb = 0;
     let totalConsultantUnpaidUsd = 0;
     let combinedConsultantUnpaidEtb = 0;
+    let totalConsultantMaturedCount = 0;
+    let totalConsultantMaturedEtb = 0;
+    let totalConsultantMaturedUsd = 0;
+    let combinedConsultantMaturedEtb = 0;
     let projectsWithUnpaidConsultantCount = 0;
 
     const today = new Date();
@@ -3072,6 +3121,12 @@ export default function GroupReportGenerator({
       totalConsultantUnpaidGrossEtb += cM.unpaidGrossEtb;
       totalConsultantUnpaidUsd += cM.unpaidUsd;
       combinedConsultantUnpaidEtb += cM.combinedUnpaidEtb;
+
+      totalConsultantMaturedCount += cM.maturedCount;
+      totalConsultantMaturedEtb += cM.maturedNetEtb;
+      totalConsultantMaturedUsd += cM.maturedUsd;
+      combinedConsultantMaturedEtb += cM.combinedMaturedEtb;
+
       if (cM.unpaidCount > 0) {
         projectsWithUnpaidConsultantCount++;
       }
@@ -3105,6 +3160,10 @@ export default function GroupReportGenerator({
       totalConsultantUnpaidGrossEtb,
       totalConsultantUnpaidUsd,
       combinedConsultantUnpaidEtb,
+      totalConsultantMaturedCount,
+      totalConsultantMaturedEtb,
+      totalConsultantMaturedUsd,
+      combinedConsultantMaturedEtb,
       projectsWithUnpaidConsultantCount,
     };
   }, [rawGroupProjects]);
@@ -5792,7 +5851,7 @@ export default function GroupReportGenerator({
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(6.5);
     doc.setTextColor(153, 27, 27);
-    const c4Eqv = doc.splitTextToSize(`Eqv: ETB ${paymentStats.combinedMaturedEtb.toLocaleString(undefined, { maximumFractionDigits: 0 })} (${paymentStats.maturedIpcCount} Overdue)`, cardTextWidth);
+    const c4Eqv = doc.splitTextToSize(`Eqv: ETB ${paymentStats.combinedMaturedEtb.toLocaleString(undefined, { maximumFractionDigits: 0 })} (${paymentStats.maturedIpcCount} Overdue IPCs)`, cardTextWidth);
     doc.text(c4Eqv[0] || '', card4X + cardInnerPad, cardY + 52);
 
     const colWidths = {
@@ -5942,21 +6001,23 @@ export default function GroupReportGenerator({
       doc.setFont('helvetica', isConsultantUnpaid ? 'bold' : 'normal');
       doc.setFontSize(isConsultantUnpaid ? 7.5 : 6.5);
       const consEtbLines = doc.splitTextToSize(isConsultantUnpaid ? `ETB: ${formatAccounting(cM.unpaidNetEtb, '')}` : `ETB: 0.00`, colWidths.consultantUnpaid - 14);
-      const consUsdLines = cM.unpaidUsd > 0 ? doc.splitTextToSize(`USD: $${formatAccounting(cM.unpaidUsd, '')}`, colWidths.consultantUnpaid - 14) : [];
+      const consUsdLines = (cM.hasUsdPayments && cM.unpaidUsd > 0) ? doc.splitTextToSize(`USD: $${formatAccounting(cM.unpaidUsd, '')}`, colWidths.consultantUnpaid - 14) : [];
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(6);
       const consFirmLines = doc.splitTextToSize(`Cons: ${cM.consultantFirm}`, colWidths.consultantUnpaid - 14);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(6.5);
+      const consBadgeText = isConsultantUnpaid 
+        ? `! ${cM.unpaidCount} Unpaid (${cM.certifiedInvoices.length} Cert, ${cM.submittedInvoices.length} Sub)` 
+        : cM.totalInvoicesCount > 0 ? `Fully Paid (${cM.totalInvoicesCount} Invs)` : `0 Invoices Logged`;
       const consBadgeLines = doc.splitTextToSize(
-        isConsultantUnpaid 
-          ? `! ${cM.unpaidCount} Unpaid (${cM.certifiedInvoices.length} Cert, ${cM.submittedInvoices.length} Sub)` 
-          : cM.totalInvoicesCount > 0 ? `Fully Paid (${cM.totalInvoicesCount} Invs)` : `0 Invoices Logged`,
+        consBadgeText,
         colWidths.consultantUnpaid - 14
       );
 
-      // Pre-calculate wrapped lines for Column 6 (Matured)
-      const isMatured = m.combinedMatured > 0 || m.maturedEtb > 0 || m.maturedUsd > 0;
+      // Pre-calculate wrapped lines for Column 6 (Contractor Matured Overdue IPCs >56d)
+      const isMatured = m.combinedMatured > 0 || m.maturedEtb > 0 || m.maturedUsd > 0 || m.maturedIpcsCount > 0;
+
       doc.setFont('helvetica', isMatured ? 'bold' : 'normal');
       doc.setFontSize(isMatured ? 7.5 : 6.5);
       const matEtbLines = doc.splitTextToSize(isMatured ? `ETB: ${formatAccounting(m.maturedEtb, '')}` : `ETB: 0.00`, colWidths.matured - 14);
@@ -6290,7 +6351,7 @@ export default function GroupReportGenerator({
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(6.5);
     const sMatEqvLines = doc.splitTextToSize(`Eqv: ETB ${paymentStats.combinedMaturedEtb.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, colWidths.matured - 14);
-    const sMatBadgeLines = paymentStats.maturedIpcCount > 0 ? doc.splitTextToSize(`${paymentStats.maturedIpcCount} Matured Overdue IPCs`, colWidths.matured - 14) : [];
+    const sMatBadgeLines = paymentStats.maturedIpcCount > 0 ? doc.splitTextToSize(`${paymentStats.maturedIpcCount} Overdue IPC Claims`, colWidths.matured - 14) : [];
 
     const sCol1H = (sTitleLines.length * 9) + (sSubLines.length * 8) + 14;
     const sCol2H = (sIpcLines.length * 8.5) + (sIpcSubLines.length * 7.5) + (sOverdueLines.length * 7.5) + 14;
@@ -10060,7 +10121,7 @@ export default function GroupReportGenerator({
                         ? 'text-red-600 dark:text-rose-300 border-rose-200/60 dark:border-rose-800/60' 
                         : 'text-slate-400 border-slate-200/50 dark:border-slate-700/50'
                     }`}>
-                      Eqv: ETB {paymentStats.combinedMaturedEtb.toLocaleString(undefined, { maximumFractionDigits: 0 })} • {paymentStats.maturedIpcCount} Overdue (&gt;56d)
+                      Eqv: ETB {paymentStats.combinedMaturedEtb.toLocaleString(undefined, { maximumFractionDigits: 0 })} • {paymentStats.maturedIpcCount} Overdue IPCs (&gt;56d)
                     </div>
                   </div>
                 </div>
@@ -12246,7 +12307,7 @@ export default function GroupReportGenerator({
                                     <div className="text-[10px] font-extrabold text-purple-700 dark:text-purple-400">
                                       ETB {formatAccounting(cM.unpaidNetEtb, '')}
                                     </div>
-                                    {cM.unpaidUsd > 0 && (
+                                    {cM.hasUsdPayments && cM.unpaidUsd > 0 && (
                                       <div className="text-[10px] font-extrabold text-purple-700 dark:text-purple-400">
                                         USD ${formatAccounting(cM.unpaidUsd, '')}
                                       </div>
@@ -12279,25 +12340,32 @@ export default function GroupReportGenerator({
                                 )}
                               </td>
                               <td className="px-3 py-2.5 text-right font-mono">
-                                {m.combinedMatured > 0 ? (
-                                  <div className="flex flex-col items-end gap-0.5">
-                                    <div className="text-[10px] font-extrabold text-red-600 dark:text-rose-400">
-                                      ETB {formatAccounting(m.maturedEtb, '')}
-                                    </div>
-                                    {m.maturedUsd > 0 && (
-                                      <div className="text-[10px] font-extrabold text-red-600 dark:text-rose-400">
-                                        USD ${formatAccounting(m.maturedUsd, '')}
+                                {(() => {
+                                  const isMatured = m.combinedMatured > 0 || m.maturedEtb > 0 || m.maturedUsd > 0 || m.maturedIpcsCount > 0;
+
+                                  if (isMatured) {
+                                    return (
+                                      <div className="flex flex-col items-end gap-0.5">
+                                        <div className="text-[10px] font-extrabold text-red-600 dark:text-rose-400">
+                                          ETB {formatAccounting(m.maturedEtb, '')}
+                                        </div>
+                                        {m.maturedUsd > 0 && (
+                                          <div className="text-[10px] font-extrabold text-red-600 dark:text-rose-400">
+                                            USD ${formatAccounting(m.maturedUsd, '')}
+                                          </div>
+                                        )}
+                                        <span className="text-[8px] bg-red-50 text-red-600 dark:bg-rose-950/20 dark:text-rose-400 border border-red-100 dark:border-red-900/30 px-1 py-0.5 rounded font-black mt-0.5">
+                                          ⚠️ {m.maturedIpcsCount} Overdue (&gt;56d)
+                                        </span>
                                       </div>
-                                    )}
-                                    <span className="text-[8px] bg-red-50 text-red-600 dark:bg-rose-950/20 dark:text-rose-400 border border-red-100 dark:border-red-900/30 px-1 py-0.5 rounded font-black mt-0.5">
-                                      ⚠️ {m.maturedIpcsCount} Overdue (&gt;56d)
+                                    );
+                                  }
+                                  return (
+                                    <span className="text-[10px] font-bold text-slate-400">
+                                      ETB 0.00
                                     </span>
-                                  </div>
-                                ) : (
-                                  <span className="text-[10px] font-bold text-slate-400">
-                                    ETB 0.00
-                                  </span>
-                                )}
+                                  );
+                                })()}
                               </td>
                             </tr>
                             {isExpanded && (
@@ -12461,14 +12529,30 @@ export default function GroupReportGenerator({
                                       ) : (
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                           {cM.invoices.map((inv, invIdx) => {
-                                            const isUnpaid = inv.status !== 'Paid';
+                                            const isUnpaid = inv.status !== 'Paid' && inv.status !== 'Rejected';
                                             const isCertified = inv.status === 'Certified';
                                             const isSubmitted = inv.status === 'Submitted' || inv.status === 'Pending';
+                                            
+                                            let ageDays = 0;
+                                            let isMaturedOverdue = false;
+                                            const refDateStr = inv.submissionDate || inv.certificationDate;
+                                            if (refDateStr && isUnpaid) {
+                                              const d = new Date(refDateStr);
+                                              if (!isNaN(d.getTime())) {
+                                                ageDays = Math.floor((today.getTime() - d.getTime()) / (1000 * 60 * 60 * 24));
+                                                if (ageDays > 56) {
+                                                  isMaturedOverdue = true;
+                                                }
+                                              }
+                                            }
+
                                             return (
                                               <div
                                                 key={`${p.id}_cinv_${inv.id || invIdx}_${invIdx}`}
                                                 className={`p-3 rounded-xl border flex flex-col justify-between gap-2 transition-all ${
-                                                  isCertified
+                                                  isMaturedOverdue
+                                                    ? 'bg-rose-50/20 dark:bg-rose-950/15 border-rose-200 dark:border-rose-900/40'
+                                                    : isCertified
                                                     ? 'bg-purple-50/20 dark:bg-purple-950/15 border-purple-200 dark:border-purple-800/40'
                                                     : isSubmitted
                                                     ? 'bg-amber-50/15 dark:bg-amber-950/10 border-amber-200 dark:border-amber-800/30'
@@ -12481,7 +12565,7 @@ export default function GroupReportGenerator({
                                                       {inv.invoiceNo}
                                                     </span>
                                                     <span className="text-[9px] text-slate-400 dark:text-slate-500 block">
-                                                      Period: <strong className="text-slate-600 dark:text-slate-300">{inv.billingPeriod || 'N/A'}</strong> • Submitted: {inv.submissionDate || 'N/A'}
+                                                      Period: <strong className="text-slate-600 dark:text-slate-300">{inv.billingPeriod || 'N/A'}</strong> • Submitted: {inv.submissionDate || 'N/A'} {inv.submissionDate && isUnpaid && `(${ageDays}d elapsed)`}
                                                     </span>
                                                     {inv.certificationDate && (
                                                       <span className="text-[9px] text-purple-600 dark:text-purple-400 block font-mono">
@@ -12494,15 +12578,24 @@ export default function GroupReportGenerator({
                                                       </span>
                                                     )}
                                                   </div>
-                                                  <span className={`text-[8.5px] font-black uppercase px-2 py-0.5 rounded-full border ${
-                                                    inv.status === 'Paid'
-                                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800'
-                                                      : inv.status === 'Certified'
-                                                      ? 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800'
-                                                      : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800'
-                                                  }`}>
-                                                    {inv.status === 'Paid' ? '✓ Paid' : inv.status === 'Certified' ? '⏳ Certified (Unpaid)' : '⏳ Submitted (Unpaid)'}
-                                                  </span>
+                                                  <div className="flex flex-col items-end gap-1">
+                                                    {isMaturedOverdue && (
+                                                      <span className="text-[8px] font-black bg-red-600 text-white px-1.5 py-0.5 rounded border border-red-700 animate-pulse">
+                                                        ⚠️ OVERDUE MATURED CLAIM ({ageDays}d)
+                                                      </span>
+                                                    )}
+                                                    <span className={`text-[8.5px] font-black uppercase px-2 py-0.5 rounded-full border ${
+                                                      inv.status === 'Paid'
+                                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800'
+                                                        : isMaturedOverdue
+                                                        ? 'bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800'
+                                                        : inv.status === 'Certified'
+                                                        ? 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800'
+                                                        : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800'
+                                                    }`}>
+                                                      {inv.status === 'Paid' ? '✓ Paid' : isMaturedOverdue ? '⚠️ Matured Overdue' : inv.status === 'Certified' ? '⏳ Certified (Unpaid)' : '⏳ Submitted (Unpaid)'}
+                                                    </span>
+                                                  </div>
                                                 </div>
 
                                                 <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-2xs">
@@ -12512,11 +12605,18 @@ export default function GroupReportGenerator({
                                                       Net: ETB {(inv.netAmountEtb || 0).toLocaleString()}
                                                     </span>
                                                   </div>
-                                                  {(inv.foreignCurrencyAmount || 0) > 0 && (
+                                                  {cM.hasUsdPayments && (inv.foreignCurrencyAmount || 0) > 0 ? (
                                                     <div className="text-right">
                                                       <span className="text-slate-400 block text-[8px]">Foreign Currency</span>
                                                       <span className="font-extrabold text-purple-600 dark:text-purple-400 font-mono">
                                                         ${(inv.foreignCurrencyAmount || 0).toLocaleString()} {inv.foreignCurrencyCode || 'USD'}
+                                                      </span>
+                                                    </div>
+                                                  ) : (
+                                                    <div className="text-right">
+                                                      <span className="text-slate-400 block text-[8px]">Currency Mode</span>
+                                                      <span className="font-mono font-bold text-slate-600 dark:text-zinc-400 text-[9px]">
+                                                        ETB Local Only
                                                       </span>
                                                     </div>
                                                   )}

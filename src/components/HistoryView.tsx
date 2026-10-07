@@ -415,6 +415,19 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
   // Total Remaining Budget (In millions of Birr)
   const remainingBudget = Math.max(0, p.origAmount - (AC / 1_000_000));
   
+  // Determine whether USD payments are active on this contract
+  const hasUsdPayments = useMemo(() => {
+    if (p.enableUsdPayments === false || p.supervisionConsultant?.enableUsdPayments === false) {
+      return false;
+    }
+    if (p.enableUsdPayments === true || p.supervisionConsultant?.enableUsdPayments === true) {
+      const hasUsdBudget = ((p.supervisionConsultant?.revisedFeeUsd || p.supervisionConsultant?.originalFeeUsd || 0) > 0);
+      const hasUsdIpc = (p.ipcTracker || []).some(i => (i.certifiedUsd || 0) > 0 || (i.grossBillUsd || 0) > 0);
+      return hasUsdBudget || hasUsdIpc;
+    }
+    return Boolean((p.ipcTracker || []).some(i => (i.certifiedUsd || 0) > 0 || (i.grossBillUsd || 0) > 0));
+  }, [p]);
+
   // 4b. Right-of-Way (ROW) and Matured Unpaid IPCs Compliance calculation
   const rateIpc = p.usdExchangeRate || 57.50;
   const trackerIpcs = p.ipcTracker || [];
@@ -429,7 +442,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
   // Aggregate unpaid net portions in native currencies
   trackerIpcs.forEach(item => {
     const isEtbUnpaid = (item.statusEtb || item.status) === 'Unpaid';
-    const isUsdUnpaid = (item.statusUsd || item.status) === 'Unpaid';
+    const isUsdUnpaid = hasUsdPayments && (item.statusUsd || item.status) === 'Unpaid';
     if (isEtbUnpaid) {
       totalUnpaidNetEtb += item.certifiedEtb || 0;
     }
@@ -440,7 +453,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
   
   const unpaidIpcsDetails = trackerIpcs.map(item => {
     const isEtbUnpaid = (item.statusEtb || item.status) === 'Unpaid';
-    const isUsdUnpaid = (item.statusUsd || item.status) === 'Unpaid';
+    const isUsdUnpaid = hasUsdPayments && (item.statusUsd || item.status) === 'Unpaid';
     
     let itemAmountEtb = 0;
     if (isEtbUnpaid) itemAmountEtb += item.certifiedEtb || 0;
@@ -1413,13 +1426,17 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     doc.setFontSize(8);
     doc.setTextColor(220, 38, 38); // rose-600
     doc.text("Net ETB: Br. " + new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(maturedUnpaidNetEtb), pageWidth - 52, curY + 18, { align: 'right' });
-    doc.text("Net USD: $ " + new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(maturedUnpaidNetUsd), pageWidth - 52, curY + 25, { align: 'right' });
+    if (hasUsdPayments && maturedUnpaidNetUsd > 0) {
+      doc.text("Net USD: $ " + new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(maturedUnpaidNetUsd), pageWidth - 52, curY + 25, { align: 'right' });
+    }
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(5.5);
     doc.setTextColor(71, 85, 105);
-    doc.text("TOTAL UNPAID NET ETB: Br. " + new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(totalUnpaidNetEtb), pageWidth - 52, curY + 31, { align: 'right' });
-    doc.text("TOTAL UNPAID NET USD: $ " + new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(totalUnpaidNetUsd), pageWidth - 52, curY + 37, { align: 'right' });
+    doc.text("TOTAL UNPAID NET ETB: Br. " + new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(totalUnpaidNetEtb), pageWidth - 52, curY + (hasUsdPayments && maturedUnpaidNetUsd > 0 ? 31 : 25), { align: 'right' });
+    if (hasUsdPayments && totalUnpaidNetUsd > 0) {
+      doc.text("TOTAL UNPAID NET USD: $ " + new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(totalUnpaidNetUsd), pageWidth - 52, curY + (hasUsdPayments && maturedUnpaidNetUsd > 0 ? 37 : 31), { align: 'right' });
+    }
 
     if (unpaidIpcsDetails.length > 0) {
       doc.setFont('helvetica', 'bold');
@@ -1428,8 +1445,10 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
       doc.text("IPC No.", 52, curY + 41);
       doc.text("Age (Days)", 140, curY + 41);
       doc.text("Net ETB Portion", 220, curY + 41);
-      doc.text("Net USD Portion", 310, curY + 41);
-      doc.text("Clausal Status", 400, curY + 41);
+      if (hasUsdPayments) {
+        doc.text("Net USD Portion", 310, curY + 41);
+      }
+      doc.text("Clausal Status", hasUsdPayments ? 400 : 320, curY + 41);
 
       let lineY = curY + 49;
       unpaidIpcsDetails.slice(0, 3).forEach((item) => {
@@ -1439,15 +1458,17 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
         doc.text(item.paymentNo, 52, lineY);
         doc.text(`${item.daysElapsed} days`, 140, lineY);
         doc.text("Br. " + new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(item.certifiedEtb), 220, lineY);
-        doc.text("$ " + new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(item.certifiedUsd), 310, lineY);
+        if (hasUsdPayments) {
+          doc.text("$ " + new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(item.certifiedUsd), 310, lineY);
+        }
         
         doc.setFont('helvetica', 'bold');
         if (item.isMatured) {
           doc.setTextColor(220, 38, 38);
-          doc.text("Matured / Overdue", 400, lineY);
+          doc.text("Matured / Overdue", hasUsdPayments ? 400 : 320, lineY);
         } else {
           doc.setTextColor(37, 99, 235);
-          doc.text("Pending", 400, lineY);
+          doc.text("Pending", hasUsdPayments ? 400 : 320, lineY);
         }
         lineY += 9;
       });
@@ -4823,31 +4844,37 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                   </div>
 
                   {/* Summary Metric Cards for Unpaid Balances */}
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 bg-white/40 dark:bg-slate-900/40 p-3 rounded-lg border border-slate-100 dark:border-slate-800/80">
+                  <div className={`grid gap-3 bg-white/40 dark:bg-slate-900/40 p-3 rounded-lg border border-slate-100 dark:border-slate-800/80 ${
+                    hasUsdPayments ? 'grid-cols-2 md:grid-cols-4' : 'grid-cols-1 md:grid-cols-2'
+                  }`}>
                     <div className="space-y-1">
                       <span className="text-[8px] font-extrabold text-rose-500 block uppercase tracking-wider font-mono">MATURED NET ETB (&gt;56 Days)</span>
                       <span className="text-xs sm:text-sm font-black font-mono text-rose-600 dark:text-rose-400 block">
                         Br. {new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(maturedUnpaidNetEtb)}
                       </span>
                     </div>
-                    <div className="space-y-1 border-l border-slate-200/50 dark:border-slate-800/80 pl-3">
-                      <span className="text-[8px] font-extrabold text-rose-500 block uppercase tracking-wider font-mono">MATURED NET USD (&gt;56 Days)</span>
-                      <span className="text-xs sm:text-sm font-black font-mono text-rose-600 dark:text-rose-400 block">
-                        $ {new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(maturedUnpaidNetUsd)}
-                      </span>
-                    </div>
-                    <div className="space-y-1 border-l border-slate-200/50 dark:border-slate-800/80 pl-3">
+                    {hasUsdPayments && (
+                      <div className="space-y-1 border-l border-slate-200/50 dark:border-slate-800/80 pl-3">
+                        <span className="text-[8px] font-extrabold text-rose-500 block uppercase tracking-wider font-mono">MATURED NET USD (&gt;56 Days)</span>
+                        <span className="text-xs sm:text-sm font-black font-mono text-rose-600 dark:text-rose-400 block">
+                          $ {new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(maturedUnpaidNetUsd)}
+                        </span>
+                      </div>
+                    )}
+                    <div className={`space-y-1 ${hasUsdPayments ? 'border-l border-slate-200/50 dark:border-slate-800/80 pl-3' : 'border-l border-slate-200/50 dark:border-slate-800/80 pl-3'}`}>
                       <span className="text-[8px] font-extrabold text-blue-500 block uppercase tracking-wider font-mono">ALL UNPAID NET ETB</span>
                       <span className="text-xs sm:text-sm font-black font-mono text-blue-600 dark:text-blue-400 block">
                         Br. {new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(totalUnpaidNetEtb)}
                       </span>
                     </div>
-                    <div className="space-y-1 border-l border-slate-200/50 dark:border-slate-800/80 pl-3">
-                      <span className="text-[8px] font-extrabold text-emerald-500 block uppercase tracking-wider font-mono">ALL UNPAID NET USD</span>
-                      <span className="text-xs sm:text-sm font-black font-mono text-emerald-600 dark:text-emerald-400 block">
-                        $ {new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(totalUnpaidNetUsd)}
-                      </span>
-                    </div>
+                    {hasUsdPayments && (
+                      <div className="space-y-1 border-l border-slate-200/50 dark:border-slate-800/80 pl-3">
+                        <span className="text-[8px] font-extrabold text-emerald-500 block uppercase tracking-wider font-mono">ALL UNPAID NET USD</span>
+                        <span className="text-xs sm:text-sm font-black font-mono text-emerald-600 dark:text-emerald-400 block">
+                          $ {new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(totalUnpaidNetUsd)}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="text-[9.5px] font-bold text-slate-600 dark:text-slate-350 pt-1">

@@ -463,7 +463,7 @@ export default function SupervisionConsultantView({
     
     const paidInvoices = invoices.filter(inv => inv.status === 'Paid');
     const totalPaidEtb = paidInvoices.reduce((acc, inv) => acc + (inv.netAmountEtb || 0), 0);
-    const totalPaidUsd = paidInvoices.reduce((acc, inv) => acc + (inv.foreignCurrencyAmount || 0), 0);
+    const totalPaidUsd = hasUsdPayments ? paidInvoices.reduce((acc, inv) => acc + (inv.foreignCurrencyAmount || 0), 0) : 0;
 
     const certifiedInvoices = invoices.filter(inv => inv.status === 'Certified');
     const totalCertifiedPendingEtb = certifiedInvoices.reduce((acc, inv) => acc + (inv.netAmountEtb || 0), 0);
@@ -487,7 +487,7 @@ export default function SupervisionConsultantView({
     });
     const maturedInvoicesCount = maturedInvoices.length;
     const maturedPendingEtb = maturedInvoices.reduce((acc, inv) => acc + (inv.netAmountEtb || 0), 0);
-    const maturedPendingUsd = maturedInvoices.reduce((acc, inv) => acc + (inv.foreignCurrencyAmount || 0), 0);
+    const maturedPendingUsd = hasUsdPayments ? maturedInvoices.reduce((acc, inv) => acc + (inv.foreignCurrencyAmount || 0), 0) : 0;
 
     const totalOutstandingEtb = totalGrossInvoiced - totalPaidEtb;
     const contractBudgetEtb = consultant.revisedFeeEtb || consultant.originalFeeEtb || 1;
@@ -511,7 +511,7 @@ export default function SupervisionConsultantView({
       financialUtilizationPct,
       paymentDisbursementPct
     };
-  }, [consultant]);
+  }, [consultant, hasUsdPayments]);
 
   // Calculations for Personnel
   const personnelSummary = useMemo(() => {
