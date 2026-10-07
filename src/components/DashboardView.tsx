@@ -2407,7 +2407,11 @@ export default function DashboardView({
                 </span>
                 <div className="flex gap-2 text-[10px] font-mono font-semibold text-rose-600/90 dark:text-rose-300/80 mt-0.5">
                   <span>ETB: {formatAccounting(maturedUnpaidEtbSum, '')}</span>
-                  <span>• USD: ${maturedUnpaidUsdSum.toLocaleString()}</span>
+                  {maturedUnpaidUsdSum > 0 ? (
+                    <span>• USD: ${maturedUnpaidUsdSum.toLocaleString()}</span>
+                  ) : (
+                    <span>• 100% ETB Only</span>
+                  )}
                 </div>
               </div>
             </div>
@@ -2436,7 +2440,11 @@ export default function DashboardView({
                 </span>
                 <div className="flex gap-2 text-[10px] font-mono font-semibold text-amber-600/90 dark:text-amber-300/80 mt-0.5">
                   <span>ETB: {formatAccounting(withinMaturityUnpaidEtbSum, '')}</span>
-                  <span>• USD: ${withinMaturityUnpaidUsdSum.toLocaleString()}</span>
+                  {withinMaturityUnpaidUsdSum > 0 ? (
+                    <span>• USD: ${withinMaturityUnpaidUsdSum.toLocaleString()}</span>
+                  ) : (
+                    <span>• 100% ETB Only</span>
+                  )}
                 </div>
               </div>
             </div>
@@ -2465,7 +2473,11 @@ export default function DashboardView({
                 </span>
                 <div className="flex gap-2 text-[10px] font-mono font-semibold text-slate-600 dark:text-slate-400 mt-0.5">
                   <span>ETB: {formatAccounting(totalUnpaidEtbSum, '')}</span>
-                  <span>• USD: ${totalUnpaidUsdSum.toLocaleString()}</span>
+                  {totalUnpaidUsdSum > 0 ? (
+                    <span>• USD: ${totalUnpaidUsdSum.toLocaleString()}</span>
+                  ) : (
+                    <span>• 100% ETB Only</span>
+                  )}
                 </div>
               </div>
             </div>

@@ -1166,6 +1166,7 @@ export const defaultSupervisionConsultant = (): SupervisionConsultantInfo => ({
   revisedCompletionDate: "2025-12-28",
   originalFeeEtb: 48500000.00,
   revisedFeeEtb: 62450000.00,
+  enableUsdPayments: true,
   originalFeeUsd: 850000.00,
   revisedFeeUsd: 1100000.00,
   contractType: "Time-Based",

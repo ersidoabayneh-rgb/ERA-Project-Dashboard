@@ -139,7 +139,9 @@ export default function SupervisionConsultantView({
         firmName: linkedFirmName,
         enableUsdPayments: project.supervisionConsultant.enableUsdPayments !== undefined 
           ? project.supervisionConsultant.enableUsdPayments 
-          : Boolean((project.supervisionConsultant.originalFeeUsd || 0) > 0 || (project.supervisionConsultant.revisedFeeUsd || 0) > 0),
+          : (project.enableUsdPayments !== undefined
+              ? project.enableUsdPayments
+              : Boolean((project.supervisionConsultant.invoices || []).some(inv => (inv.foreignCurrencyAmount || 0) > 0))),
         headOfficeAddress: project.supervisionConsultant.headOfficeAddress || '',
         headOfficePhone: project.supervisionConsultant.headOfficePhone || '',
         headOfficeEmail: project.supervisionConsultant.headOfficeEmail || '',
@@ -433,6 +435,24 @@ export default function SupervisionConsultantView({
     };
   }, [consultant.commencementDate, consultant.originalCompletionDate, consultant.revisedCompletionDate]);
 
+  // Determine whether USD payments are active on this contract (or strictly ETB only)
+  const hasUsdPayments = useMemo(() => {
+    // If explicitly disabled at consultant level or project level, payment is strictly ETB only
+    if (consultant.enableUsdPayments === false || project.enableUsdPayments === false) {
+      return false;
+    }
+    // If explicitly enabled, verify whether USD payments or foreign fees exist
+    if (consultant.enableUsdPayments === true || project.enableUsdPayments === true) {
+      const hasUsdBudget = (consultant.revisedFeeUsd || consultant.originalFeeUsd || 0) > 0;
+      const hasUsdInvoices = (consultant.invoices || []).some(inv => (inv.foreignCurrencyAmount || 0) > 0);
+      return hasUsdBudget || hasUsdInvoices;
+    }
+    // If enableUsdPayments is undefined, only consider active if there are actual invoices recorded with USD portions
+    return Boolean(
+      (consultant.invoices || []).some(inv => (inv.foreignCurrencyAmount || 0) > 0)
+    );
+  }, [consultant, project.enableUsdPayments]);
+
   // Calculations for Financials
   const financialSummary = useMemo(() => {
     const invoices = consultant.invoices || [];
@@ -451,6 +471,24 @@ export default function SupervisionConsultantView({
     const submittedInvoices = invoices.filter(inv => inv.status === 'Submitted' || inv.status === 'Pending');
     const totalSubmittedPendingEtb = submittedInvoices.reduce((acc, inv) => acc + (inv.netAmountEtb || 0), 0);
 
+    // Matured Overdue (>56 days) Fee Invoices
+    const today = new Date();
+    const maturedInvoices = invoices.filter(inv => {
+      const isUnpaid = inv.status !== 'Paid' && inv.status !== 'Rejected';
+      const refDateStr = inv.submissionDate || inv.certificationDate;
+      if (refDateStr && isUnpaid) {
+        const d = new Date(refDateStr);
+        if (!isNaN(d.getTime())) {
+          const days = Math.floor((today.getTime() - d.getTime()) / (1000 * 60 * 60 * 24));
+          return days > 56;
+        }
+      }
+      return false;
+    });
+    const maturedInvoicesCount = maturedInvoices.length;
+    const maturedPendingEtb = maturedInvoices.reduce((acc, inv) => acc + (inv.netAmountEtb || 0), 0);
+    const maturedPendingUsd = maturedInvoices.reduce((acc, inv) => acc + (inv.foreignCurrencyAmount || 0), 0);
+
     const totalOutstandingEtb = totalGrossInvoiced - totalPaidEtb;
     const contractBudgetEtb = consultant.revisedFeeEtb || consultant.originalFeeEtb || 1;
     const financialUtilizationPct = (totalGrossInvoiced / contractBudgetEtb) * 100;
@@ -465,6 +503,9 @@ export default function SupervisionConsultantView({
       totalPaidUsd,
       totalCertifiedPendingEtb,
       totalSubmittedPendingEtb,
+      maturedInvoicesCount,
+      maturedPendingEtb,
+      maturedPendingUsd,
       totalOutstandingEtb,
       contractBudgetEtb,
       financialUtilizationPct,
@@ -1397,7 +1438,7 @@ export default function SupervisionConsultantView({
       advanceDeductionEtb: 180000,
       taxDeductionEtb: 90000,
       netAmountEtb: 1530000,
-      foreignCurrencyAmount: 25000,
+      foreignCurrencyAmount: hasUsdPayments ? 25000 : 0,
       foreignCurrencyCode: 'USD',
       status: 'Submitted',
       paymentReference: '',
@@ -1455,7 +1496,7 @@ export default function SupervisionConsultantView({
           advanceDeductionEtb: adv,
           taxDeductionEtb: tax,
           netAmountEtb: net,
-          foreignCurrencyAmount: Number(invoiceForm.foreignCurrencyAmount) || 0
+          foreignCurrencyAmount: hasUsdPayments ? (Number(invoiceForm.foreignCurrencyAmount) || 0) : 0
         } as ConsultantInvoice : item
       );
     } else {
@@ -1471,7 +1512,7 @@ export default function SupervisionConsultantView({
         advanceDeductionEtb: adv,
         taxDeductionEtb: tax,
         netAmountEtb: net,
-        foreignCurrencyAmount: Number(invoiceForm.foreignCurrencyAmount) || 0,
+        foreignCurrencyAmount: hasUsdPayments ? (Number(invoiceForm.foreignCurrencyAmount) || 0) : 0,
         foreignCurrencyCode: invoiceForm.foreignCurrencyCode || 'USD',
         status: invoiceForm.status as any || 'Submitted',
         paymentReference: invoiceForm.paymentReference || '',
@@ -1695,10 +1736,16 @@ export default function SupervisionConsultantView({
       doc.text('Invoice #', margin + 2, y + 5);
       doc.text('Period', margin + 24, y + 5);
       doc.text('Submission', margin + 46, y + 5);
-      doc.text('Gross Amount (ETB)', margin + 68, y + 5);
-      doc.text('Net Payable (ETB)', margin + 98, y + 5);
-      doc.text('USD', margin + 128, y + 5);
-      doc.text('Status', margin + 144, y + 5);
+      if (hasUsdPayments) {
+        doc.text('Gross Amount (ETB)', margin + 68, y + 5);
+        doc.text('Net Payable (ETB)', margin + 98, y + 5);
+        doc.text('USD', margin + 128, y + 5);
+        doc.text('Status', margin + 144, y + 5);
+      } else {
+        doc.text('Gross Amount (ETB)', margin + 70, y + 5);
+        doc.text('Net Payable (ETB)', margin + 104, y + 5);
+        doc.text('Status', margin + 138, y + 5);
+      }
       y += 8;
 
       // Invoice Table Rows
@@ -1715,10 +1762,16 @@ export default function SupervisionConsultantView({
         doc.text(inv.invoiceNo || '-', margin + 2, y + 4);
         doc.text(inv.billingPeriod || '-', margin + 24, y + 4);
         doc.text(inv.submissionDate || '-', margin + 46, y + 4);
-        doc.text(formatAccounting(inv.grossAmountEtb || 0, ''), margin + 68, y + 4);
-        doc.text(formatAccounting(inv.netAmountEtb || 0, ''), margin + 98, y + 4);
-        doc.text(`$${formatAccounting(inv.foreignCurrencyAmount || 0, '')}`, margin + 128, y + 4);
-        doc.text(inv.status || 'Submitted', margin + 144, y + 4);
+        if (hasUsdPayments) {
+          doc.text(formatAccounting(inv.grossAmountEtb || 0, ''), margin + 68, y + 4);
+          doc.text(formatAccounting(inv.netAmountEtb || 0, ''), margin + 98, y + 4);
+          doc.text(`$${formatAccounting(inv.foreignCurrencyAmount || 0, '')}`, margin + 128, y + 4);
+          doc.text(inv.status || 'Submitted', margin + 144, y + 4);
+        } else {
+          doc.text(formatAccounting(inv.grossAmountEtb || 0, ''), margin + 70, y + 4);
+          doc.text(formatAccounting(inv.netAmountEtb || 0, ''), margin + 104, y + 4);
+          doc.text(inv.status || 'Submitted', margin + 138, y + 4);
+        }
 
         doc.setDrawColor(241, 245, 249);
         doc.line(margin, y + 6, pageWidth - margin, y + 6);
@@ -1758,7 +1811,21 @@ export default function SupervisionConsultantView({
     });
 
     csvContent += '\n\n--- CONSULTANT INVOICES & FEE CLAIMS ---\n';
-    const invHeaders = ['Invoice No', 'Billing Period', 'Submission Date', 'Certification Date', 'Payment Date', 'Gross Amount ETB', 'Advance Deduction ETB', 'Tax Deduction ETB', 'Net Payable ETB', 'Foreign Currency USD', 'Status', 'Payment Ref', 'Remarks'];
+    const invHeaders = [
+      'Invoice No', 
+      'Billing Period', 
+      'Submission Date', 
+      'Certification Date', 
+      'Payment Date', 
+      'Gross Amount ETB', 
+      'Advance Deduction ETB', 
+      'Tax Deduction ETB', 
+      'Net Payable ETB', 
+      ...(hasUsdPayments ? ['Foreign Currency USD'] : []),
+      'Status', 
+      'Payment Ref', 
+      'Remarks'
+    ];
     const invRows = (consultant.invoices || []).map(inv => [
       `"${inv.invoiceNo || ''}"`,
       `"${inv.billingPeriod || ''}"`,
@@ -1769,7 +1836,7 @@ export default function SupervisionConsultantView({
       inv.advanceDeductionEtb || 0,
       inv.taxDeductionEtb || 0,
       inv.netAmountEtb || 0,
-      inv.foreignCurrencyAmount || 0,
+      ...(hasUsdPayments ? [inv.foreignCurrencyAmount || 0] : []),
       `"${inv.status || ''}"`,
       `"${inv.paymentReference || ''}"`,
       `"${inv.remarks || ''}"`
@@ -2631,9 +2698,15 @@ export default function SupervisionConsultantView({
               <div className="text-xl font-black text-emerald-600 dark:text-emerald-400 font-mono mt-1">
                 {formatAccounting(financialSummary.totalPaidEtb, 'ETB')}
               </div>
-              <div className="text-[10px] text-emerald-500 font-semibold mt-0.5">
-                Plus ${formatAccounting(financialSummary.totalPaidUsd, '')} USD foreign fee
-              </div>
+              {hasUsdPayments && financialSummary.totalPaidUsd > 0 ? (
+                <div className="text-[10px] text-emerald-500 font-semibold mt-0.5">
+                  Plus ${formatAccounting(financialSummary.totalPaidUsd, '')} USD foreign fee
+                </div>
+              ) : (
+                <div className="text-[10px] text-emerald-600/80 dark:text-emerald-400/80 font-semibold mt-0.5">
+                  100% Local Currency (ETB Only)
+                </div>
+              )}
             </div>
 
             <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
@@ -2644,9 +2717,16 @@ export default function SupervisionConsultantView({
               <div className="text-xl font-black text-amber-600 dark:text-amber-400 font-mono mt-1">
                 {formatAccounting(financialSummary.totalCertifiedPendingEtb, 'ETB')}
               </div>
-              <div className="text-[10px] text-amber-500 font-semibold mt-0.5">
-                Approved, awaiting bank transfer
-              </div>
+              {financialSummary.maturedInvoicesCount > 0 ? (
+                <div className="text-[10px] text-red-600 dark:text-rose-400 font-bold mt-0.5 flex items-center gap-1 animate-pulse">
+                  <AlertTriangle className="w-3 h-3" />
+                  {financialSummary.maturedInvoicesCount} Matured Overdue (&gt;56d)
+                </div>
+              ) : (
+                <div className="text-[10px] text-amber-500 font-semibold mt-0.5">
+                  Approved, awaiting bank transfer
+                </div>
+              )}
             </div>
 
             <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
@@ -2718,7 +2798,7 @@ export default function SupervisionConsultantView({
                     <th className="py-3 px-4 text-right">Gross Claim (ETB)</th>
                     <th className="py-3 px-4 text-right">Deductions (ETB)</th>
                     <th className="py-3 px-4 text-right font-black text-slate-900 dark:text-white">Net Payable (ETB)</th>
-                    <th className="py-3 px-4 text-right">USD Portion</th>
+                    {hasUsdPayments && <th className="py-3 px-4 text-right">USD Portion</th>}
                     <th className="py-3 px-4 text-center">Status</th>
                     <th className="py-3 px-4">Payment Ref</th>
                     <th className="py-3 px-4 text-right">Actions</th>
@@ -2727,7 +2807,7 @@ export default function SupervisionConsultantView({
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {filteredInvoices.length === 0 ? (
                     <tr>
-                      <td colSpan={10} className="py-12 text-center text-slate-400">
+                      <td colSpan={hasUsdPayments ? 10 : 9} className="py-12 text-center text-slate-400">
                         <Receipt className="w-8 h-8 mx-auto mb-2 opacity-40" />
                         <p className="text-sm font-semibold">No invoices recorded yet.</p>
                         <p className="text-xs text-slate-400 mt-1">Click "Add Invoice" to log a supervision consultant fee claim.</p>
@@ -2737,13 +2817,34 @@ export default function SupervisionConsultantView({
                     filteredInvoices.map((inv) => {
                       const totalDeductions = (inv.advanceDeductionEtb || 0) + (inv.taxDeductionEtb || 0);
 
+                      const isUnpaid = inv.status !== 'Paid' && inv.status !== 'Rejected';
+                      let ageDays = 0;
+                      let isMaturedOverdue = false;
+                      const refDateStr = inv.submissionDate || inv.certificationDate;
+                      if (refDateStr && isUnpaid) {
+                        const d = new Date(refDateStr);
+                        if (!isNaN(d.getTime())) {
+                          ageDays = Math.max(0, Math.floor((new Date().getTime() - d.getTime()) / (1000 * 60 * 60 * 24)));
+                          if (ageDays > 56) {
+                            isMaturedOverdue = true;
+                          }
+                        }
+                      }
+
                       let statusBadge = (
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
                           {inv.status}
                         </span>
                       );
 
-                      if (inv.status === 'Paid') {
+                      if (isMaturedOverdue) {
+                        statusBadge = (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400 border border-rose-300 dark:border-rose-800 animate-pulse" title={`FIDIC Sub-Clause 14.7 56-day maturation breached by ${ageDays - 56} days (${ageDays}d elapsed)`}>
+                            <AlertTriangle className="w-3 h-3 text-red-600 dark:text-rose-400" />
+                            Matured Overdue ({ageDays}d)
+                          </span>
+                        );
+                      } else if (inv.status === 'Paid') {
                         statusBadge = (
                           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
                             <CheckCircle2 className="w-3 h-3" />
@@ -2769,7 +2870,9 @@ export default function SupervisionConsultantView({
                       return (
                         <tr 
                           key={inv.id}
-                          className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition duration-150"
+                          className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition duration-150 ${
+                            isMaturedOverdue ? 'bg-rose-50/20 dark:bg-rose-950/10' : ''
+                          }`}
                         >
                           <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-white font-mono">
                             {inv.invoiceNo}
@@ -2780,7 +2883,12 @@ export default function SupervisionConsultantView({
                           </td>
 
                           <td className="py-3.5 px-4 text-slate-500 dark:text-slate-400 font-mono">
-                            {inv.submissionDate || '-'}
+                            <div>{inv.submissionDate || '-'}</div>
+                            {isUnpaid && ageDays > 0 && (
+                              <div className={`text-[10px] font-mono ${isMaturedOverdue ? 'text-red-600 dark:text-rose-400 font-black' : 'text-slate-400'}`}>
+                                {ageDays}d elapsed
+                              </div>
+                            )}
                           </td>
 
                           <td className="py-3.5 px-4 text-right font-mono text-slate-700 dark:text-slate-300">
@@ -2795,9 +2903,11 @@ export default function SupervisionConsultantView({
                             {formatAccounting(inv.netAmountEtb || 0, '')}
                           </td>
 
-                          <td className="py-3.5 px-4 text-right font-mono text-purple-600 dark:text-purple-400">
-                            {inv.foreignCurrencyAmount ? `$${formatAccounting(inv.foreignCurrencyAmount, '')}` : '-'}
-                          </td>
+                          {hasUsdPayments && (
+                            <td className="py-3.5 px-4 text-right font-mono text-purple-600 dark:text-purple-400">
+                              {inv.foreignCurrencyAmount ? `$${formatAccounting(inv.foreignCurrencyAmount, '')}` : '-'}
+                            </td>
+                          )}
 
                           <td className="py-3.5 px-4 text-center">
                             {statusBadge}
@@ -2979,7 +3089,7 @@ export default function SupervisionConsultantView({
                 <div>
                   <span className="text-slate-400 font-semibold uppercase text-[10px] block">Payment Currency Mode</span>
                   <div className="font-bold text-slate-900 dark:text-white mt-0.5 flex items-center gap-1.5">
-                    {consultant.enableUsdPayments ? (
+                    {hasUsdPayments ? (
                       <>
                         <span className="w-2 h-2 rounded-full bg-purple-500 inline-block"></span>
                         Dual Currency Enabled: ETB (Local) + USD (Foreign Fee)
@@ -2993,7 +3103,7 @@ export default function SupervisionConsultantView({
                   </div>
                 </div>
                 <div className="font-mono text-[11px] text-slate-500">
-                  {consultant.enableUsdPayments ? (
+                  {hasUsdPayments ? (
                     <span>USD Fee Budget: ${formatAccounting(consultant.revisedFeeUsd || consultant.originalFeeUsd || 0, '')}</span>
                   ) : (
                     <span>100% Local Currency Contract</span>
@@ -4749,7 +4859,7 @@ export default function SupervisionConsultantView({
                   />
                 </div>
 
-                {consultant.enableUsdPayments ? (
+                {hasUsdPayments && (
                   <div>
                     <label className="block text-purple-600 dark:text-purple-400 font-semibold mb-1">Foreign Currency Fee (USD)</label>
                     <input
@@ -4758,10 +4868,6 @@ export default function SupervisionConsultantView({
                       onChange={(e) => setInvoiceForm({ ...invoiceForm, foreignCurrencyAmount: parseFloat(e.target.value) || 0 })}
                       className="w-full px-3 py-2 bg-purple-50/50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800 rounded-xl font-mono text-purple-700 dark:text-purple-300 font-bold"
                     />
-                  </div>
-                ) : (
-                  <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 text-[11px] text-slate-500 flex items-center gap-1.5">
-                    <span>💵 USD Payments disabled in Contract Profile (ETB Only)</span>
                   </div>
                 )}
 

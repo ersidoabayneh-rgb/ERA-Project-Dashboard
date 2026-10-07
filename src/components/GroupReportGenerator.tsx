@@ -5735,8 +5735,10 @@ export default function GroupReportGenerator({
     doc.setTextColor(15, 23, 42);
     const c2Etb = doc.splitTextToSize(`ETB: ${formatAccounting(paymentStats.totalCertifiedEtb, '')}`, cardTextWidth);
     doc.text(c2Etb[0] || '', card2X + cardInnerPad, cardY + 27);
-    const c2Usd = doc.splitTextToSize(`USD: $${formatAccounting(paymentStats.totalCertifiedUsd, '')}`, cardTextWidth);
-    doc.text(c2Usd[0] || '', card2X + cardInnerPad, cardY + 39);
+    if (paymentStats.totalCertifiedUsd > 0) {
+      const c2Usd = doc.splitTextToSize(`USD: $${formatAccounting(paymentStats.totalCertifiedUsd, '')}`, cardTextWidth);
+      doc.text(c2Usd[0] || '', card2X + cardInnerPad, cardY + 39);
+    }
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(6.5);
     doc.setTextColor(100, 116, 139);
@@ -5758,8 +5760,10 @@ export default function GroupReportGenerator({
     doc.setTextColor(180, 83, 9);
     const c3Etb = doc.splitTextToSize(`ETB: ${formatAccounting(paymentStats.totalUnpaidEtb, '')}`, cardTextWidth);
     doc.text(c3Etb[0] || '', card3X + cardInnerPad, cardY + 27);
-    const c3Usd = doc.splitTextToSize(`USD: $${formatAccounting(paymentStats.totalUnpaidUsd, '')}`, cardTextWidth);
-    doc.text(c3Usd[0] || '', card3X + cardInnerPad, cardY + 39);
+    if (paymentStats.totalUnpaidUsd > 0) {
+      const c3Usd = doc.splitTextToSize(`USD: $${formatAccounting(paymentStats.totalUnpaidUsd, '')}`, cardTextWidth);
+      doc.text(c3Usd[0] || '', card3X + cardInnerPad, cardY + 39);
+    }
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(6.5);
     doc.setTextColor(146, 64, 14);
@@ -5781,8 +5785,10 @@ export default function GroupReportGenerator({
     doc.setTextColor(185, 28, 28);
     const c4Etb = doc.splitTextToSize(`ETB: ${formatAccounting(paymentStats.totalMaturedEtb, '')}`, cardTextWidth);
     doc.text(c4Etb[0] || '', card4X + cardInnerPad, cardY + 27);
-    const c4Usd = doc.splitTextToSize(`USD: $${formatAccounting(paymentStats.totalMaturedUsd, '')}`, cardTextWidth);
-    doc.text(c4Usd[0] || '', card4X + cardInnerPad, cardY + 39);
+    if (paymentStats.totalMaturedUsd > 0) {
+      const c4Usd = doc.splitTextToSize(`USD: $${formatAccounting(paymentStats.totalMaturedUsd, '')}`, cardTextWidth);
+      doc.text(c4Usd[0] || '', card4X + cardInnerPad, cardY + 39);
+    }
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(6.5);
     doc.setTextColor(153, 27, 27);
@@ -5911,7 +5917,7 @@ export default function GroupReportGenerator({
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(7.5);
       const certEtbLines = doc.splitTextToSize(`ETB: ${formatAccounting(m.certEtb, '')}`, colWidths.certified - 14);
-      const certUsdLines = doc.splitTextToSize(`USD: $${formatAccounting(m.certUsd, '')}`, colWidths.certified - 14);
+      const certUsdLines = m.certUsd > 0 ? doc.splitTextToSize(`USD: $${formatAccounting(m.certUsd, '')}`, colWidths.certified - 14) : [];
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(6.5);
       const certEqvLines = doc.splitTextToSize(`Eqv: ETB ${m.combinedCertified.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, colWidths.certified - 14);
@@ -5921,7 +5927,7 @@ export default function GroupReportGenerator({
       doc.setFont('helvetica', isOutstanding ? 'bold' : 'normal');
       doc.setFontSize(isOutstanding ? 7.5 : 6.5);
       const outEtbLines = doc.splitTextToSize(isOutstanding ? `ETB: ${formatAccounting(m.unpaidEtb, '')}` : `ETB: 0.00`, colWidths.outstanding - 14);
-      const outUsdLines = doc.splitTextToSize(isOutstanding ? `USD: $${formatAccounting(m.unpaidUsd, '')}` : `USD: $0.00`, colWidths.outstanding - 14);
+      const outUsdLines = m.unpaidUsd > 0 ? doc.splitTextToSize(`USD: $${formatAccounting(m.unpaidUsd, '')}`, colWidths.outstanding - 14) : [];
       doc.setFont('helvetica', isOutstanding ? 'normal' : 'bold');
       doc.setFontSize(6.5);
       const outEqvLines = doc.splitTextToSize(
@@ -5954,7 +5960,7 @@ export default function GroupReportGenerator({
       doc.setFont('helvetica', isMatured ? 'bold' : 'normal');
       doc.setFontSize(isMatured ? 7.5 : 6.5);
       const matEtbLines = doc.splitTextToSize(isMatured ? `ETB: ${formatAccounting(m.maturedEtb, '')}` : `ETB: 0.00`, colWidths.matured - 14);
-      const matUsdLines = doc.splitTextToSize(isMatured ? `USD: $${formatAccounting(m.maturedUsd, '')}` : `USD: $0.00`, colWidths.matured - 14);
+      const matUsdLines = m.maturedUsd > 0 ? doc.splitTextToSize(`USD: $${formatAccounting(m.maturedUsd, '')}`, colWidths.matured - 14) : [];
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(6.5);
       const matEqvLines = doc.splitTextToSize(
@@ -6255,7 +6261,7 @@ export default function GroupReportGenerator({
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7.5);
     const sCertEtbLines = doc.splitTextToSize(`ETB: ${formatAccounting(paymentStats.totalCertifiedEtb, '')}`, colWidths.certified - 14);
-    const sCertUsdLines = doc.splitTextToSize(`USD: $${formatAccounting(paymentStats.totalCertifiedUsd, '')}`, colWidths.certified - 14);
+    const sCertUsdLines = paymentStats.totalCertifiedUsd > 0 ? doc.splitTextToSize(`USD: $${formatAccounting(paymentStats.totalCertifiedUsd, '')}`, colWidths.certified - 14) : [];
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(6.5);
     const sCertEqvLines = doc.splitTextToSize(`Eqv: ETB ${paymentStats.combinedCertifiedEtb.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, colWidths.certified - 14);
@@ -6263,7 +6269,7 @@ export default function GroupReportGenerator({
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7.5);
     const sOutEtbLines = doc.splitTextToSize(`ETB: ${formatAccounting(paymentStats.totalUnpaidEtb, '')}`, colWidths.outstanding - 14);
-    const sOutUsdLines = doc.splitTextToSize(`USD: $${formatAccounting(paymentStats.totalUnpaidUsd, '')}`, colWidths.outstanding - 14);
+    const sOutUsdLines = paymentStats.totalUnpaidUsd > 0 ? doc.splitTextToSize(`USD: $${formatAccounting(paymentStats.totalUnpaidUsd, '')}`, colWidths.outstanding - 14) : [];
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(6.5);
     const sOutEqvLines = doc.splitTextToSize(`Eqv: ETB ${paymentStats.combinedUnpaidEtb.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, colWidths.outstanding - 14);
@@ -6280,7 +6286,7 @@ export default function GroupReportGenerator({
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7.5);
     const sMatEtbLines = doc.splitTextToSize(`ETB: ${formatAccounting(paymentStats.totalMaturedEtb, '')}`, colWidths.matured - 14);
-    const sMatUsdLines = doc.splitTextToSize(`USD: $${formatAccounting(paymentStats.totalMaturedUsd, '')}`, colWidths.matured - 14);
+    const sMatUsdLines = paymentStats.totalMaturedUsd > 0 ? doc.splitTextToSize(`USD: $${formatAccounting(paymentStats.totalMaturedUsd, '')}`, colWidths.matured - 14) : [];
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(6.5);
     const sMatEqvLines = doc.splitTextToSize(`Eqv: ETB ${paymentStats.combinedMaturedEtb.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, colWidths.matured - 14);
@@ -9961,10 +9967,12 @@ export default function GroupReportGenerator({
                       <span>ETB:</span>
                       <span className="font-mono">{formatAccounting(paymentStats.totalCertifiedEtb, '')}</span>
                     </div>
-                    <div className="text-2xs font-black text-slate-800 dark:text-zinc-100 flex items-center justify-between">
-                      <span>USD:</span>
-                      <span className="font-mono">${formatAccounting(paymentStats.totalCertifiedUsd, '')}</span>
-                    </div>
+                    {paymentStats.totalCertifiedUsd > 0 && (
+                      <div className="text-2xs font-black text-slate-800 dark:text-zinc-100 flex items-center justify-between">
+                        <span>USD:</span>
+                        <span className="font-mono">${formatAccounting(paymentStats.totalCertifiedUsd, '')}</span>
+                      </div>
+                    )}
                     <div className="text-[9px] text-slate-450 dark:text-slate-400 font-bold border-t border-slate-200/50 dark:border-slate-700/50 pt-0.5 mt-0.5">
                       Eqv: ETB {paymentStats.combinedCertifiedEtb.toLocaleString(undefined, { maximumFractionDigits: 0 })} • {paymentStats.totalIpcCount} IPCs
                     </div>
@@ -9981,10 +9989,12 @@ export default function GroupReportGenerator({
                       <span>ETB:</span>
                       <span className="font-mono">{formatAccounting(paymentStats.totalUnpaidEtb, '')}</span>
                     </div>
-                    <div className="text-2xs font-black text-amber-700 dark:text-amber-400 flex items-center justify-between">
-                      <span>USD:</span>
-                      <span className="font-mono">${formatAccounting(paymentStats.totalUnpaidUsd, '')}</span>
-                    </div>
+                    {paymentStats.totalUnpaidUsd > 0 && (
+                      <div className="text-2xs font-black text-amber-700 dark:text-amber-400 flex items-center justify-between">
+                        <span>USD:</span>
+                        <span className="font-mono">${formatAccounting(paymentStats.totalUnpaidUsd, '')}</span>
+                      </div>
+                    )}
                     <div className="text-[9px] text-amber-800/80 dark:text-amber-300 font-bold border-t border-amber-200/50 dark:border-amber-800/50 pt-0.5 mt-0.5">
                       Eqv: ETB {paymentStats.combinedUnpaidEtb.toLocaleString(undefined, { maximumFractionDigits: 0 })} • {paymentStats.unpaidIpcCount} Pending IPCs
                     </div>
@@ -10007,10 +10017,12 @@ export default function GroupReportGenerator({
                       <span>ETB:</span>
                       <span className="font-mono">{formatAccounting(paymentStats.totalConsultantUnpaidNetEtb, '')}</span>
                     </div>
-                    <div className={`text-2xs font-black flex items-center justify-between ${paymentStats.totalConsultantUnpaidCount > 0 ? 'text-purple-800 dark:text-purple-300' : 'text-slate-700 dark:text-zinc-300'}`}>
-                      <span>USD:</span>
-                      <span className="font-mono">${formatAccounting(paymentStats.totalConsultantUnpaidUsd, '')}</span>
-                    </div>
+                    {paymentStats.totalConsultantUnpaidUsd > 0 && (
+                      <div className={`text-2xs font-black flex items-center justify-between ${paymentStats.totalConsultantUnpaidCount > 0 ? 'text-purple-800 dark:text-purple-300' : 'text-slate-700 dark:text-zinc-300'}`}>
+                        <span>USD:</span>
+                        <span className="font-mono">${formatAccounting(paymentStats.totalConsultantUnpaidUsd, '')}</span>
+                      </div>
+                    )}
                     <div className={`text-[9px] font-bold border-t pt-0.5 mt-0.5 ${
                       paymentStats.totalConsultantUnpaidCount > 0
                         ? 'text-purple-700 dark:text-purple-300 border-purple-200/60 dark:border-purple-800/60'
@@ -10037,10 +10049,12 @@ export default function GroupReportGenerator({
                       <span>ETB:</span>
                       <span className="font-mono">{formatAccounting(paymentStats.totalMaturedEtb, '')}</span>
                     </div>
-                    <div className={`text-2xs font-black flex items-center justify-between ${paymentStats.maturedIpcCount > 0 ? 'text-red-600 dark:text-rose-400' : 'text-slate-700 dark:text-zinc-300'}`}>
-                      <span>USD:</span>
-                      <span className="font-mono">${formatAccounting(paymentStats.totalMaturedUsd, '')}</span>
-                    </div>
+                    {paymentStats.totalMaturedUsd > 0 && (
+                      <div className={`text-2xs font-black flex items-center justify-between ${paymentStats.maturedIpcCount > 0 ? 'text-red-600 dark:text-rose-400' : 'text-slate-700 dark:text-zinc-300'}`}>
+                        <span>USD:</span>
+                        <span className="font-mono">${formatAccounting(paymentStats.totalMaturedUsd, '')}</span>
+                      </div>
+                    )}
                     <div className={`text-[9px] font-bold border-t pt-0.5 mt-0.5 ${
                       paymentStats.maturedIpcCount > 0 
                         ? 'text-red-600 dark:text-rose-300 border-rose-200/60 dark:border-rose-800/60' 
@@ -12195,9 +12209,11 @@ export default function GroupReportGenerator({
                                   <div className="text-[10px] font-bold text-slate-600 dark:text-zinc-300">
                                     ETB: <span className="font-mono font-extrabold">{formatAccounting(m.certEtb, '')}</span>
                                   </div>
-                                  <div className="text-[10px] font-bold text-slate-600 dark:text-zinc-300">
-                                    USD: <span className="font-mono font-extrabold">${formatAccounting(m.certUsd, '')}</span>
-                                  </div>
+                                  {m.certUsd > 0 && (
+                                    <div className="text-[10px] font-bold text-slate-600 dark:text-zinc-300">
+                                      USD: <span className="font-mono font-extrabold">${formatAccounting(m.certUsd, '')}</span>
+                                    </div>
+                                  )}
                                   <div className="text-[8.5px] text-slate-450 dark:text-slate-400 font-medium font-sans">
                                     Combined: ETB {m.combinedCertified.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                   </div>
@@ -12209,9 +12225,11 @@ export default function GroupReportGenerator({
                                     <div className="text-[10px] font-extrabold text-amber-600 dark:text-amber-400">
                                       ETB {formatAccounting(m.unpaidEtb, '')}
                                     </div>
-                                    <div className="text-[10px] font-extrabold text-amber-600 dark:text-amber-400">
-                                      USD ${formatAccounting(m.unpaidUsd, '')}
-                                    </div>
+                                    {m.unpaidUsd > 0 && (
+                                      <div className="text-[10px] font-extrabold text-amber-600 dark:text-amber-400">
+                                        USD ${formatAccounting(m.unpaidUsd, '')}
+                                      </div>
+                                    )}
                                     <span className="text-[8px] bg-amber-50 text-amber-750 dark:bg-amber-950/20 dark:text-amber-400 border border-amber-100 dark:border-amber-900/30 px-1 py-0.5 rounded font-black mt-0.5">
                                       ⏳ {m.unpaidIpcs} Pending IPCs
                                     </span>
@@ -12266,9 +12284,11 @@ export default function GroupReportGenerator({
                                     <div className="text-[10px] font-extrabold text-red-600 dark:text-rose-400">
                                       ETB {formatAccounting(m.maturedEtb, '')}
                                     </div>
-                                    <div className="text-[10px] font-extrabold text-red-600 dark:text-rose-400">
-                                      USD ${formatAccounting(m.maturedUsd, '')}
-                                    </div>
+                                    {m.maturedUsd > 0 && (
+                                      <div className="text-[10px] font-extrabold text-red-600 dark:text-rose-400">
+                                        USD ${formatAccounting(m.maturedUsd, '')}
+                                      </div>
+                                    )}
                                     <span className="text-[8px] bg-red-50 text-red-600 dark:bg-rose-950/20 dark:text-rose-400 border border-red-100 dark:border-red-900/30 px-1 py-0.5 rounded font-black mt-0.5">
                                       ⚠️ {m.maturedIpcsCount} Overdue (&gt;56d)
                                     </span>
@@ -12381,15 +12401,27 @@ export default function GroupReportGenerator({
                                                       {isEtbUnpaid ? 'Unpaid' : 'Paid'}
                                                     </span>
                                                   </div>
-                                                  <div>
-                                                    <span className="text-slate-400 block text-[8px] uppercase font-bold">Certified USD</span>
-                                                    <span className="font-mono font-extrabold text-slate-700 dark:text-zinc-300 font-sans">
-                                                      ${formatAccounting(ipc.certifiedUsd || 0, '')}
-                                                    </span>
-                                                    <span className={`text-[8px] font-bold block ${isUsdUnpaid ? 'text-amber-600' : 'text-emerald-600'}`}>
-                                                      {isUsdUnpaid ? 'Unpaid' : 'Paid'}
-                                                    </span>
-                                                  </div>
+                                                  {(ipc.certifiedUsd || 0) > 0 ? (
+                                                    <div>
+                                                      <span className="text-slate-400 block text-[8px] uppercase font-bold">Certified USD</span>
+                                                      <span className="font-mono font-extrabold text-slate-700 dark:text-zinc-300 font-sans">
+                                                        ${formatAccounting(ipc.certifiedUsd || 0, '')}
+                                                      </span>
+                                                      <span className={`text-[8px] font-bold block ${isUsdUnpaid ? 'text-amber-600' : 'text-emerald-600'}`}>
+                                                        {isUsdUnpaid ? 'Unpaid' : 'Paid'}
+                                                      </span>
+                                                    </div>
+                                                  ) : (
+                                                    <div>
+                                                      <span className="text-slate-400 block text-[8px] uppercase font-bold">Currency Mode</span>
+                                                      <span className="font-mono font-bold text-slate-600 dark:text-zinc-400 text-[9px]">
+                                                        ETB Local Only
+                                                      </span>
+                                                      <span className="text-[8px] text-emerald-600 font-bold block">
+                                                        No USD Foreign Fee
+                                                      </span>
+                                                    </div>
+                                                  )}
                                                 </div>
                                               </div>
                                             );
