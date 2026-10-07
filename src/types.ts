@@ -535,16 +535,31 @@ export function formatRelativeTime(lastModifiedAt?: string | null): string {
 
 export interface DlpDefect {
   id: string;
+  title?: string; // Concise defect title / summary
   description: string;
   severity: 'Low' | 'Medium' | 'High' | 'Critical';
-  locationStation?: string; // e.g. 'Km 14+200', 'Bridge Abutment 1', etc.
+  status: 'Open' | 'Under Rectification' | 'Rectified' | 'Closed';
+  category?: string; // e.g. 'Pavement / Asphalt Distress', 'Drainage & Culverts', 'Bridges & Structures', 'Earthworks & Slopes', 'Road Furniture & Signs', 'Guardrails & Safety', 'Road Markings', 'Shoulder & Kerbs', 'Other'
+  rootCause?: string; // e.g. 'Workmanship / Construction Defect', 'Material Quality Deficiency', 'Heavy Axle Overload', 'Drainage / Water Ingress', 'Thermal Cracking', 'Slope / Subgrade Settlement', 'Third-Party Damage', 'Normal Wear & Tear'
+  locationStation?: string; // e.g. 'Km 14+200 - Km 14+350', 'Bridge Abutment 1', etc.
+  gpsCoordinates?: string; // e.g. '9.0300° N, 38.7400° E'
+  laneSide?: string; // e.g. 'Left Lane (LHS)', 'Right Lane (RHS)', 'Both Carriageways', 'Median / Island', 'Left Shoulder', 'Right Shoulder', 'Off-Carriageway'
+  componentAffected?: string; // e.g. 'Wearing Course', 'Base Course', 'Sub-base', 'Culvert Barrel / Wingwall', 'Expansion Joint', 'Guardrail / Delineator', 'Road Marking'
+  estimatedQuantity?: string; // e.g. '150 m²', '45 m', '3 units', 'depth 35mm'
+  estimatedRectificationCostEtb?: number; // Estimated rectification cost in ETB
   reportedBy: string;
   reportedAt: string; // ISO string or timestamp format
-  status: 'Open' | 'Under Rectification' | 'Rectified' | 'Closed';
+  inspectionMethod?: string; // e.g. 'Visual Site Walkover', 'Roughness / IRI Survey', 'Core Sampling / Lab Test', 'Joint Inspection', 'Drone Aerial Reconnaissance'
+  assignedContractorRep?: string; // Contractor Site Engineer / Representative assigned
+  targetRectificationDate?: string; // Target completion deadline date
+  rectificationMethod?: string; // Remedial action method / technical specification
   rectifiedAt?: string;
   rectifiedBy?: string;
-  photoUrl?: string;
-  remarks?: string;
+  closureRemarks?: string; // Remarks upon completion and sign-off
+  closureSignOffBy?: string; // Resident Engineer / Consultant sign-off
+  photoUrl?: string; // Initial inspection / distress photo
+  afterPhotoUrl?: string; // Post-rectification verification photo
+  remarks?: string; // Contractor action or general notes
 }
 
 export type DlpDefectItem = DlpDefect;
