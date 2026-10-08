@@ -5112,7 +5112,7 @@ let isBatchSyncRunning = false;
             {/* Tab Views Swappers */}
             <div className={activeTab === 'dash' ? "space-y-0" : "space-y-4"}>
               {!canUserViewPage(currentUserObj, activeTab) ? (
-                <div className="bg-white dark:bg-slate-850 p-12 rounded-3xl border border-slate-200 dark:border-slate-800 text-center space-y-4 my-8">
+                <div className="bg-white dark:bg-slate-800 p-8 sm:p-12 rounded-2xl border border-slate-200 dark:border-slate-700/60 text-center space-y-4 my-8 shadow-sm">
                   <div className="w-16 h-16 bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 rounded-2xl flex items-center justify-center mx-auto text-2xl font-black shadow-xs">
                     🔒
                   </div>
@@ -5193,7 +5193,7 @@ let isBatchSyncRunning = false;
 
                   {/* Governance & Page Editing Permission Status Banner (Only shown when page is read-only) */}
                   {currentUserObj && !canUserEditPage(currentUserObj, activeTab) && (
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 px-4 py-2 bg-white dark:bg-slate-850 border border-slate-150 dark:border-slate-800 rounded-2xl text-[11px] font-semibold">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/60 rounded-2xl text-[11px] font-semibold shadow-xs">
                       <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
                         <span className="text-xs">🔒</span>
                         <span>
@@ -5312,6 +5312,8 @@ let isBatchSyncRunning = false;
                   project={currentProject}
                   onUpdateLinear={(linear) => handleProjectUpdate({ linear }, 'Linear Diagrams chains altered')}
                   onUpdateLinearSpur={(linearSpur) => handleProjectUpdate({ linearSpur }, 'Spur Road Linear Diagrams chains altered')}
+                  onUpdateLinearPlan={(linearPlan) => handleProjectUpdate({ linearPlan }, 'Main Road Linear Progress Plan updated')}
+                  onUpdateLinearPlanSpur={(linearPlanSpur) => handleProjectUpdate({ linearPlanSpur }, 'Spur Road Linear Progress Plan updated')}
                   onUpdateSpurLength={(spurRoadLengthKm) => handleProjectUpdate({ spurRoadLengthKm }, 'Spur Road target length altered')}
                   onUpdateMainLength={(mainRoadLengthKm) => {
                     const totalKm = currentProject.lengthKm || 65;
@@ -5444,7 +5446,7 @@ let isBatchSyncRunning = false;
               )}
 
               {activeTab === 'approvalWorkflow' && (
-                <div className="bg-white dark:bg-slate-850 p-4 sm:p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                <div className="bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-2xl border border-slate-200 dark:border-slate-700/60 shadow-sm">
                   <ApprovalWorkflowManager
                     currentUser={currentUserObj}
                     projects={projects}

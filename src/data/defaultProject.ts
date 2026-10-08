@@ -6,6 +6,7 @@ import {
   RowMetric, 
   KpiAllocatedItem, 
   LinearData, 
+  LinearPlanData, 
   RiskItem, 
   DailyActivityRecord, 
   SupervisionConsultantInfo, 
@@ -319,6 +320,34 @@ export function generateEmptyLinearData(): LinearData {
     subbase: [],
     basecourse: [],
     asphalt: []
+  };
+}
+
+export function generateLinearPlanData(): LinearPlanData {
+  return {
+    baselineName: 'Approved Master Baseline Work Program Rev.02',
+    baselineDate: '2024-01-15',
+    subgrade: { plannedKm: 28.5, fromStation: 'Km 00+000', toStation: 'Km 28+500', notes: 'Cut & embankment filling approved' },
+    capping: { plannedKm: 25.0, fromStation: 'Km 00+000', toStation: 'Km 25+000', notes: 'Selected material capping layer' },
+    subbase: { plannedKm: 22.0, fromStation: 'Km 00+000', toStation: 'Km 22+000', notes: 'Crushed stone subbase layer' },
+    basecourse: { plannedKm: 19.5, fromStation: 'Km 00+000', toStation: 'Km 19+500', notes: 'Dense graded crushed aggregate base' },
+    asphalt: { plannedKm: 17.0, fromStation: 'Km 00+000', toStation: 'Km 17+000', notes: 'Wearing course AC 50mm' },
+    auditorNotes: 'Contractor physical linear works baseline under FIDIC Clause 8.3 approved program.',
+    auditDirective: 'Accelerate asphalt paving shift to maintain Clause 8.6 compliance and prevent downstream bottleneck.'
+  };
+}
+
+export function generateSpurLinearPlanData(): LinearPlanData {
+  return {
+    baselineName: 'Spur Road Approved Alignment Program',
+    baselineDate: '2024-01-15',
+    subgrade: { plannedKm: 7.2, fromStation: 'Km 00+000', toStation: 'Km 07+200', notes: 'Earthwork on spur link road' },
+    capping: { plannedKm: 6.5, fromStation: 'Km 00+000', toStation: 'Km 06+500', notes: 'Capping placement' },
+    subbase: { plannedKm: 5.8, fromStation: 'Km 00+000', toStation: 'Km 05+800', notes: 'Subbase stabilization' },
+    basecourse: { plannedKm: 5.0, fromStation: 'Km 00+000', toStation: 'Km 05+000', notes: 'Basecourse compaction' },
+    asphalt: { plannedKm: 4.2, fromStation: 'Km 00+000', toStation: 'Km 04+200', notes: 'Binder & surface wearing course' },
+    auditorNotes: 'Spur road linear progress tracking against 8.8 Km target.',
+    auditDirective: 'Maintain current subbase and basecourse lead distance ahead of asphalt paver.'
   };
 }
 
@@ -2350,6 +2379,8 @@ export function defaultProjectTemplate(): Project {
     ],
     linear: generateLinearData(),
     linearSpur: generateSpurLinearData(),
+    linearPlan: generateLinearPlanData(),
+    linearPlanSpur: generateSpurLinearPlanData(),
     kpiAllocated: generateKpiAllocated('DBB'),
     history: [],
     workProgram: defaultWorkProgram(),

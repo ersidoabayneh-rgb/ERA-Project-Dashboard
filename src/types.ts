@@ -106,6 +106,26 @@ export interface LinearData {
   asphalt: LinearSegment[];
 }
 
+export interface LinearLayerPlan {
+  plannedKm: number;
+  fromStation?: string;
+  toStation?: string;
+  targetDate?: string;
+  notes?: string;
+}
+
+export interface LinearPlanData {
+  subgrade?: LinearLayerPlan;
+  capping?: LinearLayerPlan;
+  subbase?: LinearLayerPlan;
+  basecourse?: LinearLayerPlan;
+  asphalt?: LinearLayerPlan;
+  baselineDate?: string;
+  baselineName?: string;
+  auditorNotes?: string;
+  auditDirective?: string;
+}
+
 export interface KpiAllocatedItem {
   goalId: string;
   goalName: string;
@@ -621,6 +641,8 @@ export interface Project {
   annual: AnnualItem[];
   linear: LinearData;
   linearSpur?: LinearData;
+  linearPlan?: LinearPlanData;
+  linearPlanSpur?: LinearPlanData;
   kpiAllocated: KpiAllocatedItem[];
   kpiDeletedSubgroups?: string[];
   kpiDeletedItems?: string[];
@@ -1243,7 +1265,7 @@ export const DEFAULT_CONTRACTOR_SCORING_WEIGHTS: ContractorScoringWeights = {
   resourceMobilization: 5,
   labels: {
     fidic: '1. FIDIC Contract Compliance',
-    projectMgmt: '2. Project Management (Time)',
+    projectMgmt: '2. Progress vs. Original Plan (Time)',
     evm: '3. EVM Metrics (CPI & SPI)',
     kpi: '4. KPIs & Quality Milestones',
     linear: '5. Linear Layer Physical Progress',
@@ -1254,7 +1276,7 @@ export const DEFAULT_CONTRACTOR_SCORING_WEIGHTS: ContractorScoringWeights = {
   },
   descriptions: {
     fidic: 'Performance/Mobilization Guarantees & Risk notices',
-    projectMgmt: 'Schedule overrun & EOT extension compliance',
+    projectMgmt: 'Physical progress vs original baseline plan & schedule overrun compliance',
     evm: 'Cost Efficiency Index (CPI) & Schedule Performance (SPI)',
     kpi: 'Key milestone completions & critical risk mitigations',
     linear: 'Earthwork, Subgrade, Subbase, Basecourse, & Asphalt pavement layers',
