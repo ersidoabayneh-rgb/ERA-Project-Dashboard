@@ -225,35 +225,35 @@ export default function LinearDiagramView({
   return (
     <div className="space-y-5">
       {/* Interconnected Project Length Linker Banner */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-5 rounded-2xl shadow-sm border border-indigo-800/40 space-y-3">
+      <div className="bg-white dark:bg-slate-800 text-slate-800 dark:text-zinc-100 p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700/60 space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-blue-500/20 rounded-xl text-blue-400 border border-blue-400/30">
+            <div className="p-2 bg-blue-50 dark:bg-blue-950/40 rounded-xl text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800/50">
               <Link2 className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold tracking-tight text-white flex items-center gap-2">
+              <h2 className="text-base font-bold tracking-tight text-slate-850 dark:text-zinc-100 flex items-center gap-2">
                 Project Length Interconnection & Linear Progress Baseline
               </h2>
-              <p className="text-xs text-slate-300">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 Total Contract Length is dynamically divided into Main Road and Spur Road sections.
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 bg-slate-800/80 backdrop-blur-xs px-3 py-1.5 rounded-xl border border-slate-700/60 shrink-0">
-            <Calculator className="w-4 h-4 text-emerald-400" />
-            <span className="text-xs font-mono font-bold text-emerald-300">
+          <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-900/60 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700/60 shrink-0">
+            <Calculator className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            <span className="text-xs font-mono font-bold text-emerald-700 dark:text-emerald-300">
               Main ({mainRoadTargetKm} Km) + Spur ({spurRoadTargetKm} Km) = {totalProjectKm} Km Total
             </span>
           </div>
         </div>
 
         {/* Dynamic Road Length Breakdown Stats */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-slate-800">
-          <div className="bg-slate-800/50 p-3 rounded-xl border border-slate-700/40 flex justify-between items-center">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-slate-200 dark:border-slate-700/60">
+          <div className="bg-slate-50 dark:bg-slate-900/40 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 flex justify-between items-center">
             <div className="flex-1">
-              <span className="text-[11px] font-medium text-slate-400 block">Total Project Length</span>
+              <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block">Total Project Length</span>
               <div className="flex items-center gap-1.5 mt-0.5">
                 <input
                   type="number"
@@ -266,20 +266,20 @@ export default function LinearDiagramView({
                       onUpdateProjectLength(val);
                     }
                   }}
-                  className="w-24 bg-slate-900 border border-slate-600 rounded px-2 py-0.5 text-xs font-mono font-bold text-white focus:outline-none focus:border-indigo-500"
+                  className="w-24 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded px-2 py-0.5 text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500"
                   title="Update Total Contract Length"
                 />
-                <span className="text-xs font-mono text-slate-300">Km</span>
+                <span className="text-xs font-mono text-slate-500 dark:text-slate-400">Km</span>
               </div>
             </div>
-            <span className="text-[10px] bg-indigo-500/20 text-indigo-300 font-semibold px-2 py-0.5 rounded-full border border-indigo-500/30">
+            <span className="text-[10px] bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 font-semibold px-2 py-0.5 rounded-full border border-indigo-200 dark:border-indigo-800/40">
               Contract Total
             </span>
           </div>
 
-          <div className="bg-slate-800/50 p-3 rounded-xl border border-slate-700/40 flex justify-between items-center">
+          <div className="bg-slate-50 dark:bg-slate-900/40 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 flex justify-between items-center">
             <div className="flex-1">
-              <span className="text-[11px] font-medium text-slate-400 block">Main Road Target</span>
+              <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block">Main Road Target</span>
               <div className="flex items-center gap-1.5 mt-0.5">
                 <input
                   type="number"
@@ -293,20 +293,20 @@ export default function LinearDiagramView({
                       onUpdateMainLength(Math.min(totalProjectKm, Math.max(0, val)));
                     }
                   }}
-                  className="w-24 bg-slate-900 border border-slate-600 rounded px-2 py-0.5 text-xs font-mono font-bold text-blue-300 focus:outline-none focus:border-blue-500"
+                  className="w-24 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded px-2 py-0.5 text-xs font-mono font-bold text-blue-700 dark:text-blue-300 focus:outline-none focus:border-blue-500"
                   title="Update Main Road target length"
                 />
-                <span className="text-xs font-mono text-slate-300">Km</span>
+                <span className="text-xs font-mono text-slate-500 dark:text-slate-400">Km</span>
               </div>
             </div>
-            <span className="text-[10px] bg-blue-500/20 text-blue-300 font-semibold px-2 py-0.5 rounded-full border border-blue-500/30">
+            <span className="text-[10px] bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 font-semibold px-2 py-0.5 rounded-full border border-blue-200 dark:border-blue-800/40">
               {((mainRoadTargetKm / (totalProjectKm || 1)) * 100).toFixed(1)}% Share
             </span>
           </div>
 
-          <div className="bg-slate-800/50 p-3 rounded-xl border border-slate-700/40 flex justify-between items-center">
+          <div className="bg-slate-50 dark:bg-slate-900/40 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 flex justify-between items-center">
             <div className="flex-1">
-              <span className="text-[11px] font-medium text-slate-400 block">Spur Road Target</span>
+              <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block">Spur Road Target</span>
               <div className="flex items-center gap-1.5 mt-0.5">
                 <input
                   type="number"
@@ -320,13 +320,13 @@ export default function LinearDiagramView({
                       onUpdateSpurLength(Math.min(totalProjectKm, Math.max(0, val)));
                     }
                   }}
-                  className="w-24 bg-slate-900 border border-slate-600 rounded px-2 py-0.5 text-xs font-mono font-bold text-emerald-300 focus:outline-none focus:border-emerald-500"
+                  className="w-24 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded px-2 py-0.5 text-xs font-mono font-bold text-emerald-700 dark:text-emerald-300 focus:outline-none focus:border-emerald-500"
                   title="Adjust Spur Road target length"
                 />
-                <span className="text-xs font-mono text-slate-300">Km</span>
+                <span className="text-xs font-mono text-slate-500 dark:text-slate-400">Km</span>
               </div>
             </div>
-            <span className="text-[10px] bg-emerald-500/20 text-emerald-300 font-semibold px-2 py-0.5 rounded-full border border-emerald-500/30">
+            <span className="text-[10px] bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 font-semibold px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800/40">
               {((spurRoadTargetKm / (totalProjectKm || 1)) * 100).toFixed(1)}% Share
             </span>
           </div>

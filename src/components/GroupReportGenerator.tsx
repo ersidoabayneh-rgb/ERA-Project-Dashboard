@@ -1666,11 +1666,25 @@ export default function GroupReportGenerator({
 
     // Dimension 5: Specific Pavement Layers Progress vs. Baseline Plan
     // (Evaluated on specific layers: Subgrade, Capping, Subbase, Basecourse, Asphalt)
-    const planSubgradeKm = p.linearPlan?.subgrade?.plannedKm || Number(((p.lengthKm || 65) * (subgradePlan / 100)).toFixed(1));
-    const planCappingKm = p.linearPlan?.capping?.plannedKm || Number(((p.lengthKm || 65) * (cappingPlan / 100)).toFixed(1));
-    const planSubbaseKm = p.linearPlan?.subbase?.plannedKm || Number(((p.lengthKm || 65) * (subbasePlan / 100)).toFixed(1));
-    const planBasecourseKm = p.linearPlan?.basecourse?.plannedKm || Number(((p.lengthKm || 65) * (basecoursePlan / 100)).toFixed(1));
-    const planAsphaltKm = p.linearPlan?.asphalt?.plannedKm || Number(((p.lengthKm || 65) * (asphaltPlan / 100)).toFixed(1));
+    const mainPlanSubgrade = p.linearPlan?.subgrade?.plannedKm || Number(((p.lengthKm || 65) * (subgradePlan / 100)).toFixed(1));
+    const spurPlanSubgrade = p.linearPlanSpur?.subgrade?.plannedKm || 0;
+    const planSubgradeKm = Number((mainPlanSubgrade + spurPlanSubgrade).toFixed(1));
+
+    const mainPlanCapping = p.linearPlan?.capping?.plannedKm || Number(((p.lengthKm || 65) * (cappingPlan / 100)).toFixed(1));
+    const spurPlanCapping = p.linearPlanSpur?.capping?.plannedKm || 0;
+    const planCappingKm = Number((mainPlanCapping + spurPlanCapping).toFixed(1));
+
+    const mainPlanSubbase = p.linearPlan?.subbase?.plannedKm || Number(((p.lengthKm || 65) * (subbasePlan / 100)).toFixed(1));
+    const spurPlanSubbase = p.linearPlanSpur?.subbase?.plannedKm || 0;
+    const planSubbaseKm = Number((mainPlanSubbase + spurPlanSubbase).toFixed(1));
+
+    const mainPlanBasecourse = p.linearPlan?.basecourse?.plannedKm || Number(((p.lengthKm || 65) * (basecoursePlan / 100)).toFixed(1));
+    const spurPlanBasecourse = p.linearPlanSpur?.basecourse?.plannedKm || 0;
+    const planBasecourseKm = Number((mainPlanBasecourse + spurPlanBasecourse).toFixed(1));
+
+    const mainPlanAsphalt = p.linearPlan?.asphalt?.plannedKm || Number(((p.lengthKm || 65) * (asphaltPlan / 100)).toFixed(1));
+    const spurPlanAsphalt = p.linearPlanSpur?.asphalt?.plannedKm || 0;
+    const planAsphaltKm = Number((mainPlanAsphalt + spurPlanAsphalt).toFixed(1));
 
     const sgRatio = planSubgradeKm > 0 ? Number(((origSubgradeTotal / planSubgradeKm) * 100).toFixed(1)) : subgradePct;
     const capRatio = planCappingKm > 0 ? Number(((origCappingTotal / planCappingKm) * 100).toFixed(1)) : cappingPct;

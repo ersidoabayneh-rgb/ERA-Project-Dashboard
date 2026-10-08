@@ -59,45 +59,45 @@ export default function ComprehensiveAnalysisView({ project }: ComprehensiveAnal
     <div className="space-y-4 text-xs text-slate-700 dark:text-slate-200">
       
       {/* FIDIC Contract & Delivery Method Header Banner */}
-      <div className="p-4 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-2xl shadow-md border border-indigo-900/40 space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-indigo-800/40 pb-3">
+      <div className="p-4 bg-white dark:bg-slate-800 text-slate-850 dark:text-zinc-100 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700/60 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-700/60 pb-3">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-indigo-600/30 rounded-xl border border-indigo-400/30">
-              <BookOpen className="w-5 h-5 text-indigo-300" />
+            <div className="p-2 bg-indigo-50 dark:bg-indigo-950/40 rounded-xl border border-indigo-200 dark:border-indigo-800/50">
+              <BookOpen className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
             </div>
             <div>
-              <h2 className="text-sm font-extrabold tracking-tight text-white flex items-center gap-2">
+              <h2 className="text-sm font-extrabold tracking-tight text-slate-850 dark:text-zinc-100 flex items-center gap-2">
                 FIDIC Contract & Delivery Method Framework
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-indigo-500/30 text-indigo-200 border border-indigo-400/30">
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/40">
                   {fidicInfo.contractType}
                 </span>
               </h2>
-              <p className="text-2xs text-indigo-200/80">
+              <p className="text-2xs text-slate-500 dark:text-slate-400">
                 Grounding project EVM, claims, variations, and performance analysis in exact FIDIC Conditions of Contract and delivery responsibilities.
               </p>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-2xs">
-            <span className="px-2.5 py-1 rounded-lg bg-indigo-900/80 text-indigo-200 font-medium border border-indigo-700/50">
-              Edition: <strong className="text-white">{fidicInfo.fidicName}</strong>
+            <span className="px-2.5 py-1 rounded-lg bg-slate-50 dark:bg-slate-900/60 text-slate-700 dark:text-slate-200 font-medium border border-slate-200 dark:border-slate-700/60">
+              Edition: <strong className="text-slate-900 dark:text-white">{fidicInfo.fidicName}</strong>
             </span>
-            <span className="px-2.5 py-1 rounded-lg bg-indigo-900/80 text-indigo-200 font-medium border border-indigo-700/50">
-              Delivery: <strong className="text-white">{fidicInfo.deliveryMethodName}</strong>
+            <span className="px-2.5 py-1 rounded-lg bg-slate-50 dark:bg-slate-900/60 text-slate-700 dark:text-slate-200 font-medium border border-slate-200 dark:border-slate-700/60">
+              Delivery: <strong className="text-slate-900 dark:text-white">{fidicInfo.deliveryMethodName}</strong>
             </span>
           </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-2xs pt-1">
-          <div className="bg-white/5 p-2.5 rounded-xl border border-white/10">
-            <span className="text-indigo-300 font-semibold block uppercase tracking-wider text-[9px]">Design Responsibility</span>
-            <span className="text-slate-100 font-medium block mt-0.5">{fidicInfo.designResponsibility}</span>
+          <div className="bg-slate-50 dark:bg-slate-900/40 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700/60">
+            <span className="text-indigo-600 dark:text-indigo-400 font-semibold block uppercase tracking-wider text-[9px]">Design Responsibility</span>
+            <span className="text-slate-800 dark:text-slate-200 font-medium block mt-0.5">{fidicInfo.designResponsibility}</span>
           </div>
-          <div className="bg-white/5 p-2.5 rounded-xl border border-white/10">
-            <span className="text-indigo-300 font-semibold block uppercase tracking-wider text-[9px]">Engineer Authority & Role</span>
-            <span className="text-slate-100 font-medium block mt-0.5">{fidicInfo.engineerRole}</span>
+          <div className="bg-slate-50 dark:bg-slate-900/40 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700/60">
+            <span className="text-indigo-600 dark:text-indigo-400 font-semibold block uppercase tracking-wider text-[9px]">Engineer Authority & Role</span>
+            <span className="text-slate-800 dark:text-slate-200 font-medium block mt-0.5">{fidicInfo.engineerRole}</span>
           </div>
-          <div className="bg-white/5 p-2.5 rounded-xl border border-white/10">
-            <span className="text-indigo-300 font-semibold block uppercase tracking-wider text-[9px]">Governing Law & Jurisdiction</span>
+          <div className="bg-slate-50 dark:bg-slate-900/40 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700/60">
+            <span className="text-indigo-600 dark:text-indigo-400 font-semibold block uppercase tracking-wider text-[9px]">Governing Law & Jurisdiction</span>
             <span className="text-slate-100 font-medium block mt-0.5">{fidicInfo.governingLaw}</span>
           </div>
         </div>

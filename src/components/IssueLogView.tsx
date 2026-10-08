@@ -7551,18 +7551,18 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
               className="bg-white dark:bg-slate-800 border border-purple-200 dark:border-purple-900 rounded-3xl shadow-2xl w-full max-w-6xl max-h-[92vh] flex flex-col overflow-hidden text-slate-800 dark:text-slate-100"
             >
               {/* Modal Top Header */}
-              <div className="p-4 sm:p-5 border-b border-purple-100 dark:border-purple-900/60 bg-gradient-to-r from-purple-900 via-slate-900 to-indigo-950 text-white flex flex-wrap items-center justify-between gap-3 shrink-0">
+              <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-800 text-slate-850 dark:text-zinc-100 flex flex-wrap items-center justify-between gap-3 shrink-0">
                 <div className="flex items-center gap-3">
-                  <div className="p-2.5 bg-purple-500/20 border border-purple-400/30 rounded-2xl flex items-center justify-center shrink-0">
-                    <ShieldAlert className="w-6 h-6 text-purple-300" />
+                  <div className="p-2.5 bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800/50 rounded-2xl flex items-center justify-center shrink-0">
+                    <ShieldAlert className="w-6 h-6 text-purple-600 dark:text-purple-400" />
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <h2 className="text-lg font-black tracking-tight text-white flex items-center gap-2">
+                      <h2 className="text-lg font-black tracking-tight text-slate-850 dark:text-zinc-100 flex items-center gap-2">
                         System Action Audit Log, Traceability & Detailed Chronology
                       </h2>
-                      <span className="bg-purple-500/30 text-purple-200 border border-purple-400/30 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
-                        <Fingerprint className="w-3 h-3 text-purple-300" /> SYS-TRC-SUBSYSTEM
+                      <span className="bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/40 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                        <Fingerprint className="w-3 h-3 text-purple-600 dark:text-purple-400" /> SYS-TRC-SUBSYSTEM
                       </span>
                     </div>
                     <p className="text-2xs text-purple-200/80 mt-0.5">
@@ -7959,7 +7959,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                 return (
                   <div className="flex-1 flex flex-col overflow-hidden">
                     {/* Header Banner for Issue Chronology */}
-                    <div className="px-5 py-3.5 border-b border-indigo-100 dark:border-indigo-900/60 bg-gradient-to-r from-indigo-950 via-slate-900 to-blue-950 text-white flex flex-wrap items-center justify-between gap-3 shrink-0">
+                    <div className="px-5 py-3.5 border-b border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-800 text-slate-850 dark:text-zinc-100 flex flex-wrap items-center justify-between gap-3 shrink-0">
                       <div className="space-y-1">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="bg-indigo-500/30 text-indigo-200 border border-indigo-400/40 text-xs font-mono font-bold px-2.5 py-0.5 rounded-lg flex items-center gap-1">

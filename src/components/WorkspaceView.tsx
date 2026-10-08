@@ -165,18 +165,18 @@ export default function WorkspaceView({ projects = [], onRestoreProjects }: Work
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="bg-gradient-to-r from-slate-900 to-slate-800 dark:from-slate-950 dark:to-slate-900 text-white p-6 rounded-3xl shadow-sm border border-slate-800 space-y-4">
+      <div className="bg-white dark:bg-slate-800 text-slate-850 dark:text-zinc-100 p-6 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700/60 space-y-4">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <div className="flex items-center gap-2">
-              <ShieldCheck className="h-6 w-6 text-emerald-400" />
-              <h2 className="text-xl font-bold tracking-tight">Firebase Cloud Firestore Vault</h2>
+              <ShieldCheck className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
+              <h2 className="text-xl font-bold tracking-tight text-slate-850 dark:text-zinc-100">Firebase Cloud Firestore Vault</h2>
             </div>
-            <p className="text-sm text-slate-400 mt-1">
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
               Store, secure, and synchronize your active contracts database directly with Firebase Cloud Firestore.
             </p>
           </div>
-          <div className="flex items-center gap-2 bg-slate-800/80 px-4 py-2 rounded-2xl border border-slate-700">
+          <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-900/60 px-4 py-2 rounded-2xl border border-slate-200 dark:border-slate-700/60">
             <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
             <span className="text-xs font-semibold text-slate-200">
               Database Persistence Active

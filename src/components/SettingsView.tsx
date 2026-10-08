@@ -583,21 +583,21 @@ export default function SettingsView({
       </div>
 
       {/* Direct Theme, Colors & Background Customizer launch banner */}
-      <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 p-5 rounded-2xl text-white shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl text-slate-850 dark:text-zinc-100 shadow-sm border border-slate-200 dark:border-slate-700/60 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3.5">
-          <div className="w-11 h-11 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center text-white shrink-0 shadow-inner">
+          <div className="w-11 h-11 bg-indigo-50 dark:bg-indigo-950/40 rounded-2xl flex items-center justify-center text-indigo-600 dark:text-indigo-400 shrink-0 border border-indigo-200 dark:border-indigo-800/50">
             <Palette className="w-6 h-6" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="font-black text-sm md:text-base text-white">
+              <h3 className="font-black text-sm md:text-base text-slate-850 dark:text-zinc-100">
                 Theme, Colors & Background Customizer
               </h3>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/20 text-white border border-white/30">
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/40">
                 Interactive Modal
               </span>
             </div>
-            <p className="text-xs text-blue-100 max-w-xl">
+            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xl">
               Switch executive presets (Light Slate, Deep Dark, Midnight Blue, Cyber Blueprint, Sepia Warmth), select custom accent colors, infrastructure wallpapers, and fine-tune backdrop blur & opacity.
             </p>
           </div>
