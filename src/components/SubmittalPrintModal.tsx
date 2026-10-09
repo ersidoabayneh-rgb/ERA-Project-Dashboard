@@ -22,6 +22,7 @@ import {
 import { jsPDF } from 'jspdf';
 import { drawStandardDocumentHeader, STRICT_1_INCH_MARGIN, drawDocumentWatermark } from '../lib/pdfReportEngine';
 import { ConsultantSubmittalKpi, Project, SupervisionConsultantInfo } from '../types';
+import { formatPdfDate } from '../lib/dateUtils';
 
 export interface SignatureRoleItem {
   key: string;
@@ -754,8 +755,8 @@ export default function SubmittalPrintModal({
         const subNoLines = doc.splitTextToSize(item.submittalNo || item.id || '-', tableCols[0].width - 8);
         const catLines = doc.splitTextToSize(item.type || '-', tableCols[1].width - 8);
         const titleLines = doc.splitTextToSize(item.title || '-', tableCols[2].width - 8);
-        const subDateLines = doc.splitTextToSize(item.submittedDate || '-', tableCols[3].width - 8);
-        const respDateLines = doc.splitTextToSize(item.respondedDate || 'Awaiting', tableCols[4].width - 8);
+        const subDateLines = doc.splitTextToSize(formatPdfDate(item.submittedDate) || '-', tableCols[3].width - 8);
+        const respDateLines = doc.splitTextToSize(item.respondedDate ? formatPdfDate(item.respondedDate) : 'Awaiting', tableCols[4].width - 8);
 
         const targetDays = item.targetDays || targetOverrides[item.type] || 7;
         const actualStr = item.actualDays !== undefined ? `${item.actualDays}d` : '-';

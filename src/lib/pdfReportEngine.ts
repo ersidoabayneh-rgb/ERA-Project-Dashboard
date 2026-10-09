@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf';
 import { ERA_LOGO_BASE64 } from '../assets/eraLogoBase64';
+import { formatPdfDate } from './dateUtils';
 
 /**
  * Standard PDF border padding in standard PDF points (36 pt = 0.5 inch / 12.7 mm).
@@ -157,7 +158,7 @@ export function drawStandardPdfPageFrame(
   doc.roundedRect(dateStampX, margin + 6, dateStampWidth, dateStampHeight, 4, 4, 'DF');
 
   // Date Stamp details
-  const dateStr = new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' });
+  const dateStr = formatPdfDate(new Date());
   const timeStr = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
 
   doc.setFont('helvetica', 'bold');
@@ -369,7 +370,7 @@ export function drawStandardDocumentHeader(
     : (typeof options.dateStamp === 'string' && options.dateStamp ? new Date(options.dateStamp) : new Date());
 
   const formattedDate = !isNaN(d.getTime())
-    ? d.toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' })
+    ? formatPdfDate(d)
     : String(options.dateStamp || 'OFFICIAL DATE');
 
   const formattedTime = !isNaN(d.getTime())

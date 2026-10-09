@@ -6,6 +6,7 @@ import {
   getCredentialSignatures,
   STRICT_1_INCH_MARGIN
 } from './pdfReportEngine';
+import { formatPdfDate } from './dateUtils';
 
 export interface ProgressComparisonPdfOptions {
   project: Project;
@@ -270,7 +271,7 @@ export function generateProgressComparisonPdf({
     doc.setTextColor(71, 85, 105);
     doc.text(sigs.printedBy, b1X + 8, curY + 28);
     doc.text(`Official System User: ${currentUser?.username || 'Authorized Stakeholder'}`, b1X + 8, curY + 38);
-    doc.text(`Recorded Date: ${new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' })}`, b1X + 8, curY + 48);
+    doc.text(`Recorded Date: ${formatPdfDate(new Date())}`, b1X + 8, curY + 48);
 
     doc.setDrawColor(148, 163, 184);
     doc.setLineWidth(0.5);

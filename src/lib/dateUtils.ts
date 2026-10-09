@@ -182,3 +182,10 @@ export function subscribeEfyYearChange(callback: (year: string) => void): () => 
   };
 }
 
+export function formatPdfDate(dateInput: string | Date | null | undefined): string {
+  if (!dateInput) return 'N/A';
+  const d = parseLocalDate(dateInput);
+  if (!d) return String(dateInput);
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
