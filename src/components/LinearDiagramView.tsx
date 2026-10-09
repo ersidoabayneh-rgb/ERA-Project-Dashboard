@@ -7,7 +7,14 @@ import {
   Link2, 
   Calculator, 
   Sliders, 
-  Sparkles
+  Sparkles,
+  Scale,
+  ShieldCheck,
+  CheckCircle2,
+  AlertTriangle,
+  ArrowRight,
+  Layers,
+  Info
 } from 'lucide-react';
 import { Project, LinearData, LinearPlanData, LinearLayerPlan } from '../types';
 import { 
@@ -151,6 +158,56 @@ export default function LinearDiagramView({
     } else {
       if (onUpdateLinearPlanSpur) onUpdateLinearPlanSpur(updatedPlan);
     }
+  };
+
+  // Auto-calculate realistic linear baseline plan for BOTH Main and Spur roads
+  const handleAutoCalculateBothPlans = () => {
+    const plannedPct = project.progressPlan?.contractor?.todate ?? project.progressPlan?.era?.todate ?? 45;
+
+    // Main road calculation
+    const mainLength = mainRoadTargetKm;
+    const mainSubgrade = Number(Math.min(mainLength, mainLength * Math.min(1, (plannedPct * 1.3) / 100)).toFixed(2));
+    const mainCapping = Number(Math.min(mainLength, mainLength * Math.min(1, (plannedPct * 1.15) / 100)).toFixed(2));
+    const mainSubbase = Number(Math.min(mainLength, mainLength * Math.min(1, (plannedPct * 1.0) / 100)).toFixed(2));
+    const mainBasecourse = Number(Math.min(mainLength, mainLength * Math.max(0, (plannedPct - 8) / 100)).toFixed(2));
+    const mainAsphalt = Number(Math.min(mainLength, mainLength * Math.max(0, (plannedPct - 18) / 100)).toFixed(2));
+
+    const updatedMainPlan: LinearPlanData = {
+      ...mainLinearPlan,
+      baselineName: `Main Road Approved Baseline Program (${plannedPct.toFixed(1)}%)`,
+      baselineDate: new Date().toISOString().split('T')[0],
+      subgrade: { plannedKm: mainSubgrade, fromStation: 'Km 00+000', toStation: formatStation(mainSubgrade), notes: 'Sequenced from master CPM schedule' },
+      capping: { plannedKm: mainCapping, fromStation: 'Km 00+000', toStation: formatStation(mainCapping), notes: 'Sequenced from master CPM schedule' },
+      subbase: { plannedKm: mainSubbase, fromStation: 'Km 00+000', toStation: formatStation(mainSubbase), notes: 'Sequenced from master CPM schedule' },
+      basecourse: { plannedKm: mainBasecourse, fromStation: 'Km 00+000', toStation: formatStation(mainBasecourse), notes: 'Sequenced from master CPM schedule' },
+      asphalt: { plannedKm: mainAsphalt, fromStation: 'Km 00+000', toStation: formatStation(mainAsphalt), notes: 'Sequenced from master CPM schedule' },
+      auditorNotes: `Main road baseline synchronized with overall project schedule (${plannedPct.toFixed(1)}% target).`,
+      auditDirective: 'Maintain minimum 2.0 Km structural buffer between asphalt paver and preceding basecourse layer.'
+    };
+
+    // Spur road calculation
+    const spurLength = spurRoadTargetKm;
+    const spurSubgrade = Number(Math.min(spurLength, spurLength * Math.min(1, (plannedPct * 1.3) / 100)).toFixed(2));
+    const spurCapping = Number(Math.min(spurLength, spurLength * Math.min(1, (plannedPct * 1.15) / 100)).toFixed(2));
+    const spurSubbase = Number(Math.min(spurLength, spurLength * Math.min(1, (plannedPct * 1.0) / 100)).toFixed(2));
+    const spurBasecourse = Number(Math.min(spurLength, spurLength * Math.max(0, (plannedPct - 8) / 100)).toFixed(2));
+    const spurAsphalt = Number(Math.min(spurLength, spurLength * Math.max(0, (plannedPct - 18) / 100)).toFixed(2));
+
+    const updatedSpurPlan: LinearPlanData = {
+      ...spurLinearPlan,
+      baselineName: `Spur Road Approved Baseline Program (${plannedPct.toFixed(1)}%)`,
+      baselineDate: new Date().toISOString().split('T')[0],
+      subgrade: { plannedKm: spurSubgrade, fromStation: 'Km 00+000', toStation: formatStation(spurSubgrade), notes: 'Sequenced from master CPM schedule' },
+      capping: { plannedKm: spurCapping, fromStation: 'Km 00+000', toStation: formatStation(spurCapping), notes: 'Sequenced from master CPM schedule' },
+      subbase: { plannedKm: spurSubbase, fromStation: 'Km 00+000', toStation: formatStation(spurSubbase), notes: 'Sequenced from master CPM schedule' },
+      basecourse: { plannedKm: spurBasecourse, fromStation: 'Km 00+000', toStation: formatStation(spurBasecourse), notes: 'Sequenced from master CPM schedule' },
+      asphalt: { plannedKm: spurAsphalt, fromStation: 'Km 00+000', toStation: formatStation(spurAsphalt), notes: 'Sequenced from master CPM schedule' },
+      auditorNotes: `Spur road baseline synchronized with overall project schedule (${plannedPct.toFixed(1)}% target).`,
+      auditDirective: 'Maintain minimum buffer on spur road link.'
+    };
+
+    if (onUpdateLinearPlan) onUpdateLinearPlan(updatedMainPlan);
+    if (onUpdateLinearPlanSpur) onUpdateLinearPlanSpur(updatedSpurPlan);
   };
 
   // Handle station segments edit
@@ -529,154 +586,420 @@ export default function LinearDiagramView({
       )}
 
       {/* VIEW: BASELINE PLAN MANAGEMENT & SETTINGS */}
-      {activeTab === 'planSettings' && (
-        <div className="space-y-4">
-          <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/60 rounded-2xl p-5 shadow-sm space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
-              <div>
-                <h3 className="text-sm font-black uppercase tracking-wider text-slate-800 dark:text-zinc-100 flex items-center gap-2">
-                  <Sliders className="w-4 h-4 text-indigo-600" />
-                  Linear Progress Baseline Plan Configuration
-                </h3>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Set planned target completion Km for each pavement layer used in Contractor Compliance & Performance Audits.
-                </p>
+      {activeTab === 'planSettings' && (() => {
+        // Overall Plan during Contractor Evaluation = Main Road Plan + Spur Road Plan
+        const overallLayerAudit = sections.map((sec) => {
+          const mainPlanKm = mainLinearPlan[sec.id]?.plannedKm || 0;
+          const spurPlanKm = spurLinearPlan[sec.id]?.plannedKm || 0;
+          const overallPlanKm = Number((mainPlanKm + spurPlanKm).toFixed(2));
+          const mainPct = mainRoadTargetKm > 0 ? Number(((mainPlanKm / mainRoadTargetKm) * 100).toFixed(1)) : 0;
+          const spurPct = spurRoadTargetKm > 0 ? Number(((spurPlanKm / spurRoadTargetKm) * 100).toFixed(1)) : 0;
+          const overallPct = totalProjectKm > 0 ? Number(((overallPlanKm / totalProjectKm) * 100).toFixed(1)) : 0;
+
+          const mainExecKm = (mainLinear[sec.id] || []).reduce((sum, r) => sum + (r.exec || 0), 0);
+          const spurExecKm = (spurLinear[sec.id] || []).reduce((sum, r) => sum + (r.exec || 0), 0);
+          const overallExecKm = Number((mainExecKm + spurExecKm).toFixed(2));
+          const overallExecPct = totalProjectKm > 0 ? Number(((overallExecKm / totalProjectKm) * 100).toFixed(1)) : 0;
+
+          const varKm = Number((overallExecKm - overallPlanKm).toFixed(2));
+          const ratio = overallPlanKm > 0 ? Math.round((overallExecKm / overallPlanKm) * 100) : (overallExecKm > 0 ? 100 : 0);
+          const status: 'Compliant' | 'Minor Deficiency' | 'Critical Breach' = ratio >= 80 ? 'Compliant' : (ratio >= 65 ? 'Minor Deficiency' : 'Critical Breach');
+
+          return {
+            sec,
+            mainPlanKm,
+            spurPlanKm,
+            overallPlanKm,
+            mainPct,
+            spurPct,
+            overallPct,
+            mainExecKm,
+            spurExecKm,
+            overallExecKm,
+            overallExecPct,
+            varKm,
+            ratio,
+            status
+          };
+        });
+
+        const sumMainPlanKm = Number(overallLayerAudit.reduce((acc, l) => acc + l.mainPlanKm, 0).toFixed(2));
+        const sumSpurPlanKm = Number(overallLayerAudit.reduce((acc, l) => acc + l.spurPlanKm, 0).toFixed(2));
+        const sumOverallPlanKm = Number((sumMainPlanKm + sumSpurPlanKm).toFixed(2));
+        const sumOverallExecKm = Number(overallLayerAudit.reduce((acc, l) => acc + l.overallExecKm, 0).toFixed(2));
+        const sumOverallVarKm = Number((sumOverallExecKm - sumOverallPlanKm).toFixed(2));
+        const avgOverallRatio = overallLayerAudit.length > 0 ? Math.round(overallLayerAudit.reduce((acc, l) => acc + l.ratio, 0) / overallLayerAudit.length) : 0;
+
+        return (
+          <div className="space-y-4">
+            {/* OVERALL PLAN DURING CONTRACTOR EVALUATION BANNER & MATRIX (SUM OF MAIN ROAD + SPUR ROAD) */}
+            <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/60 rounded-2xl p-5 shadow-sm space-y-4">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="px-2 py-0.5 rounded-md bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 text-[10px] font-black uppercase tracking-wider border border-indigo-200 dark:border-indigo-800">
+                      Evaluation Dimension 5 Benchmark
+                    </span>
+                    <span className="px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 text-[10px] font-black uppercase tracking-wider border border-blue-200 dark:border-blue-800">
+                      Main ({mainRoadTargetKm} Km) + Spur ({spurRoadTargetKm} Km) = {totalProjectKm} Km Total
+                    </span>
+                  </div>
+                  <h3 className="text-base font-black uppercase tracking-wider text-slate-850 dark:text-zinc-100 flex items-center gap-2">
+                    <Scale className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                    Contractor Evaluation Overall Baseline Plan (Sum of Main Road & Spur Road)
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed max-w-3xl">
+                    Official Audit Standard: During contractor compliance and performance evaluations (Dimension 5: Specific Pavement Layers Progress), the evaluation target for every pavement layer is calculated strictly as the <strong>sum of Main Road Plan and Spur Road Plan</strong>.
+                  </p>
+                </div>
+
+                {/* Auto-Derive Buttons */}
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleAutoCalculateBothPlans}
+                    className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    title="Derive baseline plans for BOTH Main Road and Spur Road simultaneously"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-indigo-200" />
+                    Auto-Derive Both (Main + Spur)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleAutoCalculatePlan}
+                    className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-750 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-zinc-200 border border-slate-200 dark:border-slate-700 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                    title="Derive baseline plan for currently selected road only"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-slate-400" />
+                    Auto-Derive {roadType === 'main' ? 'Main Road' : 'Spur Road'} Only
+                  </button>
+                </div>
               </div>
 
-              {/* Auto-calculate button */}
-              <button
-                type="button"
-                onClick={handleAutoCalculatePlan}
-                className="px-3.5 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
-                Auto-Derive from Project Schedule ({Number(project.progressPlan?.contractor?.todate ?? project.progressPlan?.era?.todate ?? 45).toFixed(1)}%)
-              </button>
+              {/* High-level KPI Cards */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="bg-slate-50 dark:bg-slate-850 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+                    Combined Overall Plan
+                  </span>
+                  <div className="text-lg font-black text-indigo-600 dark:text-indigo-400 font-mono">
+                    {sumOverallPlanKm} <span className="text-xs text-slate-400">Km</span>
+                  </div>
+                  <div className="text-[10px] text-slate-500 dark:text-slate-400 font-mono flex items-center justify-between">
+                    <span>Main: {sumMainPlanKm}k</span>
+                    <span>+</span>
+                    <span>Spur: {sumSpurPlanKm}k</span>
+                  </div>
+                </div>
+
+                <div className="bg-slate-50 dark:bg-slate-850 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+                    Combined Accomplished
+                  </span>
+                  <div className="text-lg font-black text-emerald-600 dark:text-emerald-400 font-mono">
+                    {sumOverallExecKm} <span className="text-xs text-slate-400">Km</span>
+                  </div>
+                  <div className="text-[10px] text-slate-500 dark:text-slate-400 font-mono flex items-center justify-between">
+                    <span>Main: {Number(overallLayerAudit.reduce((acc, l) => acc + l.mainExecKm, 0).toFixed(1))}k</span>
+                    <span>+</span>
+                    <span>Spur: {Number(overallLayerAudit.reduce((acc, l) => acc + l.spurExecKm, 0).toFixed(1))}k</span>
+                  </div>
+                </div>
+
+                <div className="bg-slate-50 dark:bg-slate-850 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+                    Evaluation Variance
+                  </span>
+                  <div className={`text-lg font-black font-mono ${sumOverallVarKm >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                    {sumOverallVarKm >= 0 ? '+' : ''}{sumOverallVarKm} <span className="text-xs text-slate-400">Km</span>
+                  </div>
+                  <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                    {sumOverallVarKm >= 0 ? 'Overall Ahead of Baseline' : 'Critical Net Linear Lag'}
+                  </div>
+                </div>
+
+                <div className="bg-slate-50 dark:bg-slate-850 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+                    Mean Layer Compliance
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg font-black text-slate-850 dark:text-zinc-100 font-mono">
+                      {avgOverallRatio}%
+                    </span>
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                      avgOverallRatio >= 80 
+                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300' 
+                        : (avgOverallRatio >= 65 
+                          ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300' 
+                          : 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300')
+                    }`}>
+                      {avgOverallRatio >= 80 ? 'Compliant' : (avgOverallRatio >= 65 ? 'Minor Def.' : 'Critical')}
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                    Across 5 Pavement Civil Stratigraphies
+                  </div>
+                </div>
+              </div>
+
+              {/* Itemized Overall Plan (Main Road + Spur Road) Table */}
+              <div className="border border-slate-200 dark:border-slate-700/80 rounded-xl overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-slate-100/80 dark:bg-slate-850 border-b border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold uppercase text-[10px]">
+                        <th className="py-2.5 px-3">Pavement Layer</th>
+                        <th className="py-2.5 px-3 text-center">Main Road Plan ({mainRoadTargetKm} Km)</th>
+                        <th className="py-2.5 px-3 text-center">Spur Road Plan ({spurRoadTargetKm} Km)</th>
+                        <th className="py-2.5 px-3 text-center bg-indigo-50/60 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300">
+                          Overall Plan (Main + Spur)
+                        </th>
+                        <th className="py-2.5 px-3 text-center">Accomplished (Main + Spur)</th>
+                        <th className="py-2.5 px-3 text-center">Audit Variance</th>
+                        <th className="py-2.5 px-3 text-center">Evaluation Rating</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {overallLayerAudit.map((l) => (
+                        <tr key={l.sec.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-850/50 transition">
+                          <td className="py-2.5 px-3 font-bold text-slate-850 dark:text-zinc-100 flex items-center gap-2">
+                            <span className={`w-2.5 h-2.5 rounded-xs shrink-0 ${l.sec.color}`} />
+                            <span>{l.sec.name}</span>
+                          </td>
+                          <td className="py-2.5 px-3 text-center font-mono">
+                            <span className="font-bold text-slate-800 dark:text-zinc-200">{l.mainPlanKm.toFixed(1)} Km</span>
+                            <span className="text-[10px] text-slate-400 block">({l.mainPct}%)</span>
+                          </td>
+                          <td className="py-2.5 px-3 text-center font-mono">
+                            <span className="font-bold text-slate-800 dark:text-zinc-200">{l.spurPlanKm.toFixed(1)} Km</span>
+                            <span className="text-[10px] text-slate-400 block">({l.spurPct}%)</span>
+                          </td>
+                          <td className="py-2.5 px-3 text-center font-mono bg-indigo-50/40 dark:bg-indigo-950/20">
+                            <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-indigo-100/70 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-200 font-black">
+                              <span>{l.overallPlanKm.toFixed(1)} Km</span>
+                              <span className="text-[10px] opacity-80">({l.overallPct}%)</span>
+                            </div>
+                            <span className="text-[9px] text-indigo-500 dark:text-indigo-400 block font-sans">
+                              Main {l.mainPlanKm.toFixed(1)}k + Spur {l.spurPlanKm.toFixed(1)}k
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3 text-center font-mono">
+                            <span className="font-bold text-emerald-600 dark:text-emerald-400">{l.overallExecKm.toFixed(1)} Km</span>
+                            <span className="text-[9px] text-slate-400 block">
+                              (M: {l.mainExecKm.toFixed(1)}k + S: {l.spurExecKm.toFixed(1)}k)
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3 text-center font-mono font-bold">
+                            <span className={l.varKm >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>
+                              {l.varKm >= 0 ? '+' : ''}{l.varKm.toFixed(1)} Km
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3 text-center">
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              l.status === 'Compliant'
+                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                                : (l.status === 'Minor Deficiency'
+                                  ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                                  : 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300')
+                            }`}>
+                              {l.status === 'Compliant' && <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />}
+                              {l.status !== 'Compliant' && <AlertTriangle className="w-3 h-3 shrink-0" />}
+                              <span>{l.ratio}% {l.status}</span>
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
 
-            {/* Baseline Metadata */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="text-[11px] font-bold text-slate-500 block mb-1">
-                  Baseline Program Reference Name
-                </label>
-                <input
-                  type="text"
-                  value={activePlan.baselineName || ''}
-                  placeholder="e.g. Approved Baseline Work Program Rev.02"
-                  onChange={(e) => {
-                    const updated = { ...activePlan, baselineName: e.target.value };
-                    if (roadType === 'main') {
-                      if (onUpdateLinearPlan) onUpdateLinearPlan(updated);
-                    } else {
-                      if (onUpdateLinearPlanSpur) onUpdateLinearPlanSpur(updated);
-                    }
-                  }}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-
-              <div>
-                <label className="text-[11px] font-bold text-slate-500 block mb-1">
-                  Baseline Approval Date
-                </label>
-                <input
-                  type="date"
-                  value={activePlan.baselineDate || ''}
-                  onChange={(e) => {
-                    const updated = { ...activePlan, baselineDate: e.target.value };
-                    if (roadType === 'main') {
-                      if (onUpdateLinearPlan) onUpdateLinearPlan(updated);
-                    } else {
-                      if (onUpdateLinearPlanSpur) onUpdateLinearPlanSpur(updated);
-                    }
-                  }}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-            </div>
-
-            {/* Layer Target Km Inputs */}
-            <div className="space-y-2 pt-2">
-              <span className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-300 block">
-                Target Planned Km by Pavement Layer ({roadType === 'main' ? `Max ${mainRoadTargetKm} Km` : `Max ${spurRoadTargetKm} Km`})
-              </span>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-                {sections.map((sec) => {
-                  const planLayer = activePlan[sec.id] || { plannedKm: 0, fromStation: 'Km 00+000', toStation: 'Km 00+000' };
-                  const plannedKm = planLayer.plannedKm || 0;
-                  const plannedPct = activeTargetKm > 0 ? ((plannedKm / activeTargetKm) * 100).toFixed(1) : 0;
-
-                  return (
-                    <div 
-                      key={sec.id}
-                      className="bg-slate-50 dark:bg-slate-850 p-3 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2"
+            {/* ALIGNMENT SPECIFIC BASELINE PLAN EDITOR */}
+            <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/60 rounded-2xl p-5 shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${
+                      roadType === 'main' 
+                        ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300' 
+                        : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                    }`}>
+                      Editing: {roadType === 'main' ? `Main Road (${mainRoadTargetKm} Km)` : `Spur Road (${spurRoadTargetKm} Km)`}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setRoadType(roadType === 'main' ? 'spur' : 'main')}
+                      className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-bold flex items-center gap-1 cursor-pointer"
                     >
-                      <div className="flex items-center gap-1.5">
-                        <span className={`w-2.5 h-2.5 rounded-xs ${sec.color}`} />
-                        <span className="font-bold text-xs text-slate-800 dark:text-zinc-200 truncate">
-                          {sec.name}
-                        </span>
-                      </div>
+                      <ArrowRight className="w-3 h-3" />
+                      Switch to {roadType === 'main' ? 'Spur Road' : 'Main Road'}
+                    </button>
+                  </div>
+                  <h3 className="text-sm font-black uppercase tracking-wider text-slate-800 dark:text-zinc-100 flex items-center gap-2 mt-1">
+                    <Sliders className="w-4 h-4 text-indigo-600" />
+                    {roadType === 'main' ? 'Main Road' : 'Spur Road'} Baseline Layer Targets
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Modifying planned Km here directly updates the Overall Evaluation Plan (sum of Main road and spur road) above.
+                  </p>
+                </div>
 
-                      <div>
-                        <div className="flex items-center justify-between text-[10px] text-slate-400 mb-0.5">
-                          <span>Planned Target</span>
-                          <span className="font-bold text-indigo-600 dark:text-indigo-400">{plannedPct}%</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <input
-                            type="number"
-                            step="0.1"
-                            min="0"
-                            max={activeTargetKm}
-                            value={plannedKm}
-                            onChange={(e) => handleUpdatePlanLayer(sec.id, 'plannedKm', e.target.value)}
-                            className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg px-2 py-1 text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500"
-                          />
-                          <span className="text-xs font-mono text-slate-400">Km</span>
-                        </div>
-                      </div>
-
-                      <div>
-                        <span className="text-[10px] text-slate-400 block mb-0.5">Planned End Station</span>
-                        <input
-                          type="text"
-                          value={planLayer.toStation || formatStation(plannedKm)}
-                          onChange={(e) => handleUpdatePlanLayer(sec.id, 'toStation', e.target.value)}
-                          placeholder="Km 00+000"
-                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg px-2 py-1 text-xs font-mono text-slate-600 dark:text-slate-300 focus:outline-none"
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
+                {/* Auto-calculate button */}
+                <button
+                  type="button"
+                  onClick={handleAutoCalculatePlan}
+                  className="px-3.5 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+                  Auto-Derive {roadType === 'main' ? 'Main' : 'Spur'} ({Number(project.progressPlan?.contractor?.todate ?? project.progressPlan?.era?.todate ?? 45).toFixed(1)}%)
+                </button>
               </div>
-            </div>
 
-            {/* Auditor Directive & Technical Remarks */}
-            <div className="space-y-2 pt-2">
-              <label className="text-[11px] font-bold text-slate-500 block">
-                Auditor Standing Guidance & Contractual Notice Notes
-              </label>
-              <textarea
-                rows={2}
-                value={activePlan.auditDirective || ''}
-                placeholder="Enter technical audit guidance (e.g. minimum buffer requirements between layers or equipment shifts)..."
-                onChange={(e) => {
-                  const updated = { ...activePlan, auditDirective: e.target.value };
-                  if (roadType === 'main') {
-                    if (onUpdateLinearPlan) onUpdateLinearPlan(updated);
-                  } else {
-                    if (onUpdateLinearPlanSpur) onUpdateLinearPlanSpur(updated);
-                  }
-                }}
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-2.5 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:border-indigo-500 font-sans"
-              />
+              {/* Baseline Metadata */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-bold text-slate-500 block mb-1">
+                    {roadType === 'main' ? 'Main Road' : 'Spur Road'} Baseline Reference Program
+                  </label>
+                  <input
+                    type="text"
+                    value={activePlan.baselineName || ''}
+                    placeholder="e.g. Approved Baseline Work Program Rev.02"
+                    onChange={(e) => {
+                      const updated = { ...activePlan, baselineName: e.target.value };
+                      if (roadType === 'main') {
+                        if (onUpdateLinearPlan) onUpdateLinearPlan(updated);
+                      } else {
+                        if (onUpdateLinearPlanSpur) onUpdateLinearPlanSpur(updated);
+                      }
+                    }}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-slate-500 block mb-1">
+                    Baseline Approval Date
+                  </label>
+                  <input
+                    type="date"
+                    value={activePlan.baselineDate || ''}
+                    onChange={(e) => {
+                      const updated = { ...activePlan, baselineDate: e.target.value };
+                      if (roadType === 'main') {
+                        if (onUpdateLinearPlan) onUpdateLinearPlan(updated);
+                      } else {
+                        if (onUpdateLinearPlanSpur) onUpdateLinearPlanSpur(updated);
+                      }
+                    }}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+
+              {/* Layer Target Km Inputs with Dynamic Overall Plan Calculation */}
+              <div className="space-y-2 pt-2">
+                <span className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-300 block">
+                  Target Planned Km by Pavement Layer ({roadType === 'main' ? `Main Road: Max ${mainRoadTargetKm} Km` : `Spur Road: Max ${spurRoadTargetKm} Km`})
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                  {sections.map((sec) => {
+                    const planLayer = activePlan[sec.id] || { plannedKm: 0, fromStation: 'Km 00+000', toStation: 'Km 00+000' };
+                    const plannedKm = planLayer.plannedKm || 0;
+                    const plannedPct = activeTargetKm > 0 ? ((plannedKm / activeTargetKm) * 100).toFixed(1) : 0;
+                    
+                    const otherRoadPlanKm = roadType === 'main' 
+                      ? (spurLinearPlan[sec.id]?.plannedKm || 0) 
+                      : (mainLinearPlan[sec.id]?.plannedKm || 0);
+                    const combinedSumKm = Number((plannedKm + otherRoadPlanKm).toFixed(2));
+                    const combinedPct = totalProjectKm > 0 ? ((combinedSumKm / totalProjectKm) * 100).toFixed(1) : 0;
+
+                    return (
+                      <div 
+                        key={sec.id}
+                        className="bg-slate-50 dark:bg-slate-850 p-3 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2.5"
+                      >
+                        <div className="flex items-center justify-between gap-1.5">
+                          <div className="flex items-center gap-1.5 truncate">
+                            <span className={`w-2.5 h-2.5 rounded-xs ${sec.color}`} />
+                            <span className="font-bold text-xs text-slate-800 dark:text-zinc-200 truncate">
+                              {sec.name}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="flex items-center justify-between text-[10px] text-slate-400 mb-0.5">
+                            <span>{roadType === 'main' ? 'Main' : 'Spur'} Plan</span>
+                            <span className="font-bold text-indigo-600 dark:text-indigo-400">{plannedPct}%</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="number"
+                              step="0.1"
+                              min="0"
+                              max={activeTargetKm}
+                              value={plannedKm}
+                              onChange={(e) => handleUpdatePlanLayer(sec.id, 'plannedKm', e.target.value)}
+                              className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg px-2 py-1 text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500"
+                            />
+                            <span className="text-xs font-mono text-slate-400">Km</span>
+                          </div>
+                        </div>
+
+                        {/* Combined Overall Plan Indicator */}
+                        <div className="bg-indigo-50/70 dark:bg-indigo-950/40 p-2 rounded-lg border border-indigo-200/60 dark:border-indigo-800/40 text-[9px] space-y-1">
+                          <div className="flex justify-between text-indigo-900 dark:text-indigo-200 font-bold">
+                            <span>Overall Plan (Sum):</span>
+                            <span className="font-mono text-indigo-700 dark:text-indigo-300">{combinedSumKm} Km</span>
+                          </div>
+                          <div className="flex justify-between text-slate-500 dark:text-slate-400 text-[8.5px]">
+                            <span>{roadType === 'main' ? 'Spur' : 'Main'}: {otherRoadPlanKm}k</span>
+                            <span>{combinedPct}% of {totalProjectKm}k</span>
+                          </div>
+                        </div>
+
+                        <div>
+                          <span className="text-[10px] text-slate-400 block mb-0.5">Planned End Station</span>
+                          <input
+                            type="text"
+                            value={planLayer.toStation || formatStation(plannedKm)}
+                            onChange={(e) => handleUpdatePlanLayer(sec.id, 'toStation', e.target.value)}
+                            placeholder="Km 00+000"
+                            className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg px-2 py-1 text-xs font-mono text-slate-600 dark:text-slate-300 focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Auditor Directive & Technical Remarks */}
+              <div className="space-y-2 pt-2">
+                <label className="text-[11px] font-bold text-slate-500 block">
+                  Auditor Standing Guidance & Contractual Notice Notes
+                </label>
+                <textarea
+                  rows={2}
+                  value={activePlan.auditDirective || ''}
+                  placeholder="Enter technical audit guidance (e.g. minimum buffer requirements between layers or equipment shifts)..."
+                  onChange={(e) => {
+                    const updated = { ...activePlan, auditDirective: e.target.value };
+                    if (roadType === 'main') {
+                      if (onUpdateLinearPlan) onUpdateLinearPlan(updated);
+                    } else {
+                      if (onUpdateLinearPlanSpur) onUpdateLinearPlanSpur(updated);
+                    }
+                  }}
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-2.5 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:border-indigo-500 font-sans"
+                />
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

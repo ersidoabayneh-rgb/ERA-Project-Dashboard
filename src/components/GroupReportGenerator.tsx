@@ -1529,11 +1529,16 @@ export default function GroupReportGenerator({
       }
     };
 
-    const origSubgradeTotal = (p.linear?.subgrade || []).reduce((sum: number, r: any) => sum + (r.exec || 0), 0);
-    const origCappingTotal = (p.linear?.capping || []).reduce((sum: number, r: any) => sum + (r.exec || 0), 0);
-    const origSubbaseTotal = (p.linear?.subbase || []).reduce((sum: number, r: any) => sum + (r.exec || 0), 0);
-    const origBasecourseTotal = (p.linear?.basecourse || []).reduce((sum: number, r: any) => sum + (r.exec || 0), 0);
-    const origAsphaltTotal = (p.linear?.asphalt || []).reduce((sum: number, r: any) => sum + (r.exec || 0), 0);
+    const origSubgradeTotal = ((p.linear?.subgrade || []).reduce((sum: number, r: any) => sum + (r.exec || 0), 0)) +
+                              ((p.linearSpur?.subgrade || []).reduce((sum: number, r: any) => sum + (r.exec || 0), 0));
+    const origCappingTotal = ((p.linear?.capping || []).reduce((sum: number, r: any) => sum + (r.exec || 0), 0)) +
+                             ((p.linearSpur?.capping || []).reduce((sum: number, r: any) => sum + (r.exec || 0), 0));
+    const origSubbaseTotal = ((p.linear?.subbase || []).reduce((sum: number, r: any) => sum + (r.exec || 0), 0)) +
+                             ((p.linearSpur?.subbase || []).reduce((sum: number, r: any) => sum + (r.exec || 0), 0));
+    const origBasecourseTotal = ((p.linear?.basecourse || []).reduce((sum: number, r: any) => sum + (r.exec || 0), 0)) +
+                                ((p.linearSpur?.basecourse || []).reduce((sum: number, r: any) => sum + (r.exec || 0), 0));
+    const origAsphaltTotal = ((p.linear?.asphalt || []).reduce((sum: number, r: any) => sum + (r.exec || 0), 0)) +
+                             ((p.linearSpur?.asphalt || []).reduce((sum: number, r: any) => sum + (r.exec || 0), 0));
 
     const fallbackSubgradePct = p.lengthKm > 0 ? Math.min(100, (origSubgradeTotal / p.lengthKm) * 100) : 0;
     const fallbackCappingPct = p.lengthKm > 0 ? Math.min(100, (origCappingTotal / p.lengthKm) * 100) : 0;
@@ -1665,25 +1670,28 @@ export default function GroupReportGenerator({
     const kpiScore = kpiEarned;
 
     // Dimension 5: Specific Pavement Layers Progress vs. Baseline Plan
-    // (Evaluated on specific layers: Subgrade, Capping, Subbase, Basecourse, Asphalt)
-    const mainPlanSubgrade = p.linearPlan?.subgrade?.plannedKm || Number(((p.lengthKm || 65) * (subgradePlan / 100)).toFixed(1));
-    const spurPlanSubgrade = p.linearPlanSpur?.subgrade?.plannedKm || 0;
+    // Overall plan during contractor evaluation is strictly the sum of Main road and spur road
+    const spurTargetKm = p.spurRoadLengthKm ?? (p.id === 'proj_default' ? 8.8 : 0);
+    const mainTargetKm = Math.max(0, (p.lengthKm || 65) - spurTargetKm);
+
+    const mainPlanSubgrade = p.linearPlan?.subgrade?.plannedKm ?? Number((mainTargetKm * (subgradePlan / 100)).toFixed(1));
+    const spurPlanSubgrade = p.linearPlanSpur?.subgrade?.plannedKm ?? Number((spurTargetKm * (subgradePlan / 100)).toFixed(1));
     const planSubgradeKm = Number((mainPlanSubgrade + spurPlanSubgrade).toFixed(1));
 
-    const mainPlanCapping = p.linearPlan?.capping?.plannedKm || Number(((p.lengthKm || 65) * (cappingPlan / 100)).toFixed(1));
-    const spurPlanCapping = p.linearPlanSpur?.capping?.plannedKm || 0;
+    const mainPlanCapping = p.linearPlan?.capping?.plannedKm ?? Number((mainTargetKm * (cappingPlan / 100)).toFixed(1));
+    const spurPlanCapping = p.linearPlanSpur?.capping?.plannedKm ?? Number((spurTargetKm * (cappingPlan / 100)).toFixed(1));
     const planCappingKm = Number((mainPlanCapping + spurPlanCapping).toFixed(1));
 
-    const mainPlanSubbase = p.linearPlan?.subbase?.plannedKm || Number(((p.lengthKm || 65) * (subbasePlan / 100)).toFixed(1));
-    const spurPlanSubbase = p.linearPlanSpur?.subbase?.plannedKm || 0;
+    const mainPlanSubbase = p.linearPlan?.subbase?.plannedKm ?? Number((mainTargetKm * (subbasePlan / 100)).toFixed(1));
+    const spurPlanSubbase = p.linearPlanSpur?.subbase?.plannedKm ?? Number((spurTargetKm * (subbasePlan / 100)).toFixed(1));
     const planSubbaseKm = Number((mainPlanSubbase + spurPlanSubbase).toFixed(1));
 
-    const mainPlanBasecourse = p.linearPlan?.basecourse?.plannedKm || Number(((p.lengthKm || 65) * (basecoursePlan / 100)).toFixed(1));
-    const spurPlanBasecourse = p.linearPlanSpur?.basecourse?.plannedKm || 0;
+    const mainPlanBasecourse = p.linearPlan?.basecourse?.plannedKm ?? Number((mainTargetKm * (basecoursePlan / 100)).toFixed(1));
+    const spurPlanBasecourse = p.linearPlanSpur?.basecourse?.plannedKm ?? Number((spurTargetKm * (basecoursePlan / 100)).toFixed(1));
     const planBasecourseKm = Number((mainPlanBasecourse + spurPlanBasecourse).toFixed(1));
 
-    const mainPlanAsphalt = p.linearPlan?.asphalt?.plannedKm || Number(((p.lengthKm || 65) * (asphaltPlan / 100)).toFixed(1));
-    const spurPlanAsphalt = p.linearPlanSpur?.asphalt?.plannedKm || 0;
+    const mainPlanAsphalt = p.linearPlan?.asphalt?.plannedKm ?? Number((mainTargetKm * (asphaltPlan / 100)).toFixed(1));
+    const spurPlanAsphalt = p.linearPlanSpur?.asphalt?.plannedKm ?? Number((spurTargetKm * (asphaltPlan / 100)).toFixed(1));
     const planAsphaltKm = Number((mainPlanAsphalt + spurPlanAsphalt).toFixed(1));
 
     const sgRatio = planSubgradeKm > 0 ? Number(((origSubgradeTotal / planSubgradeKm) * 100).toFixed(1)) : subgradePct;
@@ -1703,11 +1711,11 @@ export default function GroupReportGenerator({
     const linearEarned = Number(((linearScorePct / 100) * wLinear).toFixed(2));
     const linearRating: 'Compliant' | 'Minor Deficiency' | 'Critical Breach' = linearScorePct >= 80 ? 'Compliant' : (linearScorePct >= 65 ? 'Minor Deficiency' : 'Critical Breach');
     
-    const linearPlanTarget = `Subgrade: ${planSubgradeKm}k, Capping: ${planCappingKm}k, Subbase: ${planSubbaseKm}k, Base: ${planBasecourseKm}k, Asphalt: ${planAsphaltKm}k`;
+    const linearPlanTarget = `Subgrade: ${planSubgradeKm}k, Capping: ${planCappingKm}k, Subbase: ${planSubbaseKm}k, Base: ${planBasecourseKm}k, Asphalt: ${planAsphaltKm}k (Main + Spur Sum)`;
     const linearAccomplishment = `Subgrade: ${origSubgradeTotal.toFixed(1)}k, Capping: ${origCappingTotal.toFixed(1)}k, Subbase: ${origSubbaseTotal.toFixed(1)}k, Base: ${origBasecourseTotal.toFixed(1)}k, Asphalt: ${origAsphaltTotal.toFixed(1)}k`;
     const linearVariance = `SG: ${sgVar >= 0 ? '+' : ''}${sgVar}k, Cap: ${capVar >= 0 ? '+' : ''}${capVar}k, SB: ${sbVar >= 0 ? '+' : ''}${sbVar}k, BC: ${bcVar >= 0 ? '+' : ''}${bcVar}k, AC: ${acVar >= 0 ? '+' : ''}${acVar}k`;
     const linearAccomplishmentRatio = Math.round(specificLayersRatio);
-    const linearDetails = `Specific Pavement Layers Evaluation: Subgrade: ${origSubgradeTotal.toFixed(1)}/${planSubgradeKm} Km (${Math.round(sgRatio)}%), Capping: ${origCappingTotal.toFixed(1)}/${planCappingKm} Km (${Math.round(capRatio)}%), Subbase: ${origSubbaseTotal.toFixed(1)}/${planSubbaseKm} Km (${Math.round(sbRatio)}%), Basecourse: ${origBasecourseTotal.toFixed(1)}/${planBasecourseKm} Km (${Math.round(bcRatio)}%), Asphalt: ${origAsphaltTotal.toFixed(1)}/${planAsphaltKm} Km (${Math.round(acRatio)}%). Mean Specific Layer Compliance: ${specificLayersRatio}%.`;
+    const linearDetails = `Specific Pavement Layers Evaluation: Overall Baseline Plan is the sum of Main road and spur road (Subgrade: ${origSubgradeTotal.toFixed(1)}/${planSubgradeKm} Km [Main: ${mainPlanSubgrade}k + Spur: ${spurPlanSubgrade}k] (${Math.round(sgRatio)}%), Capping: ${origCappingTotal.toFixed(1)}/${planCappingKm} Km [Main: ${mainPlanCapping}k + Spur: ${spurPlanCapping}k] (${Math.round(capRatio)}%), Subbase: ${origSubbaseTotal.toFixed(1)}/${planSubbaseKm} Km [Main: ${mainPlanSubbase}k + Spur: ${spurPlanSubbase}k] (${Math.round(sbRatio)}%), Basecourse: ${origBasecourseTotal.toFixed(1)}/${planBasecourseKm} Km [Main: ${mainPlanBasecourse}k + Spur: ${spurPlanBasecourse}k] (${Math.round(bcRatio)}%), Asphalt: ${origAsphaltTotal.toFixed(1)}/${planAsphaltKm} Km [Main: ${mainPlanAsphalt}k + Spur: ${spurPlanAsphalt}k] (${Math.round(acRatio)}%)). Mean Specific Layer Compliance: ${specificLayersRatio}%.`;
     const linearScore = linearEarned;
 
     const totalPlanKm = Number((planSubgradeKm + planCappingKm + planSubbaseKm + planBasecourseKm + planAsphaltKm).toFixed(1));
@@ -1962,11 +1970,11 @@ export default function GroupReportGenerator({
         variance: linearVariance,
         accomplishmentRatio: linearAccomplishmentRatio,
         specificLayers: [
-          { key: 'sg', name: '5.1 Subgrade Layer', planKm: planSubgradeKm, actualKm: origSubgradeTotal, varianceKm: sgVar, ratio: Math.round(sgRatio), status: sgRatio >= 80 ? 'Compliant' : (sgRatio >= 65 ? 'Minor Deficiency' : 'Critical Breach'), details: `Subgrade: ${origSubgradeTotal.toFixed(1)} km constructed vs ${planSubgradeKm} km planned (${sgVar >= 0 ? '+' : ''}${sgVar} km variance, ${Math.round(sgRatio)}% achievement).` },
-          { key: 'cap', name: '5.2 Capping Layer', planKm: planCappingKm, actualKm: origCappingTotal, varianceKm: capVar, ratio: Math.round(capRatio), status: capRatio >= 80 ? 'Compliant' : (capRatio >= 65 ? 'Minor Deficiency' : 'Critical Breach'), details: `Capping: ${origCappingTotal.toFixed(1)} km constructed vs ${planCappingKm} km planned (${capVar >= 0 ? '+' : ''}${capVar} km variance, ${Math.round(capRatio)}% achievement).` },
-          { key: 'sb', name: '5.3 Subbase Layer', planKm: planSubbaseKm, actualKm: origSubbaseTotal, varianceKm: sbVar, ratio: Math.round(sbRatio), status: sbRatio >= 80 ? 'Compliant' : (sbRatio >= 65 ? 'Minor Deficiency' : 'Critical Breach'), details: `Subbase: ${origSubbaseTotal.toFixed(1)} km constructed vs ${planSubbaseKm} km planned (${sbVar >= 0 ? '+' : ''}${sbVar} km variance, ${Math.round(sbRatio)}% achievement).` },
-          { key: 'bc', name: '5.4 Basecourse Layer', planKm: planBasecourseKm, actualKm: origBasecourseTotal, varianceKm: bcVar, ratio: Math.round(bcRatio), status: bcRatio >= 80 ? 'Compliant' : (bcRatio >= 65 ? 'Minor Deficiency' : 'Critical Breach'), details: `Basecourse: ${origBasecourseTotal.toFixed(1)} km constructed vs ${planBasecourseKm} km planned (${bcVar >= 0 ? '+' : ''}${bcVar} km variance, ${Math.round(bcRatio)}% achievement).` },
-          { key: 'ac', name: '5.5 Asphalt Concrete Layer', planKm: planAsphaltKm, actualKm: origAsphaltTotal, varianceKm: acVar, ratio: Math.round(acRatio), status: acRatio >= 80 ? 'Compliant' : (acRatio >= 65 ? 'Minor Deficiency' : 'Critical Breach'), details: `Asphalt: ${origAsphaltTotal.toFixed(1)} km constructed vs ${planAsphaltKm} km planned (${acVar >= 0 ? '+' : ''}${acVar} km variance, ${Math.round(acRatio)}% achievement).` }
+          { key: 'sg', name: '5.1 Subgrade Layer', planKm: planSubgradeKm, mainPlanKm: mainPlanSubgrade, spurPlanKm: spurPlanSubgrade, actualKm: origSubgradeTotal, varianceKm: sgVar, ratio: Math.round(sgRatio), status: sgRatio >= 80 ? 'Compliant' : (sgRatio >= 65 ? 'Minor Deficiency' : 'Critical Breach'), details: `Subgrade: ${origSubgradeTotal.toFixed(1)} km constructed vs Overall Plan ${planSubgradeKm} km (Main: ${mainPlanSubgrade}k + Spur: ${spurPlanSubgrade}k) [${sgVar >= 0 ? '+' : ''}${sgVar} km variance, ${Math.round(sgRatio)}% achievement].` },
+          { key: 'cap', name: '5.2 Capping Layer', planKm: planCappingKm, mainPlanKm: mainPlanCapping, spurPlanKm: spurPlanCapping, actualKm: origCappingTotal, varianceKm: capVar, ratio: Math.round(capRatio), status: capRatio >= 80 ? 'Compliant' : (capRatio >= 65 ? 'Minor Deficiency' : 'Critical Breach'), details: `Capping: ${origCappingTotal.toFixed(1)} km constructed vs Overall Plan ${planCappingKm} km (Main: ${mainPlanCapping}k + Spur: ${spurPlanCapping}k) [${capVar >= 0 ? '+' : ''}${capVar} km variance, ${Math.round(capRatio)}% achievement].` },
+          { key: 'sb', name: '5.3 Subbase Layer', planKm: planSubbaseKm, mainPlanKm: mainPlanSubbase, spurPlanKm: spurPlanSubbase, actualKm: origSubbaseTotal, varianceKm: sbVar, ratio: Math.round(sbRatio), status: sbRatio >= 80 ? 'Compliant' : (sbRatio >= 65 ? 'Minor Deficiency' : 'Critical Breach'), details: `Subbase: ${origSubbaseTotal.toFixed(1)} km constructed vs Overall Plan ${planSubbaseKm} km (Main: ${mainPlanSubbase}k + Spur: ${spurPlanSubbase}k) [${sbVar >= 0 ? '+' : ''}${sbVar} km variance, ${Math.round(sbRatio)}% achievement].` },
+          { key: 'bc', name: '5.4 Basecourse Layer', planKm: planBasecourseKm, mainPlanKm: mainPlanBasecourse, spurPlanKm: spurPlanBasecourse, actualKm: origBasecourseTotal, varianceKm: bcVar, ratio: Math.round(bcRatio), status: bcRatio >= 80 ? 'Compliant' : (bcRatio >= 65 ? 'Minor Deficiency' : 'Critical Breach'), details: `Basecourse: ${origBasecourseTotal.toFixed(1)} km constructed vs Overall Plan ${planBasecourseKm} km (Main: ${mainPlanBasecourse}k + Spur: ${spurPlanBasecourse}k) [${bcVar >= 0 ? '+' : ''}${bcVar} km variance, ${Math.round(bcRatio)}% achievement].` },
+          { key: 'ac', name: '5.5 Asphalt Concrete Layer', planKm: planAsphaltKm, mainPlanKm: mainPlanAsphalt, spurPlanKm: spurPlanAsphalt, actualKm: origAsphaltTotal, varianceKm: acVar, ratio: Math.round(acRatio), status: acRatio >= 80 ? 'Compliant' : (acRatio >= 65 ? 'Minor Deficiency' : 'Critical Breach'), details: `Asphalt: ${origAsphaltTotal.toFixed(1)} km constructed vs Overall Plan ${planAsphaltKm} km (Main: ${mainPlanAsphalt}k + Spur: ${spurPlanAsphalt}k) [${acVar >= 0 ? '+' : ''}${acVar} km variance, ${Math.round(acRatio)}% achievement].` }
         ]
       },
       {
@@ -2108,22 +2116,32 @@ export default function GroupReportGenerator({
       varianceKm,
       plannedPct,
       planSubgradeKm,
+      mainPlanSubgrade,
+      spurPlanSubgrade,
       origSubgradeTotal,
       sgRatio,
       sgVar,
       planCappingKm,
+      mainPlanCapping,
+      spurPlanCapping,
       origCappingTotal,
       capRatio,
       capVar,
       planSubbaseKm,
+      mainPlanSubbase,
+      spurPlanSubbase,
       origSubbaseTotal,
       sbRatio,
       sbVar,
       planBasecourseKm,
+      mainPlanBasecourse,
+      spurPlanBasecourse,
       origBasecourseTotal,
       bcRatio,
       bcVar,
       planAsphaltKm,
+      mainPlanAsphalt,
+      spurPlanAsphalt,
       origAsphaltTotal,
       acRatio,
       acVar,
@@ -5146,11 +5164,11 @@ export default function GroupReportGenerator({
       // 4. Specific Pavement Layers Lines
       doc.setFont('times', 'normal');
       doc.setFontSize(11);
-      const linLine1 = doc.splitTextToSize(`Subgrade: ${audit.origSubgradeTotal.toFixed(1)}k (Plan: ${audit.planSubgradeKm}k, ${Math.round(audit.sgRatio)}%)`, colWidths.linear - 12);
-      const linLine2 = doc.splitTextToSize(`Capping: ${audit.origCappingTotal.toFixed(1)}k (Plan: ${audit.planCappingKm}k, ${Math.round(audit.capRatio)}%)`, colWidths.linear - 12);
-      const linLine3 = doc.splitTextToSize(`Subbase: ${audit.origSubbaseTotal.toFixed(1)}k (Plan: ${audit.planSubbaseKm}k, ${Math.round(audit.sbRatio)}%)`, colWidths.linear - 12);
-      const linLine4 = doc.splitTextToSize(`Basecourse: ${audit.origBasecourseTotal.toFixed(1)}k (Plan: ${audit.planBasecourseKm}k, ${Math.round(audit.bcRatio)}%)`, colWidths.linear - 12);
-      const linLine5 = doc.splitTextToSize(`Asphalt: ${audit.origAsphaltTotal.toFixed(1)}k (Plan: ${audit.planAsphaltKm}k, ${Math.round(audit.acRatio)}%)`, colWidths.linear - 12);
+      const linLine1 = doc.splitTextToSize(`Subgrade: ${audit.origSubgradeTotal.toFixed(1)}k (Plan: ${audit.planSubgradeKm}k [M:${audit.mainPlanSubgrade}k+S:${audit.spurPlanSubgrade}k], ${Math.round(audit.sgRatio)}%)`, colWidths.linear - 12);
+      const linLine2 = doc.splitTextToSize(`Capping: ${audit.origCappingTotal.toFixed(1)}k (Plan: ${audit.planCappingKm}k [M:${audit.mainPlanCapping}k+S:${audit.spurPlanCapping}k], ${Math.round(audit.capRatio)}%)`, colWidths.linear - 12);
+      const linLine3 = doc.splitTextToSize(`Subbase: ${audit.origSubbaseTotal.toFixed(1)}k (Plan: ${audit.planSubbaseKm}k [M:${audit.mainPlanSubbase}k+S:${audit.spurPlanSubbase}k], ${Math.round(audit.sbRatio)}%)`, colWidths.linear - 12);
+      const linLine4 = doc.splitTextToSize(`Basecourse: ${audit.origBasecourseTotal.toFixed(1)}k (Plan: ${audit.planBasecourseKm}k [M:${audit.mainPlanBasecourse}k+S:${audit.spurPlanBasecourse}k], ${Math.round(audit.bcRatio)}%)`, colWidths.linear - 12);
+      const linLine5 = doc.splitTextToSize(`Asphalt: ${audit.origAsphaltTotal.toFixed(1)}k (Plan: ${audit.planAsphaltKm}k [M:${audit.mainPlanAsphalt}k+S:${audit.spurPlanAsphalt}k], ${Math.round(audit.acRatio)}%)`, colWidths.linear - 12);
 
       // 5. Guarantees, QA, RFIs & Mobilization Lines
       doc.setFont('times', 'normal');
@@ -13105,7 +13123,9 @@ export default function GroupReportGenerator({
                                                       <div key={sl.key} className="bg-white dark:bg-slate-900 p-1.5 rounded-lg border border-slate-200/80 dark:border-slate-800 text-[8px] space-y-0.5 shadow-2xs">
                                                         <div className="font-black text-slate-800 dark:text-zinc-100 truncate">{sl.name}</div>
                                                         <div className="flex justify-between text-slate-500 font-mono text-[7.5px]">
-                                                          <span>Plan: {sl.planKm}k</span>
+                                                          <span title={`Sum of Main Road (${sl.mainPlanKm ?? '-'}k) + Spur Road (${sl.spurPlanKm ?? '-'}k)`}>
+                                                            Plan: {sl.planKm}k {sl.mainPlanKm !== undefined ? `(M:${sl.mainPlanKm}+S:${sl.spurPlanKm})` : ''}
+                                                          </span>
                                                           <span className="font-bold text-emerald-600">Acc: {sl.actualKm.toFixed(1)}k</span>
                                                         </div>
                                                         <div className="flex justify-between items-center text-[7.5px] font-bold pt-0.5">
