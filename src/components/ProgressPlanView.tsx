@@ -46,7 +46,8 @@ import {
   Award,
   History,
   Sparkles,
-  AlertTriangle
+  AlertTriangle,
+  ArrowUpDown
 } from 'lucide-react';
 import { generateProgressComparisonPdf } from '../lib/progressComparisonPdfGenerator';
 import { getCredentialSignatures } from '../lib/pdfReportEngine';
@@ -96,7 +97,7 @@ export const getPreviousPeriodSuggestion = (
   };
 };
 
-export const sortProgressPlanHistoryDescending = (items: ProgressPlanHistoryItem[]): ProgressPlanHistoryItem[] => {
+export const sortProgressPlanHistoryWithOrder = (items: ProgressPlanHistoryItem[], order: 'desc' | 'asc' = 'desc'): ProgressPlanHistoryItem[] => {
   return [...(items || [])].sort((a, b) => {
     const parseM = (lbl?: string) => {
       if (!lbl) return 0;
@@ -115,8 +116,14 @@ export const sortProgressPlanHistoryDescending = (items: ProgressPlanHistoryItem
       const y = parseInt(yearStr, 10) || 2026;
       return y * 12 + m;
     };
-    return parseM(b.monthLabel) - parseM(a.monthLabel);
+    const valA = parseM(a.monthLabel);
+    const valB = parseM(b.monthLabel);
+    return order === 'desc' ? valB - valA : valA - valB;
   });
+};
+
+export const sortProgressPlanHistoryDescending = (items: ProgressPlanHistoryItem[]): ProgressPlanHistoryItem[] => {
+  return sortProgressPlanHistoryWithOrder(items, 'desc');
 };
 
 interface ProgressPlanViewProps {
@@ -187,22 +194,25 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
 
   const [activePlan, setActivePlan] = useState<ProgressPlan>(initialPlan);
 
+  // Sort order state for elapsed months & history list
+  const [historySortOrder, setHistorySortOrder] = useState<'desc' | 'asc'>('desc');
+
   // Milestone History resolution - returns actual saved history or empty list, with robust persistent backup fallback
   const historyList: ProgressPlanHistoryItem[] = useMemo(() => {
-    if (project.progressPlanHistory && project.progressPlanHistory.length > 0) {
-      return sortProgressPlanHistoryDescending(project.progressPlanHistory);
-    }
-    try {
-      const b = localStorage.getItem(`era_hist_backup_${project.id}`);
-      if (b) {
-        const parsed = JSON.parse(b);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return sortProgressPlanHistoryDescending(parsed);
+    let raw = project.progressPlanHistory && project.progressPlanHistory.length > 0 ? project.progressPlanHistory : [];
+    if (raw.length === 0) {
+      try {
+        const b = localStorage.getItem(`era_hist_backup_${project.id}`);
+        if (b) {
+          const parsed = JSON.parse(b);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            raw = parsed;
+          }
         }
-      }
-    } catch {}
-    return [];
-  }, [project.progressPlanHistory, project.id]);
+      } catch {}
+    }
+    return sortProgressPlanHistoryWithOrder(raw, historySortOrder);
+  }, [project.progressPlanHistory, project.id, historySortOrder]);
 
   // Auto-heal project if history exists in persistent backup but was missing from current project instance
   const hasRestoredHistoryRef = useRef<string | null>(null);
@@ -1116,6 +1126,17 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
               >
                 <ChevronsUpDown className="w-3.5 h-3.5" />
                 <span>Vertical Scroll: {isVerticalScroll ? 'ON' : 'OFF'}</span>
+              </button>
+
+              {/* Sort by Month Toggle */}
+              <button
+                type="button"
+                onClick={() => setHistorySortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
+                className="px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border border-slate-200 dark:border-slate-700"
+                title="Sort elapsed months list by month (Newest First vs Oldest First)"
+              >
+                <ArrowUpDown className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                <span>Sort: {historySortOrder === 'desc' ? 'Newest First' : 'Oldest First'}</span>
               </button>
 
               {/* Layout Switch (Grid / Compact List) */}
