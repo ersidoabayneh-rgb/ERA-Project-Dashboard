@@ -694,15 +694,14 @@ export default function SubmittalPrintModal({
 
     curY += 42;
 
-    // Table Column Widths (Assigned RE removed as requested)
+    // Table Column Widths (SLA and Assigned RE removed as requested)
     const baseTableCols = [
-      { id: 'subNo', title: "SUBMITTAL / RFI #", width: 85 },
-      { id: 'category', title: "TYPE / DISCIPLINE", width: 105 },
-      { id: 'title', title: "SUBJECT / DESCRIPTION", width: 260 },
-      { id: 'submitted', title: "SUBMITTED", width: 75 },
-      { id: 'responded', title: "RESPONDED", width: 75 },
-      { id: 'sla', title: "SLA (DAYS)", width: 65 },
-      { id: 'status', title: "STATUS", width: 104 }
+      { id: 'subNo', title: "SUBMITTAL / RFI #", width: 90 },
+      { id: 'category', title: "TYPE / DISCIPLINE", width: 110 },
+      { id: 'title', title: "SUBJECT / DESCRIPTION", width: 280 },
+      { id: 'submitted', title: "SUBMITTED", width: 80 },
+      { id: 'responded', title: "RESPONDED", width: 80 },
+      { id: 'status', title: "STATUS", width: 110 }
     ];
     const totalBaseColWidth = baseTableCols.reduce((sum, c) => sum + c.width, 0);
     const tableCols = baseTableCols.map(c => ({
@@ -768,11 +767,7 @@ export default function SubmittalPrintModal({
         const formattedRespDate = item.respondedDate ? formatPdfDate(item.respondedDate) : 'Awaiting';
         const respDateLines = safeSplitText(doc, formattedRespDate, tableCols[4].width - 8, 6.5, false);
 
-        const targetDays = item.targetDays || targetOverrides[item.type] || 7;
-        const actualStr = item.actualDays !== undefined ? `${item.actualDays}d` : '-';
-        const slaLines = safeSplitText(doc, `${targetDays}d / ${actualStr}`, tableCols[5].width - 8, 6.5, false);
-
-        const statusLines = safeSplitText(doc, item.status || '-', tableCols[6].width - 14, 6.5, true);
+        const statusLines = safeSplitText(doc, item.status || '-', tableCols[5].width - 14, 6.5, true);
 
         const maxLines = Math.max(
           subNoLines.length,
@@ -780,7 +775,6 @@ export default function SubmittalPrintModal({
           titleLines.length,
           subDateLines.length,
           respDateLines.length,
-          slaLines.length,
           statusLines.length
         );
         const rowHeight = Math.max(22, (maxLines * 8.5) + 8);
@@ -852,12 +846,6 @@ export default function SubmittalPrintModal({
         });
         rx += tableCols[4].width;
 
-        // SLA
-        slaLines.forEach((line: string, li: number) => {
-          doc.text(line, rx + 4, curY + 10 + (li * 8.5));
-        });
-        rx += tableCols[5].width;
-
         // Status badge
         const lowerStatus = (item.status || '').toLowerCase();
         let badgeColor = { r: 100, g: 116, b: 139 };
@@ -875,14 +863,14 @@ export default function SubmittalPrintModal({
 
         const badgeBoxH = Math.max(13, (statusLines.length * 8) + 4);
         doc.setFillColor(badgeBg.r, badgeBg.g, badgeBg.b);
-        doc.roundedRect(rx + 4, curY + 3, tableCols[6].width - 8, badgeBoxH, 2, 2, 'F');
+        doc.roundedRect(rx + 4, curY + 3, tableCols[5].width - 8, badgeBoxH, 2, 2, 'F');
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(6.5);
         doc.setTextColor(badgeColor.r, badgeColor.g, badgeColor.b);
         statusLines.forEach((line: string, li: number) => {
           doc.text(line, rx + 7, curY + 10 + (li * 8));
         });
-        rx += tableCols[6].width;
+        rx += tableCols[5].width;
 
         curY += rowHeight;
       });
