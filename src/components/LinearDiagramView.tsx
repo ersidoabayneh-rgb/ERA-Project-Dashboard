@@ -623,13 +623,6 @@ export default function LinearDiagramView({
           };
         });
 
-        const sumMainPlanKm = Number(overallLayerAudit.reduce((acc, l) => acc + l.mainPlanKm, 0).toFixed(2));
-        const sumSpurPlanKm = Number(overallLayerAudit.reduce((acc, l) => acc + l.spurPlanKm, 0).toFixed(2));
-        const sumOverallPlanKm = Number((sumMainPlanKm + sumSpurPlanKm).toFixed(2));
-        const sumOverallExecKm = Number(overallLayerAudit.reduce((acc, l) => acc + l.overallExecKm, 0).toFixed(2));
-        const sumOverallVarKm = Number((sumOverallExecKm - sumOverallPlanKm).toFixed(2));
-        const avgOverallRatio = overallLayerAudit.length > 0 ? Math.round(overallLayerAudit.reduce((acc, l) => acc + l.ratio, 0) / overallLayerAudit.length) : 0;
-
         return (
           <div className="space-y-4">
             {/* OVERALL PLAN DURING CONTRACTOR EVALUATION BANNER & MATRIX (SUM OF MAIN ROAD + SPUR ROAD) */}
@@ -648,9 +641,6 @@ export default function LinearDiagramView({
                     <Scale className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                     Contractor Evaluation Overall Baseline Plan (Sum of Main Road & Spur Road)
                   </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed max-w-3xl">
-                    Official Audit Standard: During contractor compliance and performance evaluations (Dimension 5: Specific Pavement Layers Progress), the evaluation target for every pavement layer is calculated strictly as the <strong>sum of Main Road Plan and Spur Road Plan</strong>.
-                  </p>
                 </div>
 
                 {/* Auto-Derive Buttons */}
@@ -673,72 +663,6 @@ export default function LinearDiagramView({
                     <Sparkles className="w-3.5 h-3.5 text-slate-400" />
                     Auto-Derive {roadType === 'main' ? 'Main Road' : 'Spur Road'} Only
                   </button>
-                </div>
-              </div>
-
-              {/* High-level KPI Cards */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                <div className="bg-slate-50 dark:bg-slate-850 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
-                    Combined Overall Plan
-                  </span>
-                  <div className="text-lg font-black text-indigo-600 dark:text-indigo-400 font-mono">
-                    {sumOverallPlanKm} <span className="text-xs text-slate-400">Km</span>
-                  </div>
-                  <div className="text-[10px] text-slate-500 dark:text-slate-400 font-mono flex items-center justify-between">
-                    <span>Main: {sumMainPlanKm}k</span>
-                    <span>+</span>
-                    <span>Spur: {sumSpurPlanKm}k</span>
-                  </div>
-                </div>
-
-                <div className="bg-slate-50 dark:bg-slate-850 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
-                    Combined Accomplished
-                  </span>
-                  <div className="text-lg font-black text-emerald-600 dark:text-emerald-400 font-mono">
-                    {sumOverallExecKm} <span className="text-xs text-slate-400">Km</span>
-                  </div>
-                  <div className="text-[10px] text-slate-500 dark:text-slate-400 font-mono flex items-center justify-between">
-                    <span>Main: {Number(overallLayerAudit.reduce((acc, l) => acc + l.mainExecKm, 0).toFixed(1))}k</span>
-                    <span>+</span>
-                    <span>Spur: {Number(overallLayerAudit.reduce((acc, l) => acc + l.spurExecKm, 0).toFixed(1))}k</span>
-                  </div>
-                </div>
-
-                <div className="bg-slate-50 dark:bg-slate-850 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
-                    Evaluation Variance
-                  </span>
-                  <div className={`text-lg font-black font-mono ${sumOverallVarKm >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                    {sumOverallVarKm >= 0 ? '+' : ''}{sumOverallVarKm} <span className="text-xs text-slate-400">Km</span>
-                  </div>
-                  <div className="text-[10px] text-slate-500 dark:text-slate-400">
-                    {sumOverallVarKm >= 0 ? 'Overall Ahead of Baseline' : 'Critical Net Linear Lag'}
-                  </div>
-                </div>
-
-                <div className="bg-slate-50 dark:bg-slate-850 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
-                    Mean Layer Compliance
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg font-black text-slate-850 dark:text-zinc-100 font-mono">
-                      {avgOverallRatio}%
-                    </span>
-                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                      avgOverallRatio >= 80 
-                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300' 
-                        : (avgOverallRatio >= 65 
-                          ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300' 
-                          : 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300')
-                    }`}>
-                      {avgOverallRatio >= 80 ? 'Compliant' : (avgOverallRatio >= 65 ? 'Minor Def.' : 'Critical')}
-                    </span>
-                  </div>
-                  <div className="text-[10px] text-slate-500 dark:text-slate-400">
-                    Across 5 Pavement Civil Stratigraphies
-                  </div>
                 </div>
               </div>
 

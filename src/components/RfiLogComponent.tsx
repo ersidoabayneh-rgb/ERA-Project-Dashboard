@@ -38,7 +38,8 @@ import {
   ListChecks,
   CheckCheck,
   CheckSquare,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Printer
 } from 'lucide-react';
 import {
   Project,
@@ -57,6 +58,7 @@ interface RfiLogComponentProps {
   isReadonly?: boolean;
   currentUserObj?: User | null;
   targetOverrides?: Record<string, number>;
+  onOpenPrintModal?: (selectedIds?: string[]) => void;
 }
 
 export const RFI_INSPECTION_CATEGORIES = [
@@ -95,7 +97,8 @@ export default function RfiLogComponent({
   onUpdateSubmittals,
   isReadonly = false,
   currentUserObj,
-  targetOverrides = {}
+  targetOverrides = {},
+  onOpenPrintModal
 }: RfiLogComponentProps) {
   // Check if current user has contractor credentials
   const isContractorUser = Boolean(
@@ -1283,6 +1286,16 @@ export default function RfiLogComponent({
               <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
               <span>Excel Report</span>
             </button>
+            {onOpenPrintModal && (
+              <button
+                onClick={() => onOpenPrintModal(selectedRfiIds.length > 0 ? selectedRfiIds : undefined)}
+                className="px-3 py-1.5 bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/60 dark:hover:bg-purple-900/60 text-purple-700 dark:text-purple-300 border border-purple-300/80 dark:border-purple-800 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                title="Print RFIs register by date or by month as per user selection"
+              >
+                <Printer className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                <span>Print by Date/Month</span>
+              </button>
+            )}
           </div>
 
           {/* View Toggle: Table vs Cards */}
@@ -1337,6 +1350,18 @@ export default function RfiLogComponent({
               <Check className="w-3.5 h-3.5" />
               <span>Bulk Approve</span>
             </button>
+
+            {/* Print Selected RFIs by Date/Month */}
+            {onOpenPrintModal && (
+              <button
+                onClick={() => onOpenPrintModal(selectedRfiIds)}
+                className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                title="Print selected RFIs by date / month as per user preferences"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>Print Selected ({selectedRfiIds.length})</span>
+              </button>
+            )}
 
             {/* Bulk Approve with Comments */}
             <button

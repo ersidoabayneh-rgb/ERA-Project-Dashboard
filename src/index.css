@@ -18,6 +18,19 @@
   --primary-color: #3b82f6;
 }
 
+/* Standardize all containers background color across pages except dashboard and history */
+.unified-page-containers .bg-white,
+.unified-page-containers .dark\:bg-slate-800,
+.unified-page-containers .dark\:bg-slate-850,
+.unified-page-containers .dark\:bg-slate-900 {
+  background-color: var(--bg-card) !important;
+}
+.unified-page-containers .border-slate-800,
+.unified-page-containers .border-slate-700\/60,
+.unified-page-containers .border-slate-700 {
+  border-color: var(--border-subtle) !important;
+}
+
 body {
   background-color: var(--bg-app);
   color: var(--text-main);

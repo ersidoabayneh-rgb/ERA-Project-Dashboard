@@ -5110,7 +5110,7 @@ let isBatchSyncRunning = false;
             </div>
 
             {/* Tab Views Swappers */}
-            <div className={activeTab === 'dash' ? "space-y-0" : "space-y-4"}>
+            <div className={`tab-page-container ${activeTab !== 'dash' && activeTab !== 'history' ? 'unified-page-containers' : ''} ${activeTab === 'dash' ? "space-y-0" : "space-y-4"}`}>
               {!canUserViewPage(currentUserObj, activeTab) ? (
                 <div className="bg-white dark:bg-slate-800 p-8 sm:p-12 rounded-2xl border border-slate-200 dark:border-slate-700/60 text-center space-y-4 my-8 shadow-sm">
                   <div className="w-16 h-16 bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 rounded-2xl flex items-center justify-center mx-auto text-2xl font-black shadow-xs">

@@ -746,7 +746,7 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
               {(selectedCategory === 'all' || selectedCategory === 'contractor') && (
                 <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
                   <td className="p-4 font-black text-slate-800 dark:text-slate-200 flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
+                    <span className="w-2.5 h-2.5 rounded-full bg-red-500 shadow-xs"></span>
                     Contractor Program Schedule
                   </td>
                   <td className="p-4 text-center">
@@ -1599,7 +1599,7 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                     <Line
                       type="monotone"
                       dataKey="Contractor Schedule (Km)"
-                      stroke="#3b82f6"
+                      stroke="#ef4444"
                       strokeWidth={3}
                       dot={{ r: 3, strokeWidth: 1 }}
                       activeDot={{ r: 6, strokeWidth: 0 }}
@@ -1629,7 +1629,7 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                     <Line
                       type="monotone"
                       dataKey="Contractor Monthly (Km)"
-                      stroke="#3b82f6"
+                      stroke="#ef4444"
                       strokeWidth={2.5}
                       strokeDasharray="4 4"
                       dot={{ r: 3 }}
@@ -1743,9 +1743,9 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                   </div>
                 </div>
 
-                <div className="bg-white/80 dark:bg-slate-900/80 p-2.5 rounded-xl border border-blue-100 dark:border-blue-900/40">
+                <div className="bg-white/80 dark:bg-slate-900/80 p-2.5 rounded-xl border border-red-200 dark:border-red-900/40">
                   <div className="text-[10px] font-bold text-slate-400 uppercase">Contractor Plan (Current)</div>
-                  <div className="text-sm font-black text-blue-700 dark:text-blue-300">
+                  <div className="text-sm font-black text-red-600 dark:text-red-400">
                     {activePlan.contractor.todate.toFixed(2)} Km
                   </div>
                   <div className="text-[10px] font-bold text-slate-500">
@@ -1816,7 +1816,7 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                   <tr>
                     <td className="p-3 font-bold text-slate-850 dark:text-slate-100">
                       <div className="flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                        <span className="w-2 h-2 rounded-full bg-red-500 shadow-xs"></span>
                         <span>Contractor Plan</span>
                       </div>
                     </td>

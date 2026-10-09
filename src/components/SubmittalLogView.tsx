@@ -34,11 +34,13 @@ import {
   Eye,
   ExternalLink,
   MoveVertical,
-  MessageSquare
+  MessageSquare,
+  Printer
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { drawEraLogo, drawStandardDocumentHeader, STRICT_1_INCH_MARGIN } from '../lib/pdfReportEngine';
 import RfiLogComponent from './RfiLogComponent';
+import SubmittalPrintModal from './SubmittalPrintModal';
 import {
   Project,
   SupervisionConsultantInfo,
@@ -257,6 +259,23 @@ export default function SubmittalLogView({
 
   // Selected submittals for export
   const [selectedSubmittalNos, setSelectedSubmittalNos] = useState<string[]>([]);
+
+  // Print Submittals & RFI Register Modal
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [printModalInitialScope, setPrintModalInitialScope] = useState<'all' | 'selected' | 'technical' | 'rfi'>('all');
+
+  const handleOpenPrintModal = (preferredScope?: 'all' | 'selected' | 'technical' | 'rfi') => {
+    if (preferredScope) {
+      setPrintModalInitialScope(preferredScope);
+    } else if (selectedSubmittalNos.length > 0) {
+      setPrintModalInitialScope('selected');
+    } else if (activeViewTab === 'rfi_log') {
+      setPrintModalInitialScope('rfi');
+    } else {
+      setPrintModalInitialScope('all');
+    }
+    setIsPrintModalOpen(true);
+  };
 
   // View mode: 'submittals' (technical submittals register) vs 'rfi_log' (dedicated RFI correspondence log)
   const [activeViewTab, setActiveViewTab] = useState<'submittals' | 'rfi_log'>('submittals');
@@ -1024,6 +1043,14 @@ export default function SubmittalLogView({
             </button>
           )}
           <button
+            onClick={() => handleOpenPrintModal()}
+            className="px-4 py-2 text-xs font-bold bg-purple-600 hover:bg-purple-700 text-white rounded-xl shadow-xs flex items-center gap-1.5 transition cursor-pointer"
+            title="Print or export selected technical submittals and RFIs by date and month as per user preferences"
+          >
+            <Printer className="w-4 h-4" />
+            <span>Print Register (By Date/Month)</span>
+          </button>
+          <button
             onClick={handleExportCsv}
             className="px-4 py-2 text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl flex items-center gap-1.5 transition cursor-pointer"
           >
@@ -1114,6 +1141,14 @@ export default function SubmittalLogView({
           isReadonly={isReadonly}
           currentUserObj={currentUserObj}
           targetOverrides={targetOverrides}
+          onOpenPrintModal={(ids) => {
+            if (ids && ids.length > 0) {
+              setPrintModalInitialScope('selected');
+            } else {
+              setPrintModalInitialScope('rfi');
+            }
+            setIsPrintModalOpen(true);
+          }}
         />
       ) : (
         <>
@@ -1268,6 +1303,52 @@ export default function SubmittalLogView({
           </div>
         </div>
       </div>
+
+      {/* SELECTION ACTION BAR FOR TECHNICAL SUBMITTALS */}
+      {selectedSubmittalNos.length > 0 && (
+        <div className="bg-gradient-to-r from-purple-900 via-indigo-900 to-slate-900 text-white p-3.5 rounded-2xl shadow-md border border-purple-700/60 flex flex-wrap items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-purple-600 flex items-center justify-center font-black text-sm shadow-xs border border-purple-400/40">
+              {selectedSubmittalNos.length}
+            </div>
+            <div>
+              <div className="font-bold text-sm flex items-center gap-2">
+                <span>{selectedSubmittalNos.length} Technical Submittal{selectedSubmittalNos.length > 1 ? 's' : ''} Selected</span>
+                <span className="px-2 py-0.5 rounded-full bg-purple-500/30 text-purple-200 text-[10px] font-semibold border border-purple-500/40">
+                  Ready for Print / Export
+                </span>
+              </div>
+              <p className="text-[11px] text-purple-200">
+                Print or export selected records organized by date and month as per your settings
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center flex-wrap gap-2">
+            <button
+              onClick={() => handleOpenPrintModal('selected')}
+              className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+              title="Print selected submittals by date and month"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span>Print Selected ({selectedSubmittalNos.length})</span>
+            </button>
+            <button
+              onClick={handleExportPdf}
+              className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>Export PDF ({selectedSubmittalNos.length})</span>
+            </button>
+            <button
+              onClick={() => setSelectedSubmittalNos([])}
+              className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition cursor-pointer"
+            >
+              Deselect All
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Submittals Data Table Container */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm flex flex-col">
@@ -2225,6 +2306,18 @@ export default function SubmittalLogView({
           </div>
         )}
       </AnimatePresence>
+
+      {/* SUBMITTAL & RFI PRINT & EXPORT MODAL */}
+      <SubmittalPrintModal
+        isOpen={isPrintModalOpen}
+        onClose={() => setIsPrintModalOpen(false)}
+        project={project}
+        consultant={consultant}
+        allSubmittals={submittalsList}
+        selectedSubmittalNos={selectedSubmittalNos}
+        initialScope={printModalInitialScope}
+        targetOverrides={targetOverrides}
+      />
 
     </div>
   );
