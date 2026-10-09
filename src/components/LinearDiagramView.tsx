@@ -106,14 +106,32 @@ export default function LinearDiagramView({
   // Helper to update linear progress plan
   const handleUpdatePlanLayer = (layer: keyof LinearData, field: keyof LinearLayerPlan, value: any) => {
     const currentLayerPlan = activePlan[layer] || { plannedKm: 0, fromStation: 'Km 00+000', toStation: 'Km 00+000' };
+    let parsedVal = value;
+
+    if (field === 'plannedKm') {
+      const rawNum = parseFloat(value) || 0;
+      // Plan cannot be greater than project length (activeTargetKm)
+      let clamped = Math.min(activeTargetKm, Math.max(0, rawNum));
+
+      // Once a plan is entered, the next plan should be greater than or equal to the previous plan
+      const secIdx = sections.findIndex(s => s.id === layer);
+      if (secIdx > 0) {
+        const prevSecId = sections[secIdx - 1].id;
+        const prevKm = activePlan[prevSecId]?.plannedKm || 0;
+        if (clamped < prevKm) {
+          clamped = prevKm;
+        }
+      }
+      parsedVal = clamped;
+    }
+
     const updatedLayerPlan: LinearLayerPlan = {
       ...currentLayerPlan,
-      [field]: field === 'plannedKm' ? Math.max(0, parseFloat(value) || 0) : value
+      [field]: parsedVal
     };
 
     if (field === 'plannedKm') {
-      const pKm = Math.max(0, parseFloat(value) || 0);
-      updatedLayerPlan.toStation = formatStation(pKm);
+      updatedLayerPlan.toStation = formatStation(Number(parsedVal));
     }
 
     const updatedPlan: LinearPlanData = {
@@ -884,16 +902,7 @@ export default function LinearDiagramView({
                           </div>
                         </div>
 
-                        <div>
-                          <span className="text-[10px] text-slate-400 block mb-0.5">Planned End Station</span>
-                          <input
-                            type="text"
-                            value={planLayer.toStation || formatStation(plannedKm)}
-                            onChange={(e) => handleUpdatePlanLayer(sec.id, 'toStation', e.target.value)}
-                            placeholder="Km 00+000"
-                            className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg px-2 py-1 text-xs font-mono text-slate-600 dark:text-slate-300 focus:outline-none"
-                          />
-                        </div>
+
                       </div>
                     );
                   })}
