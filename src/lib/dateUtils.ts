@@ -9,16 +9,25 @@ export function parseLocalDate(dateInput: string | Date | null | undefined): Dat
     return isNaN(dateInput.getTime()) ? null : new Date(dateInput.getTime());
   }
   const str = String(dateInput).trim();
-  if (!str) return null;
+  if (!str || str === '-' || str === 'N/A' || str.toLowerCase() === 'awaiting') return null;
 
   const cleanStr = str.split('T')[0].split(' ')[0];
-  const parts = cleanStr.split('-');
-  if (parts.length === 3) {
-    const year = parseInt(parts[0], 10);
-    const month = parseInt(parts[1], 10) - 1;
-    const day = parseInt(parts[2], 10);
-    if (!isNaN(year) && !isNaN(month) && !isNaN(day)) {
-      return new Date(year, month, day);
+  const sep = cleanStr.includes('-') ? '-' : cleanStr.includes('/') ? '/' : cleanStr.includes('.') ? '.' : null;
+  if (sep) {
+    const parts = cleanStr.split(sep);
+    if (parts.length === 3) {
+      const p0 = parseInt(parts[0], 10);
+      const p1 = parseInt(parts[1], 10);
+      const p2 = parseInt(parts[2], 10);
+      if (!isNaN(p0) && !isNaN(p1) && !isNaN(p2)) {
+        if (p0 > 1000) {
+          // Format: YYYY-MM-DD
+          return new Date(p0, p1 - 1, p2);
+        } else if (p2 > 1000) {
+          // Format: DD-MM-YYYY
+          return new Date(p2, p1 - 1, p0);
+        }
+      }
     }
   }
 
@@ -182,10 +191,18 @@ export function subscribeEfyYearChange(callback: (year: string) => void): () => 
   };
 }
 
+const MONTH_NAMES_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
 export function formatPdfDate(dateInput: string | Date | null | undefined): string {
-  if (!dateInput) return 'N/A';
+  if (!dateInput) return '-';
   const d = parseLocalDate(dateInput);
-  if (!d) return String(dateInput);
-  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  if (!d || isNaN(d.getTime())) {
+    const trimmed = String(dateInput).trim();
+    return trimmed || '-';
+  }
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = MONTH_NAMES_SHORT[d.getMonth()];
+  const year = d.getFullYear();
+  return `${day} ${month} ${year}`;
 }
 

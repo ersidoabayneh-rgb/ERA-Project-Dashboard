@@ -550,7 +550,7 @@ export default function DlpDefectModal({
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7);
     doc.setTextColor(100, 116, 139);
-    doc.text(`Doc Ref: ERA/DLP/${project.id.slice(-8)}/${Date.now().toString().slice(-6)} • Date: ${new Date().toLocaleDateString('en-US', { dateStyle: 'full' })}`, margin + 48, margin + 38);
+    doc.text(`Doc Ref: ERA/DLP/${project.id.slice(-8)}/${Date.now().toString().slice(-6)} • Date: ${new Date().toLocaleDateString('en-GB', { dateStyle: 'full' })}`, margin + 48, margin + 38);
 
     // Divider line
     doc.setDrawColor(16, 185, 129);

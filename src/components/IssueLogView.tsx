@@ -403,7 +403,7 @@ export function parseDateSafe(dStr?: string): Date {
   return isNaN(d.getTime()) ? new Date() : d;
 }
 
-// Consistent Month in Word format helper: e.g. "October 14, 2026"
+// Consistent Date, Month, Year order helper: e.g. "14 October 2026"
 export function formatMonthWordDateYear(dateInput: any): string {
   if (!dateInput) return 'N/A';
   if (typeof dateInput === 'string') {
@@ -411,12 +411,12 @@ export function formatMonthWordDateYear(dateInput: any): string {
     if (!trimmed) return 'N/A';
     const parsed = parseDateSafe(trimmed);
     if (!isNaN(parsed.getTime())) {
-      return parsed.toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric' });
+      return parsed.toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
     }
     return trimmed;
   }
   if (dateInput instanceof Date && !isNaN(dateInput.getTime())) {
-    return dateInput.toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric' });
+    return dateInput.toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
   }
   return String(dateInput);
 }

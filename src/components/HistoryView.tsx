@@ -1022,7 +1022,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     doc.setLineWidth(0.75);
     doc.roundedRect(dateStampX, margin + 6, dateStampW, 36, 4, 4, 'DF');
 
-    const auditDateStr = new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' });
+    const auditDateStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(6);
     doc.setTextColor(100, 116, 139);
@@ -1263,9 +1263,9 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
     doc.setTextColor(30, 41, 59);
-    doc.text(ocDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }), 55, curY + 80);
+    doc.text(ocDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }), 55, curY + 80);
     doc.setTextColor(220, 38, 38); // rose-600 alert style
-    doc.text(rcDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }), 300, curY + 80);
+    doc.text(rcDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }), 300, curY + 80);
 
     curY += 102;
 
@@ -1706,7 +1706,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8.5);
     doc.setTextColor(255, 255, 255);
-    const dateStr1 = new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' });
+    const dateStr1 = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
     doc.text(dateStr1, dateStampX + 8, curY + 28);
 
     doc.setFont('helvetica', 'normal');
@@ -2014,7 +2014,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8.5);
     doc.setTextColor(255, 255, 255);
-    const dateStr2 = new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' });
+    const dateStr2 = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
     doc.text(dateStr2, dateStampX2 + 8, curY + 28);
 
     doc.setFont('helvetica', 'normal');
@@ -2327,7 +2327,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8.5);
     doc.setTextColor(255, 255, 255);
-    const dateStr3 = new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' });
+    const dateStr3 = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
     doc.text(dateStr3, dateStampX3 + 8, curY + 28);
 
     doc.setFont('helvetica', 'normal');

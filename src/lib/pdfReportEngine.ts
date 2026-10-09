@@ -453,6 +453,43 @@ export function drawSafeText(
 }
 
 /**
+ * Helper to split text safely, breaking excessively long words with a hyphen if necessary
+ * so words never cross column boundaries or overlap adjacent columns.
+ */
+export function safeSplitText(
+  doc: jsPDF,
+  text: string | null | undefined,
+  maxWidth: number,
+  fSize: number = 7,
+  isBold: boolean = false
+): string[] {
+  if (!text || String(text).trim() === '') return ['-'];
+  doc.setFont('helvetica', isBold ? 'bold' : 'normal');
+  doc.setFontSize(fSize);
+  const words = String(text).split(/\s+/);
+  const safeWords: string[] = [];
+  const safeMax = Math.max(10, maxWidth);
+  for (const w of words) {
+    if (doc.getTextWidth(w) > safeMax) {
+      let chunk = '';
+      for (let i = 0; i < w.length; i++) {
+        const test = chunk + w[i];
+        if (doc.getTextWidth(test + '-') > safeMax) {
+          if (chunk) safeWords.push(chunk + '-');
+          chunk = w[i];
+        } else {
+          chunk = test;
+        }
+      }
+      if (chunk) safeWords.push(chunk);
+    } else {
+      safeWords.push(w);
+    }
+  }
+  return doc.splitTextToSize(safeWords.join(' '), safeMax);
+}
+
+/**
  * Formats and draws a table that strictly respects page borders, auto-wraps all cell content,
  * provides readable row heights, column widths, padding, and high-contrast styling.
  */
@@ -500,29 +537,7 @@ export function drawSafeTable(
 
   // Helper to split text safely, breaking excessively long words if necessary
   const safeSplit = (text: string, maxWidth: number, fSize: number, isBold: boolean = false): string[] => {
-    if (!text || text.trim() === '') return ['-'];
-    doc.setFont('helvetica', isBold ? 'bold' : 'normal');
-    doc.setFontSize(fSize);
-    const words = String(text).split(/\s+/);
-    const safeWords: string[] = [];
-    for (const w of words) {
-      if (doc.getTextWidth(w) > maxWidth) {
-        let chunk = '';
-        for (let i = 0; i < w.length; i++) {
-          const test = chunk + w[i];
-          if (doc.getTextWidth(test + '-') > maxWidth) {
-            if (chunk) safeWords.push(chunk + '-');
-            chunk = w[i];
-          } else {
-            chunk = test;
-          }
-        }
-        if (chunk) safeWords.push(chunk);
-      } else {
-        safeWords.push(w);
-      }
-    }
-    return doc.splitTextToSize(safeWords.join(' '), Math.max(10, maxWidth));
+    return safeSplitText(doc, text, maxWidth, fSize, isBold);
   };
 
   const drawTableHeader = (y: number): number => {

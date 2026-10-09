@@ -20,7 +20,7 @@ import {
   ShieldAlert
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
-import { drawStandardDocumentHeader, STRICT_1_INCH_MARGIN, drawDocumentWatermark } from '../lib/pdfReportEngine';
+import { drawStandardDocumentHeader, STRICT_1_INCH_MARGIN, drawDocumentWatermark, safeSplitText } from '../lib/pdfReportEngine';
 import { ConsultantSubmittalKpi, Project, SupervisionConsultantInfo } from '../types';
 import { formatPdfDate } from '../lib/dateUtils';
 
@@ -625,7 +625,9 @@ export default function SubmittalPrintModal({
       : (scope === 'technical' ? 'TECHNICAL SUBMITTALS ONLY' : (scope === 'rfi' ? 'RFIs ONLY' : 'ALL TECHNICAL SUBMITTALS & RFIs'));
     const subtitleDate = dateFilterMode === 'by_month' && selectedMonth !== 'ALL'
       ? `• MONTH: ${selectedMonth}`
-      : (dateFilterMode === 'by_range' && (startDate || endDate) ? `• DATES: ${startDate || 'Start'} TO ${endDate || 'Now'}` : '');
+      : (dateFilterMode === 'by_range' && (startDate || endDate) 
+          ? `• DATES: ${startDate ? formatPdfDate(startDate) : 'Start'} TO ${endDate ? formatPdfDate(endDate) : 'Now'}` 
+          : '');
 
     const supervisionConsultantName = project.supervisionConsultant?.firmName || consultant?.firmName || project.consultant || 'N/A';
     const contractorName = project.contractor || 'N/A';
@@ -712,13 +714,15 @@ export default function SubmittalPrintModal({
       doc.setFillColor(15, 23, 42);
       doc.rect(margin, curY, contentWidth, 18, 'F');
 
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7);
-      doc.setTextColor(255, 255, 255);
-
       let tx = margin;
       tableCols.forEach((col, cIdx) => {
-        doc.text(col.title, tx + 4, curY + 12);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(6.8);
+        doc.setTextColor(255, 255, 255);
+        const headerLines = safeSplitText(doc, col.title, col.width - 6, 6.8, true);
+        headerLines.forEach((hline: string, hli: number) => {
+          doc.text(hline, tx + 4, curY + 11 + (hli * 7.5));
+        });
         tx += col.width;
         if (cIdx < tableCols.length - 1) {
           doc.setDrawColor(51, 65, 85);
@@ -750,19 +754,25 @@ export default function SubmittalPrintModal({
         curY += 16;
       }
 
-      // Render items
+      // Render items with robust bounding and zero overlap
       group.items.forEach((item, index) => {
-        const subNoLines = doc.splitTextToSize(item.submittalNo || item.id || '-', tableCols[0].width - 8);
-        const catLines = doc.splitTextToSize(item.type || '-', tableCols[1].width - 8);
-        const titleLines = doc.splitTextToSize(item.title || '-', tableCols[2].width - 8);
-        const subDateLines = doc.splitTextToSize(formatPdfDate(item.submittedDate) || '-', tableCols[3].width - 8);
-        const respDateLines = doc.splitTextToSize(item.respondedDate ? formatPdfDate(item.respondedDate) : 'Awaiting', tableCols[4].width - 8);
+        const subNoLines = safeSplitText(doc, item.submittalNo || item.id || '-', tableCols[0].width - 8, 7, true);
+        const catText = item.type === 'RFI' ? (item.discipline ? `RFI (${item.discipline})` : 'RFI') : (item.type || '-');
+        const catLines = safeSplitText(doc, catText, tableCols[1].width - 8, 6.5, false);
+        const titleLines = safeSplitText(doc, item.title || '-', tableCols[2].width - 8, 7, true);
+        
+        // Strict DD MMM YYYY Order
+        const formattedSubDate = item.submittedDate ? formatPdfDate(item.submittedDate) : '-';
+        const subDateLines = safeSplitText(doc, formattedSubDate, tableCols[3].width - 8, 6.5, false);
+
+        const formattedRespDate = item.respondedDate ? formatPdfDate(item.respondedDate) : 'Awaiting';
+        const respDateLines = safeSplitText(doc, formattedRespDate, tableCols[4].width - 8, 6.5, false);
 
         const targetDays = item.targetDays || targetOverrides[item.type] || 7;
         const actualStr = item.actualDays !== undefined ? `${item.actualDays}d` : '-';
-        const slaLines = doc.splitTextToSize(`${targetDays}d / ${actualStr}`, tableCols[5].width - 8);
+        const slaLines = safeSplitText(doc, `${targetDays}d / ${actualStr}`, tableCols[5].width - 8, 6.5, false);
 
-        const statusLines = doc.splitTextToSize(item.status || '-', tableCols[6].width - 12);
+        const statusLines = safeSplitText(doc, item.status || '-', tableCols[6].width - 14, 6.5, true);
 
         const maxLines = Math.max(
           subNoLines.length,
@@ -773,7 +783,7 @@ export default function SubmittalPrintModal({
           slaLines.length,
           statusLines.length
         );
-        const rowHeight = Math.max(20, (maxLines * 8.5) + 6);
+        const rowHeight = Math.max(22, (maxLines * 8.5) + 8);
 
         checkSpace(rowHeight + 2, true);
 

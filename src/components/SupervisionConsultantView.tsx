@@ -1615,7 +1615,7 @@ export default function SupervisionConsultantView({
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(7);
       doc.setTextColor(255, 255, 255);
-      const dsStr = new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' });
+      const dsStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
       doc.text(dsStr, dsX + 3, margin + 12.5);
 
       doc.setFont('helvetica', 'normal');

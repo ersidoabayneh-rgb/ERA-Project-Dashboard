@@ -1,6 +1,7 @@
 import { jsPDF } from 'jspdf';
 import { BondGuarantee, Project, formatAccounting } from '../types';
 import { drawEraLogo } from './pdfReportEngine';
+import { formatPdfDate } from './dateUtils';
 
 export function generateBondGuaranteePdf(bond: BondGuarantee, project: Project): jsPDF {
   const doc = new jsPDF({
@@ -118,16 +119,16 @@ export function generateBondGuaranteePdf(bond: BondGuarantee, project: Project):
     if (bond.amountUsd && bond.amountUsd > 0) {
       drawRow('10. Guarantee Amount (USD):', `USD $${formatAccounting(bond.amountUsd, '')}`, true);
     }
-    drawRow('11. Effective / Issue Date:', bond.issueDate || new Date().toISOString().split('T')[0], false);
-    drawRow('12. Expiration / Maturity Date:', bond.expireDate || 'N/A', true);
+    drawRow('11. Effective / Issue Date:', formatPdfDate(bond.issueDate || new Date()), false);
+    drawRow('12. Expiration / Maturity Date:', formatPdfDate(bond.expireDate), true);
     drawRow('13. Current Security Status:', bond.status.toUpperCase(), true);
   } else {
     drawRow('8. Guarantee Amount (ETB):', `ETB ${formatAccounting(bond.amount, '')}`, true);
     if (bond.amountUsd && bond.amountUsd > 0) {
       drawRow('9. Guarantee Amount (USD):', `USD $${formatAccounting(bond.amountUsd, '')}`, true);
     }
-    drawRow('10. Effective / Issue Date:', bond.issueDate || new Date().toISOString().split('T')[0], false);
-    drawRow('11. Expiration / Maturity Date:', bond.expireDate || 'N/A', true);
+    drawRow('10. Effective / Issue Date:', formatPdfDate(bond.issueDate || new Date()), false);
+    drawRow('11. Expiration / Maturity Date:', formatPdfDate(bond.expireDate), true);
     drawRow('12. Current Security Status:', bond.status.toUpperCase(), true);
   }
 

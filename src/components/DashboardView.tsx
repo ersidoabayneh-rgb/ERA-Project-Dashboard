@@ -1272,7 +1272,7 @@ export default function DashboardView({
           doc.setFont('helvetica', 'bold');
           doc.setFontSize(8);
           doc.setTextColor(255, 255, 255);
-          doc.text(new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' }), dsX + 6, margin + 28);
+          doc.text(new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }), dsX + 6, margin + 28);
 
           doc.setFont('helvetica', 'normal');
           doc.setFontSize(5.5);
