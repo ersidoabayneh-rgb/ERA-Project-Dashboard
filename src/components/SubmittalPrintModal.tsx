@@ -12,11 +12,25 @@ import {
   Layers,
   ChevronDown,
   Building2,
-  Eye
+  Eye,
+  UserCheck,
+  PenTool,
+  CheckSquare,
+  RotateCcw,
+  ShieldAlert
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
-import { drawStandardDocumentHeader, STRICT_1_INCH_MARGIN } from '../lib/pdfReportEngine';
+import { drawStandardDocumentHeader, STRICT_1_INCH_MARGIN, drawDocumentWatermark } from '../lib/pdfReportEngine';
 import { ConsultantSubmittalKpi, Project, SupervisionConsultantInfo } from '../types';
+
+export interface SignatureRoleItem {
+  key: string;
+  roleTitle: string; // Official capitalized title in PDF, e.g. 'SENIOR SURVEYER'
+  displayName: string; // UI label
+  name: string; // Signee name
+  date: string; // Sign date
+  enabled: boolean;
+}
 
 export interface SubmittalPrintModalProps {
   isOpen: boolean;
@@ -28,6 +42,8 @@ export interface SubmittalPrintModalProps {
   selectedRfiIds?: string[];
   initialScope?: 'all' | 'selected' | 'technical' | 'rfi';
   targetOverrides?: Record<string, number>;
+  watermark?: 'NONE' | 'DRAFT' | 'CONFIDENTIAL';
+  onWatermarkChange?: (w: 'NONE' | 'DRAFT' | 'CONFIDENTIAL') => void;
 }
 
 export default function SubmittalPrintModal({
@@ -39,7 +55,9 @@ export default function SubmittalPrintModal({
   selectedSubmittalNos = [],
   selectedRfiIds = [],
   initialScope,
-  targetOverrides = {}
+  targetOverrides = {},
+  watermark: watermarkProp,
+  onWatermarkChange
 }: SubmittalPrintModalProps) {
   // Determine default scope
   const hasSelectedItems = selectedSubmittalNos.length > 0 || selectedRfiIds.length > 0;
@@ -49,6 +67,21 @@ export default function SubmittalPrintModal({
     if (hasSelectedItems) return 'selected';
     return 'all';
   });
+
+  // Watermark state ('NONE' | 'DRAFT' | 'CONFIDENTIAL')
+  const [internalWatermark, setInternalWatermark] = useState<'NONE' | 'DRAFT' | 'CONFIDENTIAL'>(() => watermarkProp || 'NONE');
+
+  React.useEffect(() => {
+    if (watermarkProp !== undefined) {
+      setInternalWatermark(watermarkProp);
+    }
+  }, [watermarkProp]);
+
+  const activeWatermark = watermarkProp !== undefined ? watermarkProp : internalWatermark;
+  const handleSetWatermark = (w: 'NONE' | 'DRAFT' | 'CONFIDENTIAL') => {
+    setInternalWatermark(w);
+    if (onWatermarkChange) onWatermarkChange(w);
+  };
 
   // Date/Month Filtering Mode
   const [dateFilterMode, setDateFilterMode] = useState<'all' | 'by_month' | 'by_range'>('all');
@@ -60,7 +93,160 @@ export default function SubmittalPrintModal({
   const [groupByMonth, setGroupByMonth] = useState<boolean>(true);
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
-  const [previewTab, setPreviewTab] = useState<'options' | 'preview'>('options');
+  const [previewTab, setPreviewTab] = useState<'options' | 'signatures' | 'preview'>('options');
+
+  // Signatures State (Requested 5 Roles: Senior Surveyer, Quantity Surveyor, Material Engineer, Assisstance Resident Engineer, Resident Engineer)
+  const [includeSignatures, setIncludeSignatures] = useState<boolean>(true);
+  const [signaturePlacement, setSignaturePlacement] = useState<'every_page' | 'last_page'>('every_page');
+
+  // Auto-discover personnel from project if present
+  const defaultPersonnel = useMemo(() => {
+    const list = project.supervisionConsultant?.personnel || [];
+    const findPerson = (keywords: string[]) => {
+      const match = list.find(p => {
+        const pos = (p.position || '').toLowerCase();
+        return keywords.some(k => pos.includes(k.toLowerCase()));
+      });
+      return match?.name || '';
+    };
+
+    return {
+      surveyer: findPerson(['surveyer', 'surveyor']),
+      qs: findPerson(['quantity surveyor', 'quantity', 'qs']),
+      material: findPerson(['material', 'laboratory']),
+      are: findPerson(['assistant resident', 'are', 'assistant re', 'assisstance']),
+      re: consultant.residentEngineerName || findPerson(['resident engineer', 'team leader', 're']) || ''
+    };
+  }, [project, consultant]);
+
+  const [signatures, setSignatures] = useState<SignatureRoleItem[]>([
+    {
+      key: 'senior_surveyer',
+      roleTitle: 'SENIOR SURVEYER',
+      displayName: 'Senior Surveyer',
+      name: '',
+      date: '',
+      enabled: true
+    },
+    {
+      key: 'quantity_surveyor',
+      roleTitle: 'QUANTITY SURVEYOR',
+      displayName: 'Quantity Surveyor',
+      name: '',
+      date: '',
+      enabled: true
+    },
+    {
+      key: 'material_engineer',
+      roleTitle: 'MATERIAL ENGINEER',
+      displayName: 'Material Engineer',
+      name: '',
+      date: '',
+      enabled: true
+    },
+    {
+      key: 'assistant_resident_engineer',
+      roleTitle: 'ASSISSTANCE RESIDENT ENGINEER',
+      displayName: 'Assisstance Resident Engineer',
+      name: '',
+      date: '',
+      enabled: true
+    },
+    {
+      key: 'resident_engineer',
+      roleTitle: 'RESIDENT ENGINEER',
+      displayName: 'Resident Engineer',
+      name: consultant.residentEngineerName || '',
+      date: '',
+      enabled: true
+    }
+  ]);
+
+  // Sync defaults on modal open
+  React.useEffect(() => {
+    if (isOpen) {
+      setSignatures(prev => prev.map(s => {
+        if (s.name) return s;
+        if (s.key === 'senior_surveyer' && defaultPersonnel.surveyer) return { ...s, name: defaultPersonnel.surveyer };
+        if (s.key === 'quantity_surveyor' && defaultPersonnel.qs) return { ...s, name: defaultPersonnel.qs };
+        if (s.key === 'material_engineer' && defaultPersonnel.material) return { ...s, name: defaultPersonnel.material };
+        if (s.key === 'assistant_resident_engineer' && defaultPersonnel.are) return { ...s, name: defaultPersonnel.are };
+        if (s.key === 'resident_engineer' && defaultPersonnel.re) return { ...s, name: defaultPersonnel.re };
+        return s;
+      }));
+    }
+  }, [isOpen, defaultPersonnel]);
+
+  // Quick signature helpers
+  const handleToggleSignature = (key: string) => {
+    setSignatures(prev => prev.map(s => s.key === key ? { ...s, enabled: !s.enabled } : s));
+  };
+
+  const handleUpdateSignatureName = (key: string, name: string) => {
+    setSignatures(prev => prev.map(s => s.key === key ? { ...s, name } : s));
+  };
+
+  const handleUpdateSignatureDate = (key: string, date: string) => {
+    setSignatures(prev => prev.map(s => s.key === key ? { ...s, date } : s));
+  };
+
+  const handleFillAllTodayDate = () => {
+    const today = new Date().toISOString().split('T')[0];
+    setSignatures(prev => prev.map(s => ({ ...s, date: today })));
+  };
+
+  const handleClearAllDates = () => {
+    setSignatures(prev => prev.map(s => ({ ...s, date: '' })));
+  };
+
+  const handleSelectAllSignatures = () => {
+    setSignatures(prev => prev.map(s => ({ ...s, enabled: true })));
+  };
+
+  const handleResetToPersonnelDefaults = () => {
+    setSignatures([
+      {
+        key: 'senior_surveyer',
+        roleTitle: 'SENIOR SURVEYER',
+        displayName: 'Senior Surveyer',
+        name: defaultPersonnel.surveyer || '',
+        date: '',
+        enabled: true
+      },
+      {
+        key: 'quantity_surveyor',
+        roleTitle: 'QUANTITY SURVEYOR',
+        displayName: 'Quantity Surveyor',
+        name: defaultPersonnel.qs || '',
+        date: '',
+        enabled: true
+      },
+      {
+        key: 'material_engineer',
+        roleTitle: 'MATERIAL ENGINEER',
+        displayName: 'Material Engineer',
+        name: defaultPersonnel.material || '',
+        date: '',
+        enabled: true
+      },
+      {
+        key: 'assistant_resident_engineer',
+        roleTitle: 'ASSISSTANCE RESIDENT ENGINEER',
+        displayName: 'Assisstance Resident Engineer',
+        name: defaultPersonnel.are || '',
+        date: '',
+        enabled: true
+      },
+      {
+        key: 'resident_engineer',
+        roleTitle: 'RESIDENT ENGINEER',
+        displayName: 'Resident Engineer',
+        name: defaultPersonnel.re || consultant.residentEngineerName || '',
+        date: '',
+        enabled: true
+      }
+    ]);
+  };
 
   // Derive unique months list from data
   const availableMonths = useMemo(() => {
@@ -84,12 +270,16 @@ export default function SubmittalPrintModal({
     });
   }, [allSubmittals]);
 
-  // Set default month if available
+  // Set default month and scope if available
   React.useEffect(() => {
-    if (availableMonths.length > 0 && selectedMonth === 'ALL') {
-      // Keep 'ALL' as default or user can select specific
+    if (isOpen) {
+      if (initialScope) {
+        setScope(initialScope);
+      } else if (selectedSubmittalNos.length > 0 || selectedRfiIds.length > 0) {
+        setScope('selected');
+      }
     }
-  }, [availableMonths]);
+  }, [isOpen, initialScope, selectedSubmittalNos, selectedRfiIds]);
 
   // Quick Date Range Helpers
   const handleSetDatePreset = (preset: 'this_month' | 'last_month' | 'last_30' | 'ytd' | 'all') => {
@@ -285,6 +475,83 @@ export default function SubmittalPrintModal({
     let curY = margin + 14;
     let pageCount = 0;
 
+    const drawSignatureBlocksOnPage = () => {
+      if (!includeSignatures) return;
+      const activeSigs = signatures.filter(s => s.enabled);
+      if (activeSigs.length === 0) return;
+
+      const sigBoxY = pageHeight - margin - 56;
+      const sigBoxH = 38;
+
+      // Card container for signatures at bottom of each page
+      doc.setFillColor(250, 250, 252);
+      doc.setDrawColor(203, 213, 225); // slate-300
+      doc.setLineWidth(0.6);
+      doc.roundedRect(margin + 2, sigBoxY, contentWidth - 4, sigBoxH, 2, 2, 'DF');
+
+      const colW = (contentWidth - 4) / activeSigs.length;
+
+      activeSigs.forEach((sig, idx) => {
+        const rx = margin + 2 + (idx * colW);
+
+        // Vertical divider between signature columns
+        if (idx > 0) {
+          doc.setDrawColor(226, 232, 240); // slate-200
+          doc.setLineWidth(0.5);
+          doc.line(rx, sigBoxY, rx, sigBoxY + sigBoxH);
+        }
+
+        // Role title header strip
+        doc.setFillColor(241, 245, 249); // slate-100
+        doc.rect(rx + 0.5, sigBoxY + 0.5, colW - 1, 9.5, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(activeSigs.length > 4 ? 5.5 : 6);
+        doc.setTextColor(30, 41, 59); // slate-800
+        doc.text(sig.roleTitle, rx + (colW / 2), sigBoxY + 7, { align: 'center' });
+
+        // Name, Sign, Date lines
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(5.2);
+        doc.setTextColor(100, 116, 139); // slate-500
+
+        // Name
+        doc.text("Name:", rx + 3, sigBoxY + 16.5);
+        if (sig.name && sig.name.trim()) {
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(15, 23, 42);
+          doc.text(sig.name.trim().substring(0, 24), rx + 22, sigBoxY + 16.5);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(100, 116, 139);
+        } else {
+          doc.setDrawColor(203, 213, 225);
+          doc.setLineDashPattern([1.5, 1.5], 0);
+          doc.line(rx + 22, sigBoxY + 16.5, rx + colW - 4, sigBoxY + 16.5);
+        }
+
+        // Sign
+        doc.text("Sign:", rx + 3, sigBoxY + 24.5);
+        doc.setDrawColor(203, 213, 225);
+        doc.setLineDashPattern([1.5, 1.5], 0);
+        doc.line(rx + 20, sigBoxY + 24.5, rx + colW - 4, sigBoxY + 24.5);
+
+        // Date
+        doc.text("Date:", rx + 3, sigBoxY + 32.5);
+        if (sig.date && sig.date.trim()) {
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(15, 23, 42);
+          doc.text(sig.date.trim(), rx + 20, sigBoxY + 32.5);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(100, 116, 139);
+        } else {
+          doc.setDrawColor(203, 213, 225);
+          doc.setLineDashPattern([1.5, 1.5], 0);
+          doc.line(rx + 20, sigBoxY + 32.5, rx + colW - 4, sigBoxY + 32.5);
+        }
+
+        doc.setLineDashPattern([], 0); // reset dash pattern
+      });
+    };
+
     const drawPageDecorations = () => {
       pageCount++;
       // Outer frame
@@ -296,34 +563,50 @@ export default function SubmittalPrintModal({
       doc.setFillColor(79, 70, 229);
       doc.rect(margin + 2, margin + 1, contentWidth - 4, 3, 'F');
 
+      // Semi-transparent background watermark (DRAFT / CONFIDENTIAL) if configured in settings
+      if (activeWatermark !== 'NONE') {
+        drawDocumentWatermark(doc, activeWatermark);
+      }
+
+      // 5 Mandatory Engineering Signatures at bottom of EACH page (when enabled)
+      if (includeSignatures && signaturePlacement === 'every_page') {
+        drawSignatureBlocksOnPage();
+      }
+
       // Bottom footer line
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7);
+      doc.setFontSize(6.5);
       doc.setTextColor(148, 163, 184);
       doc.setDrawColor(226, 232, 240);
-      doc.line(margin + 2, pageHeight - margin - 20, pageWidth - margin - 2, pageHeight - margin - 20);
+      doc.line(margin + 2, pageHeight - margin - 15, pageWidth - margin - 2, pageHeight - margin - 15);
 
-      // Footer texts
+      // Footer texts with safe width to avoid text overlap
       const dateSubtitle = dateFilterMode === 'by_month' && selectedMonth !== 'ALL'
         ? `Month: ${selectedMonth}`
         : (dateFilterMode === 'by_range' && (startDate || endDate) ? `Dates: ${startDate || 'Start'} to ${endDate || 'Present'}` : 'All Timeline');
+      const leftFooter = `ETHIOPIAN ROADS ADMINISTRATION • SUBMITTAL & RFI REGISTER • ${project.name || 'ERA PROJECT'} • ${dateSubtitle}`;
+      const splitLeftFooter = doc.splitTextToSize(leftFooter, contentWidth - 140);
       doc.text(
-        `ETHIOPIAN ROADS ADMINISTRATION • SUBMITTAL & RFI REGISTER • ${project.name || 'ERA PROJECT'} • ${dateSubtitle}`,
+        splitLeftFooter[0] || leftFooter,
         margin + 6,
-        pageHeight - margin - 9
+        pageHeight - margin - 6
       );
       doc.text(
-        `Page ${pageCount}`,
+        `OFFICIAL PROJECT DOCUMENTATION • Page ${pageCount}`,
         pageWidth - margin - 6,
-        pageHeight - margin - 9,
+        pageHeight - margin - 6,
         { align: 'right' }
       );
     };
 
     let drawTableHeader = () => {};
 
+    const bottomLimit = (includeSignatures && signaturePlacement === 'every_page')
+      ? (pageHeight - margin - 62)
+      : (pageHeight - margin - 26);
+
     const checkSpace = (needed: number, isTableContext: boolean = false) => {
-      if (curY + needed > pageHeight - margin - 26) {
+      if (curY + needed > bottomLimit) {
         doc.addPage();
         curY = margin + 16;
         drawPageDecorations();
@@ -343,12 +626,18 @@ export default function SubmittalPrintModal({
       ? `• MONTH: ${selectedMonth}`
       : (dateFilterMode === 'by_range' && (startDate || endDate) ? `• DATES: ${startDate || 'Start'} TO ${endDate || 'Now'}` : '');
 
+    const supervisionConsultantName = project.supervisionConsultant?.firmName || consultant?.firmName || project.consultant || 'N/A';
+    const contractorName = project.contractor || 'N/A';
+
     curY = drawStandardDocumentHeader(doc, {
       margin,
       curY,
       contentWidth,
       documentTitle: "OFFICIAL TECHNICAL SUBMITTAL & RFI CORRESPONDENCE REGISTER",
-      subtitle: `PROJECT: ${project.name || 'CURRENT PROJECT'} • ${subtitleScope} ${subtitleDate}`,
+      projectName: project.name || 'CURRENT PROJECT',
+      consultantName: supervisionConsultantName,
+      contractorName: contractorName,
+      scopeText: `${subtitleScope} ${subtitleDate}`.trim(),
       titleColor: [79, 70, 229],
       referenceNo: project.id || 'SUBMITTAL-RFI-LOG',
       statusBadge: 'OFFICIAL REGISTER'
@@ -599,6 +888,15 @@ export default function SubmittalPrintModal({
       });
     });
 
+    // If last_page placement is selected, render on the final page
+    if (includeSignatures && signaturePlacement === 'last_page') {
+      if (curY > pageHeight - margin - 62) {
+        doc.addPage();
+        drawPageDecorations();
+      }
+      drawSignatureBlocksOnPage();
+    }
+
     const filename = `ERA_Submittal_RFI_Register_${scope}_${new Date().toISOString().split('T')[0]}.pdf`;
     doc.save(filename);
   };
@@ -636,28 +934,39 @@ export default function SubmittalPrintModal({
         </div>
 
         {/* Modal Body: Tabs */}
-        <div className="flex items-center border-b border-slate-200 dark:border-slate-800 px-5 bg-white dark:bg-slate-900">
+        <div className="flex items-center border-b border-slate-200 dark:border-slate-800 px-5 bg-white dark:bg-slate-900 overflow-x-auto">
           <button
             onClick={() => setPreviewTab('options')}
-            className={`py-3 px-4 text-xs font-bold border-b-2 transition cursor-pointer flex items-center gap-2 ${
+            className={`py-3 px-4 text-xs font-bold border-b-2 transition cursor-pointer flex items-center gap-2 whitespace-nowrap ${
               previewTab === 'options'
                 ? 'border-purple-600 text-purple-600 dark:text-purple-400'
                 : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
             }`}
           >
             <Filter className="w-3.5 h-3.5" />
-            <span>Print Settings & Filters</span>
+            <span>Print Settings & Scope</span>
+          </button>
+          <button
+            onClick={() => setPreviewTab('signatures')}
+            className={`py-3 px-4 text-xs font-bold border-b-2 transition cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+              previewTab === 'signatures'
+                ? 'border-purple-600 text-purple-600 dark:text-purple-400'
+                : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+            }`}
+          >
+            <PenTool className="w-3.5 h-3.5" />
+            <span>Signature Options ({signatures.filter(s => s.enabled).length}/5 Roles)</span>
           </button>
           <button
             onClick={() => setPreviewTab('preview')}
-            className={`py-3 px-4 text-xs font-bold border-b-2 transition cursor-pointer flex items-center gap-2 ${
+            className={`py-3 px-4 text-xs font-bold border-b-2 transition cursor-pointer flex items-center gap-2 whitespace-nowrap ${
               previewTab === 'preview'
                 ? 'border-purple-600 text-purple-600 dark:text-purple-400'
                 : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
             }`}
           >
             <Eye className="w-3.5 h-3.5" />
-            <span>Records Preview ({filteredRecords.length})</span>
+            <span>Preview & Endorsements ({filteredRecords.length})</span>
           </button>
         </div>
 
@@ -947,6 +1256,164 @@ export default function SubmittalPrintModal({
                 </div>
               </div>
 
+              {/* 4. Signature Endorsement Summary in Options */}
+              <div className="bg-slate-50 dark:bg-slate-850 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/60 dark:border-slate-700/60 pb-2.5">
+                  <div>
+                    <span className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                      <PenTool className="w-4 h-4 text-purple-600" />
+                      4. Signatures on Bottom of Each PDF Page
+                    </span>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Sign-off endorsements by Senior Surveyer, Quantity Surveyor, Material Engineer, Assisstance Resident Engineer & Resident Engineer
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewTab('signatures')}
+                    className="px-3 py-1.5 rounded-xl bg-purple-100 hover:bg-purple-200 dark:bg-purple-950/80 dark:hover:bg-purple-900 text-purple-700 dark:text-purple-300 text-xs font-bold transition flex items-center gap-1.5 self-start cursor-pointer"
+                  >
+                    <PenTool className="w-3.5 h-3.5" />
+                    <span>Configure 5 Roles →</span>
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                  <label className="flex items-center gap-2 text-xs font-bold text-slate-800 dark:text-slate-200 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={includeSignatures}
+                      onChange={(e) => setIncludeSignatures(e.target.checked)}
+                      className="w-4 h-4 text-purple-600 rounded border-slate-300 focus:ring-purple-500 cursor-pointer accent-purple-600"
+                    />
+                    <span>Include Signature Section on Each PDF Page</span>
+                  </label>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-slate-500">Placement:</span>
+                    <div className="flex items-center bg-white dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => setSignaturePlacement('every_page')}
+                        className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition cursor-pointer ${
+                          signaturePlacement === 'every_page'
+                            ? 'bg-purple-600 text-white shadow-2xs'
+                            : 'text-slate-600 dark:text-slate-400'
+                        }`}
+                      >
+                        Bottom of Every Page
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSignaturePlacement('last_page')}
+                        className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition cursor-pointer ${
+                          signaturePlacement === 'last_page'
+                            ? 'bg-purple-600 text-white shadow-2xs'
+                            : 'text-slate-600 dark:text-slate-400'
+                        }`}
+                      >
+                        Last Page Only
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {signatures.map(s => (
+                    <span
+                      key={s.key}
+                      onClick={() => handleToggleSignature(s.key)}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition flex items-center gap-1 ${
+                        s.enabled
+                          ? 'bg-purple-100 text-purple-800 dark:bg-purple-950/70 dark:text-purple-300 border border-purple-200 dark:border-purple-800'
+                          : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500 line-through'
+                      }`}
+                    >
+                      <span>{s.displayName}</span>
+                      {s.name && <span className="opacity-75 font-normal">({s.name.split(' ')[0]})</span>}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* 5. Document Watermark (DRAFT / CONFIDENTIAL) */}
+              <div className="bg-slate-50 dark:bg-slate-850 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/60 dark:border-slate-700/60 pb-2.5">
+                  <div>
+                    <span className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                      <ShieldAlert className="w-4 h-4 text-purple-600" />
+                      5. PDF Watermark & Classification
+                    </span>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Optionally apply a semi-transparent 'DRAFT' or 'CONFIDENTIAL' watermark across all exported pages
+                    </p>
+                  </div>
+                  {activeWatermark !== 'NONE' && (
+                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${
+                      activeWatermark === 'DRAFT'
+                        ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300 border-rose-300 dark:border-rose-800'
+                        : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 border-indigo-300 dark:border-indigo-800'
+                    }`}>
+                      Watermark: {activeWatermark}
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => handleSetWatermark('NONE')}
+                    className={`p-3 rounded-xl border text-left transition cursor-pointer flex items-center justify-between ${
+                      activeWatermark === 'NONE'
+                        ? 'bg-white dark:bg-slate-800 border-purple-500 text-purple-900 dark:text-purple-200 shadow-2xs'
+                        : 'bg-white/60 dark:bg-slate-900/60 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-slate-300'
+                    }`}
+                  >
+                    <div>
+                      <div className="text-xs font-black">No Watermark</div>
+                      <div className="text-[10px] text-slate-400">Standard official layout</div>
+                    </div>
+                    {activeWatermark === 'NONE' && <CheckCircle2 className="w-4 h-4 text-purple-600 shrink-0" />}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleSetWatermark('DRAFT')}
+                    className={`p-3 rounded-xl border text-left transition cursor-pointer flex items-center justify-between ${
+                      activeWatermark === 'DRAFT'
+                        ? 'bg-rose-50 dark:bg-rose-950/50 border-rose-500 text-rose-900 dark:text-rose-200 shadow-2xs'
+                        : 'bg-white/60 dark:bg-slate-900/60 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-rose-300'
+                    }`}
+                  >
+                    <div>
+                      <div className="text-xs font-black flex items-center gap-1.5 text-rose-600 dark:text-rose-400">
+                        <span>DRAFT Watermark</span>
+                      </div>
+                      <div className="text-[10px] text-slate-400">Preliminary / Working draft copy</div>
+                    </div>
+                    {activeWatermark === 'DRAFT' && <CheckCircle2 className="w-4 h-4 text-rose-600 shrink-0" />}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleSetWatermark('CONFIDENTIAL')}
+                    className={`p-3 rounded-xl border text-left transition cursor-pointer flex items-center justify-between ${
+                      activeWatermark === 'CONFIDENTIAL'
+                        ? 'bg-indigo-50 dark:bg-indigo-950/50 border-indigo-500 text-indigo-900 dark:text-indigo-200 shadow-2xs'
+                        : 'bg-white/60 dark:bg-slate-900/60 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-indigo-300'
+                    }`}
+                  >
+                    <div>
+                      <div className="text-xs font-black flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400">
+                        <span>CONFIDENTIAL Watermark</span>
+                      </div>
+                      <div className="text-[10px] text-slate-400">Restricted distribution copy</div>
+                    </div>
+                    {activeWatermark === 'CONFIDENTIAL' && <CheckCircle2 className="w-4 h-4 text-indigo-600 shrink-0" />}
+                  </button>
+                </div>
+              </div>
+
               {/* Ready Summary Banner */}
               <div className="bg-purple-50 dark:bg-purple-950/40 p-4 rounded-2xl border border-purple-200 dark:border-purple-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="space-y-1">
@@ -956,7 +1423,7 @@ export default function SubmittalPrintModal({
                   </div>
                   <p className="text-xs text-purple-700 dark:text-purple-300">
                     <strong>{filteredRecords.length} records</strong> match your active filters (
-                    {stats.technical} Technical Submittals, {stats.rfis} RFIs, {monthGroups.length} monthly sections).
+                    {stats.technical} Technical Submittals, {stats.rfis} RFIs, {signatures.filter(s => s.enabled).length} signatures enabled).
                   </p>
                 </div>
                 <button
@@ -965,8 +1432,203 @@ export default function SubmittalPrintModal({
                   className="px-3.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition flex items-center gap-1.5 self-start sm:self-auto cursor-pointer"
                 >
                   <Eye className="w-3.5 h-3.5" />
-                  <span>Preview Records Table</span>
+                  <span>Preview Records & Signatures</span>
                 </button>
+              </div>
+            </div>
+          ) : previewTab === 'signatures' ? (
+            /* Dedicated Signatures Configuration Tab */
+            <div className="space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">
+                <div>
+                  <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                    <PenTool className="w-4 h-4 text-purple-600" />
+                    <span>Official PDF Page-Bottom Signature Endorsements</span>
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Configure names and sign-offs for the 5 official engineering roles at the bottom of each PDF page
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleSelectAllSignatures}
+                    className="px-2.5 py-1 text-[11px] font-bold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 cursor-pointer"
+                  >
+                    Select All 5
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleFillAllTodayDate}
+                    className="px-2.5 py-1 text-[11px] font-bold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 cursor-pointer"
+                  >
+                    Today's Date
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleClearAllDates}
+                    className="px-2.5 py-1 text-[11px] font-bold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 cursor-pointer"
+                  >
+                    Clear Dates
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleResetToPersonnelDefaults}
+                    className="px-2.5 py-1 text-[11px] font-bold bg-purple-50 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-800 rounded-lg text-purple-700 dark:text-purple-300 hover:bg-purple-100 cursor-pointer flex items-center gap-1"
+                    title="Auto-fill names from project consultant personnel roster"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Reset Team</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Master Settings */}
+              <div className="bg-slate-50 dark:bg-slate-850 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <label className="flex items-center gap-2.5 text-xs font-bold text-slate-800 dark:text-slate-200 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={includeSignatures}
+                    onChange={(e) => setIncludeSignatures(e.target.checked)}
+                    className="w-4 h-4 text-purple-600 rounded border-slate-300 focus:ring-purple-500 cursor-pointer accent-purple-600"
+                  />
+                  <span>Render Engineering Signature Blocks on Document</span>
+                </label>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-600 dark:text-slate-400">Positioning:</span>
+                  <div className="flex items-center bg-white dark:bg-slate-800 p-0.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setSignaturePlacement('every_page')}
+                      className={`px-3 py-1 rounded-lg font-bold transition cursor-pointer ${
+                        signaturePlacement === 'every_page'
+                          ? 'bg-purple-600 text-white shadow-2xs'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                      }`}
+                    >
+                      Bottom of Every Page
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSignaturePlacement('last_page')}
+                      className={`px-3 py-1 rounded-lg font-bold transition cursor-pointer ${
+                        signaturePlacement === 'last_page'
+                          ? 'bg-purple-600 text-white shadow-2xs'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                      }`}
+                    >
+                      Last Page Only
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* The 5 Signature Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {signatures.map((sig, idx) => (
+                  <div
+                    key={sig.key}
+                    className={`p-4 rounded-2xl border transition-all ${
+                      sig.enabled
+                        ? 'bg-white dark:bg-slate-900 border-purple-200 dark:border-purple-800/80 shadow-xs'
+                        : 'bg-slate-50 dark:bg-slate-850/60 border-slate-200 dark:border-slate-800 opacity-60'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+                      <label className="flex items-center gap-2 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={sig.enabled}
+                          onChange={() => handleToggleSignature(sig.key)}
+                          className="w-4 h-4 text-purple-600 rounded border-slate-300 focus:ring-purple-500 cursor-pointer accent-purple-600"
+                        />
+                        <span className="text-xs font-black uppercase text-slate-900 dark:text-white">
+                          {idx + 1}. {sig.displayName}
+                        </span>
+                      </label>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold">
+                        {sig.roleTitle}
+                      </span>
+                    </div>
+
+                    <div className="space-y-2.5 pt-3">
+                      <div>
+                        <label className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400 block mb-1">
+                          Signee Full Name
+                        </label>
+                        <input
+                          type="text"
+                          value={sig.name}
+                          onChange={(e) => handleUpdateSignatureName(sig.key, e.target.value)}
+                          disabled={!sig.enabled}
+                          placeholder={
+                            sig.key === 'senior_surveyer'
+                              ? 'e.g. Ato Daniel Haile'
+                              : sig.key === 'quantity_surveyor'
+                              ? 'e.g. W/ro Selamawit Alemu'
+                              : sig.key === 'material_engineer'
+                              ? 'e.g. Materials Engineer'
+                              : sig.key === 'assistant_resident_engineer'
+                              ? 'e.g. Assistant RE'
+                              : 'e.g. Resident Engineer / TL'
+                          }
+                          className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-purple-500 disabled:opacity-50"
+                        />
+                        <p className="text-[10px] text-slate-400 mt-0.5">
+                          Leave empty to provide dotted line for handwritten signature
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400 block mb-1">
+                          Date Endorsement
+                        </label>
+                        <input
+                          type="date"
+                          value={sig.date}
+                          onChange={(e) => handleUpdateSignatureDate(sig.key, e.target.value)}
+                          disabled={!sig.enabled}
+                          className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-purple-500 disabled:opacity-50"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Live Preview Box */}
+              <div className="bg-slate-50 dark:bg-slate-850 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2">
+                <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
+                  <span className="flex items-center gap-1.5 uppercase tracking-wide">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    Official Signature Block Preview ({signaturePlacement === 'every_page' ? 'Appears on Every Page' : 'Appears on Last Page'})
+                  </span>
+                  <span className="text-[10px] text-slate-400">Exact layout printed on bottom margin</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-5 gap-2 pt-1">
+                  {signatures.filter(s => s.enabled).map(sig => (
+                    <div key={sig.key} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-2.5 space-y-1.5 shadow-2xs">
+                      <div className="text-[10px] font-black uppercase text-slate-800 dark:text-slate-100 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-center truncate">
+                        {sig.roleTitle}
+                      </div>
+                      <div className="text-[10px] text-slate-500 flex justify-between">
+                        <span>Name:</span>
+                        <span className="font-bold text-slate-800 dark:text-white truncate max-w-[90px]">{sig.name || '_______________'}</span>
+                      </div>
+                      <div className="text-[10px] text-slate-500 flex justify-between">
+                        <span>Sign:</span>
+                        <span className="text-slate-400">...................</span>
+                      </div>
+                      <div className="text-[10px] text-slate-500 flex justify-between">
+                        <span>Date:</span>
+                        <span className="font-mono text-slate-700 dark:text-slate-300">{sig.date || '____/____/____'}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           ) : (
@@ -981,12 +1643,50 @@ export default function SubmittalPrintModal({
                     Live layout of items that will appear on the printed document & PDF
                   </p>
                 </div>
-                <button
-                  onClick={() => setPreviewTab('options')}
-                  className="text-xs font-bold text-purple-600 dark:text-purple-400 hover:underline cursor-pointer"
-                >
-                  ← Back to Settings
-                </button>
+                <div className="flex items-center gap-2">
+                  {activeWatermark !== 'NONE' && (
+                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${
+                      activeWatermark === 'DRAFT'
+                        ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300 border-rose-300 dark:border-rose-800'
+                        : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 border-indigo-300 dark:border-indigo-800'
+                    }`}>
+                      Watermark: {activeWatermark}
+                    </span>
+                  )}
+                  <button
+                    onClick={() => setPreviewTab('options')}
+                    className="text-xs font-bold text-purple-600 dark:text-purple-400 hover:underline cursor-pointer"
+                  >
+                    ← Back to Settings
+                  </button>
+                </div>
+              </div>
+
+              {/* Official Document Header Information Card */}
+              <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 rounded-2xl p-3.5 space-y-1.5 text-xs">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/60 dark:border-slate-700/60 pb-2">
+                  <div className="font-black text-slate-900 dark:text-white uppercase tracking-tight flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-indigo-600"></span>
+                    <span>PROJECT: {project.name || 'CURRENT PROJECT'}</span>
+                  </div>
+                  <span className="text-[10px] font-mono font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950 px-2 py-0.5 rounded-full border border-indigo-200 dark:border-indigo-800">
+                    ERA OFFICIAL EXPORT
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-1 text-[11px]">
+                  <div className="flex items-start gap-1.5 text-slate-600 dark:text-slate-300">
+                    <span className="font-bold text-slate-800 dark:text-slate-200 shrink-0">Supervision Consultant:</span>
+                    <span className="truncate" title={project.supervisionConsultant?.firmName || consultant?.firmName || project.consultant || 'N/A'}>
+                      {project.supervisionConsultant?.firmName || consultant?.firmName || project.consultant || 'N/A'}
+                    </span>
+                  </div>
+                  <div className="flex items-start gap-1.5 text-slate-600 dark:text-slate-300">
+                    <span className="font-bold text-slate-800 dark:text-slate-200 shrink-0">Contractor:</span>
+                    <span className="truncate" title={project.contractor || 'N/A'}>
+                      {project.contractor || 'N/A'}
+                    </span>
+                  </div>
+                </div>
               </div>
 
               {filteredRecords.length === 0 ? (
@@ -1059,6 +1759,42 @@ export default function SubmittalPrintModal({
                       </div>
                     </div>
                   ))}
+
+                  {/* Live Endorsement Signature Strip on Preview */}
+                  {includeSignatures && (
+                    <div className="mt-4 p-4 bg-slate-50 dark:bg-slate-850 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs font-bold text-slate-700 dark:text-slate-300">
+                        <span className="flex items-center gap-1.5 uppercase tracking-wide">
+                          <PenTool className="w-3.5 h-3.5 text-purple-600" />
+                          Official Page Bottom Signature Blocks ({signaturePlacement === 'every_page' ? 'Appears on Every Page' : 'Appears on Last Page'})
+                        </span>
+                        <span className="text-[11px] text-purple-600 font-normal">
+                          Senior Surveyer • Quantity Surveyor • Material Engineer • Assisstance Resident Engineer • Resident Engineer
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-5 gap-2 pt-1">
+                        {signatures.filter(s => s.enabled).map(sig => (
+                          <div key={sig.key} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-2.5 space-y-1.5 shadow-2xs">
+                            <div className="text-[10px] font-black uppercase text-slate-800 dark:text-slate-100 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-center truncate">
+                              {sig.roleTitle}
+                            </div>
+                            <div className="text-[10px] text-slate-500 flex justify-between">
+                              <span>Name:</span>
+                              <span className="font-bold text-slate-800 dark:text-white truncate max-w-[90px]">{sig.name || '_______________'}</span>
+                            </div>
+                            <div className="text-[10px] text-slate-500 flex justify-between">
+                              <span>Sign:</span>
+                              <span className="text-slate-400">...................</span>
+                            </div>
+                            <div className="text-[10px] text-slate-500 flex justify-between">
+                              <span>Date:</span>
+                              <span className="font-mono text-slate-700 dark:text-slate-300">{sig.date || '____/____/____'}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

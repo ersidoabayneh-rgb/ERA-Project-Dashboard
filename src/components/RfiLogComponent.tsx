@@ -59,6 +59,9 @@ interface RfiLogComponentProps {
   currentUserObj?: User | null;
   targetOverrides?: Record<string, number>;
   onOpenPrintModal?: (selectedIds?: string[]) => void;
+  selectedRfiIds?: string[];
+  onSelectedRfiIdsChange?: (ids: string[]) => void;
+  onExportPdfSelected?: () => void;
 }
 
 export const RFI_INSPECTION_CATEGORIES = [
@@ -98,7 +101,10 @@ export default function RfiLogComponent({
   isReadonly = false,
   currentUserObj,
   targetOverrides = {},
-  onOpenPrintModal
+  onOpenPrintModal,
+  selectedRfiIds: propSelectedRfiIds,
+  onSelectedRfiIdsChange,
+  onExportPdfSelected
 }: RfiLogComponentProps) {
   // Check if current user has contractor credentials
   const isContractorUser = Boolean(
@@ -145,6 +151,28 @@ export default function RfiLogComponent({
     );
   }, [currentUserObj]);
 
+  // Credentials Check: Consultant Approver and Master Admin credentials only
+  const isConsultantApproverOrMasterAdmin = useMemo(() => {
+    if (!currentUserObj) return false;
+    const r = (currentUserObj.role || '').toLowerCase();
+    const u = (currentUserObj.username || '').toLowerCase();
+    const isMasterAdmin = 
+      r === 'master_admin' || 
+      r === 'admin' || 
+      r === 'cpm_admin' || 
+      u === 'admin' || 
+      u.includes('ersido') ||
+      u === 'proj_1781786415663';
+    const isConsultantApprover = 
+      r === 'consultant_approver' || 
+      r === 'approver' || 
+      r === 'era_approver' || 
+      Boolean(currentUserObj.hasApprovalCredential) || 
+      u === 'consultant_approver' || 
+      r.includes('consultant_approver');
+    return isMasterAdmin || isConsultantApprover;
+  }, [currentUserObj]);
+
   // Extract all RFI items from submittals
   const rfiItems = useMemo(() => {
     return allSubmittals.filter(item => item.type === 'RFI');
@@ -161,7 +189,19 @@ export default function RfiLogComponent({
   const [viewLayout, setViewLayout] = useState<'table' | 'cards'>('table');
 
   // Multi-select & Bulk Operations State (for Consultant Approver)
-  const [selectedRfiIds, setSelectedRfiIds] = useState<string[]>([]);
+  const [internalSelectedRfiIds, setInternalSelectedRfiIds] = useState<string[]>([]);
+  const selectedRfiIds = propSelectedRfiIds !== undefined ? propSelectedRfiIds : internalSelectedRfiIds;
+  const setSelectedRfiIds = (updater: string[] | ((prev: string[]) => string[])) => {
+    if (onSelectedRfiIdsChange) {
+      if (typeof updater === 'function') {
+        onSelectedRfiIdsChange(updater(selectedRfiIds));
+      } else {
+        onSelectedRfiIdsChange(updater);
+      }
+    } else {
+      setInternalSelectedRfiIds(updater);
+    }
+  };
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
   const [bulkTargetStatus, setBulkTargetStatus] = useState<string>('Approved');
   const [bulkDirectiveNote, setBulkDirectiveNote] = useState<string>('');
@@ -1296,6 +1336,16 @@ export default function RfiLogComponent({
                 <span>Print by Date/Month</span>
               </button>
             )}
+            {onExportPdfSelected && (
+              <button
+                onClick={onExportPdfSelected}
+                className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-300/80 dark:border-rose-800 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                title={selectedRfiIds.length > 0 ? `Export ${selectedRfiIds.length} selected RFIs to official PDF with signatures` : "Export RFIs to official PDF with signatures and watermark"}
+              >
+                <FileText className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+                <span>{selectedRfiIds.length > 0 ? `Export PDF (${selectedRfiIds.length})` : 'Export PDF'}</span>
+              </button>
+            )}
           </div>
 
           {/* View Toggle: Table vs Cards */}
@@ -1320,8 +1370,8 @@ export default function RfiLogComponent({
         </div>
       </div>
 
-      {/* BULK ACTION BAR FOR SUPERVISION CONSULTANT APPROVER */}
-      {isSupervisionConsultantApprover && selectedRfiIds.length > 0 && (
+      {/* BULK ACTION BAR FOR SELECTION, EXPORT & APPROVAL */}
+      {selectedRfiIds.length > 0 && (
         <div className="bg-gradient-to-r from-indigo-900 via-indigo-800 to-slate-900 text-white p-3.5 rounded-2xl shadow-lg border border-indigo-700/60 flex flex-wrap items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center font-black text-sm shadow-xs border border-indigo-400/40">
@@ -1331,53 +1381,70 @@ export default function RfiLogComponent({
               <div className="font-bold text-sm flex items-center gap-2">
                 <span>{selectedRfiIds.length} RFI{selectedRfiIds.length > 1 ? 's' : ''} Selected</span>
                 <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-semibold border border-emerald-500/30">
-                  Consultant Approver Bulk Mode
+                  Ready for Print & PDF Export
                 </span>
               </div>
               <p className="text-[11px] text-indigo-200">
-                Perform bulk approval certification or status directives
+                Export selected RFIs directly to official PDF with engineering signatures or customize by date/month
               </p>
             </div>
           </div>
 
           <div className="flex items-center flex-wrap gap-2">
-            {/* Quick Bulk Approve */}
-            <button
-              onClick={() => executeBulkStatusChange('Approved')}
-              className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
-              title="Instantly bulk certify and approve all selected RFIs"
-            >
-              <Check className="w-3.5 h-3.5" />
-              <span>Bulk Approve</span>
-            </button>
+            {/* Direct Export Selected to PDF */}
+            {onExportPdfSelected && (
+              <button
+                onClick={onExportPdfSelected}
+                className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                title="Directly export selected RFIs to official PDF with engineering signatures"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>Export to PDF ({selectedRfiIds.length})</span>
+              </button>
+            )}
 
             {/* Print Selected RFIs by Date/Month */}
             {onOpenPrintModal && (
               <button
                 onClick={() => onOpenPrintModal(selectedRfiIds)}
                 className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
-                title="Print selected RFIs by date / month as per user preferences"
+                title="Print selected RFIs by date / month and configure signatures"
               >
                 <Printer className="w-3.5 h-3.5" />
-                <span>Print Selected ({selectedRfiIds.length})</span>
+                <span>Print / Signature Options ({selectedRfiIds.length})</span>
               </button>
             )}
 
-            {/* Bulk Approve with Comments */}
-            <button
-              onClick={() => {
-                setBulkTargetStatus('Approved with Comments');
-                setIsBulkModalOpen(true);
-              }}
-              className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
-              title="Approve with remarks or conditions"
-            >
-              <MessageSquare className="w-3.5 h-3.5" />
-              <span>Approve w/ Comments...</span>
-            </button>
+            {/* Quick Bulk Approve (Approvers Only) */}
+            {isSupervisionConsultantApprover && (
+              <button
+                onClick={() => executeBulkStatusChange('Approved')}
+                className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                title="Instantly bulk certify and approve all selected RFIs"
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>Bulk Approve</span>
+              </button>
+            )}
 
-            {/* Action Menu Dropdown / Modal Trigger */}
-            <div className="relative">
+            {/* Bulk Approve with Comments (Approvers Only) */}
+            {isSupervisionConsultantApprover && (
+              <button
+                onClick={() => {
+                  setBulkTargetStatus('Approved with Comments');
+                  setIsBulkModalOpen(true);
+                }}
+                className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                title="Approve with remarks or conditions"
+              >
+                <MessageSquare className="w-3.5 h-3.5" />
+                <span>Approve w/ Comments...</span>
+              </button>
+            )}
+
+            {/* Action Menu Dropdown / Modal Trigger (Approvers Only) */}
+            {isSupervisionConsultantApprover && (
+              <div className="relative">
               <button
                 onClick={() => setIsBulkActionMenuOpen(prev => !prev)}
                 className="px-3.5 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border border-white/20"
@@ -1469,6 +1536,7 @@ export default function RfiLogComponent({
                 </div>
               )}
             </div>
+            )}
 
             {/* Clear Selection */}
             <button
@@ -1489,22 +1557,20 @@ export default function RfiLogComponent({
             <table className="w-full text-left border-collapse text-xs">
               <thead className="bg-slate-50 dark:bg-slate-800/90 border-b border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-bold select-none">
                 <tr>
-                  {isSupervisionConsultantApprover && (
-                    <th className="p-3.5 w-10 text-center">
-                      <div className="flex items-center justify-center">
-                        <input
-                          type="checkbox"
-                          checked={isAllSelected}
-                          ref={(el) => {
-                            if (el) el.indeterminate = isSomeSelected;
-                          }}
-                          onChange={toggleSelectAll}
-                          className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500 cursor-pointer accent-indigo-600"
-                          title={isAllSelected ? "Deselect all visible RFIs" : "Select all visible RFIs"}
-                        />
-                      </div>
-                    </th>
-                  )}
+                  <th className="p-3.5 w-10 text-center">
+                    <div className="flex items-center justify-center">
+                      <input
+                        type="checkbox"
+                        checked={isAllSelected}
+                        ref={(el) => {
+                          if (el) el.indeterminate = isSomeSelected;
+                        }}
+                        onChange={toggleSelectAll}
+                        className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500 cursor-pointer accent-indigo-600"
+                        title={isAllSelected ? "Deselect all visible RFIs" : "Select all visible RFIs for PDF export"}
+                      />
+                    </div>
+                  </th>
                   <th className="p-3.5 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/60" onClick={() => { setSortField('submittalNo'); setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc'); }}>
                     <div className="flex items-center gap-1">
                       <span>RFI #</span>
@@ -1526,13 +1592,13 @@ export default function RfiLogComponent({
                     </div>
                   </th>
                   <th className="p-3.5 text-center">Thread</th>
-                  {isSupervisionConsultantApprover && <th className="p-3.5 text-right">Actions</th>}
+                  {isConsultantApproverOrMasterAdmin && <th className="p-3.5 text-right">Actions</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
                 {sortedRfis.length === 0 ? (
                   <tr>
-                    <td colSpan={(isSupervisionConsultantApprover ? 2 : 0) + (!isContractorEditor ? 1 : 0) + 10} className="p-8 text-center text-slate-400">
+                    <td colSpan={11 + (!isContractorEditor ? 1 : 0) + (isConsultantApproverOrMasterAdmin ? 1 : 0)} className="p-8 text-center text-slate-400">
                       No Request for Information (RFI) records match your filter criteria.
                     </td>
                   </tr>
@@ -1557,20 +1623,18 @@ export default function RfiLogComponent({
                             : 'bg-white dark:bg-slate-900 hover:bg-blue-50/70 dark:hover:bg-blue-950/40'
                         }`}
                       >
-                        {/* Multi-Select Checkbox Column (Approvers only) */}
-                        {isSupervisionConsultantApprover && (
-                          <td className="p-3.5 text-center" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex items-center justify-center">
-                              <input
-                                type="checkbox"
-                                checked={isSelected}
-                                onChange={() => toggleSelectRfi(rfi.id)}
-                                className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500 cursor-pointer accent-indigo-600"
-                                title={`Select ${rfi.submittalNo}`}
-                              />
-                            </div>
-                          </td>
-                        )}
+                        {/* Multi-Select Checkbox Column */}
+                        <td className="p-3.5 text-center" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center justify-center">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => toggleSelectRfi(rfi.id)}
+                              className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500 cursor-pointer accent-indigo-600"
+                              title={`Select ${rfi.submittalNo} for PDF export`}
+                            />
+                          </div>
+                        </td>
                         {/* RFI No & Priority */}
                         <td className="p-3.5 font-mono font-bold">
                           <button
@@ -1822,7 +1886,7 @@ export default function RfiLogComponent({
                         </td>
 
                         {/* Actions */}
-                        {isSupervisionConsultantApprover && (
+                        {isConsultantApproverOrMasterAdmin && (
                           <td className="p-3.5 text-right whitespace-nowrap">
                             <div className="flex items-center justify-end gap-1">
                               {!isReadonly && !rfi.consultantResponse && (

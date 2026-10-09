@@ -239,6 +239,10 @@ export interface StandardDocumentHeaderConfig {
   contentWidth: number;
   documentTitle: string;
   subtitle?: string;
+  projectName?: string;
+  consultantName?: string;
+  contractorName?: string;
+  scopeText?: string;
   referenceNo?: string;
   statusBadge?: string;
   dateStamp?: Date | string;
@@ -249,9 +253,9 @@ export interface StandardDocumentHeaderConfig {
 /**
  * Draws an official standardized PDF header with:
  * - ERA Logo in crisp container on the left
- * - Institutional name and standard document title in the center (multi-line safe wrapping)
- * - Official Date Stamp badge on the right, horizontally and vertically aligned with the logo
- * - Bottom dividing boundary line separating header from tables and content
+ * - Institutional name, document title, Project name, Supervision Consultant, and Contractor (strictly wrapped)
+ * - Official Date Stamp badge on the right, horizontally and vertically aligned
+ * - Bottom dividing boundary line separating header from tables and content with guaranteed clearance
  * Returns the Y coordinate where the following content should start.
  */
 export function drawStandardDocumentHeader(
@@ -263,7 +267,6 @@ export function drawStandardDocumentHeader(
   const contentWidth = options.contentWidth || (doc.internal.pageSize.getWidth() - margin * 2);
   const logoSize = 36;
   const dateStampWidth = 124;
-  const dateStampHeight = 38;
   const dateStampX = margin + contentWidth - dateStampWidth;
 
   // 1. Official ERA Logo on the left
@@ -274,11 +277,91 @@ export function drawStandardDocumentHeader(
     borderRadius: 4
   });
 
-  // 2. Official Date Stamp Container on the right (aligned with ERA logo)
+  // 2. Institution, Title & Project Metadata in the center (wrapped strictly)
+  const textStartX = margin + logoSize + 10;
+  const maxTitleWidth = dateStampX - textStartX - 10;
+
+  let lineY = curY + 10;
+
+  // Institution title
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(15, 23, 42); // slate-900
+  doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA)", textStartX, lineY);
+  lineY += 11;
+
+  // Document Title (wrapped strictly)
+  const titleColor = options.titleColor || [30, 64, 175]; // blue-800
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.5);
+  doc.setTextColor(titleColor[0], titleColor[1], titleColor[2]);
+  const wrappedTitle = doc.splitTextToSize(options.documentTitle, maxTitleWidth);
+  wrappedTitle.forEach((tl: string) => {
+    doc.text(tl, textStartX, lineY);
+    lineY += 9.5;
+  });
+
+  lineY += 1.5; // subtle breathing space before project metadata
+
+  // Metadata items: Project Name, Supervision Consultant, Contractor, Scope / Subtitle
+  const metaItems: Array<{ label: string; value: string }> = [];
+
+  if (options.projectName) {
+    metaItems.push({ label: 'PROJECT: ', value: options.projectName });
+  }
+  if (options.consultantName) {
+    metaItems.push({ label: 'SUPERVISION CONSULTANT: ', value: options.consultantName });
+  }
+  if (options.contractorName) {
+    metaItems.push({ label: 'CONTRACTOR: ', value: options.contractorName });
+  }
+  if (options.scopeText) {
+    metaItems.push({ label: 'SCOPE: ', value: options.scopeText });
+  }
+
+  // Fallback for legacy subtitle if specific fields weren't passed
+  if (metaItems.length === 0 && options.subtitle) {
+    metaItems.push({ label: '', value: options.subtitle });
+  } else if (options.subtitle && !options.scopeText && !options.projectName) {
+    metaItems.push({ label: '', value: options.subtitle });
+  }
+
+  doc.setFontSize(6.8);
+  metaItems.forEach(item => {
+    const fullText = item.label ? `${item.label}${item.value}` : item.value;
+    const splitLines = doc.splitTextToSize(fullText, maxTitleWidth);
+    splitLines.forEach((sLine: string, sIdx: number) => {
+      if (item.label && sIdx === 0 && sLine.startsWith(item.label)) {
+        // Draw label in bold slate-700
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(51, 65, 85);
+        doc.text(item.label, textStartX, lineY);
+        const labelW = doc.getTextWidth(item.label);
+
+        // Draw value in normal slate-600
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(71, 85, 105);
+        const rest = sLine.slice(item.label.length);
+        doc.text(rest, textStartX + labelW, lineY);
+      } else {
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(71, 85, 105);
+        doc.text(sLine, textStartX, lineY);
+      }
+      lineY += 8.2;
+    });
+  });
+
+  // Calculate required header height dynamically so NO text can EVER overlap
+  const minNeededHeight = Math.max(logoSize + 8, lineY - curY + 4, options.headerHeight || 44);
+  const dividerY = curY + minNeededHeight;
+
+  // 3. Official Date Stamp Container on the right (aligned dynamically with header height)
+  const dateStampBoxHeight = Math.max(38, Math.min(54, dividerY - curY - 4));
   doc.setFillColor(248, 250, 252); // slate-50
   doc.setDrawColor(226, 232, 240); // slate-200
   doc.setLineWidth(0.75);
-  doc.roundedRect(dateStampX, curY, dateStampWidth, dateStampHeight, 4, 4, 'DF');
+  doc.roundedRect(dateStampX, curY, dateStampWidth, dateStampBoxHeight, 4, 4, 'DF');
 
   // Date Stamp details
   const d = options.dateStamp instanceof Date
@@ -311,57 +394,21 @@ export function drawStandardDocumentHeader(
     ? `REF: ${options.referenceNo}`
     : (options.statusBadge || `${formattedTime} • ERA RECORD`);
   const wrappedStampFooter = doc.splitTextToSize(stampFooter, dateStampWidth - 16);
-  doc.text(wrappedStampFooter[0], dateStampX + 8, curY + 30);
+  doc.text(wrappedStampFooter[0], dateStampX + 8, curY + 29);
 
-  // 3. Institution & Standard Document Title in the center (wrapped strictly)
-  const textStartX = margin + logoSize + 10;
-  const maxTitleWidth = dateStampX - textStartX - 10;
-
-  // Institution title
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10.5);
-  doc.setTextColor(15, 23, 42); // slate-900
-  doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA)", textStartX, curY + 11);
-
-  // Standard Document Title
-  const titleColor = options.titleColor || [30, 64, 175]; // blue-800
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
-  doc.setTextColor(titleColor[0], titleColor[1], titleColor[2]);
-  const wrappedTitle = doc.splitTextToSize(options.documentTitle, maxTitleWidth);
-  doc.text(wrappedTitle[0] || options.documentTitle, textStartX, curY + 22);
-
-  // Subtitle / Reference / Project info
-  let subY = curY + 32;
-  if (wrappedTitle.length > 1) {
-    doc.text(wrappedTitle[1], textStartX, curY + 31);
-    subY = curY + 41;
-  }
-
-  let subLinesCount = 0;
-  if (options.subtitle) {
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7);
-    doc.setTextColor(100, 116, 139);
-    const wrappedSub = doc.splitTextToSize(options.subtitle, maxTitleWidth);
-    wrappedSub.slice(0, 2).forEach((sl: string, sli: number) => {
-      doc.text(sl, textStartX, subY + (sli * 8.5));
-      subLinesCount++;
-    });
+  if (dateStampBoxHeight >= 46 && options.statusBadge && options.referenceNo) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(5.5);
+    doc.setTextColor(79, 70, 229);
+    doc.text(options.statusBadge, dateStampX + 8, curY + 38);
   }
 
   // Header bottom boundary divider line
-  const neededHeight = Math.max(
-    dateStampHeight + 6,
-    wrappedTitle.length > 1 ? (subLinesCount > 1 ? 58 : 52) : (subLinesCount > 1 ? 48 : (options.headerHeight || 44))
-  );
-  const dividerY = curY + neededHeight;
-
   doc.setDrawColor(226, 232, 240);
   doc.setLineWidth(0.75);
   doc.line(margin, dividerY, margin + contentWidth, dividerY);
 
-  return dividerY + 12; // safe next content Y position
+  return dividerY + 10; // safe next content Y position with guaranteed clearance
 }
 
 /**
@@ -682,5 +729,82 @@ export function drawUniversalSignatureBlock(
   });
 
   return y + 30;
+}
+
+/**
+ * Draws a subtle semi-transparent background watermark (e.g. 'DRAFT', 'CONFIDENTIAL')
+ * across the center of the page.
+ */
+export function drawDocumentWatermark(
+  doc: jsPDF,
+  watermark: 'DRAFT' | 'CONFIDENTIAL' | 'NONE' | string | null | undefined,
+  options: {
+    opacity?: number;
+    fontSize?: number;
+    angle?: number;
+  } = {}
+) {
+  if (!watermark || watermark === 'NONE' || watermark === 'none') return;
+
+  const text = watermark.toUpperCase();
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const centerX = pageWidth / 2;
+  const centerY = pageHeight / 2;
+  const angle = options.angle ?? -32;
+  const fontSize = options.fontSize ?? (pageWidth > pageHeight ? 76 : 64);
+
+  // Set graphics state opacity if supported
+  let hasGState = false;
+  try {
+    const docAny = doc as any;
+    if (docAny.GState && typeof docAny.setGState === 'function') {
+      docAny.saveGraphicsState();
+      const gState = new docAny.GState({ opacity: options.opacity ?? 0.12 });
+      docAny.setGState(gState);
+      hasGState = true;
+    }
+  } catch {
+    hasGState = false;
+  }
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(fontSize);
+
+  if (text.includes('DRAFT')) {
+    // Soft rose/amber tone
+    if (hasGState) {
+      doc.setTextColor(225, 29, 72); // rose-600 with alpha
+    } else {
+      doc.setTextColor(248, 205, 215); // soft faint pastel rose
+    }
+  } else if (text.includes('CONFIDENTIAL')) {
+    // Soft indigo/slate tone
+    if (hasGState) {
+      doc.setTextColor(79, 70, 229); // indigo-600 with alpha
+    } else {
+      doc.setTextColor(215, 222, 240); // soft faint pastel indigo
+    }
+  } else {
+    // Neutral slate
+    if (hasGState) {
+      doc.setTextColor(100, 116, 139);
+    } else {
+      doc.setTextColor(226, 232, 240);
+    }
+  }
+
+  doc.text(text, centerX, centerY, {
+    align: 'center',
+    angle
+  });
+
+  if (hasGState) {
+    try {
+      (doc as any).restoreGraphicsState();
+    } catch {
+      // ignore
+    }
+  }
 }
 

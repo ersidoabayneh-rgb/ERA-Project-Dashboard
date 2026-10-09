@@ -35,10 +35,11 @@ import {
   ExternalLink,
   MoveVertical,
   MessageSquare,
-  Printer
+  Printer,
+  ShieldAlert
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
-import { drawEraLogo, drawStandardDocumentHeader, STRICT_1_INCH_MARGIN } from '../lib/pdfReportEngine';
+import { drawEraLogo, drawStandardDocumentHeader, STRICT_1_INCH_MARGIN, drawDocumentWatermark } from '../lib/pdfReportEngine';
 import RfiLogComponent from './RfiLogComponent';
 import SubmittalPrintModal from './SubmittalPrintModal';
 import {
@@ -226,6 +227,31 @@ export default function SubmittalLogView({
     );
   }, [currentUserObj]);
 
+  // Credentials Check: Consultant Approver and Master Admin credentials only
+  const isConsultantApproverOrMasterAdmin = useMemo(() => {
+    if (!currentUserObj) return false;
+    const r = (currentUserObj.role || '').toLowerCase();
+    const u = (currentUserObj.username || '').toLowerCase();
+    const isMasterAdmin = 
+      r === 'master_admin' || 
+      r === 'admin' || 
+      r === 'cpm_admin' || 
+      u === 'admin' || 
+      u === 'master_admin' || 
+      u === 'proj_1781786415663';
+    const isConsultantApprover = 
+      r === 'consultant_approver' || 
+      r === 'approver' || 
+      r === 'era_approver' || 
+      Boolean(currentUserObj.hasApprovalCredential) || 
+      u === 'consultant_approver' || 
+      r.includes('consultant_approver');
+    return isMasterAdmin || isConsultantApprover;
+  }, [currentUserObj]);
+
+  // Watermark state for exported PDFs ('NONE' | 'DRAFT' | 'CONFIDENTIAL')
+  const [pdfWatermark, setPdfWatermark] = useState<'NONE' | 'DRAFT' | 'CONFIDENTIAL'>('NONE');
+
   // Dynamic custom categories list
   const submittalCategories = useMemo<string[]>(() => {
     return consultant.submittalCategories || [
@@ -257,8 +283,9 @@ export default function SubmittalLogView({
   const [showStatusManager, setShowStatusManager] = useState(false);
   const [newStatusName, setNewStatusName] = useState('');
 
-  // Selected submittals for export
+  // Selected submittals for export (Technical Submittals & RFIs)
   const [selectedSubmittalNos, setSelectedSubmittalNos] = useState<string[]>([]);
+  const [selectedRfiIds, setSelectedRfiIds] = useState<string[]>([]);
 
   // Print Submittals & RFI Register Modal
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
@@ -267,7 +294,7 @@ export default function SubmittalLogView({
   const handleOpenPrintModal = (preferredScope?: 'all' | 'selected' | 'technical' | 'rfi') => {
     if (preferredScope) {
       setPrintModalInitialScope(preferredScope);
-    } else if (selectedSubmittalNos.length > 0) {
+    } else if (selectedSubmittalNos.length > 0 || selectedRfiIds.length > 0) {
       setPrintModalInitialScope('selected');
     } else if (activeViewTab === 'rfi_log') {
       setPrintModalInitialScope('rfi');
@@ -683,16 +710,50 @@ export default function SubmittalLogView({
     document.body.removeChild(link);
   };
 
-  const handleExportPdf = () => {
-    // Determine which records to export
-    const recordsToExport = selectedSubmittalNos.length > 0
-      ? sortedSubmittals.filter(s => selectedSubmittalNos.includes(s.submittalNo))
-      : sortedSubmittals;
+  const handleExportPdf = (forcedScope?: 'selected' | 'all') => {
+    // Determine which records to export (Selected Technical Submittals + Selected RFIs)
+    const hasSelectedTech = selectedSubmittalNos.length > 0;
+    const hasSelectedRfi = selectedRfiIds.length > 0;
+    const hasAnySelection = hasSelectedTech || hasSelectedRfi;
+    const isSelectionExport = (forcedScope === 'selected' || (hasAnySelection && forcedScope !== 'all'));
+
+    let recordsToExport: ConsultantSubmittalKpi[] = [];
+
+    if (isSelectionExport) {
+      // 1. Collect selected technical submittals
+      const selectedTechRecords = submittalsList.filter(s =>
+        s.type !== 'RFI' && (
+          selectedSubmittalNos.includes(s.submittalNo) || 
+          (s.id && selectedSubmittalNos.includes(s.id))
+        )
+      );
+      // 2. Collect selected RFIs
+      const selectedRfiRecords = submittalsList.filter(s =>
+        s.type === 'RFI' && (
+          (s.id && selectedRfiIds.includes(s.id)) ||
+          selectedSubmittalNos.includes(s.submittalNo) ||
+          selectedRfiIds.includes(s.submittalNo)
+        )
+      );
+      recordsToExport = [...selectedTechRecords, ...selectedRfiRecords];
+    } else {
+      recordsToExport = activeViewTab === 'rfi_log'
+        ? submittalsList.filter(s => s.type === 'RFI')
+        : [...submittalsList];
+    }
 
     if (recordsToExport.length === 0) {
-      alert('No submittal records available to export.');
+      alert('No submittal or RFI records available to export.');
       return;
     }
+
+    // Chronological order by submitted date
+    recordsToExport.sort((a, b) => {
+      const timeA = a.submittedDate ? new Date(a.submittedDate).getTime() : 0;
+      const timeB = b.submittedDate ? new Date(b.submittedDate).getTime() : 0;
+      if (timeA !== timeB) return timeA - timeB;
+      return (a.submittalNo || '').localeCompare(b.submittalNo || '', undefined, { numeric: true });
+    });
 
     const doc = new jsPDF({
       orientation: 'landscape',
@@ -707,6 +768,86 @@ export default function SubmittalLogView({
     let curY = margin + 14;
     let pageCount = 0;
 
+    const drawSignatureBlocksOnPage = () => {
+      const sigBoxY = pageHeight - margin - 56;
+      const sigBoxH = 38;
+
+      // Card container for signatures at bottom of each page
+      doc.setFillColor(250, 250, 252);
+      doc.setDrawColor(203, 213, 225); // slate-300
+      doc.setLineWidth(0.6);
+      doc.roundedRect(margin + 2, sigBoxY, contentWidth - 4, sigBoxH, 2, 2, 'DF');
+
+      const personnelList = project.supervisionConsultant?.personnel || [];
+      const findPerson = (keywords: string[]) => {
+        const match = personnelList.find(p => {
+          const pos = (p.position || '').toLowerCase();
+          return keywords.some(k => pos.includes(k.toLowerCase()));
+        });
+        return match?.name || '';
+      };
+
+      const sigRoles = [
+        { title: 'SENIOR SURVEYER', defaultName: findPerson(['surveyer', 'surveyor']) },
+        { title: 'QUANTITY SURVEYOR', defaultName: findPerson(['quantity', 'qs']) },
+        { title: 'MATERIAL ENGINEER', defaultName: findPerson(['material', 'laboratory']) },
+        { title: 'ASSISSTANCE RESIDENT ENGINEER', defaultName: findPerson(['assistant resident', 'are']) },
+        { title: 'RESIDENT ENGINEER', defaultName: consultant.residentEngineerName || findPerson(['resident engineer', 'team leader']) || '' }
+      ];
+
+      const colW = (contentWidth - 4) / 5;
+
+      sigRoles.forEach((role, idx) => {
+        const rx = margin + 2 + (idx * colW);
+
+        // Vertical divider between signature columns
+        if (idx > 0) {
+          doc.setDrawColor(226, 232, 240); // slate-200
+          doc.setLineWidth(0.5);
+          doc.line(rx, sigBoxY, rx, sigBoxY + sigBoxH);
+        }
+
+        // Role title header strip
+        doc.setFillColor(241, 245, 249); // slate-100
+        doc.rect(rx + 0.5, sigBoxY + 0.5, colW - 1, 9.5, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(5.8);
+        doc.setTextColor(30, 41, 59); // slate-800
+        doc.text(role.title, rx + (colW / 2), sigBoxY + 7, { align: 'center' });
+
+        // Name, Sign, Date lines
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(5.2);
+        doc.setTextColor(100, 116, 139); // slate-500
+
+        // Name
+        doc.text("Name:", rx + 3, sigBoxY + 16.5);
+        if (role.defaultName) {
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(15, 23, 42);
+          doc.text(role.defaultName.substring(0, 24), rx + 22, sigBoxY + 16.5);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(100, 116, 139);
+        } else {
+          doc.setDrawColor(203, 213, 225);
+          doc.setLineDashPattern([1.5, 1.5], 0);
+          doc.line(rx + 22, sigBoxY + 16.5, rx + colW - 4, sigBoxY + 16.5);
+        }
+
+        // Sign
+        doc.text("Sign:", rx + 3, sigBoxY + 24.5);
+        doc.setDrawColor(203, 213, 225);
+        doc.setLineDashPattern([1.5, 1.5], 0);
+        doc.line(rx + 20, sigBoxY + 24.5, rx + colW - 4, sigBoxY + 24.5);
+
+        // Date
+        doc.text("Date:", rx + 3, sigBoxY + 32.5);
+        doc.line(rx + 20, sigBoxY + 32.5, rx + colW - 4, sigBoxY + 32.5);
+
+        doc.setLineDashPattern([], 0); // reset dash pattern
+      });
+    };
+
     const drawPageDecorations = () => {
       pageCount++;
 
@@ -719,23 +860,33 @@ export default function SubmittalLogView({
       doc.setFillColor(79, 70, 229);
       doc.rect(margin + 2, margin + 1, contentWidth - 4, 3, 'F');
 
+      // Semi-transparent background watermark (DRAFT / CONFIDENTIAL) if configured
+      if (pdfWatermark !== 'NONE') {
+        drawDocumentWatermark(doc, pdfWatermark);
+      }
+
+      // 5 Mandatory Engineering Signatures at the bottom of each page
+      drawSignatureBlocksOnPage();
+
       // Bottom footer line
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7);
+      doc.setFontSize(6.5);
       doc.setTextColor(148, 163, 184); // slate-400
       doc.setDrawColor(226, 232, 240); // slate-200
-      doc.line(margin + 2, pageHeight - margin - 22, pageWidth - margin - 2, pageHeight - margin - 22);
+      doc.line(margin + 2, pageHeight - margin - 15, pageWidth - margin - 2, pageHeight - margin - 15);
 
-      // Footer texts
+      // Footer texts with safe width to avoid text overlap
+      const leftFooter = `ETHIOPIAN ROADS ADMINISTRATION • TECHNICAL SUBMITTAL & RFI REGISTER • ${project.name || 'ERA PROJECT'}`;
+      const splitLeftFooter = doc.splitTextToSize(leftFooter, contentWidth - 140);
       doc.text(
-        `ETHIOPIAN ROADS ADMINISTRATION • TECHNICAL SUBMITTAL REGISTER • ${project.name || 'ERA PROJECT'}`,
+        splitLeftFooter[0] || leftFooter,
         margin + 6,
-        pageHeight - margin - 10
+        pageHeight - margin - 6
       );
       doc.text(
-        `OFFLINE PROJECT DOCUMENTATION • Page ${pageCount}`,
+        `OFFICIAL PROJECT DOCUMENTATION • Page ${pageCount}`,
         pageWidth - margin - 6,
-        pageHeight - margin - 10,
+        pageHeight - margin - 6,
         { align: 'right' }
       );
     };
@@ -743,7 +894,7 @@ export default function SubmittalLogView({
     let drawTableHeader = () => {};
 
     const checkSpace = (needed: number, isTableContext: boolean = false) => {
-      if (curY + needed > pageHeight - margin - 28) {
+      if (curY + needed > pageHeight - margin - 62) {
         doc.addPage();
         curY = margin + 16;
         drawPageDecorations();
@@ -756,16 +907,37 @@ export default function SubmittalLogView({
     // Draw page 1 decorations
     drawPageDecorations();
 
+    const techCount = recordsToExport.filter(s => s.type !== 'RFI').length;
+    const rfiCountInExport = recordsToExport.filter(s => s.type === 'RFI').length;
+
+    let scopeText = "ALL ACTIVE REGISTER RECORDS";
+    if (isSelectionExport) {
+      const parts = [];
+      if (techCount > 0) parts.push(`${techCount} Technical Submittal${techCount > 1 ? 's' : ''}`);
+      if (rfiCountInExport > 0) parts.push(`${rfiCountInExport} RFI${rfiCountInExport > 1 ? 's' : ''}`);
+      scopeText = `SELECTED RECORDS: ${parts.join(' & ')} (${recordsToExport.length} TOTAL)`;
+    } else if (activeViewTab === 'rfi_log') {
+      scopeText = `ALL RFI CORRESPONDENCE RECORDS (${rfiCountInExport} TOTAL)`;
+    } else {
+      scopeText = `ALL TECHNICAL SUBMITTALS & RFIs (${recordsToExport.length} TOTAL)`;
+    }
+
+    const supervisionConsultantName = project.supervisionConsultant?.firmName || consultant?.firmName || project.consultant || 'N/A';
+    const contractorName = project.contractor || 'N/A';
+
     // Standard Document Header: Official ERA Logo, Standard Title & Aligned Date Stamp
     curY = drawStandardDocumentHeader(doc, {
       margin,
       curY,
       contentWidth,
-      documentTitle: "OFFICIAL TECHNICAL SUBMITTAL & CORRESPONDENCE LOG REGISTER",
-      subtitle: `PROJECT: ${project.name || 'CURRENT PROJECT'} • SCOPE: ${selectedSubmittalNos.length > 0 ? 'SELECTED RECORDS ONLY' : 'ALL ACTIVE LOG RECORDS'}`,
+      documentTitle: "OFFICIAL TECHNICAL SUBMITTAL & RFI CORRESPONDENCE REGISTER",
+      projectName: project.name || 'CURRENT PROJECT',
+      consultantName: supervisionConsultantName,
+      contractorName: contractorName,
+      scopeText: scopeText,
       titleColor: [79, 70, 229], // Indigo
-      referenceNo: project.id || 'SUBMITTAL-LOG',
-      statusBadge: 'TECHNICAL REGISTER',
+      referenceNo: project.id || 'SUBMITTAL-RFI-LOG',
+      statusBadge: isSelectionExport ? 'SELECTED EXPORT' : 'REGISTER AUDIT',
     });
 
     // Mini Executive Stats Summary Bar inside PDF
@@ -776,11 +948,8 @@ export default function SubmittalLogView({
     const totalCount = recordsToExport.length;
     const closedCount = recordsToExport.filter(s => s.status === 'Closed' || s.status === 'Approved / Closed' || s.status === 'Approved').length;
     const pendingCount = totalCount - closedCount;
-    const avgDays = totalCount > 0 
-      ? Math.round(recordsToExport.reduce((acc, s) => acc + (s.actualDays || 0), 0) / totalCount)
-      : 0;
 
-    const colWidthKpi = contentWidth / 4;
+    const colWidthKpi = contentWidth / 5;
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(6.5);
@@ -788,44 +957,52 @@ export default function SubmittalLogView({
     doc.text("EXPORTED RECORDS", margin + 12, curY + 12);
     doc.setFontSize(9);
     doc.setTextColor(15, 23, 42);
-    doc.text(`${totalCount} Submittals`, margin + 12, curY + 25);
+    doc.text(`${totalCount} Total`, margin + 12, curY + 25);
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(6.5);
     doc.setTextColor(100, 116, 139);
-    doc.text("RESOLVED / CLOSED", margin + colWidthKpi + 12, curY + 12);
+    doc.text("TECH SUBMITTALS", margin + colWidthKpi + 12, curY + 12);
+    doc.setFontSize(9);
+    doc.setTextColor(79, 70, 229);
+    doc.text(`${techCount} Records`, margin + colWidthKpi + 12, curY + 25);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.5);
+    doc.setTextColor(100, 116, 139);
+    doc.text("REQUESTS FOR INFO (RFIs)", margin + (colWidthKpi * 2) + 12, curY + 12);
+    doc.setFontSize(9);
+    doc.setTextColor(147, 51, 234);
+    doc.text(`${rfiCountInExport} Records`, margin + (colWidthKpi * 2) + 12, curY + 25);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.5);
+    doc.setTextColor(100, 116, 139);
+    doc.text("RESOLVED / CLOSED", margin + (colWidthKpi * 3) + 12, curY + 12);
     doc.setFontSize(9);
     doc.setTextColor(16, 185, 129); // emerald-500
-    doc.text(`${closedCount} Records`, margin + colWidthKpi + 12, curY + 25);
+    doc.text(`${closedCount} Records`, margin + (colWidthKpi * 3) + 12, curY + 25);
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(6.5);
     doc.setTextColor(100, 116, 139);
-    doc.text("UNDER ACTIVE REVIEW", margin + (colWidthKpi * 2) + 12, curY + 12);
+    doc.text("UNDER REVIEW", margin + (colWidthKpi * 4) + 12, curY + 12);
     doc.setFontSize(9);
     doc.setTextColor(245, 158, 11); // amber-500
-    doc.text(`${pendingCount} Records`, margin + (colWidthKpi * 2) + 12, curY + 25);
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(6.5);
-    doc.setTextColor(100, 116, 139);
-    doc.text("AVG RESPONSE DAYS", margin + (colWidthKpi * 3) + 12, curY + 12);
-    doc.setFontSize(9);
-    doc.setTextColor(79, 70, 229); // indigo-600
-    doc.text(`${avgDays} Days`, margin + (colWidthKpi * 3) + 12, curY + 25);
+    doc.text(`${pendingCount} Records`, margin + (colWidthKpi * 4) + 12, curY + 25);
 
     curY += 46;
 
     // Table Column Widths
     const baseTableCols = [
-      { id: 'subNo', title: "SUBMITTAL #", width: 68 },
-      { id: 'category', title: "CATEGORY", width: 86 },
-      { id: 'title', title: "SUBJECT / DESCRIPTION", width: 216 },
-      { id: 'submitted', title: "SUBMITTED", width: 64 },
-      { id: 'responded', title: "RESPONDED", width: 64 },
-      { id: 'sla', title: "SLA (DAYS)", width: 58 },
-      { id: 'status', title: "STATUS", width: 105 },
-      { id: 'engineer', title: "ASSIGNED RE", width: 108 }
+      { id: 'subNo', title: "SUBMITTAL / RFI #", width: 75 },
+      { id: 'category', title: "TYPE / DISCIPLINE", width: 92 },
+      { id: 'title', title: "SUBJECT / DESCRIPTION", width: 210 },
+      { id: 'submitted', title: "SUBMITTED", width: 62 },
+      { id: 'responded', title: "RESPONDED", width: 62 },
+      { id: 'sla', title: "SLA (DAYS)", width: 56 },
+      { id: 'status', title: "STATUS", width: 100 },
+      { id: 'engineer', title: "ASSIGNED RE", width: 105 }
     ];
     const totalBaseColWidth = baseTableCols.reduce((sum, c) => sum + c.width, 0);
     const tableCols = baseTableCols.map(c => ({
@@ -862,8 +1039,9 @@ export default function SubmittalLogView({
 
     // Table rows rendering loop with full word-wrapping
     recordsToExport.forEach((item, index) => {
-      const subNoLines = doc.splitTextToSize(item.submittalNo || '-', tableCols[0].width - 8);
-      const catLines = doc.splitTextToSize(item.type || '-', tableCols[1].width - 8);
+      const subNoLines = doc.splitTextToSize(item.submittalNo || item.id || '-', tableCols[0].width - 8);
+      const catText = item.type === 'RFI' ? (item.discipline ? `RFI (${item.discipline})` : 'RFI') : (item.type || '-');
+      const catLines = doc.splitTextToSize(catText, tableCols[1].width - 8);
       const titleLines = doc.splitTextToSize(item.title || '-', tableCols[2].width - 8);
       const subDateLines = doc.splitTextToSize(item.submittedDate || '-', tableCols[3].width - 8);
       const respDateLines = doc.splitTextToSize(item.respondedDate || 'Awaiting', tableCols[4].width - 8);
@@ -915,7 +1093,11 @@ export default function SubmittalLogView({
       // Col 0: Submittal #
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(7);
-      doc.setTextColor(15, 23, 42);
+      if (item.type === 'RFI') {
+        doc.setTextColor(147, 51, 234); // Purple for RFI
+      } else {
+        doc.setTextColor(15, 23, 42);
+      }
       subNoLines.forEach((line: string, li: number) => {
         doc.text(line, rx + 4, curY + 10 + (li * 8.5));
       });
@@ -1002,74 +1184,14 @@ export default function SubmittalLogView({
     });
 
     // Save generated PDF
-    const filename = selectedSubmittalNos.length > 0
-      ? `ERA_Selected_Submittal_Records_${new Date().toISOString().split('T')[0]}.pdf`
-      : `ERA_Complete_Submittal_Log_${new Date().toISOString().split('T')[0]}.pdf`;
+    const filename = isSelectionExport
+      ? `ERA_Selected_Submittals_and_RFIs_${new Date().toISOString().split('T')[0]}.pdf`
+      : `ERA_Complete_Submittal_RFI_Register_${new Date().toISOString().split('T')[0]}.pdf`;
     doc.save(filename);
   };
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto px-4 py-6">
-      {/* Header Banner */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="space-y-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="px-3 py-1 bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 rounded-full text-xs font-bold border border-purple-200 dark:border-purple-800 flex items-center gap-1.5">
-              <FileText className="w-3.5 h-3.5" /> Submittal Register & RFI Tracking
-            </span>
-            <span className="px-2.5 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-full text-xs font-bold border border-slate-200 dark:border-slate-700 flex items-center gap-1">
-              <Building2 className="w-3 h-3 text-purple-500" /> {project.name || 'Current Project'}
-            </span>
-            <span className="text-xs font-bold text-slate-500 font-mono">
-              {submittalsList.length} Total Records
-            </span>
-          </div>
-          <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
-            Supervision Consultant Submittal & RFI Log
-          </h1>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            Comprehensive register of technical requests for information (RFIs), material approvals, IPC reviews, design drawings, and work inspection requests for <strong className="text-slate-700 dark:text-slate-300">{project.name || 'Current Project'}</strong>.
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          {!isReadonly && !isContractorEditor && (
-            <button
-              onClick={handleInsertQuickRow}
-              className="px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-xs flex items-center gap-1.5 transition cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              Add Technical Submittal
-            </button>
-          )}
-          <button
-            onClick={() => handleOpenPrintModal()}
-            className="px-4 py-2 text-xs font-bold bg-purple-600 hover:bg-purple-700 text-white rounded-xl shadow-xs flex items-center gap-1.5 transition cursor-pointer"
-            title="Print or export selected technical submittals and RFIs by date and month as per user preferences"
-          >
-            <Printer className="w-4 h-4" />
-            <span>Print Register (By Date/Month)</span>
-          </button>
-          <button
-            onClick={handleExportCsv}
-            className="px-4 py-2 text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl flex items-center gap-1.5 transition cursor-pointer"
-          >
-            <Download className="w-4 h-4 text-emerald-600" />
-            Export CSV
-          </button>
-          <button
-            onClick={handleExportPdf}
-            className="px-4 py-2 text-xs font-bold bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 rounded-xl flex items-center gap-1.5 transition cursor-pointer border border-indigo-200 dark:border-indigo-800"
-            title="Export selected submittal records (or all if none are selected) to a beautifully formatted PDF document."
-          >
-            <FileText className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-            {selectedSubmittalNos.length > 0 
-              ? `Export Selected (${selectedSubmittalNos.length}) PDF` 
-              : 'Export All PDF'}
-          </button>
-        </div>
-      </div>
-
       {/* View Switcher: Technical Submittals Register vs Dedicated RFI & Clarifications Log */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white dark:bg-slate-900 p-2 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
         <div className="flex items-center gap-2">
@@ -1141,8 +1263,12 @@ export default function SubmittalLogView({
           isReadonly={isReadonly}
           currentUserObj={currentUserObj}
           targetOverrides={targetOverrides}
+          selectedRfiIds={selectedRfiIds}
+          onSelectedRfiIdsChange={setSelectedRfiIds}
+          onExportPdfSelected={() => handleExportPdf('selected')}
           onOpenPrintModal={(ids) => {
             if (ids && ids.length > 0) {
+              setSelectedRfiIds(ids);
               setPrintModalInitialScope('selected');
             } else {
               setPrintModalInitialScope('rfi');
@@ -1152,6 +1278,94 @@ export default function SubmittalLogView({
         />
       ) : (
         <>
+          {/* Header Banner - Under Technical Submittal Button Only */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="px-3 py-1 bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 rounded-full text-xs font-bold border border-purple-200 dark:border-purple-800 flex items-center gap-1.5">
+                  <FileText className="w-3.5 h-3.5" /> Submittal Register & RFI Tracking
+                </span>
+                <span className="px-2.5 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-full text-xs font-bold border border-slate-200 dark:border-slate-700 flex items-center gap-1">
+                  <Building2 className="w-3 h-3 text-purple-500" /> {project.name || 'Current Project'}
+                </span>
+                <span className="text-xs font-bold text-slate-500 font-mono">
+                  {submittalsList.length} Total Records
+                </span>
+              </div>
+              <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
+                Supervision Consultant Submittal & RFI Log
+              </h1>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Comprehensive register of technical requests for information (RFIs), material approvals, IPC reviews, design drawings, and work inspection requests for <strong className="text-slate-700 dark:text-slate-300">{project.name || 'Current Project'}</strong>.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {!isReadonly && !isContractorEditor && (
+                <button
+                  onClick={handleInsertQuickRow}
+                  className="px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-xs flex items-center gap-1.5 transition cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  Add Technical Submittal
+                </button>
+              )}
+              <button
+                onClick={() => handleOpenPrintModal()}
+                className="px-4 py-2 text-xs font-bold bg-purple-600 hover:bg-purple-700 text-white rounded-xl shadow-xs flex items-center gap-1.5 transition cursor-pointer"
+                title="Print or export selected technical submittals and RFIs by date and month as per user preferences"
+              >
+                <Printer className="w-4 h-4" />
+                <span>Print Register (By Date/Month)</span>
+              </button>
+              <button
+                onClick={handleExportCsv}
+                className="px-4 py-2 text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl flex items-center gap-1.5 transition cursor-pointer"
+              >
+                <Download className="w-4 h-4 text-emerald-600" />
+                Export CSV
+              </button>
+              {/* Configurable PDF Watermark Setting */}
+              <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs">
+                <span className="px-2 py-1 text-[11px] font-bold text-slate-500 flex items-center gap-1">
+                  <ShieldAlert className="w-3.5 h-3.5 text-purple-600" />
+                  <span>Watermark:</span>
+                </span>
+                <select
+                  value={pdfWatermark}
+                  onChange={(e) => setPdfWatermark(e.target.value as 'NONE' | 'DRAFT' | 'CONFIDENTIAL')}
+                  className="bg-white dark:bg-slate-700 text-xs font-bold text-slate-800 dark:text-white px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-600 focus:outline-none cursor-pointer"
+                  title="Apply DRAFT or CONFIDENTIAL watermark to exported PDF files"
+                >
+                  <option value="NONE">None</option>
+                  <option value="DRAFT">DRAFT</option>
+                  <option value="CONFIDENTIAL">CONFIDENTIAL</option>
+                </select>
+              </div>
+              {(selectedSubmittalNos.length > 0 || selectedRfiIds.length > 0) ? (
+                <button
+                  onClick={() => handleExportPdf('selected')}
+                  className="px-4 py-2 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-xl shadow-xs flex items-center gap-1.5 transition cursor-pointer"
+                  title="Export selected RFIs and technical submittals directly to official PDF"
+                >
+                  <FileText className="w-4 h-4 text-rose-200" />
+                  <span>
+                    Export Selected ({selectedSubmittalNos.length + selectedRfiIds.length}) PDF
+                  </span>
+                </button>
+              ) : (
+                <button
+                  onClick={() => handleExportPdf('all')}
+                  className="px-4 py-2 text-xs font-bold bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 rounded-xl flex items-center gap-1.5 transition cursor-pointer border border-indigo-200 dark:border-indigo-800"
+                  title="Export all submittal & RFI records to a beautifully formatted PDF document."
+                >
+                  <FileText className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                  <span>Export All PDF</span>
+                </button>
+              )}
+            </div>
+          </div>
+
       {/* KPI & Evaluation Live Metrics Strip */}
       {!isContractorEditor && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -1334,11 +1548,12 @@ export default function SubmittalLogView({
               <span>Print Selected ({selectedSubmittalNos.length})</span>
             </button>
             <button
-              onClick={handleExportPdf}
-              className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+              onClick={() => handleExportPdf('selected')}
+              className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+              title="Export selected technical submittals and RFIs directly to official PDF"
             >
               <FileText className="w-3.5 h-3.5" />
-              <span>Export PDF ({selectedSubmittalNos.length})</span>
+              <span>Export to PDF ({selectedSubmittalNos.length + selectedRfiIds.length})</span>
             </button>
             <button
               onClick={() => setSelectedSubmittalNos([])}
@@ -1482,13 +1697,13 @@ export default function SubmittalLogView({
                   </div>
                 </th>
                 <th className="p-3.5">Assigned Engineer</th>
-                {!isContractorEditor && <th className="p-3.5 text-right">Actions</th>}
+                {isConsultantApproverOrMasterAdmin && <th className="p-3.5 text-right">Actions</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
               {sortedSubmittals.length === 0 ? (
                 <tr>
-                  <td colSpan={!isContractorEditor ? 12 : 9} className="p-8 text-center text-slate-400">
+                  <td colSpan={9 + (!isContractorEditor ? 2 : 0) + (isConsultantApproverOrMasterAdmin ? 1 : 0)} className="p-8 text-center text-slate-400">
                     No submittal records match your filter criteria.
                   </td>
                 </tr>
@@ -1654,7 +1869,7 @@ export default function SubmittalLogView({
                       <td className="p-3.5 text-slate-600 dark:text-slate-400">
                         {item.assignedEngineer || '-'}
                       </td>
-                      {!isContractorEditor && (
+                      {isConsultantApproverOrMasterAdmin && (
                         <td className="p-3.5 text-right whitespace-nowrap">
                           <div className="flex items-center justify-end gap-1">
                             <button
@@ -2315,8 +2530,11 @@ export default function SubmittalLogView({
         consultant={consultant}
         allSubmittals={submittalsList}
         selectedSubmittalNos={selectedSubmittalNos}
+        selectedRfiIds={selectedRfiIds}
         initialScope={printModalInitialScope}
         targetOverrides={targetOverrides}
+        watermark={pdfWatermark}
+        onWatermarkChange={setPdfWatermark}
       />
 
     </div>
