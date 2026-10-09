@@ -691,16 +691,15 @@ export default function SubmittalPrintModal({
 
     curY += 42;
 
-    // Table Column Widths
+    // Table Column Widths (Assigned RE removed as requested)
     const baseTableCols = [
-      { id: 'subNo', title: "SUBMITTAL / RFI #", width: 78 },
-      { id: 'category', title: "TYPE / DISCIPLINE", width: 92 },
-      { id: 'title', title: "SUBJECT / DESCRIPTION", width: 200 },
-      { id: 'submitted', title: "SUBMITTED", width: 62 },
-      { id: 'responded', title: "RESPONDED", width: 62 },
-      { id: 'sla', title: "SLA (DAYS)", width: 56 },
-      { id: 'status', title: "STATUS", width: 95 },
-      { id: 'engineer', title: "ASSIGNED RE", width: 110 }
+      { id: 'subNo', title: "SUBMITTAL / RFI #", width: 85 },
+      { id: 'category', title: "TYPE / DISCIPLINE", width: 105 },
+      { id: 'title', title: "SUBJECT / DESCRIPTION", width: 260 },
+      { id: 'submitted', title: "SUBMITTED", width: 75 },
+      { id: 'responded', title: "RESPONDED", width: 75 },
+      { id: 'sla', title: "SLA (DAYS)", width: 65 },
+      { id: 'status', title: "STATUS", width: 104 }
     ];
     const totalBaseColWidth = baseTableCols.reduce((sum, c) => sum + c.width, 0);
     const tableCols = baseTableCols.map(c => ({
@@ -763,7 +762,6 @@ export default function SubmittalPrintModal({
         const slaLines = doc.splitTextToSize(`${targetDays}d / ${actualStr}`, tableCols[5].width - 8);
 
         const statusLines = doc.splitTextToSize(item.status || '-', tableCols[6].width - 12);
-        const engLines = doc.splitTextToSize(item.assignedEngineer || '-', tableCols[7].width - 8);
 
         const maxLines = Math.max(
           subNoLines.length,
@@ -772,8 +770,7 @@ export default function SubmittalPrintModal({
           subDateLines.length,
           respDateLines.length,
           slaLines.length,
-          statusLines.length,
-          engLines.length
+          statusLines.length
         );
         const rowHeight = Math.max(20, (maxLines * 8.5) + 6);
 
@@ -875,14 +872,6 @@ export default function SubmittalPrintModal({
           doc.text(line, rx + 7, curY + 10 + (li * 8));
         });
         rx += tableCols[6].width;
-
-        // Assigned Engineer
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(6.5);
-        doc.setTextColor(71, 85, 105);
-        engLines.forEach((line: string, li: number) => {
-          doc.text(line, rx + 4, curY + 10 + (li * 8.5));
-        });
 
         curY += rowHeight;
       });

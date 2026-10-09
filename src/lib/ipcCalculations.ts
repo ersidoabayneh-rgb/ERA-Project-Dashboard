@@ -52,24 +52,32 @@ export function calculateIpcMaturation(
   const etbStatus = ipc.statusEtb || ipc.status || 'Unpaid';
   const usdStatus = ipc.statusUsd || ipc.status || 'Unpaid';
 
-  const isEtbUnpaid = etbStatus === 'Unpaid';
-  const isEtbPartiallyPaid = etbStatus === 'Partially Paid';
-  const isUsdUnpaid = usdStatus === 'Unpaid';
-  const isUsdPartiallyPaid = usdStatus === 'Partially Paid';
-
-  const etbRatio = isEtbUnpaid ? 1.0 : isEtbPartiallyPaid ? 0.5 : 0.0;
-  const usdRatio = !enableUsd ? 0.0 : (isUsdUnpaid ? 1.0 : isUsdPartiallyPaid ? 0.5 : 0.0);
-
   const totalCertEtb = ipc.certifiedEtb || 0;
   const totalCertUsd = enableUsd ? (ipc.certifiedUsd || 0) : 0;
 
-  const unpaidCertifiedEtb = totalCertEtb * etbRatio;
-  const paidCertifiedEtb = totalCertEtb * (1 - etbRatio);
+  let paidCertifiedEtb = 0;
+  if (etbStatus === 'Paid') {
+    paidCertifiedEtb = totalCertEtb;
+  } else if (etbStatus === 'Partially Paid') {
+    paidCertifiedEtb = ipc.paidAmountEtb !== undefined ? Math.min(totalCertEtb, Math.max(0, ipc.paidAmountEtb)) : totalCertEtb * 0.5;
+  } else {
+    paidCertifiedEtb = 0;
+  }
+  const unpaidCertifiedEtb = Math.max(0, totalCertEtb - paidCertifiedEtb);
 
-  const unpaidCertifiedUsd = totalCertUsd * usdRatio;
-  const paidCertifiedUsd = totalCertUsd * (1 - usdRatio);
+  let paidCertifiedUsd = 0;
+  if (enableUsd) {
+    if (usdStatus === 'Paid') {
+      paidCertifiedUsd = totalCertUsd;
+    } else if (usdStatus === 'Partially Paid') {
+      paidCertifiedUsd = ipc.paidAmountUsd !== undefined ? Math.min(totalCertUsd, Math.max(0, ipc.paidAmountUsd)) : totalCertUsd * 0.5;
+    } else {
+      paidCertifiedUsd = 0;
+    }
+  }
+  const unpaidCertifiedUsd = enableUsd ? Math.max(0, totalCertUsd - paidCertifiedUsd) : 0;
 
-  const isFullyPaid = etbRatio === 0 && (!enableUsd || usdRatio === 0);
+  const isFullyPaid = unpaidCertifiedEtb <= 0 && (!enableUsd || unpaidCertifiedUsd <= 0);
 
   let daysElapsed = 0;
   let dueDate: string | null = null;

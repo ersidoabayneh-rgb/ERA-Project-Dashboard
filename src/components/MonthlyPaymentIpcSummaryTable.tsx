@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { Project, IpcItem, formatAccounting } from '../types';
 import { calculateIpcMaturation, calculateProjectIpcSummary } from '../lib/ipcCalculations';
+import { getFidicContractInfo } from '../lib/fidicClauseEngine';
 
 interface AmountInputProps {
   value: number;
@@ -104,6 +105,10 @@ export default function MonthlyPaymentIpcSummaryTable({
   const ipcTracker = project.ipcTracker || [];
   const exchangeRate = project.usdExchangeRate !== undefined ? project.usdExchangeRate : 57.50;
   const annualInterestRate = project.annualInterestRate !== undefined ? project.annualInterestRate : 16.50;
+
+  const fidicInfo = getFidicContractInfo(project);
+  const paymentClauseStr = fidicInfo.clauses.ipcPayment;
+  const interestClauseStr = fidicInfo.editionYear === '1987' ? 'Clause 60.10 [Interest for Delay]' : 'Sub-Clause 14.8 [Delayed Payment / Financing Charges]';
 
   const [expandedIpcId, setExpandedIpcId] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<'All' | 'Paid' | 'Unpaid' | 'Partially Paid' | 'Matured Overdue'>('All');
@@ -236,8 +241,8 @@ export default function MonthlyPaymentIpcSummaryTable({
             <div>
               <h2 className="text-base font-bold text-slate-800 dark:text-zinc-100 flex items-center gap-2 flex-wrap">
                 Monthly Payment Bill Summary, IPC Maturation & Interest Ledger
-                <span className="text-[10px] font-extrabold uppercase bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 px-2 py-0.5 rounded-full">
-                  FIDIC Cl. 14.7 & 14.8
+                <span className="text-[10px] font-extrabold uppercase bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 px-2 py-0.5 rounded-full" title={fidicInfo.edition}>
+                  {fidicInfo.fidicName} • {paymentClauseStr.split(' [')[0]}
                 </span>
                 {!isUsdEnabled && (
                   <span className="text-[10px] font-extrabold uppercase bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 px-2 py-0.5 rounded-full">
@@ -246,7 +251,7 @@ export default function MonthlyPaymentIpcSummaryTable({
                 )}
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Tracks 56-day statutory payment maturation from Contractor Submission Date, Engineer's Submission Date (Certification), and Payment Date (Disbursement) under FIDIC Cl. 14.7 & 14.8
+                Tracks 56-day statutory payment maturation and financing charges under <strong className="text-slate-700 dark:text-slate-300">{paymentClauseStr}</strong> and <strong className="text-slate-700 dark:text-slate-300">{interestClauseStr}</strong> as per selected contract type: <span className="font-semibold text-indigo-600 dark:text-indigo-400">{fidicInfo.deliveryMethodName}</span>
               </p>
             </div>
           </div>
@@ -569,6 +574,20 @@ export default function MonthlyPaymentIpcSummaryTable({
                           <option value="Unpaid">Unpaid</option>
                           <option value="Partially Paid">Partially Paid</option>
                         </select>
+                        {(item.statusEtb || item.status) === 'Partially Paid' && (
+                          <div className="w-full space-y-0.5 pt-1 bg-amber-50/80 dark:bg-amber-950/40 p-1.5 rounded border border-amber-200 dark:border-amber-800">
+                            <div className="text-[9px] text-amber-800 dark:text-amber-300 font-bold text-left">Paid Amount (Br.):</div>
+                            <AmountInput
+                              value={item.paidAmountEtb !== undefined ? item.paidAmountEtb : (item.certifiedEtb || 0) * 0.5}
+                              onChange={(val) => handleFieldChange(realIdx, 'paidAmountEtb', val)}
+                              className="bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-700 rounded px-1 text-right font-mono text-[10px] w-full"
+                              placeholder="Paid Br."
+                            />
+                            <div className="text-[9px] text-slate-500 font-mono text-left pt-0.5">
+                              Unpaid Rem: <span className="text-rose-600 dark:text-rose-400 font-bold">{formatMoney(Math.max(0, (item.certifiedEtb || 0) - (item.paidAmountEtb !== undefined ? item.paidAmountEtb : (item.certifiedEtb || 0) * 0.5)), 'Br.')}</span>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </td>
 
@@ -596,6 +615,20 @@ export default function MonthlyPaymentIpcSummaryTable({
                             <option value="Unpaid">Unpaid</option>
                             <option value="Partially Paid">Partially Paid</option>
                           </select>
+                          {(item.statusUsd || item.status) === 'Partially Paid' && (
+                            <div className="w-full space-y-0.5 pt-1 bg-amber-50/80 dark:bg-amber-950/40 p-1.5 rounded border border-amber-200 dark:border-amber-800">
+                              <div className="text-[9px] text-amber-800 dark:text-amber-300 font-bold text-left">Paid ($):</div>
+                              <AmountInput
+                                value={item.paidAmountUsd !== undefined ? item.paidAmountUsd : (item.certifiedUsd || 0) * 0.5}
+                                onChange={(val) => handleFieldChange(realIdx, 'paidAmountUsd', val)}
+                                className="bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-700 rounded px-1 text-right font-mono text-[10px] w-full"
+                                placeholder="Paid USD"
+                              />
+                              <div className="text-[9px] text-slate-500 font-mono text-left pt-0.5">
+                                Unpaid Rem: <span className="text-rose-600 dark:text-rose-400 font-bold">{formatMoney(Math.max(0, (item.certifiedUsd || 0) - (item.paidAmountUsd !== undefined ? item.paidAmountUsd : (item.certifiedUsd || 0) * 0.5)), '$')}</span>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </td>
                     )}
