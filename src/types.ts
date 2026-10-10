@@ -648,6 +648,7 @@ export interface Project {
   kpiAllocated: KpiAllocatedItem[];
   kpiDeletedSubgroups?: string[];
   kpiDeletedItems?: string[];
+  kpiGroupTargets?: Record<string, number>; // Target score % for each KPI category group (e.g., { G1: 90, G2: 85 })
   history: HistoryItem[];
   workProgram: WorkProgramActivity[];
   bonds: BondGuarantee[];

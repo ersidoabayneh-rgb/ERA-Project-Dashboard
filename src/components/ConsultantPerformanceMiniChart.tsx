@@ -43,7 +43,6 @@ export const ConsultantPerformanceMiniChart: React.FC<ConsultantPerformanceMiniC
 
     if (project.ipcTracker && project.ipcTracker.length > 0) {
       const ipcSubmittals: ConsultantSubmittalKpi[] = project.ipcTracker
-        .filter(ipc => ipc.submissionDate)
         .map(ipc => {
           let actualDays: number | undefined = undefined;
           if (ipc.submissionDate && ipc.certificationDate) {
@@ -54,6 +53,8 @@ export const ConsultantPerformanceMiniChart: React.FC<ConsultantPerformanceMiniC
             }
           }
           const target = targetOverrides['IPC Review'] || DEFAULT_SLA_TARGETS['IPC Review'] || 7;
+          const existing = baseList.find(s => s.id === `ipc_kpi_${ipc.id}` || s.submittalNo === ipc.paymentNo);
+
           return {
             id: `ipc_kpi_${ipc.id}`,
             submittalNo: ipc.paymentNo || 'IPC',
@@ -65,8 +66,8 @@ export const ConsultantPerformanceMiniChart: React.FC<ConsultantPerformanceMiniC
             actualDays: actualDays,
             status: ipc.certificationDate ? 'Approved / Closed' : 'Under Review',
             priority: 'High',
-            assignedEngineer: consultant.residentEngineerName || 'Resident Engineer / Quantity Surveyor',
-            notes: ipc.remarks || `Financial IPC submitted by Contractor on ${ipc.submissionDate || 'N/A'}${ipc.certificationDate ? ` and Engineer submitted to Employer on ${ipc.certificationDate} (${actualDays} days)` : ' (pending Engineer certification)'}.`
+            assignedEngineer: existing?.assignedEngineer || consultant.residentEngineerName || 'Resident Engineer / Quantity Surveyor',
+            notes: existing?.notes || ipc.remarks || `Financial IPC submitted by Contractor on ${ipc.submissionDate || 'N/A'}${ipc.certificationDate ? ` and Engineer submitted to Employer on ${ipc.certificationDate} (${actualDays} days)` : ' (pending Engineer certification)'}.`
           };
         });
 

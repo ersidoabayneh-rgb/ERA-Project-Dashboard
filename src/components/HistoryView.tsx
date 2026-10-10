@@ -2754,16 +2754,12 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
         }
       `}} />
 
-      {/* Header bar */}
       <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 p-5 rounded-2xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-lg font-bold text-slate-800 dark:text-zinc-100 mb-1 flex items-center gap-2">
+          <h2 className="text-lg font-bold text-slate-800 dark:text-zinc-100 flex items-center gap-2">
             <History className="w-5 h-5 text-blue-500" />
             Snapshot Ledger & Change tracking Audit Logs
           </h2>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            Audit trailing of project changes. Take manual milestones snapshots before initiating major BOQ variation orders.
-          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5 self-start md:self-auto no-print">
@@ -2800,9 +2796,6 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
           <h1 className="text-xl md:text-2xl font-black tracking-tight uppercase">
             {p.id && p.id !== 'proj_default' ? `${p.id} - ` : ''}Executive Performance Dashboard
           </h1>
-          <p className="text-xs text-slate-400 font-medium">
-            Fiduciary Audit & Control Portal — {p.name} | Contractor: {p.contractor}
-          </p>
         </div>
       </div>
 
@@ -2945,9 +2938,6 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                     Project: <strong className="text-slate-800 dark:text-slate-100">{p.name || p.id}</strong>
                   </span>
                 </h3>
-                <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
-                  Performance ledger strictly scoped to <span className="font-semibold text-slate-700 dark:text-slate-300">{p.name}</span> — tracking contractor ({p.contractor || 'N/A'}) SPI execution vs. consultant ({consultantEval.firmName || p.consultant || 'N/A'}) ratings.
-                </p>
               </div>
             </div>
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">

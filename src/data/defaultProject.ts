@@ -2382,6 +2382,7 @@ export function defaultProjectTemplate(): Project {
     linearPlan: generateLinearPlanData(),
     linearPlanSpur: generateSpurLinearPlanData(),
     kpiAllocated: generateKpiAllocated('DBB'),
+    kpiGroupTargets: { G1: 100, G2: 100, G3: 100, G4: 100, G5: 100 },
     history: [],
     workProgram: defaultWorkProgram(),
     bonds: [

@@ -36,7 +36,9 @@ import {
   MoveVertical,
   MessageSquare,
   Printer,
-  ShieldAlert
+  ShieldAlert,
+  Link as LinkIcon,
+  Receipt
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { drawEraLogo, drawStandardDocumentHeader, STRICT_1_INCH_MARGIN, drawDocumentWatermark, safeSplitText } from '../lib/pdfReportEngine';
@@ -109,16 +111,6 @@ export default function SubmittalLogView({
 
     if (project?.ipcTracker && project.ipcTracker.length > 0) {
       const ipcSubmittals: ConsultantSubmittalKpi[] = project.ipcTracker
-        .filter(ipc => {
-          if (!ipc.submissionDate) return false;
-          if (commencementTime) {
-            const subTime = new Date(ipc.submissionDate).getTime();
-            if (!isNaN(subTime) && subTime < commencementTime) {
-              return false;
-            }
-          }
-          return true;
-        })
         .map(ipc => {
           let actualDays: number | undefined = undefined;
           if (ipc.submissionDate && ipc.certificationDate) {
@@ -129,6 +121,8 @@ export default function SubmittalLogView({
             }
           }
           const target = targetOverrides['IPC Review'] || 7;
+          const existing = baseList.find(s => s.id === `ipc_kpi_${ipc.id}` || s.submittalNo === ipc.paymentNo);
+
           return {
             id: `ipc_kpi_${ipc.id}`,
             submittalNo: ipc.paymentNo || 'IPC',
@@ -140,8 +134,10 @@ export default function SubmittalLogView({
             actualDays: actualDays,
             status: ipc.certificationDate ? 'Approved / Closed' : 'Under Review',
             priority: 'High',
-            assignedEngineer: consultant.residentEngineerName || 'Resident Engineer / Quantity Surveyor',
-            notes: ipc.remarks || `Financial IPC submitted by Contractor on ${ipc.submissionDate || 'N/A'}${ipc.certificationDate ? ` and certified on ${ipc.certificationDate} (${actualDays} days)` : ' (pending Engineer certification)'}.`
+            assignedEngineer: existing?.assignedEngineer || consultant.residentEngineerName || 'Resident Engineer / Quantity Surveyor',
+            notes: existing?.notes || ipc.remarks || `Financial IPC submitted by Contractor on ${ipc.submissionDate || 'N/A'}${ipc.certificationDate ? ` and certified on ${ipc.certificationDate} (${actualDays} days)` : ' (pending Engineer certification)'}.`,
+            attachments: existing?.attachments,
+            attachmentsCount: existing?.attachmentsCount
           };
         });
 
@@ -150,7 +146,7 @@ export default function SubmittalLogView({
     }
 
     return baseList;
-  }, [consultant.submittalKpis, project?.id, project?.ipcTracker, consultant.residentEngineerName, consultant.commencementDate, targetOverrides]);
+  }, [consultant.submittalKpis, project?.id, project?.ipcTracker, consultant.residentEngineerName, targetOverrides]);
 
   // Search & filter states
   const [submittalSearch, setSubmittalSearch] = useState('');
@@ -367,9 +363,70 @@ export default function SubmittalLogView({
       officialEvaluationGrade: evalSummary.officialGrade as any,
       performanceRating: performanceRatingLabel
     };
-    onProjectUpdate({
+
+    // Bidirectional sync: If any IPC submittal was edited or added, sync its submissionDate to project.ipcTracker
+    let updatedIpcTracker = project.ipcTracker;
+    if (project.ipcTracker && project.ipcTracker.length > 0) {
+      let trackerChanged = false;
+      const newTracker = project.ipcTracker.map(ipc => {
+        const matchingSub = updatedList.find(s => s.id === `ipc_kpi_${ipc.id}` || s.submittalNo === ipc.paymentNo);
+        if (matchingSub) {
+          const newSubDate = matchingSub.submittedDate || '';
+          const newCertDate = matchingSub.respondedDate || '';
+          if ((ipc.submissionDate || '') !== newSubDate || (ipc.certificationDate || '') !== newCertDate) {
+            trackerChanged = true;
+            return {
+              ...ipc,
+              submissionDate: newSubDate,
+              certificationDate: newCertDate
+            };
+          }
+        }
+        return ipc;
+      });
+
+      // Also add newly created IPC Review items to ipcTracker if not already present
+      const addedIpcSubs = updatedList.filter(s => 
+        (s.type === 'IPC Review' || s.id.startsWith('ipc_kpi_')) &&
+        !project.ipcTracker!.some(ipc => `ipc_kpi_${ipc.id}` === s.id || ipc.paymentNo === s.submittalNo)
+      );
+      if (addedIpcSubs.length > 0) {
+        trackerChanged = true;
+        addedIpcSubs.forEach(s => {
+          newTracker.push({
+            id: s.id.replace('ipc_kpi_', ''),
+            paymentNo: s.submittalNo,
+            period: 'Monthly',
+            grossBillEtb: 0,
+            grossBillUsd: 0,
+            priceAdjustmentEtb: 0,
+            advanceRepaymentEtb: 0,
+            retentionEtb: 0,
+            certifiedEtb: 0,
+            certifiedUsd: 0,
+            status: s.status === 'Approved / Closed' || s.status === 'Closed' ? 'Paid' : 'Unpaid',
+            statusEtb: s.status === 'Approved / Closed' || s.status === 'Closed' ? 'Paid' : 'Unpaid',
+            statusUsd: 'Unpaid',
+            submissionDate: s.submittedDate,
+            certificationDate: s.respondedDate,
+            remarks: s.notes || 'Created via Technical Submittal Log'
+          });
+        });
+      }
+
+      if (trackerChanged) {
+        updatedIpcTracker = newTracker;
+      }
+    }
+
+    const updatePayload: Partial<Project> = {
       supervisionConsultant: updatedConsultant
-    }, `Submittal Log: ${actionDesc} (Pillar I SLA: ${evalSummary.slaTurnaroundScore.toFixed(1)}% | 5-Dim: ${evalSummary.fiveDimScore.toFixed(1)}% | Grade: ${evalSummary.officialGrade})`);
+    };
+    if (updatedIpcTracker !== project.ipcTracker) {
+      updatePayload.ipcTracker = updatedIpcTracker;
+    }
+
+    onProjectUpdate(updatePayload, `Submittal Log: ${actionDesc} (Pillar I SLA: ${evalSummary.slaTurnaroundScore.toFixed(1)}% | 5-Dim: ${evalSummary.fiveDimScore.toFixed(1)}% | Grade: ${evalSummary.officialGrade})`);
   };
 
   const handleSaveNewSubmittal = () => {
@@ -1280,9 +1337,6 @@ export default function SubmittalLogView({
               <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
                 Supervision Consultant Submittal & RFI Log
               </h1>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Comprehensive register of technical requests for information (RFIs), material approvals, IPC reviews, design drawings, and work inspection requests for <strong className="text-slate-700 dark:text-slate-300">{project.name || 'Current Project'}</strong>.
-              </p>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
@@ -1625,10 +1679,10 @@ export default function SubmittalLogView({
                 <th 
                   onClick={() => handleToggleHeaderSort('submittedDate')}
                   className="p-3.5 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/60 transition group"
-                  title="Click to sort by Submitted Date"
+                  title="Click to sort by Contractor Submitted Date (Linked with Financial Data for IPCs)"
                 >
                   <div className="flex items-center gap-1">
-                    <span>Submitted</span>
+                    <span>Submitted (Contractor)</span>
                     {sortField === 'submittedDate' ? (
                       sortDirection === 'asc' ? <ArrowUp className="w-3 h-3 text-purple-600 dark:text-purple-400" /> : <ArrowDown className="w-3 h-3 text-purple-600 dark:text-purple-400" />
                     ) : (
@@ -1639,10 +1693,10 @@ export default function SubmittalLogView({
                 <th 
                   onClick={() => handleToggleHeaderSort('respondedDate')}
                   className="p-3.5 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/60 transition group"
-                  title="Click to sort by Responded Date"
+                  title="Click to sort by Supervision Consultant Responded Date to submit to Employer (Linked with Financial Data for IPCs)"
                 >
                   <div className="flex items-center gap-1">
-                    <span>Responded</span>
+                    <span>Responded (To Employer)</span>
                     {sortField === 'respondedDate' ? (
                       sortDirection === 'asc' ? <ArrowUp className="w-3 h-3 text-purple-600 dark:text-purple-400" /> : <ArrowDown className="w-3 h-3 text-purple-600 dark:text-purple-400" />
                     ) : (
@@ -1737,9 +1791,16 @@ export default function SubmittalLogView({
                             <span>Technical RFI</span>
                           </button>
                         ) : (
-                          <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px] font-bold block w-max">
-                            {item.type}
-                          </span>
+                          <div className="flex flex-col gap-1">
+                            <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px] font-bold block w-max">
+                              {item.type}
+                            </span>
+                            {item.type === 'IPC Review' && (
+                              <span className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1" title="IPC Submission date is dynamically linked with the Financial Data page">
+                                <LinkIcon className="w-2.5 h-2.5" /> Financial IPC
+                              </span>
+                            )}
+                          </div>
                         )}
                       </td>
                       <td className="p-3.5 max-w-xs">
@@ -1807,10 +1868,46 @@ export default function SubmittalLogView({
                         </div>
                       </td>
                       <td className="p-3.5 font-mono text-slate-600 dark:text-slate-400 whitespace-nowrap">
-                        {item.submittedDate || '-'}
+                        <div className="flex items-center gap-1.5">
+                          <span>{item.submittedDate || '-'}</span>
+                          {item.type === 'IPC Review' && (
+                            <span 
+                              className="text-[9px] px-1.5 py-0.5 rounded-full font-sans font-bold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 flex items-center gap-0.5" 
+                              title="Contractor Submission Date — Dynamically linked with Financial Data page"
+                            >
+                              <LinkIcon className="w-2.5 h-2.5 text-indigo-500" /> Contractor Subm.
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="p-3.5 font-mono text-slate-600 dark:text-slate-400 whitespace-nowrap">
-                        {item.respondedDate || <span className="text-amber-500 font-semibold italic">Pending</span>}
+                        <div className="flex items-center gap-1.5">
+                          {item.respondedDate ? (
+                            <>
+                              <span>{item.respondedDate}</span>
+                              {item.type === 'IPC Review' && (
+                                <span 
+                                  className="text-[9px] px-1.5 py-0.5 rounded-full font-sans font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 flex items-center gap-0.5" 
+                                  title="Supervision Consultant Response Date to submit to Employer (Certified & Submitted to Employer) — Dynamically linked with Financial Data page"
+                                >
+                                  <LinkIcon className="w-2.5 h-2.5 text-emerald-500" /> Submitted to Employer
+                                </span>
+                              )}
+                            </>
+                          ) : (
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-amber-500 font-semibold italic">Pending</span>
+                              {item.type === 'IPC Review' && (
+                                <span 
+                                  className="text-[9px] px-1.5 py-0.5 rounded-full font-sans font-medium bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800" 
+                                  title="Pending Supervision Consultant response / certification to submit to Employer"
+                                >
+                                  Pending to Employer
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </td>
                       {!isContractorEditor && (
                         <td className="p-3.5 text-center font-mono font-bold text-slate-700 dark:text-slate-300">
@@ -2101,7 +2198,14 @@ export default function SubmittalLogView({
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Submitted Date</label>
+                    <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      Submitted Date (Contractor)
+                      {editingRowDraft.type === 'IPC Review' && (
+                        <span className="ml-2 text-[10px] text-indigo-600 dark:text-indigo-400 font-normal">
+                          (🔗 Linked with Financial Data IPC Submission Date)
+                        </span>
+                      )}
+                    </label>
                     <input
                       type="date"
                       value={editingRowDraft.submittedDate || ''}
@@ -2111,7 +2215,14 @@ export default function SubmittalLogView({
                   </div>
 
                   <div>
-                    <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Responded Date</label>
+                    <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      Responded Date (Submit to Employer)
+                      {editingRowDraft.type === 'IPC Review' && (
+                        <span className="ml-2 text-[10px] text-emerald-600 dark:text-emerald-400 font-normal">
+                          (🔗 Linked with Financial Data Certification / Submit to Employer Date)
+                        </span>
+                      )}
+                    </label>
                     <input
                       type="date"
                       value={editingRowDraft.respondedDate || ''}

@@ -21,7 +21,8 @@ import {
   Info,
   Scale,
   RotateCcw,
-  Edit3
+  Edit3,
+  Link as LinkIcon
 } from 'lucide-react';
 import { Project, IpcItem, formatAccounting } from '../types';
 import { calculateIpcMaturation, calculateProjectIpcSummary } from '../lib/ipcCalculations';
@@ -446,7 +447,22 @@ export default function MonthlyPaymentIpcSummaryTable({
           <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-900 shadow-2xs">
             <tr className="bg-slate-100/90 dark:bg-slate-900/90 text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200 dark:border-slate-700">
               <th className="py-3 px-3 w-32">IPC / Certificate</th>
-              <th className="py-3 px-2 w-32" title="Contractor Submission Date and Elapsed Days">Contractor Submission & Age</th>
+              <th className="py-3 px-2 w-36" title="Contractor Submission Date — Dynamically Linked with Technical Submittal Log">
+                <div className="flex flex-col">
+                  <span>Contractor Submission</span>
+                  <span className="text-[9px] font-semibold text-indigo-600 dark:text-indigo-400 normal-case flex items-center gap-1 mt-0.5">
+                    <LinkIcon className="w-2.5 h-2.5" /> Submittal Log
+                  </span>
+                </div>
+              </th>
+              <th className="py-3 px-2 w-44" title="Supervision Consultant Response Date to Submit to Employer (Certification Date) — Dynamically Linked with Technical Submittal Log">
+                <div className="flex flex-col">
+                  <span>Consultant Resp. (To Employer)</span>
+                  <span className="text-[9px] font-semibold text-emerald-600 dark:text-emerald-400 normal-case flex items-center gap-1 mt-0.5">
+                    <LinkIcon className="w-2.5 h-2.5" /> Submittal Log
+                  </span>
+                </div>
+              </th>
               <th className="py-3 px-2 w-36 text-center">56-Day Maturation</th>
               <th className="py-3 px-2 text-right">Bill Summary (ETB)</th>
               <th className="py-3 px-2 text-right text-emerald-700 dark:text-emerald-400">Price Adj. (ETB)</th>
@@ -495,11 +511,41 @@ export default function MonthlyPaymentIpcSummaryTable({
                         type="date"
                         value={item.submissionDate || ''}
                         onChange={(e) => handleFieldChange(realIdx, 'submissionDate', e.target.value)}
-                        className="w-full bg-transparent border-none focus:ring-1 focus:ring-blue-500 rounded px-1 font-mono text-xs text-slate-700 dark:text-slate-300 outline-none cursor-pointer"
-                        title="Contractor Submission Date"
+                        className="w-full bg-transparent border-none focus:ring-1 focus:ring-indigo-500 rounded px-1 font-mono text-xs text-slate-700 dark:text-slate-300 outline-none cursor-pointer"
+                        title="Contractor Submission Date — Dynamically Linked with Technical Submittal Log"
                       />
                       <div className="text-[10px] font-mono px-1 font-medium text-slate-500 dark:text-slate-400">
                         {item.submissionDate ? `${maturation.daysElapsed} days elapsed` : 'No submission date'}
+                      </div>
+                    </td>
+
+                    {/* Supervision Consultant Response Date to Submit to Employer */}
+                    <td className="py-2.5 px-2">
+                      <input
+                        type="date"
+                        value={item.certificationDate || ''}
+                        onChange={(e) => handleFieldChange(realIdx, 'certificationDate', e.target.value)}
+                        className="w-full bg-transparent border-none focus:ring-1 focus:ring-emerald-500 rounded px-1 font-mono text-xs text-slate-700 dark:text-slate-300 outline-none cursor-pointer"
+                        title="Supervision Consultant Response Date to Submit to Employer (Certification Date) — Dynamically Linked with Technical Submittal Log"
+                      />
+                      <div className="text-[10px] font-mono px-1 font-medium">
+                        {item.certificationDate && item.submissionDate ? (() => {
+                          const subTime = new Date(item.submissionDate).getTime();
+                          const certTime = new Date(item.certificationDate).getTime();
+                          const diff = Math.round((certTime - subTime) / (1000 * 60 * 60 * 24));
+                          const onTime = diff <= 7;
+                          return (
+                            <span className={onTime ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-amber-600 dark:text-amber-400 font-bold'}>
+                              {diff}d turnaround {onTime ? '✓' : '⚠️'}
+                            </span>
+                          );
+                        })() : item.submissionDate ? (
+                          <span className="text-amber-600 dark:text-amber-400 italic text-[9px]">
+                            Pending to Employer
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 text-[9px]">-</span>
+                        )}
                       </div>
                     </td>
 
@@ -704,7 +750,7 @@ export default function MonthlyPaymentIpcSummaryTable({
                   {/* Expanded IPC Detail Row */}
                   {isExpanded && (
                     <tr className="bg-slate-50/90 dark:bg-slate-900/80 border-b border-slate-200 dark:border-slate-700">
-                      <td colSpan={isUsdEnabled ? 12 : 11} className="p-4">
+                      <td colSpan={isUsdEnabled ? 13 : 12} className="p-4">
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
 
                           {/* 56-Day Maturation & Delay Analysis Box */}
@@ -819,26 +865,49 @@ export default function MonthlyPaymentIpcSummaryTable({
 
                           {/* Key Dates & Certificate Notes */}
                           <div className="space-y-2 bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200/80 dark:border-slate-700">
-                            <span className="font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5 text-[11px] uppercase">
-                              <Calendar className="w-3.5 h-3.5 text-blue-500" /> Milestone Dates & Remarks
-                            </span>
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5 text-[11px] uppercase">
+                                <Calendar className="w-3.5 h-3.5 text-blue-500" /> Milestone Dates & Remarks
+                              </span>
+                              <span className="text-[9px] font-semibold text-indigo-600 dark:text-indigo-400 flex items-center gap-0.5">
+                                <LinkIcon className="w-2.5 h-2.5" /> Linked to Submittal Log
+                              </span>
+                            </div>
                             <div className="space-y-1.5 pt-1">
-                              <div className="grid grid-cols-2 gap-2">
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                                 <div>
-                                  <label className="text-[10px] text-slate-400 block font-semibold" title="Engineer's Submission Date to Employer (Certification Date)">
-                                    Engineer's Submission Date (Certification):
+                                  <label className="text-[10px] text-slate-400 block font-semibold" title="Contractor Submission Date to Supervision Consultant — Linked with Technical Submittal Log">
+                                    Contractor Submission Date:
+                                  </label>
+                                  <input
+                                    type="date"
+                                    value={item.submissionDate || ''}
+                                    onChange={(e) => handleFieldChange(realIdx, 'submissionDate', e.target.value)}
+                                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 text-slate-800 dark:text-zinc-100 font-mono text-xs outline-none"
+                                    title="Contractor Submission Date — Linked with Technical Submittal Log"
+                                  />
+                                  <div className="text-[9px] text-indigo-600 dark:text-indigo-400 mt-0.5 font-medium flex items-center gap-0.5">
+                                    <LinkIcon className="w-2 h-2" /> Linked to Submittal Log
+                                  </div>
+                                </div>
+                                <div>
+                                  <label className="text-[10px] text-slate-400 block font-semibold" title="Supervision Consultant Response Date to Submit to Employer (Certification Date) — Linked with Technical Submittal Log">
+                                    Consultant Resp. (To Employer):
                                   </label>
                                   <input
                                     type="date"
                                     value={item.certificationDate || ''}
                                     onChange={(e) => handleFieldChange(realIdx, 'certificationDate', e.target.value)}
                                     className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 text-slate-800 dark:text-zinc-100 font-mono text-xs outline-none"
-                                    title="Engineer's Submission Date to Employer (Certification Date)"
+                                    title="Supervision Consultant Response Date to Submit to Employer (Certification Date) — Linked with Technical Submittal Log"
                                   />
+                                  <div className="text-[9px] text-emerald-600 dark:text-emerald-400 mt-0.5 font-medium flex items-center gap-0.5">
+                                    <LinkIcon className="w-2 h-2" /> Linked to Submittal Log
+                                  </div>
                                 </div>
                                 <div>
                                   <label className="text-[10px] text-slate-400 block font-semibold" title="Payment Date (Disbursement Date to Contractor)">
-                                    Payment Date (Disbursement):
+                                    Payment Disbursement Date:
                                   </label>
                                   <input
                                     type="date"
@@ -871,7 +940,7 @@ export default function MonthlyPaymentIpcSummaryTable({
 
             {filteredIpcs.length === 0 && (
               <tr>
-                <td colSpan={isUsdEnabled ? 12 : 11} className="p-8 text-center text-slate-400 dark:text-slate-500 font-medium">
+                <td colSpan={isUsdEnabled ? 13 : 12} className="p-8 text-center text-slate-400 dark:text-slate-500 font-medium">
                   No monthly payment certificates found matching current filter. Click "+ Add IPC Entry" to record interim payment statements.
                 </td>
               </tr>
@@ -882,7 +951,7 @@ export default function MonthlyPaymentIpcSummaryTable({
           {filteredIpcs.length > 0 && (
             <tfoot>
               <tr className="bg-slate-100 dark:bg-slate-900/90 font-bold border-t-2 border-slate-300 dark:border-slate-700 text-xs">
-                <td className="py-3 px-3 text-slate-800 dark:text-zinc-100 font-extrabold" colSpan={3}>
+                <td className="py-3 px-3 text-slate-800 dark:text-zinc-100 font-extrabold" colSpan={4}>
                   Total Cumulative Ledger:
                 </td>
                 <td className="py-3 px-2 text-right font-mono text-slate-900 dark:text-zinc-100 font-extrabold">

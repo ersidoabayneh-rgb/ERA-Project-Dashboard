@@ -934,16 +934,6 @@ export function resolveProjectSubmittals(
 
   if (project?.ipcTracker && project.ipcTracker.length > 0) {
     const ipcSubmittals: ConsultantSubmittalKpi[] = project.ipcTracker
-      .filter(ipc => {
-        if (!ipc.submissionDate) return false;
-        if (commencementTime) {
-          const subTime = new Date(ipc.submissionDate).getTime();
-          if (!isNaN(subTime) && subTime < commencementTime) {
-            return false;
-          }
-        }
-        return true;
-      })
       .map(ipc => {
         let actualDays: number | undefined = undefined;
         if (ipc.submissionDate && ipc.certificationDate) {
@@ -954,6 +944,8 @@ export function resolveProjectSubmittals(
           }
         }
         const target = targetOverrides['IPC Review'] || 7;
+        const existing = baseList.find(s => s.id === `ipc_kpi_${ipc.id}` || s.submittalNo === ipc.paymentNo);
+
         return {
           id: `ipc_kpi_${ipc.id}`,
           submittalNo: ipc.paymentNo || 'IPC',
@@ -965,8 +957,8 @@ export function resolveProjectSubmittals(
           actualDays: actualDays,
           status: ipc.certificationDate ? 'Approved / Closed' : 'Under Review',
           priority: 'High',
-          assignedEngineer: consultant?.residentEngineerName || 'Resident Engineer / Quantity Surveyor',
-          notes: ipc.remarks || `Financial IPC submitted by Contractor on ${ipc.submissionDate || 'N/A'}${ipc.certificationDate ? ` and certified on ${ipc.certificationDate} (${actualDays} days)` : ' (pending Engineer certification)'}.`
+          assignedEngineer: existing?.assignedEngineer || consultant?.residentEngineerName || 'Resident Engineer / Quantity Surveyor',
+          notes: existing?.notes || ipc.remarks || `Financial IPC submitted by Contractor on ${ipc.submissionDate || 'N/A'}${ipc.certificationDate ? ` and certified on ${ipc.certificationDate} (${actualDays} days)` : ' (pending Engineer certification)'}.`
         };
       });
 

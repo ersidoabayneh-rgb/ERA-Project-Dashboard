@@ -3144,6 +3144,90 @@ let isBatchSyncRunning = false;
       });
     }
 
+    // 3.5. Automatic bidirectional link: IPC Contractor Submission Date & Supervision Consultant Response Date to submit to Employer
+    if (fields.ipcTracker !== undefined) {
+      const currentSubs = updatedProject.supervisionConsultant?.submittalKpis || [];
+      const updatedSubs = currentSubs.map(sub => {
+        if (sub.type === 'IPC Review' || sub.id.startsWith('ipc_kpi_')) {
+          const matchingIpc = fields.ipcTracker?.find(ipc => `ipc_kpi_${ipc.id}` === sub.id || ipc.paymentNo === sub.submittalNo);
+          if (matchingIpc) {
+            let actualDays: number | undefined = undefined;
+            if (matchingIpc.submissionDate && matchingIpc.certificationDate) {
+              const subTime = new Date(matchingIpc.submissionDate).getTime();
+              const certTime = new Date(matchingIpc.certificationDate).getTime();
+              if (!isNaN(subTime) && !isNaN(certTime) && certTime >= subTime) {
+                actualDays = Math.max(0, Math.round((certTime - subTime) / (1000 * 60 * 60 * 24)));
+              }
+            }
+            return {
+              ...sub,
+              submittedDate: matchingIpc.submissionDate || '',
+              respondedDate: matchingIpc.certificationDate || undefined,
+              actualDays,
+              status: matchingIpc.certificationDate ? 'Approved / Closed' : 'Under Review',
+              notes: matchingIpc.remarks || sub.notes
+            };
+          }
+        }
+        return sub;
+      });
+
+      // Ensure every IPC from ipcTracker is present in submittalKpis
+      fields.ipcTracker.forEach(ipc => {
+        const exists = updatedSubs.some(s => s.id === `ipc_kpi_${ipc.id}` || s.submittalNo === ipc.paymentNo);
+        if (!exists) {
+          let actualDays: number | undefined = undefined;
+          if (ipc.submissionDate && ipc.certificationDate) {
+            const subTime = new Date(ipc.submissionDate).getTime();
+            const certTime = new Date(ipc.certificationDate).getTime();
+            if (!isNaN(subTime) && !isNaN(certTime) && certTime >= subTime) {
+              actualDays = Math.max(0, Math.round((certTime - subTime) / (1000 * 60 * 60 * 24)));
+            }
+          }
+          updatedSubs.push({
+            id: `ipc_kpi_${ipc.id}`,
+            submittalNo: ipc.paymentNo || 'IPC',
+            type: 'IPC Review',
+            title: `Interim Payment Certificate (${ipc.paymentNo || 'IPC'}) - Period: ${ipc.period || 'Monthly'}`,
+            submittedDate: ipc.submissionDate || '',
+            respondedDate: ipc.certificationDate || undefined,
+            targetDays: 7,
+            actualDays,
+            status: ipc.certificationDate ? 'Approved / Closed' : 'Under Review',
+            priority: 'High',
+            assignedEngineer: updatedProject.supervisionConsultant?.residentEngineerName || 'Resident Engineer / Quantity Surveyor',
+            notes: ipc.remarks || `Financial IPC submitted by Contractor on ${ipc.submissionDate || 'N/A'}${ipc.certificationDate ? ` and certified on ${ipc.certificationDate} (${actualDays} days)` : ' (pending Engineer certification)'}.`
+          });
+        }
+      });
+
+      updatedProject.supervisionConsultant = {
+        ...(updatedProject.supervisionConsultant || {}),
+        submittalKpis: updatedSubs
+      } as SupervisionConsultantInfo;
+    } else if (fields.supervisionConsultant?.submittalKpis !== undefined && updatedProject.ipcTracker) {
+      let trackerChanged = false;
+      const syncedTracker = updatedProject.ipcTracker.map(ipc => {
+        const match = fields.supervisionConsultant!.submittalKpis!.find(s => s.id === `ipc_kpi_${ipc.id}` || s.submittalNo === ipc.paymentNo);
+        if (match) {
+          const newSubDate = match.submittedDate !== undefined ? match.submittedDate : (ipc.submissionDate || '');
+          const newCertDate = match.respondedDate !== undefined ? match.respondedDate : (ipc.certificationDate || '');
+          if (newSubDate !== (ipc.submissionDate || '') || newCertDate !== (ipc.certificationDate || '')) {
+            trackerChanged = true;
+            return {
+              ...ipc,
+              submissionDate: newSubDate,
+              certificationDate: newCertDate
+            };
+          }
+        }
+        return ipc;
+      });
+      if (trackerChanged) {
+        updatedProject.ipcTracker = syncedTracker;
+      }
+    }
+
     // Auto-update project history too
     const rawHistProgress = updatedProject.physicalProgress !== undefined ? updatedProject.physicalProgress : currentProject.physicalProgress;
     const cleanHistProgress = typeof rawHistProgress === 'number' ? rawHistProgress : (parseFloat(String(rawHistProgress || 0)) || 0);

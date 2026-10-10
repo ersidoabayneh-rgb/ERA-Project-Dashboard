@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { CheckCircle, Info, HelpCircle, Plus, Trash2, Edit, Save, X, Sliders, FolderPlus, Lock } from 'lucide-react';
+import { CheckCircle, Info, HelpCircle, Plus, Trash2, Edit, Save, X, Sliders, FolderPlus, Lock, Target } from 'lucide-react';
 import { Project, KpiAllocatedItem, User } from '../types';
 import { buildKpiHierarchy, getIntegratedKpiAllocated } from '../data/defaultProject';
 import CircularGauge from './CircularGauge';
@@ -86,6 +86,48 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
   const [tempCriteriaDesc, setTempCriteriaDesc] = React.useState<string>('');
   const [tempCriteriaWt, setTempCriteriaWt] = React.useState<number>(100);
   const [tempCriteriaType, setTempCriteriaType] = React.useState<'pct' | 'yn'>('pct');
+
+  // Group Target management state
+  const groupTargets = project.kpiGroupTargets || {};
+  const getGroupTarget = (goalId: string): number => {
+    return groupTargets[goalId] !== undefined ? groupTargets[goalId] : 100;
+  };
+
+  const [editingTargetGoalId, setEditingTargetGoalId] = React.useState<string | null>(null);
+  const [tempTargetInput, setTempTargetInput] = React.useState<string>('');
+
+  const [showTargetModal, setShowTargetModal] = React.useState(false);
+  const [modalTargets, setModalTargets] = React.useState<Record<string, number>>({});
+
+  const handleUpdateGroupTarget = (goalId: string, val: number) => {
+    const cleanVal = Math.max(0, Math.min(100, isNaN(val) ? 100 : val));
+    const updated = {
+      ...groupTargets,
+      [goalId]: cleanVal
+    };
+    onProjectUpdate?.({ kpiGroupTargets: updated }, `Set Target for KPI Group ${goalId} to ${cleanVal}%`);
+    setSaveMessage(`Target for ${goalId} set to ${cleanVal}%`);
+    setTimeout(() => setSaveMessage(null), 2500);
+  };
+
+  const handleSaveAllTargets = () => {
+    const updated = {
+      ...groupTargets,
+      ...modalTargets
+    };
+    onProjectUpdate?.({ kpiGroupTargets: updated }, `Updated KPI category group targets`);
+    setShowTargetModal(false);
+    setSaveMessage('All KPI category group targets saved successfully!');
+    setTimeout(() => setSaveMessage(null), 2500);
+  };
+
+  const handleApplyPresetTarget = (presetVal: number) => {
+    const updated: Record<string, number> = {};
+    hierarchy.forEach(g => {
+      updated[g.id] = presetVal;
+    });
+    setModalTargets(updated);
+  };
 
   // Auto-generate subgroup ID and first KPI ID based on selected parent category group
   React.useEffect(() => {
@@ -847,13 +889,72 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
               className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 rounded-2xl overflow-hidden shadow-sm"
             >
               {/* Goal Header */}
-              <div className="bg-gradient-to-r from-blue-700 to-blue-800 dark:from-slate-750 dark:to-slate-800 text-white px-5 py-3 flex justify-between items-center select-none">
+              <div className="bg-gradient-to-r from-blue-700 to-blue-800 dark:from-slate-750 dark:to-slate-800 text-white px-5 py-3 flex flex-wrap justify-between items-center gap-3 select-none">
                 <span className="font-extrabold text-sm tracking-wide">
                   {goal.id}: {goal.name} <span className="font-normal opacity-85 text-xs">({goal.wt}%)</span>
                 </span>
-                <span className="text-xs md:text-sm font-black bg-amber-500 text-slate-950 px-2.5 py-0.5 rounded-lg border border-amber-400 font-mono shadow-sm">
-                  Goal Score: {score.toFixed(2)}%
-                </span>
+                
+                <div className="flex items-center gap-3">
+                  {/* Group Target Setting */}
+                  <div className="flex items-center gap-1.5 bg-blue-900/60 dark:bg-slate-900/60 px-2.5 py-1 rounded-lg border border-blue-400/30 text-xs">
+                    <span className="text-[10px] font-bold text-blue-200 uppercase tracking-wider flex items-center gap-1">
+                      <Target className="w-3 h-3 text-amber-400" /> Target:
+                    </span>
+                    {editingTargetGoalId === goal.id ? (
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={tempTargetInput}
+                          onChange={(e) => setTempTargetInput(e.target.value)}
+                          className="w-14 bg-slate-900 text-white font-mono text-xs px-1.5 py-0.5 rounded border border-amber-400 outline-none text-center"
+                          autoFocus
+                        />
+                        <button
+                          onClick={() => {
+                            const val = parseFloat(tempTargetInput);
+                            if (!isNaN(val)) {
+                              handleUpdateGroupTarget(goal.id, val);
+                            }
+                            setEditingTargetGoalId(null);
+                          }}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white px-1.5 py-0.5 rounded text-[10px] font-bold cursor-pointer"
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={() => setEditingTargetGoalId(null)}
+                          className="bg-slate-700 hover:bg-slate-600 text-slate-200 px-1.5 py-0.5 rounded text-[10px] font-bold cursor-pointer"
+                        >
+                          X
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-mono font-bold text-amber-300">
+                          {getGroupTarget(goal.id).toFixed(1)}%
+                        </span>
+                        {isAdmin && (
+                          <button
+                            onClick={() => {
+                              setEditingTargetGoalId(goal.id);
+                              setTempTargetInput(getGroupTarget(goal.id).toString());
+                            }}
+                            className="text-[9px] bg-white/10 hover:bg-white/20 text-white px-1.5 py-0.5 rounded transition cursor-pointer font-bold"
+                            title="Set Group Target"
+                          >
+                            Edit
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  <span className="text-xs md:text-sm font-black bg-amber-500 text-slate-950 px-2.5 py-0.5 rounded-lg border border-amber-400 font-mono shadow-sm">
+                    Goal Score: {score.toFixed(2)}%
+                  </span>
+                </div>
               </div>
 
               {/* Subgroups Weight manager triggers */}
@@ -1112,28 +1213,57 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
                           const kpi = kpis.find(k => k.itemId === it.id);
                           if (!kpi) return null;
 
+                          const actualVal = kpi.naActive ? 0 : kpi.alloc;
+                          const targetMax = it.max || 100;
+                          const pctCompletion = Math.min(100, Math.max(0, (actualVal / targetMax) * 100));
+
                           return (
                             <div 
                               key={`ssc-item-${it.id}-${itIdx}`} 
-                              className="group flex flex-col md:flex-row md:items-center justify-between text-xs p-2.5 rounded-xl border border-dotted border-slate-100 hover:border-slate-350 dark:border-slate-700/40 dark:hover:border-slate-600 bg-slate-50/40 dark:bg-slate-900/10 hover:bg-white dark:hover:bg-slate-900/40 transition gap-2"
+                              className="group flex flex-col md:flex-row md:items-center justify-between text-xs p-2.5 rounded-xl border border-dotted border-slate-100 hover:border-slate-350 dark:border-slate-700/40 dark:hover:border-slate-600 bg-slate-50/40 dark:bg-slate-900/10 hover:bg-white dark:hover:bg-slate-900/40 transition gap-3"
                             >
-                              {/* Left parameters */}
-                              <div className="flex items-start gap-2 flex-1">
-                                <span className="font-mono font-bold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-[10px]">
-                                  {it.id}
-                                </span>
-                                
-                                <span className="text-slate-700 dark:text-slate-300 font-medium leading-tight relative mt-0.5 flex items-center gap-1">
-                                  {it.desc}
+                              {/* Left parameters & progress indicator */}
+                              <div className="flex flex-col gap-1.5 flex-1">
+                                <div className="flex items-start gap-2">
+                                  <span className="font-mono font-bold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-[10px]">
+                                    {it.id}
+                                  </span>
                                   
-                                  {/* Tooltip trigger icon */}
-                                  <span className="tooltip-trigger relative text-slate-400 hover:text-blue-500 cursor-help">
-                                    <HelpCircle className="w-3.5 h-3.5" />
-                                    <span className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-64 bg-slate-900 dark:bg-slate-950 text-white rounded-lg p-2 text-[10px] leading-relaxed shadow-xl border border-slate-700 opacity-0 pointer-events-none transition duration-150 tooltip-box z-50">
-                                      {getKpiTooltip(it.id, it.desc)}
+                                  <span className="text-slate-700 dark:text-slate-300 font-medium leading-tight relative mt-0.5 flex items-center gap-1">
+                                    {it.desc}
+                                    
+                                    {/* Tooltip trigger icon */}
+                                    <span className="tooltip-trigger relative text-slate-400 hover:text-blue-500 cursor-help">
+                                      <HelpCircle className="w-3.5 h-3.5" />
+                                      <span className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-64 bg-slate-900 dark:bg-slate-950 text-white rounded-lg p-2 text-[10px] leading-relaxed shadow-xl border border-slate-700 opacity-0 pointer-events-none transition duration-150 tooltip-box z-50">
+                                        {getKpiTooltip(it.id, it.desc)}
+                                      </span>
                                     </span>
                                   </span>
-                                </span>
+                                </div>
+
+                                {/* Visual Progress Bar towards Target */}
+                                <div className="flex items-center gap-2 pl-6">
+                                  <div className="flex-1 max-w-xs h-2 bg-slate-200 dark:bg-slate-750 rounded-full overflow-hidden shadow-2xs">
+                                    <div 
+                                      className={`h-full transition-all duration-300 rounded-full ${
+                                        kpi.naActive 
+                                          ? 'bg-amber-400' 
+                                          : pctCompletion >= 100 
+                                            ? 'bg-emerald-500' 
+                                            : pctCompletion >= 70 
+                                              ? 'bg-blue-500' 
+                                              : pctCompletion >= 40 
+                                                ? 'bg-amber-500' 
+                                                : 'bg-rose-500'
+                                      }`}
+                                      style={{ width: `${pctCompletion}%` }}
+                                    />
+                                  </div>
+                                  <span className="font-mono text-[10px] font-bold text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                                    {kpi.naActive ? 'N/A' : `${pctCompletion.toFixed(1)}% Completed`}
+                                  </span>
+                                </div>
                               </div>
 
                               {/* Right Values / editing elements */}

@@ -376,9 +376,6 @@ export default function SettingsView({
                   </span>
                 </h3>
               </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Toggle specific report modules (e.g., ROW metrics, KPI audit, Annual Progress, IPCs) before generating print-friendly PDF dossiers. Customizing active modules produces cleaner, targeted executive outputs.
-              </p>
             </div>
           </div>
 
