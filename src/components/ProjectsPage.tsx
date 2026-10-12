@@ -100,6 +100,17 @@ export default function ProjectsPage({
   pmos = ['PMO 1', 'PMO 2', 'PMO 3'],
   allUsers = []
 }: ProjectsPageProps) {
+  const isMasterAdmin = Boolean(
+    currentUserObj?.role === 'admin' || 
+    currentUserObj?.role === 'master_admin' || 
+    currentUserObj?.role === 'cpm_admin' ||
+    currentUserObj?.username === 'proj_1781786415663' ||
+    (currentUserObj?.username && currentUserObj.username.toLowerCase().includes('ersido')) ||
+    (currentUserObj?.username && currentUserObj.username.toLowerCase().includes('admin') && currentUserObj?.role !== 'directorate_admin' && currentUserObj?.role !== 'pmo_admin')
+  );
+  const isDirAdmin = currentUserObj?.role === 'directorate_admin' && !isMasterAdmin;
+  const isPmoAdmin = currentUserObj?.role === 'pmo_admin' && !isMasterAdmin;
+
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDirectorate, setSelectedDirectorate] = useState('All');
   const [selectedPmoFilter, setSelectedPmoFilter] = useState('All');
@@ -107,13 +118,17 @@ export default function ProjectsPage({
   const [selectedClassification, setSelectedClassification] = useState('All');
   const [selectedContractor, setSelectedContractor] = useState('All');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState('All');
-  const [groupBy, setGroupBy] = useState<'region' | 'directorate' | 'none'>(() => {
+  const [groupBy, setGroupBy] = useState<'region' | 'directorate' | 'pmo' | 'none'>(() => {
     try {
       const saved = localStorage.getItem('era_projects_group_by');
-      return (saved === 'region' || saved === 'directorate' || saved === 'none') ? saved : 'directorate';
-    } catch {
-      return 'directorate';
-    }
+      if (saved === 'region' || saved === 'directorate' || saved === 'pmo' || saved === 'none') {
+        return saved;
+      }
+    } catch {}
+    if (isMasterAdmin) return 'directorate';
+    if (isDirAdmin) return 'pmo';
+    if (isPmoAdmin) return 'none';
+    return 'directorate';
   });
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [logoError, setLogoError] = useState(false);
@@ -138,13 +153,11 @@ export default function ProjectsPage({
   });
   const [inspectProjectId, setInspectProjectId] = useState<string | null>(null);
 
-  const handleSetGroupBy = (mode: 'region' | 'directorate' | 'none') => {
+  const handleSetGroupBy = (mode: 'region' | 'directorate' | 'pmo' | 'none') => {
     setGroupBy(mode);
     try {
       localStorage.setItem('era_projects_group_by', mode);
-    } catch (e) {
-      console.warn('Could not save group preference', e);
-    }
+    } catch (e) {}
   };
 
   const toggleGroupCollapse = (key: string) => {
@@ -238,16 +251,7 @@ export default function ProjectsPage({
   const [newProjectRegionalStates, setNewProjectRegionalStates] = useState<string[]>(['Sidama']);
   const [createError, setCreateError] = useState('');
 
-  const isMasterAdmin = Boolean(
-    currentUserObj?.role === 'admin' || 
-    currentUserObj?.role === 'master_admin' || 
-    currentUserObj?.role === 'cpm_admin' ||
-    currentUserObj?.username === 'proj_1781786415663' ||
-    (currentUserObj?.username && currentUserObj.username.toLowerCase().includes('ersido')) ||
-    (currentUserObj?.username && currentUserObj.username.toLowerCase().includes('admin') && currentUserObj?.role !== 'directorate_admin' && currentUserObj?.role !== 'pmo_admin')
-  );
-  const isDirAdmin = currentUserObj?.role === 'directorate_admin' && !isMasterAdmin;
-  const isPmoAdmin = currentUserObj?.role === 'pmo_admin' && !isMasterAdmin;
+
 
   const canManageStatus = (p: Project) => {
     const isClosed = isProjectClosed(p.status);
@@ -616,6 +620,55 @@ export default function ProjectsPage({
           });
         }).length
       }];
+    }
+
+    if (groupBy === 'pmo') {
+      const pmoMap = new Map<string, Project[]>();
+      sortedProjects.forEach(p => {
+        const pm = p.pmo || 'PMO 1';
+        if (!pmoMap.has(pm)) pmoMap.set(pm, []);
+        pmoMap.get(pm)!.push(p);
+      });
+
+      const groups: Array<{
+        key: string;
+        title: string;
+        icon: string;
+        badge: string;
+        projects: Project[];
+        totalLength: number;
+        totalBudget: number;
+        avgProgress: number;
+        criticalBondsCount: number;
+      }> = [];
+
+      pmoMap.forEach((projs, pKey) => {
+        const totalLength = projs.reduce((acc, p) => acc + (p.lengthKm || 0), 0);
+        const totalBudget = projs.reduce((acc, p) => acc + getRevisedBudgetMillions(p), 0);
+        const avgProgress = projs.length > 0 ? projs.reduce((acc, p) => acc + (p.physicalProgress || 0), 0) / projs.length : 0;
+        const criticalBondsCount = projs.filter(p => {
+          return (p.bonds || []).some(b => {
+            if (b.status === 'Recovered' || b.status === 'N/A' || (b.status && (b.status.toLowerCase().includes('returned') || b.status.toLowerCase().includes('amortized')))) return false;
+            const exp = new Date(b.expireDate);
+            const now = new Date();
+            return b.status === 'Expired' || exp < now || (exp.getTime() - now.getTime() < 45 * 24 * 60 * 60 * 1000);
+          });
+        }).length;
+
+        groups.push({
+          key: pKey,
+          title: `${pKey} PMO`,
+          icon: '📁',
+          badge: `${projs.length} ${projs.length === 1 ? 'Contract' : 'Contracts'}`,
+          projects: projs,
+          totalLength,
+          totalBudget,
+          avgProgress,
+          criticalBondsCount
+        });
+      });
+
+      return groups.sort((a, b) => b.projects.length - a.projects.length || a.title.localeCompare(b.title));
     }
 
     if (groupBy === 'directorate') {
@@ -1956,6 +2009,7 @@ export default function ProjectsPage({
                   >
                     <option value="region">🏛️ Regional States</option>
                     <option value="directorate">🏢 Directorate</option>
+                    <option value="pmo">📁 PMO</option>
                     <option value="none">📄 Flat (No Grouping)</option>
                   </select>
                   {groupBy !== 'none' && (
