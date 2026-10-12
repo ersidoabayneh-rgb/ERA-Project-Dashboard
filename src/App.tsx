@@ -53,7 +53,7 @@ import {
   Edit3
 } from 'lucide-react';
 
-import { Project, User, ApprovalRequest, PrivateDraft, WorkflowAuditLogEntry, KpiAllocatedItem, SeriesItem, MonthlyProgress, LinearData, RowMetric, ProgressPlan, PaymentItem, AnnualItem, WorkProgramActivity, BondGuarantee, formatAccounting, ProjectDocument, ALL_EDITABLE_PAGES, EditablePageOption, ProjectLifecycleStatus, isProjectClosed, isCpmOrMasterAdmin, isRecentlyUpdated, formatRelativeTime, ContractorScoringWeights, ConsultantScoringWeights, DEFAULT_CONTRACTOR_SCORING_WEIGHTS, DEFAULT_CONSULTANT_SCORING_WEIGHTS, SupervisionConsultantInfo, ThemeSettings, DEFAULT_THEME_SETTINGS, PdfReportConfig, DEFAULT_PDF_REPORT_CONFIG, ETHIOPIAN_REGIONAL_STATES, EthiopianRegionalState } from './types';
+import { Project, User, ApprovalRequest, PrivateDraft, WorkflowAuditLogEntry, KpiAllocatedItem, SeriesItem, MonthlyProgress, LinearData, RowMetric, ProgressPlan, PaymentItem, AnnualItem, WorkProgramActivity, BondGuarantee, formatAccounting, ProjectDocument, ALL_EDITABLE_PAGES, EditablePageOption, ProjectLifecycleStatus, isProjectClosed, isProjectArchived, isCpmOrMasterAdmin, isMasterAdminOnly, isRecentlyUpdated, formatRelativeTime, ContractorScoringWeights, ConsultantScoringWeights, DEFAULT_CONTRACTOR_SCORING_WEIGHTS, DEFAULT_CONSULTANT_SCORING_WEIGHTS, SupervisionConsultantInfo, ThemeSettings, DEFAULT_THEME_SETTINGS, PdfReportConfig, DEFAULT_PDF_REPORT_CONFIG, ETHIOPIAN_REGIONAL_STATES, EthiopianRegionalState } from './types';
 import { createProjectHistoryEntry } from './lib/projectAuditDiff';
 import { getProjectDlpInfo, calculateCappedElapsedTimePct } from './lib/dlpUtils';
 import DlpDefectModal from './components/DlpDefectModal';
@@ -516,6 +516,7 @@ export default function App() {
 
   // User Guide Modal state
   const [isUserGuideOpen, setIsUserGuideOpen] = useState(false);
+  const [projectsPageStatusFilter, setProjectsPageStatusFilter] = useState<string>('All');
 
   // PDF Report Configuration state
   const [pdfReportConfig, setPdfReportConfig] = useState<PdfReportConfig>(() => {
@@ -2855,27 +2856,36 @@ let isBatchSyncRunning = false;
     if (!targetProject) return;
 
     const isCurrentClosed = isProjectClosed(targetProject.status);
-    const isCpmOrMaster = isCpmOrMasterAdmin(currentUserObj);
+    const isMaster = isMasterAdminOnly(currentUserObj);
+    const isDirAdmin = currentUserObj?.role === 'directorate_admin' && (
+      !currentUserObj.assignedDirectorate || 
+      (targetProject.programDirectorate || 'Southern') === currentUserObj.assignedDirectorate
+    );
 
-    // If currently closed, ONLY CPM and Master Admin can change to another lifecycle
-    if (isCurrentClosed && !isCpmOrMaster) {
-      alert(
-        `🔒 ACCESS RESTRICTED: CLOSED PROJECT LIFECYCLE\n\n` +
-        `This project is currently "${targetProject.status}".\n\n` +
-        `Once a project life cycle is marked "Completed and Closed" or "Terminated and Closed", ONLY the Counterpart Project Manager (CPM) Admin and Master Admin have authorization to change it to another life cycle.\n\n` +
-        `Please contact a Master Administrator or CPM Admin to reopen or update this project's lifecycle.`
-      );
-      return;
+    // Rule 1: Once a project is changed to closed status, it can ONLY be changed back by Master Admin only
+    if (isCurrentClosed) {
+      if (!isMaster) {
+        alert(
+          `🔒 ACCESS RESTRICTED: CLOSED PROJECT LIFECYCLE\n\n` +
+          `This project is currently closed ("${targetProject.status}").\n\n` +
+          `Once a project lifecycle is changed to closed status, it can ONLY be changed back or reopened by Master Admin only.\n\n` +
+          `Please contact a Master Administrator to reopen or restore this project.`
+        );
+        return;
+      }
+    } else {
+      // Rule 2: Active project lifecycle status can ONLY be changed by Directorate Admin (or Master Admin as root governance)
+      if (!isDirAdmin && !isMaster) {
+        alert(
+          `🔒 ACCESS RESTRICTED: DIRECTORATE ADMIN PRIVILEGE ONLY\n\n` +
+          `The project lifecycle status can only be changed by Directorate Admin.\n\n` +
+          `Your current account role (${currentUserObj?.role || 'Guest'}) does not have permission to modify project lifecycle status.`
+        );
+        return;
+      }
     }
 
-    const isDirAuth = currentUserObj?.role === 'directorate_admin' && (targetProject.programDirectorate || 'Southern') === currentUserObj.assignedDirectorate;
-    const isPmoAuth = currentUserObj?.role === 'pmo_admin' && (targetProject.pmo || '') === currentUserObj.assignedPmo;
-    const canManage = isCpmOrMaster || isDirAuth || isPmoAuth;
-
-    if (!canManage) {
-      alert("Access Denied: Only authorized Directorate Admins, PMO Admins, CPM Admins, and Master Admins can assign or update project lifecycle status.");
-      return;
-    }
+    const isNowClosed = isProjectClosed(newStatus);
 
     const updatedList = projects.map(p => {
       if (p.id === id) {
@@ -2885,15 +2895,24 @@ let isBatchSyncRunning = false;
           ? (p.completionDate || new Date().toISOString().split('T')[0]) 
           : (p.completionDate || (isNowCompleted ? new Date().toISOString().split('T')[0] : undefined));
 
+        let lastModifiedSec = `Project Status updated to ${newStatus}`;
+        if (isNowClosed && !isCurrentClosed) {
+          lastModifiedSec = `Project lifecycle changed to ${newStatus} (Sent to Archive Repository)`;
+        } else if (!isNowClosed && isCurrentClosed) {
+          lastModifiedSec = `Project lifecycle reopened to ${newStatus} (Restored to Active Portfolio)`;
+        }
+
         return {
           ...p,
           status: newStatus,
           completionDate: compDate,
           dlpStartDate: p.dlpStartDate || compDate,
           dlpDays: typeof p.dlpDays === 'number' ? p.dlpDays : 365,
+          archivedAt: isNowClosed ? (p.archivedAt || new Date().toISOString()) : undefined,
+          archivedBy: isNowClosed ? (p.archivedBy || currentUserObj?.username || 'Administrator') : undefined,
           lastModifiedBy: currentUserObj?.username || 'Administrator',
           lastModifiedAt: new Date().toISOString(),
-          lastModifiedSection: `Project Status updated to ${newStatus}`
+          lastModifiedSection: lastModifiedSec
         };
       }
       return p;
@@ -3806,6 +3825,8 @@ let isBatchSyncRunning = false;
               onDeleteProject={handleDeleteProject}
               onUpdateProjectStatus={handleUpdateProjectStatus}
               onUpdateProject={handleProjectUpdate}
+              initialStatusFilter={projectsPageStatusFilter}
+              onStatusFilterChange={setProjectsPageStatusFilter}
               onLogout={handleLogout}
               onOpenProfile={() => setShowProfile(true)}
               onOpenApprovals={() => setShowApprovals(true)}
@@ -3878,12 +3899,17 @@ let isBatchSyncRunning = false;
               <div className="flex items-center gap-2.5 w-full">
                 <button
                   onClick={() => {
+                    if (isProjectClosed(currentProject.status)) {
+                      setProjectsPageStatusFilter('Archived');
+                    } else {
+                      setProjectsPageStatusFilter('All');
+                    }
                     setCurrentPage('projects');
                     setCurrentProject(null);
                     setCurrentProjectId(null);
                   }}
                   className="p-1 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 border border-slate-200 dark:border-slate-700/60 rounded-md transition shrink-0"
-                  title="Back to Contracts"
+                  title={isProjectClosed(currentProject.status) ? "Back to Archived Portfolio" : "Back to Active Portfolios"}
                 >
                   <ArrowLeft className="w-3.5 h-3.5 text-slate-500" />
                 </button>
@@ -3941,6 +3967,11 @@ let isBatchSyncRunning = false;
                       <div className="flex items-center gap-1.5 group/title flex-wrap">
                         <h1 
                           onClick={() => {
+                            if (isProjectClosed(currentProject.status)) {
+                              setProjectsPageStatusFilter('Archived');
+                            } else {
+                              setProjectsPageStatusFilter('All');
+                            }
                             setCurrentPage('projects');
                             setCurrentProject(null);
                             setCurrentProjectId(null);
@@ -3950,6 +3981,15 @@ let isBatchSyncRunning = false;
                         >
                           {currentProject.name}
                         </h1>
+                        {isProjectClosed(currentProject.status) && (
+                          <span 
+                            className="text-[9.5px] uppercase font-black px-2 py-0.5 rounded-md border bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 flex items-center gap-1 shadow-2xs shrink-0"
+                            title="This project is stored in the Archive Repository (Data entry frozen, accessible from Archive)"
+                          >
+                            <Archive className="w-3 h-3 text-slate-500" />
+                            <span>Archived Portfolio</span>
+                          </span>
+                        )}
                         {(currentUserObj?.role === 'admin' || currentUserObj?.username === 'proj_1781786415663') && (
                           <button
                             onClick={() => setIsEditingProjectName(true)}

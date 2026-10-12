@@ -52,7 +52,7 @@ import {
   Line,
   LabelList
 } from 'recharts';
-import { Project, KpiAllocatedItem, LinearData, formatAccounting, User, ProjectLifecycleStatus, isProjectClosed, isCpmOrMasterAdmin, PdfReportConfig, DEFAULT_PDF_REPORT_CONFIG, ProgressPlanHistoryItem } from '../types';
+import { Project, KpiAllocatedItem, LinearData, formatAccounting, User, ProjectLifecycleStatus, isProjectClosed, isCpmOrMasterAdmin, isMasterAdminOnly, PdfReportConfig, DEFAULT_PDF_REPORT_CONFIG, ProgressPlanHistoryItem } from '../types';
 import CircularGauge from './CircularGauge';
 import BillSummaryPriceAdjChart from './BillSummaryPriceAdjChart';
 import DlpDefectModal from './DlpDefectModal';
@@ -1789,12 +1789,15 @@ export default function DashboardView({
             </span>
             {(() => {
               const isClosed = isProjectClosed(project.status);
-              const isCpmOrMaster = isCpmOrMasterAdmin(currentUserObj);
-              const isDirAuth = currentUserObj?.role === 'directorate_admin' && (project.programDirectorate || 'Southern') === currentUserObj.assignedDirectorate;
-              const isPmoAuth = currentUserObj?.role === 'pmo_admin' && (project.pmo || '') === currentUserObj.assignedPmo;
+              const isMaster = isMasterAdminOnly(currentUserObj);
+              const isDirAuth = currentUserObj?.role === 'directorate_admin' && (
+                !currentUserObj.assignedDirectorate || 
+                (project.programDirectorate || 'Southern') === currentUserObj.assignedDirectorate
+              );
               
-              // If project lifecycle is Closed, ONLY CPM Admin and Master Admin can change to another lifecycle
-              const canManage = isClosed ? isCpmOrMaster : (isCpmOrMaster || isDirAuth || isPmoAuth);
+              // Rule 1: Once changed to closed status, ONLY Master Admin can change it back
+              // Rule 2: Active project lifecycle status can ONLY be changed by Directorate Admin (or Master Admin)
+              const canManage = isClosed ? isMaster : (isDirAuth || isMaster);
 
               return canManage ? (
                 <select
@@ -1806,25 +1809,33 @@ export default function DashboardView({
                     }
                   }}
                   className="bg-transparent text-[12px] font-bold text-slate-800 dark:text-slate-100 outline-none cursor-pointer"
-                  title={isClosed ? "Project lifecycle is closed. As CPM/Master Admin, you have privilege to change its lifecycle." : "Change project lifecycle status"}
+                  title={isClosed ? "Project is in Archive (Closed). Only Master Admin has privilege to reopen or change its lifecycle." : "Change project lifecycle status (Directorate Admin only)"}
                 >
-                  <option value="In Progress">🟢 In Progress</option>
-                  <option value="Completed">✅ Completed</option>
-                  <option value="Completed and Closed">🔒 Completed and Closed</option>
-                  <option value="Suspended">⏸️ Suspended</option>
-                  <option value="Terminated">🛑 Terminated</option>
-                  <option value="Terminated and Closed">🔒 Terminated and Closed</option>
-                  <option value="Archived">📦 Archived</option>
+                  <optgroup label="Active Portfolio">
+                    <option value="In Progress">🟢 In Progress</option>
+                    <option value="Completed">✅ Completed</option>
+                    <option value="Suspended">⏸️ Suspended</option>
+                    <option value="Terminated">🛑 Terminated</option>
+                  </optgroup>
+                  <optgroup label="Archive Repository (Closed)">
+                    <option value="Completed and Closed">🔒 Completed and Closed (Archive)</option>
+                    <option value="Terminated and Closed">🔒 Terminated and Closed (Archive)</option>
+                    <option value="Archived">📦 Archived</option>
+                  </optgroup>
                 </select>
               ) : (
                 <span 
                   className="text-[12px] font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5"
-                  title={isClosed ? "Project lifecycle is closed. Only the CPM Admin and Master Admin are authorized to change it to another lifecycle." : "Lifecycle status"}
+                  title={isClosed ? "Project lifecycle is closed. Once changed to closed status, it can only be changed back by Master Admin only." : "Project lifecycle status can only be changed by Directorate Admin."}
                 >
                   <span>{project.status || 'In Progress'}</span>
-                  {isClosed && (
+                  {isClosed ? (
                     <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800">
-                      🔒 Locked (CPM/Master Admin only)
+                      🔒 Closed (Master Admin only)
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-slate-400 font-medium bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
+                      Directorate Admin only
                     </span>
                   )}
                 </span>

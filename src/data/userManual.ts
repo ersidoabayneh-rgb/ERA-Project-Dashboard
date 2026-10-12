@@ -519,7 +519,7 @@ export function downloadUserManual() {
     'PAGE 1 PURPOSE & UI FEATURE EXPLANATIONS',
     [
       { label: '1. Ethiopian Regional State & Directorate Grouping:', detail: 'Groups contracts by Ethiopian Regional State (Sidama, Oromia, Amhara, Somali, Tigray, Afar, etc.) with aggregate road length, budget, and progress.' },
-      { label: '2. Regional State & Directorate Filters:', detail: 'Instantly filters project cards by Ethiopian Regional State, Program Directorate, PMO Group, or lifecycle status.' },
+      { label: '2. Regional State & Directorate Filters & Archive:', detail: 'Instantly filters project cards by Ethiopian Regional State, Program Directorate, PMO Group, or lifecycle status. Completed & Closed and Terminated & Closed contracts are sent to the Archive Repository and accessed exclusively from Archive.' },
       { label: '3. Real-Time Search:', detail: 'Searches project titles, contractor names, consultants, route codes, regional states, or contract IDs.' },
       { label: '4. Project Status Badges & Risk Indicators:', detail: 'Displays automated health statuses (Critical, Warning, Good) based on expired security bonds and lagging progress.' },
       { label: '5. Executive Group Reports & PDF Manual:', detail: 'Generates multi-project comparative executive dossiers and downloads complete user operational manuals.' }

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   FolderOpen, 
@@ -45,7 +45,7 @@ import {
   ShieldCheck,
   FileSpreadsheet
 } from 'lucide-react';
-import { Project, User, ApprovalRequest, ProjectLifecycleStatus, isProjectClosed, isCpmOrMasterAdmin, isRecentlyUpdated, formatRelativeTime, ETHIOPIAN_REGIONAL_STATES, EthiopianRegionalState } from '../types';
+import { Project, User, ApprovalRequest, ProjectLifecycleStatus, isProjectClosed, isProjectArchived, isCpmOrMasterAdmin, isMasterAdminOnly, isRecentlyUpdated, formatRelativeTime, ETHIOPIAN_REGIONAL_STATES, EthiopianRegionalState } from '../types';
 import { canUserApproveRequest, hasApprovalCredentials } from '../App';
 import eraLogo from '../assets/logo.png';
 import GroupReportGenerator from './GroupReportGenerator';
@@ -60,6 +60,8 @@ interface ProjectsPageProps {
   onDeleteProject: (id: string) => void;
   onUpdateProjectStatus?: (id: string, status: ProjectLifecycleStatus) => void;
   onUpdateProject?: (project: Project, sectionName: string) => void;
+  initialStatusFilter?: string;
+  onStatusFilterChange?: (filter: string) => void;
   onLogout: () => void;
   onOpenProfile: () => void;
   onOpenApprovals: () => void;
@@ -85,6 +87,8 @@ export default function ProjectsPage({
   onDeleteProject,
   onUpdateProjectStatus,
   onUpdateProject,
+  initialStatusFilter,
+  onStatusFilterChange,
   onLogout,
   onOpenProfile,
   onOpenApprovals,
@@ -117,7 +121,43 @@ export default function ProjectsPage({
   const [selectedRegionalState, setSelectedRegionalState] = useState('All');
   const [selectedClassification, setSelectedClassification] = useState('All');
   const [selectedContractor, setSelectedContractor] = useState('All');
-  const [selectedStatusFilter, setSelectedStatusFilter] = useState('All');
+  const [selectedStatusFilter, setSelectedStatusFilter] = useState(initialStatusFilter || 'All');
+  const [archiveNotice, setArchiveNotice] = useState<{
+    projectName: string;
+    status: string;
+    projectId: string;
+    isSentToArchive: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    if (initialStatusFilter) {
+      setSelectedStatusFilter(initialStatusFilter);
+    }
+  }, [initialStatusFilter]);
+
+  const handleStatusChange = (p: Project, newStatus: ProjectLifecycleStatus) => {
+    if (onUpdateProjectStatus) {
+      onUpdateProjectStatus(p.id, newStatus);
+    }
+    const wasClosed = isProjectClosed(p.status);
+    const isNowClosed = isProjectClosed(newStatus);
+    if (!wasClosed && isNowClosed) {
+      setArchiveNotice({
+        projectName: p.name,
+        status: newStatus,
+        projectId: p.id,
+        isSentToArchive: true
+      });
+    } else if (wasClosed && !isNowClosed) {
+      setArchiveNotice({
+        projectName: p.name,
+        status: newStatus,
+        projectId: p.id,
+        isSentToArchive: false
+      });
+    }
+  };
+
   const [groupBy, setGroupBy] = useState<'region' | 'directorate' | 'pmo' | 'none'>(() => {
     try {
       const saved = localStorage.getItem('era_projects_group_by');
@@ -152,6 +192,88 @@ export default function ProjectsPage({
     }
   });
   const [inspectProjectId, setInspectProjectId] = useState<string | null>(null);
+
+  // Bulk Selection & Lifecycle Update State
+  const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
+  const [bulkTargetStatus, setBulkTargetStatus] = useState<ProjectLifecycleStatus>('Completed');
+  const [isBulkConfirmOpen, setIsBulkConfirmOpen] = useState(false);
+  const [isBulkUpdating, setIsBulkUpdating] = useState(false);
+
+  const handleToggleSelectProject = (projectId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setSelectedProjectIds(prev => 
+      prev.includes(projectId) ? prev.filter(id => id !== projectId) : [...prev, projectId]
+    );
+  };
+
+  const handleSelectAllVisible = () => {
+    if (selectedProjectIds.length === sortedProjects.length) {
+      setSelectedProjectIds([]);
+    } else {
+      setSelectedProjectIds(sortedProjects.map(p => p.id));
+    }
+  };
+
+  const handleClearSelection = () => {
+    setSelectedProjectIds([]);
+  };
+
+  const handleOpenBulkConfirm = (targetStatus?: ProjectLifecycleStatus) => {
+    if (targetStatus) {
+      setBulkTargetStatus(targetStatus);
+    }
+    setIsBulkConfirmOpen(true);
+  };
+
+  const handleExecuteBulkStatusUpdate = () => {
+    if (!onUpdateProjectStatus || selectedProjectIds.length === 0) return;
+
+    const affectedProjects = projects.filter(p => selectedProjectIds.includes(p.id));
+    const targetStatus = bulkTargetStatus;
+    const isTargetClosed = isProjectClosed(targetStatus);
+    const isMaster = isMasterAdminOnly(currentUserObj);
+
+    // Verify user authorization for each selected project:
+    // If any selected project is currently closed, only Master Admin can change it back.
+    // If setting active statuses, only Directorate Admin (or Master Admin) can change it.
+    const unauthorizedProjects = affectedProjects.filter(p => !canManageStatus(p));
+    if (unauthorizedProjects.length > 0) {
+      const hasClosed = unauthorizedProjects.some(p => isProjectClosed(p.status));
+      if (hasClosed && !isMaster) {
+        alert(
+          `🔒 BULK UPDATE RESTRICTED: CLOSED PROJECTS SELECTED\n\n` +
+          `One or more selected projects are currently closed. Once a project lifecycle is changed to closed status, it can ONLY be changed back by Master Admin only.\n\n` +
+          `Please deselect closed projects or contact Master Admin.`
+        );
+      } else {
+        alert(
+          `🔒 BULK UPDATE RESTRICTED: DIRECTORATE ADMIN PRIVILEGE REQUIRED\n\n` +
+          `The project lifecycle status can only be changed by Directorate Admin (for their assigned directorate) or Master Admin.\n\n` +
+          `You do not have authority to modify lifecycle status for ${unauthorizedProjects.length} of the selected projects.`
+        );
+      }
+      return;
+    }
+
+    setIsBulkUpdating(true);
+
+    // Update each project
+    selectedProjectIds.forEach(id => {
+      onUpdateProjectStatus(id, targetStatus);
+    });
+
+    const count = selectedProjectIds.length;
+    setSelectedProjectIds([]);
+    setIsBulkConfirmOpen(false);
+    setIsBulkUpdating(false);
+
+    setArchiveNotice({
+      projectName: `${count} Project Contracts`,
+      status: targetStatus,
+      projectId: affectedProjects[0]?.id || '',
+      isSentToArchive: isTargetClosed
+    });
+  };
 
   const handleSetGroupBy = (mode: 'region' | 'directorate' | 'pmo' | 'none') => {
     setGroupBy(mode);
@@ -255,16 +377,18 @@ export default function ProjectsPage({
 
   const canManageStatus = (p: Project) => {
     const isClosed = isProjectClosed(p.status);
-    const isCpmOrMaster = isCpmOrMasterAdmin(currentUserObj);
+    const isMaster = isMasterAdminOnly(currentUserObj);
 
-    // If project lifecycle is Closed, ONLY CPM Admin and Master Admin can change to another lifecycle
+    // Rule 1: Once changed to closed status, ONLY Master Admin can change it back
     if (isClosed) {
-      return isCpmOrMaster;
+      return isMaster;
     }
 
-    if (isMasterAdmin || isCpmOrMaster) return true;
-    if (isDirAdmin) return (p.programDirectorate || 'Southern') === currentUserObj.assignedDirectorate;
-    if (isPmoAdmin) return (p.pmo || '') === currentUserObj.assignedPmo;
+    // Rule 2: Active project lifecycle status can ONLY be changed by Directorate Admin (or Master Admin)
+    if (isMaster) return true;
+    if (isDirAdmin) {
+      return !currentUserObj.assignedDirectorate || (p.programDirectorate || 'Southern') === currentUserObj.assignedDirectorate;
+    }
     return false;
   };
 
@@ -393,11 +517,11 @@ export default function ProjectsPage({
   }, [projects, isMasterAdmin, currentUserObj]);
 
   const activeContractsCount = useMemo(() => {
-    return accessibleProjects.filter(p => p.status !== 'Archived').length;
+    return accessibleProjects.filter(p => !isProjectClosed(p.status)).length;
   }, [accessibleProjects]);
 
   const archivedContractsCount = useMemo(() => {
-    return accessibleProjects.filter(p => p.status === 'Archived').length;
+    return accessibleProjects.filter(p => isProjectClosed(p.status)).length;
   }, [accessibleProjects]);
 
   const availableClassifications = useMemo(() => {
@@ -449,14 +573,15 @@ export default function ProjectsPage({
       })
       .filter(p => {
         if (selectedStatusFilter === 'All') {
-          // Default dashboard view: hide archived contracts
-          return p.status !== 'Archived';
+          // Default active portfolio view: only active lifecycles (hide completed & closed, terminated & closed, archived)
+          return !isProjectClosed(p.status);
         }
         if (selectedStatusFilter === 'All_With_Archived') {
           return true;
         }
         if (selectedStatusFilter === 'Archived') {
-          return p.status === 'Archived';
+          // Archive Repository: shows all completed & closed, terminated & closed, and archived contracts
+          return isProjectClosed(p.status);
         }
         return (p.status || 'In Progress') === selectedStatusFilter;
       })
@@ -921,12 +1046,19 @@ export default function ProjectsPage({
     }
 
     if (isProjectClosed(p.status)) {
+      const isTerm = p.status === 'Terminated and Closed' || String(p.status).includes('Terminated');
       return {
         level: 'Normal' as const,
-        badgeClass: 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800/60',
-        cardBorderClass: 'border-purple-200 dark:border-purple-900/60 shadow-purple-50/30 dark:shadow-none hover:border-purple-400 dark:hover:border-purple-700',
-        icon: <CheckCircle className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />,
-        reason: 'Project Lifecycle Completed & Closed (Data Frozen / Audits Concluded)'
+        badgeClass: isTerm
+          ? 'bg-rose-50 text-rose-800 border-rose-300 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-800'
+          : 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800/60',
+        cardBorderClass: isTerm
+          ? 'border-rose-200 dark:border-rose-900/60 shadow-rose-50/30 dark:shadow-none hover:border-rose-400 dark:hover:border-rose-700'
+          : 'border-purple-200 dark:border-purple-900/60 shadow-purple-50/30 dark:shadow-none hover:border-purple-400 dark:hover:border-purple-700',
+        icon: <Archive className="w-3.5 h-3.5 text-slate-600 dark:text-slate-400" />,
+        reason: isTerm
+          ? 'Project Lifecycle Terminated & Closed (Stored in Archive / Data Frozen)'
+          : 'Project Lifecycle Completed & Closed (Stored in Archive / Audits Concluded)'
       };
     }
 
@@ -1040,6 +1172,8 @@ export default function ProjectsPage({
     const hasPendingChangesForApprover = pendingApprovals.some(a => a.projectId === p.id && a.status === 'pending' && canUserApproveRequest(currentUserObj, a, projects));
     const mySubmittedPendingDraft = pendingApprovals.find(a => a.projectId === p.id && a.status === 'pending' && a.requestedBy === currentUserObj.username);
 
+    const isSelected = selectedProjectIds.includes(p.id);
+
     return (
       <motion.div
         key={p.id}
@@ -1050,12 +1184,29 @@ export default function ProjectsPage({
         whileHover={{ y: -2 }}
         transition={{ duration: 0.2 }}
         onClick={() => onSelectProject(p.id)}
-        className={`bg-white dark:bg-slate-800 border p-2.5 sm:p-3 rounded-xl shadow-xs hover:shadow-md cursor-pointer relative group transition-all ${statusInfo.cardBorderClass}`}
+        className={`bg-white dark:bg-slate-800 border p-2.5 sm:p-3 rounded-xl shadow-xs hover:shadow-md cursor-pointer relative group transition-all ${
+          isSelected 
+            ? 'ring-2 ring-blue-500 border-blue-400 bg-blue-50/20 dark:bg-blue-950/20 shadow-blue-100/30' 
+            : statusInfo.cardBorderClass
+        }`}
       >
         <div className="space-y-1.5 sm:space-y-2">
           {/* Badge & Type */}
           <div className="flex items-center gap-1 justify-between">
-            <div className="flex items-center gap-1 flex-wrap">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {/* Checkbox selector for bulk operations */}
+              <button
+                type="button"
+                onClick={(e) => handleToggleSelectProject(p.id, e)}
+                className={`w-4 h-4 rounded flex items-center justify-center transition border cursor-pointer shrink-0 ${
+                  isSelected
+                    ? 'bg-blue-600 border-blue-600 text-white shadow-2xs'
+                    : 'bg-white dark:bg-slate-700 border-slate-300 dark:border-slate-600 hover:border-blue-400 text-transparent'
+                }`}
+                title={isSelected ? "Deselect this contract" : "Select this contract for bulk action"}
+              >
+                <CheckSquare className="w-3.5 h-3.5 stroke-[2.5]" />
+              </button>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -1203,29 +1354,31 @@ export default function ProjectsPage({
                   onChange={(e) => {
                     e.stopPropagation();
                     const newStatus = e.target.value as ProjectLifecycleStatus;
-                    if (onUpdateProjectStatus) {
-                      onUpdateProjectStatus(p.id, newStatus);
-                    }
+                    handleStatusChange(p, newStatus);
                   }}
                   onClick={(e) => e.stopPropagation()}
                   onMouseDown={(e) => e.stopPropagation()}
                   onPointerDown={(e) => e.stopPropagation()}
                   className={`text-[9.5px] font-extrabold uppercase px-2 py-0.5 rounded-lg border outline-none cursor-pointer transition shadow-2xs ${getLifecycleStatusBadge(p.status).style}`}
-                  title={isProjectClosed(p.status) ? "Project is closed. As CPM/Master Admin, you have privilege to change its lifecycle." : "Assigned by Directorate Admin / Administrator"}
+                  title={isProjectClosed(p.status) ? "Project is in Archive (Closed). Only Master Admin has privilege to reopen or change its lifecycle." : "Change project lifecycle status (Directorate Admin only)"}
                 >
-                  <option value="In Progress">🟢 In Progress</option>
-                  <option value="Completed">✅ Completed</option>
-                  <option value="Completed and Closed">🔒 Completed & Closed</option>
-                  <option value="Suspended">⏸️ Suspended</option>
-                  <option value="Terminated">🛑 Terminated</option>
-                  <option value="Terminated and Closed">🔒 Terminated & Closed</option>
-                  <option value="Archived">📦 Archived</option>
+                  <optgroup label="Active Portfolio">
+                    <option value="In Progress">🟢 In Progress</option>
+                    <option value="Completed">✅ Completed</option>
+                    <option value="Suspended">⏸️ Suspended</option>
+                    <option value="Terminated">🛑 Terminated</option>
+                  </optgroup>
+                  <optgroup label="Archive Repository (Closed)">
+                    <option value="Completed and Closed">🔒 Completed & Closed (Archive)</option>
+                    <option value="Terminated and Closed">🔒 Terminated & Closed (Archive)</option>
+                    <option value="Archived">📦 Archived</option>
+                  </optgroup>
                 </select>
               </div>
             ) : (
               <span 
                 className={`text-[9.5px] font-extrabold uppercase px-1.5 py-0.5 rounded-lg border flex items-center gap-1 ${getLifecycleStatusBadge(p.status).style}`}
-                title={isProjectClosed(p.status) ? "Project lifecycle is closed. Only the CPM Admin and Master Admin are authorized to change it to another lifecycle." : "Assigned by Directorate / System Administrator"}
+                title={isProjectClosed(p.status) ? "Project lifecycle is closed. Once changed to closed status, it can only be changed back by Master Admin only." : "Project lifecycle status can only be changed by Directorate Admin."}
               >
                 <span>{getLifecycleStatusBadge(p.status).icon}</span>
                 <span>{getLifecycleStatusBadge(p.status).label}</span>
@@ -1415,12 +1568,34 @@ export default function ProjectsPage({
       a => a.projectId === p.id && a.status === 'pending' && a.requestedBy === currentUserObj.username
     );
 
+    const isSelected = selectedProjectIds.includes(p.id);
+
     return (
       <tr 
         key={`tbl-row-${p.id}`}
         onClick={() => onSelectProject(p.id)}
-        className="hover:bg-blue-50/40 dark:hover:bg-blue-950/25 transition-colors cursor-pointer group"
+        className={`transition-colors cursor-pointer group ${
+          isSelected 
+            ? 'bg-blue-50/80 dark:bg-blue-950/40 hover:bg-blue-100/70 dark:hover:bg-blue-950/60' 
+            : 'hover:bg-blue-50/40 dark:hover:bg-blue-950/25'
+        }`}
       >
+        {/* Checkbox selector */}
+        <td className="py-2 px-3 text-center align-middle" onClick={(e) => e.stopPropagation()}>
+          <button
+            type="button"
+            onClick={(e) => handleToggleSelectProject(p.id, e)}
+            className={`w-4 h-4 rounded flex items-center justify-center transition border cursor-pointer mx-auto ${
+              isSelected
+                ? 'bg-blue-600 border-blue-600 text-white shadow-2xs'
+                : 'bg-white dark:bg-slate-700 border-slate-300 dark:border-slate-600 hover:border-blue-400 text-transparent'
+            }`}
+            title={isSelected ? "Deselect this contract" : "Select this contract for bulk action"}
+          >
+            <CheckSquare className="w-3.5 h-3.5 stroke-[2.5]" />
+          </button>
+        </td>
+
         {/* Contract Name & Subtitle */}
         <td className="py-2 px-3.5 align-middle">
           <div className="flex items-center gap-2">
@@ -1459,22 +1634,28 @@ export default function ProjectsPage({
               onChange={(e) => {
                 e.stopPropagation();
                 const newStatus = e.target.value as ProjectLifecycleStatus;
-                if (onUpdateProjectStatus) {
-                  onUpdateProjectStatus(p.id, newStatus);
-                }
+                handleStatusChange(p, newStatus);
               }}
               className={`text-[10px] font-extrabold uppercase px-2 py-1 rounded-lg border outline-none cursor-pointer transition shadow-2xs ${getLifecycleStatusBadge(p.status).style}`}
+              title={isProjectClosed(p.status) ? "Project is in Archive (Closed). Only Master Admin has privilege to reopen or change its lifecycle." : "Change project lifecycle status (Directorate Admin only)"}
             >
-              <option value="In Progress">🟢 In Progress</option>
-              <option value="Completed">✅ Completed</option>
-              <option value="Completed and Closed">🔒 Completed & Closed</option>
-              <option value="Suspended">⏸️ Suspended</option>
-              <option value="Terminated">🛑 Terminated</option>
-              <option value="Terminated and Closed">🔒 Terminated & Closed</option>
-              <option value="Archived">📦 Archived</option>
+              <optgroup label="Active Portfolio">
+                <option value="In Progress">🟢 In Progress</option>
+                <option value="Completed">✅ Completed</option>
+                <option value="Suspended">⏸️ Suspended</option>
+                <option value="Terminated">🛑 Terminated</option>
+              </optgroup>
+              <optgroup label="Archive Repository (Closed)">
+                <option value="Completed and Closed">🔒 Completed & Closed (Archive)</option>
+                <option value="Terminated and Closed">🔒 Terminated & Closed (Archive)</option>
+                <option value="Archived">📦 Archived</option>
+              </optgroup>
             </select>
           ) : (
-            <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-lg border inline-flex items-center gap-1 ${getLifecycleStatusBadge(p.status).style}`}>
+            <span 
+              className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-lg border inline-flex items-center gap-1 ${getLifecycleStatusBadge(p.status).style}`}
+              title={isProjectClosed(p.status) ? "Project lifecycle is closed. Once changed to closed status, it can only be changed back by Master Admin only." : "Project lifecycle status can only be changed by Directorate Admin."}
+            >
               <span>{getLifecycleStatusBadge(p.status).icon}</span>
               <span>{getLifecycleStatusBadge(p.status).label}</span>
             </span>
@@ -2028,14 +2209,18 @@ export default function ProjectsPage({
                 <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-900 p-1 rounded-xl border border-slate-200 dark:border-slate-700/60 shrink-0">
                   <button
                     type="button"
-                    onClick={() => setSelectedStatusFilter('All')}
+                    onClick={() => {
+                      setSelectedStatusFilter('All');
+                      if (onStatusFilterChange) onStatusFilterChange('All');
+                    }}
                     className={`px-3 py-1 rounded-lg text-xs font-extrabold transition flex items-center gap-1.5 cursor-pointer ${
                       selectedStatusFilter === 'All'
-                        ? 'bg-white dark:bg-slate-750 text-blue-600 dark:text-blue-400 shadow-xs'
+                        ? 'bg-white dark:bg-slate-750 text-blue-600 dark:text-blue-400 shadow-xs ring-1 ring-blue-500/20'
                         : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                     }`}
+                    title="Active Portfolios: Displays active road projects (In Progress, Completed, Suspended, Terminated)"
                   >
-                    <span>💼 Active</span>
+                    <span>💼 Active Portfolios</span>
                     <span className="bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 text-[10px] px-1.5 py-0.2 rounded font-bold">
                       {activeContractsCount}
                     </span>
@@ -2043,14 +2228,18 @@ export default function ProjectsPage({
 
                   <button
                     type="button"
-                    onClick={() => setSelectedStatusFilter('Archived')}
+                    onClick={() => {
+                      setSelectedStatusFilter('Archived');
+                      if (onStatusFilterChange) onStatusFilterChange('Archived');
+                    }}
                     className={`px-3 py-1 rounded-lg text-xs font-extrabold transition flex items-center gap-1.5 cursor-pointer ${
-                      selectedStatusFilter === 'Archived'
-                        ? 'bg-white dark:bg-slate-750 text-slate-900 dark:text-white shadow-xs'
+                      selectedStatusFilter === 'Archived' || selectedStatusFilter === 'Completed and Closed' || selectedStatusFilter === 'Terminated and Closed'
+                        ? 'bg-white dark:bg-slate-750 text-slate-900 dark:text-white shadow-xs ring-1 ring-slate-400/30'
                         : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                     }`}
+                    title="Archive Repository: Stores Completed & Closed, Terminated & Closed, and Archived road contracts"
                   >
-                    <span>📦 Archived</span>
+                    <span>📦 Archive</span>
                     <span className="bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-[10px] px-1.5 py-0.2 rounded font-bold">
                       {archivedContractsCount}
                     </span>
@@ -2064,18 +2253,25 @@ export default function ProjectsPage({
                   </span>
                   <select
                     value={selectedStatusFilter}
-                    onChange={(e) => setSelectedStatusFilter(e.target.value)}
+                    onChange={(e) => {
+                      setSelectedStatusFilter(e.target.value);
+                      if (onStatusFilterChange) onStatusFilterChange(e.target.value);
+                    }}
                     className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-xs font-bold outline-none text-slate-700 dark:text-zinc-200 focus:border-emerald-500 transition cursor-pointer"
                   >
-                    <option value="All">🌐 Active Portfolio</option>
-                    <option value="In Progress">🟢 In Progress</option>
-                    <option value="Completed">✅ Completed</option>
-                    <option value="Completed and Closed">🔒 Completed & Closed</option>
-                    <option value="Suspended">⏸️ Suspended</option>
-                    <option value="Terminated">🛑 Terminated</option>
-                    <option value="Terminated and Closed">🔒 Terminated & Closed</option>
-                    <option value="Archived">📦 Archived</option>
-                    <option value="All_With_Archived">📁 All (Incl. Archived)</option>
+                    <optgroup label="Active Portfolios">
+                      <option value="All">🌐 All Active Portfolios</option>
+                      <option value="In Progress">🟢 In Progress</option>
+                      <option value="Completed">✅ Completed</option>
+                      <option value="Suspended">⏸️ Suspended</option>
+                      <option value="Terminated">🛑 Terminated</option>
+                    </optgroup>
+                    <optgroup label="Archive Repository (Closed / Archived)">
+                      <option value="Archived">📦 Archive Portfolio (All Closed/Archived)</option>
+                      <option value="Completed and Closed">🔒 Completed & Closed (Archive)</option>
+                      <option value="Terminated and Closed">🔒 Terminated & Closed (Archive)</option>
+                    </optgroup>
+                    <option value="All_With_Archived">📁 All Contracts (Active + Archived)</option>
                   </select>
                 </div>
 
@@ -2234,6 +2430,138 @@ export default function ProjectsPage({
           </div>
         )}
 
+        {/* Floating Bulk Operations Toolbar */}
+        {selectedProjectIds.length > 0 && (
+          <div className="sticky top-2 z-30 bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 text-white p-3 sm:p-3.5 rounded-2xl shadow-xl border border-blue-500/40 backdrop-blur-md animate-in fade-in slide-in-from-top duration-200">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <span className="w-8 h-8 rounded-xl bg-blue-500/30 border border-blue-400/40 flex items-center justify-center font-extrabold text-sm text-blue-200 shadow-inner">
+                  {selectedProjectIds.length}
+                </span>
+                <div>
+                  <div className="text-xs font-black tracking-wide flex items-center gap-2">
+                    <span>{selectedProjectIds.length} Contract{selectedProjectIds.length > 1 ? 's' : ''} Selected</span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-400/30">
+                      Bulk Operations
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-blue-200/80">
+                    Apply lifecycle transitions to all selected contracts simultaneously with safety confirmation.
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons & Target Status Selector */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-1.5 bg-black/30 border border-white/15 px-2 py-1 rounded-xl">
+                  <span className="text-[10px] font-extrabold text-blue-300 uppercase tracking-wider">
+                    Target Status:
+                  </span>
+                  <select
+                    value={bulkTargetStatus}
+                    onChange={(e) => setBulkTargetStatus(e.target.value as ProjectLifecycleStatus)}
+                    className="bg-slate-800 text-white text-xs font-bold px-2 py-1 rounded-lg border border-white/20 outline-none cursor-pointer focus:border-blue-400"
+                  >
+                    <optgroup label="Active Portfolio">
+                      <option value="Completed">✅ Completed</option>
+                      <option value="In Progress">🟢 In Progress</option>
+                      <option value="Suspended">⏸️ Suspended</option>
+                      <option value="Terminated">🛑 Terminated</option>
+                    </optgroup>
+                    <optgroup label="Archive Repository (Closed)">
+                      <option value="Completed and Closed">🔒 Completed & Closed (Archive)</option>
+                      <option value="Terminated and Closed">🔒 Terminated & Closed (Archive)</option>
+                      <option value="Archived">📦 Archived</option>
+                    </optgroup>
+                  </select>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleOpenBulkConfirm(bulkTargetStatus)}
+                  className="px-3.5 py-1.5 bg-blue-500 hover:bg-blue-600 active:scale-95 text-white font-extrabold text-xs rounded-xl transition shadow-md flex items-center gap-1.5 cursor-pointer border border-blue-400/50"
+                >
+                  <CheckSquare className="w-3.5 h-3.5" />
+                  <span>Update Status ({selectedProjectIds.length})</span>
+                </button>
+
+                {/* Quick 1-click preset buttons for common actions */}
+                <button
+                  type="button"
+                  onClick={() => handleOpenBulkConfirm('Completed')}
+                  className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs rounded-xl transition shadow-xs flex items-center gap-1 cursor-pointer border border-emerald-400/40"
+                  title="Quick shortcut: Mark all selected as Completed"
+                >
+                  <span>✅ Complete</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleOpenBulkConfirm('Completed and Closed')}
+                  className="px-2.5 py-1.5 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-bold text-xs rounded-xl transition shadow-xs flex items-center gap-1 cursor-pointer border border-amber-400/40"
+                  title="Quick shortcut: Move all selected to Archive as Completed & Closed"
+                >
+                  <span>📦 Archive</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleClearSelection}
+                  className="px-2.5 py-1.5 bg-white/10 hover:bg-white/20 text-white/90 font-bold text-xs rounded-xl transition cursor-pointer"
+                  title="Deselect all projects"
+                >
+                  Deselect All
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Archive Action Notification Banner */}
+        {archiveNotice && (
+          <div className="flex items-center justify-between gap-3 p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/80 rounded-xl text-xs text-amber-900 dark:text-amber-200 shadow-2xs">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <Archive className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+              <div className="min-w-0">
+                <span className="font-extrabold">
+                  {archiveNotice.isSentToArchive
+                    ? `Contract "${archiveNotice.projectName}" lifecycle updated to "${archiveNotice.status}" and moved to Archive Repository.`
+                    : `Contract "${archiveNotice.projectName}" lifecycle updated to "${archiveNotice.status}" and restored to Active Portfolio.`}
+                </span>
+                <span className="block text-[11px] text-amber-700 dark:text-amber-300 font-medium">
+                  {archiveNotice.isSentToArchive
+                    ? 'This contract is now removed from active portfolios and accessible exclusively from the Archive.'
+                    : 'This contract is now restored and visible in active portfolios.'}
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {archiveNotice.isSentToArchive && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedStatusFilter('Archived');
+                    if (onStatusFilterChange) onStatusFilterChange('Archived');
+                    setArchiveNotice(null);
+                  }}
+                  className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition shadow-xs cursor-pointer flex items-center gap-1"
+                >
+                  <span>Open Archive</span>
+                  <span>📦</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setArchiveNotice(null)}
+                className="p-1 text-amber-600 hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-200 cursor-pointer text-sm font-bold"
+                title="Dismiss"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Projects Grid / Restricted Alert Banner */}
         {hasNoProjects ? (
           <div className="text-center py-16 bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700 p-8 rounded-2xl shadow-sm max-w-lg mx-auto relative overflow-hidden">
@@ -2257,10 +2585,41 @@ export default function ProjectsPage({
             <div className="w-12 h-12 bg-slate-100 dark:bg-slate-700/50 text-slate-400 rounded-full flex items-center justify-center mx-auto mb-3">
               <Search className="w-6 h-6" />
             </div>
-            <h3 className="text-sm font-extrabold text-slate-800 dark:text-slate-100">No Matching Contracts Found</h3>
+            <h3 className="text-sm font-extrabold text-slate-800 dark:text-slate-100">
+              {selectedStatusFilter === 'Archived' ? 'No Archived Contracts Found' : 'No Matching Active Contracts Found'}
+            </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-              No contracts matched your current search query or filter criteria.
+              {selectedStatusFilter === 'Archived'
+                ? 'No closed or archived contracts match the criteria. Contracts marked as Completed & Closed or Terminated & Closed will appear here.'
+                : 'No contracts matched your current query in the Active Portfolio.'}
             </p>
+            {selectedStatusFilter === 'All' && (() => {
+              const matchingArchived = accessibleProjects.filter(p => isProjectClosed(p.status)).filter(p => {
+                if (!searchQuery.trim()) return false;
+                const q = searchQuery.toLowerCase().trim();
+                return (p.name && p.name.toLowerCase().includes(q)) || (p.id && p.id.toLowerCase().includes(q));
+              });
+              if (matchingArchived.length > 0) {
+                return (
+                  <div className="mt-3 p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs">
+                    <p className="text-slate-600 dark:text-slate-300">
+                      📦 Found <strong>{matchingArchived.length}</strong> matching contract(s) in the <strong>Archive Repository</strong>.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedStatusFilter('Archived');
+                        if (onStatusFilterChange) onStatusFilterChange('Archived');
+                      }}
+                      className="mt-2 px-3 py-1 bg-slate-700 hover:bg-slate-800 text-white rounded-lg font-bold text-xs cursor-pointer"
+                    >
+                      Search Archive Repository ➜
+                    </button>
+                  </div>
+                );
+              }
+              return null;
+            })()}
             <button
               onClick={() => {
                 setSearchQuery('');
@@ -2276,7 +2635,7 @@ export default function ProjectsPage({
         ) : (
           <div className="space-y-2.5">
             {/* Archived Repository Notice Banner */}
-            {selectedStatusFilter === 'Archived' && (
+            {(selectedStatusFilter === 'Archived' || selectedStatusFilter === 'Completed and Closed' || selectedStatusFilter === 'Terminated and Closed') && (
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 bg-slate-100/90 dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 rounded-2xl shadow-xs">
                 <div className="flex items-center gap-3">
                   <div className="w-9 h-9 rounded-xl bg-slate-700 dark:bg-slate-600 text-white flex items-center justify-center shrink-0 shadow-xs">
@@ -2290,16 +2649,19 @@ export default function ProjectsPage({
                       </span>
                     </h4>
                     <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                      Archived contracts are hidden from the primary active portfolio dashboard. All records and historical evaluations remain read-only and preserved for audit traceability.
+                      Completed &amp; Closed, Terminated &amp; Closed, and Archived road contracts are stored here and hidden from active portfolios. All records and historical evaluations remain read-only and preserved for audit traceability.
                     </p>
                   </div>
                 </div>
                 <button
                   type="button"
-                  onClick={() => setSelectedStatusFilter('All')}
+                  onClick={() => {
+                    setSelectedStatusFilter('All');
+                    if (onStatusFilterChange) onStatusFilterChange('All');
+                  }}
                   className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition shadow-xs cursor-pointer flex items-center gap-1.5 shrink-0"
                 >
-                  <span>View Active Portfolio</span>
+                  <span>View Active Portfolios</span>
                   <span>➜</span>
                 </button>
               </div>
@@ -2384,6 +2746,27 @@ export default function ProjectsPage({
                   <table className="w-full text-left border-collapse text-xs">
                     <thead className="sticky top-0 z-20 bg-slate-100 dark:bg-slate-850 text-slate-700 dark:text-slate-300 font-extrabold border-b border-slate-200 dark:border-slate-700 uppercase tracking-wider text-[10px] select-none shadow-2xs">
                       <tr>
+                        {/* Checkbox Select All Visible */}
+                        <th className="py-2 px-3 text-center w-10">
+                          <button
+                            type="button"
+                            onClick={handleSelectAllVisible}
+                            className={`w-4 h-4 rounded flex items-center justify-center transition border cursor-pointer mx-auto ${
+                              sortedProjects.length > 0 && selectedProjectIds.length === sortedProjects.length
+                                ? 'bg-blue-600 border-blue-600 text-white shadow-2xs'
+                                : selectedProjectIds.length > 0
+                                ? 'bg-blue-100 dark:bg-blue-900 border-blue-500 text-blue-600 dark:text-blue-300'
+                                : 'bg-white dark:bg-slate-700 border-slate-300 dark:border-slate-600 hover:border-blue-400 text-transparent'
+                            }`}
+                            title={
+                              selectedProjectIds.length === sortedProjects.length && sortedProjects.length > 0
+                                ? "Deselect all visible projects"
+                                : "Select all visible projects"
+                            }
+                          >
+                            <CheckSquare className="w-3.5 h-3.5 stroke-[2.5]" />
+                          </button>
+                        </th>
                         <th 
                           onClick={() => handleSort('name')} 
                           className="py-2 px-3.5 hover:bg-slate-200/60 dark:hover:bg-slate-800 cursor-pointer transition min-w-[240px]"
@@ -2492,7 +2875,7 @@ export default function ProjectsPage({
                                 onClick={() => toggleGroupCollapse(group.key)}
                                 className="bg-slate-100/90 dark:bg-slate-750 text-slate-800 dark:text-zinc-100 font-black cursor-pointer select-none hover:bg-slate-200/80 dark:hover:bg-slate-700 transition"
                               >
-                                <td colSpan={9} className="py-2.5 px-3.5">
+                                <td colSpan={10} className="py-2.5 px-3.5">
                                   <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
                                       <span className="text-base">{group.icon}</span>
@@ -2531,7 +2914,7 @@ export default function ProjectsPage({
                     {/* Table Footer with Summary Statistics */}
                     <tfoot className="bg-slate-50 dark:bg-slate-850 border-t-2 border-slate-200 dark:border-slate-700 font-bold text-[11px] text-slate-700 dark:text-slate-300">
                       <tr>
-                        <td className="py-2 px-3.5" colSpan={4}>
+                        <td className="py-2 px-3.5" colSpan={5}>
                           <div className="flex items-center gap-2">
                             <span className="font-extrabold uppercase tracking-wider text-[10px] text-slate-500">
                               Portfolio Summary:
@@ -3006,6 +3389,170 @@ export default function ProjectsPage({
                 </div>
               </motion.div>
             </div>
+          </div>
+        )}
+        {/* Bulk Status Update Confirmation Safety Check Modal */}
+        {isBulkConfirmOpen && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 overflow-auto animate-in fade-in duration-150">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="w-full max-w-lg bg-white dark:bg-slate-800 rounded-3xl p-6 border border-slate-200 dark:border-slate-700 shadow-2xl space-y-4"
+            >
+              {/* Header */}
+              <div className="flex items-start justify-between border-b border-slate-100 dark:border-slate-700 pb-3">
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${
+                    isProjectClosed(bulkTargetStatus)
+                      ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300'
+                      : 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-300'
+                  }`}>
+                    {isProjectClosed(bulkTargetStatus) ? <Archive className="w-5 h-5" /> : <CheckSquare className="w-5 h-5" />}
+                  </div>
+                  <div>
+                    <h3 className="font-black text-base text-slate-900 dark:text-white flex items-center gap-2">
+                      <span>Safety Check: Confirm Bulk Status Update</span>
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Please review the target state and list of affected contracts before proceeding.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsBulkConfirmOpen(false)}
+                  className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg text-slate-400 hover:text-slate-600 transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Warning / Impact explanation */}
+              <div className={`p-3.5 rounded-2xl border text-xs leading-relaxed space-y-1.5 ${
+                isProjectClosed(bulkTargetStatus)
+                  ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900/40 text-amber-900 dark:text-amber-200'
+                  : 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-900/40 text-blue-900 dark:text-blue-200'
+              }`}>
+                <div className="flex items-center gap-2 font-black text-sm">
+                  {isProjectClosed(bulkTargetStatus) ? (
+                    <>
+                      <span>🔒</span>
+                      <span>Contracts will be moved to Archive Repository</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>🔄</span>
+                      <span>Updating Active Portfolio Status</span>
+                    </>
+                  )}
+                </div>
+                <p>
+                  You are about to change the lifecycle status of{' '}
+                  <strong className="font-extrabold underline">{selectedProjectIds.length} road contract(s)</strong> to{' '}
+                  <span className={`inline-block font-black px-2 py-0.5 rounded border text-[11px] ${getLifecycleStatusBadge(bulkTargetStatus).style}`}>
+                    {getLifecycleStatusBadge(bulkTargetStatus).label}
+                  </span>.
+                </p>
+                {isProjectClosed(bulkTargetStatus) ? (
+                  <p className="text-[11px] font-semibold text-amber-800 dark:text-amber-300">
+                    ⚠️ <strong>Archival Safety Notice:</strong> Once set to a closed state ('Completed and Closed', 'Terminated and Closed', or 'Archived'), these contracts will be automatically isolated from active portfolios and can only be accessed or inspected from the <strong>Archive Repository</strong>.
+                  </p>
+                ) : (
+                  <p className="text-[11px] font-semibold text-blue-800 dark:text-blue-300">
+                    ℹ️ These contracts will remain visible and accessible in active road portfolios under the updated status.
+                  </p>
+                )}
+              </div>
+
+              {/* List of Affected Projects (Preview) */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
+                  <span>Selected Projects to Update ({selectedProjectIds.length}):</span>
+                  <span className="text-[11px] text-slate-400">Scroll to view all</span>
+                </div>
+                <div className="max-h-44 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700/60 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50/60 dark:bg-slate-850/60 p-1">
+                  {projects
+                    .filter(p => selectedProjectIds.includes(p.id))
+                    .map(p => (
+                      <div key={'bulk-preview-' + p.id} className="p-2 flex items-center justify-between text-xs">
+                        <div className="min-w-0 pr-2">
+                          <div className="font-bold text-slate-850 dark:text-zinc-100 truncate" title={p.name}>
+                            {p.name}
+                          </div>
+                          <div className="text-[10px] text-slate-400 flex items-center gap-1.5 mt-0.5">
+                            <span className="font-mono">{p.id.substring(0, 12)}</span>
+                            <span>·</span>
+                            <span>{p.programDirectorate || 'Southern'}</span>
+                            <span>·</span>
+                            <span>{p.pmo || 'PMO 1'}</span>
+                          </div>
+                        </div>
+                        <div className="shrink-0 flex items-center gap-1.5">
+                          <span className="text-[10px] text-slate-400">Current:</span>
+                          <span className={`text-[9.5px] font-bold px-1.5 py-0.5 rounded border ${getLifecycleStatusBadge(p.status).style}`}>
+                            {getLifecycleStatusBadge(p.status).label}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </div>
+
+              {/* Target Status Override Selector in Modal */}
+              <div className="flex items-center justify-between gap-3 p-2.5 bg-slate-100 dark:bg-slate-750 rounded-xl border border-slate-200 dark:border-slate-700">
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Target Lifecycle Status:
+                </span>
+                <select
+                  value={bulkTargetStatus}
+                  onChange={(e) => setBulkTargetStatus(e.target.value as ProjectLifecycleStatus)}
+                  className="bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-850 dark:text-zinc-100 outline-none cursor-pointer focus:border-blue-500"
+                >
+                  <optgroup label="Active Portfolio">
+                    <option value="Completed">✅ Completed</option>
+                    <option value="In Progress">🟢 In Progress</option>
+                    <option value="Suspended">⏸️ Suspended</option>
+                    <option value="Terminated">🛑 Terminated</option>
+                  </optgroup>
+                  <optgroup label="Archive Repository (Closed)">
+                    <option value="Completed and Closed">🔒 Completed & Closed (Archive)</option>
+                    <option value="Terminated and Closed">🔒 Terminated & Closed (Archive)</option>
+                    <option value="Archived">📦 Archived</option>
+                  </optgroup>
+                </select>
+              </div>
+
+              {/* Modal Actions */}
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => setIsBulkConfirmOpen(false)}
+                  disabled={isBulkUpdating}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold rounded-xl text-xs transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExecuteBulkStatusUpdate}
+                  disabled={isBulkUpdating || selectedProjectIds.length === 0}
+                  className={`px-5 py-2 font-black rounded-xl text-xs transition shadow-md flex items-center gap-1.5 cursor-pointer text-white ${
+                    isProjectClosed(bulkTargetStatus)
+                      ? 'bg-amber-600 hover:bg-amber-700 active:scale-95'
+                      : 'bg-blue-600 hover:bg-blue-700 active:scale-95'
+                  }`}
+                >
+                  {isBulkUpdating ? (
+                    <span>Processing Update...</span>
+                  ) : (
+                    <>
+                      <CheckSquare className="w-4 h-4" />
+                      <span>Confirm & Update {selectedProjectIds.length} Projects</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </motion.div>
           </div>
         )}
       </AnimatePresence>

@@ -512,6 +512,16 @@ export function isProjectClosed(status?: string | ProjectLifecycleStatus | null)
 }
 
 /**
+ * Checks whether a project lifecycle is archived (Completed and Closed, Terminated and Closed, or Archived).
+ * When archived, the project is sent to the Archive Repository and accessed exclusively from the Archive.
+ * Active Portfolios display only active lifecycles (In Progress, Completed, Suspended, Terminated).
+ */
+export function isProjectArchived(status?: string | ProjectLifecycleStatus | null): boolean {
+  return isProjectClosed(status);
+}
+
+
+/**
  * Checks whether a user possesses CPM Admin (Counterpart Project Manager) or Master Admin privileges.
  * When a project is in "Completed and Closed" or "Terminated and Closed" lifecycle status,
  * ONLY CPM Admins and Master Admins are authorized to change it to another lifecycle.
@@ -522,6 +532,20 @@ export function isCpmOrMasterAdmin(user?: User | null): boolean {
   if (user.username === 'proj_1781786415663') return true;
   if (user.username && user.username.toLowerCase().includes('ersido')) return true;
   if (user.username && user.username.toLowerCase().includes('admin') && user.role !== 'directorate_admin' && user.role !== 'pmo_admin') return true;
+  return false;
+}
+
+/**
+ * Checks whether a user is strictly a Master Admin (master_admin role, admin role, or root superuser).
+ * When a project lifecycle has been changed to a closed status (Completed and Closed, Terminated and Closed, Archived),
+ * it can ONLY be reopened or changed back by Master Admin.
+ */
+export function isMasterAdminOnly(user?: User | null): boolean {
+  if (!user) return false;
+  if (user.role === 'master_admin' || user.role === 'admin') return true;
+  if (user.username === 'proj_1781786415663') return true;
+  if (user.username && user.username.toLowerCase().includes('ersido')) return true;
+  if (user.username && user.username.toLowerCase().includes('admin') && user.role !== 'directorate_admin' && user.role !== 'pmo_admin' && user.role !== 'cpm_admin') return true;
   return false;
 }
 
