@@ -53,7 +53,7 @@ import {
   Edit3
 } from 'lucide-react';
 
-import { Project, User, ApprovalRequest, PrivateDraft, WorkflowAuditLogEntry, KpiAllocatedItem, SeriesItem, MonthlyProgress, LinearData, RowMetric, ProgressPlan, PaymentItem, AnnualItem, WorkProgramActivity, BondGuarantee, formatAccounting, ProjectDocument, ALL_EDITABLE_PAGES, EditablePageOption, ProjectLifecycleStatus, isProjectClosed, isCpmOrMasterAdmin, isRecentlyUpdated, formatRelativeTime, ContractorScoringWeights, ConsultantScoringWeights, DEFAULT_CONTRACTOR_SCORING_WEIGHTS, DEFAULT_CONSULTANT_SCORING_WEIGHTS, SupervisionConsultantInfo, ThemeSettings, DEFAULT_THEME_SETTINGS, PdfReportConfig, DEFAULT_PDF_REPORT_CONFIG } from './types';
+import { Project, User, ApprovalRequest, PrivateDraft, WorkflowAuditLogEntry, KpiAllocatedItem, SeriesItem, MonthlyProgress, LinearData, RowMetric, ProgressPlan, PaymentItem, AnnualItem, WorkProgramActivity, BondGuarantee, formatAccounting, ProjectDocument, ALL_EDITABLE_PAGES, EditablePageOption, ProjectLifecycleStatus, isProjectClosed, isCpmOrMasterAdmin, isRecentlyUpdated, formatRelativeTime, ContractorScoringWeights, ConsultantScoringWeights, DEFAULT_CONTRACTOR_SCORING_WEIGHTS, DEFAULT_CONSULTANT_SCORING_WEIGHTS, SupervisionConsultantInfo, ThemeSettings, DEFAULT_THEME_SETTINGS, PdfReportConfig, DEFAULT_PDF_REPORT_CONFIG, ETHIOPIAN_REGIONAL_STATES, EthiopianRegionalState } from './types';
 import { createProjectHistoryEntry } from './lib/projectAuditDiff';
 import { getProjectDlpInfo, calculateCappedElapsedTimePct } from './lib/dlpUtils';
 import DlpDefectModal from './components/DlpDefectModal';
@@ -625,6 +625,7 @@ export default function App() {
   const [customContractTypeInput, setCustomContractTypeInput] = useState<string>('');
   const [editProgramDirectorate, setEditProgramDirectorate] = useState('');
   const [editPmo, setEditPmo] = useState('');
+  const [editRegionalState, setEditRegionalState] = useState<string[]>(['Sidama']);
   const [editFidicContractType, setEditFidicContractType] = useState('');
 
   const [programDirectorates, setProgramDirectorates] = useState<string[]>(() => {
@@ -680,6 +681,8 @@ export default function App() {
       }
       setEditProgramDirectorate(currentProject.programDirectorate || 'Southern');
       setEditPmo(currentProject.pmo || 'PMO 1');
+      const regVal = currentProject.regionalStates || currentProject.regionalState;
+      setEditRegionalState(Array.isArray(regVal) ? regVal : [regVal || 'Sidama']);
       setEditFidicContractType(currentProject.fidicContractType || '');
     }
   }, [currentProject?.id, currentProject?.lastModifiedAt, currentProject?.consultant, currentProject?.supervisionConsultant?.firmName]);
@@ -2660,7 +2663,7 @@ let isBatchSyncRunning = false;
     }
   };
 
-  const handleAddNewProject = (customId?: string, customName?: string, customDir?: string, customPmo?: string) => {
+  const handleAddNewProject = (customId?: string, customName?: string, customDir?: string, customPmo?: string, customRegionalState?: string) => {
     const isMasterAdmin = currentUserObj?.role === 'admin' || 
                           currentUserObj?.role === 'master_admin' || 
                           currentUserObj?.role === 'cpm_admin' ||
@@ -2692,6 +2695,22 @@ let isBatchSyncRunning = false;
     } else if (customDir || customPmo) {
       if (customDir) np.programDirectorate = customDir;
       if (customPmo) np.pmo = customPmo;
+    }
+
+    if (customRegionalState) {
+      if (Array.isArray(customRegionalState)) {
+        np.regionalState = customRegionalState.length === 1 ? customRegionalState[0] : customRegionalState;
+        np.regionalStates = customRegionalState;
+      } else {
+        np.regionalState = customRegionalState;
+        np.regionalStates = [customRegionalState];
+      }
+    } else if (np.programDirectorate === 'Southern') {
+      np.regionalState = 'Sidama';
+      np.regionalStates = ['Sidama'];
+    } else {
+      np.regionalState = 'Oromia';
+      np.regionalStates = ['Oromia'];
     }
 
     np.lastModifiedAt = new Date().toISOString();
@@ -3541,6 +3560,8 @@ let isBatchSyncRunning = false;
       contractType: editContractType,
       programDirectorate: editProgramDirectorate,
       pmo: editPmo,
+      regionalState: editRegionalState.length === 1 ? editRegionalState[0] : editRegionalState,
+      regionalStates: editRegionalState,
       fidicContractType: editFidicContractType
     };
     handleProjectUpdate(fields, 'Project Information & Specifications updated');
@@ -4406,6 +4427,7 @@ let isBatchSyncRunning = false;
                               setEditContractType(currentProject.contractType);
                               setEditProgramDirectorate(currentProject.programDirectorate || 'Southern');
                               setEditPmo(currentProject.pmo || 'PMO 1');
+                              setEditRegionalState(currentProject.regionalState || 'Sidama');
                               setEditFidicContractType(currentProject.fidicContractType || '');
                             }}
                             className="text-xs font-bold uppercase bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 px-3 py-1.5 rounded-lg text-slate-700 dark:text-slate-300 transition cursor-pointer"
@@ -4472,6 +4494,23 @@ let isBatchSyncRunning = false;
                             <span className="inline-flex text-[10px] font-extrabold uppercase bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 px-2 py-0.5 rounded border border-purple-100 dark:border-purple-900/50">
                               {currentProject.pmo || 'PMO 1'}
                             </span>
+                          </div>
+
+                          <div className="space-y-1">
+                            <span className="text-[9px] text-amber-600 dark:text-amber-400 block font-mono font-bold flex items-center gap-1">
+                              🏛️ ETHIOPIAN REGIONAL STATES
+                            </span>
+                            <div className="flex flex-wrap gap-1">
+                              {(() => {
+                                const regs = currentProject.regionalStates || (Array.isArray(currentProject.regionalState) ? currentProject.regionalState : [currentProject.regionalState || 'Sidama']);
+                                return regs.map((r, rIdx) => (
+                                  <span key={`view-reg-${r}-${rIdx}`} className="inline-flex items-center gap-1 text-[10px] font-extrabold uppercase bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 px-2 py-0.5 rounded border border-amber-200 dark:border-amber-900/50 shadow-2xs">
+                                    <span>🏛️</span>
+                                    <span>{r}</span>
+                                  </span>
+                                ));
+                              })()}
+                            </div>
                           </div>
                         </div>
 
@@ -4753,6 +4792,39 @@ let isBatchSyncRunning = false;
                                 <option key={`edit-pmo-${p}-${pIdx}`} value={p}>{p}</option>
                               ))}
                             </select>
+                          </div>
+
+                          <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-2 rounded-lg border border-slate-100 dark:border-slate-800">
+                            <label className="text-[9px] text-amber-600 dark:text-amber-400 block font-mono font-bold flex items-center justify-between">
+                              <span className="flex items-center gap-1">🏛️ ETHIOPIAN REGIONAL STATES (MULTIPLE SELECT)</span>
+                              <span className="text-[8px] text-slate-400 font-sans">{editRegionalState.length} selected</span>
+                            </label>
+                            <div className="max-h-36 overflow-y-auto space-y-1 bg-white dark:bg-slate-900 p-2 rounded-lg border border-slate-200 dark:border-slate-700">
+                              {ETHIOPIAN_REGIONAL_STATES.map((region, rIdx) => {
+                                const isChecked = editRegionalState.includes(region);
+                                return (
+                                  <label key={`edit-reg-chk-${region}-${rIdx}`} className="flex items-center gap-2 text-[10px] text-slate-700 dark:text-slate-200 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 p-1 rounded transition select-none">
+                                    <input
+                                      type="checkbox"
+                                      checked={isChecked}
+                                      onChange={(e) => {
+                                        if (e.target.checked) {
+                                          setEditRegionalState([...editRegionalState, region]);
+                                        } else {
+                                          if (editRegionalState.length > 1) {
+                                            setEditRegionalState(editRegionalState.filter(r => r !== region));
+                                          } else {
+                                            alert('At least one Ethiopian regional state must be selected.');
+                                          }
+                                        }
+                                      }}
+                                      className="rounded border-slate-300 text-amber-600 focus:ring-amber-500 w-3.5 h-3.5 cursor-pointer"
+                                    />
+                                    <span>🏛️ {region}</span>
+                                  </label>
+                                );
+                              })}
+                            </div>
                           </div>
                         </div>
 
@@ -5124,6 +5196,7 @@ let isBatchSyncRunning = false;
                               setEditContractType(currentProject.contractType);
                               setEditProgramDirectorate(currentProject.programDirectorate || 'Southern');
                               setEditPmo(currentProject.pmo || 'PMO 1');
+                              setEditRegionalState(currentProject.regionalState || 'Sidama');
                               setEditFidicContractType(currentProject.fidicContractType || '');
                             }}
                             className="px-3.5 py-1.5 rounded-xl text-xs font-bold uppercase bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 transition cursor-pointer"

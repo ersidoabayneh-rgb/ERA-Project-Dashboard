@@ -2305,6 +2305,7 @@ export function defaultProjectTemplate(): Project {
     contractType: "DBB",
     programDirectorate: "Southern",
     pmo: "PMO 1",
+    regionalState: "Sidama",
     physicalProgress: 40.73,
     provisionalSum: 6700000,
     progressPlanLabels: { monthLabel: 'Feb 2026', quarterLabel: 'Feb-Apr 2026', efyLabel: '2018' },
@@ -2581,6 +2582,7 @@ export function blankProjectTemplate(): Project {
   d.classification = 'DS-4';
   d.programDirectorate = 'Southern';
   d.pmo = 'PMO 1';
+  d.regionalState = 'Oromia';
   d.progressPlanLabels = { monthLabel: 'Aug 2026', quarterLabel: 'Q1 (Jul-Sep 2026)', efyLabel: '2019' };
   d.progressPlanHistory = [];
   d.series.forEach(s => {

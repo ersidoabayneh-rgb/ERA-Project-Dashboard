@@ -198,6 +198,8 @@ export function normalizeProject(p: any): Project {
     lengthKm: typeof p.lengthKm === 'string' ? parseFloat(p.lengthKm) || 0 : (p.lengthKm || 0),
     provisionalSum: typeof p.provisionalSum === 'string' ? parseFloat(p.provisionalSum) || 0 : (p.provisionalSum || 0),
     physicalProgress: typeof p.physicalProgress === 'string' ? parseFloat(p.physicalProgress) || 0 : (p.physicalProgress || 0),
+    regionalState: p.regionalState || p.regionalStates || (p.id === 'proj_default' ? 'Sidama' : tmpl.regionalState || 'Sidama'),
+    regionalStates: Array.isArray(p.regionalStates) ? p.regionalStates : (Array.isArray(p.regionalState) ? p.regionalState : [p.regionalState || (p.id === 'proj_default' ? 'Sidama' : 'Sidama')]),
     rowMetrics: Array.isArray(p.rowMetrics) && p.rowMetrics.length > 0 
       ? p.rowMetrics 
       : (p.id === 'proj_default' ? tmpl.rowMetrics : defaultZeroRowMetrics()),

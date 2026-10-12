@@ -588,6 +588,25 @@ export type DlpDefectItem = DlpDefect;
 export type DefectSeverity = 'Low' | 'Medium' | 'High' | 'Critical';
 export type DefectStatus = 'Open' | 'Under Rectification' | 'Rectified' | 'Closed';
 
+export const ETHIOPIAN_REGIONAL_STATES = [
+  'Addis Ababa',
+  'Afar',
+  'Amhara',
+  'Benishangul-Gumuz',
+  'Central Ethiopia',
+  'Dire Dawa',
+  'Gambela',
+  'Harari',
+  'Oromia',
+  'Sidama',
+  'Somali',
+  'South Ethiopia',
+  'South West Ethiopia',
+  'Tigray'
+] as const;
+
+export type EthiopianRegionalState = typeof ETHIOPIAN_REGIONAL_STATES[number];
+
 export interface Project {
   id: string;
   name: string;
@@ -616,6 +635,8 @@ export interface Project {
   fidicContractType?: string;
   programDirectorate?: string;
   pmo?: string;
+  regionalState?: EthiopianRegionalState | string | (EthiopianRegionalState | string)[];
+  regionalStates?: (EthiopianRegionalState | string)[]; // backward compatibility and multiple selection
   physicalProgress: number;
   provisionalSum: number;
   progressPlanLabels: {

@@ -184,8 +184,8 @@ export default function UserGuideSections({ onScrollToSection, onDownloadPdf }: 
           <span>Portfolio Overview [Fig. 3.1]</span>
         </div>
         <h2 className="text-xl font-black text-slate-900 dark:text-white">Portfolio Overview and Active Contracts Selection</h2>
-        <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">
-          The Portfolio (Active Contracts) screen is the primary command view upon logging in. It displays every road construction contract to which the user has clearance, grouped by Directorate and sorted by name, budget, or physical progress. Each contract is rendered as a card summarizing the project identity, stakeholders, lifecycle status, length, budget, physical progress percentage, and critical alerts.
+        <p className="text-xs text-slate-600 dark:text-slate-300 font-medium leading-relaxed">
+          The Portfolio (Active Contracts) screen is the primary command view upon logging in. It displays every road construction contract to which the user has clearance, organized by <strong>Ethiopian Regional States</strong> (e.g., Sidama, Oromia, Amhara, Somali, Afar, Tigray, Central Ethiopia, South Ethiopia, South West Ethiopia, Benishangul-Gumuz, Gambela, Harari, Addis Ababa, Dire Dawa) or by Directorate/PMO. Each regional group features an interactive collapsible banner summarizing total road length (km), revised contract amount (ETB Millions), average physical progress (%), and active security bond alerts. Individual contract cards display the regional state badge, project identity, stakeholders, lifecycle status, and critical alerts.
         </p>
 
         {/* Screen Mockup: Figure 3.1 */}

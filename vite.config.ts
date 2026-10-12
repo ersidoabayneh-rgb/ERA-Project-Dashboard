@@ -12,6 +12,12 @@ export default defineConfig(() => {
         '@': path.resolve(__dirname, '.'),
       },
     },
+    optimizeDeps: {
+      entries: ['index.html'],
+    },
+    build: {
+      emptyOutDir: true,
+    },
     server: {
       port: 3000,
       host: '0.0.0.0',

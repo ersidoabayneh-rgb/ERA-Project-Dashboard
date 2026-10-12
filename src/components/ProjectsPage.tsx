@@ -45,7 +45,7 @@ import {
   ShieldCheck,
   FileSpreadsheet
 } from 'lucide-react';
-import { Project, User, ApprovalRequest, ProjectLifecycleStatus, isProjectClosed, isCpmOrMasterAdmin, isRecentlyUpdated, formatRelativeTime } from '../types';
+import { Project, User, ApprovalRequest, ProjectLifecycleStatus, isProjectClosed, isCpmOrMasterAdmin, isRecentlyUpdated, formatRelativeTime, ETHIOPIAN_REGIONAL_STATES, EthiopianRegionalState } from '../types';
 import { canUserApproveRequest, hasApprovalCredentials } from '../App';
 import eraLogo from '../assets/logo.png';
 import GroupReportGenerator from './GroupReportGenerator';
@@ -56,7 +56,7 @@ interface ProjectsPageProps {
   currentUserObj: User;
   pendingApprovals: ApprovalRequest[];
   onSelectProject: (id: string, autoOpenApprovals?: boolean, initialTab?: string) => void;
-  onAddNewProject: (customId?: string, customName?: string, customDir?: string, customPmo?: string) => void;
+  onAddNewProject: (customId?: string, customName?: string, customDir?: string, customPmo?: string, customRegionalState?: string | string[]) => void;
   onDeleteProject: (id: string) => void;
   onUpdateProjectStatus?: (id: string, status: ProjectLifecycleStatus) => void;
   onUpdateProject?: (project: Project, sectionName: string) => void;
@@ -103,9 +103,19 @@ export default function ProjectsPage({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDirectorate, setSelectedDirectorate] = useState('All');
   const [selectedPmoFilter, setSelectedPmoFilter] = useState('All');
+  const [selectedRegionalState, setSelectedRegionalState] = useState('All');
   const [selectedClassification, setSelectedClassification] = useState('All');
   const [selectedContractor, setSelectedContractor] = useState('All');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState('All');
+  const [groupBy, setGroupBy] = useState<'region' | 'directorate' | 'none'>(() => {
+    try {
+      const saved = localStorage.getItem('era_projects_group_by');
+      return (saved === 'region' || saved === 'directorate' || saved === 'none') ? saved : 'directorate';
+    } catch {
+      return 'directorate';
+    }
+  });
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [logoError, setLogoError] = useState(false);
   const [showCollab, setShowCollab] = useState(false);
   const [inviteName, setInviteName] = useState('');
@@ -127,6 +137,22 @@ export default function ProjectsPage({
     }
   });
   const [inspectProjectId, setInspectProjectId] = useState<string | null>(null);
+
+  const handleSetGroupBy = (mode: 'region' | 'directorate' | 'none') => {
+    setGroupBy(mode);
+    try {
+      localStorage.setItem('era_projects_group_by', mode);
+    } catch (e) {
+      console.warn('Could not save group preference', e);
+    }
+  };
+
+  const toggleGroupCollapse = (key: string) => {
+    setCollapsedGroups(prev => ({
+      ...prev,
+      [key]: !prev[key]
+    }));
+  };
 
   const handleSetViewMode = (mode: 'grid' | 'list') => {
     setViewMode(mode);
@@ -209,6 +235,7 @@ export default function ProjectsPage({
   const [newProjectName, setNewProjectName] = useState('New Project');
   const [newProjectDirectorate, setNewProjectDirectorate] = useState('Southern');
   const [newProjectPmo, setNewProjectPmo] = useState('PMO 1');
+  const [newProjectRegionalStates, setNewProjectRegionalStates] = useState<string[]>(['Sidama']);
   const [createError, setCreateError] = useState('');
 
   const isMasterAdmin = Boolean(
@@ -299,12 +326,15 @@ export default function ProjectsPage({
     if (isDirAdmin) {
       setNewProjectDirectorate(currentUserObj.assignedDirectorate || 'Southern');
       setNewProjectPmo(pmos[0] || 'PMO 1');
+      setNewProjectRegionalStates([currentUserObj.assignedDirectorate === 'Southern' ? 'Sidama' : 'Oromia']);
     } else if (isPmoAdmin) {
       setNewProjectDirectorate(currentUserObj.assignedDirectorate || 'Southern');
       setNewProjectPmo(currentUserObj.assignedPmo || 'PMO 1');
+      setNewProjectRegionalStates(['Sidama']);
     } else {
       setNewProjectDirectorate(programDirectorates[0] || 'Southern');
       setNewProjectPmo(pmos[0] || 'PMO 1');
+      setNewProjectRegionalStates(['Sidama']);
     }
     setCreateError('');
     setIsCreateModalOpen(true);
@@ -334,7 +364,7 @@ export default function ProjectsPage({
     const assignedDir = isDirAdmin ? (currentUserObj.assignedDirectorate || newProjectDirectorate) : newProjectDirectorate;
     const assignedPmoVal = isPmoAdmin ? (currentUserObj.assignedPmo || newProjectPmo) : newProjectPmo;
 
-    onAddNewProject(trimmedId, trimmedName, assignedDir, assignedPmoVal);
+    onAddNewProject(trimmedId, trimmedName, assignedDir, assignedPmoVal, newProjectRegionalStates);
     setIsCreateModalOpen(false);
   };
   
@@ -401,6 +431,11 @@ export default function ProjectsPage({
         return (p.pmo || 'PMO 1') === selectedPmoFilter;
       })
       .filter(p => {
+        if (selectedRegionalState === 'All') return true;
+        const regs = p.regionalStates || (Array.isArray(p.regionalState) ? p.regionalState : [p.regionalState || 'Sidama']);
+        return regs.includes(selectedRegionalState as any);
+      })
+      .filter(p => {
         if (selectedClassification === 'All') return true;
         return p.classification === selectedClassification;
       })
@@ -433,6 +468,8 @@ export default function ProjectsPage({
           (p.classification && p.classification.toLowerCase().includes(token)) ||
           (p.programDirectorate && p.programDirectorate.toLowerCase().includes(token)) ||
           (p.pmo && p.pmo.toLowerCase().includes(token)) ||
+          (Array.isArray(p.regionalState) ? p.regionalState.some(r => r.toLowerCase().includes(token)) : (p.regionalState && p.regionalState.toLowerCase().includes(token))) ||
+          (p.regionalStates && p.regionalStates.some(r => r.toLowerCase().includes(token))) ||
           (p.client && p.client.toLowerCase().includes(token)) ||
           (p.consultant && p.consultant.toLowerCase().includes(token)) ||
           (p.contractType && p.contractType.toLowerCase().includes(token))
@@ -457,6 +494,8 @@ export default function ProjectsPage({
     isMasterAdmin, 
     currentUserObj, 
     selectedDirectorate, 
+    selectedPmoFilter,
+    selectedRegionalState,
     selectedClassification, 
     selectedContractor, 
     selectedStatusFilter, 
@@ -555,11 +594,154 @@ export default function ProjectsPage({
     return { count, totalLength, totalBudget, avgProgress };
   }, [sortedProjects]);
 
+  const projectGroups = useMemo(() => {
+    if (groupBy === 'none') {
+      return [{
+        key: 'all',
+        title: 'All Road Projects Portfolio',
+        icon: '💼',
+        badge: `${sortedProjects.length} ${sortedProjects.length === 1 ? 'Contract' : 'Contracts'}`,
+        projects: sortedProjects,
+        totalLength: sortedProjects.reduce((acc, p) => acc + (p.lengthKm || 0), 0),
+        totalBudget: sortedProjects.reduce((acc, p) => acc + getRevisedBudgetMillions(p), 0),
+        avgProgress: sortedProjects.length > 0 
+          ? sortedProjects.reduce((acc, p) => acc + (p.physicalProgress || 0), 0) / sortedProjects.length 
+          : 0,
+        criticalBondsCount: sortedProjects.filter(p => {
+          return (p.bonds || []).some(b => {
+            if (b.status === 'Recovered' || b.status === 'N/A' || (b.status && (b.status.toLowerCase().includes('returned') || b.status.toLowerCase().includes('amortized')))) return false;
+            const exp = new Date(b.expireDate);
+            const now = new Date();
+            return b.status === 'Expired' || exp < now || (exp.getTime() - now.getTime() < 45 * 24 * 60 * 60 * 1000);
+          });
+        }).length
+      }];
+    }
+
+    if (groupBy === 'directorate') {
+      const dirMap = new Map<string, Project[]>();
+      sortedProjects.forEach(p => {
+        const d = p.programDirectorate || 'Southern';
+        if (!dirMap.has(d)) dirMap.set(d, []);
+        dirMap.get(d)!.push(p);
+      });
+
+      const groups: Array<{
+        key: string;
+        title: string;
+        icon: string;
+        badge: string;
+        projects: Project[];
+        totalLength: number;
+        totalBudget: number;
+        avgProgress: number;
+        criticalBondsCount: number;
+      }> = [];
+
+      dirMap.forEach((projs, dKey) => {
+        const totalLength = projs.reduce((acc, p) => acc + (p.lengthKm || 0), 0);
+        const totalBudget = projs.reduce((acc, p) => acc + getRevisedBudgetMillions(p), 0);
+        const avgProgress = projs.length > 0 ? projs.reduce((acc, p) => acc + (p.physicalProgress || 0), 0) / projs.length : 0;
+        const criticalBondsCount = projs.filter(p => {
+          return (p.bonds || []).some(b => {
+            if (b.status === 'Recovered' || b.status === 'N/A' || (b.status && (b.status.toLowerCase().includes('returned') || b.status.toLowerCase().includes('amortized')))) return false;
+            const exp = new Date(b.expireDate);
+            const now = new Date();
+            return b.status === 'Expired' || exp < now || (exp.getTime() - now.getTime() < 45 * 24 * 60 * 60 * 1000);
+          });
+        }).length;
+
+        groups.push({
+          key: dKey,
+          title: `${dKey} Directorate`,
+          icon: '🏢',
+          badge: `${projs.length} ${projs.length === 1 ? 'Contract' : 'Contracts'}`,
+          projects: projs,
+          totalLength,
+          totalBudget,
+          avgProgress,
+          criticalBondsCount
+        });
+      });
+
+      return groups.sort((a, b) => b.projects.length - a.projects.length || a.title.localeCompare(b.title));
+    }
+
+    // Default: groupBy === 'region' (Ethiopian Regional States)
+    const regMap = new Map<string, Project[]>();
+    sortedProjects.forEach(p => {
+      const regs = p.regionalStates || (Array.isArray(p.regionalState) ? p.regionalState : [p.regionalState || 'Sidama']);
+      const primaryReg = regs[0] || 'Sidama';
+      if (!regMap.has(primaryReg)) regMap.set(primaryReg, []);
+      regMap.get(primaryReg)!.push(p);
+    });
+
+    const groups: Array<{
+      key: string;
+      title: string;
+      icon: string;
+      badge: string;
+      projects: Project[];
+      totalLength: number;
+      totalBudget: number;
+      avgProgress: number;
+      criticalBondsCount: number;
+    }> = [];
+
+    regMap.forEach((projs, rKey) => {
+      const totalLength = projs.reduce((acc, p) => acc + (p.lengthKm || 0), 0);
+      const totalBudget = projs.reduce((acc, p) => acc + getRevisedBudgetMillions(p), 0);
+      const avgProgress = projs.length > 0 ? projs.reduce((acc, p) => acc + (p.physicalProgress || 0), 0) / projs.length : 0;
+      const criticalBondsCount = projs.filter(p => {
+        return (p.bonds || []).some(b => {
+          if (b.status === 'Recovered' || b.status === 'N/A' || (b.status && (b.status.toLowerCase().includes('returned') || b.status.toLowerCase().includes('amortized')))) return false;
+          const exp = new Date(b.expireDate);
+          const now = new Date();
+          return b.status === 'Expired' || exp < now || (exp.getTime() - now.getTime() < 45 * 24 * 60 * 60 * 1000);
+        });
+      }).length;
+
+      const displayTitle = rKey.includes('Ababa') || rKey.includes('Dawa')
+        ? `${rKey} City Administration`
+        : `${rKey} Regional State`;
+
+      groups.push({
+        key: rKey,
+        title: displayTitle,
+        icon: '🏛️',
+        badge: `${projs.length} ${projs.length === 1 ? 'Contract' : 'Contracts'}`,
+        projects: projs,
+        totalLength,
+        totalBudget,
+        avgProgress,
+        criticalBondsCount
+      });
+    });
+
+    return groups.sort((a, b) => b.projects.length - a.projects.length || a.title.localeCompare(b.title));
+  }, [sortedProjects, groupBy]);
+
+  const areAllGroupsCollapsed = useMemo(() => {
+    if (projectGroups.length === 0) return false;
+    return projectGroups.every(g => Boolean(collapsedGroups[g.key]));
+  }, [projectGroups, collapsedGroups]);
+
+  const handleToggleAllGroups = () => {
+    if (areAllGroupsCollapsed) {
+      setCollapsedGroups({});
+    } else {
+      const next: Record<string, boolean> = {};
+      projectGroups.forEach(g => { next[g.key] = true; });
+      setCollapsedGroups(next);
+    }
+  };
+
   const handleExportProjectsCSV = () => {
     const headers = [
       'Project ID',
       'Project Name',
       'Status',
+      'Ethiopian Regional State',
       'Directorate',
       'PMO',
       'Contractor',
@@ -584,6 +766,7 @@ export default function ProjectsPage({
         `"${(p.id || '').replace(/"/g, '""')}"`,
         `"${(p.name || '').replace(/"/g, '""')}"`,
         `"${status}"`,
+        `"${(p.regionalState || 'Sidama').replace(/"/g, '""')}"`,
         `"${(p.programDirectorate || 'Southern').replace(/"/g, '""')}"`,
         `"${(p.pmo || 'PMO 1').replace(/"/g, '""')}"`,
         `"${(p.contractor || '').replace(/"/g, '""')}"`,
@@ -782,6 +965,601 @@ export default function ProjectsPage({
       icon: <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />,
       reason: 'Bonds valid & progress compliant'
     };
+  };
+
+  const renderProjectCard = (p: Project) => {
+    const criticalBonds = p.bonds ? p.bonds.filter(b => {
+      if (b.status === 'Recovered' || b.status === 'N/A' || (b.status && (b.status.toLowerCase().includes('returned') || b.status.toLowerCase().includes('amortized')))) return false;
+      const exp = new Date(b.expireDate);
+      const now = new Date();
+      if (b.status === 'Expired' || isNaN(exp.getTime()) || exp < now) {
+        return true;
+      }
+      const fortyFiveDays = 45 * 24 * 60 * 60 * 1000;
+      if (exp.getTime() - now.getTime() < fortyFiveDays) {
+        return true;
+      }
+      return false;
+    }) : [];
+    const statusInfo = getProjectStatus(p);
+    const revBudget = getRevisedBudgetMillions(p);
+    const { actual, planned, variance } = getPlannedAndActualProgress(p);
+    const hasPendingChangesForApprover = pendingApprovals.some(a => a.projectId === p.id && a.status === 'pending' && canUserApproveRequest(currentUserObj, a, projects));
+    const mySubmittedPendingDraft = pendingApprovals.find(a => a.projectId === p.id && a.status === 'pending' && a.requestedBy === currentUserObj.username);
+
+    return (
+      <motion.div
+        key={p.id}
+        layout
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        whileHover={{ y: -2 }}
+        transition={{ duration: 0.2 }}
+        onClick={() => onSelectProject(p.id)}
+        className={`bg-white dark:bg-slate-800 border p-2.5 sm:p-3 rounded-xl shadow-xs hover:shadow-md cursor-pointer relative group transition-all ${statusInfo.cardBorderClass}`}
+      >
+        <div className="space-y-1.5 sm:space-y-2">
+          {/* Badge & Type */}
+          <div className="flex items-center gap-1 justify-between">
+            <div className="flex items-center gap-1 flex-wrap">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSimilarityFilter({ type: 'contractType', value: p.contractType });
+                }}
+                className={`text-[9.5px] font-extrabold uppercase px-1.5 py-0.5 rounded-md border transition ${
+                  similarityFilter.type === 'contractType' && similarityFilter.value === p.contractType
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border-blue-100/50 dark:border-blue-900/30'
+                }`}
+                title="Click to interlink contracts with the same Contract Type"
+              >
+                {p.contractType}
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSimilarityFilter({ type: 'classification', value: p.classification });
+                }}
+                className={`text-[9.5px] font-extrabold uppercase px-1.5 py-0.5 rounded-md border transition ${
+                  similarityFilter.type === 'classification' && similarityFilter.value === p.classification
+                    ? 'bg-indigo-600 text-white border-indigo-600'
+                    : 'bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 border-indigo-100/50 dark:border-indigo-900/30'
+                }`}
+                title="Click to interlink contracts with the same Classification"
+              >
+                {p.classification}
+              </button>
+              <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-md border bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border-emerald-100 dark:border-emerald-900/30">
+                🏢 {p.programDirectorate || 'Southern'}
+              </span>
+              <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-md border bg-purple-50 dark:bg-purple-950/30 text-purple-600 dark:text-purple-400 border-purple-100 dark:border-purple-900/30">
+                📦 {p.pmo || 'PMO 1'}
+              </span>
+              {(() => {
+                const regs = p.regionalStates || (Array.isArray(p.regionalState) ? p.regionalState : [p.regionalState || 'Sidama']);
+                return regs.map((r, rIdx) => (
+                  <button
+                    key={`card-reg-${r}-${rIdx}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedRegionalState(r);
+                    }}
+                    className={`text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-md border transition flex items-center gap-0.5 cursor-pointer ${
+                      selectedRegionalState === r
+                        ? 'bg-amber-600 text-white border-amber-600 shadow-2xs'
+                        : 'bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 border-amber-200/60 dark:border-amber-900/40'
+                    }`}
+                    title={`Filter contracts in ${r}`}
+                  >
+                    <span>🏛️</span>
+                    <span>{r}</span>
+                  </button>
+                ));
+              })()}
+              {isRecentlyUpdated(p.lastModifiedAt) && (
+                <span 
+                  className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md border bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-400/50 flex items-center gap-1 shadow-2xs animate-pulse"
+                  title={`Updated within the last 24 hours (${p.lastModifiedAt ? new Date(p.lastModifiedAt).toLocaleString() : ''})`}
+                >
+                  <Sparkles className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <span>Updated {formatRelativeTime(p.lastModifiedAt)}</span>
+                </span>
+              )}
+              <span className="text-[9.5px] font-bold text-slate-400 dark:text-slate-500">
+                ID: {p.id.substring(0, 10)}
+              </span>
+            </div>
+            
+            {/* Health Status & Quick Inspect */}
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setInspectProjectId(p.id);
+                }}
+                className="p-0.5 rounded-md text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-700/60 transition cursor-pointer"
+                title="Quick inspect project details"
+              >
+                <Eye className="w-3.5 h-3.5" />
+              </button>
+              <span className={`flex items-center gap-0.5 text-[9px] font-extrabold px-1.5 py-0.5 rounded-md border uppercase tracking-tight ${statusInfo.badgeClass}`}>
+                {statusInfo.icon}
+                <span>{statusInfo.level}</span>
+              </span>
+            </div>
+          </div>
+
+          {/* Title */}
+          <div>
+            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 line-clamp-1 group-hover:text-amber-500 dark:group-hover:text-amber-400 transition-colors flex items-center gap-1.5">
+              {hasPendingChangesForApprover && (
+                <span className="relative flex h-2 w-2 shrink-0" title="This contract has pending, unapproved changes requiring your review as designated approver">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-450 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                </span>
+              )}
+              <span>{p.name}</span>
+              {hasPendingChangesForApprover && (
+                <span className="text-[9px] font-black uppercase text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded tracking-wider animate-pulse border border-amber-500/20 leading-none">
+                  Pending Approver Review
+                </span>
+              )}
+              {mySubmittedPendingDraft && !hasPendingChangesForApprover && (
+                <span className="text-[9px] font-bold uppercase text-blue-600 dark:text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded tracking-wider border border-blue-500/20 leading-none">
+                  Draft Submitted
+                </span>
+              )}
+              {isRecentlyUpdated(p.lastModifiedAt) && (
+                <span 
+                  className="text-[9px] font-black uppercase text-emerald-700 dark:text-emerald-300 bg-emerald-500/15 dark:bg-emerald-500/20 px-1.5 py-0.5 rounded tracking-wider border border-emerald-500/30 leading-none flex items-center gap-1 shrink-0"
+                  title={`Updated in the last 24 hours (${p.lastModifiedAt ? new Date(p.lastModifiedAt).toLocaleString() : ''})`}
+                >
+                  <span className="relative flex h-1.5 w-1.5 shrink-0">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+                  </span>
+                  <span>Updated</span>
+                </span>
+              )}
+            </h3>
+          </div>
+
+          {/* Project Lifecycle Status Governance */}
+          <div 
+            className="flex items-center justify-between gap-1.5 pt-1 pb-0 border-t border-slate-100 dark:border-slate-700/50"
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <span className="text-[9.5px] font-extrabold uppercase text-slate-400 dark:text-slate-500">
+              Lifecycle Status:
+            </span>
+
+            {canManageStatus(p) ? (
+              <div 
+                className="flex items-center gap-1" 
+                onClick={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+              >
+                <select
+                  value={p.status || 'In Progress'}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    const newStatus = e.target.value as ProjectLifecycleStatus;
+                    if (onUpdateProjectStatus) {
+                      onUpdateProjectStatus(p.id, newStatus);
+                    }
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  className={`text-[9.5px] font-extrabold uppercase px-2 py-0.5 rounded-lg border outline-none cursor-pointer transition shadow-2xs ${getLifecycleStatusBadge(p.status).style}`}
+                  title={isProjectClosed(p.status) ? "Project is closed. As CPM/Master Admin, you have privilege to change its lifecycle." : "Assigned by Directorate Admin / Administrator"}
+                >
+                  <option value="In Progress">🟢 In Progress</option>
+                  <option value="Completed">✅ Completed</option>
+                  <option value="Completed and Closed">🔒 Completed & Closed</option>
+                  <option value="Suspended">⏸️ Suspended</option>
+                  <option value="Terminated">🛑 Terminated</option>
+                  <option value="Terminated and Closed">🔒 Terminated & Closed</option>
+                  <option value="Archived">📦 Archived</option>
+                </select>
+              </div>
+            ) : (
+              <span 
+                className={`text-[9.5px] font-extrabold uppercase px-1.5 py-0.5 rounded-lg border flex items-center gap-1 ${getLifecycleStatusBadge(p.status).style}`}
+                title={isProjectClosed(p.status) ? "Project lifecycle is closed. Only the CPM Admin and Master Admin are authorized to change it to another lifecycle." : "Assigned by Directorate / System Administrator"}
+              >
+                <span>{getLifecycleStatusBadge(p.status).icon}</span>
+                <span>{getLifecycleStatusBadge(p.status).label}</span>
+              </span>
+            )}
+          </div>
+
+          {/* 3-Column Micro-Grid Specs Layout */}
+          <div className="grid grid-cols-3 gap-1 border-t border-slate-50 dark:border-slate-700/40 pt-1 text-center">
+            <div>
+              <p className="text-[9.5px] font-semibold text-slate-500 dark:text-slate-400">Length</p>
+              <p className="text-xs font-bold font-mono tabular-nums flex items-center justify-center gap-0.5 mt-0.5 text-slate-800 dark:text-slate-100">
+                <Briefcase className="w-2.5 h-2.5 text-slate-400" />
+                {p.lengthKm} <span className="text-[9.5px] font-normal text-slate-400">km</span>
+              </p>
+            </div>
+            <div>
+              <p className="text-[9.5px] font-semibold text-slate-500 dark:text-slate-400">Revised Budget</p>
+              <p className="text-xs font-bold font-mono tabular-nums flex items-center justify-center gap-0.5 mt-0.5 text-slate-800 dark:text-slate-100">
+                <DollarSign className="w-2.5 h-2.5 text-slate-400" />
+                {revBudget.toFixed(2)} <span className="text-[9.5px] font-normal text-slate-400">M</span>
+              </p>
+            </div>
+            <div>
+              <p className="text-[9.5px] font-semibold text-slate-500 dark:text-slate-400">Physical Progress</p>
+              <p className="text-xs font-bold font-mono tabular-nums flex items-center justify-center gap-0.5 mt-0.5 text-slate-800 dark:text-slate-100">
+                <TrendingUp className="w-2.5 h-2.5 text-slate-400" />
+                {actual.toFixed(1)}%
+              </p>
+            </div>
+          </div>
+
+          {/* Progress Dual Line */}
+          <div className="space-y-0.5">
+            <div className="w-full bg-slate-100 dark:bg-slate-700/50 h-1.5 rounded-full overflow-hidden relative">
+              {planned !== null && (
+                <div 
+                  className="absolute top-0 bottom-0 bg-slate-300 dark:bg-slate-600 rounded-full"
+                  style={{ width: `${Math.min(100, Math.max(0, planned))}%` }}
+                  title={`Planned Progress Target: ${planned.toFixed(1)}%`}
+                />
+              )}
+              <div 
+                className={`h-full rounded-full transition-all duration-500 relative z-10 ${getProgressBarColor(actual)}`}
+                style={{ width: `${Math.min(100, Math.max(0, actual))}%` }}
+              />
+            </div>
+            {planned !== null && (
+              <div className="flex justify-between text-[9px] text-slate-400 font-mono">
+                <span>Target: {planned.toFixed(1)}%</span>
+                <span className={variance !== null && variance >= 0 ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-rose-600 dark:text-rose-400 font-bold'}>
+                  {variance !== null && (variance >= 0 ? `+${variance.toFixed(1)}% Ahead` : `${variance.toFixed(1)}% Lagging`)}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Adaptive Project Health Warning / Condition Details Sign */}
+          {statusInfo.level === 'Critical' && (
+            <div className="bg-rose-50 dark:bg-rose-950/25 border border-rose-100 dark:border-rose-950/40 p-1.5 sm:p-2 rounded-lg space-y-0.5 mt-1">
+              <div className="flex items-center gap-1.5 text-rose-700 dark:text-rose-400 font-extrabold text-[9.5px] uppercase tracking-wider">
+                <AlertTriangle className="w-3 h-3 text-rose-600 dark:text-rose-400 animate-bounce shrink-0" />
+                <span>{statusInfo.reason}</span>
+              </div>
+              {criticalBonds.length > 0 && (
+                <div className="text-[8.5px] space-y-0.5 text-rose-600/80 dark:text-rose-400/80">
+                  {criticalBonds.map((b, bIdx) => {
+                    const exp = new Date(b.expireDate);
+                    const isExpired = b.status === 'Expired' || exp < new Date();
+                    return (
+                      <div key={bIdx} className="flex justify-between items-center bg-white/45 dark:bg-black/20 px-1.5 py-0.5 rounded">
+                        <span className="font-semibold truncate max-w-[140px]">{b.type}</span>
+                        <span className="font-mono font-bold text-[8px] text-rose-700 dark:text-rose-300">
+                          {isExpired ? 'EXPIRED' : 'DUE <45d'}: {b.expireDate}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {statusInfo.level === 'Warning' && (
+            <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/30 p-1.5 sm:p-2 rounded-lg space-y-0.5 mt-1">
+              <div className="flex items-center gap-1.5 text-amber-700 dark:text-amber-400 font-extrabold text-[9.5px] uppercase tracking-wider">
+                <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0" />
+                <span>{statusInfo.reason}</span>
+              </div>
+              <p className="text-[8.5px] text-slate-500 dark:text-slate-400 leading-tight">
+                This road project is functional but has unresolved pending liabilities or low progress rates.
+              </p>
+            </div>
+          )}
+
+          {statusInfo.level === 'Good' && (
+            <div className="bg-emerald-50/50 dark:bg-emerald-950/10 border border-emerald-100/60 dark:border-emerald-900/20 p-1.5 sm:p-2 rounded-lg space-y-0.5 mt-1">
+              <div className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400 font-extrabold text-[9.5px] uppercase tracking-wider">
+                <CheckCircle className="w-3 h-3 text-emerald-500 shrink-0" />
+                <span>On-Track & Fully Compliant</span>
+              </div>
+              <p className="text-[8.5px] text-slate-500 dark:text-slate-400 leading-tight">
+                Securities are valid, physical progress is compliant, and no matured overdue IPC claims are pending.
+              </p>
+            </div>
+          )}
+
+          {/* Last Modified Audit Footer */}
+          {p.lastModifiedAt && (
+            <div className="flex items-center justify-between text-[9.5px] text-slate-400 dark:text-slate-500 pt-1 border-t border-slate-100 dark:border-slate-700/40 mt-1">
+              <span className="flex items-center gap-1">
+                <span className="font-semibold text-slate-400">Last Modified:</span>
+                <span className={`font-bold ${isRecentlyUpdated(p.lastModifiedAt) ? 'text-emerald-600 dark:text-emerald-400 font-extrabold' : 'text-slate-500 dark:text-slate-400'}`}>
+                  {formatRelativeTime(p.lastModifiedAt)}
+                </span>
+                <span className="text-[8.5px] text-slate-400">({new Date(p.lastModifiedAt).toLocaleDateString()})</span>
+              </span>
+              {p.lastModifiedBy && (
+                <span className="text-[8.5px] text-slate-400 truncate max-w-[120px]" title={`Modified by ${p.lastModifiedBy}`}>
+                  By: {p.lastModifiedBy}
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Project Actions: Quick Inspect & Delete / Open */}
+          <div 
+            className="pt-1.5 flex justify-between items-center border-t border-slate-100 dark:border-slate-700/50 mt-1.5" 
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setInspectProjectId(p.id);
+              }}
+              className="flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 bg-slate-100 dark:bg-slate-750 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded-lg transition cursor-pointer"
+              title="Inspect deep project data in slide-over drawer"
+            >
+              <Eye className="w-3 h-3" />
+              <span>Quick Inspect</span>
+            </button>
+
+            <div className="flex items-center gap-1.5">
+              {canDeleteProject(p) && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onDeleteProject(p.id);
+                  }}
+                  className="flex items-center gap-1 px-2 py-0.5 text-[11px] font-bold text-rose-600 dark:text-rose-400 hover:text-white bg-rose-50 hover:bg-rose-600 dark:bg-rose-950/30 dark:hover:bg-rose-600 border border-rose-200 dark:border-rose-900/50 rounded-lg transition-all duration-200 shadow-2xs cursor-pointer"
+                  title="Permanently Delete Project"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  <span className="hidden sm:inline">Delete</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelectProject(p.id);
+                }}
+                className="flex items-center gap-1 px-2.5 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-bold transition shadow-xs cursor-pointer"
+              >
+                <span>Open</span>
+                <ExternalLink className="w-3 h-3" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </motion.div>
+    );
+  };
+
+  const renderProjectRow = (p: Project) => {
+    const statusInfo = getProjectStatus(p);
+    const { actual, planned, variance } = getPlannedAndActualProgress(p);
+    const revBudget = getRevisedBudgetMillions(p);
+    const hasPendingChangesForApprover = pendingApprovals.some(
+      a => a.projectId === p.id && a.status === 'pending' && canUserApproveRequest(currentUserObj, a, projects)
+    );
+    const mySubmittedPendingDraft = pendingApprovals.find(
+      a => a.projectId === p.id && a.status === 'pending' && a.requestedBy === currentUserObj.username
+    );
+
+    return (
+      <tr 
+        key={`tbl-row-${p.id}`}
+        onClick={() => onSelectProject(p.id)}
+        className="hover:bg-blue-50/40 dark:hover:bg-blue-950/25 transition-colors cursor-pointer group"
+      >
+        {/* Contract Name & Subtitle */}
+        <td className="py-2 px-3.5 align-middle">
+          <div className="flex items-center gap-2">
+            {hasPendingChangesForApprover && (
+              <span className="relative flex h-2 w-2 shrink-0" title="Pending Approver Review">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+              </span>
+            )}
+            <div>
+              <div className="font-bold text-slate-900 dark:text-zinc-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors line-clamp-1">
+                {p.name}
+              </div>
+              <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">
+                <span className="font-mono">{p.id.substring(0, 14)}</span>
+                {isRecentlyUpdated(p.lastModifiedAt) && (
+                  <span className="text-[9px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 px-1 rounded border border-emerald-200 dark:border-emerald-800">
+                    Updated
+                  </span>
+                )}
+                {hasPendingChangesForApprover && (
+                  <span className="text-[9px] font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 px-1 rounded border border-amber-200 dark:border-amber-800">
+                    Review Req.
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        </td>
+
+        {/* Status */}
+        <td className="py-2 px-3 align-middle" onClick={(e) => e.stopPropagation()}>
+          {canManageStatus(p) ? (
+            <select
+              value={p.status || 'In Progress'}
+              onChange={(e) => {
+                e.stopPropagation();
+                const newStatus = e.target.value as ProjectLifecycleStatus;
+                if (onUpdateProjectStatus) {
+                  onUpdateProjectStatus(p.id, newStatus);
+                }
+              }}
+              className={`text-[10px] font-extrabold uppercase px-2 py-1 rounded-lg border outline-none cursor-pointer transition shadow-2xs ${getLifecycleStatusBadge(p.status).style}`}
+            >
+              <option value="In Progress">🟢 In Progress</option>
+              <option value="Completed">✅ Completed</option>
+              <option value="Completed and Closed">🔒 Completed & Closed</option>
+              <option value="Suspended">⏸️ Suspended</option>
+              <option value="Terminated">🛑 Terminated</option>
+              <option value="Terminated and Closed">🔒 Terminated & Closed</option>
+              <option value="Archived">📦 Archived</option>
+            </select>
+          ) : (
+            <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-lg border inline-flex items-center gap-1 ${getLifecycleStatusBadge(p.status).style}`}>
+              <span>{getLifecycleStatusBadge(p.status).icon}</span>
+              <span>{getLifecycleStatusBadge(p.status).label}</span>
+            </span>
+          )}
+        </td>
+
+        {/* Directorate / PMO / Regional State */}
+        <td className="py-2 px-3 align-middle">
+          <div className="text-[11px] font-bold text-slate-800 dark:text-slate-200">
+            🏢 {p.programDirectorate || 'Southern'}
+          </div>
+          <div className="text-[10px] text-slate-500 dark:text-slate-400">
+            📁 {p.pmo || 'PMO 1'}
+          </div>
+          <div className="text-[10px] font-bold text-amber-700 dark:text-amber-300 flex items-center gap-0.5 mt-0.5">
+            <span>🏛️</span>
+            <span>{p.regionalState || 'Sidama'}</span>
+          </div>
+        </td>
+
+        {/* Contractor & Client */}
+        <td className="py-2 px-3 align-middle">
+          <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate max-w-[160px]" title={p.contractor}>
+            {p.contractor || 'Unassigned'}
+          </div>
+          <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate max-w-[160px]" title={p.client}>
+            Client: {p.client || 'ERA'}
+          </div>
+        </td>
+
+        {/* Class / Type */}
+        <td className="py-2 px-2.5 align-middle">
+          <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 mr-1">
+            {p.classification || 'DS-4'}
+          </span>
+          <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400">
+            {p.contractType || 'DBB'}
+          </span>
+        </td>
+
+        {/* Length */}
+        <td className="py-2 px-3 text-right font-mono font-bold text-slate-800 dark:text-slate-200 tabular-nums align-middle">
+          {p.lengthKm} <span className="text-[10px] font-normal text-slate-400">km</span>
+        </td>
+
+        {/* Revised Budget */}
+        <td className="py-2 px-3 text-right font-mono font-bold text-slate-800 dark:text-slate-200 tabular-nums align-middle">
+          <span className="text-[10px] font-normal text-slate-400 mr-0.5">Br.</span>
+          {revBudget.toFixed(2)}
+          <span className="text-[10px] font-normal text-slate-400 ml-0.5">M</span>
+        </td>
+
+        {/* Physical Progress */}
+        <td className="py-2 px-3 align-middle">
+          <div className="space-y-1 max-w-[140px]">
+            <div className="flex items-center justify-between text-[11px] font-bold font-mono">
+              <span className="text-slate-800 dark:text-slate-100 tabular-nums">
+                {actual.toFixed(1)}%
+              </span>
+              {planned !== null && (
+                <span className={`text-[9px] font-bold ${variance !== null && variance >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                  {variance !== null && (variance >= 0 ? `+${variance.toFixed(1)}%` : `${variance.toFixed(1)}%`)}
+                </span>
+              )}
+            </div>
+            {/* Dual Progress Bar */}
+            <div className="w-full bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden relative">
+              {planned !== null && (
+                <div 
+                  className="absolute top-0 bottom-0 bg-slate-400/40 dark:bg-slate-500/40 rounded-full"
+                  style={{ width: `${Math.min(100, Math.max(0, planned))}%` }}
+                  title={`Planned Target: ${planned.toFixed(1)}%`}
+                />
+              )}
+              <div 
+                className={`h-full rounded-full transition-all duration-300 relative z-10 ${getProgressBarColor(actual)}`}
+                style={{ width: `${Math.min(100, Math.max(0, actual))}%` }}
+              />
+            </div>
+          </div>
+        </td>
+
+        {/* Risk / Health */}
+        <td className="py-2 px-3 text-center align-middle">
+          <span 
+            className={`inline-flex items-center gap-1 text-[9px] font-extrabold px-2 py-0.5 rounded-md border uppercase tracking-tight ${statusInfo.badgeClass}`}
+            title={statusInfo.reason}
+          >
+            {statusInfo.icon}
+            <span>{statusInfo.level}</span>
+          </span>
+        </td>
+
+        {/* Actions */}
+        <td className="py-2 px-3 text-center align-middle" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center justify-center gap-1">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setInspectProjectId(p.id);
+              }}
+              className="p-1 text-slate-500 hover:text-blue-600 dark:text-slate-400 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded-lg transition cursor-pointer"
+              title="Quick Inspect Project Details"
+            >
+              <Eye className="w-3.5 h-3.5" />
+            </button>
+
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelectProject(p.id);
+              }}
+              className="flex items-center gap-1 px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition shadow-2xs cursor-pointer"
+              title="Open Project Dashboard"
+            >
+              <span>Open</span>
+              <ExternalLink className="w-3 h-3" />
+            </button>
+
+            {canDeleteProject(p) && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDeleteProject(p.id);
+                }}
+                className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition cursor-pointer"
+                title="Delete Project"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        </td>
+      </tr>
+    );
   };
 
   const pendingCount = pendingApprovals.filter(a => a.status === 'pending' && canUserApproveRequest(currentUserObj, a, projects)).length;
@@ -1147,6 +1925,51 @@ export default function ProjectsPage({
                   </div>
                 )}
 
+                {/* Ethiopian Regional State Filter */}
+                <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-1.5 rounded-xl shadow-sm shrink-0">
+                  <span className="text-[10px] font-extrabold text-amber-600 dark:text-amber-400 uppercase tracking-wider pl-1.5 pr-0.5 flex items-center gap-1">
+                    <span>🏛️</span>
+                    <span>Region:</span>
+                  </span>
+                  <select
+                    value={selectedRegionalState}
+                    onChange={(e) => setSelectedRegionalState(e.target.value)}
+                    className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-xs font-bold outline-none text-slate-700 dark:text-zinc-200 focus:border-amber-500 transition cursor-pointer"
+                  >
+                    <option value="All">🌐 All Regional States</option>
+                    {ETHIOPIAN_REGIONAL_STATES.map((rs, rsIdx) => (
+                      <option key={`proj-reg-filter-${rs}-${rsIdx}`} value={rs}>🏛️ {rs}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Regional / Portfolio Grouping Selector */}
+                <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-1.5 rounded-xl shadow-sm shrink-0">
+                  <span className="text-[10px] font-extrabold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider pl-1.5 pr-0.5 flex items-center gap-1">
+                    <span>🗂️</span>
+                    <span>Group By:</span>
+                  </span>
+                  <select
+                    value={groupBy}
+                    onChange={(e) => handleSetGroupBy(e.target.value as any)}
+                    className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-xs font-bold outline-none text-slate-700 dark:text-zinc-200 focus:border-indigo-500 transition cursor-pointer"
+                  >
+                    <option value="region">🏛️ Regional States</option>
+                    <option value="directorate">🏢 Directorate</option>
+                    <option value="none">📄 Flat (No Grouping)</option>
+                  </select>
+                  {groupBy !== 'none' && (
+                    <button
+                      type="button"
+                      onClick={handleToggleAllGroups}
+                      className="px-2 py-1 text-[10px] font-bold text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 transition cursor-pointer shrink-0"
+                      title={areAllGroupsCollapsed ? "Expand all groups" : "Collapse all groups"}
+                    >
+                      {areAllGroupsCollapsed ? "Expand All ▾" : "Collapse All ▴"}
+                    </button>
+                  )}
+                </div>
+
                 {/* Quick Portfolio / Archive Toggle Pills */}
                 <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-900 p-1 rounded-xl border border-slate-200 dark:border-slate-700/60 shrink-0">
                   <button
@@ -1429,384 +2252,77 @@ export default function ProjectsPage({
             )}
 
             {viewMode === 'grid' ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-3 gap-x-3 gap-y-2 sm:gap-y-2">
-                <AnimatePresence>
-                  {sortedProjects.map((p) => {
-                    const criticalBonds = p.bonds ? p.bonds.filter(b => {
-                      if (b.status === 'Recovered' || b.status === 'N/A' || (b.status && (b.status.toLowerCase().includes('returned') || b.status.toLowerCase().includes('amortized')))) return false;
-                      const exp = new Date(b.expireDate);
-                      const now = new Date();
-                      if (b.status === 'Expired' || isNaN(exp.getTime()) || exp < now) {
-                        return true;
-                      }
-                      const fortyFiveDays = 45 * 24 * 60 * 60 * 1000;
-                      if (exp.getTime() - now.getTime() < fortyFiveDays) {
-                        return true;
-                      }
-                      return false;
-                    }) : [];
-                    const statusInfo = getProjectStatus(p);
-                    const revBudget = getRevisedBudgetMillions(p);
-                    const { actual, planned, variance } = getPlannedAndActualProgress(p);
-                    const hasPendingChangesForApprover = pendingApprovals.some(a => a.projectId === p.id && a.status === 'pending' && canUserApproveRequest(currentUserObj, a, projects));
-                    const mySubmittedPendingDraft = pendingApprovals.find(a => a.projectId === p.id && a.status === 'pending' && a.requestedBy === currentUserObj.username);
-
+              groupBy !== 'none' ? (
+                <div className="space-y-4">
+                  {projectGroups.map(group => {
+                    const isCollapsed = Boolean(collapsedGroups[group.key]);
                     return (
-                      <motion.div
-                        key={p.id}
-                        layout
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.95 }}
-                        whileHover={{ y: -2 }}
-                        transition={{ duration: 0.2 }}
-                        onClick={() => onSelectProject(p.id)}
-                        className={`bg-white dark:bg-slate-800 border p-2.5 sm:p-3 rounded-xl shadow-xs hover:shadow-md cursor-pointer relative group transition-all ${statusInfo.cardBorderClass}`}
-                      >
-                        <div className="space-y-1.5 sm:space-y-2">
-                          {/* Badge & Type */}
-                          <div className="flex items-center gap-1 justify-between">
-                            <div className="flex items-center gap-1 flex-wrap">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setSimilarityFilter({ type: 'contractType', value: p.contractType });
-                                }}
-                                className={`text-[9.5px] font-extrabold uppercase px-1.5 py-0.5 rounded-md border transition ${
-                                  similarityFilter.type === 'contractType' && similarityFilter.value === p.contractType
-                                    ? 'bg-blue-600 text-white border-blue-600'
-                                    : 'bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border-blue-100/50 dark:border-blue-900/30'
-                                }`}
-                                title="Click to interlink contracts with the same Contract Type"
-                              >
-                                {p.contractType}
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setSimilarityFilter({ type: 'classification', value: p.classification });
-                                }}
-                                className={`text-[9.5px] font-extrabold uppercase px-1.5 py-0.5 rounded-md border transition ${
-                                  similarityFilter.type === 'classification' && similarityFilter.value === p.classification
-                                    ? 'bg-indigo-600 text-white border-indigo-600'
-                                    : 'bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 border-indigo-100/50 dark:border-indigo-900/30'
-                                }`}
-                                title="Click to interlink contracts with the same Classification"
-                              >
-                                {p.classification}
-                              </button>
-                              <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-md border bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border-emerald-100 dark:border-emerald-900/30">
-                                🏢 {p.programDirectorate || 'Southern'}
-                              </span>
-                              <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-md border bg-purple-50 dark:bg-purple-950/30 text-purple-600 dark:text-purple-400 border-purple-100 dark:border-purple-900/30">
-                                📦 {p.pmo || 'PMO 1'}
-                              </span>
-                              {isRecentlyUpdated(p.lastModifiedAt) && (
-                                <span 
-                                  className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md border bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-400/50 flex items-center gap-1 shadow-2xs animate-pulse"
-                                  title={`Updated within the last 24 hours (${p.lastModifiedAt ? new Date(p.lastModifiedAt).toLocaleString() : ''})`}
-                                >
-                                  <Sparkles className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                                  <span>Updated {formatRelativeTime(p.lastModifiedAt)}</span>
+                      <div key={'group-' + group.key} className="space-y-2.5">
+                        {/* Collapsible Group Header Banner */}
+                        <div
+                          onClick={() => toggleGroupCollapse(group.key)}
+                          className="bg-gradient-to-r from-slate-50 via-white to-slate-50 dark:from-slate-850 dark:via-slate-800 dark:to-slate-850 border border-slate-200/90 dark:border-slate-700/80 p-3 rounded-2xl shadow-2xs flex flex-wrap items-center justify-between gap-3 cursor-pointer hover:border-blue-400 dark:hover:border-blue-500 transition-all select-none"
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <span className="text-xl">{group.icon}</span>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <h3 className="text-sm font-black text-slate-850 dark:text-zinc-100 uppercase tracking-wide">
+                                  {group.title}
+                                </h3>
+                                <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                                  {group.badge}
                                 </span>
-                              )}
-                              <span className="text-[9.5px] font-bold text-slate-400 dark:text-slate-500">
-                                ID: {p.id.substring(0, 10)}
-                              </span>
-                            </div>
-                            
-                            {/* Health Status & Quick Inspect */}
-                            <div className="flex items-center gap-1 shrink-0">
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setInspectProjectId(p.id);
-                                }}
-                                className="p-0.5 rounded-md text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-700/60 transition cursor-pointer"
-                                title="Quick inspect project details"
-                              >
-                                <Eye className="w-3.5 h-3.5" />
-                              </button>
-                              <span className={`flex items-center gap-0.5 text-[9px] font-extrabold px-1.5 py-0.5 rounded-md border uppercase tracking-tight ${statusInfo.badgeClass}`}>
-                                {statusInfo.icon}
-                                <span>{statusInfo.level}</span>
-                              </span>
-                            </div>
-                          </div>
-
-                          {/* Title */}
-                          <div>
-                            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 line-clamp-1 group-hover:text-amber-500 dark:group-hover:text-amber-400 transition-colors flex items-center gap-1.5">
-                              {hasPendingChangesForApprover && (
-                                <span className="relative flex h-2 w-2 shrink-0" title="This contract has pending, unapproved changes requiring your review as designated approver">
-                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-450 opacity-75"></span>
-                                  <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
-                                </span>
-                              )}
-                              <span>{p.name}</span>
-                              {hasPendingChangesForApprover && (
-                                <span className="text-[9px] font-black uppercase text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded tracking-wider animate-pulse border border-amber-500/20 leading-none">
-                                  Pending Approver Review
-                                </span>
-                              )}
-                              {mySubmittedPendingDraft && !hasPendingChangesForApprover && (
-                                <span className="text-[9px] font-bold uppercase text-blue-600 dark:text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded tracking-wider border border-blue-500/20 leading-none">
-                                  Draft Submitted
-                                </span>
-                              )}
-                              {isRecentlyUpdated(p.lastModifiedAt) && (
-                                <span 
-                                  className="text-[9px] font-black uppercase text-emerald-700 dark:text-emerald-300 bg-emerald-500/15 dark:bg-emerald-500/20 px-1.5 py-0.5 rounded tracking-wider border border-emerald-500/30 leading-none flex items-center gap-1 shrink-0"
-                                  title={`Updated in the last 24 hours (${p.lastModifiedAt ? new Date(p.lastModifiedAt).toLocaleString() : ''})`}
-                                >
-                                  <span className="relative flex h-1.5 w-1.5 shrink-0">
-                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
-                                  </span>
-                                  <span>Updated</span>
-                                </span>
-                              )}
-                            </h3>
-                          </div>
-
-                          {/* Project Lifecycle Status Governance */}
-                          <div 
-                            className="flex items-center justify-between gap-1.5 pt-1 pb-0 border-t border-slate-100 dark:border-slate-700/50"
-                            onClick={(e) => e.stopPropagation()}
-                            onMouseDown={(e) => e.stopPropagation()}
-                            onPointerDown={(e) => e.stopPropagation()}
-                          >
-                            <span className="text-[9.5px] font-extrabold uppercase text-slate-400 dark:text-slate-500">
-                              Lifecycle Status:
-                            </span>
-
-                            {canManageStatus(p) ? (
-                              <div 
-                                className="flex items-center gap-1" 
-                                onClick={(e) => e.stopPropagation()}
-                                onMouseDown={(e) => e.stopPropagation()}
-                                onPointerDown={(e) => e.stopPropagation()}
-                              >
-                                <select
-                                  value={p.status || 'In Progress'}
-                                  onChange={(e) => {
-                                    e.stopPropagation();
-                                    const newStatus = e.target.value as ProjectLifecycleStatus;
-                                    if (onUpdateProjectStatus) {
-                                      onUpdateProjectStatus(p.id, newStatus);
-                                    }
-                                  }}
-                                  onClick={(e) => e.stopPropagation()}
-                                  onMouseDown={(e) => e.stopPropagation()}
-                                  onPointerDown={(e) => e.stopPropagation()}
-                                  className={`text-[9.5px] font-extrabold uppercase px-2 py-0.5 rounded-lg border outline-none cursor-pointer transition shadow-2xs ${getLifecycleStatusBadge(p.status).style}`}
-                                  title={isProjectClosed(p.status) ? "Project is closed. As CPM/Master Admin, you have privilege to change its lifecycle." : "Assigned by Directorate Admin / Administrator"}
-                                >
-                                  <option value="In Progress">🟢 In Progress</option>
-                                  <option value="Completed">✅ Completed</option>
-                                  <option value="Completed and Closed">🔒 Completed & Closed</option>
-                                  <option value="Suspended">⏸️ Suspended</option>
-                                  <option value="Terminated">🛑 Terminated</option>
-                                  <option value="Terminated and Closed">🔒 Terminated & Closed</option>
-                                  <option value="Archived">📦 Archived</option>
-                                </select>
                               </div>
-                            ) : (
-                              <span 
-                                className={`text-[9.5px] font-extrabold uppercase px-1.5 py-0.5 rounded-lg border flex items-center gap-1 ${getLifecycleStatusBadge(p.status).style}`}
-                                title={isProjectClosed(p.status) ? "Project lifecycle is closed. Only the CPM Admin and Master Admin are authorized to change it to another lifecycle." : "Assigned by Directorate / System Administrator"}
-                              >
-                                <span>{getLifecycleStatusBadge(p.status).icon}</span>
-                                <span>{getLifecycleStatusBadge(p.status).label}</span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-3 sm:gap-4 text-xs font-semibold text-slate-600 dark:text-slate-300 flex-wrap">
+                            <div className="flex items-center gap-1" title="Total Road Length in this group">
+                              <span className="text-slate-400 text-[11px]">Length:</span>
+                              <span className="font-mono font-bold text-slate-800 dark:text-zinc-200">{group.totalLength.toFixed(1)} km</span>
+                            </div>
+                            <div className="flex items-center gap-1" title="Total Revised Budget">
+                              <span className="text-slate-400 text-[11px]">Budget:</span>
+                              <span className="font-mono font-bold text-slate-800 dark:text-zinc-200">Br. {group.totalBudget.toFixed(2)} M</span>
+                            </div>
+                            <div className="flex items-center gap-1" title="Average Physical Progress">
+                              <span className="text-slate-400 text-[11px]">Avg Progress:</span>
+                              <span className="font-mono font-bold text-blue-600 dark:text-blue-400">{group.avgProgress.toFixed(1)}%</span>
+                            </div>
+                            {group.criticalBondsCount > 0 && (
+                              <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200 dark:border-rose-800 flex items-center gap-1">
+                                <span>⚠️</span>
+                                <span>{group.criticalBondsCount} Alert{group.criticalBondsCount > 1 ? 's' : ''}</span>
                               </span>
                             )}
-                          </div>
-
-                          {/* 3-Column Micro-Grid Specs Layout */}
-                          <div className="grid grid-cols-3 gap-1 border-t border-slate-50 dark:border-slate-700/40 pt-1 text-center">
-                            <div>
-                              <p className="text-[9.5px] font-semibold text-slate-500 dark:text-slate-400">Length</p>
-                              <p className="text-xs font-bold font-mono tabular-nums flex items-center justify-center gap-0.5 mt-0.5 text-slate-800 dark:text-slate-100">
-                                <Briefcase className="w-2.5 h-2.5 text-slate-400" />
-                                {p.lengthKm} <span className="text-[9.5px] font-normal text-slate-400">km</span>
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-[9.5px] font-semibold text-slate-500 dark:text-slate-400">Revised Budget</p>
-                              <p className="text-xs font-bold font-mono tabular-nums flex items-center justify-center gap-0.5 mt-0.5 text-slate-800 dark:text-slate-100">
-                                <DollarSign className="w-2.5 h-2.5 text-slate-400" />
-                                {revBudget.toFixed(2)} <span className="text-[9.5px] font-normal text-slate-400">M</span>
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-[9.5px] font-semibold text-slate-500 dark:text-slate-400">Physical Progress</p>
-                              <p className="text-xs font-bold font-mono tabular-nums flex items-center justify-center gap-0.5 mt-0.5 text-slate-800 dark:text-slate-100">
-                                <TrendingUp className="w-2.5 h-2.5 text-slate-400" />
-                                {actual.toFixed(1)}%
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* Progress Dual Line */}
-                          <div className="space-y-0.5">
-                            <div className="w-full bg-slate-100 dark:bg-slate-700/50 h-1.5 rounded-full overflow-hidden relative">
-                              {planned !== null && (
-                                <div 
-                                  className="absolute top-0 bottom-0 bg-slate-300 dark:bg-slate-600 rounded-full"
-                                  style={{ width: `${Math.min(100, Math.max(0, planned))}%` }}
-                                  title={`Planned Progress Target: ${planned.toFixed(1)}%`}
-                                />
-                              )}
-                              <div 
-                                className={`h-full rounded-full transition-all duration-500 relative z-10 ${getProgressBarColor(actual)}`}
-                                style={{ width: `${Math.min(100, Math.max(0, actual))}%` }}
-                              />
-                            </div>
-                            {planned !== null && (
-                              <div className="flex justify-between text-[9px] text-slate-400 font-mono">
-                                <span>Target: {planned.toFixed(1)}%</span>
-                                <span className={variance !== null && variance >= 0 ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-rose-600 dark:text-rose-400 font-bold'}>
-                                  {variance !== null && (variance >= 0 ? `+${variance.toFixed(1)}% Ahead` : `${variance.toFixed(1)}% Lagging`)}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Adaptive Project Health Warning / Condition Details Sign */}
-                          {statusInfo.level === 'Critical' && (
-                            <div className="bg-rose-50 dark:bg-rose-950/25 border border-rose-100 dark:border-rose-950/40 p-1.5 sm:p-2 rounded-lg space-y-0.5 mt-1">
-                              <div className="flex items-center gap-1.5 text-rose-700 dark:text-rose-400 font-extrabold text-[9.5px] uppercase tracking-wider">
-                                <AlertTriangle className="w-3 h-3 text-rose-600 dark:text-rose-400 animate-bounce shrink-0" />
-                                <span>{statusInfo.reason}</span>
-                              </div>
-                              {criticalBonds.length > 0 && (
-                                <div className="text-[8.5px] space-y-0.5 text-rose-600/80 dark:text-rose-400/80">
-                                  {criticalBonds.map((b, bIdx) => {
-                                    const exp = new Date(b.expireDate);
-                                    const isExpired = b.status === 'Expired' || exp < new Date();
-                                    return (
-                                      <div key={bIdx} className="flex justify-between items-center bg-white/45 dark:bg-black/20 px-1.5 py-0.5 rounded">
-                                        <span className="font-semibold truncate max-w-[140px]">{b.type}</span>
-                                        <span className="font-mono font-bold text-[8px] text-rose-700 dark:text-rose-300">
-                                          {isExpired ? 'EXPIRED' : 'DUE <45d'}: {b.expireDate}
-                                        </span>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          {statusInfo.level === 'Warning' && (
-                            <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/30 p-1.5 sm:p-2 rounded-lg space-y-0.5 mt-1">
-                              <div className="flex items-center gap-1.5 text-amber-700 dark:text-amber-400 font-extrabold text-[9.5px] uppercase tracking-wider">
-                                <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0" />
-                                <span>{statusInfo.reason}</span>
-                              </div>
-                              <p className="text-[8.5px] text-slate-500 dark:text-slate-400 leading-tight">
-                                This road project is functional but has unresolved pending liabilities or low progress rates.
-                              </p>
-                            </div>
-                          )}
-
-                          {statusInfo.level === 'Good' && (
-                            <div className="bg-emerald-50/50 dark:bg-emerald-950/10 border border-emerald-100/60 dark:border-emerald-900/20 p-1.5 sm:p-2 rounded-lg space-y-0.5 mt-1">
-                              <div className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400 font-extrabold text-[9.5px] uppercase tracking-wider">
-                                <CheckCircle className="w-3 h-3 text-emerald-500 shrink-0" />
-                                <span>On-Track & Fully Compliant</span>
-                              </div>
-                              <p className="text-[8.5px] text-slate-500 dark:text-slate-400 leading-tight">
-                                Securities are valid, physical progress is compliant, and no matured overdue IPC claims are pending.
-                              </p>
-                            </div>
-                          )}
-
-                          {/* Last Modified Audit Footer */}
-                          {p.lastModifiedAt && (
-                            <div className="flex items-center justify-between text-[9.5px] text-slate-400 dark:text-slate-500 pt-1 border-t border-slate-100 dark:border-slate-700/40 mt-1">
-                              <span className="flex items-center gap-1">
-                                <span className="font-semibold text-slate-400">Last Modified:</span>
-                                <span className={`font-bold ${isRecentlyUpdated(p.lastModifiedAt) ? 'text-emerald-600 dark:text-emerald-400 font-extrabold' : 'text-slate-500 dark:text-slate-400'}`}>
-                                  {formatRelativeTime(p.lastModifiedAt)}
-                                </span>
-                                <span className="text-[8.5px] text-slate-400">({new Date(p.lastModifiedAt).toLocaleDateString()})</span>
-                              </span>
-                              {p.lastModifiedBy && (
-                                <span className="text-[8.5px] text-slate-400 truncate max-w-[120px]" title={`Modified by ${p.lastModifiedBy}`}>
-                                  By: {p.lastModifiedBy}
-                                </span>
-                              )}
-                            </div>
-                          )}
-
-                          {/* Project Actions: Quick Inspect & Delete / Open */}
-                          <div 
-                            className="pt-1.5 flex justify-between items-center border-t border-slate-100 dark:border-slate-700/50 mt-1.5" 
-                            onClick={(e) => e.stopPropagation()}
-                          >
                             <button
                               type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setInspectProjectId(p.id);
-                              }}
-                              className="flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 bg-slate-100 dark:bg-slate-750 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded-lg transition cursor-pointer"
-                              title="Inspect deep project data in slide-over drawer"
+                              className="p-1 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition"
                             >
-                              <Eye className="w-3 h-3" />
-                              <span>Quick Inspect</span>
+                              {isCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
                             </button>
-
-                            <div className="flex items-center gap-1.5">
-                              {canDeleteProject(p) && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    onDeleteProject(p.id);
-                                  }}
-                                  className="flex items-center gap-1 px-2 py-0.5 text-[11px] font-bold text-rose-600 dark:text-rose-400 hover:text-white bg-rose-50 hover:bg-rose-600 dark:bg-rose-950/30 dark:hover:bg-rose-600 border border-rose-200 dark:border-rose-900/50 rounded-lg transition-all duration-200 shadow-2xs cursor-pointer"
-                                  title="Permanently Delete Project"
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                  <span className="hidden sm:inline">Delete</span>
-                                </button>
-                              )}
-
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onSelectProject(p.id);
-                                }}
-                                className="flex items-center gap-1 px-2.5 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-bold transition shadow-xs cursor-pointer"
-                              >
-                                <span>Open</span>
-                                <ExternalLink className="w-3 h-3" />
-                              </button>
-                            </div>
                           </div>
                         </div>
-                      </motion.div>
+
+                        {!isCollapsed && (
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-3 gap-x-3 gap-y-2 sm:gap-y-2">
+                            <AnimatePresence>
+                              {group.projects.map(p => renderProjectCard(p))}
+                            </AnimatePresence>
+                          </div>
+                        )}
+                      </div>
                     );
                   })}
-                </AnimatePresence>
-
-                {filteredProjects.length === 0 && (
-                  <div className="col-span-1 md:col-span-2 text-center py-12 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 p-6 rounded-2xl shadow-sm">
-                    <FolderOpen className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-3 animate-bounce" />
-                    <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">
-                      No active contracts match your filters.
-                    </p>
-                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
-                      Try revising your query or request administrative permissions.
-                    </p>
-                  </div>
-                )}
-              </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-3 gap-x-3 gap-y-2 sm:gap-y-2">
+                  <AnimatePresence>
+                    {sortedProjects.map(p => renderProjectCard(p))}
+                  </AnimatePresence>
+                </div>
+              )
             ) : (
               /* High-Density Enterprise List / Datatable View */
               <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/80 rounded-2xl shadow-sm overflow-hidden">
@@ -1913,212 +2429,49 @@ export default function ProjectsPage({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-700/60">
-                      {sortedProjects.map((p) => {
-                        const statusInfo = getProjectStatus(p);
-                        const { actual, planned, variance } = getPlannedAndActualProgress(p);
-                        const revBudget = getRevisedBudgetMillions(p);
-                        const hasPendingChangesForApprover = pendingApprovals.some(
-                          a => a.projectId === p.id && a.status === 'pending' && canUserApproveRequest(currentUserObj, a, projects)
-                        );
-                        const mySubmittedPendingDraft = pendingApprovals.find(
-                          a => a.projectId === p.id && a.status === 'pending' && a.requestedBy === currentUserObj.username
-                        );
-
-                        return (
-                          <tr 
-                            key={`tbl-row-${p.id}`}
-                            onClick={() => onSelectProject(p.id)}
-                            className="hover:bg-blue-50/40 dark:hover:bg-blue-950/25 transition-colors cursor-pointer group"
-                          >
-                            {/* Contract Name & Subtitle */}
-                            <td className="py-2 px-3.5 align-middle">
-                              <div className="flex items-center gap-2">
-                                {hasPendingChangesForApprover && (
-                                  <span className="relative flex h-2 w-2 shrink-0" title="Pending Approver Review">
-                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
-                                  </span>
-                                )}
-                                <div>
-                                  <div className="font-bold text-slate-900 dark:text-zinc-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors line-clamp-1">
-                                    {p.name}
-                                  </div>
-                                  <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">
-                                    <span className="font-mono">{p.id.substring(0, 14)}</span>
-                                    {isRecentlyUpdated(p.lastModifiedAt) && (
-                                      <span className="text-[9px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 px-1 rounded border border-emerald-200 dark:border-emerald-800">
-                                        Updated
-                                      </span>
-                                    )}
-                                    {hasPendingChangesForApprover && (
-                                      <span className="text-[9px] font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 px-1 rounded border border-amber-200 dark:border-amber-800">
-                                        Review Req.
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            </td>
-
-                            {/* Status */}
-                            <td className="py-2 px-3 align-middle" onClick={(e) => e.stopPropagation()}>
-                              {canManageStatus(p) ? (
-                                <select
-                                  value={p.status || 'In Progress'}
-                                  onChange={(e) => {
-                                    e.stopPropagation();
-                                    const newStatus = e.target.value as ProjectLifecycleStatus;
-                                    if (onUpdateProjectStatus) {
-                                      onUpdateProjectStatus(p.id, newStatus);
-                                    }
-                                  }}
-                                  className={`text-[10px] font-extrabold uppercase px-2 py-1 rounded-lg border outline-none cursor-pointer transition shadow-2xs ${getLifecycleStatusBadge(p.status).style}`}
-                                >
-                                  <option value="In Progress">🟢 In Progress</option>
-                                  <option value="Completed">✅ Completed</option>
-                                  <option value="Completed and Closed">🔒 Completed & Closed</option>
-                                  <option value="Suspended">⏸️ Suspended</option>
-                                  <option value="Terminated">🛑 Terminated</option>
-                                  <option value="Terminated and Closed">🔒 Terminated & Closed</option>
-                                  <option value="Archived">📦 Archived</option>
-                                </select>
-                              ) : (
-                                <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-lg border inline-flex items-center gap-1 ${getLifecycleStatusBadge(p.status).style}`}>
-                                  <span>{getLifecycleStatusBadge(p.status).icon}</span>
-                                  <span>{getLifecycleStatusBadge(p.status).label}</span>
-                                </span>
-                              )}
-                            </td>
-
-                            {/* Directorate / PMO */}
-                            <td className="py-2 px-3 align-middle">
-                              <div className="text-[11px] font-bold text-slate-800 dark:text-slate-200">
-                                🏢 {p.programDirectorate || 'Southern'}
-                              </div>
-                              <div className="text-[10px] text-slate-500 dark:text-slate-400">
-                                📁 {p.pmo || 'PMO 1'}
-                              </div>
-                            </td>
-
-                            {/* Contractor & Client */}
-                            <td className="py-2 px-3 align-middle">
-                              <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate max-w-[160px]" title={p.contractor}>
-                                {p.contractor || 'Unassigned'}
-                              </div>
-                              <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate max-w-[160px]" title={p.client}>
-                                Client: {p.client || 'ERA'}
-                              </div>
-                            </td>
-
-                            {/* Class / Type */}
-                            <td className="py-2 px-2.5 align-middle">
-                              <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 mr-1">
-                                {p.classification || 'DS-4'}
-                              </span>
-                              <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400">
-                                {p.contractType || 'DBB'}
-                              </span>
-                            </td>
-
-                            {/* Length */}
-                            <td className="py-2 px-3 text-right font-mono font-bold text-slate-800 dark:text-slate-200 tabular-nums align-middle">
-                              {p.lengthKm} <span className="text-[10px] font-normal text-slate-400">km</span>
-                            </td>
-
-                            {/* Revised Budget */}
-                            <td className="py-2 px-3 text-right font-mono font-bold text-slate-800 dark:text-slate-200 tabular-nums align-middle">
-                              <span className="text-[10px] font-normal text-slate-400 mr-0.5">Br.</span>
-                              {revBudget.toFixed(2)}
-                              <span className="text-[10px] font-normal text-slate-400 ml-0.5">M</span>
-                            </td>
-
-                            {/* Physical Progress */}
-                            <td className="py-2 px-3 align-middle">
-                              <div className="space-y-1 max-w-[140px]">
-                                <div className="flex items-center justify-between text-[11px] font-bold font-mono">
-                                  <span className="text-slate-800 dark:text-slate-100 tabular-nums">
-                                    {actual.toFixed(1)}%
-                                  </span>
-                                  {planned !== null && (
-                                    <span className={`text-[9px] font-bold ${variance !== null && variance >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                                      {variance !== null && (variance >= 0 ? `+${variance.toFixed(1)}%` : `${variance.toFixed(1)}%`)}
-                                    </span>
-                                  )}
-                                </div>
-                                {/* Dual Progress Bar */}
-                                <div className="w-full bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden relative">
-                                  {planned !== null && (
-                                    <div 
-                                      className="absolute top-0 bottom-0 bg-slate-400/40 dark:bg-slate-500/40 rounded-full"
-                                      style={{ width: `${Math.min(100, Math.max(0, planned))}%` }}
-                                      title={`Planned Target: ${planned.toFixed(1)}%`}
-                                    />
-                                  )}
-                                  <div 
-                                    className={`h-full rounded-full transition-all duration-300 relative z-10 ${getProgressBarColor(actual)}`}
-                                    style={{ width: `${Math.min(100, Math.max(0, actual))}%` }}
-                                  />
-                                </div>
-                              </div>
-                            </td>
-
-                            {/* Risk / Health */}
-                            <td className="py-2 px-3 text-center align-middle">
-                              <span 
-                                className={`inline-flex items-center gap-1 text-[9px] font-extrabold px-2 py-0.5 rounded-md border uppercase tracking-tight ${statusInfo.badgeClass}`}
-                                title={statusInfo.reason}
+                      {groupBy !== 'none' ? (
+                        projectGroups.map(group => {
+                          const isCollapsed = Boolean(collapsedGroups[group.key]);
+                          return (
+                            <React.Fragment key={'list-grp-' + group.key}>
+                              <tr 
+                                onClick={() => toggleGroupCollapse(group.key)}
+                                className="bg-slate-100/90 dark:bg-slate-750 text-slate-800 dark:text-zinc-100 font-black cursor-pointer select-none hover:bg-slate-200/80 dark:hover:bg-slate-700 transition"
                               >
-                                {statusInfo.icon}
-                                <span>{statusInfo.level}</span>
-                              </span>
-                            </td>
-
-                            {/* Actions */}
-                            <td className="py-2 px-3 text-center align-middle" onClick={(e) => e.stopPropagation()}>
-                              <div className="flex items-center justify-center gap-1">
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setInspectProjectId(p.id);
-                                  }}
-                                  className="p-1 text-slate-500 hover:text-blue-600 dark:text-slate-400 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded-lg transition cursor-pointer"
-                                  title="Quick Inspect Project Details"
-                                >
-                                  <Eye className="w-3.5 h-3.5" />
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    onSelectProject(p.id);
-                                  }}
-                                  className="flex items-center gap-1 px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition shadow-2xs cursor-pointer"
-                                  title="Open Project Dashboard"
-                                >
-                                  <span>Open</span>
-                                  <ExternalLink className="w-3 h-3" />
-                                </button>
-
-                                {canDeleteProject(p) && (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      onDeleteProject(p.id);
-                                    }}
-                                    className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition cursor-pointer"
-                                    title="Delete Project"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
+                                <td colSpan={9} className="py-2.5 px-3.5">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-base">{group.icon}</span>
+                                      <span className="text-xs uppercase tracking-wide">{group.title}</span>
+                                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300">
+                                        {group.badge}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-3 text-[11px] font-bold text-slate-600 dark:text-slate-300 font-mono">
+                                      <span>{group.totalLength.toFixed(1)} km</span>
+                                      <span>·</span>
+                                      <span>Br. {group.totalBudget.toFixed(2)} M</span>
+                                      <span>·</span>
+                                      <span>Avg: {group.avgProgress.toFixed(1)}%</span>
+                                      {group.criticalBondsCount > 0 && (
+                                        <span className="text-rose-600 dark:text-rose-400 font-sans">
+                                          ⚠️ {group.criticalBondsCount} alert{group.criticalBondsCount > 1 ? 's' : ''}
+                                        </span>
+                                      )}
+                                      <span className="text-slate-400 text-xs ml-1 font-sans">
+                                        {isCollapsed ? '▾' : '▴'}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </td>
+                              </tr>
+                              {!isCollapsed && group.projects.map(p => renderProjectRow(p))}
+                            </React.Fragment>
+                          );
+                        })
+                      ) : (
+                        sortedProjects.map(p => renderProjectRow(p))
+                      )}
                     </tbody>
 
                     {/* Table Footer with Summary Statistics */}
@@ -2266,6 +2619,40 @@ export default function ProjectsPage({
                 </div>
               </div>
 
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-amber-600 dark:text-amber-400 tracking-wider uppercase flex items-center justify-between">
+                  <span className="flex items-center gap-1">🏛️ Ethiopian Regional States (Multiple Select)</span>
+                  <span className="text-[8px] text-slate-400 font-sans">{newProjectRegionalStates.length} selected</span>
+                </label>
+                <div className="max-h-36 overflow-y-auto space-y-1 bg-slate-50 dark:bg-slate-900 p-2 rounded-xl border border-slate-200 dark:border-slate-700">
+                  {ETHIOPIAN_REGIONAL_STATES.map((state, stateIdx) => {
+                    const isChecked = newProjectRegionalStates.includes(state);
+                    return (
+                      <label key={`new-proj-reg-${state}-${stateIdx}`} className="flex items-center gap-2 text-[10px] text-slate-700 dark:text-slate-200 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 p-1 rounded transition select-none">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setNewProjectRegionalStates([...newProjectRegionalStates, state]);
+                            } else {
+                              if (newProjectRegionalStates.length > 1) {
+                                setNewProjectRegionalStates(newProjectRegionalStates.filter(r => r !== state));
+                              } else {
+                                alert('At least one Ethiopian regional state must be selected.');
+                              }
+                            }
+                            setCreateError('');
+                          }}
+                          className="rounded border-slate-300 text-amber-600 focus:ring-amber-500 w-3.5 h-3.5 cursor-pointer"
+                        />
+                        <span>🏛️ {state}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
               {createError && (
                 <div className="bg-rose-50/70 p-3 rounded-xl border border-rose-200 text-xs font-bold text-rose-600 flex items-center gap-2">
                   <AlertTriangle className="w-4 h-4 shrink-0 text-rose-500" />
@@ -2331,7 +2718,7 @@ export default function ProjectsPage({
                       {inspectProject.name}
                     </h2>
                     <p className="text-xs text-slate-500 dark:text-slate-400">
-                      🏢 {inspectProject.programDirectorate || 'Southern'} Directorate · 📁 {inspectProject.pmo || 'PMO 1'}
+                      🏢 {inspectProject.programDirectorate || 'Southern'} Directorate · 📁 {inspectProject.pmo || 'PMO 1'} · 🏛️ {inspectProject.regionalState || 'Sidama'}
                     </p>
                   </div>
 
