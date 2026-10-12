@@ -1137,6 +1137,19 @@ export interface User {
   lastSignInApprovalRequestedAt?: string; // ISO date timestamp when user attempted sign-in or requested approval
   requestLocation?: string; // Location or timezone of user when requesting sign-in approval
   requestDeviceInfo?: string; // Device, operating system, and browser info when requesting sign-in approval
+  signInRecords?: UserSignInRecord[]; // List of recorded device sign-in sessions for this user
+}
+
+export interface UserSignInRecord {
+  id: string; // Unique session record identifier
+  deviceId: string; // Identifier for client device / browser profile
+  deviceInfo: string; // OS & Browser summary (e.g. "Windows PC • Chrome", "iOS Mobile Device • Safari")
+  location?: string; // Client timezone / location (e.g. "Africa/Addis_Ababa (EN)")
+  ipAddress?: string; // IP or Network address
+  signedInAt: string; // ISO timestamp when session was initialized
+  lastActiveAt?: string; // ISO timestamp of most recent activity
+  userAgent?: string;
+  isCurrentDevice?: boolean; // Evaluated at runtime
 }
 
 export interface EditablePageOption {

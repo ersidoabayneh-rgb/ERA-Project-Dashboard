@@ -273,6 +273,12 @@ import AiAssistantChat from './components/AiAssistantChat';
 import UserGuideManualModal from './components/UserGuideManualModal';
 import ThemeCustomizerModal from './components/ThemeCustomizerModal';
 import { UserProfileModal } from './components/UserProfileModal';
+import { 
+  getCurrentDeviceId, 
+  ensureUserSignInRecords, 
+  removeOtherDeviceRecords, 
+  removeSpecificDeviceRecord 
+} from './lib/deviceSession';
 import DeleteProjectModal from './components/DeleteProjectModal';
 import ApprovalWorkflowManager from './components/ApprovalWorkflowManager';
 import eraLogo from './assets/logo.png';
@@ -409,7 +415,9 @@ export default function App() {
   const [currentUserObj, setCurrentUserObj] = useState<User | null>(() => {
     try {
       const stored = localStorage.getItem('era_current_user_obj');
-      return stored ? JSON.parse(stored) : null;
+      if (!stored) return null;
+      const parsed = JSON.parse(stored);
+      return ensureUserSignInRecords(parsed);
     } catch {
       return null;
     }
@@ -1532,6 +1540,61 @@ export default function App() {
     }
   };
 
+  // Multi-Device Sign-in Record Revocation Handlers
+  const handleRemoveOtherDeviceRecords = async (keptDeviceId: string): Promise<{ success: boolean; message?: string }> => {
+    if (!currentUserObj) {
+      return { success: false, message: 'No active user session found.' };
+    }
+    try {
+      const updatedUser = removeOtherDeviceRecords(currentUserObj, keptDeviceId);
+      const res = await handleSelfUpdateCredentials(updatedUser, currentUserObj.username);
+
+      // Broadcast session revocation across windows & tabs
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        try {
+          const bc = new BroadcastChannel('era_frontend_sync');
+          bc.postMessage({
+            type: 'SESSIONS_REVOKED',
+            username: currentUserObj.username,
+            keptDeviceId,
+            timestamp: new Date().toISOString()
+          });
+          bc.close();
+        } catch {}
+
+        try {
+          const eraBc = new BroadcastChannel('era_broadcast_channel');
+          eraBc.postMessage({
+            type: 'SESSIONS_REVOKED',
+            username: currentUserObj.username,
+            keptDeviceId,
+            timestamp: new Date().toISOString()
+          });
+          eraBc.close();
+        } catch {}
+      }
+
+      return res;
+    } catch (err: any) {
+      console.error('Failed to remove other device records:', err);
+      return { success: false, message: err?.message || 'Failed to remove other device records.' };
+    }
+  };
+
+  const handleRemoveSpecificDeviceRecord = async (recordId: string): Promise<{ success: boolean; message?: string }> => {
+    if (!currentUserObj) {
+      return { success: false, message: 'No active user session found.' };
+    }
+    try {
+      const updatedUser = removeSpecificDeviceRecord(currentUserObj, recordId);
+      const res = await handleSelfUpdateCredentials(updatedUser, currentUserObj.username);
+      return res;
+    } catch (err: any) {
+      console.error('Failed to remove device record:', err);
+      return { success: false, message: err?.message || 'Failed to remove device record.' };
+    }
+  };
+
   // Standalone Backend Live Sync State and Managers
   const [isSyncAutoSuspendDisabled, setIsSyncAutoSuspendDisabled] = useState(() => {
     return localStorage.getItem('era_sync_disable_autosuspend') !== 'false';
@@ -2130,6 +2193,18 @@ let isBatchSyncRunning = false;
       try {
         broadcastChannel = new BroadcastChannel('era_frontend_sync');
         broadcastChannel.onmessage = (event) => {
+          if (event.data?.type === 'SESSIONS_REVOKED') {
+            const { username, keptDeviceId } = event.data;
+            const currentDevId = getCurrentDeviceId();
+            const activeUser = localStorage.getItem('era_current_user');
+            if (activeUser && activeUser.toLowerCase() === (username || '').toLowerCase()) {
+              if (currentDevId !== keptDeviceId) {
+                handleLogout();
+                alert('🔒 Session Terminated: Your sign-in record on this device was removed from another active session.');
+                return;
+              }
+            }
+          }
           if (event.data?.type === 'USER_REGISTRATION_SUBMITTED' || event.data?.type === 'USER_SIGNIN_APPROVAL_REQUESTED') {
             const user = event.data.user as User;
             if (user && user.username) {
@@ -2614,10 +2689,12 @@ let isBatchSyncRunning = false;
   };
 
   const handleLoginSuccess = (un: string, userObj: User) => {
+    const userWithDevice = ensureUserSignInRecords(userObj);
     setCurrentUser(un);
-    setCurrentUserObj(userObj);
+    setCurrentUserObj(userWithDevice);
     localStorage.setItem('era_current_user', un);
-    localStorage.setItem('era_current_user_obj', JSON.stringify(userObj));
+    localStorage.setItem('era_current_user_obj', JSON.stringify(userWithDevice));
+    safeSaveSingleUser(userWithDevice).catch(() => {});
     setCurrentPage('projects');
   };
 
@@ -4153,10 +4230,17 @@ let isBatchSyncRunning = false;
                 </button>
                 <button
                   onClick={handleToggleDarkMode}
-                  className="bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 p-1 rounded-full border border-slate-200 dark:border-slate-700 text-slate-500 transition"
+                  className="bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 p-1 rounded-full border border-slate-200 dark:border-slate-700 text-slate-500 transition cursor-pointer"
                   title="Toggle Mode"
                 >
                   {darkMode ? <Sun className="w-3 h-3 text-amber-500" /> : <Moon className="w-3 h-3 text-blue-500" />}
+                </button>
+                <button
+                  onClick={() => setShowProfile(true)}
+                  className="bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 p-1 rounded-full border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-blue-500 transition cursor-pointer flex items-center justify-center"
+                  title="User Profile & Security Settings"
+                >
+                  <UserIcon className="w-3 h-3" />
                 </button>
               </div>
             </div>
@@ -5777,6 +5861,8 @@ let isBatchSyncRunning = false;
           isOpen={showProfile}
           onClose={() => setShowProfile(false)}
           onUpdateCredentials={handleSelfUpdateCredentials}
+          onRemoveOtherDeviceRecords={handleRemoveOtherDeviceRecords}
+          onRemoveSpecificDeviceRecord={handleRemoveSpecificDeviceRecord}
         />
       )}
 

@@ -5,6 +5,7 @@ import { User as UserType } from '../types';
 import eraLogo from '../assets/logo.png';
 import { safeSaveSingleUser, safeFetchUsers } from '../lib/apiSync';
 import { safeDispatchCustomEvent } from '../lib/storage';
+import { ensureUserSignInRecords } from '../lib/deviceSession';
 
 function getDeviceSummary(): string {
   if (typeof window === 'undefined' || !navigator) return 'Web Client';
@@ -238,7 +239,9 @@ export default function LoginPage({ onLoginSuccess, getUsers, saveUsers }: Login
         setError('Your account is Inactive. Please contact the Master Administrator to activate your account.');
         return;
       }
-      onLoginSuccess(found.username, found);
+      const userWithDevice = ensureUserSignInRecords(found);
+      safeSaveSingleUser(userWithDevice).catch(() => {});
+      onLoginSuccess(userWithDevice.username, userWithDevice);
     } else {
       setError('Invalid username or password.');
     }
