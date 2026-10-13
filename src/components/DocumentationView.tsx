@@ -15,15 +15,36 @@ import {
   Sparkles,
   ExternalLink,
   ChevronRight,
+  ChevronDown,
+  Folder,
+  FolderOpen,
   Image as ImageIcon,
   FileImage,
   Paperclip,
   Plus,
   X,
   FileType,
-  FileSpreadsheet
+  FileSpreadsheet,
+  GripVertical
 } from 'lucide-react';
 import { Project, ProjectDocument, formatAccounting } from '../types';
+
+const FILING_STRUCTURE_HEADINGS = [
+  "Contract Documents",
+  "Drawings",
+  "Tender Stage Information",
+  "Correspondence",
+  "Meetings",
+  "Reports",
+  "Right of Way",
+  "Programmes",
+  "Design and Design Changes",
+  "Financial Control",
+  "Claims",
+  "Contract Administration Manual (CAM)",
+  "Taking Over and Defects Notification",
+  "Additional"
+];
 
 interface DocumentationViewProps {
   project: Project;
@@ -37,7 +58,7 @@ export default function DocumentationView({
   isReadonly = false
 }: DocumentationViewProps) {
   const [docName, setDocName] = useState('');
-  const [docType, setDocType] = useState<string>('contract');
+  const [docType, setDocType] = useState<string>('Contract Documents');
   const [docDesc, setDocDesc] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [dragActive, setDragActive] = useState(false);
@@ -46,6 +67,63 @@ export default function DocumentationView({
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
   const [showPreviewDoc, setShowPreviewDoc] = useState<ProjectDocument | null>(null);
+
+  const [collapsedHeadings, setCollapsedHeadings] = useState<Record<string, boolean>>(() => {
+    const initial: Record<string, boolean> = {};
+    FILING_STRUCTURE_HEADINGS.forEach(h => { initial[h] = false; }); // default expanded
+    return initial;
+  });
+
+  const toggleHeading = (heading: string) => {
+    setCollapsedHeadings(prev => ({
+      ...prev,
+      [heading]: !prev[heading]
+    }));
+  };
+
+  const expandAllHeadings = () => {
+    const updated: Record<string, boolean> = {};
+    FILING_STRUCTURE_HEADINGS.forEach(h => { updated[h] = false; });
+    setCollapsedHeadings(updated);
+  };
+
+  const collapseAllHeadings = () => {
+    const updated: Record<string, boolean> = {};
+    FILING_STRUCTURE_HEADINGS.forEach(h => { updated[h] = true; });
+    setCollapsedHeadings(updated);
+  };
+
+  const [sidePreviewDoc, setSidePreviewDoc] = useState<ProjectDocument | null>(null);
+  const [draggedDocId, setDraggedDocId] = useState<string | null>(null);
+
+  const handleDocDragStart = (e: React.DragEvent, docId: string) => {
+    e.stopPropagation();
+    setDraggedDocId(docId);
+  };
+
+  const handleDocDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDocDrop = (e: React.DragEvent, targetDocId: string, targetHeading: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!draggedDocId || draggedDocId === targetDocId) return;
+
+    const docs = [...documents];
+    const draggedIdx = docs.findIndex(d => d.id === draggedDocId);
+    const targetIdx = docs.findIndex(d => d.id === targetDocId);
+
+    if (draggedIdx === -1 || targetIdx === -1) return;
+
+    const [removed] = docs.splice(draggedIdx, 1);
+    removed.type = targetHeading;
+    docs.splice(targetIdx, 0, removed);
+
+    onUpdateDocuments(docs);
+    setDraggedDocId(null);
+  };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -81,19 +159,62 @@ export default function DocumentationView({
           ? `${(file.size / (1024 * 1024)).toFixed(2)} MB`
           : `${Math.round(file.size / 1024)} KB`;
 
-        // Auto-classify document type
-        let autoType = docType || 'other';
-        if (file.type.startsWith('image/')) {
-          autoType = 'image';
+        // Auto-classify document type based on 14 Filing Structure headings
+        const filingHeadings = [
+          "Contract Documents",
+          "Drawings",
+          "Tender Stage Information",
+          "Correspondence",
+          "Meetings",
+          "Reports",
+          "Right of Way",
+          "Programmes",
+          "Design and Design Changes",
+          "Financial Control",
+          "Claims",
+          "Contract Administration Manual (CAM)",
+          "Taking Over and Defects Notification",
+          "Additional"
+        ];
+
+        let autoType = docType || 'Additional';
+        if (docType && filingHeadings.includes(docType)) {
+          autoType = docType;
+        } else if (file.type.startsWith('image/')) {
+          autoType = 'Drawings';
         } else if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
           const lowerName = file.name.toLowerCase();
           if (lowerName.includes('contract') || lowerName.includes('agreement') || lowerName.includes('fidic')) {
-            autoType = 'contract';
+            autoType = 'Contract Documents';
+          } else if (lowerName.includes('drawing')) {
+            autoType = 'Drawings';
           } else if (lowerName.includes('report') || lowerName.includes('monthly') || lowerName.includes('progress')) {
-            autoType = 'monthly_report';
+            autoType = 'Reports';
+          } else if (lowerName.includes('program') || lowerName.includes('schedule')) {
+            autoType = 'Programmes';
+          } else if (lowerName.includes('claim')) {
+            autoType = 'Claims';
+          } else if (lowerName.includes('financial') || lowerName.includes('ipc') || lowerName.includes('payment')) {
+            autoType = 'Financial Control';
+          } else if (lowerName.includes('row') || lowerName.includes('right of way')) {
+            autoType = 'Right of Way';
+          } else if (lowerName.includes('meeting')) {
+            autoType = 'Meetings';
+          } else if (lowerName.includes('correspondence') || lowerName.includes('letter')) {
+            autoType = 'Correspondence';
+          } else if (lowerName.includes('design')) {
+            autoType = 'Design and Design Changes';
+          } else if (lowerName.includes('tender')) {
+            autoType = 'Tender Stage Information';
+          } else if (lowerName.includes('cam') || lowerName.includes('administration')) {
+            autoType = 'Contract Administration Manual (CAM)';
+          } else if (lowerName.includes('taking') || lowerName.includes('defect') || lowerName.includes('dlp')) {
+            autoType = 'Taking Over and Defects Notification';
           } else {
-            autoType = 'pdf_document';
+            autoType = 'Additional';
           }
+        } else {
+          autoType = 'Additional';
         }
 
         const newDoc: ProjectDocument = {
@@ -377,14 +498,20 @@ export default function DocumentationView({
                       className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-bold outline-none text-slate-750 dark:text-zinc-200 focus:border-indigo-500 transition"
                     />
                     <datalist id="doc-categories">
-                      <option value="contract">📜 Contract & Legal Agreement Documents</option>
-                      <option value="monthly_report">📅 Monthly Physical progress report</option>
-                      <option value="pdf_document">📄 Supporting PDF Document</option>
-                      <option value="image">🖼️ Site Photo & Inspection Image</option>
-                      <option value="other">📦 Technical Drawings & Other Dossiers</option>
-                      {Array.from(new Set(documents.map(d => d.type))).filter(t => !['contract', 'monthly_report', 'pdf_document', 'image', 'other'].includes(t)).map(t => (
-                        <option key={t} value={t}>{t}</option>
-                      ))}
+                      <option value="Contract Documents">1. Contract Documents</option>
+                      <option value="Drawings">2. Drawings</option>
+                      <option value="Tender Stage Information">3. Tender Stage Information</option>
+                      <option value="Correspondence">4. Correspondence</option>
+                      <option value="Meetings">5. Meetings</option>
+                      <option value="Reports">6. Reports</option>
+                      <option value="Right of Way">7. Right of Way</option>
+                      <option value="Programmes">8. Programmes</option>
+                      <option value="Design and Design Changes">9. Design and Design Changes</option>
+                      <option value="Financial Control">10. Financial Control</option>
+                      <option value="Claims">11. Claims</option>
+                      <option value="Contract Administration Manual (CAM)">12. Contract Administration Manual (CAM)</option>
+                      <option value="Taking Over and Defects Notification">13. Taking Over and Defects Notification</option>
+                      <option value="Additional">14. Additional</option>
                     </datalist>
                   </div>
 
@@ -417,189 +544,377 @@ export default function DocumentationView({
           </div>
         </div>
 
-        {/* Right Column: Files List & Search Panel */}
-        <div className="lg:col-span-7 space-y-4">
-          <div className="bg-white dark:bg-slate-850 p-5 rounded-3xl border border-slate-150 dark:border-slate-800 shadow-sm space-y-4">
-            
-            {/* Control Bar: Search & Filter Tabs */}
-            <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3 pb-2 border-b border-slate-100 dark:border-slate-800">
-              <div>
-                <h3 className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-zinc-200">
-                  📁 Document Vault Register
-                </h3>
-                <span className="text-[9px] text-slate-400 dark:text-slate-500 block font-bold mt-0.5">
-                  Showing {filteredDocs.length} matching of {documents.length} total
-                </span>
+        {/* Right Column: Files List & Side Preview Panel */}
+        <div className={`transition-all duration-300 ${sidePreviewDoc ? 'lg:col-span-12 xl:grid xl:grid-cols-12 gap-6' : 'lg:col-span-7'}`}>
+          <div className={`${sidePreviewDoc ? 'xl:col-span-7' : 'w-full'} space-y-4`}>
+            <div className="bg-white dark:bg-slate-850 p-5 rounded-3xl border border-slate-150 dark:border-slate-800 shadow-sm space-y-4">
+              
+              {/* Control Bar: Search & Filter Tabs & Expand/Collapse All */}
+              <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3 pb-2 border-b border-slate-100 dark:border-slate-800">
+                <div>
+                  <h3 className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-zinc-200">
+                    📁 Document Vault Register (14 Headings)
+                  </h3>
+                  <span className="text-[9px] text-slate-400 dark:text-slate-500 block font-bold mt-0.5">
+                    Showing {filteredDocs.length} matching of {documents.length} total • Drag to reorder
+                  </span>
+                </div>
+
+                {/* Filters & Expand/Collapse Buttons */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={expandAllHeadings}
+                    className="px-2 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-zinc-300 rounded-lg text-3xs font-black uppercase transition cursor-pointer"
+                    title="Expand All Headings"
+                  >
+                    Expand All
+                  </button>
+                  <button
+                    type="button"
+                    onClick={collapseAllHeadings}
+                    className="px-2 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-zinc-300 rounded-lg text-3xs font-black uppercase transition cursor-pointer"
+                    title="Collapse All Headings"
+                  >
+                    Collapse All
+                  </button>
+
+                  <select
+                    value={filterType}
+                    onChange={(e) => setFilterType(e.target.value)}
+                    className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-3xs font-black uppercase tracking-wider text-slate-600 dark:text-zinc-300 outline-none cursor-pointer"
+                  >
+                    <option value="all">📁 All 14 Filing Headings</option>
+                    {FILING_STRUCTURE_HEADINGS.map(h => (
+                      <option key={h} value={h}>{h}</option>
+                    ))}
+                  </select>
+
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-2 w-3.5 h-3.5 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Search archives..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="bg-slate-50 dark:bg-slate-900 text-2xs pl-8 pr-3 py-1.5 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:border-indigo-500 max-w-[140px] text-slate-800 dark:text-zinc-200 font-bold"
+                    />
+                  </div>
+                </div>
               </div>
 
-              {/* Filters */}
-              <div className="flex gap-2">
-                <select
-                  value={filterType}
-                  onChange={(e) => setFilterType(e.target.value)}
-                  className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-3xs font-black uppercase tracking-wider text-slate-600 dark:text-zinc-300 outline-none cursor-pointer"
-                >
-                  <option value="all">📁 All Documents</option>
-                  <option value="pdf_document">📄 PDF Documents</option>
-                  <option value="image">🖼️ Images</option>
-                  <option value="contract">📜 Contracts</option>
-                  <option value="monthly_report">📅 Monthly Reports</option>
-                  <option value="other">📦 Drawings/Other</option>
-                </select>
+              {/* Accordions for each of the 14 Main Headings */}
+              <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
+                {FILING_STRUCTURE_HEADINGS
+                  .filter(heading => filterType === 'all' || filterType === heading)
+                  .map((heading, hIdx) => {
+                    const headingDocs = filteredDocs.filter(doc => (doc.type || 'Additional') === heading);
+                    const isCollapsed = Boolean(collapsedHeadings[heading]);
 
-                <div className="relative">
-                  <Search className="absolute left-2.5 top-2 w-3.5 h-3.5 text-slate-400" />
-                  <input
-                    type="text"
-                    placeholder="Search archives..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="bg-slate-50 dark:bg-slate-900 text-2xs pl-8 pr-3 py-1.5 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:border-indigo-500 max-w-[160px] text-slate-800 dark:text-zinc-200 font-bold"
-                  />
+                    return (
+                      <div 
+                        key={heading}
+                        className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden bg-slate-50/40 dark:bg-slate-900/30 transition"
+                      >
+                        {/* Accordion Header */}
+                        <div
+                          onClick={() => toggleHeading(heading)}
+                          className="px-4 py-3 bg-white dark:bg-slate-850 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center justify-between cursor-pointer select-none transition border-b border-slate-150 dark:border-slate-800/60"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className={`p-1.5 rounded-xl ${headingDocs.length > 0 ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-400' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}`}>
+                              {isCollapsed ? <Folder className="w-4 h-4" /> : <FolderOpen className="w-4 h-4" />}
+                            </div>
+                            <div>
+                              <span className="text-xs font-extrabold text-slate-800 dark:text-zinc-100 flex items-center gap-2 flex-wrap">
+                                <span>{hIdx + 1}. {heading}</span>
+                                <span className={`px-2 py-0.5 text-[9px] font-black rounded-full ${headingDocs.length > 0 ? 'bg-indigo-600 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-500 dark:text-slate-400'}`}>
+                                  {headingDocs.length} {headingDocs.length === 1 ? 'file' : 'files'}
+                                </span>
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            {!isReadonly && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setDocType(heading);
+                                  fileInputRef.current?.click();
+                                }}
+                                className="p-1 px-2 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:hover:bg-indigo-900 text-indigo-600 dark:text-indigo-300 rounded-lg text-3xs font-black uppercase transition"
+                                title={`Upload file to ${heading}`}
+                              >
+                                + Add File
+                              </button>
+                            )}
+                            <div className="text-slate-400">
+                              {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Accordion Content */}
+                        {!isCollapsed && (
+                          <div className="p-3 space-y-2 bg-white/60 dark:bg-slate-900/50">
+                            {headingDocs.length === 0 ? (
+                              <div className="text-center py-6 px-4 space-y-1">
+                                <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium italic">
+                                  No documents filed under this heading yet. Drag files here or click below.
+                                </p>
+                                {!isReadonly && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setDocType(heading);
+                                      fileInputRef.current?.click();
+                                    }}
+                                    className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-1 pt-0.5"
+                                  >
+                                    <Plus className="w-3 h-3" /> Attach document to {heading}
+                                  </button>
+                                )}
+                              </div>
+                            ) : (
+                              headingDocs.map((doc, idx) => {
+                                const isImg = doc.type === 'image' || (doc.fileType && doc.fileType.startsWith('image/'));
+                                const isPdf = doc.type === 'pdf_document' || doc.fileName.toLowerCase().endsWith('.pdf') || doc.fileType === 'application/pdf';
+
+                                return (
+                                  <div 
+                                    key={doc.id || `doc-${heading}-${idx}`}
+                                    draggable={!isReadonly}
+                                    onDragStart={(e) => handleDocDragStart(e, doc.id)}
+                                    onDragOver={handleDocDragOver}
+                                    onDrop={(e) => handleDocDrop(e, doc.id, heading)}
+                                    onClick={() => setSidePreviewDoc(doc)}
+                                    className={`p-3 bg-white dark:bg-slate-850 border rounded-2xl flex items-start justify-between gap-3 transition shadow-2xs cursor-pointer ${
+                                      sidePreviewDoc?.id === doc.id
+                                        ? 'border-indigo-500 bg-indigo-50/40 dark:bg-indigo-950/25 ring-1 ring-indigo-500/30'
+                                        : 'border-slate-150 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-700'
+                                    }`}
+                                  >
+                                    <div className="flex items-start gap-2.5 min-w-0">
+                                      {!isReadonly && (
+                                        <div 
+                                          className="cursor-grab active:cursor-grabbing text-slate-300 dark:text-slate-600 hover:text-slate-500 pt-1 shrink-0" 
+                                          title="Drag to reorder file position"
+                                          onClick={(e) => e.stopPropagation()}
+                                        >
+                                          <GripVertical className="w-4 h-4" />
+                                        </div>
+                                      )}
+
+                                      {isImg && doc.fileData ? (
+                                        <div 
+                                          onClick={(e) => { e.stopPropagation(); setShowPreviewDoc(doc); }} 
+                                          className="w-9 h-9 rounded-xl overflow-hidden shrink-0 border border-slate-200 dark:border-slate-700 cursor-pointer hover:opacity-90 transition bg-slate-100 dark:bg-slate-800"
+                                        >
+                                          <img 
+                                            src={doc.fileData} 
+                                            alt={doc.name} 
+                                            className="w-full h-full object-cover"
+                                            referrerPolicy="no-referrer"
+                                          />
+                                        </div>
+                                      ) : (
+                                        <div className={`p-2 rounded-xl shrink-0 ${
+                                          isPdf 
+                                            ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/30 dark:text-rose-400'
+                                            : isImg
+                                            ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-400'
+                                            : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                                        }`}>
+                                          {isImg ? <ImageIcon className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
+                                        </div>
+                                      )}
+
+                                      <div className="min-w-0 space-y-0.5">
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                          <span className="font-extrabold text-xs text-slate-700 dark:text-zinc-200 truncate max-w-[240px]">
+                                            {doc.name}
+                                          </span>
+                                        </div>
+                                        <p className="text-[10px] text-slate-400 dark:text-slate-500 font-mono truncate max-w-[300px]">
+                                          File: {doc.fileName} ({doc.fileSize})
+                                        </p>
+                                        {doc.description && (
+                                          <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium font-sans leading-tight pt-0.5">
+                                            {doc.description}
+                                          </p>
+                                        )}
+                                        <div className="text-[9px] text-slate-400 pt-0.5 flex items-center gap-2">
+                                          <span>By: <b className="font-bold">{doc.uploadedBy}</b></span>
+                                          <span>•</span>
+                                          <span>{doc.uploadedAt}</span>
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                                      <button
+                                        type="button"
+                                        onClick={() => setShowPreviewDoc(doc)}
+                                        className="p-1.5 bg-slate-50 hover:bg-slate-100 dark:bg-slate-900 dark:hover:bg-slate-800 border border-slate-150 dark:border-slate-800 text-slate-500 dark:text-slate-300 rounded-lg transition"
+                                        title="Preview Modal"
+                                      >
+                                        <Eye className="w-3.5 h-3.5" />
+                                      </button>
+                                      
+                                      <a
+                                        href={doc.fileData || `data:text/plain;charset=utf-8,${encodeURIComponent(
+                                          `Ethiopian Roads Administration ERP System Document Download\n` +
+                                          `========================================================\n` +
+                                          `Document ID: ${doc.id}\n` +
+                                          `Project: ${project.name}\n` +
+                                          `Document Name: ${doc.name}\n` +
+                                          `Filing Heading: ${heading}\n` +
+                                          `File Name: ${doc.fileName}\n` +
+                                          `File Size: ${doc.fileSize}\n` +
+                                          `Uploaded By: ${doc.uploadedBy}\n` +
+                                          `Uploaded At: ${doc.uploadedAt}\n` +
+                                          `Description: ${doc.description || 'No description provided.'}\n` +
+                                          `========================================================\n` +
+                                          `This is a secured download token representing the legally binding physical asset filed in the administration archives.`
+                                        )}`}
+                                        download={doc.fileName}
+                                        className="p-1.5 bg-slate-50 hover:bg-slate-100 dark:bg-slate-900 dark:hover:bg-slate-800 border border-slate-150 dark:border-slate-800 text-slate-500 dark:text-slate-300 rounded-lg transition"
+                                        title="Download"
+                                      >
+                                        <Download className="w-3.5 h-3.5" />
+                                      </a>
+
+                                      {!isReadonly && (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDeleteDoc(doc.id)}
+                                          className="p-1.5 bg-slate-50 hover:bg-rose-50 dark:bg-slate-900 dark:hover:bg-rose-950/20 border border-slate-150 dark:border-slate-800 text-rose-600 dark:text-rose-400 rounded-lg transition"
+                                          title="Delete"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+              </div>
+
+            </div>
+          </div>
+
+          {/* Side Preview Panel */}
+          {sidePreviewDoc && (
+            <div className="xl:col-span-5 mt-4 xl:mt-0 space-y-4">
+              <div className="bg-white dark:bg-slate-850 p-5 rounded-3xl border border-indigo-200 dark:border-indigo-900/60 shadow-lg space-y-4 sticky top-6">
+                <div className="flex justify-between items-center pb-3 border-b border-slate-150 dark:border-slate-800">
+                  <div className="flex items-center gap-2">
+                    <FileCheck2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                    <h3 className="text-xs font-black uppercase text-slate-800 dark:text-zinc-100">
+                      Live Document Side Preview
+                    </h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSidePreviewDoc(null)}
+                    className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-zinc-200 transition text-xs font-black"
+                    title="Close Sidebar"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  {sidePreviewDoc.fileData && (sidePreviewDoc.type === 'image' || sidePreviewDoc.fileType?.startsWith('image/')) ? (
+                    <div className="rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-900 aspect-video flex items-center justify-center">
+                      <img 
+                        src={sidePreviewDoc.fileData} 
+                        alt={sidePreviewDoc.name} 
+                        className="w-full h-full object-contain"
+                        referrerPolicy="no-referrer"
+                      />
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl p-6 bg-gradient-to-br from-indigo-50 to-blue-50 dark:from-slate-900 dark:to-indigo-950/40 border border-indigo-100 dark:border-indigo-900/40 flex flex-col items-center justify-center text-center space-y-2">
+                      <div className="p-3 bg-indigo-600 text-white rounded-2xl shadow-md">
+                        <FileText className="w-8 h-8" />
+                      </div>
+                      <span className="text-xs font-extrabold text-slate-800 dark:text-zinc-200">
+                        {sidePreviewDoc.fileName}
+                      </span>
+                      <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold uppercase">
+                        {sidePreviewDoc.type} • {sidePreviewDoc.fileSize}
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="space-y-2 pt-2 text-xs">
+                    <div>
+                      <div className="text-[9px] font-black uppercase text-slate-400">Document Title</div>
+                      <div className="font-bold text-slate-800 dark:text-zinc-100">{sidePreviewDoc.name}</div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <div className="text-[9px] font-black uppercase text-slate-400">Filing Heading</div>
+                        <div className="font-semibold text-slate-700 dark:text-zinc-300 text-2xs">{sidePreviewDoc.type || 'Additional'}</div>
+                      </div>
+                      <div>
+                        <div className="text-[9px] font-black uppercase text-slate-400">File Size</div>
+                        <div className="font-semibold text-slate-700 dark:text-zinc-300 text-2xs">{sidePreviewDoc.fileSize}</div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-[9px] font-black uppercase text-slate-400">File Name</div>
+                      <div className="font-mono text-slate-600 dark:text-zinc-400 text-3xs truncate">{sidePreviewDoc.fileName}</div>
+                    </div>
+
+                    {sidePreviewDoc.description && (
+                      <div>
+                        <div className="text-[9px] font-black uppercase text-slate-400">Description / Notes</div>
+                        <div className="text-slate-600 dark:text-zinc-300 text-2xs leading-relaxed">{sidePreviewDoc.description}</div>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-150 dark:border-slate-800 text-[10px]">
+                      <div>
+                        <span className="text-slate-400">Uploaded By:</span> <span className="font-bold text-slate-700 dark:text-zinc-300">{sidePreviewDoc.uploadedBy}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400">Date:</span> <span className="font-bold text-slate-700 dark:text-zinc-300">{sidePreviewDoc.uploadedAt}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowPreviewDoc(sidePreviewDoc)}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-3xs font-extrabold shadow-sm transition cursor-pointer"
+                    >
+                      <Eye className="w-3.5 h-3.5" /> Full Modal Preview
+                    </button>
+                    <a
+                      href={sidePreviewDoc.fileData || `data:text/plain;charset=utf-8,${encodeURIComponent('download')}`}
+                      download={sidePreviewDoc.fileName}
+                      className="px-3 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-zinc-200 rounded-xl text-3xs font-extrabold transition text-center"
+                    >
+                      <Download className="w-3.5 h-3.5 inline" />
+                    </a>
+                  </div>
                 </div>
               </div>
             </div>
-
-            {/* Document Cards */}
-            {filteredDocs.length === 0 ? (
-              <div className="text-center py-12 space-y-2">
-                <div className="w-12 h-12 bg-slate-50 dark:bg-slate-900 rounded-full flex items-center justify-center mx-auto border border-slate-100 dark:border-slate-800">
-                  <FileText className="w-6 h-6 text-slate-400" />
-                </div>
-                <div>
-                  <h4 className="text-xs font-extrabold text-slate-700 dark:text-zinc-300">
-                    No matching documents found
-                  </h4>
-                  <p className="text-[10px] text-slate-400">
-                    Drag and drop PDF or image files into the drop zone on the left to attach them to this project.
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-2.5 max-h-[460px] overflow-y-auto pr-1">
-                {filteredDocs.map((doc, idx) => {
-                  const isImg = doc.type === 'image' || (doc.fileType && doc.fileType.startsWith('image/'));
-                  const isPdf = doc.type === 'pdf_document' || doc.fileName.toLowerCase().endsWith('.pdf') || doc.fileType === 'application/pdf';
-
-                  return (
-                    <div 
-                      key={doc.id || `doc-${idx}`}
-                      className="p-3 bg-slate-50/50 dark:bg-slate-900/10 border border-slate-150 dark:border-slate-800/80 rounded-2xl flex items-start justify-between gap-3 hover:border-slate-350 dark:hover:border-slate-750 transition"
-                    >
-                      <div className="flex items-start gap-3 min-w-0">
-                        {isImg && doc.fileData ? (
-                          <div 
-                            onClick={() => setShowPreviewDoc(doc)} 
-                            className="w-10 h-10 rounded-xl overflow-hidden shrink-0 border border-slate-200 dark:border-slate-700 cursor-pointer hover:opacity-90 transition bg-slate-100 dark:bg-slate-800"
-                          >
-                            <img 
-                              src={doc.fileData} 
-                              alt={doc.name} 
-                              className="w-full h-full object-cover"
-                              referrerPolicy="no-referrer"
-                            />
-                          </div>
-                        ) : (
-                          <div className={`p-2 rounded-xl shrink-0 ${
-                            doc.type === 'contract' 
-                              ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400'
-                              : doc.type === 'monthly_report'
-                              ? 'bg-blue-100 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400'
-                              : isPdf
-                              ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/30 dark:text-rose-400'
-                              : isImg
-                              ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-400'
-                              : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
-                          }`}>
-                            {isImg ? <ImageIcon className="w-5 h-5" /> : <FileText className="w-5 h-5" />}
-                          </div>
-                        )}
-
-                        <div className="min-w-0 space-y-0.5">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="font-extrabold text-xs text-slate-700 dark:text-zinc-200 truncate max-w-[280px]">
-                              {doc.name}
-                            </span>
-                            <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded ${
-                              doc.type === 'contract' 
-                                ? 'bg-amber-100/60 text-amber-700 dark:bg-amber-950/20 dark:text-amber-400' 
-                                : doc.type === 'monthly_report'
-                                ? 'bg-blue-100/60 text-blue-700 dark:bg-blue-950/20 dark:text-blue-400'
-                                : isPdf
-                                ? 'bg-rose-100/60 text-rose-700 dark:bg-rose-950/20 dark:text-rose-400'
-                                : isImg
-                                ? 'bg-indigo-100/60 text-indigo-700 dark:bg-indigo-950/20 dark:text-indigo-400'
-                                : 'bg-slate-200/60 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
-                            }`}>
-                              {doc.type === 'contract' ? '📜 CONTRACT' : doc.type === 'monthly_report' ? '📅 REPORT' : isPdf ? '📄 PDF' : isImg ? '🖼️ IMAGE' : doc.type}
-                            </span>
-                          </div>
-                          <p className="text-[10px] text-slate-400 dark:text-slate-500 font-mono truncate max-w-[340px]">
-                            File: {doc.fileName} ({doc.fileSize})
-                          </p>
-                          {doc.description && (
-                            <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium font-sans leading-tight pt-0.5">
-                              {doc.description}
-                            </p>
-                          )}
-                          <div className="text-[9px] text-slate-400 pt-1 flex items-center gap-2">
-                            <span>By: <b className="font-bold">{doc.uploadedBy}</b></span>
-                            <span>•</span>
-                            <span>{doc.uploadedAt}</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Actions */}
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button
-                          onClick={() => setShowPreviewDoc(doc)}
-                          className="p-1.5 bg-white hover:bg-slate-100 dark:bg-slate-900 dark:hover:bg-slate-800 border border-slate-150 dark:border-slate-800 text-slate-500 dark:text-slate-300 rounded-lg transition"
-                          title="Preview"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                        </button>
-                        
-                        <a
-                          href={doc.fileData || `data:text/plain;charset=utf-8,${encodeURIComponent(
-                            `Ethiopian Roads Administration ERP System Document Download\n` +
-                            `========================================================\n` +
-                            `Document ID: ${doc.id}\n` +
-                            `Project: ${project.name}\n` +
-                            `Document Name: ${doc.name}\n` +
-                            `Category: ${doc.type.toUpperCase()}\n` +
-                            `File Name: ${doc.fileName}\n` +
-                            `File Size: ${doc.fileSize}\n` +
-                            `Uploaded By: ${doc.uploadedBy}\n` +
-                            `Uploaded At: ${doc.uploadedAt}\n` +
-                            `Description: ${doc.description || 'No description provided.'}\n` +
-                            `========================================================\n` +
-                            `This is a secured download token representing the legally binding physical asset filed in the administration archives.`
-                          )}`}
-                          download={doc.fileName}
-                          className="p-1.5 bg-white hover:bg-slate-100 dark:bg-slate-900 dark:hover:bg-slate-800 border border-slate-150 dark:border-slate-800 text-slate-500 dark:text-slate-300 rounded-lg transition"
-                          title="Download"
-                        >
-                          <Download className="w-3.5 h-3.5" />
-                        </a>
-
-                        {!isReadonly && (
-                          <button
-                            onClick={() => handleDeleteDoc(doc.id)}
-                            className="p-1.5 bg-white hover:bg-rose-50 dark:bg-slate-900 dark:hover:bg-rose-950/20 border border-slate-150 dark:border-slate-800 text-rose-600 dark:text-rose-400 rounded-lg transition"
-                            title="Delete"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-          </div>
+          )}
         </div>
 
       </div>
