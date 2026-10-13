@@ -1079,6 +1079,7 @@ export interface ConsultantSubmittalKpi {
   stationKm?: string;
   drawingRef?: string;
   specificationRef?: string;
+  inspectionTime?: string;
   contractorInquiry?: string;
   contractorContact?: string;
   contractorCompany?: string;

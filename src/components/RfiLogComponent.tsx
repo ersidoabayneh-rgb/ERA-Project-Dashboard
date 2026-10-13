@@ -236,6 +236,7 @@ export default function RfiLogComponent({
     contractorContact: '',
     contractorInquiry: '',
     submittedDate: new Date().toISOString().split('T')[0],
+    inspectionTime: '10:00',
     targetDays: 7,
     priority: 'High',
     status: 'Under Review',
@@ -281,6 +282,25 @@ export default function RfiLogComponent({
         valid.push(file);
       } else {
         alert(`File "${file.name}" is not a PDF document. Please upload PDF files only.`);
+      }
+    }
+    return valid;
+  };
+
+  // Process technical files (PDFs, images, documents) helper
+  const processTechnicalFiles = (files: FileList | null): File[] => {
+    if (!files || files.length === 0) return [];
+    const valid: File[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const ext = file.name.split('.').pop()?.toLowerCase() || '';
+      const isPdf = file.type === 'application/pdf' || ext === 'pdf';
+      const isImage = file.type.startsWith('image/') || ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(ext);
+      const isDoc = ['doc', 'docx', 'xls', 'xlsx'].includes(ext);
+      if (isPdf || isImage || isDoc) {
+        valid.push(file);
+      } else {
+        alert(`File "${file.name}" is not a supported technical image or document. Please upload PDF, images (PNG, JPG), or Office documents.`);
       }
     }
     return valid;
@@ -843,6 +863,7 @@ export default function RfiLogComponent({
       contractorCompany: project.contractor || undefined,
       contractorInquiry: newRfiForm.contractorInquiry || undefined,
       submittedDate: newRfiForm.submittedDate || new Date().toISOString().split('T')[0],
+      inspectionTime: newRfiForm.inspectionTime || undefined,
       targetDays: target,
       status: newRfiForm.status || 'Under Review',
       rfiStatus: newRfiForm.rfiStatus || 'Awaiting Consultant Response',
@@ -1553,9 +1574,9 @@ export default function RfiLogComponent({
       {/* RFI Table or Card View */}
       {viewLayout === 'table' ? (
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-xs flex flex-col">
-          <div className="overflow-x-auto">
+          <div className="max-h-[650px] overflow-y-auto overflow-x-auto">
             <table className="w-full text-left border-collapse text-xs">
-              <thead className="bg-slate-50 dark:bg-slate-800/90 border-b border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-bold select-none">
+              <thead className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-800/90 backdrop-blur-sm border-b border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-bold select-none">
                 <tr>
                   <th className="p-3.5 w-10 text-center">
                     <div className="flex items-center justify-center">
@@ -2588,6 +2609,16 @@ export default function RfiLogComponent({
                 </div>
 
                 <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Time of Inspection</label>
+                  <input
+                    type="time"
+                    value={newRfiForm.inspectionTime || '10:00'}
+                    onChange={(e) => setNewRfiForm({ ...newRfiForm, inspectionTime: e.target.value })}
+                    className="w-full mt-1 px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-medium"
+                  />
+                </div>
+
+                <div>
                   <label className="text-[10px] font-bold text-slate-500 uppercase">Target SLA (Days)</label>
                   <input
                     type="number"
@@ -2650,22 +2681,22 @@ export default function RfiLogComponent({
                   </select>
                 </div>
 
-                {/* PDF Attachments Uploader */}
+                {/* Technical Attachments Uploader */}
                 <div className="sm:col-span-2 p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
                       <Paperclip className="w-3.5 h-3.5 text-indigo-500" />
-                      Attach PDF Documents & Drawings ({newRfiForm.attachments?.length || 0})
+                      Attach Technical Images, Documents & Drawings ({newRfiForm.attachments?.length || 0})
                     </span>
                     <label className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold cursor-pointer transition">
                       <Upload className="w-3 h-3" />
-                      <span>Select PDF File(s)</span>
+                      <span>Select File(s)</span>
                       <input
                         type="file"
-                        accept="application/pdf,.pdf"
+                        accept="application/pdf,.pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx"
                         multiple
                         onChange={(e) => {
-                          const files = processPdfFiles(e.target.files);
+                          const files = processTechnicalFiles(e.target.files);
                           if (files.length === 0) return;
                           const newAtts = files.map(f => ({
                             id: `att_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
@@ -2710,7 +2741,7 @@ export default function RfiLogComponent({
                       ))}
                     </div>
                   ) : (
-                    <p className="text-[11px] text-slate-400 italic">Optional: Attach technical drawings, inspection sketches, or specification excerpts (PDF format).</p>
+                    <p className="text-[11px] text-slate-400 italic">Optional: Attach technical site photos, inspection drawings, sketches, or Office/PDF documents.</p>
                   )}
                 </div>
               </div>
