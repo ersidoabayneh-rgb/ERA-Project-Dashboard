@@ -975,6 +975,45 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
     setTimeout(() => setSaveSuccessMsg(null), 5000);
   };
 
+  // Validation function that runs before report generation or passing data to the Invoice page.
+  // Verifies that no rows labeled 'VAT' exist in the data set being passed to the Invoice page.
+  // Provides a clear error alert if inconsistencies are found.
+  const validateNoVatRowsBeforeInvoiceSync = (invoice: ConsultantInvoice): boolean => {
+    const checkText = (txt: string | undefined): boolean => {
+      if (!txt || typeof txt !== 'string') return false;
+      const upper = txt.toUpperCase();
+      return upper.includes('VAT') || upper.includes('VALUE ADDED TAX');
+    };
+
+    if (checkText(invoice.invoiceNo)) {
+      const msg = `Validation Error: Invoice number contains prohibited 'VAT' reference: ${invoice.invoiceNo}`;
+      alert(msg);
+      throw new Error(msg);
+    }
+
+    if (Array.isArray(invoice.attendanceRecords)) {
+      for (const rec of invoice.attendanceRecords) {
+        if (checkText(rec.position) || checkText(rec.name)) {
+          const msg = `Validation Error: Staff attendance record contains prohibited 'VAT' row/label: position='${rec.position}', name='${rec.name}'`;
+          alert(msg);
+          throw new Error(msg);
+        }
+      }
+    }
+
+    if (Array.isArray(invoice.reimbursableRecords)) {
+      for (const rec of invoice.reimbursableRecords) {
+        if (checkText(rec.description)) {
+          const msg = `Validation Error: Reimbursable item contains prohibited 'VAT' row/label: description='${rec.description}'`;
+          alert(msg);
+          throw new Error(msg);
+        }
+      }
+    }
+
+    return true;
+  };
+
   // Synchronize and Save to Invoices Register
   const handleSaveAndSync = () => {
     // At the end of each month calculate the assigned personnel man month input from the invoice total to-date man month
@@ -1041,6 +1080,14 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
         accountNo: bankAccountNo,
       }
     };
+
+    // Run validation before passing data to the Invoice page / report generation
+    try {
+      validateNoVatRowsBeforeInvoiceSync(computedInvoice);
+    } catch (err) {
+      console.error("VAT validation failed:", err);
+      return;
+    }
 
     onSaveInvoice(computedInvoice);
     setSaveSuccessMsg(`Successfully saved invoice ${invoiceNo}! Payment amount (${fmt(finalPaymentAmount)} ETB, minus VAT) is locked with no change allowed, and assigned personnel man-month inputs calculated.`);
