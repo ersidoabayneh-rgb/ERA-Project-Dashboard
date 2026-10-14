@@ -55,9 +55,8 @@ export function getRoleVisibilityFlags(
   const showSection1SubmittalLog =
     isMasterAdminRole || isPmoAdmin || (!isCpmOrDirectorateAdmin && !isEraUser && !r.includes('directorate'));
 
-  // Section 2: Supervision Consultant Performance Evaluation Criteria (Pillar II): Visible for Master Admin, PMO Admin, and ERA users; Hidden for CPM & Directorate Admin
-  const showSection2EvaluationMatrix =
-    isMasterAdminRole || isPmoAdmin || isEraUser || (!isCpmOrDirectorateAdmin && !isEraUser && !isPmoAdmin && !r.includes('directorate'));
+  // Section 2: Supervision Consultant Performance Evaluation Criteria (Pillar II): Visible for all roles
+  const showSection2EvaluationMatrix = true;
 
   // Action controls: Editing & updating criteria is strictly for Master Admin
   const canEditCriteria = isMasterAdminRole;

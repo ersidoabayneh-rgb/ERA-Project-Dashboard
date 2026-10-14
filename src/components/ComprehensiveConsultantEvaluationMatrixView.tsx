@@ -96,6 +96,7 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
   submittalsList = [],
   onScoreChange
 }: ComprehensiveConsultantEvaluationMatrixViewProps) {
+
   // Pre-calculate live quantitative metrics from submittal logs, IPC tracker, and contract records
   const quantitativeMetrics: SubmittalQuantitativeMetrics = useMemo(() => {
     return calculateSubmittalQuantitativeMetrics(project, consultant, submittalsList);
@@ -295,7 +296,7 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
     return parseJvEntities(consultant.firmName, consultant.jvPartners, consultant.associationType);
   }, [consultant.firmName, consultant.jvPartners, consultant.associationType]);
 
-  const isSoleConsultant = true; // Always treat evaluation as single unified entity (removes separate JV partner sub-evaluation/scorecards)
+  const isSoleConsultant = consultant.associationType === 'Sole Consultant'; // Treat evaluation as single unified entity for sole consultants, or as JV combined for joint ventures.
 
   // Active evaluation entity target: 'sole' | 'jv_combined' | 'jv_lead' | 'jv_partner'
   const [activeEvaluationEntity, setActiveEvaluationEntity] = useState<'sole' | 'jv_combined' | 'jv_lead' | 'jv_partner'>(() => {
@@ -307,6 +308,8 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
   const [enableMemberBreakdown, setEnableMemberBreakdown] = useState<boolean>(() => {
     return consultant.enableMemberBreakdown || false;
   });
+
+  const [showExecutiveCard, setShowExecutiveCard] = useState<boolean>(false);
 
   // Separate evaluation frameworks mode: 'sole' | 'jv'
   const [evaluationFramework, setEvaluationFramework] = useState<'sole' | 'jv'>(() => {
@@ -1470,8 +1473,20 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
         )}
       </AnimatePresence>
 
-      {/* TOP: Master Overall Formula Executive Scorecard */}
-      <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 border border-indigo-500/30 rounded-3xl p-6 text-white shadow-lg space-y-5 relative overflow-hidden">
+      {/* TOP: Master Overall Formula Executive Scorecard (Collapsible) */}
+      <div className="mb-3">
+        <button
+          type="button"
+          onClick={() => setShowExecutiveCard(!showExecutiveCard)}
+          className="px-4 py-2 rounded-xl text-xs font-bold bg-slate-900 dark:bg-slate-800 text-indigo-300 hover:text-white border border-indigo-500/30 transition flex items-center gap-2 cursor-pointer shadow-xs"
+        >
+          <ShieldCheck className="w-4 h-4 text-indigo-400" />
+          <span>{showExecutiveCard ? "Hide Master Evaluation Executive Scorecard" : `📊 Master Evaluation Summary (Overall Score: ${evaluationResult.overallScore.toFixed(1)}% - Grade ${evaluationResult.officialGrade}) — Click to View`}</span>
+        </button>
+      </div>
+
+      {showExecutiveCard && (
+        <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 border border-indigo-500/30 rounded-3xl p-6 text-white shadow-lg space-y-5 relative overflow-hidden mb-4">
         
         {/* Entity / Separate Evaluation Cohort Banner & Switcher */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 p-3.5 bg-white/5 backdrop-blur-md rounded-2xl border border-white/10">
@@ -1713,6 +1728,7 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
           </div>
         </div>
       </div>
+      )}
 
       {/* TOP: Multi-Tab Performance Segment Controller (5 Options) */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 bg-slate-50 dark:bg-slate-900/60 p-1.5 rounded-2xl border border-slate-200/60 dark:border-slate-800/80">

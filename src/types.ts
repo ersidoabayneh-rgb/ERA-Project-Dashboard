@@ -818,6 +818,13 @@ export interface ConsultantPersonnel {
   status: 'Active' | 'Demobilized' | 'Replaced' | 'On Leave';
   manMonthsAllocated?: number;
   manMonthsInput?: number;
+  monthlyBillingRate?: number;
+  dailyReimbursableRate?: number;
+  predecessorId?: string;
+  predecessorName?: string;
+  replacedById?: string;
+  replacedByName?: string;
+  replacementDate?: string;
   contactPhone?: string;
   contactEmail?: string;
   siteStation?: string;
@@ -845,6 +852,8 @@ export interface ConsultantInvoice {
   grossAmountEtb: number;
   advanceDeductionEtb?: number;
   taxDeductionEtb?: number;
+  overtimeEtb?: number;
+  overtimeDeductionEtb?: number;
   netAmountEtb: number;
   foreignCurrencyAmount?: number;
   foreignCurrencyCode?: string;
@@ -852,6 +861,21 @@ export interface ConsultantInvoice {
   paymentReference?: string;
   remarks?: string;
   attachmentName?: string;
+  vatAmountEtb?: number;
+  feesAmountEtb?: number;
+  reimbursableAmountEtb?: number;
+  totalDueEtb?: number;
+  attendanceRecords?: any[];
+  reimbursableRecords?: any[];
+  contingencyRate?: number;
+  vatRate?: number;
+  clientName?: string;
+  consultantFirmName?: string;
+  bankDetails?: {
+    bankName?: string;
+    branch?: string;
+    accountNo?: string;
+  };
 }
 
 export interface HistoricalSupervisionConsultant {

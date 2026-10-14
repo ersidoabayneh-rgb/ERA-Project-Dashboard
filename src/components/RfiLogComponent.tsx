@@ -1639,6 +1639,8 @@ export default function RfiLogComponent({
                         className={`transition-all duration-150 ${
                           isSelected
                             ? 'bg-indigo-50/80 dark:bg-indigo-950/50'
+                            : delayInfo.isDelayed
+                            ? 'bg-amber-50/70 dark:bg-amber-950/30 hover:bg-amber-100/70 dark:hover:bg-amber-900/40'
                             : idx % 2 === 1
                             ? 'bg-slate-50/70 dark:bg-slate-800/35 hover:bg-blue-50/70 dark:hover:bg-blue-950/40'
                             : 'bg-white dark:bg-slate-900 hover:bg-blue-50/70 dark:hover:bg-blue-950/40'
@@ -1966,7 +1968,11 @@ export default function RfiLogComponent({
             return (
               <div
                 key={`rfi-card-${rfi.id}`}
-                className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-xs hover:border-indigo-300 dark:hover:border-indigo-700 transition flex flex-col justify-between gap-4"
+                className={`border rounded-3xl p-5 shadow-xs transition flex flex-col justify-between gap-4 ${
+                  delayInfo.isDelayed
+                    ? 'bg-amber-50/50 dark:bg-amber-950/20 border-amber-300 dark:border-amber-700 hover:border-amber-400'
+                    : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-700'
+                }`}
               >
                 <div className="space-y-3">
                   <div className="flex items-start justify-between gap-2">

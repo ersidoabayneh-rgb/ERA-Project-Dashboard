@@ -41,7 +41,9 @@ import {
   Sparkles,
   ToggleLeft,
   ToggleRight,
-  ShieldCheck
+  ShieldCheck,
+  Calculator,
+  Table
 } from 'lucide-react';
 import { 
   Project, 
@@ -61,6 +63,35 @@ import WorkloadReportModal from './WorkloadReportModal';
 import ConsultantPerformanceKpiWidget, { DEFAULT_SUBMITTAL_KPIS, DEFAULT_SLA_TARGETS } from './ConsultantPerformanceKpiWidget';
 import ConsultantPerformanceMiniChart from './ConsultantPerformanceMiniChart';
 import { parseJvEntities, evaluateQualitativeGrade } from '../data/consultantEvaluationMatrix';
+import { MonthlyInvoiceCalculationTable, OFFICIAL_DKS_STAFF_POSITIONS_DEFAULT as OFFICIAL_DKS_STAFF_POSITIONS } from './MonthlyInvoiceCalculationTable';
+
+export const DEFAULT_OFFICIAL_DKS_INVOICE: ConsultantInvoice = {
+  id: 'inv_dks_01',
+  invoiceNo: 'INV-DKS-01',
+  billingPeriod: 'October.14 2020 - October.31 2020',
+  submissionDate: '2020-10-31',
+  certificationDate: '2020-12-28',
+  grossAmountEtb: 438775.00,
+  vatAmountEtb: 65816.25,
+  advanceDeductionEtb: 0,
+  taxDeductionEtb: 0,
+  netAmountEtb: 504591.25,
+  totalDueEtb: 504591.25,
+  feesAmountEtb: 21725.00,
+  reimbursableAmountEtb: 417050.00,
+  status: 'Submitted',
+  paymentReference: 'CBE-FT-1000001814226',
+  remarks: 'Official Ethiopian Roads Authority Supervision Fee Invoice computed from Personnel Attendance Record (Resident Engineer Mulualem Ergogo 17 Days = 0.55 MM) × Contract Rates + Reimbursables + 15% VAT per PDF format.',
+  attachmentName: 'INV-DKS-01_Certified_Breakdown.pdf',
+  attendanceRecords: [
+    { id: 'pos_1', daysWorked: 17, name: 'Mulualem Ergogo', position: 'Resident Engineer', rate: 39500.00 }
+  ],
+  reimbursableRecords: [
+    { id: 'reimb_1', thisInvoiceQty: 0.55, thisInvoiceAmount: 10450.00 },
+    { id: 'reimb_2', thisInvoiceQty: 0.55, thisInvoiceAmount: 6600.00 },
+    { id: 'reimb_3', thisInvoiceQty: 1.00, thisInvoiceAmount: 400000.00 }
+  ]
+};
 
 interface SupervisionConsultantViewProps {
   project: Project;
@@ -148,7 +179,9 @@ export default function SupervisionConsultantView({
         headOfficeContactPerson: project.supervisionConsultant.headOfficeContactPerson || '',
         personnel: project.supervisionConsultant.personnel || [],
         personnelHistory: project.supervisionConsultant.personnelHistory || project.supervisionConsultant.personnel || [],
-        invoices: project.supervisionConsultant.invoices || [],
+        invoices: (project.supervisionConsultant.invoices && project.supervisionConsultant.invoices.length > 0)
+          ? project.supervisionConsultant.invoices
+          : [DEFAULT_OFFICIAL_DKS_INVOICE],
         previousConsultants: project.supervisionConsultant.previousConsultants || [],
         submittalKpis: project.supervisionConsultant.submittalKpis !== undefined 
           ? project.supervisionConsultant.submittalKpis 
@@ -182,7 +215,7 @@ export default function SupervisionConsultantView({
       scopeOfServices: 'Full construction supervision, quality control, materials testing, and measurement of works.',
       performanceRating: 'Satisfactory',
       personnel: [],
-      invoices: [],
+      invoices: [DEFAULT_OFFICIAL_DKS_INVOICE],
       previousConsultants: [],
       submittalKpis: project.id === 'proj_default' ? DEFAULT_SUBMITTAL_KPIS : [],
       targetOverrides: {}
@@ -249,7 +282,6 @@ export default function SupervisionConsultantView({
   const [isEditConsultantOpen, setIsEditConsultantOpen] = useState(false);
   const [isPersonnelModalOpen, setIsPersonnelModalOpen] = useState(false);
   const [isReplaceModalOpen, setIsReplaceModalOpen] = useState(false);
-  const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
   const [isWorkloadReportOpen, setIsWorkloadReportOpen] = useState(false);
   const [isAssignNewConsultantOpen, setIsAssignNewConsultantOpen] = useState(false);
   const [isEditHeadOfficeQuickOpen, setIsEditHeadOfficeQuickOpen] = useState(false);
@@ -258,6 +290,9 @@ export default function SupervisionConsultantView({
   const [selectedInvoice, setSelectedInvoice] = useState<ConsultantInvoice | null>(null);
   const [viewDetailPersonnel, setViewDetailPersonnel] = useState<ConsultantPersonnel | null>(null);
   const [selectedHistoricalConsultant, setSelectedHistoricalConsultant] = useState<HistoricalSupervisionConsultant | null>(null);
+  const [invoiceViewMode, setInvoiceViewMode] = useState<'table' | 'cards' | 'calculationTables'>('table');
+  const [selectedInvoiceForPdfModal, setSelectedInvoiceForPdfModal] = useState<ConsultantInvoice | null>(null);
+  const [isInlineTableEdit, setIsInlineTableEdit] = useState<boolean>(false);
 
   // Form state for Replacing Personnel with a Successor
   const [replaceForm, setReplaceForm] = useState({
@@ -1364,17 +1399,22 @@ export default function SupervisionConsultantView({
     const currentHistory = consultant.personnelHistory || currentList;
     const currentAuditLog = consultant.personnelAuditLog || [];
 
-    // Outgoing personnel: marked as Replaced, demobilizationDate recorded, notes appended
+    const successorId = 'pers_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+
+    // Outgoing personnel: marked as Replaced, demobilizationDate recorded, notes and successor linkage appended
     const updatedOutgoing: ConsultantPersonnel = {
       ...personnelToReplace,
       status: 'Replaced',
       demobilizationDate: replaceForm.replacementDate,
+      replacedById: successorId,
+      replacedByName: replaceForm.successorName.trim(),
+      replacementDate: replaceForm.replacementDate,
       remarks: `${personnelToReplace.remarks ? personnelToReplace.remarks + ' | ' : ''}Replaced by ${replaceForm.successorName.trim()} on ${replaceForm.replacementDate}. Reason: ${replaceForm.reason}`
     };
 
-    // Incoming new personnel: marked Active, assignmentDate set
+    // Incoming new personnel: marked Active, assignmentDate set, predecessor linked
     const newSuccessor: ConsultantPersonnel = {
-      id: 'pers_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+      id: successorId,
       name: replaceForm.successorName.trim(),
       position: replaceForm.successorPosition.trim() || personnelToReplace.position,
       category: replaceForm.successorCategory || personnelToReplace.category,
@@ -1385,6 +1425,11 @@ export default function SupervisionConsultantView({
       status: 'Active',
       manMonthsAllocated: Number(replaceForm.successorAllocatedMM) || 0,
       manMonthsInput: Number(replaceForm.successorInputMM) || 0,
+      monthlyBillingRate: personnelToReplace.monthlyBillingRate,
+      dailyReimbursableRate: personnelToReplace.dailyReimbursableRate,
+      predecessorId: personnelToReplace.id,
+      predecessorName: personnelToReplace.name,
+      replacementDate: replaceForm.replacementDate,
       contactPhone: replaceForm.successorPhone.trim() || '',
       contactEmail: replaceForm.successorEmail.trim() || '',
       siteStation: replaceForm.successorSiteStation.trim() || personnelToReplace.siteStation || '',
@@ -1425,110 +1470,37 @@ export default function SupervisionConsultantView({
     setPersonnelToReplace(null);
   };
 
-  // Handler for Add/Edit Invoice
+  // Unified Handler for Add/Edit Invoice (Routes to interactive ERA / DKS Monthly Invoice Calculation Tables)
   const handleOpenAddInvoice = () => {
-    const nextNo = `CON-INV-${String((consultant.invoices?.length || 0) + 1).padStart(2, '0')}`;
-    setInvoiceForm({
-      invoiceNo: nextNo,
-      billingPeriod: new Date().toLocaleString('default', { month: 'short', year: 'numeric' }),
-      submissionDate: new Date().toISOString().split('T')[0],
-      certificationDate: '',
-      paymentDate: '',
-      grossAmountEtb: 1800000,
-      advanceDeductionEtb: 180000,
-      taxDeductionEtb: 90000,
-      netAmountEtb: 1530000,
-      foreignCurrencyAmount: hasUsdPayments ? 25000 : 0,
-      foreignCurrencyCode: 'USD',
-      status: 'Submitted',
-      paymentReference: '',
-      remarks: '',
-      attachmentName: ''
-    });
-    setSelectedInvoice(null);
-    setIsInvoiceModalOpen(true);
+    setSelectedInvoiceForPdfModal(null);
+    setInvoiceViewMode('calculationTables');
   };
 
   const handleOpenEditInvoice = (inv: ConsultantInvoice) => {
-    setInvoiceForm(inv);
-    setSelectedInvoice(inv);
-    setIsInvoiceModalOpen(true);
+    setSelectedInvoiceForPdfModal(inv);
+    setInvoiceViewMode('calculationTables');
   };
 
-  const handleInvoiceAmountChange = (field: 'grossAmountEtb' | 'advanceDeductionEtb' | 'taxDeductionEtb', val: number) => {
-    const currentGross = field === 'grossAmountEtb' ? val : (Number(invoiceForm.grossAmountEtb) || 0);
-    const currentAdv = field === 'advanceDeductionEtb' ? val : (Number(invoiceForm.advanceDeductionEtb) || 0);
-    const currentTax = field === 'taxDeductionEtb' ? val : (Number(invoiceForm.taxDeductionEtb) || 0);
-    const calculatedNet = Math.max(0, currentGross - currentAdv - currentTax);
-
-    setInvoiceForm(prev => ({
-      ...prev,
-      [field]: val,
-      netAmountEtb: calculatedNet
-    }));
-  };
-
-  const handleSaveInvoice = () => {
-    if (!invoiceForm.invoiceNo?.trim() || !invoiceForm.billingPeriod?.trim()) {
-      alert('Please provide the invoice number and billing period.');
-      return;
-    }
-    if (!invoiceForm.grossAmountEtb || invoiceForm.grossAmountEtb <= 0) {
-      alert('Please provide a valid gross invoice amount.');
-      return;
-    }
-
+  // Immediate Inline Table Field Updation & Persistence
+  const handleUpdateInlineInvoiceField = (invId: string, field: keyof ConsultantInvoice, value: any) => {
     const currentList = consultant.invoices || [];
-    let updatedList: ConsultantInvoice[];
-
-    const gross = Number(invoiceForm.grossAmountEtb) || 0;
-    const adv = Number(invoiceForm.advanceDeductionEtb) || 0;
-    const tax = Number(invoiceForm.taxDeductionEtb) || 0;
-    const net = invoiceForm.netAmountEtb !== undefined ? Number(invoiceForm.netAmountEtb) : Math.max(0, gross - adv - tax);
-
-    if (selectedInvoice) {
-      // Edit
-      updatedList = currentList.map(item => 
-        item.id === selectedInvoice.id ? { 
-          ...item, 
-          ...invoiceForm,
-          grossAmountEtb: gross,
-          advanceDeductionEtb: adv,
-          taxDeductionEtb: tax,
-          netAmountEtb: net,
-          foreignCurrencyAmount: hasUsdPayments ? (Number(invoiceForm.foreignCurrencyAmount) || 0) : 0
-        } as ConsultantInvoice : item
-      );
-    } else {
-      // Add new
-      const newItem: ConsultantInvoice = {
-        id: 'cinv_' + Date.now(),
-        invoiceNo: invoiceForm.invoiceNo || '',
-        billingPeriod: invoiceForm.billingPeriod || '',
-        submissionDate: invoiceForm.submissionDate || new Date().toISOString().split('T')[0],
-        certificationDate: invoiceForm.certificationDate || '',
-        paymentDate: invoiceForm.paymentDate || '',
-        grossAmountEtb: gross,
-        advanceDeductionEtb: adv,
-        taxDeductionEtb: tax,
-        netAmountEtb: net,
-        foreignCurrencyAmount: hasUsdPayments ? (Number(invoiceForm.foreignCurrencyAmount) || 0) : 0,
-        foreignCurrencyCode: invoiceForm.foreignCurrencyCode || 'USD',
-        status: invoiceForm.status as any || 'Submitted',
-        paymentReference: invoiceForm.paymentReference || '',
-        remarks: invoiceForm.remarks || '',
-        attachmentName: invoiceForm.attachmentName || ''
-      };
-      updatedList = [newItem, ...currentList];
-    }
-
-    const updatedConsultant: SupervisionConsultantInfo = {
-      ...consultant,
-      invoices: updatedList
-    };
-
-    saveConsultantData(updatedConsultant, selectedInvoice ? `Updated invoice ${invoiceForm.invoiceNo}` : `Added invoice ${invoiceForm.invoiceNo}`);
-    setIsInvoiceModalOpen(false);
+    const updatedList = currentList.map(inv => {
+      if (inv.id === invId) {
+        const updated = { ...inv, [field]: value };
+        // Recalculate Net Payable if gross or deductions are updated
+        if (field === 'grossAmountEtb' || field === 'advanceDeductionEtb' || field === 'taxDeductionEtb') {
+          const gross = field === 'grossAmountEtb' ? Number(value) || 0 : (inv.grossAmountEtb || 0);
+          const adv = field === 'advanceDeductionEtb' ? Number(value) || 0 : (inv.advanceDeductionEtb || 0);
+          const tax = field === 'taxDeductionEtb' ? Number(value) || 0 : (inv.taxDeductionEtb || 0);
+          const vat = inv.vatAmountEtb || Math.round(gross * 0.15);
+          updated.netAmountEtb = Math.max(0, (gross + vat) - (adv + tax));
+          updated.totalDueEtb = updated.netAmountEtb;
+        }
+        return updated;
+      }
+      return inv;
+    });
+    saveConsultantData({ ...consultant, invoices: updatedList }, `Updated invoice ${invId} via inline table edit`);
   };
 
   const handleDeleteInvoice = (invId: string, invNo: string) => {
@@ -1912,14 +1884,6 @@ export default function SupervisionConsultantView({
                 >
                   <Users className="w-3.5 h-3.5" />
                   Assign Personnel
-                </button>
-
-                <button
-                  onClick={handleOpenAddInvoice}
-                  className="px-3.5 py-2 text-xs font-bold rounded-xl bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1.5 transition shadow-xs"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  Add Invoice
                 </button>
               </>
             )}
@@ -2775,185 +2739,557 @@ export default function SupervisionConsultantView({
               </select>
 
               {!isReadonly && (
-                <button
-                  onClick={handleOpenAddInvoice}
-                  className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-1.5 rounded-xl flex items-center gap-1 shadow-xs transition"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  Add Invoice
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleOpenAddInvoice}
+                    className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl flex items-center gap-1.5 shadow-xs transition cursor-pointer"
+                    title="Compute monthly supervision invoice based on staff attendance, rate multiplication, reimbursables, and 15% VAT table formats"
+                  >
+                    <Calculator className="w-3.5 h-3.5" />
+                    Calculate Monthly Invoice (Table Formats)
+                  </button>
+                </div>
               )}
             </div>
           </div>
 
-          {/* Invoice Table */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm">
-            <div className="overflow-x-auto max-h-[500px] overflow-y-auto scroll-smooth">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-800 shadow-2xs">
-                  <tr className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 text-slate-500 font-bold uppercase tracking-wider text-[11px]">
-                    <th className="py-3 px-4">Invoice #</th>
-                    <th className="py-3 px-4">Billing Period</th>
-                    <th className="py-3 px-4">Submission Date</th>
-                    <th className="py-3 px-4 text-right">Gross Claim (ETB)</th>
-                    <th className="py-3 px-4 text-right">Deductions (ETB)</th>
-                    <th className="py-3 px-4 text-right font-black text-slate-900 dark:text-white">Net Payable (ETB)</th>
-                    {hasUsdPayments && <th className="py-3 px-4 text-right">USD Portion</th>}
-                    <th className="py-3 px-4 text-center">Status</th>
-                    <th className="py-3 px-4">Payment Ref</th>
-                    <th className="py-3 px-4 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {filteredInvoices.length === 0 ? (
-                    <tr>
-                      <td colSpan={hasUsdPayments ? 10 : 9} className="py-12 text-center text-slate-400">
-                        <Receipt className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                        <p className="text-sm font-semibold">No invoices recorded yet.</p>
-                        <p className="text-xs text-slate-400 mt-1">Click "Add Invoice" to log a supervision consultant fee claim.</p>
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredInvoices.map((inv) => {
-                      const totalDeductions = (inv.advanceDeductionEtb || 0) + (inv.taxDeductionEtb || 0);
+          {/* View Mode Selector: Table vs Calculation Tables vs IPC Picture Cards */}
+          <div className="flex flex-wrap items-center justify-between px-2 pt-1 gap-2">
+            <div className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+              <Receipt className="w-4 h-4 text-blue-500" />
+              <span>Supervision Fee Invoices & Payment Ledger</span>
+              <span className="text-[10px] text-slate-400 font-mono font-normal">
+                ({filteredInvoices.length} {filteredInvoices.length === 1 ? 'record' : 'records'})
+              </span>
+            </div>
 
-                      const isUnpaid = inv.status !== 'Paid' && inv.status !== 'Rejected';
-                      let ageDays = 0;
-                      let isMaturedOverdue = false;
-                      const refDateStr = inv.submissionDate || inv.certificationDate;
-                      if (refDateStr && isUnpaid) {
-                        const d = new Date(refDateStr);
-                        if (!isNaN(d.getTime())) {
-                          ageDays = Math.max(0, Math.floor((new Date().getTime() - d.getTime()) / (1000 * 60 * 60 * 24)));
-                          if (ageDays > 56) {
-                            isMaturedOverdue = true;
-                          }
-                        }
-                      }
+            <div className="flex flex-wrap items-center gap-2">
+              {!isReadonly && invoiceViewMode === 'table' && (
+                <button
+                  type="button"
+                  onClick={() => setIsInlineTableEdit(!isInlineTableEdit)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border cursor-pointer ${
+                    isInlineTableEdit
+                      ? 'bg-amber-500 text-white border-amber-600 shadow-xs'
+                      : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
+                  }`}
+                  title="Toggle inline editing for all rows directly in the summary table"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                  {isInlineTableEdit ? 'Done Inline Editing' : '✏️ Quick Inline Table Edit'}
+                </button>
+              )}
 
-                      let statusBadge = (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                          {inv.status}
-                        </span>
-                      );
-
-                      if (isMaturedOverdue) {
-                        statusBadge = (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400 border border-rose-300 dark:border-rose-800 animate-pulse" title={`FIDIC Sub-Clause 14.7 56-day maturation breached by ${ageDays - 56} days (${ageDays}d elapsed)`}>
-                            <AlertTriangle className="w-3 h-3 text-red-600 dark:text-rose-400" />
-                            Matured Overdue ({ageDays}d)
-                          </span>
-                        );
-                      } else if (inv.status === 'Paid') {
-                        statusBadge = (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
-                            <CheckCircle2 className="w-3 h-3" />
-                            Paid
-                          </span>
-                        );
-                      } else if (inv.status === 'Certified') {
-                        statusBadge = (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
-                            <FileCheck className="w-3 h-3" />
-                            Certified
-                          </span>
-                        );
-                      } else if (inv.status === 'Submitted') {
-                        statusBadge = (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400 border border-blue-200 dark:border-blue-800">
-                            <Clock className="w-3 h-3" />
-                            Submitted
-                          </span>
-                        );
-                      }
-
-                      return (
-                        <tr 
-                          key={inv.id}
-                          className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition duration-150 ${
-                            isMaturedOverdue ? 'bg-rose-50/20 dark:bg-rose-950/10' : ''
-                          }`}
-                        >
-                          <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-white font-mono">
-                            {inv.invoiceNo}
-                          </td>
-
-                          <td className="py-3.5 px-4 font-semibold text-slate-700 dark:text-slate-200">
-                            {inv.billingPeriod}
-                          </td>
-
-                          <td className="py-3.5 px-4 text-slate-500 dark:text-slate-400 font-mono">
-                            <div>{inv.submissionDate || '-'}</div>
-                            {isUnpaid && ageDays > 0 && (
-                              <div className={`text-[10px] font-mono ${isMaturedOverdue ? 'text-red-600 dark:text-rose-400 font-black' : 'text-slate-400'}`}>
-                                {ageDays}d elapsed
-                              </div>
-                            )}
-                          </td>
-
-                          <td className="py-3.5 px-4 text-right font-mono text-slate-700 dark:text-slate-300">
-                            {formatAccounting(inv.grossAmountEtb || 0, '')}
-                          </td>
-
-                          <td className="py-3.5 px-4 text-right font-mono text-rose-600 dark:text-rose-400 text-[11px]">
-                            {totalDeductions > 0 ? `-${formatAccounting(totalDeductions, '')}` : '-'}
-                          </td>
-
-                          <td className="py-3.5 px-4 text-right font-mono font-black text-slate-900 dark:text-white bg-slate-50/50 dark:bg-slate-800/30">
-                            {formatAccounting(inv.netAmountEtb || 0, '')}
-                          </td>
-
-                          {hasUsdPayments && (
-                            <td className="py-3.5 px-4 text-right font-mono text-purple-600 dark:text-purple-400">
-                              {inv.foreignCurrencyAmount ? `$${formatAccounting(inv.foreignCurrencyAmount, '')}` : '-'}
-                            </td>
-                          )}
-
-                          <td className="py-3.5 px-4 text-center">
-                            {statusBadge}
-                          </td>
-
-                          <td className="py-3.5 px-4">
-                            <div className="font-mono text-slate-700 dark:text-slate-300 text-[11px] truncate max-w-[150px]" title={inv.paymentReference || ''}>
-                              {inv.paymentReference || '-'}
-                            </div>
-                            {inv.paymentDate && (
-                              <div className="text-[10px] text-slate-400 font-mono">
-                                Paid: {inv.paymentDate}
-                              </div>
-                            )}
-                          </td>
-
-                          <td className="py-3.5 px-4 text-right">
-                            {!isReadonly ? (
-                              <div className="flex items-center justify-end gap-1">
-                                <button
-                                  onClick={() => handleOpenEditInvoice(inv)}
-                                  title="Edit invoice"
-                                  className="p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950/30 text-blue-600 dark:text-blue-400 transition"
-                                >
-                                  <Edit3 className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteInvoice(inv.id, inv.invoiceNo)}
-                                  title="Delete invoice"
-                                  className="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30 text-rose-600 dark:text-rose-400 transition"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            ) : (
-                              <span className="text-slate-400 text-xs">-</span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
+              <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => setInvoiceViewMode('table')}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
+                    invoiceViewMode === 'table'
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  <Table className="w-3.5 h-3.5" />
+                  Ledger Table
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInvoiceViewMode('calculationTables')}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
+                    invoiceViewMode === 'calculationTables'
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                  title="Open interactive 5-table invoice calculation engine"
+                >
+                  <Calculator className="w-3.5 h-3.5" />
+                  Calculation Tables
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInvoiceViewMode('cards')}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
+                    invoiceViewMode === 'cards'
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  IPC Picture Cards
+                </button>
+              </div>
             </div>
           </div>
+
+          {isInlineTableEdit && invoiceViewMode === 'table' && (
+            <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 px-4 py-2.5 rounded-2xl flex items-center justify-between text-xs text-amber-800 dark:text-amber-200">
+              <div className="flex items-center gap-2">
+                <Edit3 className="w-4 h-4 text-amber-600" />
+                <span className="font-bold">Live In-Table Editing Active:</span>
+                <span className="text-[11px] text-amber-700 dark:text-amber-300">
+                  Modify Invoice #, Billing Period, Dates, Gross, Deductions, Status, or Ref directly below. Changes persist immediately.
+                </span>
+              </div>
+              <button
+                onClick={() => setIsInlineTableEdit(false)}
+                className="px-2.5 py-1 bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-100 rounded-lg font-bold text-[11px] hover:bg-amber-300 transition cursor-pointer"
+              >
+                Close Edit Mode
+              </button>
+            </div>
+          )}
+
+          {invoiceViewMode === 'calculationTables' ? (
+            <MonthlyInvoiceCalculationTable
+              project={project}
+              consultant={consultant}
+              activeInvoice={selectedInvoiceForPdfModal}
+              onSaveInvoice={(computedInvoice) => {
+                const currentList = consultant.invoices || [];
+                const existingIdx = currentList.findIndex(i => i.invoiceNo === computedInvoice.invoiceNo || i.id === computedInvoice.id);
+                let updatedList: ConsultantInvoice[];
+                if (existingIdx >= 0) {
+                  updatedList = currentList.map((item, idx) => idx === existingIdx ? computedInvoice : item);
+                } else {
+                  updatedList = [computedInvoice, ...currentList];
+                }
+                saveConsultantData({
+                  ...consultant,
+                  invoices: updatedList
+                }, `Saved Monthly Supervision Invoice ${computedInvoice.invoiceNo} calculated from Attendance & Multiplication Tables`);
+                setSelectedInvoiceForPdfModal(computedInvoice);
+              }}
+              onBackToLedger={() => setInvoiceViewMode('table')}
+              onSelectInvoice={(inv) => setSelectedInvoiceForPdfModal(inv)}
+            />
+          ) : invoiceViewMode === 'cards' ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredInvoices.length === 0 ? (
+                <div className="col-span-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-12 text-center text-slate-400">
+                  <Receipt className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                  <p className="text-sm font-semibold">No invoices recorded yet.</p>
+                  <p className="text-xs text-slate-400 mt-1">Click "Add / Calculate Invoice" to compute and record a supervision fee claim.</p>
+                </div>
+              ) : (
+                filteredInvoices.map((inv) => {
+                  const totalDeductions = (inv.advanceDeductionEtb || 0) + (inv.taxDeductionEtb || 0);
+                  const isUnpaid = inv.status !== 'Paid' && inv.status !== 'Rejected';
+                  let ageDays = 0;
+                  let isMaturedOverdue = false;
+                  const refDateStr = inv.submissionDate || inv.certificationDate;
+                  if (refDateStr && isUnpaid) {
+                    const d = new Date(refDateStr);
+                    if (!isNaN(d.getTime())) {
+                      ageDays = Math.max(0, Math.floor((new Date().getTime() - d.getTime()) / (1000 * 60 * 60 * 24)));
+                      if (ageDays > 56) isMaturedOverdue = true;
+                    }
+                  }
+
+                  return (
+                    <div 
+                      key={inv.id}
+                      className={`bg-white dark:bg-slate-900 border rounded-3xl p-5 shadow-xs transition flex flex-col justify-between gap-4 ${
+                        isMaturedOverdue ? 'border-rose-300 dark:border-rose-800 bg-rose-50/20' : 'border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700'
+                      }`}
+                    >
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-black text-slate-900 dark:text-white font-mono flex items-center gap-1.5">
+                            <Receipt className="w-4 h-4 text-blue-500" />
+                            {inv.invoiceNo}
+                          </span>
+                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                            inv.status === 'Paid' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200' :
+                            inv.status === 'Certified' ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200' :
+                            isMaturedOverdue ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400 border border-rose-300 animate-pulse' :
+                            'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400 border border-blue-200'
+                          }`}>
+                            {isMaturedOverdue ? `Matured Overdue (${ageDays}d)` : inv.status}
+                          </span>
+                        </div>
+
+                        {/* Visual Document Calculation Tables Thumbnail */}
+                        <div 
+                          onClick={() => handleOpenEditInvoice(inv)}
+                          className="bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 p-3 rounded-2xl flex items-center gap-3 cursor-pointer hover:border-blue-400 transition"
+                          title="Click to calculate and view invoice tables"
+                        >
+                          <div className="w-10 h-12 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex flex-col items-center justify-center text-blue-600 dark:text-blue-400 shrink-0 shadow-2xs">
+                            <Table className="w-5 h-5" />
+                            <span className="text-[8px] font-mono font-bold">TABLES</span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate flex items-center gap-1">
+                              <span>{inv.invoiceNo} — Calculation Tables</span>
+                              <ExternalLink className="w-3 h-3 text-blue-500 shrink-0" />
+                            </div>
+                            <div className="text-[10px] text-slate-400 font-mono">
+                              Period: {inv.billingPeriod} • Sub: {inv.submissionDate || '-'}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          <div className="bg-slate-50/50 dark:bg-slate-800/40 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
+                            <span className="text-[10px] uppercase font-bold text-slate-400 block">Gross Claim</span>
+                            <span className="font-mono font-bold text-slate-900 dark:text-white">
+                              {formatAccounting(inv.grossAmountEtb || 0, 'ETB')}
+                            </span>
+                          </div>
+                          <div className="bg-slate-50/50 dark:bg-slate-800/40 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
+                            <span className="text-[10px] uppercase font-bold text-slate-400 block">Net Payable</span>
+                            <span className="font-mono font-black text-emerald-600 dark:text-emerald-400">
+                              {formatAccounting(inv.netAmountEtb || 0, 'ETB')}
+                            </span>
+                          </div>
+                        </div>
+
+                        {totalDeductions > 0 && (
+                          <div className="text-[11px] text-rose-600 dark:text-rose-400 font-mono flex justify-between">
+                            <span>Deductions (Adv + Tax):</span>
+                            <span>-{formatAccounting(totalDeductions, 'ETB')}</span>
+                          </div>
+                        )}
+
+                        {hasUsdPayments && inv.foreignCurrencyAmount ? (
+                          <div className="text-[11px] text-purple-600 dark:text-purple-400 font-mono flex justify-between">
+                            <span>USD Foreign Portion:</span>
+                            <span>${formatAccounting(inv.foreignCurrencyAmount, '')}</span>
+                          </div>
+                        ) : null}
+
+                        {inv.paymentReference && (
+                          <div className="text-[11px] text-slate-500 font-mono truncate" title={inv.paymentReference}>
+                            Ref: {inv.paymentReference} {inv.paymentDate ? `(${inv.paymentDate})` : ''}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-slate-800">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditInvoice(inv)}
+                          className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
+                        >
+                          <Calculator className="w-3.5 h-3.5" />
+                          Calculate & Edit Tables
+                        </button>
+
+                        {!isReadonly && (
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => handleOpenEditInvoice(inv)}
+                              title="Calculate and edit invoice tables"
+                              className="p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950/30 text-blue-600 dark:text-blue-400 transition cursor-pointer"
+                            >
+                              <Calculator className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteInvoice(inv.id, inv.invoiceNo)}
+                              title="Delete invoice"
+                              className="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30 text-rose-600 dark:text-rose-400 transition cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          ) : (
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm">
+              <div className="overflow-x-auto max-h-[540px] overflow-y-auto scroll-smooth">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-800 shadow-2xs">
+                    <tr className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 text-slate-500 font-bold uppercase tracking-wider text-[11px]">
+                      <th className="py-3 px-4 min-w-[140px]">Invoice #</th>
+                      <th className="py-3 px-4 min-w-[180px]">Billing Period</th>
+                      <th className="py-3 px-4 min-w-[140px]">Submission Date</th>
+                      <th className="py-3 px-4 text-right min-w-[140px]">Gross Claim (ETB)</th>
+                      <th className="py-3 px-4 text-right min-w-[130px]">Deductions (ETB)</th>
+                      <th className="py-3 px-4 text-right font-black text-slate-900 dark:text-white min-w-[150px]">Net Payable (ETB)</th>
+                      {hasUsdPayments && <th className="py-3 px-4 text-right min-w-[110px]">USD Portion</th>}
+                      <th className="py-3 px-4 text-center min-w-[130px]">Status</th>
+                      <th className="py-3 px-4 min-w-[170px]">Payment Ref</th>
+                      <th className="py-3 px-4 text-right min-w-[130px]">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {filteredInvoices.length === 0 ? (
+                      <tr>
+                        <td colSpan={hasUsdPayments ? 10 : 9} className="py-12 text-center text-slate-400">
+                          <Receipt className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                          <p className="text-sm font-semibold">No invoices recorded yet.</p>
+                          <p className="text-xs text-slate-400 mt-1">Click "Add / Calculate Invoice" to log a supervision consultant fee claim.</p>
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredInvoices.map((inv) => {
+                        const totalDeductions = (inv.advanceDeductionEtb || 0) + (inv.taxDeductionEtb || 0);
+                        const isUnpaid = inv.status !== 'Paid' && inv.status !== 'Rejected';
+                        let ageDays = 0;
+                        let isMaturedOverdue = false;
+                        const refDateStr = inv.submissionDate || inv.certificationDate;
+                        if (refDateStr && isUnpaid) {
+                          const d = new Date(refDateStr);
+                          if (!isNaN(d.getTime())) {
+                            ageDays = Math.max(0, Math.floor((new Date().getTime() - d.getTime()) / (1000 * 60 * 60 * 24)));
+                            if (ageDays > 56) {
+                              isMaturedOverdue = true;
+                            }
+                          }
+                        }
+
+                        let statusBadge = (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                            {inv.status}
+                          </span>
+                        );
+
+                        if (isMaturedOverdue) {
+                          statusBadge = (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400 border border-rose-300 dark:border-rose-800 animate-pulse" title={`FIDIC Sub-Clause 14.7 56-day maturation breached by ${ageDays - 56} days (${ageDays}d elapsed)`}>
+                              <AlertTriangle className="w-3 h-3 text-red-600 dark:text-rose-400" />
+                              Matured Overdue ({ageDays}d)
+                            </span>
+                          );
+                        } else if (inv.status === 'Paid') {
+                          statusBadge = (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+                              <CheckCircle2 className="w-3 h-3" />
+                              Paid
+                            </span>
+                          );
+                        } else if (inv.status === 'Certified') {
+                          statusBadge = (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+                              <FileCheck className="w-3 h-3" />
+                              Certified
+                            </span>
+                          );
+                        } else if (inv.status === 'Submitted') {
+                          statusBadge = (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400 border border-blue-200 dark:border-blue-800">
+                              <Clock className="w-3 h-3" />
+                              Submitted
+                            </span>
+                          );
+                        }
+
+                        // INLINE EDITABLE ROW
+                        if (isInlineTableEdit && !isReadonly) {
+                          return (
+                            <tr key={inv.id} className="bg-amber-50/20 dark:bg-amber-950/10 hover:bg-amber-50/40 transition">
+                              <td className="py-2.5 px-3">
+                                <input
+                                  type="text"
+                                  value={inv.invoiceNo}
+                                  onChange={(e) => handleUpdateInlineInvoiceField(inv.id, 'invoiceNo', e.target.value)}
+                                  className="w-full px-2 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg font-mono font-bold text-xs"
+                                />
+                              </td>
+                              <td className="py-2.5 px-3">
+                                <input
+                                  type="text"
+                                  value={inv.billingPeriod}
+                                  onChange={(e) => handleUpdateInlineInvoiceField(inv.id, 'billingPeriod', e.target.value)}
+                                  className="w-full px-2 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg font-sans text-xs"
+                                />
+                              </td>
+                              <td className="py-2.5 px-3">
+                                <input
+                                  type="date"
+                                  value={inv.submissionDate || ''}
+                                  onChange={(e) => handleUpdateInlineInvoiceField(inv.id, 'submissionDate', e.target.value)}
+                                  className="w-full px-2 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg font-mono text-xs"
+                                />
+                              </td>
+                              <td className="py-2.5 px-3 text-right">
+                                <input
+                                  type="number"
+                                  value={inv.grossAmountEtb || 0}
+                                  onChange={(e) => handleUpdateInlineInvoiceField(inv.id, 'grossAmountEtb', parseFloat(e.target.value) || 0)}
+                                  className="w-28 text-right px-2 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg font-mono font-bold text-xs"
+                                />
+                              </td>
+                              <td className="py-2.5 px-3 text-right">
+                                <input
+                                  type="number"
+                                  value={inv.advanceDeductionEtb || 0}
+                                  onChange={(e) => handleUpdateInlineInvoiceField(inv.id, 'advanceDeductionEtb', parseFloat(e.target.value) || 0)}
+                                  className="w-24 text-right px-2 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg font-mono text-rose-600 text-xs"
+                                />
+                              </td>
+                              <td className="py-2.5 px-3 text-right">
+                                <input
+                                  type="number"
+                                  value={inv.netAmountEtb || 0}
+                                  onChange={(e) => handleUpdateInlineInvoiceField(inv.id, 'netAmountEtb', parseFloat(e.target.value) || 0)}
+                                  className="w-28 text-right px-2 py-1 bg-white dark:bg-slate-800 border border-emerald-300 dark:border-emerald-700 rounded-lg font-mono font-black text-emerald-600 text-xs"
+                                />
+                              </td>
+                              {hasUsdPayments && (
+                                <td className="py-2.5 px-3 text-right">
+                                  <input
+                                    type="number"
+                                    value={inv.foreignCurrencyAmount || 0}
+                                    onChange={(e) => handleUpdateInlineInvoiceField(inv.id, 'foreignCurrencyAmount', parseFloat(e.target.value) || 0)}
+                                    className="w-20 text-right px-2 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg font-mono text-purple-600 text-xs"
+                                  />
+                                </td>
+                              )}
+                              <td className="py-2.5 px-3 text-center">
+                                <select
+                                  value={inv.status}
+                                  onChange={(e) => handleUpdateInlineInvoiceField(inv.id, 'status', e.target.value)}
+                                  className="w-full px-2 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg font-bold text-xs"
+                                >
+                                  <option value="Submitted">Submitted</option>
+                                  <option value="Certified">Certified</option>
+                                  <option value="Paid">Paid</option>
+                                  <option value="Pending">Pending</option>
+                                  <option value="Rejected">Rejected</option>
+                                </select>
+                              </td>
+                              <td className="py-2.5 px-3">
+                                <input
+                                  type="text"
+                                  value={inv.paymentReference || ''}
+                                  onChange={(e) => handleUpdateInlineInvoiceField(inv.id, 'paymentReference', e.target.value)}
+                                  placeholder="Payment Ref"
+                                  className="w-full px-2 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg font-mono text-[11px]"
+                                />
+                              </td>
+                              <td className="py-2.5 px-3 text-right">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <button
+                                    onClick={() => handleOpenEditInvoice(inv)}
+                                    title="Open interactive calculation tables"
+                                    className="px-2 py-1 bg-blue-50 dark:bg-blue-950/40 text-blue-600 rounded-lg text-[11px] font-bold hover:bg-blue-100 transition flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <Calculator className="w-3 h-3" />
+                                    Tables
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteInvoice(inv.id, inv.invoiceNo)}
+                                    title="Delete invoice"
+                                    className="p-1 rounded-lg hover:bg-rose-50 text-rose-600 transition cursor-pointer"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        }
+
+                        // STANDARD ROW VIEW
+                        return (
+                          <tr 
+                            key={inv.id}
+                            className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition duration-150 ${
+                              isMaturedOverdue ? 'bg-rose-50/20 dark:bg-rose-950/10' : ''
+                            }`}
+                          >
+                            <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-white font-mono flex items-center gap-2">
+                              <span 
+                                onClick={() => handleOpenEditInvoice(inv)}
+                                className="cursor-pointer hover:underline text-blue-600 dark:text-blue-400 font-black"
+                                title="Click to calculate and view invoice tables"
+                              >
+                                {inv.invoiceNo}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditInvoice(inv)}
+                                title="View & Edit Calculation Tables (Attendance, Multiplier, Reimbursables, Summary)"
+                                className="text-blue-600 dark:text-blue-400 hover:underline text-[10px] font-semibold bg-blue-50 dark:bg-blue-950/40 px-1.5 py-0.5 rounded cursor-pointer"
+                              >
+                                [Calculation Tables]
+                              </button>
+                            </td>
+
+                            <td className="py-3.5 px-4 font-semibold text-slate-700 dark:text-slate-200">
+                              {inv.billingPeriod}
+                            </td>
+
+                            <td className="py-3.5 px-4 text-slate-500 dark:text-slate-400 font-mono">
+                              <div>{inv.submissionDate || '-'}</div>
+                              {isUnpaid && ageDays > 0 && (
+                                <div className={`text-[10px] font-mono ${isMaturedOverdue ? 'text-red-600 dark:text-rose-400 font-black' : 'text-slate-400'}`}>
+                                  {ageDays}d elapsed
+                                </div>
+                              )}
+                            </td>
+
+                            <td className="py-3.5 px-4 text-right font-mono text-slate-700 dark:text-slate-300">
+                              {formatAccounting(inv.grossAmountEtb || 0, '')}
+                            </td>
+
+                            <td className="py-3.5 px-4 text-right font-mono text-rose-600 dark:text-rose-400 text-[11px]">
+                              {totalDeductions > 0 ? `-${formatAccounting(totalDeductions, '')}` : '-'}
+                            </td>
+
+                            <td className="py-3.5 px-4 text-right font-mono font-black text-slate-900 dark:text-white bg-slate-50/50 dark:bg-slate-800/30">
+                              {formatAccounting(inv.netAmountEtb || 0, '')}
+                            </td>
+
+                            {hasUsdPayments && (
+                              <td className="py-3.5 px-4 text-right font-mono text-purple-600 dark:text-purple-400">
+                                {inv.foreignCurrencyAmount ? `$${formatAccounting(inv.foreignCurrencyAmount, '')}` : '-'}
+                              </td>
+                            )}
+
+                            <td className="py-3.5 px-4 text-center">
+                              {statusBadge}
+                            </td>
+
+                            <td className="py-3.5 px-4">
+                              <div className="font-mono text-slate-700 dark:text-slate-300 text-[11px] truncate max-w-[150px]" title={inv.paymentReference || ''}>
+                                {inv.paymentReference || '-'}
+                              </div>
+                              {inv.paymentDate && (
+                                <div className="text-[10px] text-slate-400 font-mono">
+                                  Paid: {inv.paymentDate}
+                                </div>
+                              )}
+                            </td>
+
+                            <td className="py-3.5 px-4 text-right">
+                              {!isReadonly ? (
+                                <div className="flex items-center justify-end gap-1">
+                                  <button
+                                    onClick={() => handleOpenEditInvoice(inv)}
+                                    title="Calculate and view invoice tables"
+                                    className="p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950/30 text-blue-600 dark:text-blue-400 transition cursor-pointer"
+                                  >
+                                    <Calculator className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteInvoice(inv.id, inv.invoiceNo)}
+                                    title="Delete invoice"
+                                    className="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30 text-rose-600 dark:text-rose-400 transition cursor-pointer"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className="text-slate-400 text-xs">-</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -4742,202 +5078,6 @@ export default function SupervisionConsultantView({
         )}
       </AnimatePresence>
 
-      {/* MODAL 3: ADD / EDIT CONSULTANT INVOICE */}
-      <AnimatePresence>
-        {isInvoiceModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 w-full max-w-xl shadow-xl my-8 space-y-4"
-            >
-              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-                <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                  <Receipt className="w-5 h-5 text-blue-600" />
-                  {selectedInvoice ? 'Edit Consultant Invoice' : 'Add Supervision Fee Invoice'}
-                </h3>
-                <button
-                  onClick={() => setIsInvoiceModalOpen(false)}
-                  className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">
-                    Invoice Number <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. CON-INV-06"
-                    value={invoiceForm.invoiceNo || ''}
-                    onChange={(e) => setInvoiceForm({ ...invoiceForm, invoiceNo: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white font-bold"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">
-                    Billing Period <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Feb 2026 or 01/02/2026 - 28/02/2026"
-                    value={invoiceForm.billingPeriod || ''}
-                    onChange={(e) => setInvoiceForm({ ...invoiceForm, billingPeriod: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">Submission Date (Contractor / Consultant)</label>
-                  <input
-                    type="date"
-                    value={invoiceForm.submissionDate || ''}
-                    onChange={(e) => setInvoiceForm({ ...invoiceForm, submissionDate: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">Certification Date (Engineer / Client Submission)</label>
-                  <input
-                    type="date"
-                    value={invoiceForm.certificationDate || ''}
-                    onChange={(e) => setInvoiceForm({ ...invoiceForm, certificationDate: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-blue-600 dark:text-blue-400 font-bold mb-1">
-                    Gross Invoice Fee (ETB) <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="number"
-                    required
-                    value={invoiceForm.grossAmountEtb || 0}
-                    onChange={(e) => handleInvoiceAmountChange('grossAmountEtb', parseFloat(e.target.value) || 0)}
-                    className="w-full px-3 py-2 bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-xl font-mono font-bold text-slate-900 dark:text-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">Advance Fee Deduction (ETB)</label>
-                  <input
-                    type="number"
-                    value={invoiceForm.advanceDeductionEtb || 0}
-                    onChange={(e) => handleInvoiceAmountChange('advanceDeductionEtb', parseFloat(e.target.value) || 0)}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">Taxes / Withholding / VAT (ETB)</label>
-                  <input
-                    type="number"
-                    value={invoiceForm.taxDeductionEtb || 0}
-                    onChange={(e) => handleInvoiceAmountChange('taxDeductionEtb', parseFloat(e.target.value) || 0)}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-emerald-600 dark:text-emerald-400 font-bold mb-1">
-                    Net Payable Amount (ETB)
-                  </label>
-                  <input
-                    type="number"
-                    value={invoiceForm.netAmountEtb || 0}
-                    onChange={(e) => setInvoiceForm({ ...invoiceForm, netAmountEtb: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 rounded-xl font-mono font-black text-emerald-700 dark:text-emerald-300"
-                  />
-                </div>
-
-                {hasUsdPayments && (
-                  <div>
-                    <label className="block text-purple-600 dark:text-purple-400 font-semibold mb-1">Foreign Currency Fee (USD)</label>
-                    <input
-                      type="number"
-                      value={invoiceForm.foreignCurrencyAmount || 0}
-                      onChange={(e) => setInvoiceForm({ ...invoiceForm, foreignCurrencyAmount: parseFloat(e.target.value) || 0 })}
-                      className="w-full px-3 py-2 bg-purple-50/50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800 rounded-xl font-mono text-purple-700 dark:text-purple-300 font-bold"
-                    />
-                  </div>
-                )}
-
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">Payment Status</label>
-                  <select
-                    value={invoiceForm.status || 'Submitted'}
-                    onChange={(e) => setInvoiceForm({ ...invoiceForm, status: e.target.value as any })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-semibold"
-                  >
-                    <option value="Submitted">Submitted</option>
-                    <option value="Certified">Certified by Client</option>
-                    <option value="Paid">Paid / Disbursed</option>
-                    <option value="Pending">Pending Review</option>
-                    <option value="Rejected">Rejected</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">Payment Date / Disbursement (if settled)</label>
-                  <input
-                    type="date"
-                    value={invoiceForm.paymentDate || ''}
-                    onChange={(e) => setInvoiceForm({ ...invoiceForm, paymentDate: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">Payment Voucher / Transfer Ref</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. CBE-FT-20260210 or ERA-PV-881"
-                    value={invoiceForm.paymentReference || ''}
-                    onChange={(e) => setInvoiceForm({ ...invoiceForm, paymentReference: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white"
-                  />
-                </div>
-
-                <div className="sm:col-span-2">
-                  <label className="block text-slate-500 font-semibold mb-1">Attached Document Reference / Remarks</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Consultant_Invoice_Feb2026_Certified.pdf - Staff fee & field mileage breakdown"
-                    value={invoiceForm.remarks || ''}
-                    onChange={(e) => setInvoiceForm({ ...invoiceForm, remarks: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
-                <button
-                  onClick={() => setIsInvoiceModalOpen(false)}
-                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSaveInvoice}
-                  className="px-5 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-xs"
-                >
-                  {selectedInvoice ? 'Save Invoice' : 'Submit Invoice'}
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
       {/* MODAL 4: VIEW PERSONNEL DETAIL CARD */}
       <AnimatePresence>
         {viewDetailPersonnel && (
@@ -5868,6 +6008,8 @@ export default function SupervisionConsultantView({
         )}
       </AnimatePresence>
 
+
+
       {/* Cross-Project Supervision Personnel Workload Report Modal */}
       <WorkloadReportModal
         isOpen={isWorkloadReportOpen}
@@ -5880,3 +6022,4 @@ export default function SupervisionConsultantView({
     </div>
   );
 }
+
