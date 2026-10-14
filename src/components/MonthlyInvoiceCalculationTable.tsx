@@ -677,7 +677,7 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
   // advances billing period, and prepares active replacement staff for the new month.
   // =========================================================================
   const handleProceedToNextMonth = () => {
-    const { nextPeriodStr, nextDaysInMonth, nextMonthName } = computeNextBillingPeriod(billingPeriod);
+    const { nextPeriodStr, nextDaysInMonth, nextMonthName } = computeNextBillingPeriod(`${billingMonth} ${billingYear}`);
     const nextInvNo = computeNextInvoiceNumber(invoiceNo);
 
     const confirmMsg = `Proceed and roll forward invoice to next month?\n\n` +
@@ -708,7 +708,9 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
 
     // Update local state
     setInvoiceNo(nextInvNo);
-    setBillingPeriod(nextPeriodStr);
+    setBillingMonth(nextMonthName);
+    const yearMatch = nextPeriodStr.match(/20\d{2}/);
+    if (yearMatch) setBillingYear(parseInt(yearMatch[0], 10));
     setTotalDaysInMonth(nextDaysInMonth);
     setStaffRows(rolledStaffRows);
     setReimbursableRows(rolledReimbursables);
@@ -777,7 +779,7 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
     const computedInvoice: ConsultantInvoice = {
       id: activeInvoice?.id || `inv_${Date.now()}`,
       invoiceNo: invoiceNo.trim() || 'INV-01',
-      billingPeriod: billingPeriod.trim() || 'October 2020',
+      billingPeriod: `${billingMonth} ${billingYear}`.trim(),
       submissionDate: submissionDate || new Date().toISOString().split('T')[0],
       certificationDate: invoiceDate,
       grossAmountEtb: grossPayableBase,

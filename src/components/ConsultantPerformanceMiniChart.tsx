@@ -230,13 +230,12 @@ export const ConsultantPerformanceMiniChart: React.FC<ConsultantPerformanceMiniC
                 </div>
               </div>
 
-              {/* Comparative Dual Mini Bar Visualizer */}
+              {/* Actual Speed Mini Bar Chart */}
               <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-2 rounded-xl border border-slate-100 dark:border-slate-800">
-                {/* Actual Days Bar */}
                 <div className="space-y-0.5">
                   <div className="flex justify-between text-[9px] font-bold text-slate-500 uppercase tracking-tight">
                     <span>Actual Speed</span>
-                    <span className="font-mono text-purple-600 dark:text-purple-400">{item.avgDays}d</span>
+                    <span className="font-mono text-purple-600 dark:text-purple-400">{item.avgDays}d (Target: {item.target}d)</span>
                   </div>
                   <div className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
                     <div 
@@ -246,20 +245,6 @@ export const ConsultantPerformanceMiniChart: React.FC<ConsultantPerformanceMiniC
                           : 'bg-gradient-to-r from-amber-500 to-rose-500'
                       }`}
                       style={{ width: `${item.actualWidthPct}%` }}
-                    />
-                  </div>
-                </div>
-
-                {/* Contract Target Bar */}
-                <div className="space-y-0.5 pt-0.5">
-                  <div className="flex justify-between text-[9px] font-semibold text-slate-400">
-                    <span>Contract SLA</span>
-                    <span className="font-mono">{item.target}d</span>
-                  </div>
-                  <div className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-slate-400 dark:bg-slate-500 rounded-full"
-                      style={{ width: `${item.targetWidthPct}%` }}
                     />
                   </div>
                 </div>

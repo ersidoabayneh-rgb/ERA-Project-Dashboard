@@ -1222,7 +1222,7 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
                               key={`ssc-item-${it.id}-${itIdx}`} 
                               className="group flex flex-col md:flex-row md:items-center justify-between text-xs p-2.5 rounded-xl border border-dotted border-slate-100 hover:border-slate-350 dark:border-slate-700/40 dark:hover:border-slate-600 bg-slate-50/40 dark:bg-slate-900/10 hover:bg-white dark:hover:bg-slate-900/40 transition gap-3"
                             >
-                              {/* Left parameters & progress indicator */}
+                              {/* Left parameters */}
                               <div className="flex flex-col gap-1.5 flex-1">
                                 <div className="flex items-start gap-2">
                                   <span className="font-mono font-bold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-[10px]">
@@ -1239,29 +1239,6 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
                                         {getKpiTooltip(it.id, it.desc)}
                                       </span>
                                     </span>
-                                  </span>
-                                </div>
-
-                                {/* Visual Progress Bar towards Target */}
-                                <div className="flex items-center gap-2 pl-6">
-                                  <div className="flex-1 max-w-xs h-2 bg-slate-200 dark:bg-slate-750 rounded-full overflow-hidden shadow-2xs">
-                                    <div 
-                                      className={`h-full transition-all duration-300 rounded-full ${
-                                        kpi.naActive 
-                                          ? 'bg-amber-400' 
-                                          : pctCompletion >= 100 
-                                            ? 'bg-emerald-500' 
-                                            : pctCompletion >= 70 
-                                              ? 'bg-blue-500' 
-                                              : pctCompletion >= 40 
-                                                ? 'bg-amber-500' 
-                                                : 'bg-rose-500'
-                                      }`}
-                                      style={{ width: `${pctCompletion}%` }}
-                                    />
-                                  </div>
-                                  <span className="font-mono text-[10px] font-bold text-slate-500 dark:text-slate-400 whitespace-nowrap">
-                                    {kpi.naActive ? 'N/A' : `${pctCompletion.toFixed(1)}% Completed`}
                                   </span>
                                 </div>
                               </div>
