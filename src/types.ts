@@ -1,5 +1,18 @@
+export interface SupervisionConsultantContract {
+  id: string;
+  position: string;
+  rate: number;
+  unit: string;
+  total: number;
+  status: 'Draft' | 'Submitted' | 'Validated' | 'Approved';
+  approvedAt?: string;
+  approvedBy?: string;
+}
+
 /**
  * Represents shared TypeScript types and data structures for the
+[diff_block_start]
+...
  * Ethiopian Roads Administration ERP Dashboard application.
  */
 

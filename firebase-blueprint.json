@@ -28,9 +28,26 @@
         "customWorkflowStages": { "type": "array", "description": "Customized user defined workflow stages" },
         "variationClaimSettings": { "type": "object", "description": "Baseline settings and adjustments customization metrics" },
         "approvedClaimsCostSum": { "type": "number", "description": "Sum of all approved contractual claims cost compensation" },
+        "contractAmountStatus": { "type": "string", "description": "Status of contract amount (Draft, Submitted, Validated)" },
         "updatedAt": { "type": "string", "maxLength": 100 }
       },
       "required": ["id", "name", "client"]
+    },
+    "SupervisionConsultantContract": {
+      "title": "SupervisionConsultantContract",
+      "description": "Supervision consultant service contract table entry",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "position": { "type": "string", "maxLength": 255 },
+        "rate": { "type": "number" },
+        "unit": { "type": "string", "maxLength": 50 },
+        "total": { "type": "number" },
+        "status": { "type": "string", "maxLength": 50 },
+        "approvedAt": { "type": "string", "maxLength": 100 },
+        "approvedBy": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "position", "rate", "unit", "total"]
     },
     "User": {
       "title": "User",
@@ -152,6 +169,10 @@
     "/config/{configId}": {
       "schema": { "$ref": "#/entities/Config" },
       "description": "Collection of global app taxonomy config"
+    },
+    "/projects/{projectId}/supervision_consultant_contracts/{contractId}": {
+      "schema": { "$ref": "#/entities/SupervisionConsultantContract" },
+      "description": "Collection of supervision consultant service contract table entries"
     }
   }
 }

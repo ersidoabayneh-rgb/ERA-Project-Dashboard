@@ -1,24 +1,26 @@
-# Implementation Plan: Fix Cumulative Invoice Calculations
+# Implementation Plan: ERP Dashboard Enhancements
 
-The current invoice calculation logic in `MonthlyInvoiceCalculationTable.tsx` has issues correctly aggregating cumulative data from previously saved invoices, leading to incorrect values for "Preceding" amounts and final invoice totals.
+## 1. Contract Amount Access Control
+- **Backend**: Update `src/middleware/auth.ts` to check `user.role === 'director_general'`. Add check to contract amount API routes.
+- **Frontend**: Update `FinancialDataPage` and `SupervisionConsultantView` to disable/hide edit controls based on `user.role`.
 
-## Planned Changes
+## 2. Contract Amount Validation & Locking Workflow
+- **Database**: Add `status` (e.g., 'Draft', 'Submitted', 'Validated') to `contractAmount` objects in Firestore.
+- **Backend**: API handlers for `updateContractAmount` will check `status !== 'Validated'`.
+- **Frontend**: 
+    - Add "Submit for Validation" button.
+    - CPM Admin: Add "Validate" button. 
+    - When `Validated`, disable all edit controls.
 
-1.  **Refine Data Fetching**:
-    - Ensure `allInvoices` properly retrieves all historical, finalized invoices from the database or state.
-    - Add logic to explicitly filter out the invoice currently being edited to avoid self-inclusion in cumulative sums.
+## 3. Group Report: Asphalt & Base Course Analytics
+- **Backend**: Update query in `GroupReportGenerator` to aggregate actual and planned data for 'Asphalt' and 'Base Course'.
+- **Frontend**: Add UI components to display these metrics.
 
-2.  **Update Cumulative Calculation Logic**:
-    - Modify `syncStaffRowsFromAssignedPersonnel` to iterate through the filtered invoice list and aggregate `thisInvoiceQty` and `thisInvoiceAmount` accurately.
-    - Ensure the logic correctly handles currency (ETB vs. optional USD).
-
-3.  **Re-verify Calculation Dependencies**:
-    - Review the `useEffect` hook that triggers re-calculations when `activeInvoice` changes to ensure it correctly triggers the updated cumulative function.
-
-4.  **Validate Final Totals**:
-    - Adjust the final invoice summation logic in Table 5 (`Consolidated Summary & Net Payment Computation`) to use the newly calculated cumulative totals.
-
-## Verification
-
-- Run `compile_applet` to ensure code integrity.
-- Perform a manual test by creating/editing invoices and verifying that the "Preceding" amounts correctly reflect the sum of previous invoices.
+## 4. Supervision Consultant Page: Contract & Scope Profile Table
+- **Backend**: Create new collection/sub-collection in Firestore for Supervision Consultant Contract Tables.
+- **Frontend**:
+    - Add `SupervisionConsultantContractTable` component.
+    - Implement dynamic row addition.
+    - Implement submission/approval flow (Directorate Admin).
+    - Locking mechanism upon approval.
+    - Automatic new table creation on consultant change.

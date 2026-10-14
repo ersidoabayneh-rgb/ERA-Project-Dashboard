@@ -54,7 +54,8 @@ import {
   PersonnelAuditLogEntry,
   formatAccounting,
   User,
-  RegisteredFirm 
+  RegisteredFirm,
+  SupervisionConsultantContract
 } from '../types';
 import jsPDF from 'jspdf';
 import { drawEraLogo } from '../lib/pdfReportEngine';
@@ -64,6 +65,7 @@ import ConsultantPerformanceKpiWidget, { DEFAULT_SUBMITTAL_KPIS, DEFAULT_SLA_TAR
 import ConsultantPerformanceMiniChart from './ConsultantPerformanceMiniChart';
 import { parseJvEntities, evaluateQualitativeGrade } from '../data/consultantEvaluationMatrix';
 import { MonthlyInvoiceCalculationTable, OFFICIAL_DKS_STAFF_POSITIONS_DEFAULT as OFFICIAL_DKS_STAFF_POSITIONS } from './MonthlyInvoiceCalculationTable';
+import { SupervisionConsultantContractTable } from './SupervisionConsultantContractTable';
 
 export const DEFAULT_OFFICIAL_DKS_INVOICE: ConsultantInvoice = {
   id: 'inv_dks_01',
@@ -293,6 +295,7 @@ export default function SupervisionConsultantView({
   const [invoiceViewMode, setInvoiceViewMode] = useState<'table' | 'cards' | 'calculationTables'>('table');
   const [selectedInvoiceForPdfModal, setSelectedInvoiceForPdfModal] = useState<ConsultantInvoice | null>(null);
   const [isInlineTableEdit, setIsInlineTableEdit] = useState<boolean>(false);
+  const [scContracts, setScContracts] = useState<SupervisionConsultantContract[]>([]);
 
   // Form state for Replacing Personnel with a Successor
   const [replaceForm, setReplaceForm] = useState({
@@ -332,7 +335,12 @@ export default function SupervisionConsultantView({
       headOfficeEmail: consultant.headOfficeEmail || '',
       headOfficeContactPerson: consultant.headOfficeContactPerson || ''
     });
-  }, [consultant]);
+    const fetchContracts = async () => {
+      const res = await fetch(`/api/projects/${project.id}/supervision-consultant-contracts`);
+      if (res.ok) setScContracts(await res.json());
+    };
+    fetchContracts();
+  }, [consultant, project.id]);
 
   // Form state for Assigning New Consultant (Continuation of Service)
   const [newConsultantForm, setNewConsultantForm] = useState<{
@@ -3409,10 +3417,22 @@ export default function SupervisionConsultantView({
                     className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
                   >
                     <Edit3 className="w-3 h-3" />
-                    Modify Contract
+                    Edit Contract
                   </button>
                 )}
               </div>
+              <SupervisionConsultantContractTable
+                projectId={project.id}
+                contracts={scContracts}
+                currentUser={currentUser}
+                onRefresh={() => {
+                  const fetchContracts = async () => {
+                    const res = await fetch(`/api/projects/${project.id}/supervision-consultant-contracts`);
+                    if (res.ok) setScContracts(await res.json());
+                  };
+                  fetchContracts();
+                }}
+              />
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
                 <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-2xl border border-slate-100 dark:border-slate-800">
