@@ -981,7 +981,7 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
     handleCalculatePersonnelMMFromInvoice(false);
 
     // Once payment is saved, lock the payment amount so no change occurs
-    const finalPaymentAmount = calculatedNetDueThisInvoice;
+    const finalPaymentAmount = (isPaymentLocked && savedPaymentAmount !== null) ? savedPaymentAmount : calculatedNetDueThisInvoice;
     setIsPaymentSaved(true);
     setSavedPaymentAmount(finalPaymentAmount);
     setAllowAdminUnlock(false);
@@ -1690,9 +1690,13 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                             min="0"
                             max={totalDaysInMonth}
                             value={row.daysWorked}
+                            disabled={isPaymentLocked}
                             onChange={(e) => handleUpdateStaff(row.id, { daysWorked: Math.max(0, parseInt(e.target.value) || 0) })}
+                            title={isPaymentLocked ? "Payment amount is saved and locked (no change permitted unless unlocked by Directorate Admin)" : "Days worked in current month"}
                             className={`w-18 text-right px-2 py-1 rounded-lg font-mono font-bold text-xs border ${
-                              row.daysWorked > 0 
+                              isPaymentLocked
+                                ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700 cursor-not-allowed opacity-70'
+                                : row.daysWorked > 0 
                                 ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-800' 
                                 : 'bg-transparent text-slate-400 border-transparent hover:border-slate-200'
                             }`}
@@ -1873,12 +1877,18 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                         <input
                           type="number"
                           value={r.precedingQty}
+                          disabled={isPaymentLocked}
                           onChange={(e) => {
                             const val = parseFloat(e.target.value) || 0;
                             const rateUsed = r.effectiveRate ?? r.rate;
                             handleUpdateStaff(r.id, { precedingQty: val, precedingAmount: val * rateUsed });
                           }}
-                          className="w-14 text-right px-1 py-0.5 bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800 border border-transparent focus:border-slate-300 rounded font-mono text-[11px]"
+                          title={isPaymentLocked ? "Payment amount is saved and locked (no change permitted)" : "Preceding man-month input"}
+                          className={`w-14 text-right px-1 py-0.5 rounded font-mono text-[11px] ${
+                            isPaymentLocked 
+                              ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed opacity-70' 
+                              : 'bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800 border border-transparent focus:border-slate-300'
+                          }`}
                         />
                       </td>
                       <td className="py-2 px-3 text-right text-slate-600 dark:text-slate-400">{fmt(r.precedingAmount)}</td>
@@ -2051,28 +2061,46 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                           type="number"
                           step="0.01"
                           value={r.thisInvoiceQty}
+                          disabled={isPaymentLocked}
                           onChange={(e) => handleUpdateReimbursable(r.id, { thisInvoiceQty: parseFloat(e.target.value) || 0 })}
-                          className="w-16 text-right px-1 py-0.5 rounded font-mono font-bold text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-slate-900 text-[11px]"
+                          title={isPaymentLocked ? "Payment amount is saved and locked (no change permitted)" : "This month quantity"}
+                          className={`w-16 text-right px-1 py-0.5 rounded font-mono font-bold text-[11px] ${
+                            isPaymentLocked 
+                              ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed opacity-70' 
+                              : 'text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-slate-900'
+                          }`}
                         />
                       </td>
                       <td className="py-2 px-3 text-right font-black text-indigo-600 dark:text-indigo-400 bg-indigo-50/30 dark:bg-indigo-950/20">
                         <input
                           type="number"
                           value={r.computedThisAmount}
+                          disabled={isPaymentLocked}
                           onChange={(e) => handleUpdateReimbursable(r.id, { thisInvoiceAmount: parseFloat(e.target.value) || 0 })}
-                          className="w-24 text-right px-1 py-0.5 rounded font-mono font-black text-indigo-600 dark:text-indigo-400 border border-transparent hover:border-slate-300 bg-transparent text-[11px]"
+                          title={isPaymentLocked ? "Payment amount is saved and locked (no change permitted)" : "This month claim amount"}
+                          className={`w-24 text-right px-1 py-0.5 rounded font-mono font-black text-indigo-600 dark:text-indigo-400 text-[11px] ${
+                            isPaymentLocked 
+                              ? 'cursor-not-allowed opacity-70' 
+                              : 'border border-transparent hover:border-slate-300 bg-transparent'
+                          }`}
                         />
                       </td>
                       <td className="py-2 px-2 text-right">
                         <input
                           type="number"
                           value={r.precedingQty}
+                          disabled={isPaymentLocked}
                           onChange={(e) => {
                             const val = parseFloat(e.target.value) || 0;
                             const rateUsed = r.effectiveRate ?? r.rate;
                             handleUpdateReimbursable(r.id, { precedingQty: val, precedingAmount: val * rateUsed });
                           }}
-                          className="w-14 text-right px-1 py-0.5 bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800 border border-transparent focus:border-slate-300 rounded font-mono text-[11px]"
+                          title={isPaymentLocked ? "Payment amount is saved and locked (no change permitted)" : "Preceding quantity"}
+                          className={`w-14 text-right px-1 py-0.5 rounded font-mono text-[11px] ${
+                            isPaymentLocked 
+                              ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed opacity-70' 
+                              : 'bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800 border border-transparent focus:border-slate-300'
+                          }`}
                         />
                       </td>
                       <td className="py-2 px-3 text-right text-slate-600 dark:text-slate-400">{fmt(r.precedingAmount)}</td>
@@ -2184,11 +2212,17 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                       <input
                         type="number"
                         value={r.thisInvoiceQty}
+                        disabled={isPaymentLocked}
                         onChange={(e) => {
                           const val = parseFloat(e.target.value) || 0;
                           setDefectRows(prev => prev.map(d => d.id === r.id ? { ...d, thisInvoiceQty: val, thisInvoiceAmount: val * d.rate } : d));
                         }}
-                        className="w-16 text-right px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 font-mono text-[11px]"
+                        title={isPaymentLocked ? "Payment amount is saved and locked (no change permitted)" : "This month MM"}
+                        className={`w-16 text-right px-1.5 py-0.5 rounded font-mono text-[11px] ${
+                          isPaymentLocked 
+                            ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed opacity-70' 
+                            : 'border border-slate-200 dark:border-slate-700'
+                        }`}
                       />
                     </td>
                     <td className="py-2.5 px-4 text-right font-bold text-blue-600">{fmt(r.computedThisAmount)}</td>
@@ -2350,10 +2384,15 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                           type="number"
                           step="0.01"
                           value={contingencyThisInvoiceClaim}
+                          disabled={isPaymentLocked}
                           onChange={(e) => setContingencyThisInvoiceClaim(parseFloat(e.target.value) || 0)}
                           placeholder="0.00"
-                          className="w-32 text-right px-2 py-1 rounded-lg border border-blue-300 dark:border-blue-800 font-mono font-bold text-blue-700 dark:text-blue-300 text-xs bg-white dark:bg-slate-900 focus:ring-1 focus:ring-blue-500 shadow-xs"
-                          title="Assign this month's contingency claim (user assigned amount, not directly calculated from contract)"
+                          title={isPaymentLocked ? "Payment amount is saved and locked (no change permitted)" : "Assign this month's contingency claim"}
+                          className={`w-32 text-right px-2 py-1 rounded-lg border font-mono font-bold text-xs ${
+                            isPaymentLocked 
+                              ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700 cursor-not-allowed opacity-70' 
+                              : 'border-blue-300 dark:border-blue-800 text-blue-700 dark:text-blue-300 bg-white dark:bg-slate-900 focus:ring-1 focus:ring-blue-500 shadow-xs'
+                          }`}
                         />
                         <span className="text-[9px] text-blue-600 dark:text-blue-400 font-semibold">User-Assigned Claim</span>
                       </div>
@@ -2363,10 +2402,15 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                         type="number"
                         step="0.01"
                         value={contingencyPrecedingClaim}
+                        disabled={isPaymentLocked}
                         onChange={(e) => setContingencyPrecedingClaim(parseFloat(e.target.value) || 0)}
                         placeholder="0.00"
-                        className="w-28 text-right px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 font-mono text-slate-600 dark:text-slate-400 text-xs bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800"
-                        title="Cumulative contingency claimed in previous invoices"
+                        title={isPaymentLocked ? "Payment amount is saved and locked (no change permitted)" : "Cumulative contingency claimed in previous invoices"}
+                        className={`w-28 text-right px-1.5 py-0.5 rounded border font-mono text-xs ${
+                          isPaymentLocked 
+                            ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700 cursor-not-allowed opacity-70' 
+                            : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800'
+                        }`}
                       />
                     </td>
                     <td className="py-2.5 px-4 text-right font-mono font-bold text-slate-900 dark:text-white">
@@ -2385,8 +2429,9 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                             type="number"
                             step="0.5"
                             value={vatRatePct}
+                            disabled={isPaymentLocked}
                             onChange={(e) => setVatRatePct(parseFloat(e.target.value) || 0)}
-                            className="w-10 text-center bg-transparent focus:outline-none font-bold"
+                            className="w-10 text-center bg-transparent focus:outline-none font-bold disabled:opacity-70 disabled:cursor-not-allowed"
                           />
                           <span>%</span>
                         </div>
@@ -2423,8 +2468,14 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                       <input
                         type="number"
                         value={overtimeEtb}
+                        disabled={isPaymentLocked}
                         onChange={(e) => setOvertimeEtb(parseFloat(e.target.value) || 0)}
-                        className="w-28 text-right px-2 py-0.5 rounded border border-blue-300 dark:border-blue-800 font-mono font-bold text-blue-600 text-xs bg-white dark:bg-slate-900"
+                        title={isPaymentLocked ? "Payment amount is saved and locked (no change permitted)" : "Overtime amount"}
+                        className={`w-28 text-right px-2 py-0.5 rounded border font-mono font-bold text-xs ${
+                          isPaymentLocked 
+                            ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700 cursor-not-allowed opacity-70' 
+                            : 'border-blue-300 dark:border-blue-800 text-blue-600 bg-white dark:bg-slate-900'
+                        }`}
                       />
                     </td>
                     <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>
@@ -2442,8 +2493,14 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                       <input
                         type="number"
                         value={advanceDeductionEtb}
+                        disabled={isPaymentLocked}
                         onChange={(e) => setAdvanceDeductionEtb(parseFloat(e.target.value) || 0)}
-                        className="w-28 text-right px-2 py-0.5 rounded border border-rose-300 dark:border-rose-800 font-mono font-bold text-rose-600 text-xs bg-white dark:bg-slate-900"
+                        title={isPaymentLocked ? "Payment amount is saved and locked (no change permitted)" : "Advance payment recovery"}
+                        className={`w-28 text-right px-2 py-0.5 rounded border font-mono font-bold text-xs ${
+                          isPaymentLocked 
+                            ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700 cursor-not-allowed opacity-70' 
+                            : 'border-rose-300 dark:border-rose-800 text-rose-600 bg-white dark:bg-slate-900'
+                        }`}
                       />
                     </td>
                     <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>
@@ -2460,8 +2517,14 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                       <input
                         type="number"
                         value={taxDeductionEtb}
+                        disabled={isPaymentLocked}
                         onChange={(e) => setTaxDeductionEtb(parseFloat(e.target.value) || 0)}
-                        className="w-28 text-right px-2 py-0.5 rounded border border-rose-300 dark:border-rose-800 font-mono font-bold text-rose-600 text-xs bg-white dark:bg-slate-900"
+                        title={isPaymentLocked ? "Payment amount is saved and locked (no change permitted)" : "Statutory tax deduction"}
+                        className={`w-28 text-right px-2 py-0.5 rounded border font-mono font-bold text-xs ${
+                          isPaymentLocked 
+                            ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700 cursor-not-allowed opacity-70' 
+                            : 'border-rose-300 dark:border-rose-800 text-rose-600 bg-white dark:bg-slate-900'
+                        }`}
                       />
                     </td>
                     <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>
@@ -2478,34 +2541,21 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                       <input
                         type="number"
                         value={overtimeDeductionEtb}
+                        disabled={isPaymentLocked}
                         onChange={(e) => setOvertimeDeductionEtb(parseFloat(e.target.value) || 0)}
-                        className="w-28 text-right px-2 py-0.5 rounded border border-rose-300 dark:border-rose-800 font-mono font-bold text-rose-600 text-xs bg-white dark:bg-slate-900"
+                        title={isPaymentLocked ? "Payment amount is saved and locked (no change permitted)" : "Overtime deduction"}
+                        className={`w-28 text-right px-2 py-0.5 rounded border font-mono font-bold text-xs ${
+                          isPaymentLocked 
+                            ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700 cursor-not-allowed opacity-70' 
+                            : 'border-rose-300 dark:border-rose-800 text-rose-600 bg-white dark:bg-slate-900'
+                        }`}
                       />
                     </td>
                     <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>
                     <td className="py-2.5 px-4 text-right font-mono font-bold text-rose-600">-{fmt(overtimeDeductionEtb)}</td>
                   </tr>
 
-                  {/* 7d: Less 15% VAT (Remitted Directly / Net of VAT) */}
-                  <tr className="bg-purple-50/40 dark:bg-purple-950/20 border-b border-purple-200 dark:border-purple-900/40">
-                    <td className="py-2.5 px-3 text-center font-mono font-bold text-purple-600">7d</td>
-                    <td className="py-2.5 px-4">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-semibold text-purple-900 dark:text-purple-300">
-                          Less: 15% Value Added Tax (VAT Excluded / Remitted Directly to Revenue Authority)
-                        </span>
-                        <span className="text-[10px] bg-purple-100 dark:bg-purple-900/60 text-purple-800 dark:text-purple-200 font-black px-1.5 py-0.5 rounded border border-purple-300 dark:border-purple-700">
-                          Minus VAT
-                        </span>
-                      </div>
-                    </td>
-                    <td className="py-2.5 px-4 text-right font-mono text-purple-700 dark:text-purple-300">-{fmt(vatContract)}</td>
-                    <td className="py-2.5 px-4 text-right font-mono font-black text-purple-700 dark:text-purple-300 bg-purple-100/40 dark:bg-purple-950/30">
-                      -{fmt(vatThisInvoice)}
-                    </td>
-                    <td className="py-2.5 px-4 text-right font-mono text-purple-600/80">-{fmt(vatPreceding)}</td>
-                    <td className="py-2.5 px-4 text-right font-mono font-black text-purple-700 dark:text-purple-300">-{fmt(vatToDate)}</td>
-                  </tr>
+
 
                   {/* FINAL NET PAYABLE */}
                   <tr className="bg-emerald-100 dark:bg-emerald-950/60 font-black text-sm border-t-2 border-emerald-500">

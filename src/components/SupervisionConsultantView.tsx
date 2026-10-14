@@ -1487,13 +1487,27 @@ export default function SupervisionConsultantView({
     const updatedList = currentList.map(inv => {
       if (inv.id === invId) {
         const updated = { ...inv, [field]: value };
-        // Recalculate Net Payable if gross or deductions are updated
-        if (field === 'grossAmountEtb' || field === 'advanceDeductionEtb' || field === 'taxDeductionEtb') {
+        // If status marked as Paid, lock the payment amount so no changes occur
+        if (field === 'status' && value === 'Paid') {
+          updated.isPaymentSaved = true;
+          updated.paymentLocked = true;
+          updated.savedPaymentAmount = inv.savedPaymentAmount ?? inv.netAmountEtb;
+        }
+
+        // If payment is saved/locked, no change on the payment amount
+        if (inv.isPaymentSaved || inv.paymentLocked || inv.status === 'Paid') {
+          updated.netAmountEtb = inv.savedPaymentAmount ?? inv.netAmountEtb;
+          updated.totalDueEtb = updated.netAmountEtb;
+        } else if (field === 'grossAmountEtb' || field === 'advanceDeductionEtb' || field === 'taxDeductionEtb') {
+          // Recalculate Net Payable if gross or deductions are updated (MINUS VAT)
           const gross = field === 'grossAmountEtb' ? Number(value) || 0 : (inv.grossAmountEtb || 0);
           const adv = field === 'advanceDeductionEtb' ? Number(value) || 0 : (inv.advanceDeductionEtb || 0);
           const tax = field === 'taxDeductionEtb' ? Number(value) || 0 : (inv.taxDeductionEtb || 0);
-          const vat = inv.vatAmountEtb || Math.round(gross * 0.15);
-          updated.netAmountEtb = Math.max(0, (gross + vat) - (adv + tax));
+          // Net Payable is MINUS VAT (Gross Claim minus 15% VAT, minus contractual deductions)
+          const baseSubtotal = inv.feesAmountEtb !== undefined && inv.reimbursableAmountEtb !== undefined 
+            ? ((inv.feesAmountEtb || 0) + (inv.reimbursableAmountEtb || 0))
+            : (gross / 1.15);
+          updated.netAmountEtb = Math.max(0, baseSubtotal - (adv + tax));
           updated.totalDueEtb = updated.netAmountEtb;
         }
         return updated;
@@ -1501,6 +1515,49 @@ export default function SupervisionConsultantView({
       return inv;
     });
     saveConsultantData({ ...consultant, invoices: updatedList }, `Updated invoice ${invId} via inline table edit`);
+  };
+
+  // Calculate assigned personnel man-month inputs from latest invoice total to-date man-months
+  const handleRecalculateAllPersonnelMMFromInvoices = () => {
+    const invoices = consultant.invoices || [];
+    if (invoices.length === 0) {
+      alert("No supervision invoices recorded yet to calculate man-months from.");
+      return;
+    }
+    // Find latest invoice by period or submission
+    const sorted = [...invoices].sort((a, b) => new Date(a.submissionDate || '').getTime() - new Date(b.submissionDate || '').getTime());
+    const latestInv = sorted[sorted.length - 1];
+    
+    const toDateMMMap: Record<string, number> = {};
+    if (latestInv.attendanceRecords && latestInv.attendanceRecords.length > 0) {
+      latestInv.attendanceRecords.forEach((rec: any) => {
+        const id = rec.personnelId || rec.id;
+        const toDate = rec.toDateQty !== undefined 
+          ? rec.toDateQty 
+          : ((rec.precedingQty || 0) + (rec.thisInvoiceQty || ((rec.daysWorked || rec.days || 0) / 30)));
+        if (id) toDateMMMap[id] = Number(toDate.toFixed(2));
+        if (rec.name) toDateMMMap[rec.name.toLowerCase().trim()] = Number(toDate.toFixed(2));
+      });
+    }
+
+    let calculatedCount = 0;
+    const updatedPersonnel = (consultant.personnel || []).map(p => {
+      const matchMM = toDateMMMap[p.id] ?? toDateMMMap[p.name.toLowerCase().trim()];
+      if (matchMM !== undefined) {
+        calculatedCount++;
+        return {
+          ...p,
+          manMonthsInput: matchMM
+        };
+      }
+      return p;
+    });
+
+    saveConsultantData({
+      ...consultant,
+      personnel: updatedPersonnel
+    }, `Calculated ${calculatedCount} assigned personnel man-month inputs from latest invoice ${latestInv.invoiceNo} total to-date man-months`);
+    alert(`Successfully calculated ${calculatedCount} assigned personnel man-month inputs from latest invoice (${latestInv.invoiceNo} - ${latestInv.billingPeriod})!`);
   };
 
   const handleDeleteInvoice = (invId: string, invNo: string) => {
@@ -2408,6 +2465,16 @@ export default function SupervisionConsultantView({
                 <option value="Replaced">Replaced</option>
               </select>
 
+              <button
+                type="button"
+                onClick={handleRecalculateAllPersonnelMMFromInvoices}
+                className="bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/50 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 text-xs font-bold px-3 py-1.5 rounded-xl flex items-center gap-1.5 shadow-xs transition cursor-pointer"
+                title="Calculate assigned personnel man-month inputs from latest invoice total to-date man-months"
+              >
+                <Calculator className="w-3.5 h-3.5 text-blue-600" />
+                <span>Calculate MM from Invoices</span>
+              </button>
+
               {!isReadonly && (
                 <button
                   onClick={handleOpenAddPersonnel}
@@ -2552,7 +2619,7 @@ export default function SupervisionConsultantView({
 
                           <td className="py-3.5 px-4 text-center font-mono">
                             <div className="font-bold text-slate-800 dark:text-slate-200">
-                              {p.manMonthsInput || 0} / {p.manMonthsAllocated || 0}
+                              {Number(p.manMonthsInput || 0).toFixed(2)} / {Number(p.manMonthsAllocated || 0).toFixed(2)}
                             </div>
                             <div className="text-[10px] text-slate-400">
                               MM Input
@@ -3134,8 +3201,14 @@ export default function SupervisionConsultantView({
                                 <input
                                   type="number"
                                   value={inv.netAmountEtb || 0}
+                                  disabled={Boolean(inv.isPaymentSaved || inv.paymentLocked || inv.status === 'Paid')}
                                   onChange={(e) => handleUpdateInlineInvoiceField(inv.id, 'netAmountEtb', parseFloat(e.target.value) || 0)}
-                                  className="w-28 text-right px-2 py-1 bg-white dark:bg-slate-800 border border-emerald-300 dark:border-emerald-700 rounded-lg font-mono font-black text-emerald-600 text-xs"
+                                  title={inv.isPaymentSaved || inv.paymentLocked || inv.status === 'Paid' ? "Payment saved: no change permitted on payment amount" : "Net amount payable (minus VAT)"}
+                                  className={`w-28 text-right px-2 py-1 rounded-lg font-mono font-black text-xs ${
+                                    inv.isPaymentSaved || inv.paymentLocked || inv.status === 'Paid'
+                                      ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed opacity-75 border border-slate-200 dark:border-slate-700'
+                                      : 'bg-white dark:bg-slate-800 border border-emerald-300 dark:border-emerald-700 text-emerald-600'
+                                  }`}
                                 />
                               </td>
                               {hasUsdPayments && (
