@@ -94,7 +94,7 @@ export const ConsultantPerformanceMiniChart: React.FC<ConsultantPerformanceMiniC
       const resolved = matched.filter(s => s.actualDays !== undefined && s.actualDays !== null);
       
       const avgDays = resolved.length > 0
-        ? Number((resolved.reduce((sum, s) => sum + (s.actualDays || 0), 0) / resolved.length).toFixed(1))
+        ? Number((resolved.reduce((sum, s) => sum + (s.actualDays || 0), 0) / resolved.length).toFixed(2))
         : 0;
         
       const onTimeCount = resolved.filter(s => (s.actualDays || 0) <= target).length;
@@ -140,8 +140,8 @@ export const ConsultantPerformanceMiniChart: React.FC<ConsultantPerformanceMiniC
   
   const allResolved = useMemo(() => evaluatedSubmittals.filter(s => s.isResolved), [evaluatedSubmittals]);
   const overallAvgDays = allResolved.length > 0
-    ? (allResolved.reduce((sum, s) => sum + (s.actualDays || 0), 0) / allResolved.length).toFixed(1)
-    : '0.0';
+    ? (allResolved.reduce((sum, s) => sum + (s.actualDays || 0), 0) / allResolved.length).toFixed(2)
+    : '0.00';
     
   const overallOnTimeCount = evaluatedSubmittals.filter(s => !s.isOverdue).length;
   

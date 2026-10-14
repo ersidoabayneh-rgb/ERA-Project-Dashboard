@@ -25,7 +25,12 @@ import {
   UserX,
   FastForward,
   AlertCircle,
-  HelpCircle
+  HelpCircle,
+  Percent,
+  SlidersHorizontal,
+  ShieldAlert,
+  Lock,
+  Unlock
 } from 'lucide-react';
 import { Project, SupervisionConsultantInfo, ConsultantInvoice, ConsultantPersonnel } from '../types';
 
@@ -36,6 +41,9 @@ export interface EditableStaffRow {
   name: string;
   unit: string;
   rate: number;
+  originalRate?: number;
+  effectiveRate?: number;
+  isReduced?: boolean;
   contractQty: number;
   contractAmount: number;
   daysWorked: number;
@@ -60,6 +68,8 @@ export interface EditableReimbursableRow {
   description: string;
   unit: string;
   rate: number;
+  effectiveRate?: number;
+  isReduced?: boolean;
   contractQty: number;
   contractAmount: number;
   thisInvoiceQty: number;
@@ -197,13 +207,31 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
   const [isPrecedingBreakdownOpen, setIsPrecedingBreakdownOpen] = useState<boolean>(false);
 
+  // Saved Payment Immutability (Once saved, no change on the amount of the payment)
+  const [isPaymentSaved, setIsPaymentSaved] = useState<boolean>(false);
+  const [savedPaymentAmount, setSavedPaymentAmount] = useState<number | null>(null);
+  const [allowAdminUnlock, setAllowAdminUnlock] = useState<boolean>(false);
+
   // Editable lists
   const [staffRows, setStaffRows] = useState<EditableStaffRow[]>([]);
   const [reimbursableRows, setReimbursableRows] = useState<EditableReimbursableRow[]>(OFFICIAL_DKS_REIMBURSABLE_DEFAULT);
   const [defectRows, setDefectRows] = useState<EditableDefectLiabilityRow[]>(OFFICIAL_DKS_DEFECT_LIABILITY_DEFAULT);
 
+  // Directorate Admin 10% Contract Reduction Mode
+  const [directorateReductionMode, setDirectorateReductionMode] = useState<boolean>(false);
+  const [reducedPositionIds, setReducedPositionIds] = useState<Record<string, boolean>>({});
+  const [reducedReimbursableIds, setReducedReimbursableIds] = useState<Record<string, boolean>>({});
+
+  // Staff Replacement Modal & Turnover Tracking State
+  const [replacementModalStaff, setReplacementModalStaff] = useState<EditableStaffRow | null>(null);
+  const [replacementNewName, setReplacementNewName] = useState<string>('');
+  const [replacementDateInput, setReplacementDateInput] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [replacementRemarks, setReplacementRemarks] = useState<string>('');
+
   // Financial percentages and deductions
   const [contingencyRatePct, setContingencyRatePct] = useState<number>(5.0);
+  const [contingencyThisInvoiceClaim, setContingencyThisInvoiceClaim] = useState<number>(0);
+  const [contingencyPrecedingClaim, setContingencyPrecedingClaim] = useState<number>(0);
   const [vatRatePct, setVatRatePct] = useState<number>(15.0);
   const [advanceDeductionEtb, setAdvanceDeductionEtb] = useState<number>(0);
   const [taxDeductionEtb, setTaxDeductionEtb] = useState<number>(0);
@@ -414,6 +442,15 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
           return r;
         }));
       }
+      if (activeInvoice.isPaymentSaved || activeInvoice.paymentLocked || (activeInvoice.savedPaymentAmount !== undefined && activeInvoice.savedPaymentAmount > 0) || (activeInvoice.netAmountEtb !== undefined && activeInvoice.netAmountEtb > 0 && (activeInvoice.status === 'Paid' || activeInvoice.status === 'Certified'))) {
+        setIsPaymentSaved(true);
+        setSavedPaymentAmount(activeInvoice.savedPaymentAmount ?? activeInvoice.netAmountEtb);
+        setAllowAdminUnlock(false);
+      } else {
+        setIsPaymentSaved(false);
+        setSavedPaymentAmount(null);
+        setAllowAdminUnlock(false);
+      }
       setTotalDaysInMonth(new Date(parseInt(periodParts[1] || '2020', 10), new Date(`${periodParts[0]} 1, ${periodParts[1]}`).getMonth() + 1, 0).getDate());
     } else {
       // Default baseline values
@@ -424,6 +461,9 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
       setTotalDaysInMonth(31);
       setSubmissionDate(new Date().toISOString().split('T')[0]);
       setStatus('Submitted');
+      setIsPaymentSaved(false);
+      setSavedPaymentAmount(null);
+      setAllowAdminUnlock(false);
     }
 
     // Always link staff rows from assigned personnel directory
@@ -500,19 +540,33 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
     return staffRows;
   }, [staffRows, personnelFilter]);
 
-  // --- Dynamic Computations for Table 1 & 2 (Fees) ---
+  // Count reduced positions
+  const reducedPositionsCount = useMemo(() => {
+    if (!directorateReductionMode) return 0;
+    return staffRows.filter(r => Boolean(reducedPositionIds[r.id])).length;
+  }, [directorateReductionMode, staffRows, reducedPositionIds]);
+
+  // --- Dynamic Computations for Table 1 & 2 (Fees) with Directorate 10% Reduction ---
   const feeRowsComputed = staffRows.map(row => {
+    const isReduced = directorateReductionMode && Boolean(reducedPositionIds[row.id]);
+    const effectiveRate = isReduced ? Number((row.rate * 0.9).toFixed(2)) : row.rate;
+    const contractAmount = Number((row.contractQty * effectiveRate).toFixed(2));
     const qty = row.daysWorked > 0 ? Number((row.daysWorked / totalDaysInMonth).toFixed(2)) : 0;
-    const thisAmount = Number((qty * row.rate).toFixed(2));
+    const thisAmount = Number((qty * effectiveRate).toFixed(2));
+    const precAmount = Number((row.precedingQty * effectiveRate).toFixed(2));
     const toDateQty = Number((row.precedingQty + qty).toFixed(2));
-    const toDateAmount = Number((row.precedingAmount + thisAmount).toFixed(2));
+    const toDateAmount = Number((precAmount + thisAmount).toFixed(2));
     const remainingQty = Math.max(0, Number((row.contractQty - toDateQty).toFixed(2)));
-    const remainingAmount = Math.max(0, Number((row.contractAmount - toDateAmount).toFixed(2)));
+    const remainingAmount = Math.max(0, Number((contractAmount - toDateAmount).toFixed(2)));
 
     return {
       ...row,
+      isReduced,
+      effectiveRate,
+      contractAmount,
       thisInvoiceQty: qty,
       thisInvoiceAmount: thisAmount,
+      precedingAmount: precAmount,
       toDateQty,
       toDateAmount,
       remainingQty,
@@ -532,19 +586,27 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
   const subTotal1ToDate = feeRowsComputed.reduce((sum, r) => sum + (r.toDateAmount || 0), 0);
   const subTotal1Remaining = feeRowsComputed.reduce((sum, r) => sum + (r.remainingAmount || 0), 0);
 
-  // --- Dynamic Computations for Table 3 (Reimbursable) ---
+  // --- Dynamic Computations for Table 3 (Reimbursable) with Directorate 10% Reduction ---
   const reimbursableRowsComputed = reimbursableRows.map(row => {
-    const thisAmount = row.thisInvoiceAmount !== undefined && row.thisInvoiceAmount !== 0
+    const isReduced = directorateReductionMode && Boolean(reducedReimbursableIds[row.id]);
+    const effectiveRate = isReduced ? Number((row.rate * 0.9).toFixed(2)) : row.rate;
+    const contractAmount = Number((row.contractQty * effectiveRate).toFixed(2));
+    const thisAmount = row.thisInvoiceAmount !== undefined && row.thisInvoiceAmount !== 0 && !isReduced
       ? row.thisInvoiceAmount
-      : Number((row.thisInvoiceQty * row.rate).toFixed(2));
+      : Number((row.thisInvoiceQty * effectiveRate).toFixed(2));
+    const precAmount = Number((row.precedingQty * effectiveRate).toFixed(2));
     const toDateQty = Number((row.precedingQty + row.thisInvoiceQty).toFixed(2));
-    const toDateAmount = Number((row.precedingAmount + thisAmount).toFixed(2));
+    const toDateAmount = Number((precAmount + thisAmount).toFixed(2));
     const remainingQty = Math.max(0, Number((row.contractQty - toDateQty).toFixed(2)));
-    const remainingAmount = Math.max(0, Number((row.contractAmount - toDateAmount).toFixed(2)));
+    const remainingAmount = Math.max(0, Number((contractAmount - toDateAmount).toFixed(2)));
 
     return {
       ...row,
+      isReduced,
+      effectiveRate,
+      contractAmount,
       computedThisAmount: thisAmount,
+      precedingAmount: precAmount,
       toDateQty,
       toDateAmount,
       remainingQty,
@@ -557,6 +619,100 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
   const subTotal2ThisInvoice = reimbursableRowsComputed.reduce((sum, r) => sum + (r.computedThisAmount || 0), 0);
   const subTotal2ToDate = reimbursableRowsComputed.reduce((sum, r) => sum + (r.toDateAmount || 0), 0);
   const subTotal2Remaining = reimbursableRowsComputed.reduce((sum, r) => sum + (r.remainingAmount || 0), 0);
+
+  // Staff replacement logic: Changing a staff member's name strictly maintains the existing contract rate and historical data records
+  const handleConfirmStaffReplacement = () => {
+    if (!replacementModalStaff || !replacementNewName.trim()) return;
+
+    const oldStaff = replacementModalStaff;
+    const oldName = oldStaff.name;
+    const newName = replacementNewName.trim();
+    const effectiveDate = replacementDateInput || new Date().toISOString().split('T')[0];
+
+    setStaffRows(prev => prev.map(item => {
+      if (item.id === oldStaff.id) {
+        return {
+          ...item,
+          name: newName,
+          // CONTRACT RATE IS STRICTLY MAINTAINED
+          rate: item.rate,
+          contractAmount: item.contractAmount,
+          contractQty: item.contractQty,
+          // HISTORICAL DATA RECORDS ARE MAINTAINED
+          precedingQty: item.precedingQty,
+          precedingAmount: item.precedingAmount,
+          status: 'Active',
+          predecessorId: oldStaff.personnelId || oldStaff.id,
+          predecessorName: oldName,
+          replacementDate: effectiveDate,
+          isHistoricalPredecessor: false
+        };
+      }
+      return item;
+    }));
+
+    if (onUpdateConsultantPersonnel) {
+      const currentDir = consultant.personnel || [];
+      const updatedDir = currentDir.map(p => {
+        if (p.id === oldStaff.personnelId || p.id === oldStaff.id || p.name === oldName) {
+          return {
+            ...p,
+            name: newName,
+            status: 'Active' as const,
+            predecessorName: oldName,
+            replacementDate: effectiveDate,
+            remarks: `Replaced ${oldName} on ${effectiveDate}. Position contract rate preserved.`
+          };
+        }
+        return p;
+      });
+      onUpdateConsultantPersonnel(updatedDir);
+    }
+
+    setSaveSuccessMsg(`Personnel turnover recorded: Position '${oldStaff.position}' assigned to '${newName}'. Contract rate (${fmt(oldStaff.rate)} ETB) & historical records preserved!`);
+    setTimeout(() => setSaveSuccessMsg(null), 5000);
+    setReplacementModalStaff(null);
+    setReplacementNewName('');
+  };
+
+  const handleStaffNameChange = (id: string, newName: string) => {
+    setStaffRows(prev => prev.map(item => {
+      if (item.id === id) {
+        return {
+          ...item,
+          name: newName,
+          // Contract rate and historical data records are preserved
+          rate: item.rate,
+          contractAmount: item.contractAmount,
+          precedingQty: item.precedingQty,
+          precedingAmount: item.precedingAmount
+        };
+      }
+      return item;
+    }));
+  };
+
+  const handleTogglePositionReduction = (id: string) => {
+    setReducedPositionIds(prev => ({
+      ...prev,
+      [id]: !prev[id]
+    }));
+  };
+
+  const handleToggleReimbursableReduction = (id: string) => {
+    setReducedReimbursableIds(prev => ({
+      ...prev,
+      [id]: !prev[id]
+    }));
+  };
+
+  const handleSelectAllPositionReductions = (enable: boolean) => {
+    const nextMap: Record<string, boolean> = {};
+    staffRows.forEach(r => {
+      nextMap[r.id] = enable;
+    });
+    setReducedPositionIds(nextMap);
+  };
 
   // --- Dynamic Computations for Table 4 (Defect Liability) ---
   const defectRowsComputed = defectRows.map(row => {
@@ -575,26 +731,41 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
   const grandContractWithContingency = totalBaseContract + contingencyContract;
   const vatContract = Number((grandContractWithContingency * (vatRatePct / 100)).toFixed(2));
   const totalContractDue = grandContractWithContingency + vatContract;
+  // Contract Net Baseline (Contract Amount Minus VAT)
+  const contractNetAmount = grandContractWithContingency;
 
   // This Invoice Grand Totals
   const totalSubtotalThisInvoice = subTotal1ThisInvoice + subTotal2ThisInvoice + subTotal3ThisInvoice;
-  const contingencyThisInvoice = Number((totalSubtotalThisInvoice * (contingencyRatePct / 100)).toFixed(2));
+  // User-assigned contingency claim for this invoice (not directly calculated from contract)
+  const contingencyThisInvoice = Number((contingencyThisInvoiceClaim || 0).toFixed(2));
+  const contingencyToDate = Number(((contingencyPrecedingClaim || 0) + contingencyThisInvoice).toFixed(2));
   const subtotalWithContingencyThisInvoice = totalSubtotalThisInvoice + contingencyThisInvoice;
   const vatThisInvoice = Number((subtotalWithContingencyThisInvoice * (vatRatePct / 100)).toFixed(2));
   const grossPayableBase = subtotalWithContingencyThisInvoice + vatThisInvoice;
   
   const totalDeductionsThisInvoice = (advanceDeductionEtb || 0) + (taxDeductionEtb || 0) + (retentionDeductionEtb || 0) + (overtimeDeductionEtb || 0);
-  const netDueThisInvoice = Math.max(0, grossPayableBase + (overtimeEtb || 0) - totalDeductionsThisInvoice);
 
-  // Preceding Invoice Grand Totals
+  // TOTAL NET AMOUNT PAYABLE TO CONSULTANT (ETB) IS MINUS VAT
+  // In Ethiopian road supervision contracts, net payment certificate is net of 15% VAT (VAT is remitted separately)
+  const calculatedNetDueThisInvoice = Math.max(0, (grossPayableBase - vatThisInvoice) + (overtimeEtb || 0) - totalDeductionsThisInvoice);
+
+  // Once the payment is saved, no change on the amount of the payment unless explicitly unlocked by admin
+  const isPaymentLocked = isPaymentSaved && !allowAdminUnlock && savedPaymentAmount !== null;
+  const netDueThisInvoice = isPaymentLocked ? (savedPaymentAmount as number) : calculatedNetDueThisInvoice;
+
+  // Preceding Invoice Grand Totals (Minus VAT)
   const totalSubtotalPreceding = subTotal1Preceding + subTotal2Preceding;
-  const vatPreceding = Number((totalSubtotalPreceding * (vatRatePct / 100)).toFixed(2));
-  const grossPreceding = totalSubtotalPreceding + vatPreceding;
+  const subtotalWithContingencyPreceding = totalSubtotalPreceding + (contingencyPrecedingClaim || 0);
+  const vatPreceding = Number((subtotalWithContingencyPreceding * (vatRatePct / 100)).toFixed(2));
+  const grossPreceding = subtotalWithContingencyPreceding + vatPreceding;
+  const netPreceding = subtotalWithContingencyPreceding;
 
-  // To-Date Cumulative
+  // To-Date Cumulative (Minus VAT)
   const totalSubtotalToDate = subTotal1ToDate + subTotal2ToDate;
-  const vatToDate = Number((totalSubtotalToDate * (vatRatePct / 100)).toFixed(2));
-  const grossToDate = totalSubtotalToDate + vatToDate;
+  const subtotalWithContingencyToDate = totalSubtotalToDate + contingencyToDate;
+  const vatToDate = Number((subtotalWithContingencyToDate * (vatRatePct / 100)).toFixed(2));
+  const grossToDate = subtotalWithContingencyToDate + vatToDate;
+  const netToDate = Math.max(0, subtotalWithContingencyToDate + (overtimeEtb || 0) - totalDeductionsThisInvoice);
 
   // Handlers for Staff Rows Editing
   const handleUpdateStaff = (id: string, updates: Partial<EditableStaffRow>) => {
@@ -610,26 +781,48 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
     }));
   };
 
-  // Synchronize modified rates back to the Assigned Personnel Directory
-  const handleSyncRatesToDirectory = () => {
+  // At the end of each month calculate the assigned personnel man month input from the invoice total to-date man month
+  const handleCalculatePersonnelMMFromInvoice = (showNotification = true): ConsultantPersonnel[] | undefined => {
     if (!onUpdateConsultantPersonnel) return;
     const currentDirectory = consultant.personnel || [];
-    const updatedDirectory = currentDirectory.map(p => {
-      const match = staffRows.find(s => s.id === p.id);
+    let updatedCount = 0;
+
+    const updatedDirectory: ConsultantPersonnel[] = currentDirectory.map(p => {
+      // Find matching staff row in feeRowsComputed
+      const match = feeRowsComputed.find(f => 
+        f.id === p.id || 
+        f.personnelId === p.id || 
+        (f.name && p.name && f.name.trim().toLowerCase() === p.name.trim().toLowerCase()) ||
+        (f.position && p.position && f.position.trim().toLowerCase() === p.position.trim().toLowerCase())
+      );
+
       if (match) {
+        updatedCount++;
+        // Calculate assigned personnel man-month input from the invoice total to-date man month
+        const toDateMM = Number(match.toDateQty.toFixed(2));
         return {
           ...p,
+          manMonthsInput: toDateMM,
           monthlyBillingRate: match.rate,
-          dailyReimbursableRate: match.dailyReimbursableRate,
-          manMonthsAllocated: match.contractQty
+          dailyReimbursableRate: match.dailyReimbursableRate || p.dailyReimbursableRate,
+          manMonthsAllocated: match.contractQty || p.manMonthsAllocated,
+          remarks: p.remarks || `MM Input calculated to ${toDateMM} from ${invoiceNo}`
         };
       }
       return p;
     });
 
     onUpdateConsultantPersonnel(updatedDirectory);
-    setSaveSuccessMsg('Contract billing rates successfully synchronized to Assigned Personnel Directory!');
-    setTimeout(() => setSaveSuccessMsg(null), 4000);
+    if (showNotification) {
+      setSaveSuccessMsg(`Calculated ${updatedCount} assigned personnel man-month inputs directly from invoice to-date man-months!`);
+      setTimeout(() => setSaveSuccessMsg(null), 5000);
+    }
+    return updatedDirectory;
+  };
+
+  // Synchronize modified rates and calculate MM inputs back to the Assigned Personnel Directory
+  const handleSyncRatesToDirectory = () => {
+    handleCalculatePersonnelMMFromInvoice(true);
   };
 
   // Reimbursables Editing
@@ -714,10 +907,18 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
     setTotalDaysInMonth(nextDaysInMonth);
     setStaffRows(rolledStaffRows);
     setReimbursableRows(rolledReimbursables);
+    setContingencyPrecedingClaim(contingencyToDate);
+    setContingencyThisInvoiceClaim(0);
     setStatus('Submitted');
     setPaymentReference('');
     setPaymentDate('');
     setRemarks(`Monthly Fee Claim for ${nextPeriodStr} rolled forward from ${invoiceNo}. Preceding historical inputs locked.`);
+    setIsPaymentSaved(false);
+    setSavedPaymentAmount(null);
+    setAllowAdminUnlock(false);
+
+    // At end of month: calculate assigned personnel man month input from invoice total to-date man month
+    handleCalculatePersonnelMMFromInvoice(false);
 
     // Build and automatically save the new month invoice
     const newMonthInvoice: ConsultantInvoice = {
@@ -770,12 +971,21 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
     };
 
     onSaveInvoice(newMonthInvoice);
-    setSaveSuccessMsg(`Proceeded to ${nextMonthName}! New invoice ${nextInvNo} created. Predecessor records preserved.`);
+    setSaveSuccessMsg(`Proceeded to ${nextMonthName}! New invoice ${nextInvNo} created. Assigned personnel MM inputs updated.`);
     setTimeout(() => setSaveSuccessMsg(null), 5000);
   };
 
   // Synchronize and Save to Invoices Register
   const handleSaveAndSync = () => {
+    // At the end of each month calculate the assigned personnel man month input from the invoice total to-date man month
+    handleCalculatePersonnelMMFromInvoice(false);
+
+    // Once payment is saved, lock the payment amount so no change occurs
+    const finalPaymentAmount = calculatedNetDueThisInvoice;
+    setIsPaymentSaved(true);
+    setSavedPaymentAmount(finalPaymentAmount);
+    setAllowAdminUnlock(false);
+
     const computedInvoice: ConsultantInvoice = {
       id: activeInvoice?.id || `inv_${Date.now()}`,
       invoiceNo: invoiceNo.trim() || 'INV-01',
@@ -783,8 +993,11 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
       submissionDate: submissionDate || new Date().toISOString().split('T')[0],
       certificationDate: invoiceDate,
       grossAmountEtb: grossPayableBase,
-      netAmountEtb: netDueThisInvoice,
-      totalDueEtb: netDueThisInvoice,
+      netAmountEtb: finalPaymentAmount,
+      totalDueEtb: finalPaymentAmount,
+      savedPaymentAmount: finalPaymentAmount,
+      isPaymentSaved: true,
+      paymentLocked: true,
       vatAmountEtb: vatThisInvoice,
       feesAmountEtb: subTotal1ThisInvoice,
       reimbursableAmountEtb: subTotal2ThisInvoice,
@@ -795,7 +1008,7 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
       status: status,
       paymentReference: paymentReference || undefined,
       paymentDate: paymentDate || undefined,
-      remarks: remarks || `Computed from Attendance × Rate Tables (Subtotal 1: ${fmt(subTotal1ThisInvoice)} + Subtotal 2: ${fmt(subTotal2ThisInvoice)} + 15% VAT).`,
+      remarks: remarks || `Computed from Attendance × Rate Tables (Subtotal 1: ${fmt(subTotal1ThisInvoice)} + Subtotal 2: ${fmt(subTotal2ThisInvoice)} minus 15% VAT).`,
       attendanceRecords: staffRows.map(s => ({
         id: s.id,
         personnelId: s.id,
@@ -830,8 +1043,8 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
     };
 
     onSaveInvoice(computedInvoice);
-    setSaveSuccessMsg(`Successfully saved & synchronized invoice ${invoiceNo} with the main ledger!`);
-    setTimeout(() => setSaveSuccessMsg(null), 4000);
+    setSaveSuccessMsg(`Successfully saved invoice ${invoiceNo}! Payment amount (${fmt(finalPaymentAmount)} ETB, minus VAT) is locked with no change allowed, and assigned personnel man-month inputs calculated.`);
+    setTimeout(() => setSaveSuccessMsg(null), 5000);
   };
 
   return (
@@ -941,6 +1154,125 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
               <input type="text" value={projectContractNo} onChange={(e) => setProjectContractNo(e.target.value)} className="w-full text-xs font-mono font-bold text-slate-900 dark:text-white bg-transparent border-b border-slate-300 dark:border-slate-600 focus:outline-none py-1" />
             </div>
           </div>
+        </div>
+
+        {/* Directorate Admin Settings: 10% Contract Reduction Mode */}
+        <div className="bg-amber-50/70 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/60 rounded-2xl p-4 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs">
+                <Percent className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-amber-900 dark:text-amber-200">
+                    Directorate Admin: 10% Contract Reduction Mode
+                  </h4>
+                  {directorateReductionMode && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-600 text-white animate-pulse">
+                      ACTIVE ({reducedPositionsCount} Positions Reduced)
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-amber-800/80 dark:text-amber-300/80 mt-0.5">
+                  Allows Directorate Administration to toggle a 10% rate reduction for specific supervisory position rates. All associated fee amounts, contract amounts, and cumulative balances recalculate automatically.
+                </p>
+              </div>
+            </div>
+
+            {/* Master Toggle */}
+            <label className="relative inline-flex items-center cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={directorateReductionMode}
+                onChange={(e) => {
+                  const enabled = e.target.checked;
+                  setDirectorateReductionMode(enabled);
+                  if (enabled && Object.keys(reducedPositionIds).length === 0) {
+                    const initial: Record<string, boolean> = {};
+                    staffRows.forEach((r, i) => {
+                      if (i < 4) initial[r.id] = true;
+                    });
+                    setReducedPositionIds(initial);
+                  }
+                }}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-amber-600"></div>
+              <span className="ml-2.5 text-xs font-black text-slate-800 dark:text-slate-200">
+                {directorateReductionMode ? 'Mode Active' : 'Mode Inactive'}
+              </span>
+            </label>
+          </div>
+
+          {/* Expanded controls when active */}
+          {directorateReductionMode && (
+            <div className="pt-2 border-t border-amber-200/80 dark:border-amber-900/40 space-y-2.5 animate-in fade-in">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                <span className="text-[11px] font-bold text-amber-900 dark:text-amber-200">
+                  Select Specific Supervisory Positions for 10% Contract Rate Deduction:
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleSelectAllPositionReductions(true)}
+                    className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[10px] font-bold transition cursor-pointer"
+                  >
+                    Select All ({staffRows.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSelectAllPositionReductions(false)}
+                    className="px-2.5 py-1 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-lg text-[10px] font-bold transition cursor-pointer"
+                  >
+                    Clear All
+                  </button>
+                </div>
+              </div>
+
+              {/* Checkboxes grid for positions */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 max-h-48 overflow-y-auto p-2 bg-white/80 dark:bg-slate-900/60 rounded-xl border border-amber-200 dark:border-amber-900/50">
+                {staffRows.map(row => {
+                  const isChecked = Boolean(reducedPositionIds[row.id]);
+                  const originalRate = row.rate;
+                  const discountedRate = Number((originalRate * 0.9).toFixed(2));
+
+                  return (
+                    <label
+                      key={row.id}
+                      className={`flex items-start gap-2 p-2 rounded-lg border text-xs cursor-pointer transition ${
+                        isChecked
+                          ? 'bg-rose-50/70 border-rose-300 dark:bg-rose-950/30 dark:border-rose-800'
+                          : 'bg-slate-50/50 border-slate-200 dark:bg-slate-800/40 dark:border-slate-700 hover:border-slate-300'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => handleTogglePositionReduction(row.id)}
+                        className="mt-0.5 rounded text-rose-600 focus:ring-rose-500 cursor-pointer"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="font-bold text-slate-800 dark:text-slate-200 truncate" title={row.position}>
+                          {row.position}
+                        </div>
+                        <div className="text-[10px] text-slate-500 truncate">{row.name}</div>
+                        <div className="text-[10px] font-mono mt-0.5">
+                          {isChecked ? (
+                            <span className="text-rose-600 dark:text-rose-400 font-bold">
+                              {fmt(discountedRate)} ETB <span className="text-[9px] line-through text-slate-400 font-normal">({fmt(originalRate)})</span>
+                            </span>
+                          ) : (
+                            <span className="text-slate-600 dark:text-slate-400 font-semibold">{fmt(originalRate)} ETB</span>
+                          )}
+                        </div>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Invoice Metadata Header */}
@@ -1064,7 +1396,14 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
           </div>
 
           <div className="bg-emerald-50/70 dark:bg-emerald-950/30 p-2.5 rounded-xl border border-emerald-200 dark:border-emerald-800">
-            <span className="text-[10px] uppercase font-bold text-emerald-700 dark:text-emerald-300 block">Net Payable to Consultant</span>
+            <div className="flex items-center justify-between gap-1">
+              <span className="text-[10px] uppercase font-bold text-emerald-700 dark:text-emerald-300 block">Net Payable (Minus VAT)</span>
+              {isPaymentLocked && (
+                <span className="text-[9px] bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-200 font-black px-1.5 py-0.5 rounded flex items-center gap-0.5" title="Payment saved and locked: no change allowed">
+                  <Lock className="w-2.5 h-2.5" /> Locked
+                </span>
+              )}
+            </div>
             <span className="font-mono font-black text-emerald-600 dark:text-emerald-400 text-sm">
               {fmt(netDueThisInvoice)} <span className="text-[10px] font-normal">ETB</span>
             </span>
@@ -1223,15 +1562,26 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
               </div>
 
               {onUpdateConsultantPersonnel && (
-                <button
-                  type="button"
-                  onClick={handleSyncRatesToDirectory}
-                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer"
-                  title="Push billing rate modifications back into the Assigned Personnel Directory"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  Sync Rates to Directory
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => handleCalculatePersonnelMMFromInvoice(true)}
+                    className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/50 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    title="At end of month: calculate assigned personnel man-month input from invoice total to-date man month"
+                  >
+                    <Calculator className="w-3.5 h-3.5 text-blue-600" />
+                    Calculate Personnel MM from To-Date MM
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSyncRatesToDirectory}
+                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                    title="Synchronize rates & to-date man-months into Assigned Personnel Directory"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    Sync Rates & MM
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -1239,29 +1589,38 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
           <div className="overflow-x-auto max-h-[460px] overflow-y-auto px-4 pb-4">
             <table className="w-full text-left border-collapse text-xs">
               <thead className="sticky top-0 bg-slate-100 dark:bg-slate-800 z-10">
-                <tr className="border-b border-slate-200 dark:border-slate-700 text-[11px] text-slate-500 uppercase tracking-wider font-bold">
-                  <th className="py-2.5 px-3 w-12 text-center">S.N</th>
-                  <th className="py-2.5 px-3 min-w-[200px]">Position / Role</th>
-                  <th className="py-2.5 px-3 min-w-[200px]">Name of Personnel & Assignment Status</th>
-                  <th className="py-2.5 px-3 text-center w-20">Unit</th>
-                  <th className="py-2.5 px-3 text-right min-w-[130px]">Days Worked (Input)</th>
-                  <th className="py-2.5 px-3 text-center min-w-[110px]">Month Divisor</th>
-                  <th className="py-2.5 px-3 text-right min-w-[130px] font-black text-blue-600 dark:text-blue-400">Derived MM Input</th>
+                <tr className="border-b border-slate-200 dark:border-slate-700 text-[10px] text-slate-500 uppercase tracking-wider font-bold">
+                  <th className="py-2 px-2 w-10 text-center">S.N</th>
+                  <th className="py-2 px-3 min-w-[170px]">Position / Role</th>
+                  <th className="py-2 px-3 min-w-[200px]">Assigned Personnel (Editable / Turnover)</th>
+                  <th className="py-2 px-2 text-center w-14">Unit</th>
+                  <th className="py-2 px-2 text-right min-w-[70px]">Contr. MM</th>
+                  <th className="py-2 px-3 text-right min-w-[110px]">Contr. Amt (ETB)</th>
+                  <th className="py-2 px-2 text-right min-w-[90px]">Days Worked</th>
+                  <th className="py-2 px-2 text-center w-14">Divisor</th>
+                  <th className="py-2 px-2 text-right min-w-[80px] text-blue-600">Current MM</th>
+                  <th className="py-2 px-2 text-right min-w-[90px] text-indigo-600">Prev. Mo. MM</th>
+                  <th className="py-2 px-2 text-right min-w-[100px] font-black text-emerald-600 dark:text-emerald-400">Total MM</th>
+                  <th className="py-2 px-2 text-center w-20">Turnover</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-sans">
                 {displayStaffRows.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="py-8 text-center text-slate-400">
+                    <td colSpan={12} className="py-8 text-center text-slate-400">
                       <Users className="w-6 h-6 mx-auto mb-1 opacity-40" />
                       <p className="font-semibold text-xs">No personnel match current directory filter.</p>
                     </td>
                   </tr>
                 ) : (
                   displayStaffRows.map((row, idx) => {
-                    const derivedMM = row.daysWorked > 0 ? (row.daysWorked / totalDaysInMonth).toFixed(2) : '0.00';
+                    const derivedMM = row.daysWorked > 0 ? Number((row.daysWorked / totalDaysInMonth).toFixed(2)) : 0;
+                    const totalMM = Number(((row.precedingQty || 0) + derivedMM).toFixed(2));
                     const isReplaced = row.status === 'Replaced';
                     const isSuccessor = Boolean(row.predecessorName);
+                    const computedRow = feeRowsComputed.find(f => f.id === row.id);
+                    const isReduced = Boolean(computedRow?.isReduced);
+                    const contractAmt = computedRow?.contractAmount ?? (row.contractQty * row.rate);
 
                     return (
                       <tr 
@@ -1272,28 +1631,39 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                             : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/40'
                         }`}
                       >
-                        <td className="py-2 px-3 text-center font-mono text-slate-400">{idx + 1}</td>
+                        <td className="py-2 px-2 text-center font-mono text-slate-400">{idx + 1}</td>
                         <td className="py-2 px-3">
-                          <div className="font-semibold text-slate-800 dark:text-slate-200">
-                            {row.position}
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-semibold text-slate-800 dark:text-slate-200">
+                              {row.position}
+                            </span>
+                            {isReduced && (
+                              <span className="text-[9px] font-black text-rose-600 bg-rose-100 dark:bg-rose-950 px-1 py-0.5 rounded border border-rose-300 dark:border-rose-800">
+                                -10% Cut
+                              </span>
+                            )}
                           </div>
                           {row.category && (
-                            <span className="text-[10px] text-slate-400 font-normal">
+                            <span className="text-[10px] text-slate-400 font-normal block">
                               {row.category}
                             </span>
                           )}
                         </td>
                         <td className="py-2 px-3">
-                          <div className="flex flex-col gap-0.5">
-                            <span className="font-bold text-slate-900 dark:text-white">
-                              {row.name}
-                            </span>
+                          <div className="flex flex-col gap-1">
+                            <input
+                              type="text"
+                              value={row.name}
+                              onChange={(e) => handleStaffNameChange(row.id, e.target.value)}
+                              className="w-full px-1.5 py-0.5 bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800 border border-transparent focus:border-blue-400 rounded font-bold text-slate-900 dark:text-white text-xs transition"
+                              title="Edit name directly - maintains contract rate and historical records"
+                            />
                             
                             {/* Replacement / Successor Badges */}
                             {isReplaced ? (
                               <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 dark:text-amber-300 bg-amber-100/70 dark:bg-amber-900/40 px-2 py-0.5 rounded-full w-fit">
                                 <ArrowRightLeft className="w-2.5 h-2.5" />
-                                Replaced on {row.demobilizationDate || row.replacementDate || 'Handover'} (Record Preserved)
+                                Replaced on {row.demobilizationDate || row.replacementDate || 'Handover'} (Historical Record)
                               </span>
                             ) : isSuccessor ? (
                               <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100/70 dark:bg-emerald-900/40 px-2 py-0.5 rounded-full w-fit">
@@ -1307,42 +1677,82 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                             )}
                           </div>
                         </td>
-                        <td className="py-2 px-3 text-center font-mono text-slate-500">Days</td>
-                        <td className="py-2 px-3 text-right">
+                        <td className="py-2 px-2 text-center font-mono text-slate-500">Days</td>
+                        <td className="py-2 px-2 text-right font-mono text-slate-600 dark:text-slate-400">
+                          {row.contractQty.toFixed(2)}
+                        </td>
+                        <td className="py-2 px-3 text-right font-mono font-semibold text-slate-700 dark:text-slate-300">
+                          {fmt(contractAmt)}
+                        </td>
+                        <td className="py-2 px-2 text-right">
                           <input
                             type="number"
                             min="0"
                             max={totalDaysInMonth}
                             value={row.daysWorked}
                             onChange={(e) => handleUpdateStaff(row.id, { daysWorked: Math.max(0, parseInt(e.target.value) || 0) })}
-                            className={`w-20 text-right px-2 py-1 rounded-lg font-mono font-bold text-xs border ${
+                            className={`w-18 text-right px-2 py-1 rounded-lg font-mono font-bold text-xs border ${
                               row.daysWorked > 0 
                                 ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-800' 
                                 : 'bg-transparent text-slate-400 border-transparent hover:border-slate-200'
                             }`}
                           />
                         </td>
-                        <td className="py-2 px-3 text-center font-mono text-slate-400">{totalDaysInMonth}</td>
-                        <td className="py-2 px-3 text-right font-mono font-bold text-blue-600 dark:text-blue-400 bg-blue-50/20 dark:bg-blue-950/10">
-                          {derivedMM} MM
+                        <td className="py-2 px-2 text-center font-mono text-slate-400">{totalDaysInMonth}</td>
+                        <td className="py-2 px-2 text-right font-mono font-bold text-blue-600 dark:text-blue-400 bg-blue-50/20 dark:bg-blue-950/10">
+                          {derivedMM.toFixed(2)}
+                        </td>
+                        <td className="py-2 px-2 text-right font-mono font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50/20 dark:bg-indigo-950/10">
+                          {(row.precedingQty || 0).toFixed(2)}
+                        </td>
+                        <td className="py-2 px-2 text-right font-mono font-black text-emerald-600 dark:text-emerald-400 bg-emerald-50/30 dark:bg-emerald-950/20">
+                          {totalMM.toFixed(2)}
+                        </td>
+                        <td className="py-2 px-2 text-center">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setReplacementModalStaff(row);
+                              setReplacementNewName('');
+                              setReplacementDateInput(new Date().toISOString().split('T')[0]);
+                            }}
+                            className="px-2 py-1 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 rounded-lg text-[10px] font-bold transition flex items-center gap-1 mx-auto cursor-pointer"
+                            title="Replace personnel while maintaining position contract rate and historical records"
+                          >
+                            <ArrowRightLeft className="w-2.5 h-2.5" />
+                            Replace
+                          </button>
                         </td>
                       </tr>
                     );
                   })
                 )}
               </tbody>
-              <tfoot className="border-t-2 border-slate-300 dark:border-slate-700 font-bold bg-slate-50 dark:bg-slate-800">
+              <tfoot className="border-t-2 border-slate-300 dark:border-slate-700 font-bold bg-slate-50 dark:bg-slate-800 text-xs">
                 <tr>
-                  <td colSpan={4} className="py-2.5 px-3 text-slate-700 dark:text-slate-200 uppercase text-[11px]">
-                    Total Personnel Mobilization & Input Derived:
+                  <td colSpan={4} className="py-2.5 px-3 text-slate-700 dark:text-slate-200 uppercase text-[10px]">
+                    Sub-Total 1 (Attendance & Contract Baseline):
                   </td>
-                  <td className="py-2.5 px-3 text-right font-mono text-blue-600">
-                    {displayStaffRows.reduce((sum, r) => sum + r.daysWorked, 0)} Days
+                  <td className="py-2.5 px-2 text-right font-mono">
+                    {displayFeeRowsComputed.reduce((s, r) => s + r.contractQty, 0).toFixed(2)}
                   </td>
-                  <td></td>
-                  <td className="py-2.5 px-3 text-right font-mono font-black text-blue-600 dark:text-blue-400">
+                  <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900 dark:text-white">
+                    {fmt(subTotal1Contract)}
+                  </td>
+                  <td className="py-2.5 px-2 text-right font-mono text-blue-600">
+                    {displayStaffRows.reduce((sum, r) => sum + r.daysWorked, 0)}
+                  </td>
+                  <td className="py-2.5 px-2 text-center font-mono text-slate-400"></td>
+                  <td className="py-2.5 px-2 text-right font-mono font-black text-blue-600 dark:text-blue-400">
                     {displayFeeRowsComputed.reduce((sum, r) => sum + r.thisInvoiceQty, 0).toFixed(2)} MM
                   </td>
+                  <td className="py-2.5 px-2 text-right font-mono font-black text-indigo-600 dark:text-indigo-400">
+                    {displayFeeRowsComputed.reduce((sum, r) => sum + r.precedingQty, 0).toFixed(2)} MM
+                  </td>
+                  <td className="py-2.5 px-2 text-right font-mono font-black text-emerald-600 dark:text-emerald-400">
+                    {displayFeeRowsComputed.reduce((sum, r) => sum + r.toDateQty, 0).toFixed(2)} MM
+                  </td>
+                  <td className="py-2.5 px-2 text-center font-mono"></td>
                 </tr>
               </tfoot>
             </table>
@@ -1379,20 +1789,21 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
               <table className="w-full text-left border-collapse text-xs">
                 <thead className="sticky top-0 bg-slate-100 dark:bg-slate-800 z-10">
                   <tr className="border-b border-slate-200 dark:border-slate-700 text-[10px] text-slate-500 uppercase tracking-wider font-bold">
-                    <th className="py-2 px-2 text-center">S.N</th>
-                    <th className="py-2 px-3 min-w-[180px]">Key Personnel Position</th>
+                    <th className="py-2 px-2 text-center w-10">S.N</th>
+                    <th className="py-2 px-3 min-w-[170px]">Key Personnel Position</th>
                     <th className="py-2 px-3 min-w-[160px]">Staff Name & Status</th>
-                    <th className="py-2 px-2 text-center">Unit</th>
-                    <th className="py-2 px-2 text-right">Contr. MM</th>
-                    <th className="py-2 px-3 text-right min-w-[100px]">Rate (ETB)</th>
+                    <th className="py-2 px-2 text-center w-14">Unit</th>
+                    <th className="py-2 px-2 text-right min-w-[70px]">Contr. MM</th>
+                    <th className="py-2 px-3 text-right min-w-[110px]">Rate (ETB)</th>
                     <th className="py-2 px-3 text-right min-w-[120px]">Contract Amt (ETB)</th>
-                    <th className="py-2 px-2 text-right font-black text-blue-600 bg-blue-50/40 dark:bg-blue-950/20">This Mo. MM</th>
+                    <th className="py-2 px-2 text-center w-20 text-rose-600 dark:text-rose-400">10% Cut</th>
+                    <th className="py-2 px-2 text-right font-black text-blue-600 bg-blue-50/40 dark:bg-blue-950/20 min-w-[80px]">This Mo. MM</th>
                     <th className="py-2 px-3 text-right font-black text-blue-600 bg-blue-50/40 dark:bg-blue-950/20 min-w-[120px]">This Mo. Fee (ETB)</th>
-                    <th className="py-2 px-2 text-right">Prec. MM</th>
+                    <th className="py-2 px-2 text-right min-w-[70px]">Prec. MM</th>
                     <th className="py-2 px-3 text-right min-w-[110px]">Prec. Fee (ETB)</th>
-                    <th className="py-2 px-2 text-right">To-Date MM</th>
+                    <th className="py-2 px-2 text-right min-w-[70px]">To-Date MM</th>
                     <th className="py-2 px-3 text-right min-w-[120px]">To-Date Fee (ETB)</th>
-                    <th className="py-2 px-2 text-right text-slate-400">Bal. MM</th>
+                    <th className="py-2 px-2 text-right text-slate-400 min-w-[70px]">Bal. MM</th>
                     <th className="py-2 px-3 text-right text-slate-400 min-w-[110px]">Bal. Amt (ETB)</th>
                   </tr>
                 </thead>
@@ -1407,15 +1818,51 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                       }`}
                     >
                       <td className="py-2 px-2 text-center text-slate-400">{idx + 1}</td>
-                      <td className="py-2 px-3 font-sans font-semibold text-slate-800 dark:text-slate-200">{r.position}</td>
+                      <td className="py-2 px-3 font-sans font-semibold text-slate-800 dark:text-slate-200">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span>{r.position}</span>
+                          {r.isReduced && (
+                            <span className="text-[9px] font-black text-rose-600 bg-rose-100 dark:bg-rose-950 px-1 py-0.5 rounded border border-rose-300 dark:border-rose-800">
+                              -10%
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td className="py-2 px-3 font-sans text-slate-600 dark:text-slate-400">
-                        <div>{r.name}</div>
-                        {r.status === 'Replaced' ? <div className="text-[10px] text-amber-600 font-bold">Replaced Predecessor</div> : null}
+                        <div className="font-bold text-slate-900 dark:text-white">{r.name}</div>
+                        {r.status === 'Replaced' ? (
+                          <div className="text-[10px] text-amber-600 font-bold">Replaced Predecessor</div>
+                        ) : r.predecessorName ? (
+                          <div className="text-[10px] text-emerald-600 font-semibold">Successor to {r.predecessorName}</div>
+                        ) : null}
                       </td>
                       <td className="py-2 px-2 text-center text-slate-500">Month</td>
-                      <td className="py-2 px-2 text-right">{r.contractQty}</td>
-                      <td className="py-2 px-3 text-right">{fmt(r.rate)}</td>
-                      <td className="py-2 px-3 text-right font-bold text-slate-700 dark:text-slate-300">{fmt(r.contractAmount)}</td>
+                      <td className="py-2 px-2 text-right">{r.contractQty.toFixed(2)}</td>
+                      <td className="py-2 px-3 text-right">
+                        {r.isReduced ? (
+                          <div>
+                            <span className="text-[10px] line-through text-slate-400 mr-1">{fmt(r.rate)}</span>
+                            <span className="font-bold text-rose-600 dark:text-rose-400">{fmt(r.effectiveRate ?? (r.rate * 0.9))}</span>
+                          </div>
+                        ) : (
+                          <span>{fmt(r.rate)}</span>
+                        )}
+                      </td>
+                      <td className="py-2 px-3 text-right font-bold text-slate-700 dark:text-slate-300">
+                        {fmt(r.contractAmount)}
+                      </td>
+                      <td className="py-2 px-2 text-center">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(reducedPositionIds[r.id])}
+                          onChange={() => {
+                            if (!directorateReductionMode) setDirectorateReductionMode(true);
+                            handleTogglePositionReduction(r.id);
+                          }}
+                          className="rounded text-rose-600 focus:ring-rose-500 cursor-pointer"
+                          title="Toggle 10% Contract Reduction for this position"
+                        />
+                      </td>
                       <td className="py-2 px-2 text-right font-black text-blue-600 dark:text-blue-400 bg-blue-50/30 dark:bg-blue-950/20">
                         {r.thisInvoiceQty.toFixed(2)}
                       </td>
@@ -1428,7 +1875,8 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                           value={r.precedingQty}
                           onChange={(e) => {
                             const val = parseFloat(e.target.value) || 0;
-                            handleUpdateStaff(r.id, { precedingQty: val, precedingAmount: val * r.rate });
+                            const rateUsed = r.effectiveRate ?? r.rate;
+                            handleUpdateStaff(r.id, { precedingQty: val, precedingAmount: val * rateUsed });
                           }}
                           className="w-14 text-right px-1 py-0.5 bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800 border border-transparent focus:border-slate-300 rounded font-mono text-[11px]"
                         />
@@ -1443,21 +1891,41 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                 </tbody>
                 <tfoot className="border-t-2 border-slate-300 dark:border-slate-700 font-bold bg-slate-100 dark:bg-slate-800 text-xs">
                   <tr>
-                    <td colSpan={2} className="py-3 px-3 uppercase text-slate-800 dark:text-white font-sans">
-                      Sub-Total:
+                    <td colSpan={4} className="py-3 px-3 uppercase text-slate-800 dark:text-white font-sans text-[10px]">
+                      Sub-Total 1 (Fees):
                     </td>
+                    <td className="py-3 px-2 text-right font-mono">
+                      {displayFeeRowsComputed.reduce((s, r) => s + r.contractQty, 0).toFixed(2)}
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono"></td>
+                    <td className="py-3 px-3 text-right font-mono font-bold text-slate-900 dark:text-white">
+                      {fmt(subTotal1Contract)}
+                    </td>
+                    <td className="py-3 px-2 text-center font-mono"></td>
                     <td className="py-3 px-2 text-right font-mono font-black text-blue-600 dark:text-blue-400">
                       {displayFeeRowsComputed.reduce((s, r) => s + r.thisInvoiceQty, 0).toFixed(2)}
                     </td>
                     <td className="py-3 px-3 text-right font-mono font-black text-blue-600 dark:text-blue-400">
                       {fmt(displayFeeRowsComputed.reduce((s, r) => s + r.thisInvoiceAmount, 0))}
                     </td>
-                    <td className="py-3 px-2 text-right font-mono">{displayFeeRowsComputed.reduce((s, r) => s + r.precedingQty, 0).toFixed(2)}</td>
-                    <td className="py-3 px-3 text-right font-mono">{fmt(displayFeeRowsComputed.reduce((s, r) => s + r.precedingAmount, 0))}</td>
-                    <td className="py-3 px-2 text-right font-mono">{displayFeeRowsComputed.reduce((s, r) => s + r.toDateQty, 0).toFixed(2)}</td>
-                    <td className="py-3 px-3 text-right font-mono font-black">{fmt(displayFeeRowsComputed.reduce((s, r) => s + r.toDateAmount, 0))}</td>
-                    <td className="py-3 px-2 text-right font-mono text-slate-400">{displayFeeRowsComputed.reduce((s, r) => s + r.remainingQty, 0).toFixed(2)}</td>
-                    <td className="py-3 px-3 text-right font-mono text-slate-400">{fmt(displayFeeRowsComputed.reduce((s, r) => s + r.remainingAmount, 0))}</td>
+                    <td className="py-3 px-2 text-right font-mono">
+                      {displayFeeRowsComputed.reduce((s, r) => s + r.precedingQty, 0).toFixed(2)}
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono">
+                      {fmt(displayFeeRowsComputed.reduce((s, r) => s + r.precedingAmount, 0))}
+                    </td>
+                    <td className="py-3 px-2 text-right font-mono">
+                      {displayFeeRowsComputed.reduce((s, r) => s + r.toDateQty, 0).toFixed(2)}
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono font-black">
+                      {fmt(displayFeeRowsComputed.reduce((s, r) => s + r.toDateAmount, 0))}
+                    </td>
+                    <td className="py-3 px-2 text-right font-mono text-slate-400">
+                      {displayFeeRowsComputed.reduce((s, r) => s + r.remainingQty, 0).toFixed(2)}
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono text-slate-400">
+                      {fmt(displayFeeRowsComputed.reduce((s, r) => s + r.remainingAmount, 0))}
+                    </td>
                   </tr>
                 </tfoot>
               </table>
@@ -1505,17 +1973,18 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
               <table className="w-full text-left border-collapse text-xs">
                 <thead className="sticky top-0 bg-slate-100 dark:bg-slate-800 z-10">
                   <tr className="border-b border-slate-200 dark:border-slate-700 text-[10px] text-slate-500 uppercase tracking-wider font-bold">
-                    <th className="py-2 px-2 text-center">S.N</th>
+                    <th className="py-2 px-2 text-center w-10">S.N</th>
                     <th className="py-2 px-3 min-w-[180px]">Description</th>
-                    <th className="py-2 px-2 text-center">Unit</th>
-                    <th className="py-2 px-2 text-right">Contr. Qty</th>
-                    <th className="py-2 px-3 text-right">Rate (ETB)</th>
+                    <th className="py-2 px-2 text-center w-14">Unit</th>
+                    <th className="py-2 px-2 text-right min-w-[70px]">Contr. Qty</th>
+                    <th className="py-2 px-3 text-right min-w-[100px]">Rate (ETB)</th>
                     <th className="py-2 px-3 text-right min-w-[120px]">Contr. Amt (ETB)</th>
-                    <th className="py-2 px-2 text-right font-black text-indigo-600 bg-indigo-50/40 dark:bg-indigo-950/20">This Mo. Qty</th>
+                    <th className="py-2 px-2 text-center w-16 text-rose-600 dark:text-rose-400">10% Cut</th>
+                    <th className="py-2 px-2 text-right font-black text-indigo-600 bg-indigo-50/40 dark:bg-indigo-950/20 min-w-[80px]">This Mo. Qty</th>
                     <th className="py-2 px-3 text-right font-black text-indigo-600 bg-indigo-50/40 dark:bg-indigo-950/20 min-w-[120px]">This Mo. Claim (ETB)</th>
-                    <th className="py-2 px-2 text-right">Prec. Qty</th>
+                    <th className="py-2 px-2 text-right min-w-[70px]">Prec. Qty</th>
                     <th className="py-2 px-3 text-right min-w-[110px]">Prec. Amt (ETB)</th>
-                    <th className="py-2 px-2 text-right">To-Date Qty</th>
+                    <th className="py-2 px-2 text-right min-w-[70px]">To-Date Qty</th>
                     <th className="py-2 px-3 text-right min-w-[120px]">To-Date Amt (ETB)</th>
                     <th className="py-2 px-3 text-right text-slate-400 min-w-[110px]">Bal. Amt (ETB)</th>
                     <th className="py-2 px-2 text-center w-10">Del</th>
@@ -1526,12 +1995,19 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                     <tr key={r.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition">
                       <td className="py-2 px-2 text-center text-slate-400">{idx + 1}</td>
                       <td className="py-2 px-3 font-sans">
-                        <input
-                          type="text"
-                          value={r.description}
-                          onChange={(e) => handleUpdateReimbursable(r.id, { description: e.target.value })}
-                          className="w-full px-1.5 py-0.5 bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800 border border-transparent focus:border-slate-300 rounded font-semibold text-xs"
-                        />
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="text"
+                            value={r.description}
+                            onChange={(e) => handleUpdateReimbursable(r.id, { description: e.target.value })}
+                            className="w-full px-1.5 py-0.5 bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800 border border-transparent focus:border-slate-300 rounded font-semibold text-xs"
+                          />
+                          {r.isReduced && (
+                            <span className="text-[9px] font-black text-rose-600 bg-rose-100 dark:bg-rose-950 px-1 py-0.5 rounded border border-rose-300 dark:border-rose-800 shrink-0">
+                              -10%
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="py-2 px-2 text-center text-slate-500">{r.unit}</td>
                       <td className="py-2 px-2 text-right">
@@ -1543,14 +2019,33 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                         />
                       </td>
                       <td className="py-2 px-3 text-right">
-                        <input
-                          type="number"
-                          value={r.rate}
-                          onChange={(e) => handleUpdateReimbursable(r.id, { rate: parseFloat(e.target.value) || 0 })}
-                          className="w-20 text-right px-1 py-0.5 bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800 border border-transparent focus:border-slate-300 rounded font-mono text-[11px]"
-                        />
+                        {r.isReduced ? (
+                          <div>
+                            <span className="text-[10px] line-through text-slate-400 mr-1">{fmt(r.rate)}</span>
+                            <span className="font-bold text-rose-600 dark:text-rose-400">{fmt(r.effectiveRate ?? (r.rate * 0.9))}</span>
+                          </div>
+                        ) : (
+                          <input
+                            type="number"
+                            value={r.rate}
+                            onChange={(e) => handleUpdateReimbursable(r.id, { rate: parseFloat(e.target.value) || 0 })}
+                            className="w-20 text-right px-1 py-0.5 bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800 border border-transparent focus:border-slate-300 rounded font-mono text-[11px]"
+                          />
+                        )}
                       </td>
                       <td className="py-2 px-3 text-right font-bold text-slate-700 dark:text-slate-300">{fmt(r.contractAmount)}</td>
+                      <td className="py-2 px-2 text-center">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(reducedReimbursableIds[r.id])}
+                          onChange={() => {
+                            if (!directorateReductionMode) setDirectorateReductionMode(true);
+                            handleToggleReimbursableReduction(r.id);
+                          }}
+                          className="rounded text-rose-600 focus:ring-rose-500 cursor-pointer"
+                          title="Toggle 10% reduction for this reimbursable line"
+                        />
+                      </td>
                       <td className="py-2 px-2 text-right bg-indigo-50/30 dark:bg-indigo-950/20">
                         <input
                           type="number"
@@ -1574,7 +2069,8 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                           value={r.precedingQty}
                           onChange={(e) => {
                             const val = parseFloat(e.target.value) || 0;
-                            handleUpdateReimbursable(r.id, { precedingQty: val, precedingAmount: val * r.rate });
+                            const rateUsed = r.effectiveRate ?? r.rate;
+                            handleUpdateReimbursable(r.id, { precedingQty: val, precedingAmount: val * rateUsed });
                           }}
                           className="w-14 text-right px-1 py-0.5 bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800 border border-transparent focus:border-slate-300 rounded font-mono text-[11px]"
                         />
@@ -1597,23 +2093,39 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                 </tbody>
                 <tfoot className="border-t-2 border-slate-300 dark:border-slate-700 font-bold bg-slate-100 dark:bg-slate-800 text-xs">
                   <tr>
-                    <td colSpan={2} className="py-3 px-3 uppercase text-slate-800 dark:text-white font-sans">
-                      Sub-Total:
+                    <td colSpan={3} className="py-3 px-3 uppercase text-slate-800 dark:text-white font-sans text-[10px]">
+                      Sub-Total 2 (Reimbursable Operating Expenses):
                     </td>
-                    <td></td>
-                    <td></td>
-                    <td></td>
-                    <td className="py-3 px-3 text-right font-mono">{fmt(subTotal2Contract)}</td>
-                    <td></td>
+                    <td className="py-3 px-2 text-right font-mono">
+                      {reimbursableRowsComputed.reduce((s, r) => s + r.contractQty, 0).toFixed(2)}
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono"></td>
+                    <td className="py-3 px-3 text-right font-mono font-bold text-slate-900 dark:text-white">
+                      {fmt(subTotal2Contract)}
+                    </td>
+                    <td className="py-3 px-2 text-center font-mono"></td>
+                    <td className="py-3 px-2 text-right font-mono font-black text-indigo-600 dark:text-indigo-400">
+                      {reimbursableRowsComputed.reduce((s, r) => s + r.thisInvoiceQty, 0).toFixed(2)}
+                    </td>
                     <td className="py-3 px-3 text-right font-mono font-black text-indigo-600 dark:text-indigo-400">
                       {fmt(subTotal2ThisInvoice)}
                     </td>
-                    <td></td>
-                    <td className="py-3 px-3 text-right font-mono">{fmt(subTotal2Preceding)}</td>
-                    <td></td>
-                    <td className="py-3 px-3 text-right font-mono font-black">{fmt(subTotal2ToDate)}</td>
-                    <td className="py-3 px-3 text-right font-mono text-slate-400">{fmt(subTotal2Remaining)}</td>
-                    <td></td>
+                    <td className="py-3 px-2 text-right font-mono">
+                      {reimbursableRowsComputed.reduce((s, r) => s + r.precedingQty, 0).toFixed(2)}
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono">
+                      {fmt(subTotal2Preceding)}
+                    </td>
+                    <td className="py-3 px-2 text-right font-mono">
+                      {reimbursableRowsComputed.reduce((s, r) => s + r.toDateQty, 0).toFixed(2)}
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono font-black">
+                      {fmt(subTotal2ToDate)}
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono text-slate-400">
+                      {fmt(subTotal2Remaining)}
+                    </td>
+                    <td className="py-3 px-2 text-center"></td>
                   </tr>
                 </tfoot>
               </table>
@@ -1683,14 +2195,24 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                   </tr>
                 ))}
               </tbody>
-              <tfoot className="border-t-2 border-slate-300 dark:border-slate-700 font-bold bg-slate-50 dark:bg-slate-800">
+              <tfoot className="border-t-2 border-slate-300 dark:border-slate-700 font-bold bg-slate-50 dark:bg-slate-800 text-xs">
                 <tr>
-                  <td colSpan={5} className="py-2.5 px-4 uppercase text-slate-700 dark:text-slate-300 font-sans">
+                  <td colSpan={3} className="py-2.5 px-4 uppercase text-slate-700 dark:text-slate-300 font-sans text-[10px]">
                     Sub-Total 3 (Defect Liability Allocation):
                   </td>
-                  <td className="py-2.5 px-4 text-right font-mono">{fmt(subTotal3Contract)}</td>
-                  <td></td>
-                  <td className="py-2.5 px-4 text-right font-mono font-bold text-blue-600">{fmt(subTotal3ThisInvoice)}</td>
+                  <td className="py-2.5 px-3 text-right font-mono">
+                    {defectRowsComputed.reduce((s, r) => s + r.contractQty, 0).toFixed(2)}
+                  </td>
+                  <td className="py-2.5 px-4 text-right font-mono"></td>
+                  <td className="py-2.5 px-4 text-right font-mono font-bold text-slate-900 dark:text-white">
+                    {fmt(subTotal3Contract)}
+                  </td>
+                  <td className="py-2.5 px-3 text-right font-mono">
+                    {defectRowsComputed.reduce((s, r) => s + r.thisInvoiceQty, 0).toFixed(2)}
+                  </td>
+                  <td className="py-2.5 px-4 text-right font-mono font-bold text-blue-600 dark:text-blue-400">
+                    {fmt(subTotal3ThisInvoice)}
+                  </td>
                 </tr>
               </tfoot>
             </table>
@@ -1797,26 +2319,59 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                   <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
                     <td className="py-2.5 px-3 text-center font-mono font-bold text-slate-400">4</td>
                     <td className="py-2.5 px-4">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-slate-800 dark:text-slate-200">Contingency Provision</span>
-                        <div className="flex items-center gap-1 font-mono text-xs bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded border border-slate-300 dark:border-slate-700">
-                          <input
-                            type="number"
-                            step="0.5"
-                            value={contingencyRatePct}
-                            onChange={(e) => setContingencyRatePct(parseFloat(e.target.value) || 0)}
-                            className="w-12 text-center bg-transparent focus:outline-none font-bold text-slate-800 dark:text-white"
-                          />
-                          <span>%</span>
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold text-slate-800 dark:text-slate-200">Contingency Provision</span>
+                          <span className="text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 font-bold px-1.5 py-0.5 rounded border border-amber-300 dark:border-amber-800">
+                            User-Assigned Claim
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 text-[11px] text-slate-500 flex-wrap">
+                          <span>Contract Provision Baseline:</span>
+                          <div className="flex items-center gap-1 font-mono text-xs bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded border border-slate-300 dark:border-slate-700">
+                            <input
+                              type="number"
+                              step="0.5"
+                              value={contingencyRatePct}
+                              onChange={(e) => setContingencyRatePct(parseFloat(e.target.value) || 0)}
+                              className="w-10 text-center bg-transparent focus:outline-none font-bold text-slate-800 dark:text-white"
+                              title="Contract baseline contingency ceiling"
+                            />
+                            <span>%</span>
+                          </div>
+                          <span className="text-[10px] text-slate-400 font-mono">({fmt(contingencyContract)} ETB Contract Total)</span>
                         </div>
                       </div>
                     </td>
                     <td className="py-2.5 px-4 text-right font-mono text-slate-500">{fmt(contingencyContract)}</td>
-                    <td className="py-2.5 px-4 text-right font-mono font-bold bg-blue-50/20 dark:bg-blue-950/10 text-slate-700 dark:text-slate-300">
-                      {fmt(contingencyThisInvoice)}
+                    <td className="py-2.5 px-4 text-right bg-blue-50/20 dark:bg-blue-950/10">
+                      <div className="flex flex-col items-end gap-1">
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={contingencyThisInvoiceClaim}
+                          onChange={(e) => setContingencyThisInvoiceClaim(parseFloat(e.target.value) || 0)}
+                          placeholder="0.00"
+                          className="w-32 text-right px-2 py-1 rounded-lg border border-blue-300 dark:border-blue-800 font-mono font-bold text-blue-700 dark:text-blue-300 text-xs bg-white dark:bg-slate-900 focus:ring-1 focus:ring-blue-500 shadow-xs"
+                          title="Assign this month's contingency claim (user assigned amount, not directly calculated from contract)"
+                        />
+                        <span className="text-[9px] text-blue-600 dark:text-blue-400 font-semibold">User-Assigned Claim</span>
+                      </div>
                     </td>
-                    <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>
-                    <td className="py-2.5 px-4 text-right font-mono font-bold">{fmt(contingencyThisInvoice)}</td>
+                    <td className="py-2.5 px-4 text-right">
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={contingencyPrecedingClaim}
+                        onChange={(e) => setContingencyPrecedingClaim(parseFloat(e.target.value) || 0)}
+                        placeholder="0.00"
+                        className="w-28 text-right px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 font-mono text-slate-600 dark:text-slate-400 text-xs bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800"
+                        title="Cumulative contingency claimed in previous invoices"
+                      />
+                    </td>
+                    <td className="py-2.5 px-4 text-right font-mono font-bold text-slate-900 dark:text-white">
+                      {fmt(contingencyToDate)}
+                    </td>
                   </tr>
 
                   {/* 15% VAT */}
@@ -1931,24 +2486,123 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                     <td className="py-2.5 px-4 text-right font-mono font-bold text-rose-600">-{fmt(overtimeDeductionEtb)}</td>
                   </tr>
 
+                  {/* 7d: Less 15% VAT (Remitted Directly / Net of VAT) */}
+                  <tr className="bg-purple-50/40 dark:bg-purple-950/20 border-b border-purple-200 dark:border-purple-900/40">
+                    <td className="py-2.5 px-3 text-center font-mono font-bold text-purple-600">7d</td>
+                    <td className="py-2.5 px-4">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-purple-900 dark:text-purple-300">
+                          Less: 15% Value Added Tax (VAT Excluded / Remitted Directly to Revenue Authority)
+                        </span>
+                        <span className="text-[10px] bg-purple-100 dark:bg-purple-900/60 text-purple-800 dark:text-purple-200 font-black px-1.5 py-0.5 rounded border border-purple-300 dark:border-purple-700">
+                          Minus VAT
+                        </span>
+                      </div>
+                    </td>
+                    <td className="py-2.5 px-4 text-right font-mono text-purple-700 dark:text-purple-300">-{fmt(vatContract)}</td>
+                    <td className="py-2.5 px-4 text-right font-mono font-black text-purple-700 dark:text-purple-300 bg-purple-100/40 dark:bg-purple-950/30">
+                      -{fmt(vatThisInvoice)}
+                    </td>
+                    <td className="py-2.5 px-4 text-right font-mono text-purple-600/80">-{fmt(vatPreceding)}</td>
+                    <td className="py-2.5 px-4 text-right font-mono font-black text-purple-700 dark:text-purple-300">-{fmt(vatToDate)}</td>
+                  </tr>
+
                   {/* FINAL NET PAYABLE */}
                   <tr className="bg-emerald-100 dark:bg-emerald-950/60 font-black text-sm border-t-2 border-emerald-500">
                     <td className="py-3.5 px-3 text-center font-mono text-emerald-800 dark:text-emerald-300">8</td>
-                    <td className="py-3.5 px-4 uppercase text-emerald-950 dark:text-emerald-100">
-                      TOTAL NET AMOUNT PAYABLE TO CONSULTANT (ETB)
+                    <td className="py-3.5 px-4">
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="uppercase text-emerald-950 dark:text-emerald-100 font-black">
+                            TOTAL NET AMOUNT PAYABLE TO CONSULTANT (ETB)
+                          </span>
+                          <span className="text-[10px] bg-emerald-200 dark:bg-emerald-900 text-emerald-900 dark:text-emerald-200 font-black px-2 py-0.5 rounded-full">
+                            MINUS VAT
+                          </span>
+                          {isPaymentLocked && (
+                            <span className="text-[10px] bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200 font-black px-2 py-0.5 rounded-full border border-amber-300 dark:border-amber-700 flex items-center gap-1 shadow-2xs">
+                              <Lock className="w-2.5 h-2.5" />
+                              PAYMENT SAVED & LOCKED (NO CHANGE)
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[11px] text-emerald-800 dark:text-emerald-300 font-normal">
+                          Official ERA Net Payment Certificate: Gross Invoice Claim minus 15% VAT, minus contractual deductions, plus overtime.
+                        </span>
+                      </div>
                     </td>
-                    <td className="py-3.5 px-4 text-right font-mono text-slate-700 dark:text-slate-300">{fmt(totalContractDue)}</td>
+                    <td className="py-3.5 px-4 text-right font-mono text-slate-700 dark:text-slate-300 font-bold">{fmt(contractNetAmount)}</td>
                     <td className="py-3.5 px-4 text-right font-mono text-base text-emerald-700 dark:text-emerald-300 bg-emerald-200/50 dark:bg-emerald-900/40">
-                      {fmt(netDueThisInvoice)} ETB
+                      <div className="flex flex-col items-end">
+                        <span className="font-mono font-black text-lg">
+                          {fmt(netDueThisInvoice)} ETB
+                        </span>
+                        {isPaymentLocked && (
+                          <span className="text-[10px] font-bold text-amber-700 dark:text-amber-300 flex items-center gap-1">
+                            <Lock className="w-2.5 h-2.5" /> Amount Locked
+                          </span>
+                        )}
+                      </div>
                     </td>
-                    <td className="py-3.5 px-4 text-right font-mono text-slate-700 dark:text-slate-300">{fmt(grossPreceding)}</td>
-                    <td className="py-3.5 px-4 text-right font-mono text-base text-emerald-800 dark:text-emerald-200">
-                      {fmt(Math.max(0, grossToDate - totalDeductionsThisInvoice))} ETB
+                    <td className="py-3.5 px-4 text-right font-mono text-slate-700 dark:text-slate-300 font-bold">{fmt(netPreceding)}</td>
+                    <td className="py-3.5 px-4 text-right font-mono text-base text-emerald-800 dark:text-emerald-200 font-black">
+                      {fmt(netToDate)} ETB
                     </td>
                   </tr>
                 </tbody>
               </table>
             </div>
+
+            {/* Payment Saved & Locked Status Control Bar */}
+            {isPaymentSaved && (
+              <div className="p-3.5 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs bg-amber-50/70 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900/60 animate-in fade-in">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs">
+                    <Lock className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h5 className="font-black text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
+                      <span>Payment Amount Saved & Locked: {fmt(savedPaymentAmount || netDueThisInvoice)} ETB (Minus VAT)</span>
+                      {isPaymentLocked && (
+                        <span className="text-[10px] bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-200 px-1.5 py-0.5 rounded font-bold">
+                          Fixed
+                        </span>
+                      )}
+                    </h5>
+                    <p className="text-[11px] text-amber-800/80 dark:text-amber-300/80">
+                      Once saved, no change is allowed on the payment amount. All financial records and attendance inputs for this invoice are locked.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {allowAdminUnlock ? (
+                    <button
+                      type="button"
+                      onClick={() => setAllowAdminUnlock(false)}
+                      className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+                    >
+                      <Lock className="w-3.5 h-3.5" />
+                      Re-Lock Payment
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (window.confirm("Directorate Admin: Are you sure you want to unlock this saved payment and permit recalculation of the amount?")) {
+                          setAllowAdminUnlock(true);
+                        }
+                      }}
+                      className="px-3 py-1.5 bg-white dark:bg-slate-800 hover:bg-amber-100 dark:hover:bg-amber-900/40 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-700 rounded-xl font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
+                      title="Directorate Admin override: allow recalculation of saved payment"
+                    >
+                      <Unlock className="w-3.5 h-3.5" />
+                      Unlock Payment (Admin)
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Net Amount in Words Box */}
             <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-1">
@@ -2183,6 +2837,117 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                 className="px-5 py-2 bg-slate-800 dark:bg-slate-700 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition cursor-pointer"
               >
                 Close Breakdown
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Staff Replacement & Personnel Turnover Modal */}
+      {replacementModalStaff && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 flex items-center justify-center shadow-xs">
+                  <ArrowRightLeft className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="font-black text-sm text-slate-900 dark:text-white">
+                    Personnel Replacement & Turnover Record
+                  </h4>
+                  <p className="text-[11px] text-slate-500">
+                    Replace staff member while strictly preserving position contract rate & historical records.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="bg-slate-50 dark:bg-slate-800/60 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-semibold">Contract Position:</span>
+                  <span className="font-bold text-slate-900 dark:text-white text-xs">{replacementModalStaff.position}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-semibold">Outgoing Staff (Predecessor):</span>
+                  <span className="font-mono font-bold text-amber-600 dark:text-amber-400">{replacementModalStaff.name}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-semibold">Contract Billing Rate:</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-mono font-black text-emerald-600 dark:text-emerald-400">
+                      {fmt(replacementModalStaff.rate)} ETB
+                    </span>
+                    <span className="text-[9px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 font-black">
+                      RATE LOCKED
+                    </span>
+                  </div>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-semibold">Historical Preceding Input:</span>
+                  <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                    {(replacementModalStaff.precedingQty || 0).toFixed(2)} MM ({fmt(replacementModalStaff.precedingAmount || 0)} ETB)
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-semibold">Contract Allocation:</span>
+                  <span className="font-mono text-slate-700 dark:text-slate-300">
+                    {replacementModalStaff.contractQty.toFixed(2)} MM ({fmt(replacementModalStaff.contractAmount || 0)} ETB)
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
+                  New Staff Member Name (Successor / Replacement) *
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Eng. Yohannes Haile"
+                  value={replacementNewName}
+                  onChange={(e) => setReplacementNewName(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-bold text-slate-900 dark:text-white text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
+                  Turnover / Handover Effective Date
+                </label>
+                <input
+                  type="date"
+                  value={replacementDateInput}
+                  onChange={(e) => setReplacementDateInput(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono text-slate-900 dark:text-white text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="p-3 bg-blue-50 dark:bg-blue-950/30 rounded-2xl border border-blue-100 dark:border-blue-900 text-[11px] text-blue-800 dark:text-blue-300 flex items-start gap-2">
+                <Info className="w-4 h-4 shrink-0 mt-0.5 text-blue-600" />
+                <span>
+                  <strong>Contract Data Integrity Guaranteed:</strong> Only the assigned staff member's name changes. The contract position rate ({fmt(replacementModalStaff.rate)} ETB) and all historical to-date attendance/financial records remain permanent and intact.
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setReplacementModalStaff(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl font-bold text-xs cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!replacementNewName.trim()}
+                onClick={handleConfirmStaffReplacement}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-sm"
+              >
+                <UserCheck className="w-4 h-4" />
+                Confirm Staff Replacement
               </button>
             </div>
           </div>

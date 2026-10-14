@@ -2860,6 +2860,12 @@ export default function SupervisionConsultantView({
                 }, `Saved Monthly Supervision Invoice ${computedInvoice.invoiceNo} calculated from Attendance & Multiplication Tables`);
                 setSelectedInvoiceForPdfModal(computedInvoice);
               }}
+              onUpdateConsultantPersonnel={(updatedPersonnel) => {
+                saveConsultantData({
+                  ...consultant,
+                  personnel: updatedPersonnel
+                }, 'Calculated assigned personnel man-month inputs from monthly invoice total to-date man-months');
+              }}
               onBackToLedger={() => setInvoiceViewMode('table')}
               onSelectInvoice={(inv) => setSelectedInvoiceForPdfModal(inv)}
             />

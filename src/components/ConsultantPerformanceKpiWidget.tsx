@@ -278,9 +278,9 @@ export default function ConsultantPerformanceKpiWidget({
       const onTimePct = totalSubmittals > 0 ? (onTimeCount / totalSubmittals) * 100 : 100;
 
       const avgActualDays = resolvedItems.length > 0
-        ? parseFloat((resolvedItems.reduce((acc, cur) => acc + (cur.actualDays || 0), 0) / resolvedItems.length).toFixed(1))
+        ? parseFloat((resolvedItems.reduce((acc, cur) => acc + (cur.actualDays || 0), 0) / resolvedItems.length).toFixed(2))
         : (evaluatedItems.length > 0
-            ? parseFloat((evaluatedItems.reduce((acc, cur) => acc + cur.elapsedDays, 0) / evaluatedItems.length).toFixed(1))
+            ? parseFloat((evaluatedItems.reduce((acc, cur) => acc + cur.elapsedDays, 0) / evaluatedItems.length).toFixed(2))
             : 0);
 
       const varianceDays = resolvedCount > 0 ? parseFloat((avgActualDays - targetDays).toFixed(1)) : 0;
@@ -381,7 +381,7 @@ export default function ConsultantPerformanceKpiWidget({
     const rfiResolved = rfiItems.filter(s => s.isResolved);
     const rfiTarget = targetOverrides['RFI'] || 7;
     const avgRfiDays = rfiStat.actualDays || (rfiResolved.length > 0
-      ? parseFloat((rfiResolved.reduce((acc, cur) => acc + (cur.actualDays || 0), 0) / rfiResolved.length).toFixed(1))
+      ? parseFloat((rfiResolved.reduce((acc, cur) => acc + (cur.actualDays || 0), 0) / rfiResolved.length).toFixed(2))
       : 0);
     const rfiEfficiencyPct = (rfiTarget > 0 && avgRfiDays > 0) ? (((rfiTarget - avgRfiDays) / rfiTarget) * 100) : 0;
 
@@ -399,7 +399,7 @@ export default function ConsultantPerformanceKpiWidget({
 
     // Overall Average turnaround
     const avgOverallDays = resolvedCount > 0
-      ? parseFloat((resolved.reduce((acc, cur) => acc + (cur.actualDays || 0), 0) / resolvedCount).toFixed(1))
+      ? parseFloat((resolved.reduce((acc, cur) => acc + (cur.actualDays || 0), 0) / resolvedCount).toFixed(2))
       : 0;
 
     // Overall Grading Tier

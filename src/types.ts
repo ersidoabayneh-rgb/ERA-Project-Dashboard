@@ -876,6 +876,9 @@ export interface ConsultantInvoice {
     branch?: string;
     accountNo?: string;
   };
+  isPaymentSaved?: boolean;
+  paymentLocked?: boolean;
+  savedPaymentAmount?: number;
 }
 
 export interface HistoricalSupervisionConsultant {
