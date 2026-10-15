@@ -6,10 +6,12 @@ import { createRequire } from 'module';
 import { createServer as createViteServer } from 'vite';
 import { requireAuth, checkRole } from './src/middleware/auth.ts';
 
-import * as admin from 'firebase-admin';
+import { initializeApp, getApps } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 
-admin.initializeApp();
+if (!getApps().length) {
+  initializeApp();
+}
 const db = getFirestore();
 
 const __filename = fileURLToPath(import.meta.url);

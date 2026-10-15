@@ -1,7 +1,11 @@
 import type { Request, Response, NextFunction } from 'express';
-import * as admin from 'firebase-admin';
+import { initializeApp, getApps } from 'firebase-admin/app';
+import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
-admin.initializeApp();
+
+if (!getApps().length) {
+  initializeApp();
+}
 
 export interface DecodedIdToken {
   uid: string;
@@ -25,7 +29,7 @@ export const requireAuth = async (
   }
   const token = authHeader.split('Bearer ')[1];
   try {
-    const decodedToken = await admin.auth().verifyIdToken(token);
+    const decodedToken = await getAuth().verifyIdToken(token);
     req.user = { uid: decodedToken.uid, email: decodedToken.email };
     next();
   } catch (error) {

@@ -54,8 +54,7 @@ import {
   PersonnelAuditLogEntry,
   formatAccounting,
   User,
-  RegisteredFirm,
-  SupervisionConsultantContract
+  RegisteredFirm
 } from '../types';
 import jsPDF from 'jspdf';
 import { drawEraLogo } from '../lib/pdfReportEngine';
@@ -65,7 +64,7 @@ import ConsultantPerformanceKpiWidget, { DEFAULT_SUBMITTAL_KPIS, DEFAULT_SLA_TAR
 import ConsultantPerformanceMiniChart from './ConsultantPerformanceMiniChart';
 import { parseJvEntities, evaluateQualitativeGrade } from '../data/consultantEvaluationMatrix';
 import { MonthlyInvoiceCalculationTable, OFFICIAL_DKS_STAFF_POSITIONS_DEFAULT as OFFICIAL_DKS_STAFF_POSITIONS } from './MonthlyInvoiceCalculationTable';
-import { SupervisionConsultantContractTable } from './SupervisionConsultantContractTable';
+import { ContractAmountTab } from './ContractAmountTab';
 
 export const DEFAULT_OFFICIAL_DKS_INVOICE: ConsultantInvoice = {
   id: 'inv_dks_01',
@@ -174,7 +173,7 @@ export default function SupervisionConsultantView({
           ? project.supervisionConsultant.enableUsdPayments 
           : (project.enableUsdPayments !== undefined
               ? project.enableUsdPayments
-              : Boolean((project.supervisionConsultant.invoices || []).some(inv => (inv.foreignCurrencyAmount || 0) > 0))),
+              : false),
         headOfficeAddress: project.supervisionConsultant.headOfficeAddress || '',
         headOfficePhone: project.supervisionConsultant.headOfficePhone || '',
         headOfficeEmail: project.supervisionConsultant.headOfficeEmail || '',
@@ -225,7 +224,7 @@ export default function SupervisionConsultantView({
   }, [project.supervisionConsultant, project.consultant, project.signDate, project.startDate, project.id]);
 
   // Active view subtab
-  const [activeTab, setActiveTab] = useState<'personnel' | 'invoices' | 'kpis' | 'profile' | 'history' | 'personnel_audit'>('personnel');
+  const [activeTab, setActiveTab] = useState<'personnel' | 'invoices' | 'kpis' | 'profile' | 'history' | 'personnel_audit' | 'contract_amount'>('personnel');
 
   // JV Partner Individual Performance Toggle State
   const [isJvPerformanceExpanded, setIsJvPerformanceExpanded] = useState<boolean>(true);
@@ -295,7 +294,6 @@ export default function SupervisionConsultantView({
   const [invoiceViewMode, setInvoiceViewMode] = useState<'table' | 'cards' | 'calculationTables'>('table');
   const [selectedInvoiceForPdfModal, setSelectedInvoiceForPdfModal] = useState<ConsultantInvoice | null>(null);
   const [isInlineTableEdit, setIsInlineTableEdit] = useState<boolean>(false);
-  const [scContracts, setScContracts] = useState<SupervisionConsultantContract[]>([]);
 
   // Form state for Replacing Personnel with a Successor
   const [replaceForm, setReplaceForm] = useState({
@@ -335,11 +333,6 @@ export default function SupervisionConsultantView({
       headOfficeEmail: consultant.headOfficeEmail || '',
       headOfficeContactPerson: consultant.headOfficeContactPerson || ''
     });
-    const fetchContracts = async () => {
-      const res = await fetch(`/api/projects/${project.id}/supervision-consultant-contracts`);
-      if (res.ok) setScContracts(await res.json());
-    };
-    fetchContracts();
   }, [consultant, project.id]);
 
   // Form state for Assigning New Consultant (Continuation of Service)
@@ -555,6 +548,17 @@ export default function SupervisionConsultantView({
       paymentDisbursementPct
     };
   }, [consultant, hasUsdPayments]);
+
+  const invoiceTotals = useMemo(() => {
+    const invs = consultant.invoices || [];
+    const totalGross = invs.reduce((sum, inv) => sum + (inv.grossAmountEtb || 0), 0);
+    const totalDeductions = invs.reduce((sum, inv) => sum + ((inv.advanceDeductionEtb || 0) + (inv.taxDeductionEtb || 0)), 0);
+    const totalNet = invs.reduce((sum, inv) => sum + (inv.netAmountEtb || 0), 0);
+    const totalUsd = hasUsdPayments ? invs.reduce((sum, inv) => sum + (inv.foreignCurrencyAmount || 0), 0) : 0;
+    const contractFee = consultant.revisedFeeEtb || consultant.originalFeeEtb || 0;
+    const utilization = contractFee > 0 ? (totalGross / contractFee) * 100 : 0;
+    return { totalGross, totalDeductions, totalNet, totalUsd, contractFee, utilization };
+  }, [consultant.invoices, consultant.revisedFeeEtb, consultant.originalFeeEtb, hasUsdPayments]);
 
   // Calculations for Personnel
   const personnelSummary = useMemo(() => {
@@ -2405,6 +2409,18 @@ export default function SupervisionConsultantView({
           </button>
         )}
 
+        <button
+          onClick={() => setActiveTab('contract_amount')}
+          className={`px-4 py-2 rounded-2xl text-xs md:text-sm font-bold flex items-center gap-2 transition ${
+            activeTab === 'contract_amount'
+              ? 'bg-emerald-600 text-white shadow-sm'
+              : 'bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
+          }`}
+        >
+          <DollarSign className="w-4 h-4" />
+          Contract Amount
+        </button>
+
         {isAdmin && !isConsultantUser && (
           <button
             onClick={() => setActiveTab('personnel_audit')}
@@ -2426,6 +2442,17 @@ export default function SupervisionConsultantView({
           </button>
         )}
       </div>
+
+      {/* TAB 0: CONTRACT AMOUNT */}
+      {activeTab === 'contract_amount' && (
+        <ContractAmountTab
+          project={project}
+          consultant={consultant}
+          isReadonly={isReadonly}
+          onUpdateProject={onUpdateProject}
+          onNavigateToInvoices={() => setActiveTab('invoices')}
+        />
+      )}
 
       {/* TAB 1: ASSIGNED PERSONNEL DIRECTORY */}
       {activeTab === 'personnel' && (
@@ -3373,6 +3400,30 @@ export default function SupervisionConsultantView({
                       })
                     )}
                   </tbody>
+                  <tfoot className="bg-slate-100 dark:bg-slate-800/95 font-bold border-t-2 border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-100 text-xs font-mono">
+                    <tr>
+                      <td colSpan={3} className="py-3.5 px-4 font-sans text-right uppercase tracking-wider text-[11px] font-bold">
+                        Summary (Total Invoiced vs. Contract Fee):
+                      </td>
+                      <td className="py-3.5 px-4 text-right font-black text-slate-900 dark:text-white">
+                        {formatAccounting(invoiceTotals.totalGross, '')} ETB
+                      </td>
+                      <td className="py-3.5 px-4 text-right font-black text-rose-600 dark:text-rose-400">
+                        -{formatAccounting(invoiceTotals.totalDeductions, '')} ETB
+                      </td>
+                      <td className="py-3.5 px-4 text-right font-black text-emerald-600 dark:text-emerald-400">
+                        {formatAccounting(invoiceTotals.totalNet, '')} ETB
+                      </td>
+                      {hasUsdPayments && (
+                        <td className="py-3.5 px-4 text-right font-black text-purple-600 dark:text-purple-400">
+                          ${formatAccounting(invoiceTotals.totalUsd, '')} USD
+                        </td>
+                      )}
+                      <td colSpan={hasUsdPayments ? 4 : 3} className="py-3.5 px-4 text-left font-sans text-xs text-slate-600 dark:text-slate-300 font-medium">
+                        Contract Fee: <span className="font-mono font-bold text-slate-900 dark:text-white">{formatAccounting(invoiceTotals.contractFee, 'ETB')}</span> <span className="text-[10px] text-blue-600 font-semibold">({invoiceTotals.utilization.toFixed(1)}% Utilized)</span>
+                      </td>
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
             </div>
@@ -3421,18 +3472,6 @@ export default function SupervisionConsultantView({
                   </button>
                 )}
               </div>
-              <SupervisionConsultantContractTable
-                projectId={project.id}
-                contracts={scContracts}
-                currentUser={currentUser}
-                onRefresh={() => {
-                  const fetchContracts = async () => {
-                    const res = await fetch(`/api/projects/${project.id}/supervision-consultant-contracts`);
-                    if (res.ok) setScContracts(await res.json());
-                  };
-                  fetchContracts();
-                }}
-              />
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
                 <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-2xl border border-slate-100 dark:border-slate-800">
@@ -3524,25 +3563,12 @@ export default function SupervisionConsultantView({
                 <div>
                   <span className="text-slate-400 font-semibold uppercase text-[10px] block">Payment Currency Mode</span>
                   <div className="font-bold text-slate-900 dark:text-white mt-0.5 flex items-center gap-1.5">
-                    {hasUsdPayments ? (
-                      <>
-                        <span className="w-2 h-2 rounded-full bg-purple-500 inline-block"></span>
-                        Dual Currency Enabled: ETB (Local) + USD (Foreign Fee)
-                      </>
-                    ) : (
-                      <>
-                        <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
-                        Local Currency Only: ETB Remuneration (USD Disabled)
-                      </>
-                    )}
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
+                    <span>Local Currency Only: ETB Remuneration (USD Disabled)</span>
                   </div>
                 </div>
                 <div className="font-mono text-[11px] text-slate-500">
-                  {hasUsdPayments ? (
-                    <span>USD Fee Budget: ${formatAccounting(consultant.revisedFeeUsd || consultant.originalFeeUsd || 0, '')}</span>
-                  ) : (
-                    <span>100% Local Currency Contract</span>
-                  )}
+                  <span>100% Local Currency Contract (ETB Only)</span>
                 </div>
               </div>
 

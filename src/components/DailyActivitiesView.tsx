@@ -201,7 +201,9 @@ export default function DailyActivitiesView({
   const [customDateVal, setCustomDateVal] = useState<string>('');
   const [selectedStationFilter, setSelectedStationFilter] = useState<string>('all');
   const [selectedSubmittalFilter, setSelectedSubmittalFilter] = useState<string>('all');
-  const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
+  const [viewMode, setViewMode] = useState<'table' | 'cards' | 'calendar'>('table');
+  const [calendarYear, setCalendarYear] = useState<number>(2026);
+  const [calendarMonth, setCalendarMonth] = useState<number>(4); // May 2026
   const [showChainageMap, setShowChainageMap] = useState<boolean>(false);
 
   // Modal states
@@ -1588,6 +1590,17 @@ export default function DailyActivitiesView({
               <Building2 className="w-3.5 h-3.5" />
               Site Cards
             </button>
+            <button
+              onClick={() => setViewMode('calendar')}
+              className={`px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
+                viewMode === 'calendar'
+                  ? 'bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-xs'
+                  : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+              }`}
+            >
+              <Calendar className="w-3.5 h-3.5" />
+              Calendar View
+            </button>
           </div>
         </div>
 
@@ -1702,6 +1715,137 @@ export default function DailyActivitiesView({
               Log First Activity
             </button>
           )}
+        </div>
+      ) : viewMode === 'calendar' ? (
+        /* Calendar Visualization View with Milestones and Historical Activity Logs */
+        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm p-6 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
+            <div>
+              <h3 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
+                <Calendar className="w-5 h-5 text-blue-600" />
+                Project Milestone & Activity Calendar Grid
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Visualizing daily site execution logs, inspections, and contractual milestone timelines across months.
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-xl font-bold text-xs">
+                <button
+                  onClick={() => {
+                    if (calendarMonth === 0) {
+                      setCalendarMonth(11);
+                      setCalendarYear(y => y - 1);
+                    } else {
+                      setCalendarMonth(m => m - 1);
+                    }
+                  }}
+                  className="p-1 hover:bg-white dark:hover:bg-slate-700 rounded-lg transition cursor-pointer"
+                >
+                  ◀
+                </button>
+                <span className="min-w-[130px] text-center font-mono font-bold text-slate-800 dark:text-slate-100">
+                  {new Date(calendarYear, calendarMonth, 1).toLocaleString('default', { month: 'long', year: 'numeric' })}
+                </span>
+                <button
+                  onClick={() => {
+                    if (calendarMonth === 11) {
+                      setCalendarMonth(0);
+                      setCalendarYear(y => y + 1);
+                    } else {
+                      setCalendarMonth(m => m + 1);
+                    }
+                  }}
+                  className="p-1 hover:bg-white dark:hover:bg-slate-700 rounded-lg transition cursor-pointer"
+                >
+                  ▶
+                </button>
+              </div>
+              <button
+                onClick={() => {
+                  const now = new Date();
+                  setCalendarYear(now.getFullYear());
+                  setCalendarMonth(now.getMonth());
+                }}
+                className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition cursor-pointer"
+              >
+                Today
+              </button>
+            </div>
+          </div>
+
+          {/* Calendar Grid */}
+          <div className="grid grid-cols-7 gap-px bg-slate-200 dark:bg-slate-800 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 text-xs">
+            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+              <div key={day} className="bg-slate-100 dark:bg-slate-800/90 py-2.5 text-center font-bold text-slate-500 uppercase tracking-wider text-[10px]">
+                {day}
+              </div>
+            ))}
+            {(() => {
+              const firstDayOfMonth = new Date(calendarYear, calendarMonth, 1).getDay();
+              const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
+              const cells = [];
+
+              for (let i = 0; i < firstDayOfMonth; i++) {
+                cells.push(<div key={`pad-${i}`} className="bg-slate-50/40 dark:bg-slate-900/40 min-h-[120px] p-2 opacity-30"></div>);
+              }
+
+              for (let d = 1; d <= daysInMonth; d++) {
+                const dateStr = `${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                const dayActivities = activities.filter(a => a.date === dateStr);
+                
+                const milestones = [];
+                if (project.startDate === dateStr) milestones.push({ title: '🚀 Commencement Date', type: 'milestone' });
+                if (project.signDate === dateStr) milestones.push({ title: '✍️ Contract Sign Date', type: 'milestone' });
+                if (project.supervisionConsultant?.originalCompletionDate === dateStr) milestones.push({ title: '🏁 Completion Deadline', type: 'deadline' });
+                if (project.supervisionConsultant?.revisedCompletionDate === dateStr || project.completionDate === dateStr) milestones.push({ title: '🏁 Revised Deadline', type: 'deadline' });
+
+                const isToday = new Date().toISOString().split('T')[0] === dateStr;
+
+                cells.push(
+                  <div key={dateStr} className={`bg-white dark:bg-slate-900 min-h-[120px] p-2 flex flex-col justify-between transition hover:bg-slate-50/80 dark:hover:bg-slate-800/50 relative ${isToday ? 'ring-2 ring-blue-500 z-10' : ''}`}>
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <span className={`font-mono font-bold text-xs ${isToday ? 'bg-blue-600 text-white px-1.5 py-0.5 rounded-md' : 'text-slate-700 dark:text-slate-300'}`}>
+                          {d}
+                        </span>
+                        {dayActivities.length > 0 && (
+                          <span className="text-[10px] font-mono font-bold text-blue-600 bg-blue-50 dark:bg-blue-950/60 px-1.5 py-0.2 rounded">
+                            {dayActivities.length} logs
+                          </span>
+                        )}
+                      </div>
+
+                      {milestones.map((m, idx) => (
+                        <div key={idx} className="mt-1 px-1.5 py-0.5 bg-purple-100 text-purple-800 dark:bg-purple-950/80 dark:text-purple-300 rounded text-[9px] font-bold border border-purple-300 dark:border-purple-800 truncate" title={m.title}>
+                          {m.title}
+                        </div>
+                      ))}
+
+                      <div className="mt-1.5 space-y-1 max-h-[70px] overflow-y-auto">
+                        {dayActivities.map(act => (
+                          <div 
+                            key={act.id} 
+                            onClick={() => handleEditActivity(act)}
+                            className="px-1.5 py-0.5 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 text-blue-800 dark:text-blue-300 rounded text-[9px] font-medium truncate cursor-pointer border border-blue-200 dark:border-blue-900 transition"
+                            title={`${act.activityType}: ${act.activityName} (${act.startStationKm})`}
+                          >
+                            <span className="font-bold">{act.startStationKm}:</span> {act.activityName}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="pt-1 flex items-center justify-between text-[9px] text-slate-400 font-mono">
+                      <span>{dayActivities.length > 0 ? `${dayActivities.reduce((s, a) => s + (a.quantityExecuted || 0), 0).toFixed(0)} qty` : ''}</span>
+                    </div>
+                  </div>
+                );
+              }
+
+              return cells;
+            })()}
+          </div>
         </div>
       ) : viewMode === 'table' ? (
         /* Detailed Table View */

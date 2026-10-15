@@ -1068,6 +1068,7 @@ export interface SupervisionConsultantInfo {
   personnelAuditLog?: PersonnelAuditLogEntry[]; // Action audit log tracking timestamps and admin user identifiers
   invoices: ConsultantInvoice[];
   previousConsultants?: HistoricalSupervisionConsultant[]; // Archive of predecessor supervision consultants
+  contractAmountSchedule?: ContractAmountSchedule;
   evaluationChangeLog?: Array<{
     criterionCode: string;
     oldScore: number;
@@ -1075,6 +1076,87 @@ export interface SupervisionConsultantInfo {
     changedBy: string;
     timestamp: string;
   }>;
+}
+
+export interface ContractStaffRateCondition1 {
+  id?: string;
+  no: string;
+  position: string;
+  name: string;
+  category?: 'Key Professional' | 'Intermediate' | 'Support' | 'Head Office' | string;
+  mmConstr: number;
+  mmDlp: number;
+  totalMm: number;
+  rateEtb: number;
+  totalEtb: number;
+}
+
+export interface ContractReimbursableCondition1 {
+  id: string;
+  no?: string;
+  item: string;
+  amountEtb: number;
+  basis?: string;
+}
+
+export interface ContractCondition1Data {
+  projectName?: string;
+  scope?: string;
+  totalManMonths?: number;
+  contingencyPct?: number;
+  vatPct?: number;
+  feesTimeBased?: number;
+  reimbursableTotal?: number;
+  reimbursableList?: ContractReimbursableCondition1[];
+  reimbursables?: {
+    perDiem: number;
+    communication: number;
+    professionalIndemnity: number;
+    customItems?: ContractReimbursableCondition1[];
+  };
+  staffFees?: ContractStaffRateCondition1[];
+}
+
+export interface ContractStaffRateCondition2 {
+  id?: string;
+  position: string;
+  name: string;
+  origin: 'Foreign' | 'Local' | 'Additional' | string;
+  mm: number;
+  rateUsd?: number;
+  rateEtb?: number;
+  amountUsd?: number;
+  amountEtb?: number;
+  etbEquivalent?: number;
+  notPriced?: boolean;
+}
+
+export interface ContractReimbursableCondition2 {
+  id?: string;
+  item: string;
+  tripDays?: string;
+  quantity?: number;
+  rateUsd?: number;
+  rateEtb?: number;
+  amountUsd: number;
+  amountEtb: number;
+  isFixed?: boolean;
+}
+
+export interface ContractCondition2Data {
+  projectName?: string;
+  scope?: string;
+  totalManMonths?: number;
+  exchangeRate?: number;
+  contingencyPct?: number;
+  vatPct?: number;
+  reimbursables?: ContractReimbursableCondition2[];
+  staffFees?: ContractStaffRateCondition2[];
+}
+
+export interface ContractAmountSchedule {
+  condition1?: ContractCondition1Data;
+  condition2?: ContractCondition2Data;
 }
 
 export interface RfiCorrespondenceMessage {
