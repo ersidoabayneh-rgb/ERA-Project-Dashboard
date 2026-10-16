@@ -2,79 +2,70 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // Global Helpers
     function isSignedIn() {
       return request.auth != null;
-    }
-
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
     }
 
     function isValidId(id) {
       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
-    function isValidUserId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-\\.\\s@#%+]+$');
+    function isAdmin() {
+      return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
 
-    // Default deny all
+    // Default deny
     match /{document=**} {
       allow read, write: if false;
     }
 
     // Health check
     match /test/{testId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if true;
     }
 
-    // Projects collection - enforces ID validity and structured project record
+    // Projects - Read for all, Write for Admins only
     match /projects/{projectId} {
-      allow read: if true;
-      allow write: if isValidId(projectId) && 
-                      request.resource.data.id is string && 
-                      request.resource.data.name is string;
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && (isAdmin());
     }
 
-    // Deleted Projects collection for universal real-time deletion
+    // Deleted Projects - Read only for Admins
     match /deleted_projects/{deletedProjectId} {
-      allow read: if true;
-      allow write: if isValidId(deletedProjectId) && 
-                      request.resource.data.id is string;
+      allow read: if isAdmin();
+      allow write: if isAdmin();
     }
 
-    // Users collection
+    // Users - Read for owner/admin, Write for owner/admin
     match /users/{userId} {
-      allow read: if true;
-      allow write: if isValidUserId(userId);
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
     }
 
-    // Approvals collection - ensures variance requests have valid project association
+    // Approvals - Restricted access
     match /approvals/{approvalId} {
-      allow read: if true;
-      allow write: if isValidId(approvalId) && 
-                      request.resource.data.id is string && 
-                      request.resource.data.projectId is string;
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && (isAdmin());
     }
 
-    // Private Drafts collection - isolated staging area for editor drafts
+    // Private Drafts - Owner access
     match /private_drafts/{draftId} {
-      allow read: if true;
-      allow write: if isValidId(draftId) && 
-                      request.resource.data.id is string;
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
     }
 
-    // Workflow Audit Logs collection - tamper-evident governance trail
+    // Workflow Audit Logs - Admin access
     match /workflow_audit_logs/{logId} {
-      allow read: if true;
-      allow write: if isValidId(logId) && 
-                      request.resource.data.id is string;
+      allow read: if isAdmin();
+      allow write: if isAdmin();
     }
 
-    // Config collection
+    // Config - Admin write access
     match /config/{configId} {
-      allow read: if true;
-      allow write: if isValidId(configId);
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
     }
   }
 }

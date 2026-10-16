@@ -34,11 +34,15 @@ app.get('/api/health', (_req: Request, res: Response) => {
   });
 });
 
-app.post('/api/projects/:projectId/contract-amount', requireAuth, checkRole(['director_general']), async (req: any, res: Response) => {
+app.post('/api/projects/:projectId/contract-amount', requireAuth, checkRole(['director_general', 'master_admin', 'cpm_admin']), async (req: any, res: Response) => {
   const { projectId } = req.params;
   const { contractAmountEtb } = req.body;
   
   try {
+    const projDoc = await db.collection('projects').doc(projectId).get();
+    if (projDoc.exists && projDoc.data()?.contractAmountStatus === 'Validated') {
+      return res.status(403).json({ error: 'Contract amount is validated and locked against modifications.' });
+    }
     await db.collection('projects').doc(projectId).update({
       contractAmountEtb,
       lastModifiedAt: new Date().toISOString(),
@@ -64,7 +68,7 @@ app.post('/api/projects/:projectId/contract-amount/submit', requireAuth, async (
   }
 });
 
-app.post('/api/projects/:projectId/contract-amount/validate', requireAuth, checkRole(['cpm_admin']), async (req: any, res: Response) => {
+app.post('/api/projects/:projectId/contract-amount/validate', requireAuth, checkRole(['director_general', 'master_admin', 'cpm_admin']), async (req: any, res: Response) => {
   const { projectId } = req.params;
   try {
     await db.collection('projects').doc(projectId).update({

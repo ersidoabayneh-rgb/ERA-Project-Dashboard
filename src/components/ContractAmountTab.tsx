@@ -84,6 +84,7 @@ export const ContractAmountTab: React.FC<Props> = ({
   });
 
   const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
+  const [activeTableTab, setActiveTableTab] = useState<'all' | 'summary' | 'construction' | 'dlp'>('all');
 
   // Modal state for adding a new staff position
   const [isAddStaffOpen, setIsAddStaffOpen] = useState(false);
@@ -124,6 +125,8 @@ export const ContractAmountTab: React.FC<Props> = ({
       const constrMm = rows.reduce((s, r) => s + (Number(r.mmConstr) || 0), 0);
       const dlpMm = rows.reduce((s, r) => s + (Number(r.mmDlp) || 0), 0);
       const totalMm = rows.reduce((s, r) => s + (Number(r.totalMm) || 0), 0);
+      const constrEtb = rows.reduce((s, r) => s + ((Number(r.mmConstr) || 0) * (Number(r.rateEtb) || 0)), 0);
+      const dlpEtb = rows.reduce((s, r) => s + ((Number(r.mmDlp) || 0) * (Number(r.rateEtb) || 0)), 0);
       const totalEtb = rows.reduce((s, r) => s + (Number(r.totalEtb) || 0), 0);
 
       let label = cat;
@@ -139,6 +142,8 @@ export const ContractAmountTab: React.FC<Props> = ({
         constrMm,
         dlpMm,
         totalMm,
+        constrEtb,
+        dlpEtb,
         totalEtb
       };
     }).filter(g => g.rows.length > 0 || defaultCats.includes(g.categoryKey));
@@ -148,8 +153,17 @@ export const ContractAmountTab: React.FC<Props> = ({
     const grandTotalMm = groups.reduce((s, g) => s + g.totalMm, 0);
     const grandTotalFeesEtb = groups.reduce((s, g) => s + g.totalEtb, 0);
 
+    const keyGroup = groups.find(g => g.categoryKey === 'Key Professional') || { rows: [], constrMm: 0, dlpMm: 0, totalMm: 0, totalEtb: 0 };
+    const intGroup = groups.find(g => g.categoryKey === 'Intermediate') || { rows: [], constrMm: 0, dlpMm: 0, totalMm: 0, totalEtb: 0 };
+    const supGroup = groups.find(g => g.categoryKey === 'Support') || { rows: [], constrMm: 0, dlpMm: 0, totalMm: 0, totalEtb: 0 };
+    const hoGroup = groups.find(g => g.categoryKey === 'Head Office') || { rows: [], constrMm: 0, dlpMm: 0, totalMm: 0, totalEtb: 0 };
+
     return {
       groups,
+      keyStaff: keyGroup.rows, keyConstrMm: keyGroup.constrMm, keyDlpMm: keyGroup.dlpMm, keyTotalMm: keyGroup.totalMm, keyTotalEtb: keyGroup.totalEtb,
+      intermediateStaff: intGroup.rows, intConstrMm: intGroup.constrMm, intDlpMm: intGroup.dlpMm, intTotalMm: intGroup.totalMm, intTotalEtb: intGroup.totalEtb,
+      supportStaff: supGroup.rows, supConstrMm: supGroup.constrMm, supDlpMm: supGroup.dlpMm, supTotalMm: supGroup.totalMm, supTotalEtb: supGroup.totalEtb,
+      hoStaff: hoGroup.rows, hoConstrMm: hoGroup.constrMm, hoDlpMm: hoGroup.dlpMm, hoTotalMm: hoGroup.totalMm, hoTotalEtb: hoGroup.totalEtb,
       totalConstrMm,
       totalDlpMm,
       grandTotalMm,
@@ -168,33 +182,40 @@ export const ContractAmountTab: React.FC<Props> = ({
   // COMPUTED SUMMARY OF CONTRACT PRICE (TABLE 1.1)
   // -------------------------------------------------------------
   const summaryPrice = useMemo(() => {
-    const fees = staffSubtotals.grandTotalFeesEtb;
+    const feesConstruction = staffSubtotals.groups.reduce((s, g) => s + g.constrEtb, 0);
+    const feesDlp = staffSubtotals.groups.reduce((s, g) => s + g.dlpEtb, 0);
+    const fees = feesConstruction + feesDlp;
     const reimb = reimbursableTotal;
+    const directSubTotal = fees + reimb;
     const contingencyPct = Number(c1Data.contingencyPct ?? 15);
     const vatPct = Number(c1Data.vatPct ?? 15);
 
     // C. Contingency (15% of A+B)
-    const contingency = (fees + reimb) * (contingencyPct / 100);
+    const contingency = directSubTotal * (contingencyPct / 100);
     
     // Base before VAT (A + B + C)
-    const baseBeforeVat = fees + reimb + contingency;
+    const baseBeforeVat = directSubTotal + contingency;
 
     // D. VAT (15% of A+B+C)
     const vat = baseBeforeVat * (vatPct / 100);
 
-    // E. Sub-total
+    // E. Sub-total (Total Contract Price)
     const grandTotal = baseBeforeVat + vat;
 
     return {
+      feesConstruction,
+      feesDlp,
       fees,
       reimb,
+      directSubTotal,
       contingencyPct,
       contingency,
+      baseBeforeVat,
       vatPct,
       vat,
       grandTotal
     };
-  }, [staffSubtotals.grandTotalFeesEtb, reimbursableTotal, c1Data.contingencyPct, c1Data.vatPct]);
+  }, [staffSubtotals.groups, reimbursableTotal, c1Data.contingencyPct, c1Data.vatPct]);
 
   // -------------------------------------------------------------
   // ROW EDITING, ADDING & DELETING HANDLERS
@@ -238,9 +259,18 @@ export const ContractAmountTab: React.FC<Props> = ({
     e.preventDefault();
     if (!newStaffPosition.trim()) return;
 
+    const constrNum = Number(newStaffMmConstr);
+    const dlpNum = Number(newStaffMmDlp);
+    const rateNum = Number(newStaffRateEtb);
+
+    if (isNaN(constrNum) || constrNum < 0 || isNaN(dlpNum) || dlpNum < 0 || isNaN(rateNum) || rateNum < 0) {
+      alert('Validation Error: Construction MM, DLP MM, and Rate (ETB) must be valid non-negative numbers.');
+      return;
+    }
+
     const categoryName = addMode === 'subtable' ? (newSubTableTitle.trim() || 'Custom Sub-Table') : newStaffCategory;
-    const totalMm = Number(newStaffMmConstr || 0) + Number(newStaffMmDlp || 0);
-    const totalEtb = totalMm * Number(newStaffRateEtb || 0);
+    const totalMm = constrNum + dlpNum;
+    const totalEtb = totalMm * rateNum;
 
     const newRow: ContractStaffRateCondition1 = {
       id: `c1_staff_${Date.now()}`,
@@ -248,10 +278,10 @@ export const ContractAmountTab: React.FC<Props> = ({
       position: newStaffPosition.trim(),
       name: newStaffName.trim() || 'To be nominated',
       category: categoryName,
-      mmConstr: Number(newStaffMmConstr) || 0,
-      mmDlp: Number(newStaffMmDlp) || 0,
+      mmConstr: constrNum,
+      mmDlp: dlpNum,
       totalMm,
-      rateEtb: Number(newStaffRateEtb) || 0,
+      rateEtb: rateNum,
       totalEtb
     };
 
@@ -474,41 +504,156 @@ export const ContractAmountTab: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* TABLE 1.1 — SUMMARY OF CONTRACT PRICE (ETB) */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-xs overflow-hidden">
-        <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <Table className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-            <h4 className="text-sm font-bold uppercase tracking-wider text-slate-900 dark:text-white">
-              Table 1.1 — Summary of Contract Price (ETB)
-            </h4>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-500 font-mono">FIDIC / ERA Standard Summary</span>
-          </div>
+      {/* Sub-Navigation Tabs matching Fee Invoices */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-100 dark:bg-slate-800 p-2 rounded-2xl">
+        <div className="flex flex-wrap items-center gap-1.5 text-xs font-bold">
+          <button
+            type="button"
+            onClick={() => setActiveTableTab('all')}
+            className={`px-3.5 py-1.5 rounded-xl transition flex items-center gap-1.5 cursor-pointer ${
+              activeTableTab === 'all'
+                ? 'bg-emerald-600 text-white shadow-xs'
+                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <Table className="w-3.5 h-3.5" />
+            <span>All Tables</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTableTab('summary')}
+            className={`px-3.5 py-1.5 rounded-xl transition flex items-center gap-1.5 cursor-pointer ${
+              activeTableTab === 'summary'
+                ? 'bg-emerald-600 text-white shadow-xs'
+                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <span className="w-4 h-4 rounded-full bg-white/20 text-[10px] flex items-center justify-center font-mono">1</span>
+            <span>Table 1: Summary of Contract Price</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTableTab('construction')}
+            className={`px-3.5 py-1.5 rounded-xl transition flex items-center gap-1.5 cursor-pointer ${
+              activeTableTab === 'construction'
+                ? 'bg-emerald-600 text-white shadow-xs'
+                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <span className="w-4 h-4 rounded-full bg-white/20 text-[10px] flex items-center justify-center font-mono">2</span>
+            <span>Table 2: Construction Remuneration</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTableTab('dlp')}
+            className={`px-3.5 py-1.5 rounded-xl transition flex items-center gap-1.5 cursor-pointer ${
+              activeTableTab === 'dlp'
+                ? 'bg-emerald-600 text-white shadow-xs'
+                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <span className="w-4 h-4 rounded-full bg-white/20 text-[10px] flex items-center justify-center font-mono">3</span>
+            <span>Table 3: Defect Liability (DLP)</span>
+          </button>
         </div>
+
+        {onNavigateToInvoices && (
+          <button
+            type="button"
+            onClick={onNavigateToInvoices}
+            className="px-3 py-1.5 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border border-blue-200 dark:border-blue-800 cursor-pointer self-end sm:self-auto shadow-xs"
+          >
+            <Receipt className="w-3.5 h-3.5" />
+            <span>Go to Fee Invoices</span>
+            <ExternalLink className="w-3 h-3" />
+          </button>
+        )}
+      </div>
+
+      {/* TABLE 1 — SUMMARY OF CONTRACT PRICE (ETB) */}
+      {(activeTableTab === 'all' || activeTableTab === 'summary') && (
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-xs overflow-hidden">
+          <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <span className="w-6 h-6 rounded-lg bg-emerald-600 text-white text-xs flex items-center justify-center font-mono font-bold">1</span>
+              <div>
+                <h4 className="text-sm font-bold uppercase tracking-wider text-slate-900 dark:text-white">
+                  Table 1 — Summary of Contract Price (ETB)
+                </h4>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Consolidated master summary derived from sub-tables (Table 2 Construction, Table 3 DLP, Reimbursables, Contingency & VAT).
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 text-xs font-bold rounded-lg border border-emerald-300 dark:border-emerald-800 flex items-center gap-1.5">
+                <span>🔗 Mirrors Invoice Table 5 (Consolidated Summary)</span>
+              </span>
+            </div>
+          </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-xs sm:text-sm border-collapse">
             <thead>
               <tr className="bg-slate-100/75 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700">
                 <th className="p-3.5 text-left font-bold w-16">Item</th>
-                <th className="p-3.5 text-left font-bold">Description</th>
+                <th className="p-3.5 text-left font-bold">Description & Breakdown</th>
                 <th className="p-3.5 text-right font-bold w-64">Amount (ETB)</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800 text-slate-800 dark:text-slate-200 font-mono">
+              {/* Item A Header */}
+              <tr className="bg-slate-50/70 dark:bg-slate-800/40">
+                <td className="p-3 font-bold text-slate-900 dark:text-white">A.</td>
+                <td className="p-3 font-sans font-bold text-slate-900 dark:text-white" colSpan={2}>
+                  Professional Staff Remuneration (Time-Based)
+                </td>
+              </tr>
+
+              {/* Item A.1: Construction Staff */}
               <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
-                <td className="p-3.5 font-bold text-slate-900 dark:text-white">A.</td>
-                <td className="p-3.5 font-sans font-semibold text-slate-900 dark:text-white">Fees (time-based)</td>
-                <td className="p-3.5 text-right font-bold text-slate-900 dark:text-white">
+                <td className="py-2.5 px-3.5 pl-6 text-slate-500 font-bold">A.1</td>
+                <td className="py-2.5 px-3.5 pl-6 font-sans text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                  <span>Construction Supervisory Personnel Remuneration (Table 2)</span>
+                  <span className="text-xs text-slate-400 font-mono">({fmt(staffSubtotals.totalConstrMm, 1)} MM)</span>
+                </td>
+                <td className="py-2.5 px-3.5 text-right font-bold text-slate-900 dark:text-white">
+                  {fmt(summaryPrice.feesConstruction)}
+                </td>
+              </tr>
+
+              {/* Item A.2: DLP Staff */}
+              <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
+                <td className="py-2.5 px-3.5 pl-6 text-slate-500 font-bold">A.2</td>
+                <td className="py-2.5 px-3.5 pl-6 font-sans text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                  <span>Defect Liability Period (DLP) Personnel Remuneration (Table 3)</span>
+                  <span className="text-xs text-slate-400 font-mono">({fmt(staffSubtotals.totalDlpMm, 1)} MM)</span>
+                </td>
+                <td className="py-2.5 px-3.5 text-right font-bold text-indigo-600 dark:text-indigo-400">
+                  {fmt(summaryPrice.feesDlp)}
+                </td>
+              </tr>
+
+              {/* Subtotal A */}
+              <tr className="bg-slate-100/60 dark:bg-slate-800/60 font-semibold border-b border-slate-200 dark:border-slate-700">
+                <td className="py-2.5 px-3.5 font-bold text-slate-700 dark:text-slate-300">Sub-Total A</td>
+                <td className="py-2.5 px-3.5 font-sans text-slate-800 dark:text-slate-200">
+                  Total Professional Staff Fees (A.1 + A.2)
+                </td>
+                <td className="py-2.5 px-3.5 text-right font-bold text-slate-900 dark:text-white">
                   {fmt(summaryPrice.fees)}
                 </td>
               </tr>
 
+              {/* Item B: Reimbursables */}
               <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
                 <td className="p-3.5 font-bold text-slate-900 dark:text-white">B.</td>
-                <td className="p-3.5 font-sans font-semibold text-slate-900 dark:text-white">Reimbursable expenses</td>
+                <td className="p-3.5 font-sans font-semibold text-slate-900 dark:text-white">
+                  Reimbursable Direct Costs (Operating & Logistical Expenses)
+                </td>
                 <td className="p-3.5 text-right font-bold text-slate-900 dark:text-white">
                   <input
                     type="number"
@@ -537,10 +682,22 @@ export const ContractAmountTab: React.FC<Props> = ({
                 </td>
               </tr>
 
+              {/* Direct Subtotal (A + B) */}
+              <tr className="bg-slate-100/80 dark:bg-slate-800/80 font-bold border-b border-slate-300 dark:border-slate-700">
+                <td className="py-2.5 px-3.5"></td>
+                <td className="py-2.5 px-3.5 uppercase font-sans text-xs text-slate-700 dark:text-slate-300">
+                  Sub-Total Direct Services & Expenses (A + B)
+                </td>
+                <td className="py-2.5 px-3.5 text-right font-bold text-slate-900 dark:text-white">
+                  {fmt(summaryPrice.directSubTotal)}
+                </td>
+              </tr>
+
+              {/* Item C: Contingency */}
               <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
                 <td className="p-3.5 font-bold text-slate-900 dark:text-white">C.</td>
                 <td className="p-3.5 font-sans font-semibold text-slate-900 dark:text-white flex items-center gap-1.5">
-                  <span>Contingency (</span>
+                  <span>Contingency Provision (</span>
                   <input
                     type="number"
                     step="any"
@@ -556,10 +713,22 @@ export const ContractAmountTab: React.FC<Props> = ({
                 </td>
               </tr>
 
+              {/* Base before VAT */}
+              <tr className="bg-slate-50/50 dark:bg-slate-800/50 text-xs font-semibold text-slate-600 dark:text-slate-400">
+                <td className="py-2 px-3.5"></td>
+                <td className="py-2 px-3.5 font-sans">
+                  Base Amount Before VAT (A + B + C)
+                </td>
+                <td className="py-2 px-3.5 text-right font-mono font-bold text-slate-800 dark:text-slate-200">
+                  {fmt(summaryPrice.baseBeforeVat)}
+                </td>
+              </tr>
+
+              {/* Item D: VAT */}
               <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
                 <td className="p-3.5 font-bold text-slate-900 dark:text-white">D.</td>
                 <td className="p-3.5 font-sans font-semibold text-slate-900 dark:text-white flex items-center gap-1.5">
-                  <span>VAT (</span>
+                  <span>Value Added Tax (</span>
                   <input
                     type="number"
                     step="any"
@@ -568,13 +737,14 @@ export const ContractAmountTab: React.FC<Props> = ({
                     onChange={(e) => setC1Data(prev => ({ ...prev, vatPct: parseFloat(e.target.value) || 0 }))}
                     className="w-12 text-center font-mono font-bold bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded px-1 py-0.5 outline-none"
                   />
-                  <span>% of A+B+C)</span>
+                  <span>% VAT on A+B+C)</span>
                 </td>
                 <td className="p-3.5 text-right font-bold text-indigo-600 dark:text-indigo-400">
                   {fmt(summaryPrice.vat)}
                 </td>
               </tr>
 
+              {/* Item E: Total */}
               <tr className="bg-emerald-50/75 dark:bg-emerald-950/30 text-emerald-900 dark:text-emerald-200 font-bold border-t-2 border-emerald-300 dark:border-emerald-700">
                 <td className="p-3.5 text-base">E.</td>
                 <td className="p-3.5 font-sans text-base">Sub-total (Total Contract Price)</td>
@@ -586,20 +756,22 @@ export const ContractAmountTab: React.FC<Props> = ({
           </table>
         </div>
       </div>
+      )}
 
-      {/* TABLE 1.3 — STAFF REMUNERATION SCHEDULE (ETB) */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-xs overflow-hidden">
+      {/* TABLE 2 — CONSTRUCTION STAFF REMUNERATION SCHEDULE (ETB) */}
+      {(activeTableTab === 'all' || activeTableTab === 'construction') && (
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-xs overflow-hidden mt-6">
         <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            <span className="w-6 h-6 rounded-lg bg-emerald-600 text-white text-xs flex items-center justify-center font-mono font-bold">2</span>
             <h4 className="text-sm font-bold uppercase tracking-wider text-slate-900 dark:text-white">
-              Table 1.3 — Staff Remuneration Schedule (ETB)
+              Table 2 — Construction Staff Remuneration Schedule (ETB)
             </h4>
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-xs bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 font-bold px-2.5 py-1 rounded-lg">
-              Linked to Monthly Invoices
+            <span className="text-xs bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 font-bold px-2.5 py-1 rounded-lg border border-emerald-300 dark:border-emerald-800 flex items-center gap-1.5">
+              <span>🔗 Mirrors Invoice Table 2 (Construction Fees)</span>
             </span>
             {!isReadonly && (
               <button
@@ -621,377 +793,204 @@ export const ContractAmountTab: React.FC<Props> = ({
                 <th className="p-3 text-left font-bold w-14">No.</th>
                 <th className="p-3 text-left font-bold min-w-[190px]">Position</th>
                 <th className="p-3 text-left font-bold min-w-[160px]">Nominated Staff Name</th>
-                <th className="p-3 text-right font-bold w-24">MM (Constr.)</th>
-                <th className="p-3 text-right font-bold w-20">MM (DLP)</th>
-                <th className="p-3 text-right font-bold w-24">Total MM</th>
-                <th className="p-3 text-right font-bold w-28">Rate (ETB)</th>
-                <th className="p-3 text-right font-bold w-32">Total (ETB)</th>
+                <th className="p-3 text-right font-bold w-28">MM (Constr.)</th>
+                <th className="p-3 text-right font-bold w-32">Rate (ETB)</th>
+                <th className="p-3 text-right font-bold w-36">Constr. Total (ETB)</th>
                 {!isReadonly && <th className="p-3 text-center font-bold w-14">Actions</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800 text-slate-800 dark:text-slate-200 font-mono">
-              {/* SUB-TOTAL 1: KEY PROFESSIONAL */}
-              <tr className="bg-slate-100/90 dark:bg-slate-800/90 font-bold text-slate-900 dark:text-white">
-                <td className="p-3 text-left" colSpan={!isReadonly ? 9 : 8}>
-                  1. Key Professional Staff (Supervision & Management)
-                </td>
-              </tr>
-              {staffSubtotals.keyStaff.map((row) => (
-                <tr key={row.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
-                  <td className="p-3 text-slate-500 font-bold">{row.no}</td>
-                  <td className="p-3 font-sans font-semibold text-slate-900 dark:text-white">
-                    <input
-                      type="text"
-                      disabled={isReadonly}
-                      value={row.position}
-                      onChange={(e) => handleUpdateStaffRow(row.id!, 'position', e.target.value)}
-                      className="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-500 outline-none"
-                    />
-                  </td>
-                  <td className="p-3 font-sans text-slate-600 dark:text-slate-300">
-                    <input
-                      type="text"
-                      disabled={isReadonly}
-                      value={row.name}
-                      onChange={(e) => handleUpdateStaffRow(row.id!, 'name', e.target.value)}
-                      className="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-500 outline-none"
-                    />
-                  </td>
-                  <td className="p-3 text-right">
-                    <input
-                      type="number"
-                      step="any"
-                      disabled={isReadonly}
-                      value={row.mmConstr}
-                      onChange={(e) => handleUpdateStaffRow(row.id!, 'mmConstr', parseFloat(e.target.value) || 0)}
-                      className="w-full text-right bg-transparent border-b border-dashed border-slate-300 hover:border-blue-500 focus:border-blue-500 outline-none"
-                    />
-                  </td>
-                  <td className="p-3 text-right">
-                    <input
-                      type="number"
-                      step="any"
-                      disabled={isReadonly}
-                      value={row.mmDlp}
-                      onChange={(e) => handleUpdateStaffRow(row.id!, 'mmDlp', parseFloat(e.target.value) || 0)}
-                      className="w-full text-right bg-transparent border-b border-dashed border-slate-300 hover:border-blue-500 focus:border-blue-500 outline-none"
-                    />
-                  </td>
-                  <td className="p-3 text-right font-bold text-slate-900 dark:text-white">
-                    {fmt(row.totalMm, 1)}
-                  </td>
-                  <td className="p-3 text-right">
-                    <input
-                      type="number"
-                      step="any"
-                      disabled={isReadonly}
-                      value={row.rateEtb}
-                      onChange={(e) => handleUpdateStaffRow(row.id!, 'rateEtb', parseFloat(e.target.value) || 0)}
-                      className="w-full text-right bg-transparent border-b border-dashed border-slate-300 hover:border-blue-500 focus:border-blue-500 outline-none font-bold text-emerald-600 dark:text-emerald-400"
-                    />
-                  </td>
-                  <td className="p-3 text-right font-bold text-slate-900 dark:text-white">
-                    {fmt(row.totalEtb)}
-                  </td>
-                  {!isReadonly && (
-                    <td className="p-3 text-center">
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteStaffRow(row.id!, row.position)}
-                        className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg transition"
-                        title="Delete position"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+              {staffSubtotals.groups.map((group) => (
+                <React.Fragment key={group.categoryKey}>
+                  <tr className="bg-slate-100/90 dark:bg-slate-800/90 font-bold text-slate-900 dark:text-white">
+                    <td className="p-3 text-left" colSpan={!isReadonly ? 7 : 6}>
+                      {group.label}
                     </td>
-                  )}
-                </tr>
+                  </tr>
+                  {group.rows.map((row) => {
+                    const constrTotal = (Number(row.mmConstr) || 0) * (Number(row.rateEtb) || 0);
+                    return (
+                      <tr key={row.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
+                        <td className="p-3 text-slate-500 font-bold">{row.no}</td>
+                        <td className="p-3 font-sans font-semibold text-slate-900 dark:text-white">
+                          <input
+                            type="text"
+                            disabled={isReadonly}
+                            value={row.position}
+                            onChange={(e) => handleUpdateStaffRow(row.id!, 'position', e.target.value)}
+                            className="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-500 outline-none"
+                          />
+                        </td>
+                        <td className="p-3 font-sans text-slate-600 dark:text-slate-300">
+                          <input
+                            type="text"
+                            disabled={isReadonly}
+                            value={row.name}
+                            onChange={(e) => handleUpdateStaffRow(row.id!, 'name', e.target.value)}
+                            className="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-500 outline-none"
+                          />
+                        </td>
+                        <td className="p-3 text-right">
+                          <input
+                            type="number"
+                            step="any"
+                            disabled={isReadonly}
+                            value={row.mmConstr}
+                            onChange={(e) => handleUpdateStaffRow(row.id!, 'mmConstr', parseFloat(e.target.value) || 0)}
+                            className="w-full text-right bg-transparent border-b border-dashed border-slate-300 hover:border-blue-500 focus:border-blue-500 outline-none"
+                          />
+                        </td>
+                        <td className="p-3 text-right">
+                          <input
+                            type="number"
+                            step="any"
+                            disabled={isReadonly}
+                            value={row.rateEtb}
+                            onChange={(e) => handleUpdateStaffRow(row.id!, 'rateEtb', parseFloat(e.target.value) || 0)}
+                            className="w-full text-right bg-transparent border-b border-dashed border-slate-300 hover:border-blue-500 focus:border-blue-500 outline-none font-bold text-emerald-600 dark:text-emerald-400"
+                          />
+                        </td>
+                        <td className="p-3 text-right font-bold text-slate-900 dark:text-white">
+                          {fmt(constrTotal)}
+                        </td>
+                        {!isReadonly && (
+                          <td className="p-3 text-center">
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteStaffRow(row.id!, row.position)}
+                              className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg transition"
+                              title="Delete position"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                  <tr className="bg-emerald-50/50 dark:bg-emerald-950/20 font-bold text-slate-900 dark:text-white border-t border-slate-300 dark:border-slate-700">
+                    <td className="p-3" colSpan={3}>Sub-total ({group.categoryKey})</td>
+                    <td className="p-3 text-right">{fmt(group.constrMm, 1)}</td>
+                    <td className="p-3 text-right">—</td>
+                    <td className="p-3 text-right text-emerald-700 dark:text-emerald-300">{fmt(group.constrEtb)}</td>
+                    {!isReadonly && <td></td>}
+                  </tr>
+                </React.Fragment>
               ))}
-              <tr className="bg-emerald-50/50 dark:bg-emerald-950/20 font-bold text-slate-900 dark:text-white border-t border-slate-300 dark:border-slate-700">
-                <td className="p-3" colSpan={3}>Sub-total 1 (Key Professional)</td>
-                <td className="p-3 text-right">{fmt(staffSubtotals.keyConstrMm, 1)}</td>
-                <td className="p-3 text-right">{fmt(staffSubtotals.keyDlpMm, 1)}</td>
-                <td className="p-3 text-right text-emerald-700 dark:text-emerald-300">{fmt(staffSubtotals.keyTotalMm, 1)}</td>
-                <td className="p-3 text-right">—</td>
-                <td className="p-3 text-right text-emerald-700 dark:text-emerald-300">{fmt(staffSubtotals.keyTotalEtb)}</td>
-                {!isReadonly && <td></td>}
-              </tr>
-
-              {/* SUB-TOTAL 2: INTERMEDIATE STAFF */}
-              <tr className="bg-slate-100/90 dark:bg-slate-800/90 font-bold text-slate-900 dark:text-white">
-                <td className="p-3 text-left" colSpan={!isReadonly ? 9 : 8}>
-                  2. Intermediate Technical Staff
-                </td>
-              </tr>
-              {staffSubtotals.intermediateStaff.map((row) => (
-                <tr key={row.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
-                  <td className="p-3 text-slate-500 font-bold">{row.no}</td>
-                  <td className="p-3 font-sans font-semibold text-slate-900 dark:text-white">
-                    <input
-                      type="text"
-                      disabled={isReadonly}
-                      value={row.position}
-                      onChange={(e) => handleUpdateStaffRow(row.id!, 'position', e.target.value)}
-                      className="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-500 outline-none"
-                    />
-                  </td>
-                  <td className="p-3 font-sans text-slate-600 dark:text-slate-300">
-                    <input
-                      type="text"
-                      disabled={isReadonly}
-                      value={row.name}
-                      onChange={(e) => handleUpdateStaffRow(row.id!, 'name', e.target.value)}
-                      className="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-500 outline-none"
-                    />
-                  </td>
-                  <td className="p-3 text-right">
-                    <input
-                      type="number"
-                      step="any"
-                      disabled={isReadonly}
-                      value={row.mmConstr}
-                      onChange={(e) => handleUpdateStaffRow(row.id!, 'mmConstr', parseFloat(e.target.value) || 0)}
-                      className="w-full text-right bg-transparent border-b border-dashed border-slate-300 hover:border-blue-500 focus:border-blue-500 outline-none"
-                    />
-                  </td>
-                  <td className="p-3 text-right">
-                    <input
-                      type="number"
-                      step="any"
-                      disabled={isReadonly}
-                      value={row.mmDlp}
-                      onChange={(e) => handleUpdateStaffRow(row.id!, 'mmDlp', parseFloat(e.target.value) || 0)}
-                      className="w-full text-right bg-transparent border-b border-dashed border-slate-300 hover:border-blue-500 focus:border-blue-500 outline-none"
-                    />
-                  </td>
-                  <td className="p-3 text-right font-bold text-slate-900 dark:text-white">
-                    {fmt(row.totalMm, 1)}
-                  </td>
-                  <td className="p-3 text-right">
-                    <input
-                      type="number"
-                      step="any"
-                      disabled={isReadonly}
-                      value={row.rateEtb}
-                      onChange={(e) => handleUpdateStaffRow(row.id!, 'rateEtb', parseFloat(e.target.value) || 0)}
-                      className="w-full text-right bg-transparent border-b border-dashed border-slate-300 hover:border-blue-500 focus:border-blue-500 outline-none font-bold text-emerald-600 dark:text-emerald-400"
-                    />
-                  </td>
-                  <td className="p-3 text-right font-bold text-slate-900 dark:text-white">
-                    {fmt(row.totalEtb)}
-                  </td>
-                  {!isReadonly && (
-                    <td className="p-3 text-center">
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteStaffRow(row.id!, row.position)}
-                        className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg transition"
-                        title="Delete position"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </td>
-                  )}
-                </tr>
-              ))}
-              <tr className="bg-emerald-50/50 dark:bg-emerald-950/20 font-bold text-slate-900 dark:text-white border-t border-slate-300 dark:border-slate-700">
-                <td className="p-3" colSpan={3}>Sub-total 2 (Intermediate staff)</td>
-                <td className="p-3 text-right">{fmt(staffSubtotals.intConstrMm, 1)}</td>
-                <td className="p-3 text-right">{fmt(staffSubtotals.intDlpMm, 1)}</td>
-                <td className="p-3 text-right text-emerald-700 dark:text-emerald-300">{fmt(staffSubtotals.intTotalMm, 1)}</td>
-                <td className="p-3 text-right">—</td>
-                <td className="p-3 text-right text-emerald-700 dark:text-emerald-300">{fmt(staffSubtotals.intTotalEtb)}</td>
-                {!isReadonly && <td></td>}
-              </tr>
-
-              {/* SUB-TOTAL 3: SUPPORT STAFF */}
-              <tr className="bg-slate-100/90 dark:bg-slate-800/90 font-bold text-slate-900 dark:text-white">
-                <td className="p-3 text-left" colSpan={!isReadonly ? 9 : 8}>
-                  3. Field & Laboratory Support Personnel
-                </td>
-              </tr>
-              {staffSubtotals.supportStaff.map((row) => (
-                <tr key={row.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
-                  <td className="p-3 text-slate-500 font-bold">{row.no}</td>
-                  <td className="p-3 font-sans font-semibold text-slate-900 dark:text-white">
-                    <input
-                      type="text"
-                      disabled={isReadonly}
-                      value={row.position}
-                      onChange={(e) => handleUpdateStaffRow(row.id!, 'position', e.target.value)}
-                      className="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-500 outline-none"
-                    />
-                  </td>
-                  <td className="p-3 font-sans text-slate-600 dark:text-slate-300">
-                    <input
-                      type="text"
-                      disabled={isReadonly}
-                      value={row.name}
-                      onChange={(e) => handleUpdateStaffRow(row.id!, 'name', e.target.value)}
-                      className="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-500 outline-none"
-                    />
-                  </td>
-                  <td className="p-3 text-right">
-                    <input
-                      type="number"
-                      step="any"
-                      disabled={isReadonly}
-                      value={row.mmConstr}
-                      onChange={(e) => handleUpdateStaffRow(row.id!, 'mmConstr', parseFloat(e.target.value) || 0)}
-                      className="w-full text-right bg-transparent border-b border-dashed border-slate-300 hover:border-blue-500 focus:border-blue-500 outline-none"
-                    />
-                  </td>
-                  <td className="p-3 text-right">
-                    <input
-                      type="number"
-                      step="any"
-                      disabled={isReadonly}
-                      value={row.mmDlp}
-                      onChange={(e) => handleUpdateStaffRow(row.id!, 'mmDlp', parseFloat(e.target.value) || 0)}
-                      className="w-full text-right bg-transparent border-b border-dashed border-slate-300 hover:border-blue-500 focus:border-blue-500 outline-none"
-                    />
-                  </td>
-                  <td className="p-3 text-right font-bold text-slate-900 dark:text-white">
-                    {fmt(row.totalMm, 1)}
-                  </td>
-                  <td className="p-3 text-right">
-                    <input
-                      type="number"
-                      step="any"
-                      disabled={isReadonly}
-                      value={row.rateEtb}
-                      onChange={(e) => handleUpdateStaffRow(row.id!, 'rateEtb', parseFloat(e.target.value) || 0)}
-                      className="w-full text-right bg-transparent border-b border-dashed border-slate-300 hover:border-blue-500 focus:border-blue-500 outline-none font-bold text-emerald-600 dark:text-emerald-400"
-                    />
-                  </td>
-                  <td className="p-3 text-right font-bold text-slate-900 dark:text-white">
-                    {fmt(row.totalEtb)}
-                  </td>
-                  {!isReadonly && (
-                    <td className="p-3 text-center">
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteStaffRow(row.id!, row.position)}
-                        className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg transition"
-                        title="Delete position"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </td>
-                  )}
-                </tr>
-              ))}
-              <tr className="bg-emerald-50/50 dark:bg-emerald-950/20 font-bold text-slate-900 dark:text-white border-t border-slate-300 dark:border-slate-700">
-                <td className="p-3" colSpan={3}>Sub-total 3 (Support)</td>
-                <td className="p-3 text-right">{fmt(staffSubtotals.supConstrMm, 1)}</td>
-                <td className="p-3 text-right">{fmt(staffSubtotals.supDlpMm, 1)}</td>
-                <td className="p-3 text-right text-emerald-700 dark:text-emerald-300">{fmt(staffSubtotals.supTotalMm, 1)}</td>
-                <td className="p-3 text-right">—</td>
-                <td className="p-3 text-right text-emerald-700 dark:text-emerald-300">{fmt(staffSubtotals.supTotalEtb)}</td>
-                {!isReadonly && <td></td>}
-              </tr>
-
-              {/* SUB-TOTAL 4: HEAD OFFICE */}
-              <tr className="bg-slate-100/90 dark:bg-slate-800/90 font-bold text-slate-900 dark:text-white">
-                <td className="p-3 text-left" colSpan={!isReadonly ? 9 : 8}>
-                  4. Head Office Technical & Administrative Support
-                </td>
-              </tr>
-              {staffSubtotals.hoStaff.map((row) => (
-                <tr key={row.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
-                  <td className="p-3 text-slate-500 font-bold">{row.no}</td>
-                  <td className="p-3 font-sans font-semibold text-slate-900 dark:text-white">
-                    <input
-                      type="text"
-                      disabled={isReadonly}
-                      value={row.position}
-                      onChange={(e) => handleUpdateStaffRow(row.id!, 'position', e.target.value)}
-                      className="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-500 outline-none"
-                    />
-                  </td>
-                  <td className="p-3 font-sans text-slate-600 dark:text-slate-300">
-                    <input
-                      type="text"
-                      disabled={isReadonly}
-                      value={row.name}
-                      onChange={(e) => handleUpdateStaffRow(row.id!, 'name', e.target.value)}
-                      className="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-500 outline-none"
-                    />
-                  </td>
-                  <td className="p-3 text-right">
-                    <input
-                      type="number"
-                      step="any"
-                      disabled={isReadonly}
-                      value={row.mmConstr}
-                      onChange={(e) => handleUpdateStaffRow(row.id!, 'mmConstr', parseFloat(e.target.value) || 0)}
-                      className="w-full text-right bg-transparent border-b border-dashed border-slate-300 hover:border-blue-500 focus:border-blue-500 outline-none"
-                    />
-                  </td>
-                  <td className="p-3 text-right">
-                    <input
-                      type="number"
-                      step="any"
-                      disabled={isReadonly}
-                      value={row.mmDlp}
-                      onChange={(e) => handleUpdateStaffRow(row.id!, 'mmDlp', parseFloat(e.target.value) || 0)}
-                      className="w-full text-right bg-transparent border-b border-dashed border-slate-300 hover:border-blue-500 focus:border-blue-500 outline-none"
-                    />
-                  </td>
-                  <td className="p-3 text-right font-bold text-slate-900 dark:text-white">
-                    {fmt(row.totalMm, 1)}
-                  </td>
-                  <td className="p-3 text-right">
-                    <input
-                      type="number"
-                      step="any"
-                      disabled={isReadonly}
-                      value={row.rateEtb}
-                      onChange={(e) => handleUpdateStaffRow(row.id!, 'rateEtb', parseFloat(e.target.value) || 0)}
-                      className="w-full text-right bg-transparent border-b border-dashed border-slate-300 hover:border-blue-500 focus:border-blue-500 outline-none font-bold text-emerald-600 dark:text-emerald-400"
-                    />
-                  </td>
-                  <td className="p-3 text-right font-bold text-slate-900 dark:text-white">
-                    {fmt(row.totalEtb)}
-                  </td>
-                  {!isReadonly && (
-                    <td className="p-3 text-center">
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteStaffRow(row.id!, row.position)}
-                        className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg transition"
-                        title="Delete position"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </td>
-                  )}
-                </tr>
-              ))}
-              <tr className="bg-emerald-50/50 dark:bg-emerald-950/20 font-bold text-slate-900 dark:text-white border-t border-slate-300 dark:border-slate-700">
-                <td className="p-3" colSpan={3}>Sub-total 4 (Head Office)</td>
-                <td className="p-3 text-right">{fmt(staffSubtotals.hoConstrMm, 1)}</td>
-                <td className="p-3 text-right">{fmt(staffSubtotals.hoDlpMm, 1)}</td>
-                <td className="p-3 text-right text-emerald-700 dark:text-emerald-300">{fmt(staffSubtotals.hoTotalMm, 1)}</td>
-                <td className="p-3 text-right">—</td>
-                <td className="p-3 text-right text-emerald-700 dark:text-emerald-300">{fmt(staffSubtotals.hoTotalEtb)}</td>
-                {!isReadonly && <td></td>}
-              </tr>
-
-              {/* TOTAL REMUNERATION FEES */}
               <tr className="bg-emerald-100 dark:bg-emerald-900/60 font-black text-slate-900 dark:text-white text-sm border-t-2 border-emerald-400 dark:border-emerald-600">
-                <td className="p-3.5" colSpan={3}>TOTAL FEES (Table 1.3 Staff Remuneration)</td>
+                <td className="p-3.5" colSpan={3}>TOTAL CONSTRUCTION REMUNERATION</td>
                 <td className="p-3.5 text-right">{fmt(staffSubtotals.totalConstrMm, 1)}</td>
-                <td className="p-3.5 text-right">{fmt(staffSubtotals.totalDlpMm, 1)}</td>
-                <td className="p-3.5 text-right text-emerald-800 dark:text-emerald-200">{fmt(staffSubtotals.grandTotalMm, 1)}</td>
                 <td className="p-3.5 text-right">—</td>
-                <td className="p-3.5 text-right text-emerald-800 dark:text-emerald-200">{fmt(staffSubtotals.grandTotalFeesEtb)}</td>
+                <td className="p-3.5 text-right text-emerald-800 dark:text-emerald-200">
+                  {fmt(staffSubtotals.groups.reduce((s, g) => s + g.constrEtb, 0))}
+                </td>
                 {!isReadonly && <td></td>}
               </tr>
             </tbody>
           </table>
         </div>
       </div>
+      )}
+
+      {/* TABLE 3 — DEFECT LIABILITY PERIOD (DLP) STAFF REMUNERATION SCHEDULE (ETB) */}
+      {(activeTableTab === 'all' || activeTableTab === 'dlp') && (
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-xs overflow-hidden mt-6">
+        <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span className="w-6 h-6 rounded-lg bg-indigo-600 text-white text-xs flex items-center justify-center font-mono font-bold">3</span>
+            <h4 className="text-sm font-bold uppercase tracking-wider text-slate-900 dark:text-white">
+              Table 3 — Defect Liability Period (DLP) Staff Remuneration Schedule (ETB)
+            </h4>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs bg-indigo-100 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-300 font-bold px-2.5 py-1 rounded-lg border border-indigo-200 dark:border-indigo-800 flex items-center gap-1.5">
+              <span>🔗 Mirrors Invoice Table 4 (DLP Claim)</span>
+            </span>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs sm:text-sm border-collapse">
+            <thead>
+              <tr className="bg-slate-100/75 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700">
+                <th className="p-3 text-left font-bold w-14">No.</th>
+                <th className="p-3 text-left font-bold min-w-[190px]">Position</th>
+                <th className="p-3 text-left font-bold min-w-[160px]">Nominated Staff Name</th>
+                <th className="p-3 text-right font-bold w-28">MM (DLP)</th>
+                <th className="p-3 text-right font-bold w-32">Rate (ETB)</th>
+                <th className="p-3 text-right font-bold w-36">DLP Total (ETB)</th>
+                {!isReadonly && <th className="p-3 text-center font-bold w-14">Actions</th>}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200 dark:divide-slate-800 text-slate-800 dark:text-slate-200 font-mono">
+              {staffSubtotals.groups.map((group) => (
+                <React.Fragment key={`dlp_${group.categoryKey}`}>
+                  <tr className="bg-slate-100/90 dark:bg-slate-800/90 font-bold text-slate-900 dark:text-white">
+                    <td className="p-3 text-left" colSpan={!isReadonly ? 7 : 6}>
+                      {group.label} (DLP Period)
+                    </td>
+                  </tr>
+                  {group.rows.map((row) => {
+                    const dlpTotal = (Number(row.mmDlp) || 0) * (Number(row.rateEtb) || 0);
+                    return (
+                      <tr key={`dlp_row_${row.id}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
+                        <td className="p-3 text-slate-500 font-bold">{row.no}</td>
+                        <td className="p-3 font-sans font-semibold text-slate-900 dark:text-white">{row.position}</td>
+                        <td className="p-3 font-sans text-slate-600 dark:text-slate-300">{row.name}</td>
+                        <td className="p-3 text-right">
+                          <input
+                            type="number"
+                            step="any"
+                            disabled={isReadonly}
+                            value={row.mmDlp}
+                            onChange={(e) => handleUpdateStaffRow(row.id!, 'mmDlp', parseFloat(e.target.value) || 0)}
+                            className="w-full text-right bg-transparent border-b border-dashed border-slate-300 hover:border-blue-500 focus:border-blue-500 outline-none"
+                          />
+                        </td>
+                        <td className="p-3 text-right font-semibold text-emerald-600 dark:text-emerald-400">
+                          {fmt(row.rateEtb)}
+                        </td>
+                        <td className="p-3 text-right font-bold text-slate-900 dark:text-white">
+                          {fmt(dlpTotal)}
+                        </td>
+                        {!isReadonly && (
+                          <td className="p-3 text-center">
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteStaffRow(row.id!, row.position)}
+                              className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg transition"
+                              title="Delete position"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                  <tr className="bg-indigo-50/50 dark:bg-indigo-950/20 font-bold text-slate-900 dark:text-white border-t border-slate-300 dark:border-slate-700">
+                    <td className="p-3" colSpan={3}>Sub-total DLP ({group.categoryKey})</td>
+                    <td className="p-3 text-right">{fmt(group.dlpMm, 1)}</td>
+                    <td className="p-3 text-right">—</td>
+                    <td className="p-3 text-right text-indigo-700 dark:text-indigo-300">{fmt(group.dlpEtb)}</td>
+                    {!isReadonly && <td></td>}
+                  </tr>
+                </React.Fragment>
+              ))}
+              <tr className="bg-indigo-100 dark:bg-indigo-900/60 font-black text-slate-900 dark:text-white text-sm border-t-2 border-indigo-400 dark:border-indigo-600">
+                <td className="p-3.5" colSpan={3}>TOTAL DLP REMUNERATION (Table 3)</td>
+                <td className="p-3.5 text-right">{fmt(staffSubtotals.totalDlpMm, 1)}</td>
+                <td className="p-3.5 text-right">—</td>
+                <td className="p-3.5 text-right text-indigo-800 dark:text-indigo-200">
+                  {fmt(staffSubtotals.groups.reduce((s, g) => s + g.dlpEtb, 0))}
+                </td>
+                {!isReadonly && <td></td>}
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      )}
 
       {/* MODAL: ADD STAFF POSITION OR SUB-TABLE */}
       {isAddStaffOpen && (

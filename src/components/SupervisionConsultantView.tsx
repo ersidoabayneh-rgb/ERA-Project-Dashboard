@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Building2, 
@@ -54,7 +54,8 @@ import {
   PersonnelAuditLogEntry,
   formatAccounting,
   User,
-  RegisteredFirm
+  RegisteredFirm,
+  ContractCondition1Data
 } from '../types';
 import jsPDF from 'jspdf';
 import { drawEraLogo } from '../lib/pdfReportEngine';
@@ -311,6 +312,69 @@ export default function SupervisionConsultantView({
     successorSiteStation: '',
     successorRemarks: ''
   });
+
+  // Automatically pulls sub-table totals and populates fields in Table 1.1 — Summary of Contract Price
+  const syncTable11SummaryAndSubTables = (scheduleData: ContractCondition1Data): ContractCondition1Data => {
+    const fees = (scheduleData.staffFees || []).reduce((sum, r) => sum + (Number(r.totalEtb) || 0), 0);
+    const reimb = scheduleData.reimbursableTotal ?? 9246789.75;
+    const contingencyPct = Number(scheduleData.contingencyPct ?? 15);
+    const vatPct = Number(scheduleData.vatPct ?? 15);
+
+    const contingency = (fees + reimb) * (contingencyPct / 100);
+    const baseBeforeVat = fees + reimb + contingency;
+    const vat = baseBeforeVat * (vatPct / 100);
+    const grandTotal = baseBeforeVat + vat;
+    const totalManMonths = (scheduleData.staffFees || []).reduce((sum, r) => sum + (Number(r.totalMm) || 0), 0);
+
+    return {
+      ...scheduleData,
+      totalManMonths,
+      feesTimeBased: fees,
+      reimbursableTotal: reimb,
+      summary: {
+        fees,
+        reimbursableExpenses: reimb,
+        contingency,
+        vat,
+        subTotal: grandTotal
+      }
+    };
+  };
+
+  // Dedicated ref to track sub-table totals fingerprint and prevent unnecessary re-renders
+  const lastSyncedScheduleRef = useRef<string>('');
+
+  // Dedicated memoized sync function watching sub-table totals and updating parent state only when values actually change
+  const syncSubTableTotalsIfChanged = useCallback((scheduleData: ContractCondition1Data | undefined) => {
+    if (!scheduleData) return;
+    const fees = (scheduleData.staffFees || []).reduce((sum, r) => sum + (Number(r.totalEtb) || 0), 0);
+    const mm = (scheduleData.staffFees || []).reduce((sum, r) => sum + (Number(r.totalMm) || 0), 0);
+    const dlpMm = (scheduleData.staffFees || []).reduce((sum, r) => sum + (Number(r.mmDlp) || 0), 0);
+    const reimb = scheduleData.reimbursableTotal ?? 0;
+    const fingerprint = `${fees}|${mm}|${dlpMm}|${reimb}|${scheduleData.contingencyPct}|${scheduleData.vatPct}`;
+
+    if (fingerprint !== lastSyncedScheduleRef.current) {
+      lastSyncedScheduleRef.current = fingerprint;
+      if (onUpdateProject && consultant) {
+        const syncedSchedule = syncTable11SummaryAndSubTables(scheduleData);
+        onUpdateProject({
+          supervisionConsultant: {
+            ...consultant,
+            contractAmountSchedule: {
+              ...consultant.contractAmountSchedule,
+              condition1: syncedSchedule
+            }
+          }
+        }, 'contract_amount_sync');
+      }
+    }
+  }, [consultant, onUpdateProject]);
+
+  useEffect(() => {
+    if (consultant.contractAmountSchedule?.condition1) {
+      syncSubTableTotalsIfChanged(consultant.contractAmountSchedule.condition1);
+    }
+  }, [consultant.contractAmountSchedule?.condition1, syncSubTableTotalsIfChanged]);
 
   // Form states for Consultant Profile
   const [consultantForm, setConsultantForm] = useState<SupervisionConsultantInfo>(consultant);
@@ -2450,7 +2514,10 @@ export default function SupervisionConsultantView({
           consultant={consultant}
           isReadonly={isReadonly}
           onUpdateProject={onUpdateProject}
-          onNavigateToInvoices={() => setActiveTab('invoices')}
+          onNavigateToInvoices={() => {
+            setActiveTab('invoices');
+            setInvoiceViewMode('calculationTables');
+          }}
         />
       )}
 
@@ -2970,6 +3037,7 @@ export default function SupervisionConsultantView({
               }}
               onBackToLedger={() => setInvoiceViewMode('table')}
               onSelectInvoice={(inv) => setSelectedInvoiceForPdfModal(inv)}
+              onNavigateToContractAmount={() => setActiveTab('contract_amount')}
             />
           ) : invoiceViewMode === 'cards' ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

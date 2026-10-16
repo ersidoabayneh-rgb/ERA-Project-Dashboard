@@ -880,6 +880,7 @@ export interface ConsultantInvoice {
   totalDueEtb?: number;
   attendanceRecords?: any[];
   reimbursableRecords?: any[];
+  defectLiabilityRecords?: any[];
   contingencyRate?: number;
   vatRate?: number;
   clientName?: string;
@@ -1115,6 +1116,13 @@ export interface ContractCondition1Data {
     customItems?: ContractReimbursableCondition1[];
   };
   staffFees?: ContractStaffRateCondition1[];
+  summary?: {
+    fees: number;
+    reimbursableExpenses: number;
+    contingency: number;
+    vat: number;
+    subTotal: number;
+  };
 }
 
 export interface ContractStaffRateCondition2 {

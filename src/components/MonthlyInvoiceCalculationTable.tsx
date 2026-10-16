@@ -30,7 +30,8 @@ import {
   SlidersHorizontal,
   ShieldAlert,
   Lock,
-  Unlock
+  Unlock,
+  ExternalLink
 } from 'lucide-react';
 import { Project, SupervisionConsultantInfo, ConsultantInvoice, ConsultantPersonnel } from '../types';
 import { DEFAULT_CONDITION_1_STAFF } from '../data/defaultContractAmount';
@@ -169,6 +170,7 @@ interface MonthlyInvoiceCalculationTableProps {
   onBackToLedger?: () => void;
   onSelectInvoice?: (inv: ConsultantInvoice) => void;
   onUpdateConsultantPersonnel?: (updatedPersonnel: ConsultantPersonnel[]) => void;
+  onNavigateToContractAmount?: () => void;
 }
 
 export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationTableProps> = ({
@@ -178,10 +180,11 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
   onSaveInvoice,
   onBackToLedger,
   onSelectInvoice,
-  onUpdateConsultantPersonnel
+  onUpdateConsultantPersonnel,
+  onNavigateToContractAmount
 }) => {
   // Navigation tabs for the tables
-  const [activeTableTab, setActiveTableTab] = useState<'all' | 'attendance' | 'feeBreakdown' | 'reimbursable' | 'defectLiability' | 'summary'>('all');
+  const [activeTableTab, setActiveTableTab] = useState<'all' | 'summary' | 'construction' | 'dlp' | 'attendance'>('all');
 
   // Staff Directory Filter (All Assigned, Active Only, Replaced History)
   const [personnelFilter, setPersonnelFilter] = useState<'all' | 'active_only' | 'replaced_only'>('all');
@@ -505,6 +508,34 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
 
       return updated;
     });
+
+    // Synchronize Defect Liability Period (DLP) rows directly from Contract Amount Schedule Table 3
+    const c1DlpStaff = c1ScheduleStaff.filter(s => (Number(s.mmDlp) || 0) > 0);
+    if (c1DlpStaff.length > 0) {
+      setDefectRows(prev => {
+        return c1DlpStaff.map((s, idx) => {
+          const matched = activeInvoice?.defectLiabilityRecords?.find((d: any) => d.id === s.id || (d.position && d.position.toLowerCase().trim().startsWith(s.position.toLowerCase().trim())))
+            || prev.find(p => p.id === s.id || (p.position && p.position.toLowerCase().trim().startsWith(s.position.toLowerCase().trim())));
+          
+          const dlpMm = Number(s.mmDlp) || 0;
+          const rate = Number(s.rateEtb) || 0;
+          const contractAmount = dlpMm * rate;
+          const nameSuffix = s.name && s.name !== 'To be nominated' ? ` (${s.name})` : '';
+          const posLabel = `${s.position}${nameSuffix}`;
+
+          return {
+            id: s.id || `dl_${idx + 1}`,
+            position: posLabel,
+            unit: 'Month',
+            rate,
+            contractQty: dlpMm,
+            contractAmount,
+            thisInvoiceQty: matched?.thisInvoiceQty !== undefined ? matched.thisInvoiceQty : 0,
+            thisInvoiceAmount: (matched?.thisInvoiceQty !== undefined ? matched.thisInvoiceQty : 0) * rate
+          };
+        });
+      });
+    }
   };
 
 
@@ -569,6 +600,23 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
             };
           }
           return r;
+        }));
+      }
+
+      // Restore defect liability records if available
+      if (activeInvoice.defectLiabilityRecords && Array.isArray(activeInvoice.defectLiabilityRecords) && activeInvoice.defectLiabilityRecords.length > 0) {
+        const savedDefect = activeInvoice.defectLiabilityRecords;
+        setDefectRows(prev => prev.map(d => {
+          const matched = savedDefect.find((s: any) => s.id === d.id || s.position === d.position);
+          if (matched) {
+            return {
+              ...d,
+              rate: matched.rate !== undefined ? matched.rate : d.rate,
+              thisInvoiceQty: matched.thisInvoiceQty !== undefined ? matched.thisInvoiceQty : d.thisInvoiceQty,
+              thisInvoiceAmount: matched.thisInvoiceAmount !== undefined ? matched.thisInvoiceAmount : d.thisInvoiceAmount
+            };
+          }
+          return d;
         }));
       }
       if (activeInvoice.isPaymentSaved || activeInvoice.paymentLocked || (activeInvoice.savedPaymentAmount !== undefined && activeInvoice.savedPaymentAmount > 0) || (activeInvoice.netAmountEtb !== undefined && activeInvoice.netAmountEtb > 0 && (activeInvoice.status === 'Paid' || activeInvoice.status === 'Certified'))) {
@@ -715,6 +763,57 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
   const subTotal1ToDate = feeRowsComputed.reduce((sum, r) => sum + (r.toDateAmount || 0), 0);
   const subTotal1Remaining = feeRowsComputed.reduce((sum, r) => sum + (r.remainingAmount || 0), 0);
 
+  // Category grouped rows matching Contract Amount Table 2 categories & sub-totals
+  const groupedFeeRows = useMemo(() => {
+    const list = displayFeeRowsComputed;
+    const defaultCats = ['Key Professional', 'Intermediate', 'Support', 'Head Office'];
+    const set = new Set<string>(defaultCats);
+    list.forEach(r => {
+      if (r.category) set.add(r.category);
+    });
+
+    return Array.from(set).map(cat => {
+      const rows = list.filter(r => {
+        if (r.category === cat) return true;
+        if (!r.category) {
+          const p = (r.position || '').toLowerCase();
+          if (cat === 'Key Professional' && (p.includes('engineer') || p.includes('leader') || p.includes('manager') || p.includes('specialist'))) return true;
+          if (cat === 'Intermediate' && (p.includes('inspector') || p.includes('surveyor') || p.includes('quantity'))) return true;
+          if (cat === 'Support' && (p.includes('laboratory') || p.includes('technician') || p.includes('cad') || p.includes('driver') || p.includes('clerk'))) return true;
+          if (cat === 'Head Office' && (p.includes('head') || p.includes('office') || p.includes('director') || p.includes('coordinator'))) return true;
+        }
+        return false;
+      });
+
+      const contractAmount = rows.reduce((s, r) => s + (r.contractAmount || 0), 0);
+      const contractQty = rows.reduce((s, r) => s + (r.contractQty || 0), 0);
+      const thisInvoiceAmount = rows.reduce((s, r) => s + (r.thisInvoiceAmount || 0), 0);
+      const thisInvoiceQty = rows.reduce((s, r) => s + (r.thisInvoiceQty || 0), 0);
+      const precedingAmount = rows.reduce((s, r) => s + (r.precedingAmount || 0), 0);
+      const toDateAmount = rows.reduce((s, r) => s + (r.toDateAmount || 0), 0);
+      const remainingAmount = rows.reduce((s, r) => s + (r.remainingAmount || 0), 0);
+
+      let label = cat;
+      if (cat === 'Key Professional') label = '1. Key Professional Staff (Supervision & Management)';
+      else if (cat === 'Intermediate') label = '2. Intermediate Technical Staff';
+      else if (cat === 'Support') label = '3. Field & Laboratory Support Personnel';
+      else if (cat === 'Head Office') label = '4. Head Office Support';
+
+      return {
+        categoryKey: cat,
+        label,
+        rows,
+        contractQty,
+        contractAmount,
+        thisInvoiceQty,
+        thisInvoiceAmount,
+        precedingAmount,
+        toDateAmount,
+        remainingAmount
+      };
+    }).filter(g => g.rows.length > 0 || defaultCats.includes(g.categoryKey));
+  }, [displayFeeRowsComputed]);
+
   // --- Dynamic Computations for Table 3 (Reimbursable) with Directorate 10% Reduction ---
   const reimbursableRowsComputed = reimbursableRows.map(row => {
     const isReduced = directorateReductionMode && Boolean(reducedReimbursableIds[row.id]);
@@ -743,11 +842,11 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
     };
   });
 
-  const subTotal2Contract = 0;
-  const subTotal2Preceding = 0;
-  const subTotal2ThisInvoice = 0;
-  const subTotal2ToDate = 0;
-  const subTotal2Remaining = 0;
+  const subTotal2Contract = reimbursableRowsComputed.reduce((sum, r) => sum + (r.contractAmount || 0), 0);
+  const subTotal2Preceding = reimbursableRowsComputed.reduce((sum, r) => sum + (r.precedingAmount || 0), 0);
+  const subTotal2ThisInvoice = reimbursableRowsComputed.reduce((sum, r) => sum + (r.computedThisAmount || 0), 0);
+  const subTotal2ToDate = reimbursableRowsComputed.reduce((sum, r) => sum + (r.toDateAmount || 0), 0);
+  const subTotal2Remaining = reimbursableRowsComputed.reduce((sum, r) => sum + (r.remainingAmount || 0), 0);
 
   // Staff replacement logic: Changing a staff member's name strictly maintains the existing contract rate and historical data records
   const handleConfirmStaffReplacement = () => {
@@ -851,11 +950,25 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
       computedThisAmount: thisAmount
     };
   });
-  const subTotal3Contract = defectRowsComputed.reduce((sum, r) => sum + (r.contractAmount || 0), 0);
   const subTotal3ThisInvoice = defectRowsComputed.reduce((sum, r) => sum + (r.computedThisAmount || 0), 0);
 
-  // --- Dynamic Grand Invoice Summary (Table 5) ---
-  const totalBaseContract = subTotal1Contract + subTotal2Contract + subTotal3Contract;
+  // --- Dynamic Grand Invoice Summary (Table 5) Linked with Contract Amount Table 1 ---
+  const c1StaffFees = consultant.contractAmountSchedule?.condition1?.staffFees || DEFAULT_CONDITION_1_STAFF;
+  const feesConstructionContract = useMemo(() => {
+    return c1StaffFees.reduce((sum, r) => sum + ((Number(r.mmConstr) || 0) * (Number(r.rateEtb) || 0)), 0);
+  }, [c1StaffFees]);
+
+  const feesDlpContract = useMemo(() => {
+    return c1StaffFees.reduce((sum, r) => sum + ((Number(r.mmDlp) || 0) * (Number(r.rateEtb) || 0)), 0);
+  }, [c1StaffFees]);
+
+  const c1Summary = consultant.contractAmountSchedule?.condition1?.summary;
+  const linkedFeesContract = feesConstructionContract > 0 ? feesConstructionContract : (c1Summary?.fees ?? subTotal1Contract);
+  const linkedReimbContract = consultant.contractAmountSchedule?.condition1?.reimbursableTotal ?? c1Summary?.reimbursableExpenses ?? subTotal2Contract;
+  const subTotal3Contract = feesDlpContract > 0 ? feesDlpContract : defectRowsComputed.reduce((sum, r) => sum + (r.contractAmount || 0), 0);
+  const linkedSubTotalDirect = linkedFeesContract + linkedReimbContract + subTotal3Contract;
+
+  const totalBaseContract = linkedSubTotalDirect;
   const contingencyContract = Number((totalBaseContract * (contingencyRatePct / 100)).toFixed(2));
   const grandContractWithContingency = totalBaseContract + contingencyContract;
   const vatContract = Number((grandContractWithContingency * (vatRatePct / 100)).toFixed(2));
@@ -1088,6 +1201,16 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
         precedingQty: r.precedingQty,
         precedingAmount: r.precedingAmount,
       })),
+      defectLiabilityRecords: defectRowsComputed.map(d => ({
+        id: d.id,
+        position: d.position,
+        unit: d.unit,
+        rate: d.rate,
+        contractQty: d.contractQty,
+        contractAmount: d.contractAmount,
+        thisInvoiceQty: 0,
+        thisInvoiceAmount: 0
+      })),
       vatRate: vatRatePct,
       contingencyRate: contingencyRatePct,
       clientName: clientName,
@@ -1199,6 +1322,16 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
         precedingQty: r.precedingQty,
         precedingAmount: r.precedingAmount,
       })),
+      defectLiabilityRecords: defectRowsComputed.map(d => ({
+        id: d.id,
+        position: d.position,
+        unit: d.unit,
+        rate: d.rate,
+        contractQty: d.contractQty,
+        contractAmount: d.contractAmount,
+        thisInvoiceQty: d.thisInvoiceQty,
+        thisInvoiceAmount: d.computedThisAmount,
+      })),
       vatRate: vatRatePct,
       contingencyRate: contingencyRatePct,
       clientName: clientName,
@@ -1266,14 +1399,28 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
               </button>
             )}
 
+            {/* NAVIGATE TO CONTRACT AMOUNT */}
+            {onNavigateToContractAmount && (
+              <button
+                type="button"
+                onClick={onNavigateToContractAmount}
+                className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                title="View & Edit Master Contract Price, Construction Remuneration, and DLP Schedules"
+              >
+                <DollarSign className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                <span>Go to Contract Amount</span>
+                <ExternalLink className="w-3 h-3" />
+              </button>
+            )}
+
             {/* SYNC WITH CONTRACT AMOUNT SCHEDULE */}
             <button
               type="button"
               onClick={handleSyncFromContractSchedule}
-              className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
-              title="Refresh staff rates and reimbursable items from Table 1.2 and Table 1.3 of the Contract Amount Schedule"
+              className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+              title="Refresh staff rates, reimbursables, and DLP allocations from Contract Amount Schedule"
             >
-              <RefreshCw className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <RefreshCw className="w-3.5 h-3.5 text-slate-600 dark:text-slate-400" />
               Sync from Contract Schedule
             </button>
 
@@ -1687,8 +1834,22 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
           </button>
         </div>
 
-        {/* Assigned Staff Filter Toggle */}
-        <div className="flex items-center gap-1 bg-white dark:bg-slate-900 p-1 rounded-xl border border-slate-200 dark:border-slate-700 text-[11px] font-bold">
+        <div className="flex flex-wrap items-center gap-2">
+          {onNavigateToContractAmount && (
+            <button
+              type="button"
+              onClick={onNavigateToContractAmount}
+              className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border border-emerald-300 dark:border-emerald-800 cursor-pointer shadow-xs"
+              title="Go to Master Contract Amount & Remuneration Schedules"
+            >
+              <DollarSign className="w-3.5 h-3.5" />
+              <span>Go to Contract Amount</span>
+              <ExternalLink className="w-3 h-3" />
+            </button>
+          )}
+
+          {/* Assigned Staff Filter Toggle */}
+          <div className="flex items-center gap-1 bg-white dark:bg-slate-900 p-1 rounded-xl border border-slate-200 dark:border-slate-700 text-[11px] font-bold">
           <button
             type="button"
             onClick={() => setPersonnelFilter('all')}
@@ -1722,6 +1883,7 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
               Replaced Records ({replacedStaffCount})
             </button>
           )}
+          </div>
         </div>
       </div>
 
@@ -2153,23 +2315,200 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
 
 
       {/* ========================================================================= */}
+      {/* TABLE 3: REIMBURSABLE DIRECT OPERATING EXPENSES (SUB-TOTAL 2)             */}
+      {/* ========================================================================= */}
+      {(activeTableTab === 'all' || activeTableTab === 'reimbursable') && (
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm space-y-3">
+          <div className="p-4 bg-slate-50/80 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h4 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-lg bg-amber-600 text-white text-xs flex items-center justify-center font-mono">3</span>
+                  Table 3: Reimbursable Direct Operating Expenses (Sub-Total 2)
+                </h4>
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200 flex items-center gap-1">
+                  <span>🔗 Linked to Contract Amount Table 1.4 (Direct Reimbursables Schedule)</span>
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Direct project site operational expenses, per diems, communications, laboratory, and logistical expenses billed per actual expenditure or monthly rate.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3">
+              {onNavigateToContractAmount && (
+                <button
+                  type="button"
+                  onClick={onNavigateToContractAmount}
+                  className="px-3 py-1.5 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 text-amber-800 dark:text-amber-300 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border border-amber-200 dark:border-amber-800 cursor-pointer shadow-xs"
+                  title="View Contract Reimbursable Budget Schedule (Table 1.4)"
+                >
+                  <DollarSign className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                  <span>View Contract Schedule (Table 1.4)</span>
+                  <ExternalLink className="w-3 h-3" />
+                </button>
+              )}
+              <div className="text-right font-mono">
+                <span className="text-[11px] text-slate-400 block">Sub-Total 2 (This Month)</span>
+                <span className="text-sm font-black text-amber-600 dark:text-amber-400">
+                  {fmt(subTotal2ThisInvoice)} ETB
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto px-4 pb-4">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="border-b border-slate-200 dark:border-slate-700 text-[10px] text-slate-500 uppercase tracking-wider font-bold">
+                  <th className="py-2.5 px-3 w-12 text-center">S.N</th>
+                  <th className="py-2.5 px-4 min-w-[260px]">Expense Description / Category</th>
+                  <th className="py-2.5 px-3 text-center">Unit</th>
+                  <th className="py-2.5 px-3 text-right">Contract Qty</th>
+                  <th className="py-2.5 px-4 text-right">Rate (ETB)</th>
+                  <th className="py-2.5 px-4 text-right font-bold">Contract Budget (ETB)</th>
+                  <th className="py-2.5 px-3 text-right font-black text-amber-600 bg-amber-50/30 dark:bg-amber-950/20">This Mo. Qty</th>
+                  <th className="py-2.5 px-4 text-right font-black text-amber-600 bg-amber-50/30 dark:bg-amber-950/20">This Month (ETB)</th>
+                  <th className="py-2.5 px-3 text-right">Preceding (ETB)</th>
+                  <th className="py-2.5 px-3 text-right font-bold">To-Date (ETB)</th>
+                  <th className="py-2.5 px-3 text-right text-slate-400">Remaining Budget (ETB)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-mono text-[11px]">
+                {reimbursableRowsComputed.map((r, idx) => (
+                  <tr key={r.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition">
+                    <td className="py-2.5 px-3 text-center text-slate-400">{idx + 1}</td>
+                    <td className="py-2.5 px-4 font-sans font-semibold text-slate-800 dark:text-slate-200">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span>{r.description}</span>
+                        {r.isReduced && (
+                          <span className="text-[9px] font-black text-rose-600 bg-rose-100 dark:bg-rose-950 px-1 py-0.5 rounded border border-rose-300 dark:border-rose-800">
+                            -10%
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="py-2.5 px-3 text-center text-slate-500 font-mono">{r.unit}</td>
+                    <td className="py-2.5 px-3 text-right">{r.contractQty}</td>
+                    <td className="py-2.5 px-4 text-right font-mono">
+                      {r.isReduced ? (
+                        <div>
+                          <span className="text-[10px] line-through text-slate-400 mr-1">{fmt(r.rate)}</span>
+                          <span className="font-bold text-rose-600 dark:text-rose-400">{fmt(r.effectiveRate ?? (r.rate * 0.9))}</span>
+                        </div>
+                      ) : (
+                        <span className="font-semibold text-slate-900 dark:text-white">{fmt(r.rate)}</span>
+                      )}
+                    </td>
+                    <td className="py-2.5 px-4 text-right font-bold text-slate-900 dark:text-white">{fmt(r.contractAmount)}</td>
+                    <td className="py-2.5 px-3 text-right">
+                      <input
+                        type="number"
+                        step="any"
+                        value={r.thisInvoiceQty}
+                        disabled={isPaymentLocked}
+                        onChange={(e) => {
+                          const qty = parseFloat(e.target.value) || 0;
+                          const effectiveRate = r.effectiveRate ?? r.rate;
+                          setReimbursableRows(prev => prev.map(item => 
+                            item.id === r.id 
+                              ? { ...item, thisInvoiceQty: qty, thisInvoiceAmount: Number((qty * effectiveRate).toFixed(2)) } 
+                              : item
+                          ));
+                        }}
+                        title={isPaymentLocked ? "Payment amount is saved and locked" : "This month quantity"}
+                        className={`w-16 text-right px-1.5 py-0.5 rounded font-mono text-[11px] ${
+                          isPaymentLocked 
+                            ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed opacity-70' 
+                            : 'border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900'
+                        }`}
+                      />
+                    </td>
+                    <td className="py-2.5 px-4 text-right">
+                      <input
+                        type="number"
+                        step="any"
+                        value={r.computedThisAmount}
+                        disabled={isPaymentLocked}
+                        onChange={(e) => {
+                          const amt = parseFloat(e.target.value) || 0;
+                          setReimbursableRows(prev => prev.map(item => 
+                            item.id === r.id 
+                              ? { ...item, thisInvoiceAmount: amt } 
+                              : item
+                          ));
+                        }}
+                        title={isPaymentLocked ? "Payment amount is saved and locked" : "This month amount (ETB)"}
+                        className={`w-24 text-right px-1.5 py-0.5 rounded font-mono text-[11px] font-bold text-amber-700 dark:text-amber-400 ${
+                          isPaymentLocked 
+                            ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed opacity-70' 
+                            : 'border border-amber-300 dark:border-amber-700 bg-amber-50/40 dark:bg-amber-950/20'
+                        }`}
+                      />
+                    </td>
+                    <td className="py-2.5 px-3 text-right text-slate-600 dark:text-slate-400">{fmt(r.precedingAmount)}</td>
+                    <td className="py-2.5 px-3 text-right font-bold text-slate-900 dark:text-white">{fmt(r.toDateAmount)}</td>
+                    <td className="py-2.5 px-3 text-right text-slate-400">{fmt(r.remainingAmount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="border-t-2 border-slate-300 dark:border-slate-700 font-bold bg-slate-100 dark:bg-slate-800 text-xs">
+                <tr>
+                  <td colSpan={3} className="py-3 px-4 uppercase text-slate-800 dark:text-white font-sans text-[10px]">
+                    Sub-Total 2 (Reimbursable Operating Direct Costs):
+                  </td>
+                  <td className="py-3 px-3 text-right font-mono">
+                    {reimbursableRowsComputed.reduce((s, r) => s + (r.contractQty || 0), 0).toFixed(2)}
+                  </td>
+                  <td className="py-3 px-4 text-right font-mono"></td>
+                  <td className="py-3 px-4 text-right font-mono font-bold text-slate-900 dark:text-white">
+                    {fmt(subTotal2Contract)}
+                  </td>
+                  <td className="py-3 px-3 text-right font-mono">
+                    {reimbursableRowsComputed.reduce((s, r) => s + (r.thisInvoiceQty || 0), 0).toFixed(2)}
+                  </td>
+                  <td className="py-3 px-4 text-right font-mono font-black text-amber-600 dark:text-amber-400">
+                    {fmt(subTotal2ThisInvoice)}
+                  </td>
+                  <td className="py-3 px-3 text-right font-mono">
+                    {fmt(subTotal2Preceding)}
+                  </td>
+                  <td className="py-3 px-3 text-right font-mono font-black">
+                    {fmt(subTotal2ToDate)}
+                  </td>
+                  <td className="py-3 px-3 text-right font-mono text-slate-400">
+                    {fmt(subTotal2Remaining)}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
       {/* TABLE 4: DEFECT LIABILITY PERIOD SERVICES                                */}
       {/* ========================================================================= */}
       {(activeTableTab === 'all' || activeTableTab === 'defectLiability') && (
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm space-y-3">
           <div className="p-4 bg-slate-50/80 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <h4 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
-                <span className="w-6 h-6 rounded-lg bg-slate-700 text-white text-xs flex items-center justify-center font-mono">4</span>
-                Table 4: Defect Liability Period Supervisory Personnel Allocation
-              </h4>
+              <div className="flex flex-wrap items-center gap-2">
+                <h4 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-lg bg-indigo-600 text-white text-xs flex items-center justify-center font-mono">4</span>
+                  Table 4: Defect Liability Period (DLP) Supervisory Personnel Allocation
+                </h4>
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 border border-indigo-200 flex items-center gap-1">
+                  <span>🔗 Linked to Contract Amount Table 3 (DLP)</span>
+                </span>
+              </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                Staff allocations for the post-completion maintenance and guarantee period (Resident Engineer, Senior QS, Senior Surveyor).
+                Staff allocations for the post-completion maintenance and guarantee period. Rates & MM ceilings synchronized directly with Contract Amount Schedule Table 3.
               </p>
             </div>
             <div className="text-right font-mono">
               <span className="text-[11px] text-slate-400 block">Sub-Total 3 (This Month)</span>
-              <span className="text-sm font-bold text-slate-700 dark:text-slate-300">
+              <span className="text-sm font-bold text-indigo-700 dark:text-indigo-300">
                 {fmt(subTotal3ThisInvoice)} ETB
               </span>
             </div>
@@ -2180,12 +2519,12 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
               <thead>
                 <tr className="border-b border-slate-200 dark:border-slate-700 text-[10px] text-slate-500 uppercase tracking-wider font-bold">
                   <th className="py-2 px-3 w-12 text-center">S.N</th>
-                  <th className="py-2 px-4 min-w-[260px]">Role / Position</th>
+                  <th className="py-2 px-4 min-w-[260px]">Role / Position & Staff Name</th>
                   <th className="py-2 px-3 text-center">Unit</th>
-                  <th className="py-2 px-3 text-right">Contract MM</th>
+                  <th className="py-2 px-3 text-right">Contract MM (DLP)</th>
                   <th className="py-2 px-4 text-right">Rate (ETB)</th>
                   <th className="py-2 px-4 text-right font-bold">Contract Amount (ETB)</th>
-                  <th className="py-2 px-3 text-right">This Month MM</th>
+                  <th className="py-2 px-3 text-right font-black text-blue-600 bg-blue-50/30 dark:bg-blue-950/20">This Month MM</th>
                   <th className="py-2 px-4 text-right font-bold text-blue-600">This Month Fee (ETB)</th>
                 </tr>
               </thead>
@@ -2251,10 +2590,15 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm space-y-4">
           <div className="p-4 bg-slate-50/80 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <h4 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
-                <span className="w-6 h-6 rounded-lg bg-emerald-600 text-white text-xs flex items-center justify-center font-mono">5</span>
-                Table 5: Consolidated Summary & Net Payment Computation Table
-              </h4>
+              <div className="flex flex-wrap items-center gap-2">
+                <h4 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-lg bg-emerald-600 text-white text-xs flex items-center justify-center font-mono">5</span>
+                  Table 5: Consolidated Summary & Net Payment Computation Table
+                </h4>
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 flex items-center gap-1">
+                  <span>🔗 Master Baseline Linked to Contract Amount Table 1</span>
+                </span>
+              </div>
               <p className="text-xs text-slate-500 mt-0.5">
                 Official Ethiopian Roads Administration summary sheet with 15% VAT, contractual deductions, and net payable in Ethiopian Birr.
               </p>
@@ -2274,62 +2618,81 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                   <tr className="bg-slate-100 dark:bg-slate-800 text-[10px] text-slate-600 dark:text-slate-300 uppercase tracking-wider font-black border-b border-slate-200 dark:border-slate-700">
                     <th className="py-2.5 px-3 w-12 text-center">Item</th>
                     <th className="py-2.5 px-4 min-w-[280px]">Summary Claim Component</th>
-                    <th className="py-2.5 px-4 text-right min-w-[130px]">Contract Amount (ETB)</th>
+                    <th className="py-2.5 px-4 text-right min-w-[130px]">Contract Baseline (ETB)</th>
                     <th className="py-2.5 px-4 text-right min-w-[140px] font-black text-blue-600 dark:text-blue-400 bg-blue-50/30 dark:bg-blue-950/20">
                       This Month Claim (ETB)
                     </th>
                     <th className="py-2.5 px-4 text-right min-w-[130px]">Preceding Claim (ETB)</th>
                     <th className="py-2.5 px-4 text-right min-w-[130px] font-bold">To-Date Claim (ETB)</th>
+                    <th className="py-2.5 px-4 text-right min-w-[130px] font-bold text-slate-600 dark:text-slate-400">Remaining Balance (ETB)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-sans text-xs">
                   {/* Row 1: Sub Total 1 */}
                   <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
                     <td className="py-2.5 px-3 text-center font-mono font-bold text-slate-400">1</td>
-                    <td className="py-2.5 px-4 font-semibold text-slate-800 dark:text-slate-200">
-                      Sub Total 1 (Remuneration of Consultant Staff)
+                    <td className="py-2.5 px-4">
+                      <div className="font-semibold text-slate-800 dark:text-slate-200">
+                        Sub Total 1 (Remuneration of Construction Supervisory Staff)
+                      </div>
+                      <span className="text-[10px] text-slate-400 block font-mono">Linked to Contract Table 2 (Construction Schedule)</span>
                     </td>
-                    <td className="py-2.5 px-4 text-right font-mono">{fmt(subTotal1Contract)}</td>
+                    <td className="py-2.5 px-4 text-right font-mono font-semibold">{fmt(linkedFeesContract)}</td>
                     <td className="py-2.5 px-4 text-right font-mono font-bold text-blue-600 dark:text-blue-400 bg-blue-50/20 dark:bg-blue-950/10">
                       {fmt(subTotal1ThisInvoice)}
                     </td>
                     <td className="py-2.5 px-4 text-right font-mono text-slate-600 dark:text-slate-400">{fmt(subTotal1Preceding)}</td>
                     <td className="py-2.5 px-4 text-right font-mono font-bold">{fmt(subTotal1ToDate)}</td>
+                    <td className="py-2.5 px-4 text-right font-mono text-emerald-600 dark:text-emerald-400 font-semibold">
+                      {fmt(Math.max(0, linkedFeesContract - subTotal1ToDate))}
+                    </td>
                   </tr>
 
                   {/* Row 2: Sub Total 2 */}
                   <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
                     <td className="py-2.5 px-3 text-center font-mono font-bold text-slate-400">2</td>
-                    <td className="py-2.5 px-4 font-semibold text-slate-800 dark:text-slate-200">
-                      Sub Total 2 (Reimbursable Direct Costs)
+                    <td className="py-2.5 px-4">
+                      <div className="font-semibold text-slate-800 dark:text-slate-200">
+                        Sub Total 2 (Reimbursable Operating Direct Costs)
+                      </div>
+                      <span className="text-[10px] text-slate-400 block font-mono">Linked to Contract Table 1 Item B</span>
                     </td>
-                    <td className="py-2.5 px-4 text-right font-mono">{fmt(subTotal2Contract)}</td>
+                    <td className="py-2.5 px-4 text-right font-mono font-semibold">{fmt(linkedReimbContract)}</td>
                     <td className="py-2.5 px-4 text-right font-mono font-bold text-indigo-600 dark:text-indigo-400 bg-blue-50/20 dark:bg-blue-950/10">
                       {fmt(subTotal2ThisInvoice)}
                     </td>
                     <td className="py-2.5 px-4 text-right font-mono text-slate-600 dark:text-slate-400">{fmt(subTotal2Preceding)}</td>
                     <td className="py-2.5 px-4 text-right font-mono font-bold">{fmt(subTotal2ToDate)}</td>
+                    <td className="py-2.5 px-4 text-right font-mono text-emerald-600 dark:text-emerald-400 font-semibold">
+                      {fmt(Math.max(0, linkedReimbContract - subTotal2ToDate))}
+                    </td>
                   </tr>
 
                   {/* Row 3: Sub Total 3 Defect */}
                   <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
                     <td className="py-2.5 px-3 text-center font-mono font-bold text-slate-400">3</td>
-                    <td className="py-2.5 px-4 font-semibold text-slate-800 dark:text-slate-200">
-                      Sub Total 3 (Defect Liability Personnel Allocation)
+                    <td className="py-2.5 px-4">
+                      <div className="font-semibold text-slate-800 dark:text-slate-200">
+                        Sub Total 3 (Defect Liability Personnel Allocation)
+                      </div>
+                      <span className="text-[10px] text-indigo-600 dark:text-indigo-400 block font-mono">Linked to Contract Table 3 (DLP Remuneration Schedule)</span>
                     </td>
-                    <td className="py-2.5 px-4 text-right font-mono">{fmt(subTotal3Contract)}</td>
-                    <td className="py-2.5 px-4 text-right font-mono font-bold bg-blue-50/20 dark:bg-blue-950/10">
+                    <td className="py-2.5 px-4 text-right font-mono font-semibold">{fmt(subTotal3Contract)}</td>
+                    <td className="py-2.5 px-4 text-right font-mono font-bold text-indigo-600 dark:text-indigo-400 bg-blue-50/20 dark:bg-blue-950/10">
                       {fmt(subTotal3ThisInvoice)}
                     </td>
                     <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>
-                    <td className="py-2.5 px-4 text-right font-mono font-bold">{fmt(subTotal3ThisInvoice)}</td>
+                    <td className="py-2.5 px-4 text-right font-mono font-bold text-indigo-600 dark:text-indigo-400">{fmt(subTotal3ThisInvoice)}</td>
+                    <td className="py-2.5 px-4 text-right font-mono text-emerald-600 dark:text-emerald-400 font-semibold">
+                      {fmt(Math.max(0, subTotal3Contract - subTotal3ThisInvoice))}
+                    </td>
                   </tr>
 
                   {/* Direct Sum (1 + 2 + 3) */}
-                  <tr className="bg-slate-50/60 dark:bg-slate-800/60 font-bold">
+                  <tr className="bg-slate-50/60 dark:bg-slate-800/60 font-bold border-t border-b border-slate-300 dark:border-slate-700">
                     <td className="py-2.5 px-3 text-center font-mono text-slate-500"></td>
                     <td className="py-2.5 px-4 uppercase text-slate-700 dark:text-slate-300">
-                      Subtotal Direct Fees & Reimbursables (1 + 2 + 3)
+                      Subtotal Direct Services & Expenses (1 + 2 + 3)
                     </td>
                     <td className="py-2.5 px-4 text-right font-mono">{fmt(totalBaseContract)}</td>
                     <td className="py-2.5 px-4 text-right font-mono font-black text-slate-900 dark:text-white bg-blue-50/30 dark:bg-blue-950/20">
@@ -2337,6 +2700,9 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                     </td>
                     <td className="py-2.5 px-4 text-right font-mono">{fmt(totalSubtotalPreceding)}</td>
                     <td className="py-2.5 px-4 text-right font-mono font-black">{fmt(totalSubtotalToDate)}</td>
+                    <td className="py-2.5 px-4 text-right font-mono font-black text-emerald-700 dark:text-emerald-300">
+                      {fmt(Math.max(0, totalBaseContract - totalSubtotalToDate))}
+                    </td>
                   </tr>
 
                   {/* Contingency */}
@@ -2406,6 +2772,9 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                     <td className="py-2.5 px-4 text-right font-mono font-bold text-slate-900 dark:text-white">
                       {fmt(contingencyToDate)}
                     </td>
+                    <td className="py-2.5 px-4 text-right font-mono text-emerald-600 dark:text-emerald-400 font-semibold">
+                      {fmt(Math.max(0, contingencyContract - contingencyToDate))}
+                    </td>
                   </tr>
 
                   {/* 15% VAT */}
@@ -2426,6 +2795,7 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                           <span>%</span>
                         </div>
                       </div>
+                      <span className="text-[10px] text-purple-600/80 block font-mono">Linked to Contract Table 1 Item D</span>
                     </td>
                     <td className="py-2.5 px-4 text-right font-mono text-purple-700 dark:text-purple-300">{fmt(vatContract)}</td>
                     <td className="py-2.5 px-4 text-right font-mono font-black text-purple-700 dark:text-purple-300 bg-purple-100/40 dark:bg-purple-950/30">
@@ -2433,6 +2803,9 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                     </td>
                     <td className="py-2.5 px-4 text-right font-mono text-purple-600/80">{fmt(vatPreceding)}</td>
                     <td className="py-2.5 px-4 text-right font-mono font-black text-purple-700 dark:text-purple-300">{fmt(vatToDate)}</td>
+                    <td className="py-2.5 px-4 text-right font-mono text-purple-600 dark:text-purple-400 font-semibold">
+                      {fmt(Math.max(0, vatContract - vatToDate))}
+                    </td>
                   </tr>
 
                   {/* GROSS CLAIM TOTAL */}
@@ -2440,13 +2813,17 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                     <td className="py-3 px-3 text-center font-mono">6</td>
                     <td className="py-3 px-4 uppercase text-slate-900 dark:text-white">
                       GROSS INVOICE CLAIM AMOUNT (Birr)
+                      <span className="text-[10px] text-slate-400 lowercase font-normal block">Total contract price ceiling (mirrors Table 1 Item E)</span>
                     </td>
-                    <td className="py-3 px-4 text-right font-mono">{fmt(totalContractDue)}</td>
+                    <td className="py-3 px-4 text-right font-mono text-slate-900 dark:text-white font-black">{fmt(totalContractDue)}</td>
                     <td className="py-3 px-4 text-right font-mono text-blue-600 dark:text-blue-400 bg-blue-100/40 dark:bg-blue-950/40">
                       {fmt(grossPayableBase)}
                     </td>
                     <td className="py-3 px-4 text-right font-mono text-slate-700 dark:text-slate-300">{fmt(grossPreceding)}</td>
                     <td className="py-3 px-4 text-right font-mono text-slate-900 dark:text-white">{fmt(grossToDate)}</td>
+                    <td className="py-3 px-4 text-right font-mono font-black text-emerald-700 dark:text-emerald-300">
+                      {fmt(Math.max(0, totalContractDue - grossToDate))}
+                    </td>
                   </tr>
 
                   {/* Overtime Row */}
@@ -2470,6 +2847,7 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                     </td>
                     <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>
                     <td className="py-2.5 px-4 text-right font-mono font-bold text-blue-600">{fmt(overtimeEtb)}</td>
+                    <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>
                   </tr>
 
                   {/* DEDUCTIONS SECTION */}
@@ -2495,6 +2873,7 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                     </td>
                     <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>
                     <td className="py-2.5 px-4 text-right font-mono font-bold text-rose-600">-{fmt(advanceDeductionEtb)}</td>
+                    <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>
                   </tr>
 
                   <tr className="bg-rose-50/40 dark:bg-rose-950/10">
@@ -2519,6 +2898,7 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                     </td>
                     <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>
                     <td className="py-2.5 px-4 text-right font-mono font-bold text-rose-600">-{fmt(taxDeductionEtb)}</td>
+                    <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>
                   </tr>
 
                   <tr className="bg-rose-50/40 dark:bg-rose-950/10">
@@ -2543,6 +2923,7 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                     </td>
                     <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>
                     <td className="py-2.5 px-4 text-right font-mono font-bold text-rose-600">-{fmt(overtimeDeductionEtb)}</td>
+                    <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>
                   </tr>
 
 
