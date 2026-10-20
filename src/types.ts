@@ -842,6 +842,8 @@ export interface ConsultantPersonnel {
   contactEmail?: string;
   siteStation?: string;
   remarks?: string;
+  rateEtb?: number;
+  rateUsd?: number;
 }
 
 export interface PersonnelAuditLogEntry {
@@ -1101,6 +1103,13 @@ export interface ContractStaffRateCondition1 {
   totalEtb: number;
   rateUsd?: number;
   totalUsd?: number;
+  // USD / ETB Specific Split Settings
+  splitType?: 'percentage' | 'fixed';
+  usdPercentage?: number;
+  etbPercentage?: number;
+  fixedUsdRate?: number;
+  fixedEtbRate?: number;
+  baseRateEtb?: number;
 }
 
 export interface ContractReimbursableCondition1 {
@@ -1110,6 +1119,13 @@ export interface ContractReimbursableCondition1 {
   amountEtb: number;
   amountUsd?: number;
   basis?: string;
+  // USD / ETB Specific Split Settings
+  splitType?: 'percentage' | 'fixed';
+  usdPercentage?: number;
+  etbPercentage?: number;
+  fixedUsdAmount?: number;
+  fixedEtbAmount?: number;
+  baseAmountEtb?: number;
 }
 
 export interface ContractCondition1Data {
@@ -1134,6 +1150,12 @@ export interface ContractCondition1Data {
     contingency: number;
     vat: number;
     subTotal: number;
+  };
+  // Currency split settings panel configuration
+  currencySplitSettings?: {
+    enabled?: boolean;
+    exchangeRate?: number;
+    lastAppliedAt?: string;
   };
 }
 

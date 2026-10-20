@@ -657,19 +657,23 @@ export default function SupervisionConsultantView({
   const financialSummary = useMemo(() => {
     const invoices = consultant.invoices || [];
     const totalGrossInvoiced = invoices.reduce((acc, inv) => acc + (inv.grossAmountEtb || 0), 0);
+    const totalGrossInvoicedUsd = hasUsdPayments ? invoices.reduce((acc, inv) => acc + (inv.grossAmountUsd || 0), 0) : 0;
     const totalNetInvoiced = invoices.reduce((acc, inv) => acc + (inv.netAmountEtb || 0), 0);
+    const totalNetInvoicedUsd = hasUsdPayments ? invoices.reduce((acc, inv) => acc + (inv.netAmountUsd || inv.foreignCurrencyAmount || 0), 0) : 0;
     const totalAdvanceDeducted = invoices.reduce((acc, inv) => acc + (inv.advanceDeductionEtb || 0), 0);
     const totalTaxesDeducted = invoices.reduce((acc, inv) => acc + (inv.taxDeductionEtb || 0), 0);
     
     const paidInvoices = invoices.filter(inv => inv.status === 'Paid');
     const totalPaidEtb = paidInvoices.reduce((acc, inv) => acc + (inv.netAmountEtb || 0), 0);
-    const totalPaidUsd = hasUsdPayments ? paidInvoices.reduce((acc, inv) => acc + (inv.foreignCurrencyAmount || 0), 0) : 0;
+    const totalPaidUsd = hasUsdPayments ? paidInvoices.reduce((acc, inv) => acc + (inv.netAmountUsd || inv.foreignCurrencyAmount || 0), 0) : 0;
 
     const certifiedInvoices = invoices.filter(inv => inv.status === 'Certified');
     const totalCertifiedPendingEtb = certifiedInvoices.reduce((acc, inv) => acc + (inv.netAmountEtb || 0), 0);
+    const totalCertifiedPendingUsd = hasUsdPayments ? certifiedInvoices.reduce((acc, inv) => acc + (inv.netAmountUsd || inv.foreignCurrencyAmount || 0), 0) : 0;
 
     const submittedInvoices = invoices.filter(inv => inv.status === 'Submitted' || inv.status === 'Pending');
     const totalSubmittedPendingEtb = submittedInvoices.reduce((acc, inv) => acc + (inv.netAmountEtb || 0), 0);
+    const totalSubmittedPendingUsd = hasUsdPayments ? submittedInvoices.reduce((acc, inv) => acc + (inv.netAmountUsd || inv.foreignCurrencyAmount || 0), 0) : 0;
 
     // Matured Overdue (>56 days) Fee Invoices
     const today = new Date();
@@ -687,27 +691,33 @@ export default function SupervisionConsultantView({
     });
     const maturedInvoicesCount = maturedInvoices.length;
     const maturedPendingEtb = maturedInvoices.reduce((acc, inv) => acc + (inv.netAmountEtb || 0), 0);
-    const maturedPendingUsd = hasUsdPayments ? maturedInvoices.reduce((acc, inv) => acc + (inv.foreignCurrencyAmount || 0), 0) : 0;
+    const maturedPendingUsd = hasUsdPayments ? maturedInvoices.reduce((acc, inv) => acc + (inv.netAmountUsd || inv.foreignCurrencyAmount || 0), 0) : 0;
 
     const totalOutstandingEtb = totalGrossInvoiced - totalPaidEtb;
     const contractBudgetEtb = consultant.revisedFeeEtb || consultant.originalFeeEtb || 1;
+    const contractBudgetUsd = consultant.revisedFeeUsd || consultant.originalFeeUsd || 0;
     const financialUtilizationPct = (totalGrossInvoiced / contractBudgetEtb) * 100;
     const paymentDisbursementPct = totalGrossInvoiced > 0 ? (totalPaidEtb / totalNetInvoiced) * 100 : 0;
 
     return {
       totalGrossInvoiced,
+      totalGrossInvoicedUsd,
       totalNetInvoiced,
+      totalNetInvoicedUsd,
       totalAdvanceDeducted,
       totalTaxesDeducted,
       totalPaidEtb,
       totalPaidUsd,
       totalCertifiedPendingEtb,
+      totalCertifiedPendingUsd,
       totalSubmittedPendingEtb,
+      totalSubmittedPendingUsd,
       maturedInvoicesCount,
       maturedPendingEtb,
       maturedPendingUsd,
       totalOutstandingEtb,
       contractBudgetEtb,
+      contractBudgetUsd,
       financialUtilizationPct,
       paymentDisbursementPct
     };
@@ -720,11 +730,15 @@ export default function SupervisionConsultantView({
     const totalGross = invs.reduce((sum, inv) => sum + (inv.grossAmountEtb || ((inv.feesAmountEtb || 0) + (inv.reimbursableAmountEtb || 0))), 0);
     const totalDeductions = invs.reduce((sum, inv) => sum + ((inv.advanceDeductionEtb || 0) + (inv.taxDeductionEtb || 0)), 0);
     const totalNet = invs.reduce((sum, inv) => sum + (inv.netAmountEtb || 0), 0);
-    const totalUsd = hasUsdPayments ? invs.reduce((sum, inv) => sum + (inv.foreignCurrencyAmount || 0), 0) : 0;
+    const totalGrossUsd = hasUsdPayments ? invs.reduce((sum, inv) => sum + (inv.grossAmountUsd || 0), 0) : 0;
+    const totalDeductionsUsd = hasUsdPayments ? invs.reduce((sum, inv) => sum + ((inv.advanceDeductionUsd || 0) + (inv.taxDeductionUsd || 0)), 0) : 0;
+    const totalNetUsd = hasUsdPayments ? invs.reduce((sum, inv) => sum + (inv.netAmountUsd || inv.foreignCurrencyAmount || 0), 0) : 0;
+    const totalUsd = totalNetUsd;
     const contractFee = consultant.revisedFeeEtb || consultant.originalFeeEtb || 0;
+    const contractFeeUsd = consultant.revisedFeeUsd || consultant.originalFeeUsd || 0;
     const utilization = contractFee > 0 ? (totalGross / contractFee) * 100 : 0;
-    return { totalFees, totalReimbursables, totalGross, totalDeductions, totalNet, totalUsd, contractFee, utilization };
-  }, [consultant.invoices, consultant.revisedFeeEtb, consultant.originalFeeEtb, hasUsdPayments]);
+    return { totalFees, totalReimbursables, totalGross, totalDeductions, totalNet, totalGrossUsd, totalDeductionsUsd, totalNetUsd, totalUsd, contractFee, contractFeeUsd, utilization };
+  }, [consultant.invoices, consultant.revisedFeeEtb, consultant.originalFeeEtb, consultant.revisedFeeUsd, consultant.originalFeeUsd, hasUsdPayments]);
 
   // Calculations for Personnel
   const personnelSummary = useMemo(() => {
@@ -786,6 +800,41 @@ export default function SupervisionConsultantView({
         map[s.name.toLowerCase().trim()] = rate;
       }
     });
+    return map;
+  }, [consultant.contractAmountSchedule]);
+
+  // Cross-module link: Contract USD rates mapped from Condition 1 / Condition 2 Schedule
+  const contractRatesUsdMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    const savedC1 = consultant.contractAmountSchedule?.condition1;
+    const staffList = savedC1?.staffFees && savedC1.staffFees.length > 0
+      ? savedC1.staffFees
+      : DEFAULT_CONDITION_1_STAFF;
+
+    staffList.forEach(s => {
+      const rateUsd = Number(s.rateUsd) || (s.fixedUsdRate ? Number(s.fixedUsdRate) : 0);
+      if (rateUsd > 0) {
+        if (s.position) map[s.position.toLowerCase().trim()] = rateUsd;
+        if (s.name && s.name !== 'To be nominated' && s.name !== 'TBN') {
+          map[s.name.toLowerCase().trim()] = rateUsd;
+        }
+      }
+    });
+
+    // Also check Condition 2 foreign rates if present
+    const savedC2 = consultant.contractAmountSchedule?.condition2;
+    if (savedC2?.staffFees) {
+      savedC2.staffFees.forEach(s => {
+        const rateUsd = Number(s.rateUsd) || 0;
+        if (rateUsd > 0) {
+          if (s.position) map[s.position.toLowerCase().trim()] = rateUsd;
+          if (s.name && s.name !== 'To be nominated' && s.name !== 'TBN') {
+            map[s.name.toLowerCase().trim()] = rateUsd;
+          }
+        }
+      });
+    }
+
     return map;
   }, [consultant.contractAmountSchedule]);
 
@@ -3312,6 +3361,7 @@ export default function SupervisionConsultantView({
                   const isKey = p.category === 'Key Personnel' || (p.category as any) === 'Key';
                   const isActive = p.status === 'Active';
                   const rate = p.rateEtb || contractRatesMap[p.position?.toLowerCase().trim()] || contractRatesMap[p.name?.toLowerCase().trim()] || 0;
+                  const rateUsd = p.rateUsd || contractRatesUsdMap[p.position?.toLowerCase().trim()] || contractRatesUsdMap[p.name?.toLowerCase().trim()] || 0;
                   const invStat = staffAttendanceStats[p.id] || staffAttendanceStats[p.name?.toLowerCase().trim()];
                   const mmPct = p.manMonthsAllocated ? Math.min(100, ((p.manMonthsInput || 0) / p.manMonthsAllocated) * 100) : 0;
 
@@ -3339,7 +3389,7 @@ export default function SupervisionConsultantView({
                           </span>
                         </div>
 
-                        {/* Contract Schedule Linkage & Rate */}
+                        {/* Contract Schedule Linkage & Rate (ETB) */}
                         <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 text-xs">
                           <span className="text-slate-500 text-[11px] font-medium">Contract Rate (ETB):</span>
                           <button
@@ -3352,6 +3402,22 @@ export default function SupervisionConsultantView({
                             <ExternalLink className="w-2.5 h-2.5 text-slate-400" />
                           </button>
                         </div>
+
+                        {/* Contract Schedule Linkage & Rate (USD) */}
+                        {hasUsdPayments && (
+                          <div className="flex items-center justify-between p-2 rounded-xl bg-purple-50/50 dark:bg-purple-950/30 border border-purple-100 dark:border-purple-900/40 text-xs">
+                            <span className="text-purple-700 dark:text-purple-300 text-[11px] font-semibold">Contract Rate (USD):</span>
+                            <button
+                              type="button"
+                              onClick={() => setActiveTab('contract_amount')}
+                              className="font-mono font-bold text-purple-700 dark:text-purple-300 hover:underline flex items-center gap-1 cursor-pointer"
+                              title="Inspect in USD Split Settings of Contract Amount"
+                            >
+                              <span>{rateUsd > 0 ? `$${formatAccounting(rateUsd, '')}/mo` : 'Set in Split Settings'}</span>
+                              <ExternalLink className="w-2.5 h-2.5 text-purple-400" />
+                            </button>
+                          </div>
+                        )}
 
                         {/* Invoice Attendance Presence */}
                         <div className="flex items-center justify-between p-2 rounded-xl bg-blue-50/50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/40 text-xs">
@@ -3488,6 +3554,11 @@ export default function SupervisionConsultantView({
                       <th className="py-3 px-3 text-right">
                         <span>Contract Rate (ETB)</span>
                       </th>
+                      {hasUsdPayments && (
+                        <th className="py-3 px-3 text-right text-purple-700 dark:text-purple-300 bg-purple-50/50 dark:bg-purple-950/30">
+                          <span>Contract Rate (USD)</span>
+                        </th>
+                      )}
                       <th
                         onClick={() => {
                           if (personnelSortField === 'assignmentDate') {
@@ -3546,7 +3617,7 @@ export default function SupervisionConsultantView({
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                     {filteredPersonnel.length === 0 ? (
                       <tr>
-                        <td colSpan={10} className="py-12 text-center text-slate-400">
+                        <td colSpan={hasUsdPayments ? 11 : 10} className="py-12 text-center text-slate-400">
                           <Users className="w-8 h-8 mx-auto mb-2 opacity-40" />
                           <p className="text-sm font-semibold">No assigned personnel matching your criteria.</p>
                           <p className="text-xs text-slate-400 mt-1">Click "New Staff" to register supervision staff members.</p>
@@ -3559,6 +3630,7 @@ export default function SupervisionConsultantView({
                         const isActive = p.status === 'Active';
                         const isDemobOrReplaced = p.status === 'Demobilized' || p.status === 'Replaced';
                         const rate = p.rateEtb || contractRatesMap[p.position?.toLowerCase().trim()] || contractRatesMap[p.name?.toLowerCase().trim()] || 0;
+                        const rateUsd = p.rateUsd || contractRatesUsdMap[p.position?.toLowerCase().trim()] || contractRatesUsdMap[p.name?.toLowerCase().trim()] || 0;
                         const invStat = staffAttendanceStats[p.id] || staffAttendanceStats[p.name?.toLowerCase().trim()];
                         const mmPct = p.manMonthsAllocated ? Math.min(100, ((p.manMonthsInput || 0) / p.manMonthsAllocated) * 100) : 0;
 
@@ -3619,7 +3691,7 @@ export default function SupervisionConsultantView({
                               )}
                             </td>
 
-                            {/* Contract Rate Column */}
+                            {/* Contract Rate ETB Column */}
                             <td className="py-3 px-3 text-right">
                               <button
                                 type="button"
@@ -3630,6 +3702,20 @@ export default function SupervisionConsultantView({
                                 {rate > 0 ? `${formatAccounting(rate, '')} ETB` : '-'}
                               </button>
                             </td>
+
+                            {/* Contract Rate USD Column (simultaneous when USD enabled) */}
+                            {hasUsdPayments && (
+                              <td className="py-3 px-3 text-right bg-purple-50/20 dark:bg-purple-950/10">
+                                <button
+                                  type="button"
+                                  onClick={() => setActiveTab('contract_amount')}
+                                  className="font-mono font-bold text-xs text-purple-600 dark:text-purple-400 hover:underline cursor-pointer"
+                                  title="Inspect in USD Split Settings of Contract Amount"
+                                >
+                                  {rateUsd > 0 ? `$${formatAccounting(rateUsd, '')}` : '-'}
+                                </button>
+                              </td>
+                            )}
 
                             <td className="py-3 px-4 bg-indigo-50/30 dark:bg-indigo-950/10">
                               <div className="font-bold font-mono text-slate-900 dark:text-white flex items-center gap-1.5">
@@ -3803,6 +3889,11 @@ export default function SupervisionConsultantView({
               <div className="text-xl font-black text-slate-900 dark:text-white font-mono mt-1">
                 {formatAccounting(financialSummary.totalGrossInvoiced, 'ETB')}
               </div>
+              {hasUsdPayments && (
+                <div className="text-xs font-bold text-purple-600 dark:text-purple-400 font-mono mt-0.5">
+                  + ${formatAccounting(financialSummary.totalGrossInvoicedUsd || 0, '')} USD
+                </div>
+              )}
               <div className="text-[10px] text-slate-400 mt-0.5">
                 {(consultant.invoices || []).length} billings submitted
               </div>
@@ -3816,9 +3907,9 @@ export default function SupervisionConsultantView({
               <div className="text-xl font-black text-emerald-600 dark:text-emerald-400 font-mono mt-1">
                 {formatAccounting(financialSummary.totalPaidEtb, 'ETB')}
               </div>
-              {hasUsdPayments && financialSummary.totalPaidUsd > 0 ? (
-                <div className="text-[10px] text-emerald-500 font-semibold mt-0.5">
-                  Plus ${formatAccounting(financialSummary.totalPaidUsd, '')} USD foreign fee
+              {hasUsdPayments ? (
+                <div className="text-xs font-bold text-purple-600 dark:text-purple-400 font-mono mt-0.5">
+                  + ${formatAccounting(financialSummary.totalPaidUsd, '')} USD foreign fee
                 </div>
               ) : (
                 <div className="text-[10px] text-emerald-600/80 dark:text-emerald-400/80 font-semibold mt-0.5">
@@ -3835,6 +3926,11 @@ export default function SupervisionConsultantView({
               <div className="text-xl font-black text-amber-600 dark:text-amber-400 font-mono mt-1">
                 {formatAccounting(financialSummary.totalCertifiedPendingEtb, 'ETB')}
               </div>
+              {hasUsdPayments && financialSummary.totalCertifiedPendingUsd > 0 && (
+                <div className="text-xs font-bold text-purple-600 dark:text-purple-400 font-mono mt-0.5">
+                  + ${formatAccounting(financialSummary.totalCertifiedPendingUsd, '')} USD
+                </div>
+              )}
               {financialSummary.maturedInvoicesCount > 0 ? (
                 <div className="text-[10px] text-red-600 dark:text-rose-400 font-bold mt-0.5 flex items-center gap-1 animate-pulse">
                   <AlertTriangle className="w-3 h-3" />
@@ -3855,6 +3951,11 @@ export default function SupervisionConsultantView({
               <div className="text-xl font-black text-purple-600 dark:text-purple-400 font-mono mt-1">
                 {formatAccounting(Math.max(0, financialSummary.contractBudgetEtb - financialSummary.totalGrossInvoiced), 'ETB')}
               </div>
+              {hasUsdPayments && financialSummary.contractBudgetUsd > 0 && (
+                <div className="text-xs font-bold text-purple-600 dark:text-purple-400 font-mono mt-0.5">
+                  USD Rem: ${formatAccounting(Math.max(0, financialSummary.contractBudgetUsd - (financialSummary.totalGrossInvoicedUsd || 0)), '')} USD
+                </div>
+              )}
               <div className="text-[10px] text-purple-500 font-semibold mt-0.5">
                 {(100 - financialSummary.financialUtilizationPct).toFixed(1)}% remaining budget
               </div>
@@ -4431,7 +4532,7 @@ export default function SupervisionConsultantView({
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                     {filteredInvoices.length === 0 ? (
                       <tr>
-                        <td colSpan={hasUsdPayments ? 11 : 10} className="py-12 text-center text-slate-400">
+                        <td colSpan={hasUsdPayments ? 13 : 10} className="py-12 text-center text-slate-400">
                           <Receipt className="w-8 h-8 mx-auto mb-2 opacity-40" />
                           <p className="text-sm font-semibold">No invoices recorded yet.</p>
                           <p className="text-xs text-slate-400 mt-1">Click "Calculate Monthly Invoice" to log a supervision consultant fee claim.</p>
@@ -4571,6 +4672,18 @@ export default function SupervisionConsultantView({
                                   className="w-28 text-right px-2 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg font-mono font-bold text-xs"
                                 />
                               </td>
+                              {hasUsdPayments && (
+                                <td className="py-2.5 px-3 text-right bg-purple-50/20 dark:bg-purple-950/20">
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    value={inv.grossAmountUsd || 0}
+                                    onChange={(e) => handleUpdateInlineInvoiceField(inv.id, 'grossAmountUsd', parseFloat(e.target.value) || 0)}
+                                    className="w-24 text-right px-2 py-1 bg-white dark:bg-slate-800 border border-purple-300 dark:border-purple-700 rounded-lg font-mono text-purple-700 dark:text-purple-300 font-bold text-xs"
+                                    placeholder="0.00 USD"
+                                  />
+                                </td>
+                              )}
                               <td className="py-2.5 px-3 text-right">
                                 <input
                                   type="number"
@@ -4579,6 +4692,18 @@ export default function SupervisionConsultantView({
                                   className="w-24 text-right px-2 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg font-mono text-rose-600 text-xs"
                                 />
                               </td>
+                              {hasUsdPayments && (
+                                <td className="py-2.5 px-3 text-right bg-purple-50/20 dark:bg-purple-950/20">
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    value={inv.advanceDeductionUsd || 0}
+                                    onChange={(e) => handleUpdateInlineInvoiceField(inv.id, 'advanceDeductionUsd', parseFloat(e.target.value) || 0)}
+                                    className="w-24 text-right px-2 py-1 bg-white dark:bg-slate-800 border border-rose-300 dark:border-rose-700 rounded-lg font-mono text-rose-600 text-xs"
+                                    placeholder="0.00 USD"
+                                  />
+                                </td>
+                              )}
                               <td className="py-2.5 px-3 text-right">
                                 <input
                                   type="number"
@@ -4598,8 +4723,12 @@ export default function SupervisionConsultantView({
                                   <input
                                     type="number"
                                     step="0.01"
-                                    value={inv.foreignCurrencyAmount || 0}
-                                    onChange={(e) => handleUpdateInlineInvoiceField(inv.id, 'foreignCurrencyAmount', parseFloat(e.target.value) || 0)}
+                                    value={inv.netAmountUsd || inv.foreignCurrencyAmount || 0}
+                                    onChange={(e) => {
+                                      const val = parseFloat(e.target.value) || 0;
+                                      handleUpdateInlineInvoiceField(inv.id, 'netAmountUsd', val);
+                                      handleUpdateInlineInvoiceField(inv.id, 'foreignCurrencyAmount', val);
+                                    }}
                                     className="w-24 text-right px-2 py-1 bg-white dark:bg-slate-800 border border-purple-300 dark:border-purple-700 rounded-lg font-mono text-purple-600 dark:text-purple-300 font-bold text-xs"
                                     placeholder="0.00 USD"
                                   />
@@ -4720,7 +4849,7 @@ export default function SupervisionConsultantView({
                             </td>
                             {hasUsdPayments && (
                               <td className="py-3.5 px-3 text-right font-mono font-black text-purple-700 dark:text-purple-300 bg-purple-50/30 dark:bg-purple-950/20 border-x border-purple-100 dark:border-purple-900/30">
-                                {formatAccounting(inv.foreignCurrencyAmount || 0, '')}
+                                {formatAccounting(inv.netAmountUsd || 0, '')}
                               </td>
                             )}
 
@@ -4774,19 +4903,33 @@ export default function SupervisionConsultantView({
                       <td className="py-3.5 px-3 text-right font-black text-slate-900 dark:text-white">
                         {formatAccounting(invoiceTotals.totalGross, '')} ETB
                       </td>
+                      {hasUsdPayments && (
+                        <td className="py-3.5 px-3 text-right font-black font-mono text-purple-700 dark:text-purple-300 bg-purple-100/60 dark:bg-purple-950/60">
+                          ${formatAccounting(invoiceTotals.totalGrossUsd, '')} USD
+                        </td>
+                      )}
                       <td className="py-3.5 px-3 text-right font-black text-rose-600 dark:text-rose-400">
                         -{formatAccounting(invoiceTotals.totalDeductions, '')} ETB
                       </td>
+                      {hasUsdPayments && (
+                        <td className="py-3.5 px-3 text-right font-black font-mono text-rose-600 dark:text-rose-400 bg-purple-100/60 dark:bg-purple-950/60">
+                          {invoiceTotals.totalDeductionsUsd > 0 ? `-$${formatAccounting(invoiceTotals.totalDeductionsUsd, '')}` : '-'}
+                        </td>
+                      )}
                       <td className="py-3.5 px-3 text-right font-black text-emerald-600 dark:text-emerald-400">
                         {formatAccounting(invoiceTotals.totalNet, '')} ETB
                       </td>
                       {hasUsdPayments && (
                         <td className="py-3.5 px-3 text-right font-black font-mono text-purple-700 dark:text-purple-300 bg-purple-100/60 dark:bg-purple-950/60 border-x border-purple-200 dark:border-purple-800">
-                          ${formatAccounting(invoiceTotals.totalUsd, '')} USD
+                          ${formatAccounting(invoiceTotals.totalNetUsd, '')} USD
                         </td>
                       )}
-                      <td colSpan={hasUsdPayments ? 3 : 2} className="py-3.5 px-4 text-left font-sans text-xs text-slate-600 dark:text-slate-300 font-medium">
-                        Contract Fee: <span className="font-mono font-bold text-slate-900 dark:text-white">{formatAccounting(invoiceTotals.contractFee, 'ETB')}</span> <span className="text-[10px] text-blue-600 font-semibold">({invoiceTotals.utilization.toFixed(1)}% Utilized)</span>
+                      <td colSpan={3} className="py-3.5 px-4 text-left font-sans text-xs text-slate-600 dark:text-slate-300 font-medium">
+                        Contract Fee: <span className="font-mono font-bold text-slate-900 dark:text-white">{formatAccounting(invoiceTotals.contractFee, 'ETB')}</span>
+                        {hasUsdPayments && invoiceTotals.contractFeeUsd > 0 && (
+                          <span className="ml-1 text-purple-700 dark:text-purple-300 font-mono font-bold"> + ${formatAccounting(invoiceTotals.contractFeeUsd, '')} USD</span>
+                        )}
+                        <span className="text-[10px] text-blue-600 font-semibold ml-1.5">({invoiceTotals.utilization.toFixed(1)}% Utilized)</span>
                       </td>
                     </tr>
                   </tfoot>
