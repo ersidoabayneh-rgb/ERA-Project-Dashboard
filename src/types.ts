@@ -863,11 +863,15 @@ export interface ConsultantInvoice {
   certificationDate?: string;
   paymentDate?: string;
   grossAmountEtb: number;
+  grossAmountUsd?: number;
   advanceDeductionEtb?: number;
+  advanceDeductionUsd?: number;
   taxDeductionEtb?: number;
+  taxDeductionUsd?: number;
   overtimeEtb?: number;
   overtimeDeductionEtb?: number;
   netAmountEtb: number;
+  netAmountUsd?: number;
   foreignCurrencyAmount?: number;
   foreignCurrencyCode?: string;
   status: 'Submitted' | 'Certified' | 'Paid' | 'Pending' | 'Rejected';
@@ -875,9 +879,13 @@ export interface ConsultantInvoice {
   remarks?: string;
   attachmentName?: string;
   vatAmountEtb?: number;
+  vatAmountUsd?: number;
   feesAmountEtb?: number;
+  feesAmountUsd?: number;
   reimbursableAmountEtb?: number;
+  reimbursableAmountUsd?: number;
   totalDueEtb?: number;
+  totalDueUsd?: number;
   attendanceRecords?: any[];
   reimbursableRecords?: any[];
   defectLiabilityRecords?: any[];
@@ -1032,6 +1040,7 @@ export interface SupervisionConsultantInfo {
   originalFeeEtb: number;
   revisedFeeEtb?: number;
   enableUsdPayments?: boolean; // When true, enables foreign USD currency tracking and invoices
+  exchangeRate?: number; // Operational Exchange Rate for USD/ETB conversion (e.g. 125.00)
   originalFeeUsd?: number;
   revisedFeeUsd?: number;
   contractType?: 'Time-Based' | 'Lump-Sum' | 'Percentage of Works' | 'Hybrid';
@@ -1090,6 +1099,8 @@ export interface ContractStaffRateCondition1 {
   totalMm: number;
   rateEtb: number;
   totalEtb: number;
+  rateUsd?: number;
+  totalUsd?: number;
 }
 
 export interface ContractReimbursableCondition1 {
@@ -1097,6 +1108,7 @@ export interface ContractReimbursableCondition1 {
   no?: string;
   item: string;
   amountEtb: number;
+  amountUsd?: number;
   basis?: string;
 }
 

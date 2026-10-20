@@ -31,8 +31,12 @@ import {
   ShieldAlert,
   Lock,
   Unlock,
-  ExternalLink
+  ExternalLink,
+  Download,
+  FileDown
 } from 'lucide-react';
+import jsPDF from 'jspdf';
+import { drawEraLogo } from '../lib/pdfReportEngine';
 import { Project, SupervisionConsultantInfo, ConsultantInvoice, ConsultantPersonnel } from '../types';
 import { DEFAULT_CONDITION_1_STAFF } from '../data/defaultContractAmount';
 
@@ -171,6 +175,8 @@ interface MonthlyInvoiceCalculationTableProps {
   onSelectInvoice?: (inv: ConsultantInvoice) => void;
   onUpdateConsultantPersonnel?: (updatedPersonnel: ConsultantPersonnel[]) => void;
   onNavigateToContractAmount?: () => void;
+  viewCurrency?: 'ETB' | 'USD';
+  exchangeRate?: number;
 }
 
 export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationTableProps> = ({
@@ -181,7 +187,9 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
   onBackToLedger,
   onSelectInvoice,
   onUpdateConsultantPersonnel,
-  onNavigateToContractAmount
+  onNavigateToContractAmount,
+  viewCurrency = 'ETB',
+  exchangeRate = 125.0
 }) => {
   // Navigation tabs for the tables
   const [activeTableTab, setActiveTableTab] = useState<'all' | 'summary' | 'construction' | 'dlp' | 'attendance'>('all');
@@ -1300,19 +1308,26 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
       paymentReference: paymentReference || undefined,
       paymentDate: paymentDate || undefined,
       remarks: remarks || `Computed from Attendance × Rate Tables (Subtotal 1: ${fmt(subTotal1ThisInvoice)} + Subtotal 2: ${fmt(subTotal2ThisInvoice)} minus 15% VAT).`,
-      attendanceRecords: staffRows.map(s => ({
-        id: s.id,
-        personnelId: s.id,
-        position: s.position,
-        name: s.name,
-        days: s.daysWorked,
-        daysWorked: s.daysWorked,
-        rate: s.rate,
-        contractQty: s.contractQty,
-        contractAmount: s.contractAmount,
-        precedingQty: s.precedingQty,
-        precedingAmount: s.precedingAmount,
-      })),
+      attendanceRecords: staffRows.map(s => {
+        const qty = s.daysWorked > 0 ? Number((s.daysWorked / totalDaysInMonth).toFixed(2)) : 0;
+        const thisAmount = Number((qty * s.rate).toFixed(2));
+        return {
+          id: s.id,
+          personnelId: s.id,
+          position: s.position,
+          name: s.name,
+          days: s.daysWorked,
+          daysWorked: s.daysWorked,
+          thisInvoiceQty: qty,
+          derivedMmInput: qty,
+          thisInvoiceAmount: thisAmount,
+          rate: s.rate,
+          contractQty: s.contractQty,
+          contractAmount: s.contractAmount,
+          precedingQty: s.precedingQty,
+          precedingAmount: s.precedingAmount,
+        };
+      }),
       reimbursableRecords: reimbursableRows.map(r => ({
         id: r.id,
         description: r.description,
@@ -1361,6 +1376,506 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
     syncStaffRowsFromAssignedPersonnel();
     setSaveSuccessMsg('Monthly invoice tables successfully synchronized with Contract Amount Schedule (Table 1.2 & Table 1.3)!');
     setTimeout(() => setSaveSuccessMsg(null), 4000);
+  };
+
+  // Export Monthly Invoice Tables (Table 1 Attendance & Table 5 Consolidated Summary) as a Formatted PDF Report
+  const handleExportMonthlyInvoicePDF = () => {
+    try {
+      const doc = new jsPDF({
+        orientation: 'landscape',
+        unit: 'pt',
+        format: 'a4'
+      });
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 36;
+      let pageNum = 1;
+
+      const drawPageHeader = (pNum: number, tableTitle: string) => {
+        // Outer border frame
+        doc.setDrawColor(226, 232, 240);
+        doc.setLineWidth(0.75);
+        doc.roundedRect(margin, margin, pageWidth - margin * 2, pageHeight - margin * 2, 4, 4, 'S');
+
+        // Top accent line
+        doc.setFillColor(194, 120, 3); // ERA Gold
+        doc.rect(margin + 2, margin + 1, pageWidth - margin * 2 - 4, 2.5, 'F');
+
+        // Logo
+        drawEraLogo(doc, margin + 6, margin + 6, 32);
+
+        // Date stamp
+        const stampW = 120;
+        const stampX = pageWidth - margin - stampW - 6;
+        doc.setFillColor(248, 250, 252);
+        doc.setDrawColor(226, 232, 240);
+        doc.roundedRect(stampX, margin + 6, stampW, 32, 4, 4, 'DF');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(6);
+        doc.setTextColor(100, 116, 139);
+        doc.text("OFFICIAL INVOICE STAMP", stampX + 6, margin + 14);
+        doc.setFontSize(8);
+        doc.setTextColor(15, 23, 42);
+        doc.text(submissionDate || new Date().toISOString().split('T')[0], stampX + 6, margin + 23);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(6);
+        doc.setTextColor(71, 85, 105);
+        doc.text(`INVOICE: ${invoiceNo}`, stampX + 6, margin + 31);
+
+        // Titles
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(11);
+        doc.setTextColor(15, 23, 42);
+        doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA)", margin + 44, margin + 16);
+
+        doc.setFontSize(9);
+        doc.setTextColor(30, 64, 175);
+        doc.text(`MONTHLY SUPERVISION FEE INVOICE — ${tableTitle.toUpperCase()}`, margin + 44, margin + 27);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(6.5);
+        doc.setTextColor(100, 116, 139);
+        doc.text(`${project.name || 'Road Construction Project'} • Billing Period: ${billingMonth} ${billingYear} • Consultant: ${consultantFirm || consultant.firmName}`, margin + 44, margin + 36);
+
+        // Line
+        doc.setDrawColor(226, 232, 240);
+        doc.line(margin + 2, margin + 44, pageWidth - margin - 2, margin + 44);
+
+        // Footer
+        const footerY = pageHeight - margin - 12;
+        doc.line(margin + 2, footerY - 6, pageWidth - margin - 2, footerY - 6);
+        doc.setFontSize(6.5);
+        doc.setTextColor(148, 163, 184);
+        doc.text("ETHIOPIAN ROADS ADMINISTRATION • OFFICIAL SUPERVISION VALUATION & INVOICE CERTIFICATE", margin + 8, footerY + 2);
+        doc.text(`Page ${pNum} of 2`, pageWidth - margin - 50, footerY + 2);
+      };
+
+      // =========================================================================
+      // PAGE 1: TABLE 1 — MONTHLY PERSONNEL ATTENDANCE RECORD & INPUT DERIVATION
+      // =========================================================================
+      drawPageHeader(1, "Table 1: Personnel Attendance Record & Input Derivation");
+      let y = margin + 52;
+      const contentWidth = pageWidth - margin * 2;
+
+      // Formula notification box
+      doc.setFillColor(239, 246, 255); // blue-50
+      doc.setDrawColor(191, 219, 254);
+      doc.roundedRect(margin + 6, y, contentWidth - 12, 20, 3, 3, 'DF');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7);
+      doc.setTextColor(30, 64, 175);
+      doc.text("Derived Man-Month (MM) Formula:", margin + 14, y + 13);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(71, 85, 105);
+      doc.text(`Derived MM Input = Days Worked ÷ Month Length (${totalDaysInMonth} Days) • Contract Staff Rates Linked to Contract Table 2`, margin + 142, y + 13);
+
+      y += 26;
+
+      // Table 1 Headers
+      const t1Headers = [
+        { title: 'No', width: 24, align: 'center' },
+        { title: 'Supervisory Position', width: 140, align: 'left' },
+        { title: 'Assigned Personnel Name', width: 120, align: 'left' },
+        { title: 'Category', width: 75, align: 'left' },
+        { title: 'Days Worked', width: 55, align: 'right' },
+        { title: 'Month Days', width: 55, align: 'right' },
+        { title: 'Derived MM', width: 55, align: 'right' },
+        { title: 'Contract Rate (ETB)', width: 85, align: 'right' },
+        { title: 'This Month (ETB)', width: 85, align: 'right' },
+        { title: 'Preceding MM', width: 55, align: 'right' },
+        { title: 'To-Date MM', width: 55, align: 'right' }
+      ];
+
+      doc.setFillColor(30, 41, 59);
+      doc.roundedRect(margin + 6, y, contentWidth - 12, 16, 2, 2, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6);
+      doc.setTextColor(255, 255, 255);
+
+      let curX = margin + 8;
+      t1Headers.forEach(h => {
+        if (h.align === 'right') {
+          doc.text(h.title, curX + h.width - 2, y + 10.5, { align: 'right' });
+        } else if (h.align === 'center') {
+          doc.text(h.title, curX + h.width / 2, y + 10.5, { align: 'center' });
+        } else {
+          doc.text(h.title, curX + 2, y + 10.5);
+        }
+        curX += h.width;
+      });
+
+      y += 18;
+
+      // Table 1 Rows
+      displayFeeRowsComputed.forEach((row, idx) => {
+        if (y > pageHeight - margin - 40) return; // stay within single page for Table 1
+
+        if (idx % 2 === 1) {
+          doc.setFillColor(248, 250, 252);
+          doc.rect(margin + 6, y, contentWidth - 12, 13, 'F');
+        }
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(6);
+        doc.setTextColor(30, 41, 59);
+
+        let rX = margin + 8;
+        // No
+        doc.text(String(idx + 1), rX + 12, y + 9, { align: 'center' });
+        rX += 24;
+
+        // Position
+        doc.setFont('helvetica', 'bold');
+        const posText = row.position.length > 28 ? `${row.position.substring(0, 26)}...` : row.position;
+        doc.text(posText, rX + 2, y + 9);
+        doc.setFont('helvetica', 'normal');
+        rX += 140;
+
+        // Name
+        const nameText = row.name.length > 24 ? `${row.name.substring(0, 22)}...` : row.name;
+        doc.text(nameText, rX + 2, y + 9);
+        rX += 120;
+
+        // Category
+        doc.text(row.category || 'Professional', rX + 2, y + 9);
+        rX += 75;
+
+        // Days Worked
+        doc.text(String(row.daysWorked || 0), rX + 55 - 2, y + 9, { align: 'right' });
+        rX += 55;
+
+        // Month Days
+        doc.text(String(totalDaysInMonth), rX + 55 - 2, y + 9, { align: 'right' });
+        rX += 55;
+
+        // Derived MM
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(37, 99, 235);
+        doc.text(row.thisInvoiceQty.toFixed(2), rX + 55 - 2, y + 9, { align: 'right' });
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(30, 41, 59);
+        rX += 55;
+
+        // Rate
+        doc.text(fmt(row.effectiveRate || row.rate), rX + 85 - 2, y + 9, { align: 'right' });
+        rX += 85;
+
+        // This Month Amount
+        doc.setFont('helvetica', 'bold');
+        doc.text(fmt(row.thisInvoiceAmount), rX + 85 - 2, y + 9, { align: 'right' });
+        doc.setFont('helvetica', 'normal');
+        rX += 85;
+
+        // Preceding MM
+        doc.text(row.precedingQty.toFixed(2), rX + 55 - 2, y + 9, { align: 'right' });
+        rX += 55;
+
+        // To-Date MM
+        doc.setFont('helvetica', 'bold');
+        doc.text(row.toDateQty.toFixed(2), rX + 55 - 2, y + 9, { align: 'right' });
+
+        doc.setDrawColor(241, 245, 249);
+        doc.line(margin + 6, y + 13, margin + contentWidth - 6, y + 13);
+        y += 13;
+      });
+
+      // Table 1 Totals Row
+      doc.setFillColor(238, 242, 255);
+      doc.rect(margin + 6, y, contentWidth - 12, 16, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.5);
+      doc.setTextColor(30, 64, 175);
+      doc.text("TOTAL SUB-TOTAL 1 (SUPERVISORY PERSONNEL REMUNERATION CLAIM):", margin + 14, y + 11);
+
+      const totDerivedMM = displayFeeRowsComputed.reduce((s, r) => s + r.thisInvoiceQty, 0).toFixed(2);
+      const totThisMonthClaim = displayFeeRowsComputed.reduce((s, r) => s + r.thisInvoiceAmount, 0);
+      const totToDateMM = displayFeeRowsComputed.reduce((s, r) => s + r.toDateQty, 0).toFixed(2);
+
+      let t1X = margin + 8 + 24 + 140 + 120 + 75 + 55 + 55;
+      doc.text(`${totDerivedMM} MM`, t1X + 55 - 2, y + 11, { align: 'right' });
+      t1X += 55 + 85;
+      doc.text(`${fmt(totThisMonthClaim)} ETB`, t1X + 85 - 2, y + 11, { align: 'right' });
+      t1X += 85 + 55;
+      doc.text(`${totToDateMM} MM`, t1X + 55 - 2, y + 11, { align: 'right' });
+
+      // =========================================================================
+      // PAGE 2: TABLE 5 — CONSOLIDATED SUMMARY & NET PAYMENT COMPUTATION
+      // =========================================================================
+      doc.addPage();
+      drawPageHeader(2, "Table 5: Consolidated Summary & Net Payment Computation");
+      y = margin + 52;
+
+      // Table 5 Baseline & Claim Computation Table
+      const t5Headers = [
+        { title: 'Item', width: 28, align: 'center' },
+        { title: 'Claim Component Description', width: 260, align: 'left' },
+        { title: 'Contract Baseline (ETB)', width: 105, align: 'right' },
+        { title: 'This Month Claim (ETB)', width: 110, align: 'right' },
+        { title: 'Preceding Claim (ETB)', width: 105, align: 'right' },
+        { title: 'To-Date Claim (ETB)', width: 105, align: 'right' },
+        { title: 'Remaining Balance (ETB)', width: 95, align: 'right' }
+      ];
+
+      doc.setFillColor(30, 41, 59);
+      doc.roundedRect(margin + 6, y, contentWidth - 12, 16, 2, 2, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.5);
+      doc.setTextColor(255, 255, 255);
+
+      let cX = margin + 8;
+      t5Headers.forEach(h => {
+        if (h.align === 'right') {
+          doc.text(h.title, cX + h.width - 2, y + 11, { align: 'right' });
+        } else if (h.align === 'center') {
+          doc.text(h.title, cX + h.width / 2, y + 11, { align: 'center' });
+        } else {
+          doc.text(h.title, cX + 2, y + 11);
+        }
+        cX += h.width;
+      });
+
+      y += 18;
+
+      const t5Rows = [
+        {
+          item: '1',
+          desc: 'Sub Total 1 (Remuneration of Construction Supervisory Staff)',
+          contract: fmt(linkedFeesContract),
+          thisMonth: fmt(subTotal1ThisInvoice),
+          preceding: fmt(subTotal1Preceding),
+          toDate: fmt(subTotal1ToDate),
+          remaining: fmt(Math.max(0, linkedFeesContract - subTotal1ToDate))
+        },
+        {
+          item: '2',
+          desc: 'Sub Total 2 (Reimbursable Operating Direct Costs — Per Diem, Transport, Communication)',
+          contract: fmt(linkedReimbContract),
+          thisMonth: fmt(subTotal2ThisInvoice),
+          preceding: fmt(subTotal2Preceding),
+          toDate: fmt(subTotal2ToDate),
+          remaining: fmt(Math.max(0, linkedReimbContract - subTotal2ToDate))
+        },
+        {
+          item: '3',
+          desc: 'Sub Total 3 (Defect Liability Personnel Allocation)',
+          contract: fmt(subTotal3Contract),
+          thisMonth: fmt(subTotal3ThisInvoice),
+          preceding: '-',
+          toDate: fmt(subTotal3ThisInvoice),
+          remaining: fmt(Math.max(0, subTotal3Contract - subTotal3ThisInvoice))
+        },
+        {
+          item: 'A+B',
+          desc: 'SUBTOTAL DIRECT SERVICES & EXPENSES (1 + 2 + 3)',
+          contract: fmt(totalBaseContract),
+          thisMonth: fmt(totalSubtotalThisInvoice),
+          preceding: fmt(totalSubtotalPreceding),
+          toDate: fmt(totalSubtotalToDate),
+          remaining: fmt(Math.max(0, totalBaseContract - totalSubtotalToDate)),
+          isBold: true
+        },
+        {
+          item: '4',
+          desc: `Contingency Provision (${contingencyRatePct}% Contract Ceiling)`,
+          contract: fmt(contingencyContract),
+          thisMonth: fmt(contingencyThisInvoice),
+          preceding: fmt(contingencyPrecedingClaim),
+          toDate: fmt(contingencyToDate),
+          remaining: fmt(Math.max(0, contingencyContract - contingencyToDate))
+        },
+        {
+          item: '5',
+          desc: `Value Added Tax (${vatRatePct}% VAT)`,
+          contract: fmt(vatContract),
+          thisMonth: fmt(vatThisInvoice),
+          preceding: fmt(vatPreceding),
+          toDate: fmt(vatToDate),
+          remaining: fmt(Math.max(0, vatContract - vatToDate))
+        },
+        {
+          item: '6',
+          desc: 'GROSS INVOICE CLAIM AMOUNT (ETB)',
+          contract: fmt(totalContractDue),
+          thisMonth: fmt(grossPayableBase),
+          preceding: fmt(grossPreceding),
+          toDate: fmt(grossToDate),
+          remaining: fmt(Math.max(0, totalContractDue - grossToDate)),
+          isHeader: true
+        },
+        {
+          item: '5a',
+          desc: 'Add: Overtime Claim (ETB)',
+          contract: '-',
+          thisMonth: overtimeEtb > 0 ? fmt(overtimeEtb) : '0.00',
+          preceding: '-',
+          toDate: overtimeEtb > 0 ? fmt(overtimeEtb) : '0.00',
+          remaining: '-'
+        },
+        {
+          item: '7a',
+          desc: 'Less: Advance Payment Recovery Deduction (ETB)',
+          contract: '-',
+          thisMonth: advanceDeductionEtb > 0 ? `-${fmt(advanceDeductionEtb)}` : '0.00',
+          preceding: '-',
+          toDate: advanceDeductionEtb > 0 ? `-${fmt(advanceDeductionEtb)}` : '0.00',
+          remaining: '-'
+        },
+        {
+          item: '7b',
+          desc: 'Less: Withholding / Statutory Tax Deduction (2%)',
+          contract: '-',
+          thisMonth: taxDeductionEtb > 0 ? `-${fmt(taxDeductionEtb)}` : '0.00',
+          preceding: '-',
+          toDate: taxDeductionEtb > 0 ? `-${fmt(taxDeductionEtb)}` : '0.00',
+          remaining: '-'
+        },
+        {
+          item: '7c',
+          desc: 'Less: Overtime Deduction from Contractor (ETB)',
+          contract: '-',
+          thisMonth: overtimeDeductionEtb > 0 ? `-${fmt(overtimeDeductionEtb)}` : '0.00',
+          preceding: '-',
+          toDate: overtimeDeductionEtb > 0 ? `-${fmt(overtimeDeductionEtb)}` : '0.00',
+          remaining: '-'
+        },
+        {
+          item: '8',
+          desc: 'TOTAL NET AMOUNT PAYABLE TO CONSULTANT (ETB) — MINUS VAT',
+          contract: fmt(contractNetAmount),
+          thisMonth: `${fmt(netDueThisInvoice)} ETB`,
+          preceding: fmt(netPreceding),
+          toDate: `${fmt(netToDate)} ETB`,
+          remaining: '-',
+          isNetPayable: true
+        }
+      ];
+
+      t5Rows.forEach((r, idx) => {
+        const rowHeight = r.isNetPayable ? 18 : 14;
+
+        if (r.isNetPayable) {
+          doc.setFillColor(209, 250, 229); // emerald-100
+          doc.rect(margin + 6, y, contentWidth - 12, rowHeight, 'F');
+        } else if (r.isHeader) {
+          doc.setFillColor(241, 245, 249); // slate-100
+          doc.rect(margin + 6, y, contentWidth - 12, rowHeight, 'F');
+        } else if (r.isBold) {
+          doc.setFillColor(248, 250, 252);
+          doc.rect(margin + 6, y, contentWidth - 12, rowHeight, 'F');
+        } else if (idx % 2 === 1) {
+          doc.setFillColor(255, 255, 255);
+        }
+
+        doc.setFont('helvetica', (r.isNetPayable || r.isHeader || r.isBold) ? 'bold' : 'normal');
+        doc.setFontSize(r.isNetPayable ? 7.5 : 6.5);
+        doc.setTextColor(r.isNetPayable ? 6 : (r.isHeader ? 15 : 30), r.isNetPayable ? 95 : (r.isHeader ? 23 : 41), r.isNetPayable ? 70 : (r.isHeader ? 42 : 59));
+
+        let roX = margin + 8;
+        // Item
+        doc.text(r.item, roX + 14, y + (rowHeight * 0.65), { align: 'center' });
+        roX += 28;
+
+        // Desc
+        doc.text(r.desc, roX + 2, y + (rowHeight * 0.65));
+        roX += 260;
+
+        // Contract
+        doc.text(r.contract, roX + 105 - 2, y + (rowHeight * 0.65), { align: 'right' });
+        roX += 105;
+
+        // This Month
+        if (r.isNetPayable) {
+          doc.setTextColor(5, 150, 105);
+        }
+        doc.text(r.thisMonth, roX + 110 - 2, y + (rowHeight * 0.65), { align: 'right' });
+        if (r.isNetPayable) {
+          doc.setTextColor(6, 95, 70);
+        }
+        roX += 110;
+
+        // Preceding
+        doc.text(r.preceding, roX + 105 - 2, y + (rowHeight * 0.65), { align: 'right' });
+        roX += 105;
+
+        // To-Date
+        doc.text(r.toDate, roX + 105 - 2, y + (rowHeight * 0.65), { align: 'right' });
+        roX += 105;
+
+        // Remaining
+        doc.text(r.remaining, roX + 95 - 2, y + (rowHeight * 0.65), { align: 'right' });
+
+        doc.setDrawColor(226, 232, 240);
+        doc.line(margin + 6, y + rowHeight, margin + contentWidth - 6, y + rowHeight);
+        y += rowHeight;
+      });
+
+      y += 8;
+
+      // Net Amount in Words Box
+      doc.setFillColor(248, 250, 252);
+      doc.setDrawColor(226, 232, 240);
+      doc.roundedRect(margin + 6, y, contentWidth - 12, 24, 3, 3, 'DF');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text("NET AMOUNT PAYABLE IN ETHIOPIAN BIRR WORDS:", margin + 14, y + 10);
+      doc.setFont('times', 'italic');
+      doc.setFontSize(7.5);
+      doc.setTextColor(15, 23, 42);
+      doc.text(`"${numberToWords(netDueThisInvoice)}"`, margin + 14, y + 19);
+
+      y += 28;
+
+      // Bank Transfer Particulars Box
+      doc.setFillColor(248, 250, 252);
+      doc.roundedRect(margin + 6, y, contentWidth - 12, 20, 3, 3, 'DF');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.5);
+      doc.setTextColor(30, 64, 175);
+      doc.text("CONSULTANT WIRE TRANSFER & BANK DETAILS:", margin + 14, y + 13);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(51, 65, 85);
+      doc.text(`Bank: ${bankName || 'Commercial Bank of Ethiopia'}   •   Branch: ${bankBranch || 'Main Branch'}   •   Account No: ${bankAccountNo || '1000123456789'}`, margin + 200, y + 13);
+
+      y += 26;
+
+      // Official 4 Sign-Off Signatures Block
+      const signW = (contentWidth - 12) / 4;
+      const signY = y + 4;
+
+      const signees = [
+        { title: 'PREPARED BY', name: preparedBy || 'Resident Engineer', role: 'Resident Engineer / Team Leader' },
+        { title: 'CHECKED BY', name: checkedBy || 'Payment Officer', role: 'Payment & Valuation Officer' },
+        { title: 'REVIEWED BY', name: reviewedBy || 'Lead Engineer', role: 'Lead Supervision Engineer' },
+        { title: 'CERTIFIED & APPROVED', name: approvedBy || 'Project Director', role: 'Director General / Project Director (ERA)' }
+      ];
+
+      signees.forEach((s, idx) => {
+        const sX = margin + 6 + idx * signW;
+        doc.setDrawColor(203, 213, 225);
+        doc.line(sX + 6, signY + 22, sX + signW - 12, signY + 22);
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(6);
+        doc.setTextColor(100, 116, 139);
+        doc.text(s.title, sX + 6, signY + 6);
+
+        doc.setFontSize(6.5);
+        doc.setTextColor(15, 23, 42);
+        doc.text(s.name, sX + 6, signY + 30);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(5.5);
+        doc.setTextColor(100, 116, 139);
+        doc.text(s.role, sX + 6, signY + 37);
+      });
+
+      const cleanInv = invoiceNo.replace(/[^a-zA-Z0-9-_]/g, '_');
+      doc.save(`Monthly_Invoice_${cleanInv}_${billingMonth}_${billingYear}.pdf`);
+    } catch (err) {
+      console.error("Failed to export Monthly Invoice PDF:", err);
+      alert("Failed to export Monthly Invoice PDF. Please check browser permissions.");
+    }
   };
 
   return (
@@ -1441,6 +1956,17 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
             >
               <FastForward className="w-4 h-4" />
               Proceed to Next Month (Roll Forward)
+            </button>
+
+            {/* EXPORT FORMATTED PDF REPORT BUTTON */}
+            <button
+              type="button"
+              onClick={handleExportMonthlyInvoicePDF}
+              className="px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+              title="Export Tables 1 & 5 as an official formatted Ethiopian Roads Administration monthly certificate PDF report"
+            >
+              <FileDown className="w-3.5 h-3.5" />
+              <span>Export Invoice PDF (Tables 1 & 5)</span>
             </button>
 
             <button
@@ -1765,7 +2291,7 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
             }`}
           >
             <Layers className="w-3.5 h-3.5" />
-            <span>Complete 5-Table Consolidated View</span>
+            <span>Complete 2-Table Consolidated View</span>
           </button>
 
           <button
@@ -1779,45 +2305,6 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
           >
             <Calendar className="w-3.5 h-3.5" />
             <span>Table 1: Staff Attendance</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTableTab('feeBreakdown')}
-            className={`px-3.5 py-1.5 rounded-xl transition flex items-center gap-1.5 cursor-pointer ${
-              activeTableTab === 'feeBreakdown'
-                ? 'bg-blue-600 text-white shadow-xs'
-                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            <Table className="w-3.5 h-3.5" />
-            <span>Table 2: Rate Multiplier (Sub-Total 1)</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTableTab('reimbursable')}
-            className={`px-3.5 py-1.5 rounded-xl transition flex items-center gap-1.5 cursor-pointer ${
-              activeTableTab === 'reimbursable'
-                ? 'bg-blue-600 text-white shadow-xs'
-                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5" />
-            <span>Table 3: Reimbursables</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTableTab('defectLiability')}
-            className={`px-3.5 py-1.5 rounded-xl transition flex items-center gap-1.5 cursor-pointer ${
-              activeTableTab === 'defectLiability'
-                ? 'bg-blue-600 text-white shadow-xs'
-                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            <ShieldCheck className="w-3.5 h-3.5" />
-            <span>Table 4: Defect Liability</span>
           </button>
 
           <button
@@ -2113,475 +2600,7 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* TABLE 2: ATTENDANCE × RATE MULTIPLICATION & FEE BREAKDOWN                */}
-      {/* ========================================================================= */}
-      {(activeTableTab === 'all' || activeTableTab === 'feeBreakdown') && (
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm space-y-3">
-          <div className="p-4 bg-slate-50/80 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h4 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-lg bg-blue-600 text-white text-xs flex items-center justify-center font-mono">2</span>
-                  Table 2: Attendance × Rate Multiplication Table (Sub-Total 1: Fees)
-                </h4>
-                <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 text-[10px] font-bold rounded uppercase tracking-wider">
-                  Linked to Contract Amount Schedule
-                </span>
-              </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Multiplies MM input from Table 1 by Contract Rate. Tracks preceding cumulative inputs and preserves historical predecessor records across months.
-              </p>
-            </div>
 
-            <div className="text-right font-mono">
-              <span className="text-[11px] text-slate-400 block">Sub-Total 1 (This Month)</span>
-              <span className="text-sm font-black text-blue-600 dark:text-blue-400">
-                {fmt(subTotal1ThisInvoice)} ETB
-              </span>
-            </div>
-          </div>
-
-          <div className="px-4 pb-4">
-            <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead className="sticky top-0 bg-slate-100 dark:bg-slate-800 z-10">
-                  <tr className="border-b border-slate-200 dark:border-slate-700 text-[10px] text-slate-500 uppercase tracking-wider font-bold">
-                    <th className="py-2 px-2 text-center w-10">S.N</th>
-                    <th className="py-2 px-3 min-w-[170px]">Key Personnel Position</th>
-                    <th className="py-2 px-3 min-w-[160px]">Staff Name & Status</th>
-                    <th className="py-2 px-2 text-center w-14">Unit</th>
-                    <th className="py-2 px-2 text-right min-w-[85px]" title="Total MM = MM (Constr.) + MM (DLP) from Supervision Consultant Contract Amount">
-                      <div>Contr. MM</div>
-                      <div className="text-[8px] text-slate-400 font-normal">Total (C+D)</div>
-                    </th>
-                    <th className="py-2 px-3 text-right min-w-[110px]" title="Rate (ETB) linked to Contract Amount Schedule">
-                      Rate (ETB)
-                    </th>
-                    <th className="py-2 px-3 text-right min-w-[120px]" title="Contract Amt (ETB) = Total MM × Rate (ETB) from Contract Amount">
-                      Contract Amt (ETB)
-                    </th>
-                    <th className="py-2 px-2 text-center w-20 text-rose-600 dark:text-rose-400">10% Cut</th>
-                    <th className="py-2 px-2 text-right font-black text-blue-600 bg-blue-50/40 dark:bg-blue-950/20 min-w-[80px]">This Mo. MM</th>
-                    <th className="py-2 px-3 text-right font-black text-blue-600 bg-blue-50/40 dark:bg-blue-950/20 min-w-[120px]">This Mo. Fee (ETB)</th>
-                    <th className="py-2 px-2 text-right min-w-[70px]">Prec. MM</th>
-                    <th className="py-2 px-3 text-right min-w-[110px]">Prec. Fee (ETB)</th>
-                    <th className="py-2 px-2 text-right min-w-[70px]">To-Date MM</th>
-                    <th className="py-2 px-3 text-right min-w-[120px]">To-Date Fee (ETB)</th>
-                    <th className="py-2 px-2 text-right text-slate-400 min-w-[70px]">Bal. MM</th>
-                    <th className="py-2 px-3 text-right text-slate-400 min-w-[110px]">Bal. Amt (ETB)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-mono text-[11px]">
-                  {displayFeeRowsComputed.map((r, idx) => (
-                    <tr 
-                      key={r.id} 
-                      className={`transition ${
-                        r.status === 'Replaced' 
-                          ? 'bg-amber-50/30 dark:bg-amber-950/10 hover:bg-amber-50/50' 
-                          : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/40'
-                      }`}
-                    >
-                      <td className="py-2 px-2 text-center text-slate-400">{idx + 1}</td>
-                      <td className="py-2 px-3 font-sans font-semibold text-slate-800 dark:text-slate-200">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span>{r.position}</span>
-                          {r.isReduced && (
-                            <span className="text-[9px] font-black text-rose-600 bg-rose-100 dark:bg-rose-950 px-1 py-0.5 rounded border border-rose-300 dark:border-rose-800">
-                              -10%
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="py-2 px-3 font-sans text-slate-600 dark:text-slate-400">
-                        <div className="font-bold text-slate-900 dark:text-white">{r.name}</div>
-                        {r.status === 'Replaced' ? (
-                          <div className="text-[10px] text-amber-600 font-bold">Replaced Predecessor</div>
-                        ) : r.predecessorName ? (
-                          <div className="text-[10px] text-emerald-600 font-semibold">Successor to {r.predecessorName}</div>
-                        ) : null}
-                      </td>
-                      <td className="py-2 px-2 text-center text-slate-500 font-mono">{r.unit || 'Month'}</td>
-                      <td className="py-2 px-2 text-right">
-                        <div className="font-bold text-slate-900 dark:text-white font-mono">{r.contractQty.toFixed(2)}</div>
-                        {(r.mmConstr !== undefined || r.mmDlp !== undefined) && (
-                          <div className="text-[9px] text-slate-400 font-mono whitespace-nowrap">
-                            C:{r.mmConstr ?? r.contractQty} | D:{r.mmDlp ?? 0}
-                          </div>
-                        )}
-                      </td>
-                      <td className="py-2 px-3 text-right font-mono">
-                        {r.isReduced ? (
-                          <div>
-                            <span className="text-[10px] line-through text-slate-400 mr-1">{fmt(r.rate)}</span>
-                            <span className="font-bold text-rose-600 dark:text-rose-400">{fmt(r.effectiveRate ?? (r.rate * 0.9))}</span>
-                          </div>
-                        ) : (
-                          <span className="font-semibold text-slate-900 dark:text-white">{fmt(r.rate)}</span>
-                        )}
-                      </td>
-                      <td className="py-2 px-3 text-right font-bold text-slate-800 dark:text-slate-200 font-mono">
-                        {fmt(r.contractAmount)}
-                      </td>
-                      <td className="py-2 px-2 text-center">
-                        <input
-                          type="checkbox"
-                          checked={Boolean(reducedPositionIds[r.id])}
-                          onChange={() => {
-                            if (!directorateReductionMode) setDirectorateReductionMode(true);
-                            handleTogglePositionReduction(r.id);
-                          }}
-                          className="rounded text-rose-600 focus:ring-rose-500 cursor-pointer"
-                          title="Toggle 10% Contract Reduction for this position"
-                        />
-                      </td>
-                      <td className="py-2 px-2 text-right font-black text-blue-600 dark:text-blue-400 bg-blue-50/30 dark:bg-blue-950/20">
-                        {r.thisInvoiceQty.toFixed(2)}
-                      </td>
-                      <td className="py-2 px-3 text-right font-black text-blue-600 dark:text-blue-400 bg-blue-50/30 dark:bg-blue-950/20">
-                        {fmt(r.thisInvoiceAmount)}
-                      </td>
-                      <td className="py-2 px-2 text-right">
-                        <input
-                          type="number"
-                          value={r.precedingQty}
-                          disabled={isPaymentLocked}
-                          onChange={(e) => {
-                            const val = parseFloat(e.target.value) || 0;
-                            const rateUsed = r.effectiveRate ?? r.rate;
-                            handleUpdateStaff(r.id, { precedingQty: val, precedingAmount: val * rateUsed });
-                          }}
-                          title={isPaymentLocked ? "Payment amount is saved and locked (no change permitted)" : "Preceding man-month input"}
-                          className={`w-14 text-right px-1 py-0.5 rounded font-mono text-[11px] ${
-                            isPaymentLocked 
-                              ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed opacity-70' 
-                              : 'bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800 border border-transparent focus:border-slate-300'
-                          }`}
-                        />
-                      </td>
-                      <td className="py-2 px-3 text-right text-slate-600 dark:text-slate-400">{fmt(r.precedingAmount)}</td>
-                      <td className="py-2 px-2 text-right font-bold">{r.toDateQty.toFixed(2)}</td>
-                      <td className="py-2 px-3 text-right font-bold text-slate-900 dark:text-white">{fmt(r.toDateAmount)}</td>
-                      <td className="py-2 px-2 text-right text-slate-400">{r.remainingQty.toFixed(2)}</td>
-                      <td className="py-2 px-3 text-right text-slate-400">{fmt(r.remainingAmount)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot className="border-t-2 border-slate-300 dark:border-slate-700 font-bold bg-slate-100 dark:bg-slate-800 text-xs">
-                  <tr>
-                    <td colSpan={4} className="py-3 px-3 uppercase text-slate-800 dark:text-white font-sans text-[10px]">
-                      Sub-Total 1 (Fees):
-                    </td>
-                    <td className="py-3 px-2 text-right font-mono">
-                      {displayFeeRowsComputed.reduce((s, r) => s + r.contractQty, 0).toFixed(2)}
-                    </td>
-                    <td className="py-3 px-3 text-right font-mono"></td>
-                    <td className="py-3 px-3 text-right font-mono font-bold text-slate-900 dark:text-white">
-                      {fmt(subTotal1Contract)}
-                    </td>
-                    <td className="py-3 px-2 text-center font-mono"></td>
-                    <td className="py-3 px-2 text-right font-mono font-black text-blue-600 dark:text-blue-400">
-                      {displayFeeRowsComputed.reduce((s, r) => s + r.thisInvoiceQty, 0).toFixed(2)}
-                    </td>
-                    <td className="py-3 px-3 text-right font-mono font-black text-blue-600 dark:text-blue-400">
-                      {fmt(displayFeeRowsComputed.reduce((s, r) => s + r.thisInvoiceAmount, 0))}
-                    </td>
-                    <td className="py-3 px-2 text-right font-mono">
-                      {displayFeeRowsComputed.reduce((s, r) => s + r.precedingQty, 0).toFixed(2)}
-                    </td>
-                    <td className="py-3 px-3 text-right font-mono">
-                      {fmt(displayFeeRowsComputed.reduce((s, r) => s + r.precedingAmount, 0))}
-                    </td>
-                    <td className="py-3 px-2 text-right font-mono">
-                      {displayFeeRowsComputed.reduce((s, r) => s + r.toDateQty, 0).toFixed(2)}
-                    </td>
-                    <td className="py-3 px-3 text-right font-mono font-black">
-                      {fmt(displayFeeRowsComputed.reduce((s, r) => s + r.toDateAmount, 0))}
-                    </td>
-                    <td className="py-3 px-2 text-right font-mono text-slate-400">
-                      {displayFeeRowsComputed.reduce((s, r) => s + r.remainingQty, 0).toFixed(2)}
-                    </td>
-                    <td className="py-3 px-3 text-right font-mono text-slate-400">
-                      {fmt(displayFeeRowsComputed.reduce((s, r) => s + r.remainingAmount, 0))}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-
-
-      {/* ========================================================================= */}
-      {/* TABLE 3: REIMBURSABLE DIRECT OPERATING EXPENSES (SUB-TOTAL 2)             */}
-      {/* ========================================================================= */}
-      {(activeTableTab === 'all' || activeTableTab === 'reimbursable') && (
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm space-y-3">
-          <div className="p-4 bg-slate-50/80 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h4 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-lg bg-amber-600 text-white text-xs flex items-center justify-center font-mono">3</span>
-                  Table 3: Reimbursable Direct Operating Expenses (Sub-Total 2)
-                </h4>
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200 flex items-center gap-1">
-                  <span>🔗 Linked to Contract Amount Table 1.4 (Direct Reimbursables Schedule)</span>
-                </span>
-              </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Direct project site operational expenses, per diems, communications, laboratory, and logistical expenses billed per actual expenditure or monthly rate.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-3">
-              {onNavigateToContractAmount && (
-                <button
-                  type="button"
-                  onClick={onNavigateToContractAmount}
-                  className="px-3 py-1.5 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 text-amber-800 dark:text-amber-300 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border border-amber-200 dark:border-amber-800 cursor-pointer shadow-xs"
-                  title="View Contract Reimbursable Budget Schedule (Table 1.4)"
-                >
-                  <DollarSign className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                  <span>View Contract Schedule (Table 1.4)</span>
-                  <ExternalLink className="w-3 h-3" />
-                </button>
-              )}
-              <div className="text-right font-mono">
-                <span className="text-[11px] text-slate-400 block">Sub-Total 2 (This Month)</span>
-                <span className="text-sm font-black text-amber-600 dark:text-amber-400">
-                  {fmt(subTotal2ThisInvoice)} ETB
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div className="overflow-x-auto px-4 pb-4">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="border-b border-slate-200 dark:border-slate-700 text-[10px] text-slate-500 uppercase tracking-wider font-bold">
-                  <th className="py-2.5 px-3 w-12 text-center">S.N</th>
-                  <th className="py-2.5 px-4 min-w-[260px]">Expense Description / Category</th>
-                  <th className="py-2.5 px-3 text-center">Unit</th>
-                  <th className="py-2.5 px-3 text-right">Contract Qty</th>
-                  <th className="py-2.5 px-4 text-right">Rate (ETB)</th>
-                  <th className="py-2.5 px-4 text-right font-bold">Contract Budget (ETB)</th>
-                  <th className="py-2.5 px-3 text-right font-black text-amber-600 bg-amber-50/30 dark:bg-amber-950/20">This Mo. Qty</th>
-                  <th className="py-2.5 px-4 text-right font-black text-amber-600 bg-amber-50/30 dark:bg-amber-950/20">This Month (ETB)</th>
-                  <th className="py-2.5 px-3 text-right">Preceding (ETB)</th>
-                  <th className="py-2.5 px-3 text-right font-bold">To-Date (ETB)</th>
-                  <th className="py-2.5 px-3 text-right text-slate-400">Remaining Budget (ETB)</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-mono text-[11px]">
-                {reimbursableRowsComputed.map((r, idx) => (
-                  <tr key={r.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition">
-                    <td className="py-2.5 px-3 text-center text-slate-400">{idx + 1}</td>
-                    <td className="py-2.5 px-4 font-sans font-semibold text-slate-800 dark:text-slate-200">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span>{r.description}</span>
-                        {r.isReduced && (
-                          <span className="text-[9px] font-black text-rose-600 bg-rose-100 dark:bg-rose-950 px-1 py-0.5 rounded border border-rose-300 dark:border-rose-800">
-                            -10%
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="py-2.5 px-3 text-center text-slate-500 font-mono">{r.unit}</td>
-                    <td className="py-2.5 px-3 text-right">{r.contractQty}</td>
-                    <td className="py-2.5 px-4 text-right font-mono">
-                      {r.isReduced ? (
-                        <div>
-                          <span className="text-[10px] line-through text-slate-400 mr-1">{fmt(r.rate)}</span>
-                          <span className="font-bold text-rose-600 dark:text-rose-400">{fmt(r.effectiveRate ?? (r.rate * 0.9))}</span>
-                        </div>
-                      ) : (
-                        <span className="font-semibold text-slate-900 dark:text-white">{fmt(r.rate)}</span>
-                      )}
-                    </td>
-                    <td className="py-2.5 px-4 text-right font-bold text-slate-900 dark:text-white">{fmt(r.contractAmount)}</td>
-                    <td className="py-2.5 px-3 text-right">
-                      <input
-                        type="number"
-                        step="any"
-                        value={r.thisInvoiceQty}
-                        disabled={isPaymentLocked}
-                        onChange={(e) => {
-                          const qty = parseFloat(e.target.value) || 0;
-                          const effectiveRate = r.effectiveRate ?? r.rate;
-                          setReimbursableRows(prev => prev.map(item => 
-                            item.id === r.id 
-                              ? { ...item, thisInvoiceQty: qty, thisInvoiceAmount: Number((qty * effectiveRate).toFixed(2)) } 
-                              : item
-                          ));
-                        }}
-                        title={isPaymentLocked ? "Payment amount is saved and locked" : "This month quantity"}
-                        className={`w-16 text-right px-1.5 py-0.5 rounded font-mono text-[11px] ${
-                          isPaymentLocked 
-                            ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed opacity-70' 
-                            : 'border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900'
-                        }`}
-                      />
-                    </td>
-                    <td className="py-2.5 px-4 text-right">
-                      <input
-                        type="number"
-                        step="any"
-                        value={r.computedThisAmount}
-                        disabled={isPaymentLocked}
-                        onChange={(e) => {
-                          const amt = parseFloat(e.target.value) || 0;
-                          setReimbursableRows(prev => prev.map(item => 
-                            item.id === r.id 
-                              ? { ...item, thisInvoiceAmount: amt } 
-                              : item
-                          ));
-                        }}
-                        title={isPaymentLocked ? "Payment amount is saved and locked" : "This month amount (ETB)"}
-                        className={`w-24 text-right px-1.5 py-0.5 rounded font-mono text-[11px] font-bold text-amber-700 dark:text-amber-400 ${
-                          isPaymentLocked 
-                            ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed opacity-70' 
-                            : 'border border-amber-300 dark:border-amber-700 bg-amber-50/40 dark:bg-amber-950/20'
-                        }`}
-                      />
-                    </td>
-                    <td className="py-2.5 px-3 text-right text-slate-600 dark:text-slate-400">{fmt(r.precedingAmount)}</td>
-                    <td className="py-2.5 px-3 text-right font-bold text-slate-900 dark:text-white">{fmt(r.toDateAmount)}</td>
-                    <td className="py-2.5 px-3 text-right text-slate-400">{fmt(r.remainingAmount)}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot className="border-t-2 border-slate-300 dark:border-slate-700 font-bold bg-slate-100 dark:bg-slate-800 text-xs">
-                <tr>
-                  <td colSpan={3} className="py-3 px-4 uppercase text-slate-800 dark:text-white font-sans text-[10px]">
-                    Sub-Total 2 (Reimbursable Operating Direct Costs):
-                  </td>
-                  <td className="py-3 px-3 text-right font-mono">
-                    {reimbursableRowsComputed.reduce((s, r) => s + (r.contractQty || 0), 0).toFixed(2)}
-                  </td>
-                  <td className="py-3 px-4 text-right font-mono"></td>
-                  <td className="py-3 px-4 text-right font-mono font-bold text-slate-900 dark:text-white">
-                    {fmt(subTotal2Contract)}
-                  </td>
-                  <td className="py-3 px-3 text-right font-mono">
-                    {reimbursableRowsComputed.reduce((s, r) => s + (r.thisInvoiceQty || 0), 0).toFixed(2)}
-                  </td>
-                  <td className="py-3 px-4 text-right font-mono font-black text-amber-600 dark:text-amber-400">
-                    {fmt(subTotal2ThisInvoice)}
-                  </td>
-                  <td className="py-3 px-3 text-right font-mono">
-                    {fmt(subTotal2Preceding)}
-                  </td>
-                  <td className="py-3 px-3 text-right font-mono font-black">
-                    {fmt(subTotal2ToDate)}
-                  </td>
-                  <td className="py-3 px-3 text-right font-mono text-slate-400">
-                    {fmt(subTotal2Remaining)}
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* TABLE 4: DEFECT LIABILITY PERIOD SERVICES                                */}
-      {/* ========================================================================= */}
-      {(activeTableTab === 'all' || activeTableTab === 'defectLiability') && (
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm space-y-3">
-          <div className="p-4 bg-slate-50/80 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h4 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-lg bg-indigo-600 text-white text-xs flex items-center justify-center font-mono">4</span>
-                  Table 4: Defect Liability Period (DLP) Supervisory Personnel Allocation
-                </h4>
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 border border-indigo-200 flex items-center gap-1">
-                  <span>🔗 Linked to Contract Amount Table 3 (DLP)</span>
-                </span>
-              </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Staff allocations for the post-completion maintenance and guarantee period. Rates & MM ceilings synchronized directly with Contract Amount Schedule Table 3.
-              </p>
-            </div>
-            <div className="text-right font-mono">
-              <span className="text-[11px] text-slate-400 block">Sub-Total 3 (This Month)</span>
-              <span className="text-sm font-bold text-indigo-700 dark:text-indigo-300">
-                {fmt(subTotal3ThisInvoice)} ETB
-              </span>
-            </div>
-          </div>
-
-          <div className="overflow-x-auto px-4 pb-4">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="border-b border-slate-200 dark:border-slate-700 text-[10px] text-slate-500 uppercase tracking-wider font-bold">
-                  <th className="py-2 px-3 w-12 text-center">S.N</th>
-                  <th className="py-2 px-4 min-w-[260px]">Role / Position & Staff Name</th>
-                  <th className="py-2 px-3 text-center">Unit</th>
-                  <th className="py-2 px-3 text-right">Contract MM (DLP)</th>
-                  <th className="py-2 px-4 text-right">Rate (ETB)</th>
-                  <th className="py-2 px-4 text-right font-bold">Contract Amount (ETB)</th>
-                  <th className="py-2 px-3 text-right font-black text-blue-600 bg-blue-50/30 dark:bg-blue-950/20">This Month MM</th>
-                  <th className="py-2 px-4 text-right font-bold text-blue-600">This Month Fee (ETB)</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-mono text-[11px]">
-                {defectRowsComputed.map((r, idx) => (
-                  <tr key={r.id}>
-                    <td className="py-2.5 px-3 text-center text-slate-400">{idx + 1}</td>
-                    <td className="py-2.5 px-4 font-sans font-semibold text-slate-800 dark:text-slate-200">{r.position}</td>
-                    <td className="py-2.5 px-3 text-center text-slate-500">{r.unit}</td>
-                    <td className="py-2.5 px-3 text-right">{r.contractQty}</td>
-                    <td className="py-2.5 px-4 text-right">{fmt(r.rate)}</td>
-                    <td className="py-2.5 px-4 text-right font-bold">{fmt(r.contractAmount)}</td>
-                    <td className="py-2.5 px-3 text-right">
-                      <input
-                        type="number"
-                        value={r.thisInvoiceQty}
-                        disabled={isPaymentLocked}
-                        onChange={(e) => {
-                          const val = parseFloat(e.target.value) || 0;
-                          setDefectRows(prev => prev.map(d => d.id === r.id ? { ...d, thisInvoiceQty: val, thisInvoiceAmount: val * d.rate } : d));
-                        }}
-                        title={isPaymentLocked ? "Payment amount is saved and locked (no change permitted)" : "This month MM"}
-                        className={`w-16 text-right px-1.5 py-0.5 rounded font-mono text-[11px] ${
-                          isPaymentLocked 
-                            ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed opacity-70' 
-                            : 'border border-slate-200 dark:border-slate-700'
-                        }`}
-                      />
-                    </td>
-                    <td className="py-2.5 px-4 text-right font-bold text-blue-600">{fmt(r.computedThisAmount)}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot className="border-t-2 border-slate-300 dark:border-slate-700 font-bold bg-slate-50 dark:bg-slate-800 text-xs">
-                <tr>
-                  <td colSpan={3} className="py-2.5 px-4 uppercase text-slate-700 dark:text-slate-300 font-sans text-[10px]">
-                    Sub-Total 3 (Defect Liability Allocation):
-                  </td>
-                  <td className="py-2.5 px-3 text-right font-mono">
-                    {defectRowsComputed.reduce((s, r) => s + r.contractQty, 0).toFixed(2)}
-                  </td>
-                  <td className="py-2.5 px-4 text-right font-mono"></td>
-                  <td className="py-2.5 px-4 text-right font-mono font-bold text-slate-900 dark:text-white">
-                    {fmt(subTotal3Contract)}
-                  </td>
-                  <td className="py-2.5 px-3 text-right font-mono">
-                    {defectRowsComputed.reduce((s, r) => s + r.thisInvoiceQty, 0).toFixed(2)}
-                  </td>
-                  <td className="py-2.5 px-4 text-right font-mono font-bold text-blue-600 dark:text-blue-400">
-                    {fmt(subTotal3ThisInvoice)}
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        </div>
-      )}
 
       {/* ========================================================================= */}
       {/* TABLE 5: CONSOLIDATED SUMMARY & DEDUCTION COMPUTATION                    */}
@@ -3149,6 +3168,16 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
 
                 <button
                   type="button"
+                  onClick={handleExportMonthlyInvoicePDF}
+                  className="px-4 py-2.5 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md cursor-pointer"
+                  title="Export Tables 1 & 5 as an official formatted Ethiopian Roads Administration monthly certificate PDF report"
+                >
+                  <FileDown className="w-4 h-4" />
+                  Export Invoice PDF
+                </button>
+
+                <button
+                  type="button"
                   onClick={handleSaveAndSync}
                   className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-md cursor-pointer"
                 >
@@ -3196,12 +3225,15 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                     <table className="w-full text-left text-xs">
                       <thead className="bg-slate-100 dark:bg-slate-800/80 font-bold text-slate-700 dark:text-slate-300">
                         <tr>
-                          <th className="py-3 px-4">Month Succession</th>
+                          <th className="py-3 px-4">Month</th>
                           <th className="py-3 px-4">Invoice No</th>
-                          <th className="py-3 px-4">Billing Period</th>
+                          <th className="py-3 px-4">Period</th>
                           <th className="py-3 px-4 text-right">Fees (ETB)</th>
-                          <th className="py-3 px-4 text-right">Reimbursables (ETB)</th>
-                          <th className="py-3 px-4 text-right">Gross Claim (ETB)</th>
+                          {consultant.enableUsdPayments && <th className="py-3 px-4 text-right">Fees (USD)</th>}
+                          <th className="py-3 px-4 text-right">Reimb. (ETB)</th>
+                          {consultant.enableUsdPayments && <th className="py-3 px-4 text-right">Reimb. (USD)</th>}
+                          <th className="py-3 px-4 text-right">Gross (ETB)</th>
+                          {consultant.enableUsdPayments && <th className="py-3 px-4 text-right">Gross (USD)</th>}
                           <th className="py-3 px-4 text-center">Status</th>
                         </tr>
                       </thead>
@@ -3209,19 +3241,27 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                         {allInvoices
                           .filter(inv => !activeInvoice || inv.id !== activeInvoice.id)
                           .map((inv, idx) => {
-                            const feeAmt = inv.feesAmountEtb || (inv.attendanceRecords || []).reduce((s, r) => s + (r.thisInvoiceAmount || 0), 0);
-                            const reimbAmt = inv.reimbursableAmountEtb || (inv.reimbursableRecords || []).reduce((s, r) => s + (r.thisInvoiceAmount || 0), 0);
-                            const gross = inv.grossAmountEtb || (feeAmt + reimbAmt);
+                            const feeAmtEtb = inv.feesAmountEtb || (inv.attendanceRecords || []).reduce((s, r) => s + (r.thisInvoiceAmount || 0), 0);
+                            const reimbAmtEtb = inv.reimbursableAmountEtb || (inv.reimbursableRecords || []).reduce((s, r) => s + (r.thisInvoiceAmount || 0), 0);
+                            const grossEtb = inv.grossAmountEtb || (feeAmtEtb + reimbAmtEtb);
+                            
+                            const feeAmtUsd = inv.feesAmountUsd || 0; // Assuming USD fields exist on ConsultantInvoice
+                            const reimbAmtUsd = inv.reimbursableAmountUsd || 0;
+                            const grossUsd = inv.grossAmountUsd || (feeAmtUsd + reimbAmtUsd);
+
                             return (
                               <tr key={inv.id || idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
                                 <td className="py-3 px-4 font-bold font-sans text-indigo-600 dark:text-indigo-400">
-                                  Month {idx + 1}
+                                  {idx + 1}
                                 </td>
                                 <td className="py-3 px-4 font-bold">{inv.invoiceNo}</td>
                                 <td className="py-3 px-4 font-sans">{inv.billingPeriod}</td>
-                                <td className="py-3 px-4 text-right">{fmt(feeAmt)}</td>
-                                <td className="py-3 px-4 text-right">{fmt(reimbAmt)}</td>
-                                <td className="py-3 px-4 text-right font-black">{fmt(gross)}</td>
+                                <td className="py-3 px-4 text-right">{fmt(feeAmtEtb)}</td>
+                                {consultant.enableUsdPayments && <td className="py-3 px-4 text-right text-purple-600 font-bold">{fmt(feeAmtUsd)}</td>}
+                                <td className="py-3 px-4 text-right">{fmt(reimbAmtEtb)}</td>
+                                {consultant.enableUsdPayments && <td className="py-3 px-4 text-right text-purple-600 font-bold">{fmt(reimbAmtUsd)}</td>}
+                                <td className="py-3 px-4 text-right font-black">{fmt(grossEtb)}</td>
+                                {consultant.enableUsdPayments && <td className="py-3 px-4 text-right font-black text-purple-600">{fmt(grossUsd)}</td>}
                                 <td className="py-3 px-4 text-center">
                                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                                     inv.status === 'Paid' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300' :
@@ -3239,14 +3279,25 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                   </div>
 
                   <div className="bg-indigo-50/50 dark:bg-indigo-950/20 p-4 rounded-2xl border border-indigo-100 dark:border-indigo-900/30 flex items-center justify-between text-xs font-semibold text-indigo-900 dark:text-indigo-200">
-                    <span>Total Cumulative Preceding Amount (Fees + Reimbursables):</span>
-                    <span className="font-mono font-black text-sm">
-                      {fmt(
-                        allInvoices
-                          .filter(inv => !activeInvoice || inv.id !== activeInvoice.id)
-                          .reduce((sum, inv) => sum + (inv.grossAmountEtb || (inv.feesAmountEtb || 0) + (inv.reimbursableAmountEtb || 0)), 0)
-                      )} ETB
-                    </span>
+                    <span>Total Cumulative Preceding Amount:</span>
+                    <div className="flex gap-4">
+                      <span className="font-mono font-black text-sm">
+                        {fmt(
+                          allInvoices
+                            .filter(inv => !activeInvoice || inv.id !== activeInvoice.id)
+                            .reduce((sum, inv) => sum + (inv.grossAmountEtb || (inv.feesAmountEtb || 0) + (inv.reimbursableAmountEtb || 0)), 0)
+                        )} ETB
+                      </span>
+                      {consultant.enableUsdPayments && (
+                        <span className="font-mono font-black text-sm text-purple-700">
+                          {fmt(
+                            allInvoices
+                              .filter(inv => !activeInvoice || inv.id !== activeInvoice.id)
+                              .reduce((sum, inv) => sum + (inv.grossAmountUsd || (inv.feesAmountUsd || 0) + (inv.reimbursableAmountUsd || 0)), 0)
+                          )} USD
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}

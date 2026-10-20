@@ -43,7 +43,9 @@ import {
   ToggleRight,
   ShieldCheck,
   Calculator,
-  Table
+  Table,
+  ArrowUpDown,
+  Coins
 } from 'lucide-react';
 import { 
   Project, 
@@ -60,6 +62,11 @@ import {
 import jsPDF from 'jspdf';
 import { drawEraLogo } from '../lib/pdfReportEngine';
 import { DEFAULT_REGISTERED_FIRMS } from '../data/defaultFirms';
+import { 
+  DEFAULT_CONDITION_1_DATA, 
+  DEFAULT_CONDITION_1_STAFF, 
+  DEFAULT_CONDITION_1_REIMBURSABLES 
+} from '../data/defaultContractAmount';
 import WorkloadReportModal from './WorkloadReportModal';
 import ConsultantPerformanceKpiWidget, { DEFAULT_SUBMITTAL_KPIS, DEFAULT_SLA_TARGETS } from './ConsultantPerformanceKpiWidget';
 import ConsultantPerformanceMiniChart from './ConsultantPerformanceMiniChart';
@@ -225,10 +232,77 @@ export default function SupervisionConsultantView({
   }, [project.supervisionConsultant, project.consultant, project.signDate, project.startDate, project.id]);
 
   // Active view subtab
-  const [activeTab, setActiveTab] = useState<'personnel' | 'invoices' | 'kpis' | 'profile' | 'history' | 'personnel_audit' | 'contract_amount'>('personnel');
+  // Active view subtab - Defaults to Contract Amount & Baseline
+  const [activeTab, setActiveTab] = useState<'personnel' | 'invoices' | 'kpis' | 'profile' | 'history' | 'personnel_audit' | 'contract_amount'>('contract_amount');
 
   // JV Partner Individual Performance Toggle State
   const [isJvPerformanceExpanded, setIsJvPerformanceExpanded] = useState<boolean>(true);
+
+  // Global Real-Time Currency Toggle (USD / ETB)
+  const [viewCurrency, setViewCurrency] = useState<'ETB' | 'USD'>('ETB');
+
+  // Real-Time Exchange Rate Setting (persisted in consultant or project)
+  const activeExchangeRate = consultant.exchangeRate || project.usdExchangeRate || 125.0;
+  const [exchangeRateInput, setExchangeRateInput] = useState<number>(activeExchangeRate);
+  const [isQuickRateEditOpen, setIsQuickRateEditOpen] = useState<boolean>(false);
+
+  // In-App Toast & Floating Notification Banner
+  const [inAppNotification, setInAppNotification] = useState<{ message: string; type: 'success' | 'info' | 'warning' } | null>(null);
+
+  // Sync exchange rate input when consultant updates
+  useEffect(() => {
+    if (consultant.exchangeRate && consultant.exchangeRate > 0) {
+      setExchangeRateInput(consultant.exchangeRate);
+    }
+  }, [consultant.exchangeRate]);
+
+  // Save exchange rate to consultant & project
+  const handleSaveExchangeRate = (newRate: number) => {
+    if (newRate <= 0) return;
+    setExchangeRateInput(newRate);
+    saveConsultantData({
+      ...consultant,
+      exchangeRate: newRate
+    }, `Updated operational exchange rate to 1 USD = ${newRate.toFixed(2)} ETB`);
+    setIsQuickRateEditOpen(false);
+    setInAppNotification({
+      type: 'success',
+      message: `Operational exchange rate updated to 1 USD = ${newRate.toFixed(2)} ETB! All calculations updated.`
+    });
+  };
+
+  // Currency Conversion Helpers
+  const convertCurrency = useCallback((amountInEtb: number | undefined): number => {
+    if (amountInEtb === undefined || isNaN(amountInEtb)) return 0;
+    if (viewCurrency === 'USD') {
+      return activeExchangeRate > 0 ? amountInEtb / activeExchangeRate : 0;
+    }
+    return amountInEtb;
+  }, [viewCurrency, activeExchangeRate]);
+
+  const formatViewCurrency = useCallback((amountInEtb: number | undefined, decimals = 2): string => {
+    const val = convertCurrency(amountInEtb);
+    const symbol = viewCurrency === 'USD' ? '$' : '';
+    const unit = viewCurrency === 'USD' ? ' USD' : ' ETB';
+    return `${symbol}${formatAccounting(val, '')}${unit}`;
+  }, [convertCurrency, viewCurrency]);
+
+  // Personnel Sorting and View Mode States
+  const [personnelSortField, setPersonnelSortField] = useState<'name' | 'position' | 'assignmentDate' | 'manMonthsInput' | 'status'>('name');
+  const [personnelSortOrder, setPersonnelSortOrder] = useState<'asc' | 'desc'>('asc');
+  const [personnelViewMode, setPersonnelViewMode] = useState<'table' | 'cards'>('table');
+
+  // Invoice Sorting State
+  const [invoiceSortField, setInvoiceSortField] = useState<'invoiceNo' | 'submissionDate' | 'grossAmountEtb' | 'netAmountEtb' | 'status'>('submissionDate');
+  const [invoiceSortOrder, setInvoiceSortOrder] = useState<'asc' | 'desc'>('desc');
+
+  // Automatically dismiss in-app notification after 5 seconds
+  useEffect(() => {
+    if (inAppNotification) {
+      const timer = setTimeout(() => setInAppNotification(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [inAppNotification]);
 
   const isConsultantUser = currentUser?.role === 'consultant_approver' || currentUser?.role === 'consultant_editor';
 
@@ -247,6 +321,34 @@ export default function SupervisionConsultantView({
   // Search & Filter States for Invoices
   const [invoiceSearch, setInvoiceSearch] = useState('');
   const [invoiceStatusFilter, setInvoiceStatusFilter] = useState('ALL');
+  const [invoiceStartDate, setInvoiceStartDate] = useState('');
+  const [invoiceEndDate, setInvoiceEndDate] = useState('');
+  const [invoiceDatePreset, setInvoiceDatePreset] = useState<'ALL' | 'THIS_YEAR' | 'LAST_6_MONTHS' | 'THIS_QUARTER' | 'CUSTOM'>('ALL');
+
+  const handleSelectDatePreset = (preset: 'ALL' | 'THIS_YEAR' | 'LAST_6_MONTHS' | 'THIS_QUARTER' | 'CUSTOM') => {
+    setInvoiceDatePreset(preset);
+    const now = new Date();
+    const y = now.getFullYear();
+    if (preset === 'ALL') {
+      setInvoiceStartDate('');
+      setInvoiceEndDate('');
+    } else if (preset === 'THIS_YEAR') {
+      setInvoiceStartDate(`${y}-01-01`);
+      setInvoiceEndDate(`${y}-12-31`);
+    } else if (preset === 'LAST_6_MONTHS') {
+      const sixMonthsAgo = new Date();
+      sixMonthsAgo.setMonth(now.getMonth() - 6);
+      setInvoiceStartDate(sixMonthsAgo.toISOString().split('T')[0]);
+      setInvoiceEndDate(now.toISOString().split('T')[0]);
+    } else if (preset === 'THIS_QUARTER') {
+      const currentQuarter = Math.floor(now.getMonth() / 3);
+      const qStartMonth = String(currentQuarter * 3 + 1).padStart(2, '0');
+      const qEndMonth = String(currentQuarter * 3 + 3).padStart(2, '0');
+      const lastDayOfQ = new Date(y, currentQuarter * 3 + 3, 0).getDate();
+      setInvoiceStartDate(`${y}-${qStartMonth}-01`);
+      setInvoiceEndDate(`${y}-${qEndMonth}-${lastDayOfQ}`);
+    }
+  };
 
   // Search & Filter States for Personnel Action Audit Log
   const [auditSearchQuery, setAuditSearchQuery] = useState('');
@@ -535,23 +637,21 @@ export default function SupervisionConsultantView({
     };
   }, [consultant.commencementDate, consultant.originalCompletionDate, consultant.revisedCompletionDate]);
 
-  // Determine whether USD payments are active on this contract (or strictly ETB only)
+  // Determine whether USD payments are active on this contract (selected on Contract & Scope Profile)
   const hasUsdPayments = useMemo(() => {
-    // If explicitly disabled at consultant level or project level, payment is strictly ETB only
-    if (consultant.enableUsdPayments === false || project.enableUsdPayments === false) {
+    // If explicitly disabled at consultant level, payment is strictly ETB only
+    if (consultant.enableUsdPayments === false) {
       return false;
     }
-    // If explicitly enabled, verify whether USD payments or foreign fees exist
+    // If explicitly enabled on consultant profile or project level
     if (consultant.enableUsdPayments === true || project.enableUsdPayments === true) {
-      const hasUsdBudget = (consultant.revisedFeeUsd || consultant.originalFeeUsd || 0) > 0;
-      const hasUsdInvoices = (consultant.invoices || []).some(inv => (inv.foreignCurrencyAmount || 0) > 0);
-      return hasUsdBudget || hasUsdInvoices;
+      return true;
     }
-    // If enableUsdPayments is undefined, only consider active if there are actual invoices recorded with USD portions
-    return Boolean(
-      (consultant.invoices || []).some(inv => (inv.foreignCurrencyAmount || 0) > 0)
-    );
-  }, [consultant, project.enableUsdPayments]);
+    // If undefined, consider active if there is a USD budget or invoices with USD portions
+    const hasUsdBudget = (consultant.revisedFeeUsd || consultant.originalFeeUsd || 0) > 0;
+    const hasUsdInvoices = (consultant.invoices || []).some(inv => (inv.foreignCurrencyAmount || 0) > 0);
+    return hasUsdBudget || hasUsdInvoices;
+  }, [consultant.enableUsdPayments, consultant.revisedFeeUsd, consultant.originalFeeUsd, consultant.invoices, project.enableUsdPayments]);
 
   // Calculations for Financials
   const financialSummary = useMemo(() => {
@@ -615,13 +715,15 @@ export default function SupervisionConsultantView({
 
   const invoiceTotals = useMemo(() => {
     const invs = consultant.invoices || [];
-    const totalGross = invs.reduce((sum, inv) => sum + (inv.grossAmountEtb || 0), 0);
+    const totalFees = invs.reduce((sum, inv) => sum + (inv.feesAmountEtb || 0), 0);
+    const totalReimbursables = invs.reduce((sum, inv) => sum + (inv.reimbursableAmountEtb || 0), 0);
+    const totalGross = invs.reduce((sum, inv) => sum + (inv.grossAmountEtb || ((inv.feesAmountEtb || 0) + (inv.reimbursableAmountEtb || 0))), 0);
     const totalDeductions = invs.reduce((sum, inv) => sum + ((inv.advanceDeductionEtb || 0) + (inv.taxDeductionEtb || 0)), 0);
     const totalNet = invs.reduce((sum, inv) => sum + (inv.netAmountEtb || 0), 0);
     const totalUsd = hasUsdPayments ? invs.reduce((sum, inv) => sum + (inv.foreignCurrencyAmount || 0), 0) : 0;
     const contractFee = consultant.revisedFeeEtb || consultant.originalFeeEtb || 0;
     const utilization = contractFee > 0 ? (totalGross / contractFee) * 100 : 0;
-    return { totalGross, totalDeductions, totalNet, totalUsd, contractFee, utilization };
+    return { totalFees, totalReimbursables, totalGross, totalDeductions, totalNet, totalUsd, contractFee, utilization };
   }, [consultant.invoices, consultant.revisedFeeEtb, consultant.originalFeeEtb, hasUsdPayments]);
 
   // Calculations for Personnel
@@ -646,7 +748,118 @@ export default function SupervisionConsultantView({
     };
   }, [consultant.personnel]);
 
-  // Filtered Personnel List
+  // Cross-module link: Staff presence in monthly invoices
+  const staffAttendanceStats = useMemo(() => {
+    const stats: Record<string, { count: number; totalMM: number; latestInvoice: string }> = {};
+    (consultant.invoices || []).forEach(inv => {
+      (inv.attendanceRecords || []).forEach((rec: any) => {
+        const mm = rec.thisInvoiceQty !== undefined 
+          ? Number(rec.thisInvoiceQty) 
+          : ((Number(rec.daysWorked || rec.days || 0)) / 30);
+        const keys = [rec.personnelId, rec.id, rec.name?.toLowerCase().trim()].filter(Boolean);
+        keys.forEach(k => {
+          if (!stats[k]) {
+            stats[k] = { count: 1, totalMM: mm, latestInvoice: inv.invoiceNo };
+          } else {
+            stats[k].count += 1;
+            stats[k].totalMM += mm;
+            stats[k].latestInvoice = inv.invoiceNo;
+          }
+        });
+      });
+    });
+    return stats;
+  }, [consultant.invoices]);
+
+  // Cross-module link: Contract rates mapped from Condition 1 Schedule
+  const contractRatesMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    const savedC1 = consultant.contractAmountSchedule?.condition1;
+    const staffList = savedC1?.staffFees && savedC1.staffFees.length > 0
+      ? savedC1.staffFees
+      : DEFAULT_CONDITION_1_STAFF;
+
+    staffList.forEach(s => {
+      const rate = Number(s.rateEtb) || 0;
+      if (s.position) map[s.position.toLowerCase().trim()] = rate;
+      if (s.name && s.name !== 'To be nominated' && s.name !== 'TBN') {
+        map[s.name.toLowerCase().trim()] = rate;
+      }
+    });
+    return map;
+  }, [consultant.contractAmountSchedule]);
+
+  // Comprehensive Cross-Module Contract Schedule & Overall Cost Calculation
+  const contractScheduleSummary = useMemo(() => {
+    const savedC1 = consultant.contractAmountSchedule?.condition1;
+    const c1 = savedC1 || DEFAULT_CONDITION_1_DATA;
+    const staffList = savedC1?.staffFees && savedC1.staffFees.length > 0
+      ? savedC1.staffFees
+      : DEFAULT_CONDITION_1_STAFF;
+    const reimbList = savedC1?.reimbursableList && savedC1.reimbursableList.length > 0
+      ? savedC1.reimbursableList
+      : DEFAULT_CONDITION_1_REIMBURSABLES;
+
+    // Baseline calculation
+    const baselineStaffFees = staffList.reduce((acc, s) => acc + ((Number(s.totalMm) || (Number(s.mmConstr || 0) + Number(s.mmDlp || 0))) * (Number(s.rateEtb) || 0)), 0);
+    const baselineReimb = reimbList.reduce((acc, r) => acc + (Number(r.amountEtb) || 0), 0);
+    const baselineDirect = baselineStaffFees + baselineReimb;
+    const contPct = Number(c1.contingencyPct ?? 15);
+    const vatPct = Number(c1.vatPct ?? 15);
+    const baselineCont = baselineDirect * (contPct / 100);
+    const baselineBase = baselineDirect + baselineCont;
+    const baselineVat = baselineBase * (vatPct / 100);
+    const baselineOverall = baselineBase + baselineVat;
+
+    // Incurred overall cost derived dynamically from invoice monthly man-month inputs
+    const invoices = consultant.invoices || [];
+    let staffExpendedFees = 0;
+    let totalExpendedMM = 0;
+    let reimbExpended = 0;
+
+    invoices.forEach(inv => {
+      (inv.attendanceRecords || []).forEach((rec: any) => {
+        const qty = rec.thisInvoiceQty !== undefined 
+          ? Number(rec.thisInvoiceQty) 
+          : ((Number(rec.daysWorked || rec.days || 0)) / 30);
+        const rate = Number(rec.rate) || 0;
+        const amount = rec.thisInvoiceAmount !== undefined ? Number(rec.thisInvoiceAmount) : (qty * rate);
+        staffExpendedFees += amount;
+        totalExpendedMM += qty;
+      });
+
+      if (inv.reimbursableRecords && inv.reimbursableRecords.length > 0) {
+        inv.reimbursableRecords.forEach((r: any) => {
+          reimbExpended += Number(r.thisInvoiceAmount || 0);
+        });
+      } else if (inv.reimbursableAmountEtb) {
+        reimbExpended += Number(inv.reimbursableAmountEtb || 0);
+      }
+    });
+
+    const effectiveReimb = reimbExpended > 0 ? reimbExpended : (invoices.length > 0 ? (baselineReimb * Math.min(1, totalExpendedMM / 820)) : 0);
+    const incurredDirect = staffExpendedFees + effectiveReimb;
+    const incurredCont = incurredDirect * (contPct / 100);
+    const incurredBase = incurredDirect + incurredCont;
+    const incurredVat = incurredBase * (vatPct / 100);
+    const incurredOverall = incurredBase + incurredVat;
+
+    return {
+      baselineStaffFees,
+      baselineReimb,
+      baselineOverall,
+      reimbSubItemsCount: reimbList.length,
+      staffExpendedFees,
+      totalExpendedMM,
+      effectiveReimb,
+      incurredOverall,
+      invoicesCount: invoices.length,
+      remainingBalance: Math.max(0, baselineOverall - incurredOverall),
+      utilizationPct: baselineOverall > 0 ? Math.min(100, (incurredOverall / baselineOverall) * 100) : 0
+    };
+  }, [consultant.contractAmountSchedule, consultant.invoices]);
+
+  // Filtered Personnel List with interactive sorting
   const filteredPersonnel = useMemo(() => {
     let list = [...(consultant.personnel || [])];
     if (personnelCategoryFilter !== 'ALL') {
@@ -667,46 +880,33 @@ export default function SupervisionConsultantView({
       );
     }
 
-    // Sort: Active at top (Team Leader / RE, then Key Personnel, then other active staff), Demobilized & Replaced immediately taken to the bottom
     list.sort((a, b) => {
+      // Demobilized & Replaced taken to bottom unless specifically sorting
       const isInactiveA = a.status === 'Demobilized' || a.status === 'Replaced';
       const isInactiveB = b.status === 'Demobilized' || b.status === 'Replaced';
 
-      // Replaced or Demobilized taken immediately to the bottom of the table
       if (!isInactiveA && isInactiveB) return -1;
       if (isInactiveA && !isInactiveB) return 1;
 
-      const posA = (a.position || '').toLowerCase();
-      const posB = (b.position || '').toLowerCase();
-      const catA = (a.category || '').toLowerCase();
-      const catB = (b.category || '').toLowerCase();
-
-      const isLeaderA = posA.includes('resident engineer') || posA.includes('team leader');
-      const isLeaderB = posB.includes('resident engineer') || posB.includes('team leader');
-
-      if (isLeaderA && !isLeaderB) return -1;
-      if (!isLeaderA && isLeaderB) return 1;
-
-      const isKeyA = catA.includes('key') || catA.includes('key personnel');
-      const isKeyB = catB.includes('key') || catB.includes('key personnel');
-
-      if (isKeyA && !isKeyB) return -1;
-      if (!isKeyA && isKeyB) return 1;
-
-      // Inactive sorted by demobilizationDate descending (recent demobilization first among bottom rows)
-      if (isInactiveA && isInactiveB) {
-        const dateA = a.demobilizationDate || a.assignmentDate || '';
-        const dateB = b.demobilizationDate || b.assignmentDate || '';
-        return dateB.localeCompare(dateA);
+      let cmp = 0;
+      if (personnelSortField === 'name') {
+        cmp = (a.name || '').localeCompare(b.name || '');
+      } else if (personnelSortField === 'position') {
+        cmp = (a.position || '').localeCompare(b.position || '');
+      } else if (personnelSortField === 'assignmentDate') {
+        cmp = (a.assignmentDate || '').localeCompare(b.assignmentDate || '');
+      } else if (personnelSortField === 'manMonthsInput') {
+        cmp = (Number(a.manMonthsInput) || 0) - (Number(b.manMonthsInput) || 0);
+      } else if (personnelSortField === 'status') {
+        cmp = (a.status || '').localeCompare(b.status || '');
       }
-
-      return (a.name || '').localeCompare(b.name || '');
+      return personnelSortOrder === 'asc' ? cmp : -cmp;
     });
 
     return list;
-  }, [consultant.personnel, personnelCategoryFilter, personnelStatusFilter, personnelSearch]);
+  }, [consultant.personnel, personnelCategoryFilter, personnelStatusFilter, personnelSearch, personnelSortField, personnelSortOrder]);
 
-  // Filtered Invoices List
+  // Filtered Invoices List (Search, Status & Date Range Reporting Periods) with interactive sorting
   const filteredInvoices = useMemo(() => {
     let list = consultant.invoices || [];
     if (invoiceStatusFilter !== 'ALL') {
@@ -721,8 +921,47 @@ export default function SupervisionConsultantView({
         (inv.remarks && inv.remarks.toLowerCase().includes(q))
       );
     }
-    return list;
-  }, [consultant.invoices, invoiceStatusFilter, invoiceSearch]);
+    if (invoiceStartDate) {
+      list = list.filter(inv => {
+        const d = inv.submissionDate || inv.paymentDate || inv.certificationDate || '';
+        if (d) {
+          return d.substring(0, 10) >= invoiceStartDate;
+        }
+        return true;
+      });
+    }
+    if (invoiceEndDate) {
+      list = list.filter(inv => {
+        const d = inv.submissionDate || inv.paymentDate || inv.certificationDate || '';
+        if (d) {
+          return d.substring(0, 10) <= invoiceEndDate;
+        }
+        return true;
+      });
+    }
+
+    const sorted = [...list].sort((a, b) => {
+      let cmp = 0;
+      if (invoiceSortField === 'invoiceNo') {
+        cmp = (a.invoiceNo || '').localeCompare(b.invoiceNo || '');
+      } else if (invoiceSortField === 'submissionDate') {
+        const da = a.submissionDate || a.certificationDate || '';
+        const db = b.submissionDate || b.certificationDate || '';
+        cmp = da.localeCompare(db);
+      } else if (invoiceSortField === 'grossAmountEtb') {
+        cmp = (a.grossAmountEtb || 0) - (b.grossAmountEtb || 0);
+      } else if (invoiceSortField === 'netAmountEtb') {
+        cmp = (a.netAmountEtb || 0) - (b.netAmountEtb || 0);
+      } else if ((invoiceSortField as string) === 'foreignCurrencyAmount') {
+        cmp = (a.foreignCurrencyAmount || 0) - (b.foreignCurrencyAmount || 0);
+      } else if (invoiceSortField === 'status') {
+        cmp = (a.status || '').localeCompare(b.status || '');
+      }
+      return invoiceSortOrder === 'asc' ? cmp : -cmp;
+    });
+
+    return sorted;
+  }, [consultant.invoices, invoiceStatusFilter, invoiceSearch, invoiceStartDate, invoiceEndDate, invoiceSortField, invoiceSortOrder]);
 
   // RFI performance KPI summary for executive card
   const rfiKpiSummary = useMemo(() => {
@@ -1574,17 +1813,50 @@ export default function SupervisionConsultantView({
         if (inv.isPaymentSaved || inv.paymentLocked || inv.status === 'Paid') {
           updated.netAmountEtb = inv.savedPaymentAmount ?? inv.netAmountEtb;
           updated.totalDueEtb = updated.netAmountEtb;
-        } else if (field === 'grossAmountEtb' || field === 'advanceDeductionEtb' || field === 'taxDeductionEtb') {
-          // Recalculate Net Payable if gross or deductions are updated (MINUS VAT)
-          const gross = field === 'grossAmountEtb' ? Number(value) || 0 : (inv.grossAmountEtb || 0);
-          const adv = field === 'advanceDeductionEtb' ? Number(value) || 0 : (inv.advanceDeductionEtb || 0);
-          const tax = field === 'taxDeductionEtb' ? Number(value) || 0 : (inv.taxDeductionEtb || 0);
-          // Net Payable is MINUS VAT (Gross Claim minus 15% VAT, minus contractual deductions)
-          const baseSubtotal = inv.feesAmountEtb !== undefined && inv.reimbursableAmountEtb !== undefined 
-            ? ((inv.feesAmountEtb || 0) + (inv.reimbursableAmountEtb || 0))
-            : (gross / 1.15);
-          updated.netAmountEtb = Math.max(0, baseSubtotal - (adv + tax));
+        } else if (field === 'feesAmountEtb' || field === 'reimbursableAmountEtb' || field === 'feesAmountUsd' || field === 'reimbursableAmountUsd') {
+          const feesEtb = field === 'feesAmountEtb' ? Number(value) || 0 : (inv.feesAmountEtb || 0);
+          const reimbEtb = field === 'reimbursableAmountEtb' ? Number(value) || 0 : (inv.reimbursableAmountEtb || 0);
+          const feesUsd = field === 'feesAmountUsd' ? Number(value) || 0 : (inv.feesAmountUsd || 0);
+          const reimbUsd = field === 'reimbursableAmountUsd' ? Number(value) || 0 : (inv.reimbursableAmountUsd || 0);
+          
+          const baseSubtotalEtb = feesEtb + reimbEtb;
+          const baseSubtotalUsd = feesUsd + reimbUsd;
+          
+          updated.grossAmountEtb = Math.round(baseSubtotalEtb * 1.15 * 100) / 100;
+          updated.grossAmountUsd = Math.round(baseSubtotalUsd * 1.15 * 100) / 100;
+          
+          const advEtb = inv.advanceDeductionEtb || 0;
+          const taxEtb = inv.taxDeductionEtb || 0;
+          const advUsd = inv.advanceDeductionUsd || 0;
+          const taxUsd = inv.taxDeductionUsd || 0;
+          
+          updated.netAmountEtb = Math.max(0, baseSubtotalEtb - (advEtb + taxEtb));
+          updated.netAmountUsd = Math.max(0, baseSubtotalUsd - (advUsd + taxUsd));
+          
           updated.totalDueEtb = updated.netAmountEtb;
+          updated.totalDueUsd = updated.netAmountUsd;
+        } else if (field === 'grossAmountEtb' || field === 'advanceDeductionEtb' || field === 'taxDeductionEtb' || field === 'grossAmountUsd' || field === 'advanceDeductionUsd' || field === 'taxDeductionUsd') {
+          // Recalculate Net Payable if gross or deductions are updated (MINUS VAT)
+          const grossEtb = field === 'grossAmountEtb' ? Number(value) || 0 : (inv.grossAmountEtb || 0);
+          const advEtb = field === 'advanceDeductionEtb' ? Number(value) || 0 : (inv.advanceDeductionEtb || 0);
+          const taxEtb = field === 'taxDeductionEtb' ? Number(value) || 0 : (inv.taxDeductionEtb || 0);
+          
+          const grossUsd = field === 'grossAmountUsd' ? Number(value) || 0 : (inv.grossAmountUsd || 0);
+          const advUsd = field === 'advanceDeductionUsd' ? Number(value) || 0 : (inv.advanceDeductionUsd || 0);
+          const taxUsd = field === 'taxDeductionUsd' ? Number(value) || 0 : (inv.taxDeductionUsd || 0);
+          
+          // Net Payable is MINUS VAT (Gross Claim minus 15% VAT, minus contractual deductions)
+          const baseSubtotalEtb = inv.feesAmountEtb !== undefined && inv.reimbursableAmountEtb !== undefined 
+            ? ((inv.feesAmountEtb || 0) + (inv.reimbursableAmountEtb || 0))
+            : (grossEtb / 1.15);
+          const baseSubtotalUsd = inv.feesAmountUsd !== undefined && inv.reimbursableAmountUsd !== undefined 
+            ? ((inv.feesAmountUsd || 0) + (inv.reimbursableAmountUsd || 0))
+            : (grossUsd / 1.15);
+            
+          updated.netAmountEtb = Math.max(0, baseSubtotalEtb - (advEtb + taxEtb));
+          updated.netAmountUsd = Math.max(0, baseSubtotalUsd - (advUsd + taxUsd));
+          updated.totalDueEtb = updated.netAmountEtb;
+          updated.totalDueUsd = updated.netAmountUsd;
         }
         return updated;
       }
@@ -1597,7 +1869,10 @@ export default function SupervisionConsultantView({
   const handleRecalculateAllPersonnelMMFromInvoices = () => {
     const invoices = consultant.invoices || [];
     if (invoices.length === 0) {
-      alert("No supervision invoices recorded yet to calculate man-months from.");
+      setInAppNotification({
+        type: 'warning',
+        message: 'No supervision invoices recorded yet to calculate man-months from.'
+      });
       return;
     }
     // Find latest invoice by period or submission
@@ -1633,7 +1908,83 @@ export default function SupervisionConsultantView({
       ...consultant,
       personnel: updatedPersonnel
     }, `Calculated ${calculatedCount} assigned personnel man-month inputs from latest invoice ${latestInv.invoiceNo} total to-date man-months`);
-    alert(`Successfully calculated ${calculatedCount} assigned personnel man-month inputs from latest invoice (${latestInv.invoiceNo} - ${latestInv.billingPeriod})!`);
+    
+    setInAppNotification({
+      type: 'success',
+      message: `Successfully calculated ${calculatedCount} assigned personnel man-month inputs from invoice ${latestInv.invoiceNo} (${latestInv.billingPeriod})!`
+    });
+  };
+
+  // -------------------------------------------------------------
+  // CROSS-MODULE REAL-TIME DATA SYNCHRONIZATION
+  // -------------------------------------------------------------
+  const handleCrossModuleSyncAll = () => {
+    const invoices = consultant.invoices || [];
+    const personnel = consultant.personnel || [];
+    const savedC1 = consultant.contractAmountSchedule?.condition1;
+    const staffSchedule = savedC1?.staffFees && savedC1.staffFees.length > 0 
+      ? savedC1.staffFees 
+      : DEFAULT_CONDITION_1_STAFF;
+
+    // 1. Calculate to-date man-months from all invoice attendance records
+    const toDateMMMap: Record<string, number> = {};
+    const invoicePresenceMap: Record<string, number> = {};
+
+    invoices.forEach(inv => {
+      (inv.attendanceRecords || []).forEach((rec: any) => {
+        const id = rec.personnelId || rec.id;
+        const mm = rec.thisInvoiceQty !== undefined 
+          ? Number(rec.thisInvoiceQty) 
+          : ((Number(rec.daysWorked || rec.days || 0)) / 30);
+        if (id) {
+          toDateMMMap[id] = (toDateMMMap[id] || 0) + mm;
+          invoicePresenceMap[id] = (invoicePresenceMap[id] || 0) + 1;
+        }
+        if (rec.name) {
+          const key = rec.name.toLowerCase().trim();
+          toDateMMMap[key] = (toDateMMMap[key] || 0) + mm;
+          invoicePresenceMap[key] = (invoicePresenceMap[key] || 0) + 1;
+        }
+      });
+    });
+
+    // 2. Map contract rates from Condition 1 staffFees (Table 2 & Table 3)
+    const rateMap: Record<string, number> = {};
+    staffSchedule.forEach((sf: any) => {
+      if (sf.position) rateMap[sf.position.toLowerCase().trim()] = Number(sf.rateEtb) || 0;
+      if (sf.name && sf.name !== 'To be nominated' && sf.name !== 'TBN') {
+        rateMap[sf.name.toLowerCase().trim()] = Number(sf.rateEtb) || 0;
+      }
+    });
+
+    let updatedMMCount = 0;
+    let verifiedRateCount = 0;
+
+    const updatedPersonnel = personnel.map(p => {
+      const calcMM = toDateMMMap[p.id] ?? toDateMMMap[p.name.toLowerCase().trim()];
+      const contractRate = rateMap[p.position.toLowerCase().trim()] ?? rateMap[p.name.toLowerCase().trim()];
+      
+      let updated = { ...p };
+      if (calcMM !== undefined) {
+        updated.manMonthsInput = Number(calcMM.toFixed(2));
+        updatedMMCount++;
+      }
+      if (contractRate !== undefined && contractRate > 0) {
+        (updated as any).rateEtb = contractRate;
+        verifiedRateCount++;
+      }
+      return updated;
+    });
+
+    saveConsultantData({
+      ...consultant,
+      personnel: updatedPersonnel
+    }, `Cross-synced ${updatedMMCount} staff man-month inputs and verified ${verifiedRateCount} contractual rates`);
+
+    setInAppNotification({
+      type: 'success',
+      message: `Cross-Module Synchronization Completed: Updated ${updatedMMCount} staff man-month inputs from invoice attendance records and verified ${verifiedRateCount} contractual rates with Condition 1 schedule!`
+    });
   };
 
   const handleDeleteInvoice = (invId: string, invNo: string) => {
@@ -1890,6 +2241,344 @@ export default function SupervisionConsultantView({
     }
   };
 
+  // Export Fee Invoices & Payments as a Formatted PDF Report for Financial Auditing and Documentation
+  const handleExportInvoicesAuditPDF = () => {
+    try {
+      const doc = new jsPDF({
+        orientation: 'landscape',
+        unit: 'pt',
+        format: 'a4'
+      });
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 36;
+      let pageNum = 1;
+
+      // Draw header and border frame
+      const drawFrame = (pNum: number) => {
+        // Outer border
+        doc.setDrawColor(226, 232, 240);
+        doc.setLineWidth(0.75);
+        doc.roundedRect(margin, margin, pageWidth - margin * 2, pageHeight - margin * 2, 4, 4, 'S');
+
+        // Top accent line
+        doc.setFillColor(194, 120, 3); // ERA Gold
+        doc.rect(margin + 2, margin + 1, pageWidth - margin * 2 - 4, 2.5, 'F');
+
+        // Logo
+        drawEraLogo(doc, margin + 6, margin + 6, 32);
+
+        // Date stamp container
+        const stampW = 120;
+        const stampX = pageWidth - margin - stampW - 6;
+        doc.setFillColor(248, 250, 252);
+        doc.setDrawColor(226, 232, 240);
+        doc.roundedRect(stampX, margin + 6, stampW, 32, 4, 4, 'DF');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(6);
+        doc.setTextColor(100, 116, 139);
+        doc.text("FINANCIAL AUDIT STAMP", stampX + 6, margin + 14);
+        doc.setFontSize(8);
+        doc.setTextColor(15, 23, 42);
+        doc.text(new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }), stampX + 6, margin + 23);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(6);
+        doc.setTextColor(71, 85, 105);
+        doc.text(`REF: ${consultant.contractRefNo || 'ERA-SUPERVISION'}`, stampX + 6, margin + 31);
+
+        // Institution & Title
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(11);
+        doc.setTextColor(15, 23, 42);
+        doc.text("ETHIOPIAN ROADS ADMINISTRATION (ERA)", margin + 44, margin + 16);
+
+        doc.setFontSize(9);
+        doc.setTextColor(30, 64, 175);
+        doc.text("SUPERVISION CONSULTANT FEE INVOICES & FINANCIAL AUDIT LEDGER", margin + 44, margin + 27);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(6.5);
+        doc.setTextColor(100, 116, 139);
+        const dateRangeLabel = invoiceStartDate || invoiceEndDate
+          ? `Reporting Period Filter: ${invoiceStartDate || 'Earliest'} to ${invoiceEndDate || 'Latest'}`
+          : 'Reporting Period: All Cumulative Billing Periods';
+        doc.text(`${project.name || 'Road Construction Project'} • ${consultant.firmName || 'Supervision Consultant'} • ${dateRangeLabel}`, margin + 44, margin + 36);
+
+        // Dividing line
+        doc.setDrawColor(226, 232, 240);
+        doc.line(margin + 2, margin + 44, pageWidth - margin - 2, margin + 44);
+
+        // Footer
+        const footerY = pageHeight - margin - 12;
+        doc.line(margin + 2, footerY - 6, pageWidth - margin - 2, footerY - 6);
+        doc.setFontSize(6.5);
+        doc.setTextColor(148, 163, 184);
+        doc.text("CONFIDENTIAL & PROPRIETARY — FOR OFFICIAL FINANCIAL AUDIT & VALUATION PURPOSES ONLY", margin + 8, footerY + 2);
+        doc.text(`Page ${pNum}`, pageWidth - margin - 40, footerY + 2);
+      };
+
+      drawFrame(pageNum);
+      let y = margin + 52;
+
+      // Executive Financial KPI Summary Box
+      const contentWidth = pageWidth - margin * 2;
+      doc.setFillColor(248, 250, 252);
+      doc.setDrawColor(226, 232, 240);
+      doc.roundedRect(margin + 6, y, contentWidth - 12, 38, 4, 4, 'DF');
+
+      const colW = (contentWidth - 12) / 4;
+      // Col 1: Total Gross Invoiced
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text("TOTAL GROSS INVOICED (PERIOD)", margin + 14, y + 12);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9.5);
+      doc.setTextColor(30, 64, 175);
+      const periodGross = filteredInvoices.reduce((s, i) => s + (i.grossAmountEtb || 0), 0);
+      doc.text(`${formatAccounting(periodGross, '')} ETB`, margin + 14, y + 26);
+
+      // Col 2: Total Disbursed / Paid
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text("DISBURSED / PAID (PERIOD)", margin + 14 + colW, y + 12);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9.5);
+      doc.setTextColor(16, 149, 114);
+      const periodPaid = filteredInvoices.filter(i => i.status === 'Paid').reduce((s, i) => s + (i.netAmountEtb || 0), 0);
+      doc.text(`${formatAccounting(periodPaid, '')} ETB`, margin + 14 + colW, y + 26);
+
+      // Col 3: Pending Net Amount
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text("PENDING / CERTIFIED UNPAID", margin + 14 + colW * 2, y + 12);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9.5);
+      doc.setTextColor(217, 119, 6);
+      const periodPending = filteredInvoices.filter(i => i.status !== 'Paid').reduce((s, i) => s + (i.netAmountEtb || 0), 0);
+      doc.text(`${formatAccounting(periodPending, '')} ETB`, margin + 14 + colW * 2, y + 26);
+
+      // Col 4: Invoices Count & Utilization
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text("RECORDS & BUDGET UTILIZATION", margin + 14 + colW * 3, y + 12);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9.5);
+      doc.setTextColor(15, 23, 42);
+      doc.text(`${filteredInvoices.length} Invoices (${financialSummary.financialUtilizationPct.toFixed(1)}% of Budget)`, margin + 14 + colW * 3, y + 26);
+
+      y += 46;
+
+      // Table Header for Invoice Audit Ledger
+      const headers = [
+        { title: 'No', width: 24, align: 'center' },
+        { title: 'Invoice No.', width: 66, align: 'left' },
+        { title: 'Billing Period', width: 90, align: 'left' },
+        { title: 'Submission', width: 62, align: 'left' },
+        { title: 'Payment Date', width: 62, align: 'left' },
+        { title: 'Gross Claim (ETB)', width: 85, align: 'right' },
+        { title: 'Deductions (ETB)', width: 75, align: 'right' },
+        { title: '15% VAT (ETB)', width: 70, align: 'right' },
+        { title: 'Net Payable (ETB)', width: 85, align: 'right' },
+        { title: 'Status', width: 55, align: 'center' },
+        { title: 'Payment Ref / Notes', width: 95, align: 'left' }
+      ];
+
+      const drawTableHeader = (curY: number) => {
+        doc.setFillColor(30, 41, 59); // slate-800
+        doc.roundedRect(margin + 6, curY, contentWidth - 12, 18, 2, 2, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(6.5);
+        doc.setTextColor(255, 255, 255);
+
+        let hX = margin + 8;
+        headers.forEach(h => {
+          if (h.align === 'right') {
+            doc.text(h.title, hX + h.width - 2, curY + 11, { align: 'right' });
+          } else if (h.align === 'center') {
+            doc.text(h.title, hX + h.width / 2, curY + 11, { align: 'center' });
+          } else {
+            doc.text(h.title, hX + 2, curY + 11);
+          }
+          hX += h.width;
+        });
+      };
+
+      drawTableHeader(y);
+      y += 20;
+
+      // Table Rows
+      let totalGross = 0;
+      let totalDeductions = 0;
+      let totalVat = 0;
+      let totalNet = 0;
+
+      filteredInvoices.forEach((inv, idx) => {
+        if (y > pageHeight - margin - 60) {
+          doc.addPage();
+          pageNum++;
+          drawFrame(pageNum);
+          y = margin + 52;
+          drawTableHeader(y);
+          y += 20;
+        }
+
+        const gross = inv.grossAmountEtb || 0;
+        const ded = (inv.advanceDeductionEtb || 0) + (inv.taxDeductionEtb || 0) + (inv.overtimeDeductionEtb || 0);
+        const vat = inv.vatAmountEtb || Number((gross * 0.15 / 1.15).toFixed(2));
+        const net = inv.netAmountEtb || Math.max(0, gross - ded);
+
+        totalGross += gross;
+        totalDeductions += ded;
+        totalVat += vat;
+        totalNet += net;
+
+        // Alternating row background
+        if (idx % 2 === 1) {
+          doc.setFillColor(248, 250, 252);
+          doc.rect(margin + 6, y, contentWidth - 12, 14, 'F');
+        }
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(6.5);
+        doc.setTextColor(30, 41, 59);
+
+        let rX = margin + 8;
+        // No
+        doc.text(String(idx + 1), rX + 12, y + 9.5, { align: 'center' });
+        rX += 24;
+
+        // Invoice No
+        doc.setFont('helvetica', 'bold');
+        doc.text(inv.invoiceNo || '-', rX + 2, y + 9.5);
+        doc.setFont('helvetica', 'normal');
+        rX += 66;
+
+        // Billing Period
+        doc.text(inv.billingPeriod || '-', rX + 2, y + 9.5);
+        rX += 90;
+
+        // Submission
+        doc.text(inv.submissionDate || '-', rX + 2, y + 9.5);
+        rX += 62;
+
+        // Payment Date
+        doc.text(inv.paymentDate || inv.certificationDate || '-', rX + 2, y + 9.5);
+        rX += 62;
+
+        // Gross Claim
+        doc.text(formatAccounting(gross, ''), rX + 85 - 2, y + 9.5, { align: 'right' });
+        rX += 85;
+
+        // Deductions
+        doc.text(ded > 0 ? `-${formatAccounting(ded, '')}` : '-', rX + 75 - 2, y + 9.5, { align: 'right' });
+        rX += 75;
+
+        // VAT
+        doc.text(formatAccounting(vat, ''), rX + 70 - 2, y + 9.5, { align: 'right' });
+        rX += 70;
+
+        // Net Payable
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(16, 149, 114);
+        doc.text(formatAccounting(net, ''), rX + 85 - 2, y + 9.5, { align: 'right' });
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(30, 41, 59);
+        rX += 85;
+
+        // Status badge
+        doc.text(inv.status || 'Submitted', rX + 27, y + 9.5, { align: 'center' });
+        rX += 55;
+
+        // Ref / Remarks
+        const refNote = inv.paymentReference || inv.remarks || '-';
+        doc.text(refNote.length > 20 ? `${refNote.substring(0, 18)}...` : refNote, rX + 2, y + 9.5);
+
+        // Row dividing line
+        doc.setDrawColor(241, 245, 249);
+        doc.line(margin + 6, y + 14, margin + contentWidth - 6, y + 14);
+        y += 14;
+      });
+
+      // Total Summary Row
+      if (y > pageHeight - margin - 70) {
+        doc.addPage();
+        pageNum++;
+        drawFrame(pageNum);
+        y = margin + 52;
+      }
+
+      doc.setFillColor(241, 245, 249); // slate-100
+      doc.rect(margin + 6, y, contentWidth - 12, 16, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7);
+      doc.setTextColor(15, 23, 42);
+      doc.text("PERIOD TOTALS:", margin + 14, y + 11);
+
+      let tX = margin + 8 + 24 + 66 + 90 + 62 + 62;
+      doc.text(formatAccounting(totalGross, ''), tX + 85 - 2, y + 11, { align: 'right' });
+      tX += 85;
+      doc.text(formatAccounting(totalDeductions, ''), tX + 75 - 2, y + 11, { align: 'right' });
+      tX += 75;
+      doc.text(formatAccounting(totalVat, ''), tX + 70 - 2, y + 11, { align: 'right' });
+      tX += 70;
+      doc.setTextColor(16, 149, 114);
+      doc.text(formatAccounting(totalNet, ''), tX + 85 - 2, y + 11, { align: 'right' });
+
+      y += 24;
+
+      // Official Sign-Off Certification Block
+      if (y > pageHeight - margin - 60) {
+        doc.addPage();
+        pageNum++;
+        drawFrame(pageNum);
+        y = margin + 52;
+      }
+
+      const signW = (contentWidth - 12) / 4;
+      const signY = Math.min(y + 8, pageHeight - margin - 50);
+
+      const roles = [
+        { title: 'PREPARED BY', name: 'Resident Engineer', sub: 'Supervision Consultant' },
+        { title: 'CHECKED BY', name: 'Valuation & Payment Officer', sub: 'ERA Financial Directorate' },
+        { title: 'REVIEWED BY', name: 'Lead Supervision Engineer', sub: 'ERA Directorate' },
+        { title: 'CERTIFIED & APPROVED', name: 'Project Director', sub: 'Ethiopian Roads Admin' }
+      ];
+
+      roles.forEach((r, idx) => {
+        const sX = margin + 6 + idx * signW;
+        doc.setDrawColor(203, 213, 225);
+        doc.line(sX + 6, signY + 22, sX + signW - 12, signY + 22);
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(6);
+        doc.setTextColor(100, 116, 139);
+        doc.text(r.title, sX + 6, signY + 6);
+
+        doc.setFontSize(6.5);
+        doc.setTextColor(15, 23, 42);
+        doc.text(r.name, sX + 6, signY + 30);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(5.5);
+        doc.setTextColor(100, 116, 139);
+        doc.text(r.sub, sX + 6, signY + 37);
+      });
+
+      const dateStr = (invoiceStartDate || invoiceEndDate) 
+        ? `${invoiceStartDate || 'Start'}_to_${invoiceEndDate || 'End'}`
+        : 'All_Periods';
+      const cleanProj = (project.name || 'Project').replace(/\s+/g, '_').substring(0, 20);
+      doc.save(`Fee_Invoices_Financial_Audit_${cleanProj}_${dateStr}.pdf`);
+    } catch (err) {
+      console.error("PDF generation failed:", err);
+      alert("Failed to export Financial Audit PDF. Please check console for details.");
+    }
+  };
+
   // Export to CSV / Excel
   const handleExportCSV = () => {
     const staffHeaders = ['Name', 'Position', 'Category', 'Date of Assignment', 'Status', 'Qualification', 'Experience (Yrs)', 'Man-Months Allocated', 'Man-Months Input', 'Site Station', 'Phone', 'Email'];
@@ -1986,65 +2675,172 @@ export default function SupervisionConsultantView({
             </h1>
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex flex-wrap items-center gap-2">
-            {!isReadonly && (
-              <>
+          {/* Right Header Area: Real-Time Currency Switcher (USD/ETB) & Actions */}
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Real-Time Currency Switcher (USD/ETB) */}
+            <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800/80 px-3 py-1.5 rounded-2xl border border-slate-200 dark:border-slate-700/80 shadow-xs">
+              <div className="flex items-center gap-1.5">
+                <Coins className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Currency:</span>
+              </div>
+              
+              <div className="inline-flex p-0.5 bg-slate-200/80 dark:bg-slate-900 rounded-xl border border-slate-300/60 dark:border-slate-700">
                 <button
-                  onClick={() => {
-                    setConsultantForm(consultant);
-                    setEditModalSection('all');
-                    setIsEditConsultantOpen(true);
-                  }}
-                  className="px-3.5 py-2 text-xs font-bold rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center gap-1.5 transition shadow-xs"
+                  type="button"
+                  onClick={() => setViewCurrency('ETB')}
+                  className={`px-3 py-1 rounded-lg text-xs font-black transition cursor-pointer flex items-center gap-1 ${
+                    viewCurrency === 'ETB'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                  title="View all figures and tables in Ethiopian Birr (ETB)"
                 >
-                  <Edit3 className="w-3.5 h-3.5" />
-                  Edit Contract Details
+                  ETB
                 </button>
-
                 <button
-                  onClick={handleOpenAssignNewConsultant}
-                  title="Assign a new supervision consultant firm as continuation of service (e.g. upon time/extension completion)"
-                  className="px-3.5 py-2 text-xs font-bold rounded-xl bg-amber-500 hover:bg-amber-600 text-white flex items-center gap-1.5 transition shadow-xs"
+                  type="button"
+                  onClick={() => setViewCurrency('USD')}
+                  className={`px-3 py-1 rounded-lg text-xs font-black transition cursor-pointer flex items-center gap-1 ${
+                    viewCurrency === 'USD'
+                      ? 'bg-purple-600 text-white shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                  title="View all figures and tables in United States Dollar (USD) converted at active exchange rate"
                 >
-                  <ArrowRightLeft className="w-3.5 h-3.5" />
-                  Assign Successor Consultant
+                  USD
                 </button>
+              </div>
 
-                <button
-                  onClick={handleOpenAddPersonnel}
-                  className="px-3.5 py-2 text-xs font-bold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1.5 transition shadow-xs"
-                >
-                  <Users className="w-3.5 h-3.5" />
-                  Assign Personnel
-                </button>
-              </>
-            )}
+              {/* Exchange Rate Badge & Quick Edit */}
+              <div className="relative border-l border-slate-200 dark:border-slate-700 pl-2 flex items-center gap-1.5">
+                <span className="text-[11px] font-mono text-slate-500">
+                  1 USD = <span className="font-bold text-slate-800 dark:text-slate-200">{activeExchangeRate.toFixed(2)}</span> ETB
+                </span>
+                {!isReadonly && (
+                  <button
+                    type="button"
+                    onClick={() => setIsQuickRateEditOpen(!isQuickRateEditOpen)}
+                    className="p-1 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition cursor-pointer"
+                    title="Change exchange rate settings"
+                  >
+                    <Edit3 className="w-3 h-3" />
+                  </button>
+                )}
 
-            <button
-              onClick={() => setIsWorkloadReportOpen(true)}
-              id="btn-supervision-print-workload-report"
-              className="px-3.5 py-2 text-xs font-extrabold rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 flex items-center gap-1.5 transition shadow-xs cursor-pointer"
-            >
-              <Printer className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-              Print Workload Report
-            </button>
+                {/* Quick Exchange Rate Popover */}
+                {isQuickRateEditOpen && (
+                  <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-2xl shadow-xl z-30 animate-in fade-in zoom-in-95 duration-150">
+                    <div className="text-xs font-bold text-slate-800 dark:text-slate-100 mb-2 flex items-center justify-between">
+                      <span>Operational Exchange Rate</span>
+                      <button 
+                        type="button" 
+                        onClick={() => setIsQuickRateEditOpen(false)}
+                        className="text-slate-400 hover:text-slate-600 cursor-pointer"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs text-slate-500">1 USD =</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={exchangeRateInput}
+                          onChange={(e) => setExchangeRateInput(parseFloat(e.target.value) || 0)}
+                          className="flex-1 px-2.5 py-1 text-xs font-mono font-bold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
+                        />
+                        <span className="text-xs text-slate-500">ETB</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveTab('profile');
+                            setIsQuickRateEditOpen(false);
+                          }}
+                          className="text-[10px] text-blue-600 hover:underline cursor-pointer"
+                        >
+                          Profile Settings
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (exchangeRateInput > 0) {
+                              handleSaveExchangeRate(exchangeRateInput);
+                            }
+                          }}
+                          className="px-2.5 py-1 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition cursor-pointer"
+                        >
+                          Apply Rate
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
 
-            <div className="flex items-center gap-1 border-l border-slate-200 dark:border-slate-800 pl-2">
+            {/* Action Buttons */}
+            <div className="flex flex-wrap items-center gap-2">
+              {!isReadonly && (
+                <>
+                  <button
+                    onClick={() => {
+                      setConsultantForm(consultant);
+                      setEditModalSection('all');
+                      setIsEditConsultantOpen(true);
+                    }}
+                    className="px-3.5 py-2 text-xs font-bold rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center gap-1.5 transition shadow-xs cursor-pointer"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                    Edit Contract
+                  </button>
+
+                  <button
+                    onClick={handleOpenAssignNewConsultant}
+                    title="Assign a new supervision consultant firm as continuation of service (e.g. upon time/extension completion)"
+                    className="px-3.5 py-2 text-xs font-bold rounded-xl bg-amber-500 hover:bg-amber-600 text-white flex items-center gap-1.5 transition shadow-xs cursor-pointer"
+                  >
+                    <ArrowRightLeft className="w-3.5 h-3.5" />
+                    Assign Successor
+                  </button>
+
+                  <button
+                    onClick={handleOpenAddPersonnel}
+                    className="px-3.5 py-2 text-xs font-bold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1.5 transition shadow-xs cursor-pointer"
+                  >
+                    <Users className="w-3.5 h-3.5" />
+                    Assign Personnel
+                  </button>
+                </>
+              )}
+
               <button
-                onClick={handleExportPDF}
-                title="Export Single Project PDF Report"
-                className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition"
+                onClick={() => setIsWorkloadReportOpen(true)}
+                id="btn-supervision-print-workload-report"
+                className="px-3.5 py-2 text-xs font-extrabold rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 flex items-center gap-1.5 transition shadow-xs cursor-pointer"
               >
-                <Printer className="w-4 h-4 text-slate-600 dark:text-slate-300" />
+                <Printer className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                Workload Report
               </button>
-              <button
-                onClick={handleExportCSV}
-                title="Export Excel/CSV"
-                className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition"
-              >
-                <Download className="w-4 h-4 text-slate-600 dark:text-slate-300" />
-              </button>
+
+              <div className="flex items-center gap-1 border-l border-slate-200 dark:border-slate-800 pl-2">
+                <button
+                  onClick={handleExportPDF}
+                  title="Export Single Project PDF Report"
+                  className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition cursor-pointer"
+                >
+                  <Printer className="w-4 h-4 text-slate-600 dark:text-slate-300" />
+                </button>
+                <button
+                  onClick={handleExportCSV}
+                  title="Export Excel/CSV"
+                  className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition cursor-pointer"
+                >
+                  <Download className="w-4 h-4 text-slate-600 dark:text-slate-300" />
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -2100,20 +2896,20 @@ export default function SupervisionConsultantView({
           </div>
         )}
 
-        {/* Executive KPI Metric Highlights */}
+        {/* Executive KPI Metric Highlights - Real-time converted by Currency Toggle */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mt-6 pt-5 border-t border-slate-100 dark:border-slate-800/80">
           <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-2xl border border-slate-100 dark:border-slate-800">
             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Supervision Fee</span>
             <div className="text-base md:text-lg font-black text-slate-900 dark:text-white font-mono mt-0.5">
-              {formatAccounting((consultant.revisedFeeEtb || consultant.originalFeeEtb || 0) / 1_000_000, '')} M
+              {viewCurrency === 'USD' ? '$' : ''}{formatAccounting(convertCurrency(consultant.revisedFeeEtb || consultant.originalFeeEtb || 0) / 1_000_000, '')} M
             </div>
-            <span className="text-[10px] text-slate-400 font-mono">ETB Contract Budget</span>
+            <span className="text-[10px] text-slate-400 font-mono">{viewCurrency} Contract Budget</span>
           </div>
 
           <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-2xl border border-slate-100 dark:border-slate-800">
             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Total Invoiced</span>
             <div className="text-base md:text-lg font-black text-blue-600 dark:text-blue-400 font-mono mt-0.5">
-              {formatAccounting(financialSummary.totalGrossInvoiced / 1_000_000, '')} M
+              {viewCurrency === 'USD' ? '$' : ''}{formatAccounting(convertCurrency(financialSummary.totalGrossInvoiced) / 1_000_000, '')} M
             </div>
             <span className="text-[10px] text-blue-500 font-semibold font-mono">
               {financialSummary.financialUtilizationPct.toFixed(1)}% Utilized
@@ -2121,9 +2917,9 @@ export default function SupervisionConsultantView({
           </div>
 
           <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-2xl border border-slate-100 dark:border-slate-800">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Total Paid (ETB)</span>
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Total Paid ({viewCurrency})</span>
             <div className="text-base md:text-lg font-black text-emerald-600 dark:text-emerald-400 font-mono mt-0.5">
-              {formatAccounting(financialSummary.totalPaidEtb / 1_000_000, '')} M
+              {viewCurrency === 'USD' ? '$' : ''}{formatAccounting(convertCurrency(financialSummary.totalPaidEtb) / 1_000_000, '')} M
             </div>
             <span className="text-[10px] text-emerald-500 font-semibold font-mono">
               {financialSummary.paymentDisbursementPct.toFixed(1)}% Settled
@@ -2174,239 +2970,64 @@ export default function SupervisionConsultantView({
         </div>
       </div>
 
-      {/* JV Partner Individual Performance Toggle Section (Appears ONLY when a Joint Venture contract is selected) */}
-      {false && isJvContract && (
-        <div className="bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-900/60 rounded-3xl shadow-sm overflow-hidden transition">
-          <div 
-            onClick={() => setIsJvPerformanceExpanded(!isJvPerformanceExpanded)}
-            className="p-4 md:p-5 bg-gradient-to-r from-indigo-950 via-slate-900 to-indigo-900 text-white flex flex-col md:flex-row md:items-center justify-between gap-4 cursor-pointer select-none"
-          >
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-2xl bg-indigo-500/20 border border-indigo-400/30 text-indigo-300 shrink-0">
-                <Users className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="text-sm md:text-base font-black uppercase tracking-wider text-white">
-                    JV Partner Individual Performance
-                  </h3>
-                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/30 text-indigo-200 border border-indigo-400/30">
-                    🤝 Joint Venture Active
-                  </span>
-                </div>
-                <p className="text-xs text-indigo-200/80 mt-0.5">
-                  Capture and view individual partner Likert-scale (1–5) performance ratings &amp; share contribution breakdown
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3 shrink-0">
-              <div className="hidden sm:flex items-center gap-2 font-mono text-xs">
-                <span className="px-2.5 py-1 rounded-xl bg-amber-500/20 text-amber-300 font-bold border border-amber-400/30" title={`Lead Firm: ${parsedJv.leadName}`}>
-                  👑 Lead: Grade {jvScoreSummary.leadGrade} ({jvScoreSummary.leadScore.toFixed(1)}%)
-                </span>
-                <span className="px-2.5 py-1 rounded-xl bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-400/30" title={`Associate Firm: ${parsedJv.partnerName}`}>
-                  🤛 Associate: Grade {jvScoreSummary.partnerGrade} ({jvScoreSummary.partnerScore.toFixed(1)}%)
-                </span>
-                <span className="px-2.5 py-1 rounded-xl bg-indigo-600 text-white font-black shadow-xs">
-                  🏆 Consolidated: {jvScoreSummary.weightedJvScore.toFixed(1)}% ({jvScoreSummary.weightedJvGrade})
-                </span>
-              </div>
-
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIsJvPerformanceExpanded(!isJvPerformanceExpanded);
-                }}
-                className="px-3.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition flex items-center gap-1.5 border border-white/10 cursor-pointer"
-                title={isJvPerformanceExpanded ? "Collapse JV Partner Individual Performance section" : "Expand JV Partner Individual Performance section"}
-              >
-                <span>{isJvPerformanceExpanded ? 'Collapse JV Partner Individual Performance' : 'JV Partner Individual Performance'}</span>
-                <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isJvPerformanceExpanded ? 'rotate-180' : ''}`} />
-              </button>
-            </div>
+      {/* IN-APP FLOATING NOTIFICATION TOAST */}
+      {inAppNotification && (
+        <div className={`fixed top-5 right-5 z-50 p-4 rounded-2xl shadow-xl border flex items-center gap-3 max-w-md animate-in slide-in-from-top duration-300 ${
+          inAppNotification.type === 'success'
+            ? 'bg-emerald-950 text-emerald-100 border-emerald-500/50'
+            : inAppNotification.type === 'warning'
+            ? 'bg-amber-950 text-amber-100 border-amber-500/50'
+            : 'bg-blue-950 text-blue-100 border-blue-500/50'
+        }`}>
+          {inAppNotification.type === 'success' ? (
+            <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+          ) : inAppNotification.type === 'warning' ? (
+            <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
+          ) : (
+            <Info className="w-5 h-5 text-blue-400 shrink-0" />
+          )}
+          <div className="text-xs font-semibold flex-1 leading-snug">
+            {inAppNotification.message}
           </div>
-
-          {/* Section Body with Sub-Table UI */}
-          <AnimatePresence>
-            {isJvPerformanceExpanded && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="p-4 md:p-6 bg-slate-950 text-white border-t border-indigo-900/40 space-y-4"
-              >
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-indigo-800/40">
-                  <div className="space-y-0.5">
-                    <h4 className="text-xs font-black uppercase text-white tracking-wider flex items-center gap-2">
-                      🤝 Sub-Table: Capture Individual Partner Likert-Scale Performance Ratings (1–5)
-                    </h4>
-                    <p className="text-[11px] text-indigo-200/70">
-                      Likert Ratings: 1 = Critical (&lt;50%), 2 = Needs Improvement (50-69%), 3 = Satisfactory (70-79%), 4 = Good (80-89%), 5 = Outstanding (&ge;90%).
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 font-mono text-xs bg-indigo-900/60 px-3 py-1.5 rounded-xl border border-indigo-700/60 shrink-0">
-                    <span className="text-amber-300 font-bold">👑 Lead: {leadSharePct}% Share</span>
-                    <span>+</span>
-                    <span className="text-emerald-300 font-bold">🤛 Associate: {partnerSharePct}% Share</span>
-                    <span>= 100% Total JV</span>
-                  </div>
-                </div>
-
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs text-left border-collapse">
-                    <thead>
-                      <tr className="bg-white/5 border-b border-white/10 text-indigo-200 font-black uppercase tracking-wider text-[10px]">
-                        <th className="py-2.5 px-3">Partner Company &amp; Consortium Role</th>
-                        <th className="py-2.5 px-2 text-center">Share %</th>
-                        <th className="py-2.5 px-2 text-center" title="Technical Competence & Design Quality">Dim A: Tech Skills</th>
-                        <th className="py-2.5 px-2 text-center" title="Key Personnel Mobilization & MM Utilization">Dim B: Staff &amp; MM</th>
-                        <th className="py-2.5 px-2 text-center" title="Submittals & RFI SLA Turnaround">Dim C: Submittals SLA</th>
-                        <th className="py-2.5 px-2 text-center" title="Claims Resolution & Contract Administration">Dim D: Claims &amp; Admin</th>
-                        <th className="py-2.5 px-2 text-center" title="Workmanship Quality & QA Inspections">Dim E: Quality &amp; QA</th>
-                        <th className="py-2.5 px-3 text-center">Individual Score</th>
-                        <th className="py-2.5 px-3 text-right">Weighted JV Share</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-white/10">
-                      {/* Lead Firm Row */}
-                      <tr className="hover:bg-white/5 transition">
-                        <td className="py-3 px-3 font-bold text-amber-200">
-                          <div className="flex items-center gap-2">
-                            <span className="px-2 py-0.5 rounded bg-amber-500/30 text-amber-300 text-[10px] font-black border border-amber-400/30">LEAD</span>
-                            <span className="font-bold text-white truncate max-w-[200px]" title={parsedJv.leadName}>{parsedJv.leadName}</span>
-                          </div>
-                        </td>
-                        <td className="py-3 px-2 text-center font-mono font-bold text-amber-300">
-                          {leadSharePct}%
-                        </td>
-                        {(['A', 'B', 'C', 'D', 'E'] as const).map(dimKey => {
-                          const currentRating = leadLikertRatings[dimKey];
-                          return (
-                            <td key={dimKey} className="py-3 px-2 text-center">
-                              <div className="inline-flex items-center gap-0.5 bg-slate-900 p-1 rounded-lg border border-amber-500/30">
-                                {[1, 2, 3, 4, 5].map(ratingVal => (
-                                  <button
-                                    key={ratingVal}
-                                    type="button"
-                                    disabled={isReadonly || !isAdmin}
-                                    onClick={() => handleSetJvLikertRating('lead', dimKey, ratingVal)}
-                                    className={`w-5 h-5 rounded text-[10px] font-black transition cursor-pointer disabled:cursor-default ${
-                                      currentRating === ratingVal
-                                        ? 'bg-amber-500 text-slate-950 font-black shadow-xs'
-                                        : 'text-slate-400 hover:text-white hover:bg-white/10'
-                                    }`}
-                                    title={`Set Likert Rating ${ratingVal}/5 for Dimension ${dimKey} (Lead Firm)`}
-                                  >
-                                    {ratingVal}
-                                  </button>
-                                ))}
-                              </div>
-                            </td>
-                          );
-                        })}
-                        <td className="py-3 px-3 text-center">
-                          <span className="px-2.5 py-1 rounded-lg font-mono font-black bg-amber-500/20 text-amber-300 border border-amber-400/30 text-xs">
-                            {jvScoreSummary.leadScore.toFixed(1)}% ({jvScoreSummary.leadGrade})
-                          </span>
-                        </td>
-                        <td className="py-3 px-3 text-right font-mono font-bold text-amber-300">
-                          {(jvScoreSummary.leadScore * (leadSharePct / 100)).toFixed(1)}%
-                        </td>
-                      </tr>
-
-                      {/* Associate Partner Row */}
-                      <tr className="hover:bg-white/5 transition">
-                        <td className="py-3 px-3 font-bold text-emerald-200">
-                          <div className="flex items-center gap-2">
-                            <span className="px-2 py-0.5 rounded bg-emerald-500/30 text-emerald-300 text-[10px] font-black border border-emerald-400/30">ASSOCIATE</span>
-                            <span className="font-bold text-white truncate max-w-[200px]" title={parsedJv.partnerName}>{parsedJv.partnerName}</span>
-                          </div>
-                        </td>
-                        <td className="py-3 px-2 text-center font-mono font-bold text-emerald-300">
-                          {partnerSharePct}%
-                        </td>
-                        {(['A', 'B', 'C', 'D', 'E'] as const).map(dimKey => {
-                          const currentRating = partnerLikertRatings[dimKey];
-                          return (
-                            <td key={dimKey} className="py-3 px-2 text-center">
-                              <div className="inline-flex items-center gap-0.5 bg-slate-900 p-1 rounded-lg border border-emerald-500/30">
-                                {[1, 2, 3, 4, 5].map(ratingVal => (
-                                  <button
-                                    key={ratingVal}
-                                    type="button"
-                                    disabled={isReadonly || !isAdmin}
-                                    onClick={() => handleSetJvLikertRating('partner', dimKey, ratingVal)}
-                                    className={`w-5 h-5 rounded text-[10px] font-black transition cursor-pointer disabled:cursor-default ${
-                                      currentRating === ratingVal
-                                        ? 'bg-emerald-500 text-slate-950 font-black shadow-xs'
-                                        : 'text-slate-400 hover:text-white hover:bg-white/10'
-                                    }`}
-                                    title={`Set Likert Rating ${ratingVal}/5 for Dimension ${dimKey} (Associate Partner)`}
-                                  >
-                                    {ratingVal}
-                                  </button>
-                                ))}
-                              </div>
-                            </td>
-                          );
-                        })}
-                        <td className="py-3 px-3 text-center">
-                          <span className="px-2.5 py-1 rounded-lg font-mono font-black bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 text-xs">
-                            {jvScoreSummary.partnerScore.toFixed(1)}% ({jvScoreSummary.partnerGrade})
-                          </span>
-                        </td>
-                        <td className="py-3 px-3 text-right font-mono font-bold text-emerald-300">
-                          {(jvScoreSummary.partnerScore * (partnerSharePct / 100)).toFixed(1)}%
-                        </td>
-                      </tr>
-
-                      {/* Consolidated Weighted Total JV Row */}
-                      <tr className="bg-indigo-950/90 font-bold border-t-2 border-indigo-500/50">
-                        <td colSpan={7} className="py-3.5 px-3 text-right uppercase tracking-wider text-[11px] text-indigo-200 font-extrabold">
-                          🏆 Consolidated Total Joint Venture Performance Score (Share-Weighted Average):
-                        </td>
-                        <td className="py-3.5 px-3 text-center font-mono font-black text-sm text-indigo-100">
-                          <span className="px-3 py-1 rounded-xl bg-indigo-600 text-white shadow-md border border-indigo-400">
-                            {jvScoreSummary.weightedJvScore.toFixed(1)}% ({jvScoreSummary.weightedJvGrade})
-                          </span>
-                        </td>
-                        <td className="py-3.5 px-3 text-right font-mono font-black text-sm text-emerald-400">
-                          {jvScoreSummary.weightedJvScore.toFixed(1)}%
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+          <button
+            type="button"
+            onClick={() => setInAppNotification(null)}
+            className="text-white/60 hover:text-white text-xs font-bold p-1 cursor-pointer"
+          >
+            ✕
+          </button>
         </div>
       )}
 
-      {/* Internal Navigation Subtabs */}
+      {/* Internal Navigation Subtabs - Interlinked primary workflows first */}
       <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
         <button
-          onClick={() => setActiveTab('personnel')}
-          className={`px-4 py-2 rounded-2xl text-xs md:text-sm font-bold flex items-center gap-2 transition ${
-            activeTab === 'personnel'
-              ? 'bg-indigo-600 text-white shadow-sm'
+          onClick={() => setActiveTab('contract_amount')}
+          className={`px-4 py-2 rounded-2xl text-xs md:text-sm font-bold flex items-center gap-2 transition cursor-pointer ${
+            activeTab === 'contract_amount'
+              ? 'bg-emerald-600 text-white shadow-sm'
               : 'bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
           }`}
         >
-          <Users className="w-4 h-4" />
-          Assigned Personnel Directory
-          <span className={`px-2 py-0.5 rounded-full text-xs font-mono ${
-            activeTab === 'personnel' ? 'bg-indigo-700 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
-          }`}>
-            {consultant.personnel?.length || 0}
-          </span>
+          <DollarSign className="w-4 h-4" />
+          Contract Amount & Baseline
+        </button>
+
+        <button
+          onClick={() => setActiveTab('profile')}
+          className={`px-4 py-2 rounded-2xl text-xs md:text-sm font-bold flex items-center gap-2 transition cursor-pointer ${
+            activeTab === 'profile'
+              ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 shadow-sm'
+              : 'bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
+          }`}
+        >
+          <Briefcase className="w-4 h-4" />
+          Contract & Scope Profile
         </button>
 
         <button
           onClick={() => setActiveTab('invoices')}
-          className={`px-4 py-2 rounded-2xl text-xs md:text-sm font-bold flex items-center gap-2 transition ${
+          className={`px-4 py-2 rounded-2xl text-xs md:text-sm font-bold flex items-center gap-2 transition cursor-pointer ${
             activeTab === 'invoices'
               ? 'bg-blue-600 text-white shadow-sm'
               : 'bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
@@ -2421,48 +3042,48 @@ export default function SupervisionConsultantView({
           </span>
         </button>
 
+        <button
+          onClick={() => setActiveTab('personnel')}
+          className={`px-4 py-2 rounded-2xl text-xs md:text-sm font-bold flex items-center gap-2 transition cursor-pointer ${
+            activeTab === 'personnel'
+              ? 'bg-indigo-600 text-white shadow-sm'
+              : 'bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
+          }`}
+        >
+          <Users className="w-4 h-4" />
+          Assigned Personnel Directory
+          <span className={`px-2 py-0.5 rounded-full text-xs font-mono ${
+            activeTab === 'personnel' ? 'bg-indigo-700 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
+          }`}>
+            {consultant.personnel?.length || 0}
+          </span>
+        </button>
+
         {(isAdmin || isEraUser) && !isConsultantUser && (
           <button
             onClick={() => setActiveTab('kpis')}
-            className={`px-4 py-2 rounded-2xl text-xs md:text-sm font-bold flex items-center gap-2 transition ${
+            className={`px-4 py-2 rounded-2xl text-xs md:text-sm font-bold flex items-center gap-2 transition cursor-pointer ${
               activeTab === 'kpis'
                 ? 'bg-purple-600 text-white shadow-sm'
                 : 'bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
             }`}
           >
             <Clock className="w-4 h-4" />
-            Supervision Consultant Evaluation
-            <span className={`px-2 py-0.5 rounded-full text-xs font-mono ${
-              activeTab === 'kpis' ? 'bg-purple-700 text-white' : 'bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-300 font-bold'
-            }`}>
-              Section 2 Matrix
-            </span>
+            Evaluation (Section 2 Matrix)
           </button>
         )}
-
-        <button
-          onClick={() => setActiveTab('profile')}
-          className={`px-4 py-2 rounded-2xl text-xs md:text-sm font-bold flex items-center gap-2 transition ${
-            activeTab === 'profile'
-              ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 shadow-sm'
-              : 'bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
-          }`}
-        >
-          <Briefcase className="w-4 h-4" />
-          Contract & Scope Profile
-        </button>
 
         {!isConsultantUser && (
           <button
             onClick={() => setActiveTab('history')}
-            className={`px-4 py-2 rounded-2xl text-xs md:text-sm font-bold flex items-center gap-2 transition ${
+            className={`px-4 py-2 rounded-2xl text-xs md:text-sm font-bold flex items-center gap-2 transition cursor-pointer ${
               activeTab === 'history'
                 ? 'bg-amber-600 text-white shadow-sm'
                 : 'bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
             }`}
           >
             <History className="w-4 h-4" />
-            Service History & Predecessors
+            Service History
             {(consultant.previousConsultants?.length || 0) > 0 && (
               <span className={`px-2 py-0.5 rounded-full text-xs font-mono ${
                 activeTab === 'history' ? 'bg-amber-700 text-white' : 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 font-bold'
@@ -2473,22 +3094,10 @@ export default function SupervisionConsultantView({
           </button>
         )}
 
-        <button
-          onClick={() => setActiveTab('contract_amount')}
-          className={`px-4 py-2 rounded-2xl text-xs md:text-sm font-bold flex items-center gap-2 transition ${
-            activeTab === 'contract_amount'
-              ? 'bg-emerald-600 text-white shadow-sm'
-              : 'bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
-          }`}
-        >
-          <DollarSign className="w-4 h-4" />
-          Contract Amount
-        </button>
-
         {isAdmin && !isConsultantUser && (
           <button
             onClick={() => setActiveTab('personnel_audit')}
-            className={`px-4 py-2 rounded-2xl text-xs md:text-sm font-bold flex items-center gap-2 transition ${
+            className={`px-4 py-2 rounded-2xl text-xs md:text-sm font-bold flex items-center gap-2 transition cursor-pointer ${
               activeTab === 'personnel_audit'
                 ? 'bg-rose-600 text-white shadow-sm'
                 : 'bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
@@ -2514,9 +3123,15 @@ export default function SupervisionConsultantView({
           consultant={consultant}
           isReadonly={isReadonly}
           onUpdateProject={onUpdateProject}
+          viewCurrency={viewCurrency}
+          exchangeRate={activeExchangeRate}
+          onCurrencyToggle={setViewCurrency}
           onNavigateToInvoices={() => {
             setActiveTab('invoices');
-            setInvoiceViewMode('calculationTables');
+            setInvoiceViewMode('table');
+          }}
+          onNavigateToPersonnel={() => {
+            setActiveTab('personnel');
           }}
         />
       )}
@@ -2524,6 +3139,99 @@ export default function SupervisionConsultantView({
       {/* TAB 1: ASSIGNED PERSONNEL DIRECTORY */}
       {activeTab === 'personnel' && (
         <div className="space-y-4">
+          {/* Quick Status Filter Chips & Metric Bar */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-1.5 text-xs font-bold">
+              <span className="text-slate-400 text-[11px] mr-1 uppercase tracking-wider">Quick Filter:</span>
+              <button
+                type="button"
+                onClick={() => setPersonnelStatusFilter('ALL')}
+                className={`px-3 py-1 rounded-xl transition cursor-pointer ${
+                  personnelStatusFilter === 'ALL'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                All Staff ({personnelSummary.totalCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setPersonnelStatusFilter('Active')}
+                className={`px-3 py-1 rounded-xl transition cursor-pointer ${
+                  personnelStatusFilter === 'Active'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                Active ({personnelSummary.activeCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setPersonnelCategoryFilter(personnelCategoryFilter === 'Key Personnel' ? 'ALL' : 'Key Personnel')}
+                className={`px-3 py-1 rounded-xl transition cursor-pointer ${
+                  personnelCategoryFilter === 'Key Personnel'
+                    ? 'bg-amber-600 text-white shadow-xs'
+                    : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                Key Experts ({personnelSummary.keyStaffCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setPersonnelStatusFilter('Demobilized')}
+                className={`px-3 py-1 rounded-xl transition cursor-pointer ${
+                  personnelStatusFilter === 'Demobilized'
+                    ? 'bg-rose-600 text-white shadow-xs'
+                    : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                Demobilized ({personnelSummary.demobilizedCount})
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleCrossModuleSyncAll}
+                className="px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                title="Cross-reference all personnel rates with Condition 1 Contract Schedules"
+              >
+                <RefreshCw className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                <span>Sync Rates with Contract Schedule</span>
+              </button>
+
+              {/* View Switcher: Table vs Cards */}
+              <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                <button
+                  type="button"
+                  onClick={() => setPersonnelViewMode('table')}
+                  className={`px-2.5 py-1 rounded-lg transition cursor-pointer flex items-center gap-1 ${
+                    personnelViewMode === 'table'
+                      ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                      : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                  title="Table View"
+                >
+                  <Table className="w-3.5 h-3.5" />
+                  <span>Table</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPersonnelViewMode('cards')}
+                  className={`px-2.5 py-1 rounded-lg transition cursor-pointer flex items-center gap-1 ${
+                    personnelViewMode === 'cards'
+                      ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                      : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                  title="Card Cards View"
+                >
+                  <Layers className="w-3.5 h-3.5" />
+                  <span>Cards</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
           {/* Filter and Search Bar */}
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-3">
             <div className="relative flex-1">
@@ -2579,8 +3287,9 @@ export default function SupervisionConsultantView({
 
               {!isReadonly && (
                 <button
+                  type="button"
                   onClick={handleOpenAddPersonnel}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3 py-1.5 rounded-xl flex items-center gap-1 shadow-xs transition"
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3 py-1.5 rounded-xl flex items-center gap-1 shadow-xs transition cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   New Staff
@@ -2589,219 +3298,495 @@ export default function SupervisionConsultantView({
             </div>
           </div>
 
-          {/* Personnel Table View */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm">
-            <div className="overflow-x-auto max-h-[500px] overflow-y-auto scroll-smooth">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-800 shadow-2xs">
-                  <tr className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 text-slate-500 font-bold uppercase tracking-wider text-[11px]">
-                    <th className="py-3 px-4 w-12 text-center">#</th>
-                    <th className="py-3 px-4">Assigned Personnel Name</th>
-                    <th className="py-3 px-4">Specific Position / Role</th>
-                    <th className="py-3 px-4 bg-indigo-50/50 dark:bg-indigo-950/20 text-indigo-900 dark:text-indigo-300 font-black">
-                      Assignment & Completion Date
-                    </th>
-                    <th className="py-3 px-4">Category</th>
-                    <th className="py-3 px-4">Qualifications</th>
-                    <th className="py-3 px-4 text-center">Man-Months</th>
-                    <th className="py-3 px-4 text-center">Status</th>
-                    <th className="py-3 px-4 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {filteredPersonnel.length === 0 ? (
-                    <tr>
-                      <td colSpan={9} className="py-12 text-center text-slate-400">
-                        <Users className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                        <p className="text-sm font-semibold">No assigned personnel matching your criteria.</p>
-                        <p className="text-xs text-slate-400 mt-1">Click "Assign Personnel" to register supervision staff members.</p>
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredPersonnel.map((p, idx) => {
-                      const durationStr = getAssignmentDuration(p.assignmentDate, p.demobilizationDate);
-                      const isKey = p.category === 'Key Personnel' || (p.category as any) === 'Key';
-                      const isActive = p.status === 'Active';
-                      const isDemobOrReplaced = p.status === 'Demobilized' || p.status === 'Replaced';
+          {/* Personnel Content: Table View vs Cards View */}
+          {personnelViewMode === 'cards' ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredPersonnel.length === 0 ? (
+                <div className="col-span-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-12 text-center text-slate-400">
+                  <Users className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                  <p className="text-sm font-semibold">No assigned personnel matching your criteria.</p>
+                </div>
+              ) : (
+                filteredPersonnel.map((p, idx) => {
+                  const durationStr = getAssignmentDuration(p.assignmentDate, p.demobilizationDate);
+                  const isKey = p.category === 'Key Personnel' || (p.category as any) === 'Key';
+                  const isActive = p.status === 'Active';
+                  const rate = p.rateEtb || contractRatesMap[p.position?.toLowerCase().trim()] || contractRatesMap[p.name?.toLowerCase().trim()] || 0;
+                  const invStat = staffAttendanceStats[p.id] || staffAttendanceStats[p.name?.toLowerCase().trim()];
+                  const mmPct = p.manMonthsAllocated ? Math.min(100, ((p.manMonthsInput || 0) / p.manMonthsAllocated) * 100) : 0;
 
-                      return (
-                        <tr 
-                          key={p.id ? `${p.id}_${idx}` : `pers_${idx}`}
-                          className={`transition duration-150 ${
-                            isDemobOrReplaced 
-                              ? 'bg-slate-50/70 dark:bg-slate-900/40 opacity-75 hover:opacity-100 hover:bg-slate-100/80 dark:hover:bg-slate-800/80 border-l-2 border-l-slate-300 dark:border-l-slate-600' 
-                              : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/50'
-                          }`}
-                        >
-                          <td className="py-3.5 px-4 text-center text-slate-400 font-mono font-bold">
-                            {idx + 1}
-                          </td>
-
-                          <td className="py-3.5 px-4">
-                            <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                  return (
+                    <div
+                      key={p.id ? `${p.id}_${idx}` : `pers_card_${idx}`}
+                      className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-xs flex flex-col justify-between space-y-3 hover:border-indigo-300 dark:hover:border-indigo-700 transition"
+                    >
+                      <div className="space-y-2.5">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">#{idx + 1} {p.category}</span>
+                            <h4 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5 mt-0.5">
                               {p.name}
-                              {p.status === 'Replaced' && (
-                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
-                                  Replaced
-                                </span>
-                              )}
-                              {p.status === 'Demobilized' && (
-                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
-                                  Demobilized
-                                </span>
-                              )}
-                            </div>
-                            {(p.contactPhone || p.contactEmail) && (
-                              <div className="flex items-center gap-2 mt-0.5 text-[10px] text-slate-400">
-                                {p.contactPhone && (
-                                  <span className="flex items-center gap-0.5">
-                                    <Phone className="w-2.5 h-2.5 text-slate-400" />
-                                    {p.contactPhone}
-                                  </span>
-                                )}
-                                {p.contactEmail && (
-                                  <span className="flex items-center gap-0.5 truncate max-w-[140px]" title={p.contactEmail}>
-                                    <Mail className="w-2.5 h-2.5 text-slate-400" />
-                                    {p.contactEmail}
-                                  </span>
-                                )}
-                              </div>
-                            )}
-                          </td>
+                            </h4>
+                            <p className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 mt-0.5">{p.position}</p>
+                          </div>
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                            isActive
+                              ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200'
+                              : 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400 border border-rose-200'
+                          }`}>
+                            {isActive ? <UserCheck className="w-3 h-3" /> : <UserX className="w-3 h-3" />}
+                            {p.status}
+                          </span>
+                        </div>
 
-                          <td className="py-3.5 px-4">
-                            <div className={`font-bold ${isDemobOrReplaced ? 'text-slate-600 dark:text-slate-400' : 'text-indigo-700 dark:text-indigo-400'}`}>
-                              {p.position}
-                            </div>
-                            {p.siteStation && (
-                              <div className="flex items-center gap-1 text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
-                                <MapPin className="w-2.5 h-2.5 text-slate-400" />
-                                {p.siteStation}
-                              </div>
-                            )}
-                          </td>
+                        {/* Contract Schedule Linkage & Rate */}
+                        <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 text-xs">
+                          <span className="text-slate-500 text-[11px] font-medium">Contract Rate (ETB):</span>
+                          <button
+                            type="button"
+                            onClick={() => setActiveTab('contract_amount')}
+                            className="font-mono font-bold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer"
+                            title="Inspect in Table 2 / Table 3 of Contract Amount"
+                          >
+                            <span>{rate > 0 ? `${formatAccounting(rate, '')} ETB/mo` : 'Set Rate in Table 2'}</span>
+                            <ExternalLink className="w-2.5 h-2.5 text-slate-400" />
+                          </button>
+                        </div>
 
-                          <td className="py-3.5 px-4 bg-indigo-50/30 dark:bg-indigo-950/10">
-                            <div className="font-bold font-mono text-slate-900 dark:text-white flex items-center gap-1.5">
-                              <Calendar className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-                              <span title="Assignment Date">{p.assignmentDate || 'Not set'}</span>
-                            </div>
-                            {p.demobilizationDate ? (
-                              <div className="text-[10px] text-rose-600 dark:text-rose-400 font-semibold mt-0.5 font-mono flex items-center gap-1">
-                                <span>{p.status === 'Replaced' ? 'Replaced End:' : 'Completion / Demob:'}</span>
-                                <strong>{p.demobilizationDate}</strong>
-                              </div>
-                            ) : (
-                              <div className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium mt-0.5 font-mono">
-                                On site: {durationStr}
-                              </div>
-                            )}
-                          </td>
+                        {/* Invoice Attendance Presence */}
+                        <div className="flex items-center justify-between p-2 rounded-xl bg-blue-50/50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/40 text-xs">
+                          <span className="text-blue-700 dark:text-blue-300 text-[11px] font-semibold flex items-center gap-1">
+                            <Receipt className="w-3 h-3 text-blue-500" />
+                            Fee Invoices Billed:
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveTab('invoices');
+                              setInvoiceSearch(p.name);
+                              setInvoiceViewMode('table');
+                            }}
+                            className="font-mono font-bold text-blue-700 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
+                            title={`Filter fee invoices for ${p.name}`}
+                          >
+                            <span>{invStat ? `${invStat.count} invoice(s)` : '0 recorded'}</span>
+                            <ExternalLink className="w-2.5 h-2.5" />
+                          </button>
+                        </div>
 
-                          <td className="py-3.5 px-4">
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                              isKey
-                                ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
-                                : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
-                            }`}>
-                              {p.category}
+                        {/* Man-Months Progress Bar */}
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-[11px] font-mono">
+                            <span className="text-slate-500">MM Input / Allocated:</span>
+                            <span className="font-bold text-slate-800 dark:text-slate-200">
+                              {Number(p.manMonthsInput || 0).toFixed(2)} / {Number(p.manMonthsAllocated || 0).toFixed(2)} MM
                             </span>
-                          </td>
+                          </div>
+                          <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all ${
+                                mmPct >= 100 ? 'bg-purple-600' : mmPct >= 80 ? 'bg-amber-500' : 'bg-emerald-500'
+                              }`}
+                              style={{ width: `${Math.min(100, mmPct)}%` }}
+                            />
+                          </div>
+                        </div>
+                      </div>
 
-                          <td className="py-3.5 px-4">
-                            <div className="text-slate-700 dark:text-slate-300 font-medium line-clamp-1" title={p.qualification}>
-                              {p.qualification || '-'}
-                            </div>
-                            {p.yearsExperience ? (
-                              <div className="text-[10px] text-slate-400">
-                                {p.yearsExperience} yrs experience
-                              </div>
-                            ) : null}
-                          </td>
+                      <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveTab('invoices');
+                            setInvoiceSearch(p.name);
+                            setInvoiceViewMode('table');
+                          }}
+                          className="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1 cursor-pointer"
+                        >
+                          <Receipt className="w-3 h-3" />
+                          <span>View Invoices</span>
+                        </button>
 
-                          <td className="py-3.5 px-4 text-center font-mono">
-                            <div className="font-bold text-slate-800 dark:text-slate-200">
-                              {Number(p.manMonthsInput || 0).toFixed(2)} / {Number(p.manMonthsAllocated || 0).toFixed(2)}
-                            </div>
-                            <div className="text-[10px] text-slate-400">
-                              MM Input
-                            </div>
-                          </td>
-
-                          <td className="py-3.5 px-4 text-center">
-                            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                              isActive
-                                ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800'
-                                : p.status === 'Replaced'
-                                ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200 dark:border-amber-800'
-                                : 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400 border border-rose-200 dark:border-rose-800'
-                            }`}>
-                              {isActive ? <UserCheck className="w-3 h-3" /> : p.status === 'Replaced' ? <ArrowRightLeft className="w-3 h-3" /> : <UserX className="w-3 h-3" />}
-                              {p.status}
-                            </span>
-                          </td>
-
-                          <td className="py-3.5 px-4 text-right">
-                            <div className="flex items-center justify-end gap-1">
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setViewDetailPersonnel(p)}
+                            title="View Staff Profile"
+                            className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition cursor-pointer"
+                          >
+                            <Info className="w-3.5 h-3.5" />
+                          </button>
+                          {!isReadonly && (
+                            <>
                               <button
-                                onClick={() => setViewDetailPersonnel(p)}
-                                title="View details"
-                                className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition"
+                                type="button"
+                                onClick={() => handleOpenEditPersonnel(p)}
+                                title="Edit Staff"
+                                className="p-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 transition cursor-pointer"
                               >
-                                <Info className="w-3.5 h-3.5" />
+                                <Edit3 className="w-3.5 h-3.5" />
                               </button>
-
-                              {!isReadonly && (
-                                <>
-                                  {isActive && (
-                                    <button
-                                      onClick={() => handleOpenReplacePersonnel(p)}
-                                      title="Replace staff with incoming successor"
-                                      className="p-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 transition"
-                                    >
-                                      <ArrowRightLeft className="w-3.5 h-3.5" />
-                                    </button>
-                                  )}
-
-                                  <button
-                                    onClick={() => handleTogglePersonnelStatus(p)}
-                                    title={isActive ? 'Demobilize staff (takes to bottom of table)' : 'Reactivate staff'}
-                                    className={`p-1.5 rounded-lg transition ${
-                                      isActive 
-                                        ? 'hover:bg-rose-100 dark:hover:bg-rose-950/40 text-rose-600' 
-                                        : 'hover:bg-emerald-100 dark:hover:bg-emerald-950/40 text-emerald-600'
-                                    }`}
-                                  >
-                                    {isActive ? <UserX className="w-3.5 h-3.5" /> : <UserCheck className="w-3.5 h-3.5" />}
-                                  </button>
-
-                                  <button
-                                    onClick={() => handleOpenEditPersonnel(p)}
-                                    title="Edit personnel"
-                                    className="p-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 transition"
-                                  >
-                                    <Edit3 className="w-3.5 h-3.5" />
-                                  </button>
-
-                                  <button
-                                    onClick={() => handleDeletePersonnel(p.id, p.name)}
-                                    title="Delete staff"
-                                    className="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30 text-rose-600 dark:text-rose-400 transition"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
+                              <button
+                                type="button"
+                                onClick={() => handleTogglePersonnelStatus(p)}
+                                title={isActive ? 'Demobilize staff' : 'Reactivate staff'}
+                                className={`p-1.5 rounded-lg transition cursor-pointer ${
+                                  isActive ? 'hover:bg-rose-100 text-rose-600' : 'hover:bg-emerald-100 text-emerald-600'
+                                }`}
+                              >
+                                {isActive ? <UserX className="w-3.5 h-3.5" /> : <UserCheck className="w-3.5 h-3.5" />}
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
-          </div>
+          ) : (
+            /* Personnel Table View with Interactive Headers */
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm">
+              <div className="overflow-x-auto max-h-[520px] overflow-y-auto scroll-smooth">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-800 shadow-2xs">
+                    <tr className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 text-slate-500 font-bold uppercase tracking-wider text-[11px]">
+                      <th className="py-3 px-3 w-10 text-center">#</th>
+                      <th
+                        onClick={() => {
+                          if (personnelSortField === 'name') {
+                            setPersonnelSortOrder(personnelSortOrder === 'asc' ? 'desc' : 'asc');
+                          } else {
+                            setPersonnelSortField('name');
+                            setPersonnelSortOrder('asc');
+                          }
+                        }}
+                        className="py-3 px-4 cursor-pointer hover:text-slate-900 dark:hover:text-white select-none"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span>Assigned Personnel Name</span>
+                          <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                        </div>
+                      </th>
+                      <th
+                        onClick={() => {
+                          if (personnelSortField === 'position') {
+                            setPersonnelSortOrder(personnelSortOrder === 'asc' ? 'desc' : 'asc');
+                          } else {
+                            setPersonnelSortField('position');
+                            setPersonnelSortOrder('asc');
+                          }
+                        }}
+                        className="py-3 px-4 cursor-pointer hover:text-slate-900 dark:hover:text-white select-none"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span>Specific Position / Role</span>
+                          <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                        </div>
+                      </th>
+                      <th className="py-3 px-3 text-right">
+                        <span>Contract Rate (ETB)</span>
+                      </th>
+                      <th
+                        onClick={() => {
+                          if (personnelSortField === 'assignmentDate') {
+                            setPersonnelSortOrder(personnelSortOrder === 'asc' ? 'desc' : 'asc');
+                          } else {
+                            setPersonnelSortField('assignmentDate');
+                            setPersonnelSortOrder('asc');
+                          }
+                        }}
+                        className="py-3 px-4 cursor-pointer hover:text-slate-900 dark:hover:text-white select-none bg-indigo-50/50 dark:bg-indigo-950/20 text-indigo-900 dark:text-indigo-300 font-black"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span>Assignment Dates</span>
+                          <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                        </div>
+                      </th>
+                      <th className="py-3 px-3">Category</th>
+                      <th className="py-3 px-3 text-center">
+                        <span>Invoices Attendance</span>
+                      </th>
+                      <th
+                        onClick={() => {
+                          if (personnelSortField === 'manMonthsInput') {
+                            setPersonnelSortOrder(personnelSortOrder === 'asc' ? 'desc' : 'asc');
+                          } else {
+                            setPersonnelSortField('manMonthsInput');
+                            setPersonnelSortOrder('desc');
+                          }
+                        }}
+                        className="py-3 px-4 text-center cursor-pointer hover:text-slate-900 dark:hover:text-white select-none"
+                      >
+                        <div className="flex items-center justify-center gap-1.5">
+                          <span>Man-Months</span>
+                          <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                        </div>
+                      </th>
+                      <th
+                        onClick={() => {
+                          if (personnelSortField === 'status') {
+                            setPersonnelSortOrder(personnelSortOrder === 'asc' ? 'desc' : 'asc');
+                          } else {
+                            setPersonnelSortField('status');
+                            setPersonnelSortOrder('asc');
+                          }
+                        }}
+                        className="py-3 px-3 text-center cursor-pointer hover:text-slate-900 dark:hover:text-white select-none"
+                      >
+                        <div className="flex items-center justify-center gap-1.5">
+                          <span>Status</span>
+                          <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                        </div>
+                      </th>
+                      <th className="py-3 px-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {filteredPersonnel.length === 0 ? (
+                      <tr>
+                        <td colSpan={10} className="py-12 text-center text-slate-400">
+                          <Users className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                          <p className="text-sm font-semibold">No assigned personnel matching your criteria.</p>
+                          <p className="text-xs text-slate-400 mt-1">Click "New Staff" to register supervision staff members.</p>
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredPersonnel.map((p, idx) => {
+                        const durationStr = getAssignmentDuration(p.assignmentDate, p.demobilizationDate);
+                        const isKey = p.category === 'Key Personnel' || (p.category as any) === 'Key';
+                        const isActive = p.status === 'Active';
+                        const isDemobOrReplaced = p.status === 'Demobilized' || p.status === 'Replaced';
+                        const rate = p.rateEtb || contractRatesMap[p.position?.toLowerCase().trim()] || contractRatesMap[p.name?.toLowerCase().trim()] || 0;
+                        const invStat = staffAttendanceStats[p.id] || staffAttendanceStats[p.name?.toLowerCase().trim()];
+                        const mmPct = p.manMonthsAllocated ? Math.min(100, ((p.manMonthsInput || 0) / p.manMonthsAllocated) * 100) : 0;
+
+                        return (
+                          <tr 
+                            key={p.id ? `${p.id}_${idx}` : `pers_${idx}`}
+                            className={`transition duration-150 ${
+                              isDemobOrReplaced 
+                                ? 'bg-slate-50/70 dark:bg-slate-900/40 opacity-75 hover:opacity-100 hover:bg-slate-100/80 dark:hover:bg-slate-800/80 border-l-2 border-l-slate-300 dark:border-l-slate-600' 
+                                : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/50'
+                            }`}
+                          >
+                            <td className="py-3 px-3 text-center text-slate-400 font-mono font-bold">
+                              {idx + 1}
+                            </td>
+
+                            <td className="py-3 px-4">
+                              <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                                {p.name}
+                                {p.status === 'Replaced' && (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200">
+                                    Replaced
+                                  </span>
+                                )}
+                                {p.status === 'Demobilized' && (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 border border-rose-200">
+                                    Demobilized
+                                  </span>
+                                )}
+                              </div>
+                              {(p.contactPhone || p.contactEmail) && (
+                                <div className="flex items-center gap-2 mt-0.5 text-[10px] text-slate-400">
+                                  {p.contactPhone && (
+                                    <span className="flex items-center gap-0.5">
+                                      <Phone className="w-2.5 h-2.5 text-slate-400" />
+                                      {p.contactPhone}
+                                    </span>
+                                  )}
+                                  {p.contactEmail && (
+                                    <span className="flex items-center gap-0.5 truncate max-w-[140px]" title={p.contactEmail}>
+                                      <Mail className="w-2.5 h-2.5 text-slate-400" />
+                                      {p.contactEmail}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </td>
+
+                            <td className="py-3 px-4">
+                              <div className={`font-bold ${isDemobOrReplaced ? 'text-slate-600 dark:text-slate-400' : 'text-indigo-700 dark:text-indigo-400'}`}>
+                                {p.position}
+                              </div>
+                              {p.siteStation && (
+                                <div className="flex items-center gap-1 text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                                  <MapPin className="w-2.5 h-2.5 text-slate-400" />
+                                  {p.siteStation}
+                                </div>
+                              )}
+                            </td>
+
+                            {/* Contract Rate Column */}
+                            <td className="py-3 px-3 text-right">
+                              <button
+                                type="button"
+                                onClick={() => setActiveTab('contract_amount')}
+                                className="font-mono font-bold text-xs text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer"
+                                title="Inspect in Table 2 / Table 3 of Contract Amount"
+                              >
+                                {rate > 0 ? `${formatAccounting(rate, '')} ETB` : '-'}
+                              </button>
+                            </td>
+
+                            <td className="py-3 px-4 bg-indigo-50/30 dark:bg-indigo-950/10">
+                              <div className="font-bold font-mono text-slate-900 dark:text-white flex items-center gap-1.5">
+                                <Calendar className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                                <span title="Assignment Date">{p.assignmentDate || 'Not set'}</span>
+                              </div>
+                              {p.demobilizationDate ? (
+                                <div className="text-[10px] text-rose-600 dark:text-rose-400 font-semibold mt-0.5 font-mono flex items-center gap-1">
+                                  <span>{p.status === 'Replaced' ? 'Replaced End:' : 'Completion / Demob:'}</span>
+                                  <strong>{p.demobilizationDate}</strong>
+                                </div>
+                              ) : (
+                                <div className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium mt-0.5 font-mono">
+                                  On site: {durationStr}
+                                </div>
+                              )}
+                            </td>
+
+                            <td className="py-3 px-3">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                isKey
+                                  ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200'
+                                  : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                              }`}>
+                                {p.category}
+                              </span>
+                            </td>
+
+                            {/* Invoices Attendance Column */}
+                            <td className="py-3 px-3 text-center">
+                              {invStat ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveTab('invoices');
+                                    setInvoiceSearch(p.name);
+                                    setInvoiceViewMode('table');
+                                  }}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 font-bold hover:bg-blue-100 transition cursor-pointer text-[10px]"
+                                  title={`Click to filter Fee Invoices ledger for ${p.name}`}
+                                >
+                                  <Receipt className="w-2.5 h-2.5 text-blue-500" />
+                                  <span>{invStat.count} inv ({invStat.totalMM.toFixed(2)} MM)</span>
+                                </button>
+                              ) : (
+                                <span className="text-slate-400 text-[10px] font-mono">No billings</span>
+                              )}
+                            </td>
+
+                            {/* Man-Months Column */}
+                            <td className="py-3 px-4 text-center font-mono">
+                              <div className="font-bold text-slate-800 dark:text-slate-200">
+                                {Number(p.manMonthsInput || 0).toFixed(2)} / {Number(p.manMonthsAllocated || 0).toFixed(2)}
+                              </div>
+                              <div className="w-16 mx-auto bg-slate-100 dark:bg-slate-800 rounded-full h-1 mt-1 overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full ${
+                                    mmPct >= 100 ? 'bg-purple-600' : mmPct >= 80 ? 'bg-amber-500' : 'bg-emerald-500'
+                                  }`}
+                                  style={{ width: `${Math.min(100, mmPct)}%` }}
+                                />
+                              </div>
+                            </td>
+
+                            <td className="py-3 px-3 text-center">
+                              <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                                isActive
+                                  ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800'
+                                  : p.status === 'Replaced'
+                                  ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200 dark:border-amber-800'
+                                  : 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400 border border-rose-200 dark:border-rose-800'
+                              }`}>
+                                {isActive ? <UserCheck className="w-3 h-3" /> : p.status === 'Replaced' ? <ArrowRightLeft className="w-3 h-3" /> : <UserX className="w-3 h-3" />}
+                                {p.status}
+                              </span>
+                            </td>
+
+                            <td className="py-3 px-4 text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setViewDetailPersonnel(p)}
+                                  title="View details"
+                                  className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition cursor-pointer"
+                                >
+                                  <Info className="w-3.5 h-3.5" />
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveTab('invoices');
+                                    setInvoiceSearch(p.name);
+                                    setInvoiceViewMode('table');
+                                  }}
+                                  title="Filter Fee Invoices for this Expert"
+                                  className="p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950/40 text-blue-600 dark:text-blue-400 transition cursor-pointer"
+                                >
+                                  <Receipt className="w-3.5 h-3.5" />
+                                </button>
+
+                                {!isReadonly && (
+                                  <>
+                                    {isActive && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleOpenReplacePersonnel(p)}
+                                        title="Replace staff with incoming successor"
+                                        className="p-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 transition cursor-pointer"
+                                      >
+                                        <ArrowRightLeft className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+
+                                    <button
+                                      type="button"
+                                      onClick={() => handleTogglePersonnelStatus(p)}
+                                      title={isActive ? 'Demobilize staff' : 'Reactivate staff'}
+                                      className={`p-1.5 rounded-lg transition cursor-pointer ${
+                                        isActive 
+                                          ? 'hover:bg-rose-100 dark:hover:bg-rose-950/40 text-rose-600' 
+                                          : 'hover:bg-emerald-100 dark:hover:bg-emerald-950/40 text-emerald-600'
+                                      }`}
+                                    >
+                                      {isActive ? <UserX className="w-3.5 h-3.5" /> : <UserCheck className="w-3.5 h-3.5" />}
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenEditPersonnel(p)}
+                                      title="Edit personnel"
+                                      className="p-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 transition cursor-pointer"
+                                    >
+                                      <Edit3 className="w-3.5 h-3.5" />
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeletePersonnel(p.id, p.name)}
+                                      title="Delete staff"
+                                      className="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30 text-rose-600 dark:text-rose-400 transition cursor-pointer"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -2876,49 +3861,171 @@ export default function SupervisionConsultantView({
             </div>
           </div>
 
-          {/* Invoice Filter and Search Bar */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-3">
-            <div className="relative flex-1">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                placeholder="Search invoices by invoice number, billing period, payment ref, or notes..."
-                value={invoiceSearch}
-                onChange={(e) => setInvoiceSearch(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 text-xs md:text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-800 dark:text-slate-100"
-              />
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="flex items-center gap-1.5 text-xs text-slate-500 font-semibold">
-                <Filter className="w-3.5 h-3.5" />
-                Status:
+          {/* Invoice Filter, Date Range Picker and Export Bar */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-2xl space-y-3">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+              {/* Search input */}
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Search invoices by invoice number, billing period, payment ref, or notes..."
+                  value={invoiceSearch}
+                  onChange={(e) => setInvoiceSearch(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 text-xs md:text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-800 dark:text-slate-100"
+                />
               </div>
-              <select
-                value={invoiceStatusFilter}
-                onChange={(e) => setInvoiceStatusFilter(e.target.value)}
-                className="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 font-semibold"
-              >
-                <option value="ALL">All Statuses</option>
-                <option value="Paid">Paid</option>
-                <option value="Certified">Certified</option>
-                <option value="Submitted">Submitted</option>
-                <option value="Pending">Pending</option>
-                <option value="Rejected">Rejected</option>
-              </select>
 
-              {!isReadonly && (
-                <div className="flex items-center gap-2">
+              {/* Status and Action Buttons */}
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-1.5 text-xs text-slate-500 font-semibold">
+                  <Filter className="w-3.5 h-3.5" />
+                  Status:
+                </div>
+                <select
+                  value={invoiceStatusFilter}
+                  onChange={(e) => setInvoiceStatusFilter(e.target.value)}
+                  className="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-2 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 font-semibold"
+                >
+                  <option value="ALL">All Statuses</option>
+                  <option value="Paid">Paid</option>
+                  <option value="Certified">Certified</option>
+                  <option value="Submitted">Submitted</option>
+                  <option value="Pending">Pending</option>
+                  <option value="Rejected">Rejected</option>
+                </select>
+
+                {/* Export Formatted PDF Report Button */}
+                <button
+                  type="button"
+                  onClick={handleExportInvoicesAuditPDF}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl flex items-center gap-1.5 shadow-xs transition cursor-pointer"
+                  title="Export displayed Fee Invoices & Payment Ledger as a formatted PDF report for financial auditing and documentation"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Export Financial Audit PDF</span>
+                </button>
+
+                {!isReadonly && (
                   <button
+                    type="button"
                     onClick={handleOpenAddInvoice}
                     className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl flex items-center gap-1.5 shadow-xs transition cursor-pointer"
                     title="Compute monthly supervision invoice based on staff attendance, rate multiplication, reimbursables, and 15% VAT table formats"
                   >
                     <Calculator className="w-3.5 h-3.5" />
-                    Calculate Monthly Invoice (Table Formats)
+                    <span>Calculate Monthly Invoice</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* DATE RANGE PICKER COMPONENT (Reporting Period Filtering) */}
+            <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800 flex flex-col lg:flex-row lg:items-center justify-between gap-3 text-xs">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400 font-bold">
+                  <Calendar className="w-3.5 h-3.5 text-blue-500" />
+                  <span>Reporting Period:</span>
+                </div>
+
+                {/* Quick Date Presets */}
+                <div className="flex flex-wrap items-center gap-1 bg-slate-100 dark:bg-slate-800 p-0.5 rounded-xl border border-slate-200 dark:border-slate-700 text-[11px] font-bold">
+                  <button
+                    type="button"
+                    onClick={() => handleSelectDatePreset('ALL')}
+                    className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                      invoiceDatePreset === 'ALL' && !invoiceStartDate && !invoiceEndDate
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    All Time
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSelectDatePreset('THIS_YEAR')}
+                    className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                      invoiceDatePreset === 'THIS_YEAR'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    This Year
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSelectDatePreset('LAST_6_MONTHS')}
+                    className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                      invoiceDatePreset === 'LAST_6_MONTHS'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    Last 6 Mos
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSelectDatePreset('THIS_QUARTER')}
+                    className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                      invoiceDatePreset === 'THIS_QUARTER'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    This Qtr
                   </button>
                 </div>
-              )}
+
+                {/* Date Inputs */}
+                <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-800 px-2.5 py-1 rounded-xl border border-slate-200 dark:border-slate-700">
+                  <span className="text-[10px] uppercase font-bold text-slate-400">From</span>
+                  <input
+                    type="date"
+                    value={invoiceStartDate}
+                    onChange={(e) => {
+                      setInvoiceStartDate(e.target.value);
+                      setInvoiceDatePreset('CUSTOM');
+                    }}
+                    className="bg-transparent font-mono text-xs text-slate-800 dark:text-slate-200 focus:outline-none"
+                    title="Start of reporting period"
+                  />
+                  <span className="text-slate-400 text-xs">→</span>
+                  <span className="text-[10px] uppercase font-bold text-slate-400">To</span>
+                  <input
+                    type="date"
+                    value={invoiceEndDate}
+                    onChange={(e) => {
+                      setInvoiceEndDate(e.target.value);
+                      setInvoiceDatePreset('CUSTOM');
+                    }}
+                    className="bg-transparent font-mono text-xs text-slate-800 dark:text-slate-200 focus:outline-none"
+                    title="End of reporting period"
+                  />
+                  {(invoiceStartDate || invoiceEndDate) && (
+                    <button
+                      type="button"
+                      onClick={() => handleSelectDatePreset('ALL')}
+                      className="text-slate-400 hover:text-rose-500 font-bold px-1 transition cursor-pointer"
+                      title="Clear date range filter"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Active Filter Period Badge */}
+              <div className="flex items-center gap-2">
+                {(invoiceStartDate || invoiceEndDate) ? (
+                  <span className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200 dark:border-blue-800 flex items-center gap-1">
+                    <span>Filtered: {invoiceStartDate || 'Earliest'} to {invoiceEndDate || 'Latest'} ({filteredInvoices.length} invoices)</span>
+                  </span>
+                ) : (
+                  <span className="text-[11px] text-slate-400 font-normal">
+                    Showing all {filteredInvoices.length} historical invoices
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 
@@ -2948,6 +4055,35 @@ export default function SupervisionConsultantView({
                   {isInlineTableEdit ? 'Done Inline Editing' : '✏️ Quick Inline Table Edit'}
                 </button>
               )}
+              {/* Currency Option Toggle (Linked with Contract & Scope Profile) */}
+              <button
+                type="button"
+                onClick={() => {
+                  const nextVal = !hasUsdPayments;
+                  saveConsultantData({
+                    ...consultant,
+                    enableUsdPayments: nextVal
+                  }, `${nextVal ? 'Enabled' : 'Disabled'} USD foreign currency option`);
+                  setInAppNotification({
+                    type: 'success',
+                    message: nextVal 
+                      ? 'USD Currency Option enabled! The Invoice table now displays the dedicated USD Certificate column.'
+                      : 'USD Currency Option turned off. Invoice table is showing local ETB currency.'
+                  });
+                }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition border cursor-pointer ${
+                  hasUsdPayments
+                    ? 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800 hover:bg-purple-100'
+                    : 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800 hover:bg-emerald-100'
+                }`}
+                title="Foreign Currency USD Option (selected on Contract & Scope Profile)"
+              >
+                <Coins className="w-3.5 h-3.5" />
+                <span>{hasUsdPayments ? 'Currency: Dual (ETB + USD)' : 'Currency: ETB Only'}</span>
+                <span className="text-[9px] uppercase font-mono px-1.5 py-0.2 rounded bg-white/80 dark:bg-slate-900/80 border border-current font-extrabold">
+                  {hasUsdPayments ? 'USD Active' : 'USD Off'}
+                </span>
+              </button>
 
               <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
                 <button
@@ -3182,39 +4318,141 @@ export default function SupervisionConsultantView({
                 <table className="w-full text-left border-collapse text-xs">
                   <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-800 shadow-2xs">
                     <tr className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 text-slate-500 font-bold uppercase tracking-wider text-[11px]">
-                      <th className="py-3 px-4 min-w-[140px]">Invoice #</th>
-                      <th className="py-3 px-4 min-w-[180px]">Billing Period</th>
-                      <th className="py-3 px-4 min-w-[140px]">Submission Date</th>
-                      <th className="py-3 px-4 text-right min-w-[140px]">Gross Claim (ETB)</th>
-                      <th className="py-3 px-4 text-right min-w-[130px]">Deductions (ETB)</th>
-                      <th className="py-3 px-4 text-right font-black text-slate-900 dark:text-white min-w-[150px]">Net Payable (ETB)</th>
-                      {hasUsdPayments && <th className="py-3 px-4 text-right min-w-[110px]">USD Portion</th>}
-                      <th className="py-3 px-4 text-center min-w-[130px]">Status</th>
-                      <th className="py-3 px-4 min-w-[170px]">Payment Ref</th>
-                      <th className="py-3 px-4 text-right min-w-[130px]">Actions</th>
+                      <th 
+                        onClick={() => {
+                          if (invoiceSortField === 'invoiceNo') {
+                            setInvoiceSortOrder(invoiceSortOrder === 'asc' ? 'desc' : 'asc');
+                          } else {
+                            setInvoiceSortField('invoiceNo');
+                            setInvoiceSortOrder('asc');
+                          }
+                        }}
+                        className="py-3 px-3 min-w-[130px] cursor-pointer hover:text-slate-900 dark:hover:text-white select-none"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span>IPC / Invoice #</span>
+                          <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                        </div>
+                      </th>
+                      <th className="py-3 px-3 min-w-[160px]">Billing Period</th>
+                      <th 
+                        onClick={() => {
+                          if (invoiceSortField === 'submissionDate') {
+                            setInvoiceSortOrder(invoiceSortOrder === 'asc' ? 'desc' : 'asc');
+                          } else {
+                            setInvoiceSortField('submissionDate');
+                            setInvoiceSortOrder('desc');
+                          }
+                        }}
+                        className="py-3 px-3 min-w-[130px] cursor-pointer hover:text-slate-900 dark:hover:text-white select-none"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span>Submission Date</span>
+                          <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                        </div>
+                      </th>
+                      <th className="py-3 px-2 text-center min-w-[140px]" title="FIDIC Sub-Clause 14.7 56-Day Payment Maturation Period">
+                        <span>56-Day Maturation</span>
+                      </th>
+                      <th 
+                        onClick={() => {
+                          if (invoiceSortField === 'grossAmountEtb') {
+                            setInvoiceSortOrder(invoiceSortOrder === 'asc' ? 'desc' : 'asc');
+                          } else {
+                            setInvoiceSortField('grossAmountEtb');
+                            setInvoiceSortOrder('desc');
+                          }
+                        }}
+                        className="py-3 px-3 text-right min-w-[130px] cursor-pointer hover:text-slate-900 dark:hover:text-white select-none"
+                      >
+                        <div className="flex items-center justify-end gap-1.5">
+                          <span>Gross Claim (ETB)</span>
+                          <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                        </div>
+                      </th>
+                      {hasUsdPayments && <th className="py-3 px-3 text-right text-purple-700 min-w-[130px]">Gross Claim (USD)</th>}
+                      <th className="py-3 px-3 text-right min-w-[120px]">Deductions (ETB)</th>
+                      {hasUsdPayments && <th className="py-3 px-3 text-right text-purple-700 min-w-[120px]">Deductions (USD)</th>}
+                      <th 
+                        onClick={() => {
+                          if (invoiceSortField === 'netAmountEtb') {
+                            setInvoiceSortOrder(invoiceSortOrder === 'asc' ? 'desc' : 'asc');
+                          } else {
+                            setInvoiceSortField('netAmountEtb');
+                            setInvoiceSortOrder('desc');
+                          }
+                        }}
+                        className="py-3 px-3 text-right font-black text-slate-900 dark:text-white min-w-[140px] cursor-pointer hover:text-blue-600 select-none"
+                      >
+                        <div className="flex items-center justify-end gap-1.5">
+                          <span>Net Payable (ETB)</span>
+                          <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                        </div>
+                      </th>
+                      {hasUsdPayments && (
+                        <th 
+                          onClick={() => {
+                            if ((invoiceSortField as string) === 'foreignCurrencyAmount') {
+                              setInvoiceSortOrder(invoiceSortOrder === 'asc' ? 'desc' : 'asc');
+                            } else {
+                              setInvoiceSortField('foreignCurrencyAmount' as any);
+                              setInvoiceSortOrder('desc');
+                            }
+                          }}
+                          className="py-3 px-3 text-right min-w-[130px] font-black text-purple-700 dark:text-purple-300 bg-purple-50/50 dark:bg-purple-950/30 cursor-pointer hover:text-purple-900 select-none border-x border-purple-200/60 dark:border-purple-800/40"
+                          title="Net Certified / Payable in Foreign Currency (USD) — selected on Contract & Scope Profile"
+                        >
+                          <div className="flex items-center justify-end gap-1.5">
+                            <span>Net Payable (USD)</span>
+                            <ArrowUpDown className="w-3 h-3 text-purple-400" />
+                          </div>
+                        </th>
+                      )}
+                      <th 
+                        onClick={() => {
+                          if (invoiceSortField === 'status') {
+                            setInvoiceSortOrder(invoiceSortOrder === 'asc' ? 'desc' : 'asc');
+                          } else {
+                            setInvoiceSortField('status');
+                            setInvoiceSortOrder('asc');
+                          }
+                        }}
+                        className="py-3 px-3 text-center min-w-[110px] cursor-pointer hover:text-slate-900 dark:hover:text-white select-none"
+                      >
+                        <div className="flex items-center justify-center gap-1.5">
+                          <span>Status</span>
+                          <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                        </div>
+                      </th>
+                      <th className="py-3 px-3 min-w-[160px]">Payment Ref & Date</th>
+                      <th className="py-3 px-3 text-right min-w-[100px]">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                     {filteredInvoices.length === 0 ? (
                       <tr>
-                        <td colSpan={hasUsdPayments ? 10 : 9} className="py-12 text-center text-slate-400">
+                        <td colSpan={hasUsdPayments ? 11 : 10} className="py-12 text-center text-slate-400">
                           <Receipt className="w-8 h-8 mx-auto mb-2 opacity-40" />
                           <p className="text-sm font-semibold">No invoices recorded yet.</p>
-                          <p className="text-xs text-slate-400 mt-1">Click "Add / Calculate Invoice" to log a supervision consultant fee claim.</p>
+                          <p className="text-xs text-slate-400 mt-1">Click "Calculate Monthly Invoice" to log a supervision consultant fee claim.</p>
                         </td>
                       </tr>
                     ) : (
                       filteredInvoices.map((inv) => {
                         const totalDeductions = (inv.advanceDeductionEtb || 0) + (inv.taxDeductionEtb || 0);
                         const isUnpaid = inv.status !== 'Paid' && inv.status !== 'Rejected';
-                        let ageDays = 0;
-                        let isMaturedOverdue = false;
                         const refDateStr = inv.submissionDate || inv.certificationDate;
-                        if (refDateStr && isUnpaid) {
+                        let ageDays = 0;
+                        let dueDateStr = '';
+                        let isMaturedOverdue = false;
+
+                        if (refDateStr) {
                           const d = new Date(refDateStr);
                           if (!isNaN(d.getTime())) {
                             ageDays = Math.max(0, Math.floor((new Date().getTime() - d.getTime()) / (1000 * 60 * 60 * 24)));
-                            if (ageDays > 56) {
+                            const due = new Date(d.getTime() + 56 * 24 * 60 * 60 * 1000);
+                            dueDateStr = due.toISOString().split('T')[0];
+                            if (ageDays > 56 && isUnpaid) {
                               isMaturedOverdue = true;
                             }
                           }
@@ -3226,19 +4464,41 @@ export default function SupervisionConsultantView({
                           </span>
                         );
 
-                        if (isMaturedOverdue) {
-                          statusBadge = (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400 border border-rose-300 dark:border-rose-800 animate-pulse" title={`FIDIC Sub-Clause 14.7 56-day maturation breached by ${ageDays - 56} days (${ageDays}d elapsed)`}>
-                              <AlertTriangle className="w-3 h-3 text-red-600 dark:text-rose-400" />
-                              Matured Overdue ({ageDays}d)
-                            </span>
-                          );
-                        } else if (inv.status === 'Paid') {
+                        let maturationBadge = (
+                          <span className="text-slate-400 text-[10px]">-</span>
+                        );
+
+                        if (inv.status === 'Paid') {
                           statusBadge = (
                             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
                               <CheckCircle2 className="w-3 h-3" />
                               Paid
                             </span>
+                          );
+                          maturationBadge = (
+                            <div className="flex flex-col items-center gap-0.5">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200">
+                                <CheckCircle2 className="w-2.5 h-2.5" /> Settled
+                              </span>
+                              {inv.paymentDate && (
+                                <span className="text-[9px] text-slate-400 font-mono">{inv.paymentDate}</span>
+                              )}
+                            </div>
+                          );
+                        } else if (isMaturedOverdue) {
+                          statusBadge = (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400 border border-rose-300 dark:border-rose-800 animate-pulse" title={`FIDIC Sub-Clause 14.7 56-day maturation breached by ${ageDays - 56} days (${ageDays}d elapsed)`}>
+                              <AlertTriangle className="w-3 h-3 text-red-600 dark:text-rose-400" />
+                              Matured Overdue
+                            </span>
+                          );
+                          maturationBadge = (
+                            <div className="flex flex-col items-center gap-0.5">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-300 animate-pulse">
+                                <AlertTriangle className="w-2.5 h-2.5 text-rose-600" /> +{ageDays - 56}d Overdue
+                              </span>
+                              <span className="text-[9px] text-rose-600 dark:text-rose-400 font-mono font-bold">Due: {dueDateStr}</span>
+                            </div>
                           );
                         } else if (inv.status === 'Certified') {
                           statusBadge = (
@@ -3247,12 +4507,28 @@ export default function SupervisionConsultantView({
                               Certified
                             </span>
                           );
+                          maturationBadge = (
+                            <div className="flex flex-col items-center gap-0.5">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200">
+                                <Clock className="w-2.5 h-2.5" /> {56 - ageDays > 0 ? `${56 - ageDays}d left` : 'Due today'}
+                              </span>
+                              <span className="text-[9px] text-slate-400 font-mono">Due: {dueDateStr}</span>
+                            </div>
+                          );
                         } else if (inv.status === 'Submitted') {
                           statusBadge = (
                             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400 border border-blue-200 dark:border-blue-800">
                               <Clock className="w-3 h-3" />
                               Submitted
                             </span>
+                          );
+                          maturationBadge = (
+                            <div className="flex flex-col items-center gap-0.5">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200">
+                                {ageDays}d of 56d
+                              </span>
+                              <span className="text-[9px] text-slate-400 font-mono">Due: {dueDateStr}</span>
+                            </div>
                           );
                         }
 
@@ -3283,6 +4559,9 @@ export default function SupervisionConsultantView({
                                   onChange={(e) => handleUpdateInlineInvoiceField(inv.id, 'submissionDate', e.target.value)}
                                   className="w-full px-2 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg font-mono text-xs"
                                 />
+                              </td>
+                              <td className="py-2.5 px-2 text-center font-mono text-[11px] text-slate-500">
+                                {dueDateStr ? `Due: ${dueDateStr}` : '-'}
                               </td>
                               <td className="py-2.5 px-3 text-right">
                                 <input
@@ -3315,12 +4594,14 @@ export default function SupervisionConsultantView({
                                 />
                               </td>
                               {hasUsdPayments && (
-                                <td className="py-2.5 px-3 text-right">
+                                <td className="py-2.5 px-3 text-right bg-purple-50/20 dark:bg-purple-950/20 border-x border-purple-100 dark:border-purple-900/30">
                                   <input
                                     type="number"
+                                    step="0.01"
                                     value={inv.foreignCurrencyAmount || 0}
                                     onChange={(e) => handleUpdateInlineInvoiceField(inv.id, 'foreignCurrencyAmount', parseFloat(e.target.value) || 0)}
-                                    className="w-20 text-right px-2 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg font-mono text-purple-600 text-xs"
+                                    className="w-24 text-right px-2 py-1 bg-white dark:bg-slate-800 border border-purple-300 dark:border-purple-700 rounded-lg font-mono text-purple-600 dark:text-purple-300 font-bold text-xs"
+                                    placeholder="0.00 USD"
                                   />
                                 </td>
                               )}
@@ -3369,7 +4650,7 @@ export default function SupervisionConsultantView({
                           );
                         }
 
-                        // STANDARD ROW VIEW
+                        // STANDARD ROW VIEW (IPC Table Style)
                         return (
                           <tr 
                             key={inv.id}
@@ -3377,10 +4658,10 @@ export default function SupervisionConsultantView({
                               isMaturedOverdue ? 'bg-rose-50/20 dark:bg-rose-950/10' : ''
                             }`}
                           >
-                            <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-white font-mono flex items-center gap-2">
+                            <td className="py-3.5 px-3 font-bold text-slate-900 dark:text-white font-mono flex items-center gap-2">
                               <span 
                                 onClick={() => handleOpenEditInvoice(inv)}
-                                className="cursor-pointer hover:underline text-blue-600 dark:text-blue-400 font-black"
+                                className="cursor-pointer hover:underline text-blue-600 dark:text-blue-400 font-black px-2 py-0.5 rounded-lg bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/60"
                                 title="Click to calculate and view invoice tables"
                               >
                                 {inv.invoiceNo}
@@ -3389,17 +4670,28 @@ export default function SupervisionConsultantView({
                                 type="button"
                                 onClick={() => handleOpenEditInvoice(inv)}
                                 title="View & Edit Calculation Tables (Attendance, Multiplier, Reimbursables, Summary)"
-                                className="text-blue-600 dark:text-blue-400 hover:underline text-[10px] font-semibold bg-blue-50 dark:bg-blue-950/40 px-1.5 py-0.5 rounded cursor-pointer"
+                                className="text-blue-600 dark:text-blue-400 hover:underline text-[10px] font-semibold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-1.5 py-0.5 rounded cursor-pointer"
                               >
-                                [Calculation Tables]
+                                [Tables]
                               </button>
                             </td>
 
-                            <td className="py-3.5 px-4 font-semibold text-slate-700 dark:text-slate-200">
-                              {inv.billingPeriod}
+                            <td className="py-3.5 px-3 font-semibold text-slate-700 dark:text-slate-200">
+                              <div>{inv.billingPeriod}</div>
+                              {inv.attendanceRecords && inv.attendanceRecords.length > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => setActiveTab('personnel')}
+                                  className="mt-1 inline-flex items-center gap-1 text-[10px] font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-1.5 py-0.5 rounded hover:bg-indigo-100 transition cursor-pointer"
+                                  title="View staff directory in personnel tab"
+                                >
+                                  <Users className="w-2.5 h-2.5" />
+                                  <span>{inv.attendanceRecords.length} staff</span>
+                                </button>
+                              )}
                             </td>
 
-                            <td className="py-3.5 px-4 text-slate-500 dark:text-slate-400 font-mono">
+                            <td className="py-3.5 px-3 text-slate-500 dark:text-slate-400 font-mono">
                               <div>{inv.submissionDate || '-'}</div>
                               {isUnpaid && ageDays > 0 && (
                                 <div className={`text-[10px] font-mono ${isMaturedOverdue ? 'text-red-600 dark:text-rose-400 font-black' : 'text-slate-400'}`}>
@@ -3408,29 +4700,35 @@ export default function SupervisionConsultantView({
                               )}
                             </td>
 
-                            <td className="py-3.5 px-4 text-right font-mono text-slate-700 dark:text-slate-300">
+                            {/* 56-Day Maturation Status Badge */}
+                            <td className="py-3.5 px-2 text-center">
+                              {maturationBadge}
+                            </td>
+
+                            <td className="py-3.5 px-3 text-right font-mono text-slate-700 dark:text-slate-300">
                               {formatAccounting(inv.grossAmountEtb || 0, '')}
                             </td>
+                            {hasUsdPayments && <td className="py-3.5 px-3 text-right font-mono text-purple-700 dark:text-purple-300 bg-purple-50/20">{formatAccounting(inv.grossAmountUsd || 0, '')}</td>}
 
-                            <td className="py-3.5 px-4 text-right font-mono text-rose-600 dark:text-rose-400 text-[11px]">
+                            <td className="py-3.5 px-3 text-right font-mono text-rose-600 dark:text-rose-400 text-[11px]">
                               {totalDeductions > 0 ? `-${formatAccounting(totalDeductions, '')}` : '-'}
                             </td>
+                            {hasUsdPayments && <td className="py-3.5 px-3 text-right font-mono text-rose-600 dark:text-rose-400 text-[11px] bg-purple-50/20">{inv.advanceDeductionUsd || inv.taxDeductionUsd ? `-${formatAccounting((inv.advanceDeductionUsd || 0) + (inv.taxDeductionUsd || 0), '')}` : '-'}</td>}
 
-                            <td className="py-3.5 px-4 text-right font-mono font-black text-slate-900 dark:text-white bg-slate-50/50 dark:bg-slate-800/30">
+                            <td className="py-3.5 px-3 text-right font-mono font-black text-slate-900 dark:text-white bg-slate-50/50 dark:bg-slate-800/30">
                               {formatAccounting(inv.netAmountEtb || 0, '')}
                             </td>
-
                             {hasUsdPayments && (
-                              <td className="py-3.5 px-4 text-right font-mono text-purple-600 dark:text-purple-400">
-                                {inv.foreignCurrencyAmount ? `$${formatAccounting(inv.foreignCurrencyAmount, '')}` : '-'}
+                              <td className="py-3.5 px-3 text-right font-mono font-black text-purple-700 dark:text-purple-300 bg-purple-50/30 dark:bg-purple-950/20 border-x border-purple-100 dark:border-purple-900/30">
+                                {formatAccounting(inv.foreignCurrencyAmount || 0, '')}
                               </td>
                             )}
 
-                            <td className="py-3.5 px-4 text-center">
+                            <td className="py-3.5 px-3 text-center">
                               {statusBadge}
                             </td>
 
-                            <td className="py-3.5 px-4">
+                            <td className="py-3.5 px-3">
                               <div className="font-mono text-slate-700 dark:text-slate-300 text-[11px] truncate max-w-[150px]" title={inv.paymentReference || ''}>
                                 {inv.paymentReference || '-'}
                               </div>
@@ -3441,7 +4739,7 @@ export default function SupervisionConsultantView({
                               )}
                             </td>
 
-                            <td className="py-3.5 px-4 text-right">
+                            <td className="py-3.5 px-3 text-right">
                               {!isReadonly ? (
                                 <div className="flex items-center justify-end gap-1">
                                   <button
@@ -3470,24 +4768,24 @@ export default function SupervisionConsultantView({
                   </tbody>
                   <tfoot className="bg-slate-100 dark:bg-slate-800/95 font-bold border-t-2 border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-100 text-xs font-mono">
                     <tr>
-                      <td colSpan={3} className="py-3.5 px-4 font-sans text-right uppercase tracking-wider text-[11px] font-bold">
-                        Summary (Total Invoiced vs. Contract Fee):
+                      <td colSpan={4} className="py-3.5 px-4 font-sans text-right uppercase tracking-wider text-[11px] font-bold">
+                        Summary (Total Todate Certified IPC / Invoices):
                       </td>
-                      <td className="py-3.5 px-4 text-right font-black text-slate-900 dark:text-white">
+                      <td className="py-3.5 px-3 text-right font-black text-slate-900 dark:text-white">
                         {formatAccounting(invoiceTotals.totalGross, '')} ETB
                       </td>
-                      <td className="py-3.5 px-4 text-right font-black text-rose-600 dark:text-rose-400">
+                      <td className="py-3.5 px-3 text-right font-black text-rose-600 dark:text-rose-400">
                         -{formatAccounting(invoiceTotals.totalDeductions, '')} ETB
                       </td>
-                      <td className="py-3.5 px-4 text-right font-black text-emerald-600 dark:text-emerald-400">
+                      <td className="py-3.5 px-3 text-right font-black text-emerald-600 dark:text-emerald-400">
                         {formatAccounting(invoiceTotals.totalNet, '')} ETB
                       </td>
                       {hasUsdPayments && (
-                        <td className="py-3.5 px-4 text-right font-black text-purple-600 dark:text-purple-400">
+                        <td className="py-3.5 px-3 text-right font-black font-mono text-purple-700 dark:text-purple-300 bg-purple-100/60 dark:bg-purple-950/60 border-x border-purple-200 dark:border-purple-800">
                           ${formatAccounting(invoiceTotals.totalUsd, '')} USD
                         </td>
                       )}
-                      <td colSpan={hasUsdPayments ? 4 : 3} className="py-3.5 px-4 text-left font-sans text-xs text-slate-600 dark:text-slate-300 font-medium">
+                      <td colSpan={hasUsdPayments ? 3 : 2} className="py-3.5 px-4 text-left font-sans text-xs text-slate-600 dark:text-slate-300 font-medium">
                         Contract Fee: <span className="font-mono font-bold text-slate-900 dark:text-white">{formatAccounting(invoiceTotals.contractFee, 'ETB')}</span> <span className="text-[10px] text-blue-600 font-semibold">({invoiceTotals.utilization.toFixed(1)}% Utilized)</span>
                       </td>
                     </tr>
@@ -3514,7 +4812,86 @@ export default function SupervisionConsultantView({
 
       {/* TAB 3: CONTRACT & SCOPE PROFILE */}
       {activeTab === 'profile' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="space-y-6">
+          {/* Profile Cross-Module Interactive Quick Jump Strip */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <button
+              type="button"
+              onClick={() => setActiveTab('contract_amount')}
+              className="bg-white dark:bg-slate-900 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-emerald-300 dark:hover:border-emerald-700 text-left transition group shadow-2xs cursor-pointer"
+            >
+              <div className="flex items-center justify-between text-slate-400 text-[10px] font-bold uppercase tracking-wider">
+                <span>Contract Baseline</span>
+                <DollarSign className="w-3.5 h-3.5 text-emerald-500 group-hover:scale-110 transition" />
+              </div>
+              <div className="font-mono font-black text-sm md:text-base text-slate-900 dark:text-white mt-1">
+                {formatAccounting(contractScheduleSummary.baselineOverall, '')} M ETB
+              </div>
+              <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1 mt-0.5">
+                <span>Inspect Schedules</span>
+                <ExternalLink className="w-2.5 h-2.5" />
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('personnel')}
+              className="bg-white dark:bg-slate-900 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-700 text-left transition group shadow-2xs cursor-pointer"
+            >
+              <div className="flex items-center justify-between text-slate-400 text-[10px] font-bold uppercase tracking-wider">
+                <span>Assigned Staff</span>
+                <Users className="w-3.5 h-3.5 text-indigo-500 group-hover:scale-110 transition" />
+              </div>
+              <div className="font-mono font-black text-sm md:text-base text-slate-900 dark:text-white mt-1">
+                {personnelSummary.totalCount} Staff ({personnelSummary.activeCount} Active)
+              </div>
+              <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold flex items-center gap-1 mt-0.5">
+                <span>{personnelSummary.keyStaffCount} Key Experts</span>
+                <ExternalLink className="w-2.5 h-2.5" />
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('invoices');
+                setInvoiceViewMode('table');
+              }}
+              className="bg-white dark:bg-slate-900 hover:bg-blue-50 dark:hover:bg-blue-950/30 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700 text-left transition group shadow-2xs cursor-pointer"
+            >
+              <div className="flex items-center justify-between text-slate-400 text-[10px] font-bold uppercase tracking-wider">
+                <span>Fee Invoices</span>
+                <Receipt className="w-3.5 h-3.5 text-blue-500 group-hover:scale-110 transition" />
+              </div>
+              <div className="font-mono font-black text-sm md:text-base text-slate-900 dark:text-white mt-1">
+                {(consultant.invoices || []).length} Invoices
+              </div>
+              <span className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold flex items-center gap-1 mt-0.5">
+                <span>{financialSummary.paymentDisbursementPct.toFixed(0)}% Disbursed</span>
+                <ExternalLink className="w-2.5 h-2.5" />
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('kpis')}
+              className="bg-white dark:bg-slate-900 hover:bg-purple-50 dark:hover:bg-purple-950/30 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-purple-300 dark:hover:border-purple-700 text-left transition group shadow-2xs cursor-pointer"
+            >
+              <div className="flex items-center justify-between text-slate-400 text-[10px] font-bold uppercase tracking-wider">
+                <span>Evaluation</span>
+                <Clock className="w-3.5 h-3.5 text-purple-500 group-hover:scale-110 transition" />
+              </div>
+              <div className="font-mono font-black text-sm md:text-base text-purple-600 dark:text-purple-400 mt-1">
+                Grade {jvScoreSummary.weightedJvGrade} ({jvScoreSummary.weightedJvScore.toFixed(1)}%)
+              </div>
+              <span className="text-[10px] text-purple-600 dark:text-purple-400 font-semibold flex items-center gap-1 mt-0.5">
+                <span>Section 2 Matrix</span>
+                <ExternalLink className="w-2.5 h-2.5" />
+              </span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Main Contract Details Card */}
           <div className="lg:col-span-2 space-y-6">
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-5">
@@ -3626,17 +5003,70 @@ export default function SupervisionConsultantView({
                 </div>
               </div>
 
-              {/* Payment Currency Structure Summary */}
-              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                <div>
-                  <span className="text-slate-400 font-semibold uppercase text-[10px] block">Payment Currency Mode</span>
-                  <div className="font-bold text-slate-900 dark:text-white mt-0.5 flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
-                    <span>Local Currency Only: ETB Remuneration (USD Disabled)</span>
+              {/* Payment Currency Structure & USD Option Selector */}
+              <div className="p-4 rounded-2xl bg-gradient-to-r from-slate-50 to-purple-50/40 dark:from-slate-800/60 dark:to-purple-950/20 border border-slate-200 dark:border-slate-700/80 space-y-3 text-xs">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <span className="text-slate-400 font-bold uppercase text-[10px] tracking-wider block">Contract Currency Structure</span>
+                    <div className="font-bold text-slate-900 dark:text-white mt-0.5 flex items-center gap-2">
+                      <span className={`w-2.5 h-2.5 rounded-full ${hasUsdPayments ? 'bg-purple-500 animate-pulse' : 'bg-emerald-500'}`}></span>
+                      <span className="text-sm">
+                        {hasUsdPayments ? 'Dual Currency Contract: Local (ETB) + Foreign Portion (USD)' : '100% Local Currency: ETB Remuneration (USD Off)'}
+                      </span>
+                    </div>
                   </div>
+
+                  {!isReadonly && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const nextVal = !hasUsdPayments;
+                        saveConsultantData({
+                          ...consultant,
+                          enableUsdPayments: nextVal
+                        }, `${nextVal ? 'Enabled' : 'Disabled'} USD foreign currency remuneration option`);
+                        setInAppNotification({
+                          type: 'success',
+                          message: nextVal 
+                            ? 'USD Option selected! The Fee Invoices table now displays the dedicated USD Certificate column like an IPC table.'
+                            : 'USD Option turned off. Fee Invoices table is now showing local ETB currency.'
+                        });
+                      }}
+                      className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-xs border ${
+                        hasUsdPayments
+                          ? 'bg-purple-600 hover:bg-purple-700 text-white border-purple-700'
+                          : 'bg-white dark:bg-slate-900 hover:bg-slate-100 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-700'
+                      }`}
+                      title="Select or toggle Foreign Currency (USD) Option for this consultancy contract"
+                    >
+                      <Coins className="w-3.5 h-3.5" />
+                      <span>{hasUsdPayments ? '✓ USD Option Active (Click to Switch to ETB Only)' : 'Select USD Foreign Currency Option'}</span>
+                    </button>
+                  )}
                 </div>
-                <div className="font-mono text-[11px] text-slate-500">
-                  <span>100% Local Currency Contract (ETB Only)</span>
+
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-2.5 border-t border-slate-200/60 dark:border-slate-700/60 text-[11px]">
+                  <div className="text-slate-600 dark:text-slate-300">
+                    {hasUsdPayments ? (
+                      <span className="text-purple-700 dark:text-purple-300 font-semibold flex items-center gap-1.5">
+                        <Check className="w-3.5 h-3.5 text-purple-600" />
+                        USD Option is active on profile: Fee Invoice Ledger displays dedicated USD Certificate column aligned with IPC specifications.
+                      </span>
+                    ) : (
+                      <span>
+                        USD column is currently hidden in Invoice Ledger. Click above to enable USD foreign fee tracking.
+                      </span>
+                    )}
+                  </div>
+
+                  {hasUsdPayments && (
+                    <div className="flex items-center gap-2 font-mono">
+                      <span className="text-slate-400">Approved Foreign Fee:</span>
+                      <span className="font-bold text-purple-700 dark:text-purple-300">
+                        ${formatAccounting(consultant.revisedFeeUsd || consultant.originalFeeUsd || 0, '')} USD
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -3814,6 +5244,7 @@ export default function SupervisionConsultantView({
             </div>
           </div>
         </div>
+      </div>
       )}
 
       {/* TAB 4: SERVICE HISTORY & PREDECESSORS */}
