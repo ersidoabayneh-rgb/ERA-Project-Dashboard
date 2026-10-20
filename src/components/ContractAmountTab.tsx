@@ -1230,44 +1230,7 @@ export const ContractAmountTab: React.FC<Props> = ({
                 )}
               </tr>
 
-              {/* Item B: Reimbursables */}
-              <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
-                <td className="p-3.5 font-bold text-slate-900 dark:text-white">B.</td>
-                <td className="p-3.5 font-sans font-semibold text-slate-900 dark:text-white">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <div>
-                      <span>Reimbursable Direct Costs (Operating & Logistical Expenses)</span>
-                      <span className="text-xs text-amber-600 dark:text-amber-400 block font-normal mt-0.5">
-                        Sum of {(c1Data.reimbursableList || []).length} user-added reimbursable sub-items (Per Diem, Communications, Insurance, etc.)
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsTable4Visible(prev => !prev);
-                        if (!isTable4Visible) setActiveTableTab('all');
-                      }}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs border ${
-                        isTable4Visible 
-                          ? 'bg-amber-600 text-white border-amber-700' 
-                          : 'bg-amber-50 hover:bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 border-amber-300 dark:border-amber-700'
-                      }`}
-                      title="Table 4 is visible and available only if you want to add or manage reimbursables"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>{isTable4Visible ? 'Hide Table 4 (Done)' : '+ Add / Manage Reimbursables (Table 4)'}</span>
-                    </button>
-                  </div>
-                </td>
-                <td className="p-3.5 text-right font-bold text-slate-900 dark:text-white font-mono text-base">
-                  {fmt(activeSummaryPrice.reimb)} ETB
-                </td>
-                {isUsdEnabled && (
-                  <td className="p-3.5 text-right font-bold text-purple-700 dark:text-purple-300 font-mono text-base bg-purple-50/20">
-                    ${fmt(activeSummaryPrice.reimbUsd)} USD
-                  </td>
-                )}
-              </tr>
+
 
               {/* Direct Subtotal (A + B) */}
               <tr className="bg-slate-100/80 dark:bg-slate-800/80 font-bold border-b border-slate-300 dark:border-slate-700">
@@ -1419,12 +1382,12 @@ export const ContractAmountTab: React.FC<Props> = ({
                 <th className="p-3 text-left font-bold min-w-[190px]">Position</th>
                 <th className="p-3 text-left font-bold min-w-[160px]">Nominated Staff Name</th>
                 <th className="p-3 text-right font-bold w-28">MM (Constr.)</th>
-                <th className="p-3 text-right font-bold w-32">Rate ({currencyUnit})</th>
-                <th className="p-3 text-right font-bold w-36">Constr. Total ({currencyUnit})</th>
+                <th className="p-3 text-right font-bold w-32">Rate (ETB)</th>
+                <th className="p-3 text-right font-bold w-36">Total (ETB)</th>
                 {consultant.enableUsdPayments && (
                   <>
-                    <th className="p-3 text-right font-bold w-32">Rate (USD)</th>
-                    <th className="p-3 text-right font-bold w-36">Constr. Total (USD)</th>
+                    <th className="p-3 text-right font-bold w-32 text-purple-700 dark:text-purple-300">Rate (USD)</th>
+                    <th className="p-3 text-right font-bold w-36 text-purple-700 dark:text-purple-300">Total (USD)</th>
                   </>
                 )}
                 {!isReadonly && <th className="p-3 text-center font-bold w-14">Actions</th>}
@@ -1434,7 +1397,7 @@ export const ContractAmountTab: React.FC<Props> = ({
               {staffSubtotals.groups.map((group) => (
                 <React.Fragment key={group.categoryKey}>
                   <tr className="bg-slate-100/90 dark:bg-slate-800/90 font-bold text-slate-900 dark:text-white">
-                    <td className="p-3 text-left" colSpan={!isReadonly ? 7 : 6}>
+                    <td className="p-3 text-left" colSpan={!isReadonly ? (consultant.enableUsdPayments ? 9 : 7) : (consultant.enableUsdPayments ? 8 : 6)}>
                       {group.label}
                     </td>
                   </tr>
@@ -1483,7 +1446,7 @@ export const ContractAmountTab: React.FC<Props> = ({
                           />
                         </td>
                         <td className="p-3 text-right font-bold text-slate-900 dark:text-white">
-                          {currencySymbol}{fmtCurrency(constrTotalEtb)}
+                          {fmt(constrTotalEtb)}
                         </td>
                         {consultant.enableUsdPayments && (
                           <>
@@ -1498,7 +1461,7 @@ export const ContractAmountTab: React.FC<Props> = ({
                               />
                             </td>
                             <td className="p-3 text-right font-bold text-slate-900 dark:text-white">
-                              {'$'}{fmtCurrency(constrTotalUsd)}
+                              {fmt(constrTotalUsd)}
                             </td>
                           </>
                         )}
@@ -1521,11 +1484,11 @@ export const ContractAmountTab: React.FC<Props> = ({
                     <td className="p-3" colSpan={3}>Sub-total ({group.categoryKey})</td>
                     <td className="p-3 text-right">{fmt(group.constrMm, 1)}</td>
                     <td className="p-3 text-right">—</td>
-                    <td className="p-3 text-right text-emerald-700 dark:text-emerald-300">{fmt(group.constrEtb)} ETB</td>
+                    <td className="p-3 text-right text-emerald-700 dark:text-emerald-300">{fmt(group.constrEtb)}</td>
                     {consultant.enableUsdPayments && (
                       <>
                         <td className="p-3 text-right">—</td>
-                        <td className="p-3 text-right text-purple-700 dark:text-purple-300">${fmt(group.constrUsd)} USD</td>
+                        <td className="p-3 text-right text-purple-700 dark:text-purple-300">{fmt(group.constrUsd)}</td>
                       </>
                     )}
                     {!isReadonly && <td></td>}
@@ -1537,13 +1500,13 @@ export const ContractAmountTab: React.FC<Props> = ({
                 <td className="p-3.5 text-right">{fmt(staffSubtotals.totalConstrMm, 1)}</td>
                 <td className="p-3.5 text-right">—</td>
                 <td className="p-3.5 text-right text-emerald-800 dark:text-emerald-200">
-                  {fmt(staffSubtotals.groups.reduce((s, g) => s + g.constrEtb, 0))} ETB
+                  {fmt(staffSubtotals.groups.reduce((s, g) => s + g.constrEtb, 0))}
                 </td>
                 {consultant.enableUsdPayments && (
                   <>
                     <td className="p-3.5 text-right">—</td>
                     <td className="p-3.5 text-right text-purple-800 dark:text-purple-200">
-                      ${fmt(staffSubtotals.groups.reduce((s, g) => s + (g.constrUsd || 0), 0))} USD
+                      {fmt(staffSubtotals.groups.reduce((s, g) => s + (g.constrUsd || 0), 0))}
                     </td>
                   </>
                 )}
@@ -1693,433 +1656,7 @@ export const ContractAmountTab: React.FC<Props> = ({
       </div>
       )}
 
-      {/* TABLE 4 — REIMBURSABLE DIRECT OPERATING EXPENSES SCHEDULE */}
-      {(activeTableTab === 'reimbursable' || isTable4Visible) && (
-      <div className="bg-white dark:bg-slate-900 border-2 border-amber-300 dark:border-amber-700 rounded-3xl shadow-md overflow-hidden mt-6 animate-in fade-in duration-200">
-        <div className="px-6 py-4 bg-amber-50/80 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            <span className="w-7 h-7 rounded-xl bg-amber-600 text-white text-xs flex items-center justify-center font-mono font-bold shadow-xs">4</span>
-            <div>
-              <div className="flex items-center gap-2">
-                <h4 className="text-sm font-bold uppercase tracking-wider text-slate-900 dark:text-white">
-                  Table 4 — Reimbursable Direct Operating Expenses Schedule ({currencyUnit})
-                </h4>
-                <span className="text-[10px] bg-amber-100 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200 font-bold px-2 py-0.5 rounded-full border border-amber-300 dark:border-amber-700">
-                  User Configurable Sub-Items
-                </span>
-              </div>
-              <p className="text-xs text-amber-800/80 dark:text-amber-300/80 mt-0.5">
-                The total is dynamically calculated as the exact sum of all user-added sub-items and feeds directly into Table 1 Item B.
-              </p>
-            </div>
-          </div>
 
-          <div className="flex items-center gap-2 self-end sm:self-auto">
-            {!isReadonly && (
-              <button
-                type="button"
-                onClick={handleAddReimbursableItem}
-                className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
-                title="Add a new reimbursable expense sub-item row"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>+ Add Sub-Item</span>
-              </button>
-            )}
-
-            <button
-              type="button"
-              onClick={() => {
-                setIsTable4Visible(false);
-                if (activeTableTab === 'reimbursable') setActiveTableTab('all');
-              }}
-              className="px-3 py-1.5 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold border border-slate-300 dark:border-slate-700 transition cursor-pointer"
-              title="Close or collapse Table 4"
-            >
-              Done / Hide Table 4
-            </button>
-          </div>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs sm:text-sm border-collapse">
-            <thead>
-              <tr className="bg-slate-100/75 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700">
-                <th className="p-3 text-left font-bold w-14">No.</th>
-                <th className="p-3 text-left font-bold min-w-[240px]">Expense Description / Sub-Item Name</th>
-                <th className="p-3 text-left font-bold min-w-[220px]">Basis / Allocation Method</th>
-                <th className="p-3 text-right font-bold w-48">Amount (ETB)</th>
-                {consultant.enableUsdPayments && <th className="p-3 text-right font-bold w-48">Amount (USD)</th>}
-                {!isReadonly && <th className="p-3 text-center font-bold w-16">Actions</th>}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200 dark:divide-slate-800 text-slate-800 dark:text-slate-200 font-mono">
-              {(c1Data.reimbursableList || []).length === 0 ? (
-                <tr>
-                  <td colSpan={!isReadonly ? 5 : 4} className="p-8 text-center text-slate-400">
-                    <p className="font-semibold text-xs">No reimbursable sub-items added yet.</p>
-                    <button
-                      type="button"
-                      onClick={handleAddReimbursableItem}
-                      className="mt-2 text-xs text-amber-600 font-bold hover:underline"
-                    >
-                      + Add First Reimbursable Sub-Item
-                    </button>
-                  </td>
-                </tr>
-              ) : (
-                (c1Data.reimbursableList || []).map((r, idx) => (
-                  <tr key={r.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
-                    <td className="p-3 text-slate-500 font-bold">{r.no || idx + 1}</td>
-                    <td className="p-3 font-sans font-semibold text-slate-900 dark:text-white">
-                      <input
-                        type="text"
-                        disabled={isReadonly}
-                        value={r.item}
-                        onChange={(e) => handleUpdateReimbursableItem(r.id, 'item', e.target.value)}
-                        placeholder="e.g. Per diem allowance, Communication, Site vehicle..."
-                        className="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-amber-500 font-semibold text-slate-900 dark:text-white outline-none px-1 py-0.5"
-                      />
-                    </td>
-                    <td className="p-3 font-sans text-slate-600 dark:text-slate-300 text-xs">
-                      <input
-                        type="text"
-                        disabled={isReadonly}
-                        value={r.basis}
-                        onChange={(e) => handleUpdateReimbursableItem(r.id, 'basis', e.target.value)}
-                        placeholder="e.g. Daily rate × days, monthly allowance, lump sum..."
-                        className="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-amber-500 text-slate-600 dark:text-slate-400 outline-none px-1 py-0.5"
-                      />
-                    </td>
-                    <td className="p-3 text-right">
-                      <input
-                        type="number"
-                        step="any"
-                        disabled={isReadonly}
-                        value={r.amountEtb}
-                        onChange={(e) => handleUpdateReimbursableItem(r.id, 'amountEtb', e.target.value)}
-                        className="w-full text-right bg-transparent border-b border-dashed border-slate-300 hover:border-amber-500 focus:border-amber-500 outline-none font-bold text-amber-700 dark:text-amber-400 font-mono text-sm"
-                      />
-                    </td>
-                    {consultant.enableUsdPayments && (
-                      <td className="p-3 text-right">
-                        <input
-                          type="number"
-                          step="any"
-                          disabled={isReadonly}
-                          value={r.amountUsd || 0}
-                          onChange={(e) => handleUpdateReimbursableItem(r.id, 'amountUsd', parseFloat(e.target.value) || 0)}
-                          className="w-full text-right bg-transparent border-b border-dashed border-slate-300 hover:border-amber-500 focus:border-amber-500 outline-none font-bold text-purple-700 dark:text-purple-400 font-mono text-sm"
-                        />
-                      </td>
-                    )}
-                    {!isReadonly && (
-                      <td className="p-3 text-center">
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteReimbursableItem(r.id)}
-                          className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg transition cursor-pointer"
-                          title="Delete this reimbursable sub-item"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </td>
-                    )}
-                  </tr>
-                ))
-              )}
-              <tr className="bg-amber-100 dark:bg-amber-900/60 font-black text-slate-900 dark:text-white text-sm border-t-2 border-amber-400 dark:border-amber-600">
-                <td className="p-3.5" colSpan={3}>
-                  <div className="flex items-center justify-between">
-                    <span>TOTAL REIMBURSABLE EXPENSES (Sum of Sub-Items → Table 1 Item B)</span>
-                    <span className="text-xs font-normal text-amber-800 dark:text-amber-200 font-sans">
-                      ({(c1Data.reimbursableList || []).length} sub-items configured)
-                    </span>
-                  </div>
-                </td>
-                <td className="p-3.5 text-right text-amber-800 dark:text-amber-200 font-mono font-black text-base">
-                  {fmt(reimbursableTotal)} ETB
-                </td>
-                {consultant.enableUsdPayments && (
-                  <td className="p-3.5 text-right text-purple-800 dark:text-purple-200 font-mono font-black text-base">
-                    ${fmt((c1Data.reimbursableList || []).reduce((s, r) => s + (Number(r.amountUsd) || 0), 0))} USD
-                  </td>
-                )}
-                {!isReadonly && <td></td>}
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-      )}
-
-      {/* CONDITION 2 VIEW (FOREIGN & LOCAL REMUNERATION SCHEDULE) */}
-      {(activeTableTab === 'all' || activeTableTab === 'condition2') && (
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 mt-6 shadow-sm space-y-6">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-4">
-            <div className="flex items-center gap-2.5">
-              <span className="w-7 h-7 rounded-xl bg-purple-600 text-white text-xs flex items-center justify-center font-mono font-bold shadow-xs">C2</span>
-              <div>
-                <h4 className="text-base font-bold uppercase tracking-wider text-slate-900 dark:text-white flex items-center gap-2">
-                  <span>Condition 2: Contractual Remuneration (Foreign & Local Currency Schedule)</span>
-                  <span className="text-[10px] bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 font-bold px-2 py-0.5 rounded-full border border-purple-200 dark:border-purple-800">
-                    Dual Currency
-                  </span>
-                </h4>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Contractual schedule for foreign consultants (USD denominated) and local experts (ETB denominated) with contractual exchange rate conversion.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700">
-                <span className="text-xs text-slate-500 font-medium">Exchange Rate:</span>
-                <input
-                  type="number"
-                  step="any"
-                  disabled={isReadonly}
-                  value={c2Data.exchangeRate ?? effRate}
-                  onChange={(e) => setC2Data(prev => ({ ...prev, exchangeRate: parseFloat(e.target.value) || 0 }))}
-                  className="w-16 text-right font-mono font-bold text-xs bg-transparent border-b border-purple-500 outline-none text-purple-700 dark:text-purple-300"
-                />
-                <span className="text-xs text-slate-500 font-mono">ETB / USD</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Sub-table A: Foreign Currency Personnel (USD) */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <h5 className="text-xs font-bold uppercase tracking-wider text-purple-800 dark:text-purple-300 flex items-center gap-2">
-                <span className="w-5 h-5 rounded-md bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 flex items-center justify-center font-mono text-[10px]">A</span>
-                Foreign Personnel Remuneration (USD & ETB Equivalent)
-              </h5>
-            </div>
-            <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800">
-              <table className="w-full text-xs border-collapse">
-                <thead>
-                  <tr className="bg-purple-50/70 dark:bg-purple-950/40 text-purple-900 dark:text-purple-200 border-b border-purple-200/80 dark:border-purple-800/60 font-bold">
-                    <th className="p-3 text-left w-12">#</th>
-                    <th className="p-3 text-left min-w-[200px]">Position</th>
-                    <th className="p-3 text-left min-w-[180px]">Nominated Expert</th>
-                    <th className="p-3 text-right w-24">MM</th>
-                    <th className="p-3 text-right w-32 text-purple-700 dark:text-purple-300">Rate (USD)</th>
-                    <th className="p-3 text-right w-36 text-purple-800 dark:text-purple-200">Amount (USD)</th>
-                    <th className="p-3 text-right w-44 text-slate-700 dark:text-slate-300">ETB Equivalent (@ {c2Data.exchangeRate ?? effRate})</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-mono">
-                  {(c2Data.staffFees || []).filter(s => s.origin === 'Foreign').map((s, idx) => {
-                    const rateUsd = Number(s.rateUsd) || 0;
-                    const mm = Number(s.mm) || 0;
-                    const amountUsd = Number(s.amountUsd) || (mm * rateUsd);
-                    const etbEq = amountUsd * (Number(c2Data.exchangeRate) || effRate);
-                    return (
-                      <tr key={s.id || `c2_f_${idx}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
-                        <td className="p-3 text-slate-400 font-bold">{idx + 1}</td>
-                        <td className="p-3 font-sans font-semibold text-slate-900 dark:text-white">{s.position}</td>
-                        <td className="p-3 font-sans text-slate-600 dark:text-slate-300">{s.name}</td>
-                        <td className="p-3 text-right">
-                          <input
-                            type="number"
-                            step="any"
-                            disabled={isReadonly}
-                            value={s.mm}
-                            onChange={(e) => {
-                              const val = parseFloat(e.target.value) || 0;
-                              setC2Data(prev => ({
-                                ...prev,
-                                staffFees: (prev.staffFees || []).map(row => row.id === s.id ? { ...row, mm: val, amountUsd: val * (row.rateUsd || 0) } : row)
-                              }));
-                            }}
-                            className="w-16 text-right bg-transparent border-b border-dashed border-slate-300 outline-none"
-                          />
-                        </td>
-                        <td className="p-3 text-right font-bold text-purple-700 dark:text-purple-300">
-                          <input
-                            type="number"
-                            step="any"
-                            disabled={isReadonly}
-                            value={s.rateUsd || 0}
-                            onChange={(e) => {
-                              const val = parseFloat(e.target.value) || 0;
-                              setC2Data(prev => ({
-                                ...prev,
-                                staffFees: (prev.staffFees || []).map(row => row.id === s.id ? { ...row, rateUsd: val, amountUsd: (row.mm || 0) * val } : row)
-                              }));
-                            }}
-                            className="w-24 text-right bg-transparent border-b border-dashed border-purple-300 outline-none font-bold"
-                          />
-                        </td>
-                        <td className="p-3 text-right font-bold text-purple-800 dark:text-purple-200">${fmt(amountUsd)} USD</td>
-                        <td className="p-3 text-right font-bold text-slate-700 dark:text-slate-300">{fmt(etbEq)} ETB</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Sub-table B: Local Currency Personnel (ETB) */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <h5 className="text-xs font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
-                <span className="w-5 h-5 rounded-md bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 flex items-center justify-center font-mono text-[10px]">B</span>
-                Local Personnel Remuneration (ETB Only)
-              </h5>
-            </div>
-            <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800">
-              <table className="w-full text-xs border-collapse">
-                <thead>
-                  <tr className="bg-emerald-50/70 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 border-b border-emerald-200/80 dark:border-emerald-800/60 font-bold">
-                    <th className="p-3 text-left w-12">#</th>
-                    <th className="p-3 text-left min-w-[200px]">Position</th>
-                    <th className="p-3 text-left min-w-[180px]">Nominated Expert</th>
-                    <th className="p-3 text-right w-24">MM</th>
-                    <th className="p-3 text-right w-32 text-emerald-700 dark:text-emerald-300">Rate (ETB)</th>
-                    <th className="p-3 text-right w-36 text-emerald-800 dark:text-emerald-200">Amount (ETB)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-mono">
-                  {(c2Data.staffFees || []).filter(s => s.origin === 'Local').map((s, idx) => {
-                    const rateEtb = Number(s.rateEtb) || 0;
-                    const mm = Number(s.mm) || 0;
-                    const amountEtb = Number(s.amountEtb) || (mm * rateEtb);
-                    return (
-                      <tr key={s.id || `c2_l_${idx}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
-                        <td className="p-3 text-slate-400 font-bold">{idx + 1}</td>
-                        <td className="p-3 font-sans font-semibold text-slate-900 dark:text-white">{s.position}</td>
-                        <td className="p-3 font-sans text-slate-600 dark:text-slate-300">{s.name}</td>
-                        <td className="p-3 text-right">
-                          <input
-                            type="number"
-                            step="any"
-                            disabled={isReadonly}
-                            value={s.mm}
-                            onChange={(e) => {
-                              const val = parseFloat(e.target.value) || 0;
-                              setC2Data(prev => ({
-                                ...prev,
-                                staffFees: (prev.staffFees || []).map(row => row.id === s.id ? { ...row, mm: val, amountEtb: val * (row.rateEtb || 0) } : row)
-                              }));
-                            }}
-                            className="w-16 text-right bg-transparent border-b border-dashed border-slate-300 outline-none"
-                          />
-                        </td>
-                        <td className="p-3 text-right font-bold text-emerald-700 dark:text-emerald-300">
-                          <input
-                            type="number"
-                            step="any"
-                            disabled={isReadonly}
-                            value={s.rateEtb || 0}
-                            onChange={(e) => {
-                              const val = parseFloat(e.target.value) || 0;
-                              setC2Data(prev => ({
-                                ...prev,
-                                staffFees: (prev.staffFees || []).map(row => row.id === s.id ? { ...row, rateEtb: val, amountEtb: (row.mm || 0) * val } : row)
-                              }));
-                            }}
-                            className="w-24 text-right bg-transparent border-b border-dashed border-emerald-300 outline-none font-bold"
-                          />
-                        </td>
-                        <td className="p-3 text-right font-bold text-emerald-800 dark:text-emerald-200">{fmt(amountEtb)} ETB</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Sub-table C: Condition 2 Reimbursable Expenses */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <h5 className="text-xs font-bold uppercase tracking-wider text-amber-800 dark:text-amber-300 flex items-center gap-2">
-                <span className="w-5 h-5 rounded-md bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 flex items-center justify-center font-mono text-[10px]">C</span>
-                Condition 2 Reimbursables & Operating Expenses (USD & ETB)
-              </h5>
-            </div>
-            <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800">
-              <table className="w-full text-xs border-collapse">
-                <thead>
-                  <tr className="bg-amber-50/70 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 border-b border-amber-200/80 dark:border-amber-800/60 font-bold">
-                    <th className="p-3 text-left w-12">#</th>
-                    <th className="p-3 text-left min-w-[240px]">Expense Description</th>
-                    <th className="p-3 text-left min-w-[120px]">Trip / Basis</th>
-                    <th className="p-3 text-right w-20">Qty</th>
-                    <th className="p-3 text-right w-28 text-purple-700 dark:text-purple-300">Rate (USD)</th>
-                    <th className="p-3 text-right w-32 text-purple-800 dark:text-purple-200">Amount (USD)</th>
-                    <th className="p-3 text-right w-28 text-emerald-700 dark:text-emerald-300">Rate (ETB)</th>
-                    <th className="p-3 text-right w-32 text-emerald-800 dark:text-emerald-200">Amount (ETB)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-mono">
-                  {(c2Data.reimbursables || []).map((r, idx) => (
-                    <tr key={r.id || `c2_r_${idx}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
-                      <td className="p-3 text-slate-400 font-bold">{idx + 1}</td>
-                      <td className="p-3 font-sans font-semibold text-slate-900 dark:text-white">{r.item}</td>
-                      <td className="p-3 font-sans text-slate-600 dark:text-slate-300">{r.tripDays || '-'}</td>
-                      <td className="p-3 text-right font-bold">{r.quantity || 1}</td>
-                      <td className="p-3 text-right text-purple-700 dark:text-purple-300">{r.rateUsd ? `$${fmt(r.rateUsd)}` : '—'}</td>
-                      <td className="p-3 text-right font-bold text-purple-800 dark:text-purple-200">{r.amountUsd ? `$${fmt(r.amountUsd)} USD` : '—'}</td>
-                      <td className="p-3 text-right text-emerald-700 dark:text-emerald-300">{r.rateEtb ? `${fmt(r.rateEtb)}` : '—'}</td>
-                      <td className="p-3 text-right font-bold text-emerald-800 dark:text-emerald-200">{r.amountEtb ? `${fmt(r.amountEtb)} ETB` : '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Condition 2 Consolidated Totals Strip */}
-          {(() => {
-            const foreignStaffUsd = (c2Data.staffFees || []).filter(s => s.origin === 'Foreign').reduce((sum, s) => sum + (Number(s.amountUsd) || (Number(s.mm || 0) * Number(s.rateUsd || 0))), 0);
-            const localStaffEtb = (c2Data.staffFees || []).filter(s => s.origin === 'Local').reduce((sum, s) => sum + (Number(s.amountEtb) || (Number(s.mm || 0) * Number(s.rateEtb || 0))), 0);
-            const reimbUsd = (c2Data.reimbursables || []).reduce((sum, r) => sum + (Number(r.amountUsd) || 0), 0);
-            const reimbEtb = (c2Data.reimbursables || []).reduce((sum, r) => sum + (Number(r.amountEtb) || 0), 0);
-            const totalUsd = foreignStaffUsd + reimbUsd;
-            const totalEtb = localStaffEtb + reimbEtb;
-            const rate = Number(c2Data.exchangeRate) || effRate;
-            const totalEquivalentEtb = totalEtb + (totalUsd * rate);
-
-            return (
-              <div className="p-4 rounded-2xl bg-purple-50/70 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 flex flex-wrap items-center justify-between gap-4 font-mono">
-                <div>
-                  <span className="text-[10px] font-bold text-purple-700 dark:text-purple-300 uppercase tracking-wider block">Total Foreign Portion (USD)</span>
-                  <div className="text-lg font-black text-purple-900 dark:text-purple-100 mt-0.5">
-                    ${fmt(totalUsd)} USD
-                  </div>
-                  <span className="text-[11px] text-purple-600 dark:text-purple-400 font-sans">
-                    Staff: ${fmt(foreignStaffUsd)} + Reimbursables: ${fmt(reimbUsd)}
-                  </span>
-                </div>
-
-                <div>
-                  <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 uppercase tracking-wider block">Total Local Portion (ETB)</span>
-                  <div className="text-lg font-black text-emerald-900 dark:text-emerald-100 mt-0.5">
-                    {fmt(totalEtb)} ETB
-                  </div>
-                  <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-sans">
-                    Staff: {fmt(localStaffEtb)} + Reimbursables: {fmt(reimbEtb)}
-                  </span>
-                </div>
-
-                <div className="text-right">
-                  <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider block">Combined Total Contract Value (ETB Equivalent)</span>
-                  <div className="text-xl font-black text-slate-900 dark:text-white mt-0.5">
-                    {fmt(totalEquivalentEtb)} ETB
-                  </div>
-                  <span className="text-[11px] text-slate-500 font-sans">
-                    Calculated @ {rate} ETB/USD contractual conversion
-                  </span>
-                </div>
-              </div>
-            );
-          })()}
-        </div>
-      )}
       
       {/* MODAL: ADD STAFF POSITION OR SUB-TABLE */}
       {isAddStaffOpen && (
