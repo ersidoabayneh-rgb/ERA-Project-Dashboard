@@ -68,6 +68,106 @@ export default function DocumentationView({
   const [filterType, setFilterType] = useState<string>('all');
   const [showPreviewDoc, setShowPreviewDoc] = useState<ProjectDocument | null>(null);
 
+  // Dedicated Add Document Modal State
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [modalFile, setModalFile] = useState<File | null>(null);
+  const [modalDocName, setModalDocName] = useState('');
+  const [modalDocType, setModalDocType] = useState<string>('Contract Agreement');
+  const [modalDocDesc, setModalDocDesc] = useState('');
+  const [modalDragActive, setModalDragActive] = useState(false);
+  const modalFileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleSaveModalDoc = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!modalDocName.trim() && !modalFile) {
+      alert('Please enter a document title or select a file to attach.');
+      return;
+    }
+
+    setIsProcessing(true);
+    try {
+      let dataUrl = '';
+      let fileSizeStr = '1.20 MB';
+      let fileNameStr = `registered_${modalDocType.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${Date.now().toString().slice(-4)}.pdf`;
+      let fileTypeStr = 'application/pdf';
+
+      if (modalFile) {
+        dataUrl = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (ev) => resolve((ev.target?.result as string) || '');
+          reader.onerror = () => resolve('');
+          reader.readAsDataURL(modalFile);
+        });
+        fileNameStr = modalFile.name;
+        fileTypeStr = modalFile.type;
+        fileSizeStr = modalFile.size > 1024 * 1024
+          ? `${(modalFile.size / (1024 * 1024)).toFixed(2)} MB`
+          : `${Math.round(modalFile.size / 1024)} KB`;
+      }
+
+      const cleanFilename = modalFile ? (modalFile.name.substring(0, modalFile.name.lastIndexOf('.')) || modalFile.name) : '';
+      const formattedTitle = modalDocName.trim() || cleanFilename.replace(/[-_]/g, ' ') || 'Registered Document';
+
+      const newDoc: ProjectDocument = {
+        id: `doc_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        name: formattedTitle,
+        type: modalDocType,
+        fileName: fileNameStr,
+        uploadedAt: new Date().toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        }),
+        uploadedBy: project.lastModifiedBy || 'Ersido Abayneh',
+        fileSize: fileSizeStr,
+        description: modalDocDesc.trim() || undefined,
+        fileData: dataUrl || undefined,
+        fileType: fileTypeStr
+      };
+
+      onUpdateDocuments([newDoc, ...documents]);
+      setUploadStatus(`Document "${formattedTitle}" (${modalDocType}) successfully registered in project archives!`);
+
+      // Reset and close
+      setModalDocName('');
+      setModalDocType('Contract Agreement');
+      setModalDocDesc('');
+      setModalFile(null);
+      setIsAddModalOpen(false);
+    } catch (err) {
+      console.error('Error adding document:', err);
+      alert('Failed to add document. Please try again.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleModalDrag = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === 'dragenter' || e.type === 'dragover') {
+      setModalDragActive(true);
+    } else if (e.type === 'dragleave') {
+      setModalDragActive(false);
+    }
+  };
+
+  const handleModalDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setModalDragActive(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      const file = e.dataTransfer.files[0];
+      setModalFile(file);
+      if (!modalDocName.trim()) {
+        const cleanName = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
+        setModalDocName(cleanName.replace(/[-_]/g, ' '));
+      }
+    }
+  };
+
   const [collapsedHeadings, setCollapsedHeadings] = useState<Record<string, boolean>>(() => {
     const initial: Record<string, boolean> = {};
     FILING_STRUCTURE_HEADINGS.forEach(h => { initial[h] = false; }); // default expanded
@@ -359,12 +459,25 @@ export default function DocumentationView({
             Attach, categorize, and preserve legally binding FIDIC contracts, site images, engineering drawing dossiers, and PDF progress reports.
           </p>
         </div>
-        <div className="flex items-center gap-2 bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-150 dark:border-slate-800 text-2xs font-bold text-slate-600 dark:text-zinc-300">
-          <FileCheck2 className="w-5 h-5 text-indigo-500" />
-          <div>
-            <div className="text-slate-400 text-[9px] uppercase tracking-wider font-extrabold">Active Archive</div>
-            <div>{documents.length} Files Logged</div>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-150 dark:border-slate-800 text-2xs font-bold text-slate-600 dark:text-zinc-300">
+            <FileCheck2 className="w-5 h-5 text-indigo-500" />
+            <div>
+              <div className="text-slate-400 text-[9px] uppercase tracking-wider font-extrabold">Active Archive</div>
+              <div>{documents.length} Files Logged</div>
+            </div>
           </div>
+          {!isReadonly && (
+            <button
+              type="button"
+              onClick={() => setIsAddModalOpen(true)}
+              className="px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-bold transition flex items-center gap-2 shadow-md shadow-indigo-600/30 cursor-pointer shrink-0"
+              title="Add Document to Project Archives"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Add Document</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -562,6 +675,16 @@ export default function DocumentationView({
 
                 {/* Filters & Expand/Collapse Buttons */}
                 <div className="flex flex-wrap items-center gap-2">
+                  {!isReadonly && (
+                    <button
+                      type="button"
+                      onClick={() => setIsAddModalOpen(true)}
+                      className="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-3xs font-black uppercase tracking-wider transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>Add Document</span>
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={expandAllHeadings}
@@ -1063,6 +1186,225 @@ export default function DocumentationView({
               </div>
 
             </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Dedicated Add Document Modal */}
+      {isAddModalOpen && (
+        <div 
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto"
+          onClick={() => {
+            if (!isProcessing) setIsAddModalOpen(false);
+          }}
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 10 }}
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl max-w-lg w-full overflow-hidden my-8"
+          >
+            {/* Modal Header */}
+            <div className="px-6 py-4 bg-gradient-to-r from-indigo-50 to-blue-50 dark:from-slate-800 dark:to-slate-850 border-b border-indigo-100/60 dark:border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-indigo-600 text-white rounded-xl shadow-xs">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-slate-800 dark:text-zinc-100">
+                    Add Document to Project Archives
+                  </h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Register files into the secure document repository
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddModalOpen(false)}
+                disabled={isProcessing}
+                className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Form */}
+            <form onSubmit={handleSaveModalDoc} className="p-6 space-y-4">
+              
+              {/* File Attachment / Drop Zone */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-black uppercase tracking-wider text-slate-600 dark:text-zinc-300 flex items-center justify-between">
+                  <span>Attachment File</span>
+                  {modalFile && (
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold lowercase">
+                      {(modalFile.size / (1024 * 1024)).toFixed(2)} MB selected
+                    </span>
+                  )}
+                </label>
+                
+                <input
+                  ref={modalFileInputRef}
+                  type="file"
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files[0]) {
+                      const file = e.target.files[0];
+                      setModalFile(file);
+                      if (!modalDocName.trim()) {
+                        const clean = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
+                        setModalDocName(clean.replace(/[-_]/g, ' '));
+                      }
+                    }
+                  }}
+                  accept=".pdf,.png,.jpg,.jpeg,.docx,.xlsx,.xls,.pptx,.dwg,.zip"
+                />
+
+                <div
+                  onDragEnter={handleModalDrag}
+                  onDragLeave={handleModalDrag}
+                  onDragOver={handleModalDrag}
+                  onDrop={handleModalDrop}
+                  onClick={() => modalFileInputRef.current?.click()}
+                  className={`border-2 border-dashed rounded-2xl p-4 text-center cursor-pointer transition ${
+                    modalDragActive
+                      ? 'border-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/40'
+                      : modalFile
+                      ? 'border-emerald-300 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-950/20'
+                      : 'border-slate-200 dark:border-slate-750 hover:border-indigo-400 bg-slate-50/70 dark:bg-slate-850'
+                  }`}
+                >
+                  {modalFile ? (
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5 text-left truncate">
+                        <div className="p-2 bg-emerald-100 dark:bg-emerald-950 text-emerald-600 rounded-lg shrink-0">
+                          <CheckCircle2 className="w-4 h-4" />
+                        </div>
+                        <div className="truncate">
+                          <p className="text-xs font-bold text-slate-800 dark:text-zinc-200 truncate">
+                            {modalFile.name}
+                          </p>
+                          <p className="text-[10px] text-slate-400">
+                            Click or drop another file to replace
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setModalFile(null);
+                        }}
+                        className="p-1 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                        title="Remove file"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center space-y-1.5 py-2">
+                      <div className="p-2 bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 rounded-xl">
+                        <Upload className="w-5 h-5" />
+                      </div>
+                      <span className="text-xs font-bold text-slate-700 dark:text-zinc-200">
+                        Drop PDF, Office, or image file here
+                      </span>
+                      <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold">
+                        or click to browse from device
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Document Name / Reference */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-black uppercase tracking-wider text-slate-600 dark:text-zinc-300 block">
+                  Document Title / Reference Name <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g., Contract Agreement - Volume 1 General Conditions"
+                  value={modalDocName}
+                  onChange={(e) => setModalDocName(e.target.value)}
+                  className="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition"
+                />
+              </div>
+
+              {/* Document Type / Category */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-black uppercase tracking-wider text-slate-600 dark:text-zinc-300 block">
+                  Categorize by File Type <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  value={modalDocType}
+                  onChange={(e) => setModalDocType(e.target.value)}
+                  className="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition cursor-pointer"
+                >
+                  <option value="Contract Agreement">📄 Contract Agreement</option>
+                  <option value="Technical Report">📊 Technical Report</option>
+                  <option value="Correspondence">✉️ Correspondence</option>
+                  <option value="Drawings">📐 Drawings & Technical Dossier</option>
+                  <option value="Tender Stage Information">📋 Tender Stage Information</option>
+                  <option value="Meetings">🤝 Meetings & Minutes</option>
+                  <option value="Reports">📑 Reports & Progress Updates</option>
+                  <option value="Right of Way">🛣️ Right of Way (ROW)</option>
+                  <option value="Programmes">📅 Work Programmes & Schedules</option>
+                  <option value="Design and Design Changes">🏗️ Design and Design Changes</option>
+                  <option value="Financial Control">💰 Financial Control & IPCs</option>
+                  <option value="Claims">⚖️ Claims & Variations</option>
+                  <option value="Contract Administration Manual (CAM)">📘 Contract Administration Manual (CAM)</option>
+                  <option value="Taking Over and Defects Notification">🛠️ Taking Over & Defects Notification</option>
+                  <option value="Additional">📁 Additional / General</option>
+                </select>
+              </div>
+
+              {/* Short Description Field */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-black uppercase tracking-wider text-slate-600 dark:text-zinc-300 block">
+                  Short Description / Summary Notes
+                </label>
+                <textarea
+                  rows={3}
+                  placeholder="Enter a brief description, keywords, signatories, or scope notes..."
+                  value={modalDocDesc}
+                  onChange={(e) => setModalDocDesc(e.target.value)}
+                  className="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs font-medium text-slate-800 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition resize-none"
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div className="pt-2 flex items-center justify-end gap-2.5 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsAddModalOpen(false)}
+                  disabled={isProcessing}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isProcessing || (!modalDocName.trim() && !modalFile)}
+                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-black transition flex items-center gap-2 shadow-md shadow-indigo-600/30 cursor-pointer"
+                >
+                  {isProcessing ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>Saving Record...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Register Document</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+            </form>
           </motion.div>
         </div>
       )}

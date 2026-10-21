@@ -38,7 +38,10 @@ import {
   Printer,
   ShieldAlert,
   Link as LinkIcon,
-  Receipt
+  Receipt,
+  ChevronDown,
+  ChevronRight,
+  ChevronUp
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { drawEraLogo, drawStandardDocumentHeader, STRICT_1_INCH_MARGIN, drawDocumentWatermark, safeSplitText } from '../lib/pdfReportEngine';
@@ -317,6 +320,39 @@ export default function SubmittalLogView({
   const [isEditSubmittalModalOpen, setIsEditSubmittalModalOpen] = useState(false);
   const [editingRowId, setEditingRowId] = useState<string | null>(null);
   const [editingRowDraft, setEditingRowDraft] = useState<ConsultantSubmittalKpi | null>(null);
+
+  // Row expansion state for detailed status history & reviewer comments
+  const [expandedRowIds, setExpandedRowIds] = useState<string[]>([]);
+  const [editingCommentSubmittalId, setEditingCommentSubmittalId] = useState<string | null>(null);
+  const [editingCommentDraft, setEditingCommentDraft] = useState<string>('');
+
+  const toggleRowExpanded = (id: string) => {
+    setExpandedRowIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
+  const handleStartEditingComment = (submittal: ConsultantSubmittalKpi) => {
+    setEditingCommentSubmittalId(submittal.id);
+    setEditingCommentDraft(submittal.consultantResponse || submittal.notes || '');
+  };
+
+  const handleSaveInlineReviewerComment = (submittalId: string) => {
+    const updatedList = submittalsList.map(s => {
+      if (s.id === submittalId) {
+        return {
+          ...s,
+          consultantResponse: editingCommentDraft,
+          notes: editingCommentDraft,
+          consultantResponder: s.consultantResponder || currentUserObj?.fullName || currentUserObj?.username || consultant.residentEngineerName || 'Supervision Consultant'
+        };
+      }
+      return s;
+    });
+    commitSubmittals(updatedList, `Updated reviewer comments for ${submittalId}`);
+    setEditingCommentSubmittalId(null);
+    setEditingCommentDraft('');
+  };
 
   // New submittal form (Technical Submittals)
   const [newSubmittalForm, setNewSubmittalForm] = useState<Partial<ConsultantSubmittalKpi>>({
@@ -1751,247 +1787,601 @@ export default function SubmittalLogView({
                   const target = item.targetDays || targetOverrides[item.type] || 7;
                   const delayInfo = checkSubmittalDelay(item, target);
                   const fileCount = item.attachmentsCount ?? item.attachments?.length ?? 0;
+                  const isExpanded = expandedRowIds.includes(item.id);
 
                   return (
-                    <tr 
-                      key={`sublog-${item.id}-${idx}`}
-                      className={`transition-all duration-150 ${
-                        selectedSubmittalNos.includes(item.submittalNo)
-                          ? 'bg-indigo-50/80 dark:bg-indigo-950/50'
-                          : idx % 2 === 1
-                          ? 'bg-slate-50/70 dark:bg-slate-800/35 hover:bg-blue-50/70 dark:hover:bg-blue-950/40'
-                          : 'bg-white dark:bg-slate-900 hover:bg-blue-50/70 dark:hover:bg-blue-950/40'
-                      }`}
-                    >
-                      <td className="p-3.5 text-center">
-                        <input
-                          type="checkbox"
-                          checked={selectedSubmittalNos.includes(item.submittalNo)}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedSubmittalNos(prev => [...prev, item.submittalNo]);
-                            } else {
-                              setSelectedSubmittalNos(prev => prev.filter(no => no !== item.submittalNo));
-                            }
-                          }}
-                          className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 cursor-pointer accent-indigo-600"
-                        />
-                      </td>
-                      <td className="p-3.5 font-mono font-bold text-slate-900 dark:text-white">
-                        {item.submittalNo}
-                      </td>
-                      <td className="p-3.5">
-                        {item.type === 'RFI' ? (
-                          <button
-                            onClick={() => setActiveViewTab('rfi_log')}
-                            className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/80 dark:hover:bg-blue-900/80 text-blue-700 dark:text-blue-300 text-[11px] font-bold inline-flex items-center gap-1.5 transition cursor-pointer border border-blue-200 dark:border-blue-800 shadow-2xs"
-                            title="Click to open full correspondence thread in RFI Log"
-                          >
-                            <MessageSquare className="w-3 h-3 text-blue-500" />
-                            <span>Technical RFI</span>
-                          </button>
-                        ) : (
-                          <div className="flex flex-col gap-1">
-                            <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px] font-bold block w-max">
-                              {item.type}
-                            </span>
-                            {item.type === 'IPC Review' && (
-                              <span className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1" title="IPC Submission date is dynamically linked with the Financial Data page">
-                                <LinkIcon className="w-2.5 h-2.5" /> Financial IPC
-                              </span>
-                            )}
-                          </div>
-                        )}
-                      </td>
-                      <td className="p-3.5 max-w-xs">
-                        <div className="font-bold text-slate-900 dark:text-white truncate" title={item.title}>
-                          {item.title}
-                        </div>
-                        {item.notes && (
-                          <div className="text-[10px] text-slate-400 truncate mt-0.5" title={item.notes}>
-                            {item.notes}
-                          </div>
-                        )}
-                      </td>
-                      {/* Attachments Column */}
-                      <td className="p-3.5 text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          {fileCount > 0 ? (
+                    <React.Fragment key={`sublog-frag-${item.id}-${idx}`}>
+                      <tr 
+                        key={`sublog-${item.id}-${idx}`}
+                        onClick={(e) => {
+                          const targetEl = e.target as HTMLElement;
+                          if (targetEl.closest('button') || targetEl.closest('input') || targetEl.closest('a') || targetEl.closest('select')) {
+                            return;
+                          }
+                          toggleRowExpanded(item.id);
+                        }}
+                        className={`transition-all duration-150 cursor-pointer ${
+                          selectedSubmittalNos.includes(item.submittalNo)
+                            ? 'bg-indigo-50/80 dark:bg-indigo-950/50'
+                            : isExpanded
+                            ? 'bg-indigo-50/50 dark:bg-indigo-950/30'
+                            : idx % 2 === 1
+                            ? 'bg-slate-50/70 dark:bg-slate-800/35 hover:bg-blue-50/70 dark:hover:bg-blue-950/40'
+                            : 'bg-white dark:bg-slate-900 hover:bg-blue-50/70 dark:hover:bg-blue-950/40'
+                        }`}
+                        title="Click row to expand status history and reviewer comments"
+                      >
+                        <td className="p-3.5 text-center">
+                          <input
+                            type="checkbox"
+                            checked={selectedSubmittalNos.includes(item.submittalNo)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedSubmittalNos(prev => [...prev, item.submittalNo]);
+                              } else {
+                                setSelectedSubmittalNos(prev => prev.filter(no => no !== item.submittalNo));
+                              }
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 cursor-pointer accent-indigo-600"
+                          />
+                        </td>
+                        <td className="p-3.5 font-mono font-bold text-slate-900 dark:text-white">
+                          <div className="flex items-center gap-2">
                             <button
-                              onClick={() => handleOpenAttachmentModal(item)}
-                              className="relative group inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-indigo-50 dark:bg-indigo-950/70 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 font-bold text-xs shadow-2xs hover:bg-indigo-100 dark:hover:bg-indigo-900/80 transition cursor-pointer"
-                              title="Click to view or upload PDF attachments"
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleRowExpanded(item.id);
+                              }}
+                              className={`p-1 rounded-md transition cursor-pointer ${
+                                isExpanded
+                                  ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/70 dark:text-indigo-300'
+                                  : 'text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-150 dark:hover:bg-slate-800'
+                              }`}
+                              title={isExpanded ? "Collapse row details" : "Expand status history and reviewer comments"}
                             >
-                              <Paperclip className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
-                              <span>{fileCount}</span>
-                              <Upload className="w-3 h-3 text-indigo-400 opacity-60 group-hover:opacity-100 ml-0.5" />
-
-                              {/* Floating Rich Tooltip / Popover on Hover */}
-                              <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:flex flex-col gap-1.5 z-40 w-64 p-3 bg-slate-900 dark:bg-slate-800 text-white rounded-2xl shadow-xl text-[11px] border border-slate-700/80 pointer-events-none transition-all text-left">
-                                <div className="flex items-center justify-between font-bold border-b border-slate-700/80 pb-1.5 text-indigo-300">
-                                  <span className="flex items-center gap-1.5">
-                                    <Paperclip className="w-3.5 h-3.5 text-indigo-400" />
-                                    {fileCount} Attached PDF{fileCount > 1 ? 's' : ''}
-                                  </span>
-                                  <span className="text-[9px] font-mono text-slate-400 uppercase tracking-wider">Click to Manage</span>
-                                </div>
-                                {item.attachments && item.attachments.length > 0 ? (
-                                  <ul className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
-                                    {item.attachments.map((att, i) => (
-                                      <li key={att.id || i} className="flex items-center justify-between text-slate-200 truncate gap-1.5 bg-slate-800/80 dark:bg-slate-900/80 px-2 py-1 rounded-lg border border-slate-700/50">
-                                        <span className="truncate flex items-center gap-1.5">
-                                          <FileText className="w-3 h-3 text-indigo-400 shrink-0" />
-                                          <span className="truncate font-medium text-xs" title={att.name}>{att.name}</span>
-                                        </span>
-                                        {att.size && <span className="text-[9px] font-mono text-slate-400 shrink-0">{att.size}</span>}
-                                      </li>
-                                    ))}
-                                  </ul>
-                                ) : (
-                                  <div className="text-slate-300 text-[10px] italic py-1">
-                                    {fileCount} attachment document(s) uploaded. Click to view or add PDF files.
-                                  </div>
-                                )}
-                                <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-x-4 border-x-transparent border-t-4 border-t-slate-900 dark:border-t-slate-800"></div>
-                              </div>
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => handleOpenAttachmentModal(item)}
-                              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:border-indigo-400 dark:hover:border-indigo-600 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/30 text-[11px] transition font-medium cursor-pointer"
-                              title="Click to attach PDF files"
-                            >
-                              <Paperclip className="w-3.5 h-3.5 shrink-0" />
-                              <span>+ PDF</span>
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                      <td className="p-3.5 font-mono text-slate-600 dark:text-slate-400 whitespace-nowrap">
-                        <div className="flex items-center gap-1.5">
-                          <span>{item.submittedDate || '-'}</span>
-                          {item.type === 'IPC Review' && (
-                            <span 
-                              className="text-[9px] px-1.5 py-0.5 rounded-full font-sans font-bold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 flex items-center gap-0.5" 
-                              title="Contractor Submission Date — Dynamically linked with Financial Data page"
-                            >
-                              <LinkIcon className="w-2.5 h-2.5 text-indigo-500" /> Contractor Subm.
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="p-3.5 font-mono text-slate-600 dark:text-slate-400 whitespace-nowrap">
-                        <div className="flex items-center gap-1.5">
-                          {item.respondedDate ? (
-                            <>
-                              <span>{item.respondedDate}</span>
-                              {item.type === 'IPC Review' && (
-                                <span 
-                                  className="text-[9px] px-1.5 py-0.5 rounded-full font-sans font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 flex items-center gap-0.5" 
-                                  title="Supervision Consultant Response Date to submit to Employer (Certified & Submitted to Employer) — Dynamically linked with Financial Data page"
-                                >
-                                  <LinkIcon className="w-2.5 h-2.5 text-emerald-500" /> Submitted to Employer
-                                </span>
+                              {isExpanded ? (
+                                <ChevronDown className="w-3.5 h-3.5" />
+                              ) : (
+                                <ChevronRight className="w-3.5 h-3.5" />
                               )}
-                            </>
+                            </button>
+                            <span>{item.submittalNo}</span>
+                          </div>
+                        </td>
+                        <td className="p-3.5">
+                          {item.type === 'RFI' ? (
+                            <button
+                              onClick={() => setActiveViewTab('rfi_log')}
+                              className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/80 dark:hover:bg-blue-900/80 text-blue-700 dark:text-blue-300 text-[11px] font-bold inline-flex items-center gap-1.5 transition cursor-pointer border border-blue-200 dark:border-blue-800 shadow-2xs"
+                              title="Click to open full correspondence thread in RFI Log"
+                            >
+                              <MessageSquare className="w-3 h-3 text-blue-500" />
+                              <span>Technical RFI</span>
+                            </button>
                           ) : (
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-amber-500 font-semibold italic">Pending</span>
+                            <div className="flex flex-col gap-1">
+                              <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px] font-bold block w-max">
+                                {item.type}
+                              </span>
                               {item.type === 'IPC Review' && (
-                                <span 
-                                  className="text-[9px] px-1.5 py-0.5 rounded-full font-sans font-medium bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800" 
-                                  title="Pending Supervision Consultant response / certification to submit to Employer"
-                                >
-                                  Pending to Employer
+                                <span className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1" title="IPC Submission date is dynamically linked with the Financial Data page">
+                                  <LinkIcon className="w-2.5 h-2.5" /> Financial IPC
                                 </span>
                               )}
                             </div>
                           )}
-                        </div>
-                      </td>
-                      {!isContractorEditor && (
-                        <td className="p-3.5 text-center font-mono font-bold text-slate-700 dark:text-slate-300">
-                          {target}d
                         </td>
-                      )}
-                      {!isContractorEditor && (
-                        <td className="p-3.5 text-center font-mono">
-                          {delayInfo.isResolved ? (
-                            <span className={`font-bold ${delayInfo.isDelayed ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                              {delayInfo.elapsedDays}d
-                            </span>
-                          ) : (
-                            <span className="text-amber-600 dark:text-amber-400 font-semibold">
-                              {delayInfo.elapsedDays}d <span className="text-[9px] opacity-80">(Elapsed)</span>
-                            </span>
+                        <td className="p-3.5 max-w-xs">
+                          <div className="font-bold text-slate-900 dark:text-white truncate" title={item.title}>
+                            {item.title}
+                          </div>
+                          {item.notes && (
+                            <div className="text-[10px] text-slate-400 truncate mt-0.5" title={item.notes}>
+                              {item.notes}
+                            </div>
                           )}
                         </td>
-                      )}
-                      <td className="p-3.5">
-                        <div className="flex flex-col gap-1">
-                          <span className={`inline-flex px-2 py-0.5 rounded-md text-[10px] font-bold w-fit ${
-                            item.status === 'Approved' || item.status === 'Approved / Closed' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300' :
-                            item.status === 'Closed' ? 'bg-slate-200 text-slate-800 dark:bg-slate-800 dark:text-slate-200' :
-                            item.status === 'Approved with Comment' || item.status === 'Approved with Comments' ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300' :
-                            item.status === 'Under Review' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300' :
-                            item.status === 'Rejected' || item.status === 'Rejected / Resubmit' ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300' :
-                            item.status === 'Resubmit' ? 'bg-orange-100 text-orange-800 dark:bg-orange-950/60 dark:text-orange-300' :
-                            item.status === 'Overdue' ? 'bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300' :
-                            'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
-                          }`}>
-                            {item.status}
-                          </span>
-                          {delayInfo.isDelayed && (
-                            <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400 flex items-center gap-0.5">
-                              ⚠️ +{delayInfo.delayDays}d Overdue
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="p-3.5 text-slate-600 dark:text-slate-400">
-                        {item.assignedEngineer || '-'}
-                      </td>
-                      {isConsultantApproverOrMasterAdmin && (
-                        <td className="p-3.5 text-right whitespace-nowrap">
-                          <div className="flex items-center justify-end gap-1">
-                            <button
-                              onClick={() => handleStartRowEdit(item)}
-                              title="Edit Submittal"
-                              className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition"
-                            >
-                              <Edit3 className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => handleDuplicateRow(item)}
-                              title="Duplicate Submittal"
-                              className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition"
-                            >
-                              <Copy className="w-3.5 h-3.5" />
-                            </button>
-                            {!isReadonly && (() => {
-                              const isApproved = item.status === 'Approved' || item.status === 'Approved / Closed' || item.status === 'Approved with Comment' || item.status === 'Approved with Comments' || item.status.toLowerCase().includes('approved');
-                              const isAdminUser = currentUserObj?.role === 'admin' || currentUserObj?.role === 'master_admin' || currentUserObj?.role === 'cpm_admin' || currentUserObj?.username === 'proj_1781786415663';
-                              if (isApproved && !isAdminUser) {
-                                return (
-                                  <span title="Approved submittals can only be deleted by Administrators" className="p-1.5 text-slate-300 dark:text-slate-700 cursor-not-allowed">
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </span>
-                                );
-                              }
-                              return (
-                                <button
-                                  onClick={() => handleDeleteRow(item.id)}
-                                  title="Delete Submittal"
-                                  className="p-1.5 rounded-lg hover:bg-rose-100 dark:hover:bg-rose-950/60 text-rose-600 dark:text-rose-400 transition"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              );
-                            })()}
+                        {/* Attachments Column */}
+                        <td className="p-3.5 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            {fileCount > 0 ? (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenAttachmentModal(item);
+                                }}
+                                className="relative group inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-indigo-50 dark:bg-indigo-950/70 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 font-bold text-xs shadow-2xs hover:bg-indigo-100 dark:hover:bg-indigo-900/80 transition cursor-pointer"
+                                title="Click to view or upload PDF attachments"
+                              >
+                                <Paperclip className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                                <span>{fileCount}</span>
+                                <Upload className="w-3 h-3 text-indigo-400 opacity-60 group-hover:opacity-100 ml-0.5" />
+
+                                {/* Floating Rich Tooltip / Popover on Hover */}
+                                <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:flex flex-col gap-1.5 z-40 w-64 p-3 bg-slate-900 dark:bg-slate-800 text-white rounded-2xl shadow-xl text-[11px] border border-slate-700/80 pointer-events-none transition-all text-left">
+                                  <div className="flex items-center justify-between font-bold border-b border-slate-700/80 pb-1.5 text-indigo-300">
+                                    <span className="flex items-center gap-1.5">
+                                      <Paperclip className="w-3.5 h-3.5 text-indigo-400" />
+                                      {fileCount} Attached PDF{fileCount > 1 ? 's' : ''}
+                                    </span>
+                                    <span className="text-[9px] font-mono text-slate-400 uppercase tracking-wider">Click to Manage</span>
+                                  </div>
+                                  {item.attachments && item.attachments.length > 0 ? (
+                                    <ul className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                                      {item.attachments.map((att, i) => (
+                                        <li key={att.id || i} className="flex items-center justify-between text-slate-200 truncate gap-1.5 bg-slate-800/80 dark:bg-slate-900/80 px-2 py-1 rounded-lg border border-slate-700/50">
+                                          <span className="truncate flex items-center gap-1.5">
+                                            <FileText className="w-3 h-3 text-indigo-400 shrink-0" />
+                                            <span className="truncate font-medium text-xs" title={att.name}>{att.name}</span>
+                                          </span>
+                                          {att.size && <span className="text-[9px] font-mono text-slate-400 shrink-0">{att.size}</span>}
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  ) : (
+                                    <div className="text-slate-300 text-[10px] italic py-1">
+                                      {fileCount} attachment document(s) uploaded. Click to view or add PDF files.
+                                    </div>
+                                  )}
+                                  <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-x-4 border-x-transparent border-t-4 border-t-slate-900 dark:border-t-slate-800"></div>
+                                </div>
+                              </button>
+                            ) : (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenAttachmentModal(item);
+                                }}
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:border-indigo-400 dark:hover:border-indigo-600 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/30 text-[11px] transition font-medium cursor-pointer"
+                                title="Click to attach PDF files"
+                              >
+                                <Paperclip className="w-3.5 h-3.5 shrink-0" />
+                                <span>+ PDF</span>
+                              </button>
+                            )}
                           </div>
                         </td>
+                        <td className="p-3.5 font-mono text-slate-600 dark:text-slate-400 whitespace-nowrap">
+                          <div className="flex items-center gap-1.5">
+                            <span>{item.submittedDate || '-'}</span>
+                            {item.type === 'IPC Review' && (
+                              <span 
+                                className="text-[9px] px-1.5 py-0.5 rounded-full font-sans font-bold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 flex items-center gap-0.5" 
+                                title="Contractor Submission Date — Dynamically linked with Financial Data page"
+                              >
+                                <LinkIcon className="w-2.5 h-2.5 text-indigo-500" /> Contractor Subm.
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="p-3.5 font-mono text-slate-600 dark:text-slate-400 whitespace-nowrap">
+                          <div className="flex items-center gap-1.5">
+                            {item.respondedDate ? (
+                              <>
+                                <span>{item.respondedDate}</span>
+                                {item.type === 'IPC Review' && (
+                                  <span 
+                                    className="text-[9px] px-1.5 py-0.5 rounded-full font-sans font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 flex items-center gap-0.5" 
+                                    title="Supervision Consultant Response Date to submit to Employer (Certified & Submitted to Employer) — Dynamically linked with Financial Data page"
+                                  >
+                                    <LinkIcon className="w-2.5 h-2.5 text-emerald-500" /> Submitted to Employer
+                                  </span>
+                                )}
+                              </>
+                            ) : (
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-amber-500 font-semibold italic">Pending</span>
+                                {item.type === 'IPC Review' && (
+                                  <span 
+                                    className="text-[9px] px-1.5 py-0.5 rounded-full font-sans font-medium bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800" 
+                                    title="Pending Supervision Consultant response / certification to submit to Employer"
+                                  >
+                                    Pending to Employer
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                        {!isContractorEditor && (
+                          <td className="p-3.5 text-center font-mono font-bold text-slate-700 dark:text-slate-300">
+                            {target}d
+                          </td>
+                        )}
+                        {!isContractorEditor && (
+                          <td className="p-3.5 text-center font-mono">
+                            {delayInfo.isResolved ? (
+                              <span className={`font-bold ${delayInfo.isDelayed ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                                {delayInfo.elapsedDays}d
+                              </span>
+                            ) : (
+                              <span className="text-amber-600 dark:text-amber-400 font-semibold">
+                                {delayInfo.elapsedDays}d <span className="text-[9px] opacity-80">(Elapsed)</span>
+                              </span>
+                            )}
+                          </td>
+                        )}
+                        <td className="p-3.5">
+                          <div className="flex flex-col gap-1">
+                            <span className={`inline-flex px-2 py-0.5 rounded-md text-[10px] font-bold w-fit ${
+                              item.status === 'Approved' || item.status === 'Approved / Closed' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300' :
+                              item.status === 'Closed' ? 'bg-slate-200 text-slate-800 dark:bg-slate-800 dark:text-slate-200' :
+                              item.status === 'Approved with Comment' || item.status === 'Approved with Comments' ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300' :
+                              item.status === 'Under Review' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300' :
+                              item.status === 'Rejected' || item.status === 'Rejected / Resubmit' ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300' :
+                              item.status === 'Resubmit' ? 'bg-orange-100 text-orange-800 dark:bg-orange-950/60 dark:text-orange-300' :
+                              item.status === 'Overdue' ? 'bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300' :
+                              'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                            }`}>
+                              {item.status}
+                            </span>
+                            {delayInfo.isDelayed && (
+                              <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400 flex items-center gap-0.5">
+                                ⚠️ +{delayInfo.delayDays}d Overdue
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="p-3.5 text-slate-600 dark:text-slate-400">
+                          {item.assignedEngineer || '-'}
+                        </td>
+                        {isConsultantApproverOrMasterAdmin && (
+                          <td className="p-3.5 text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleStartRowEdit(item);
+                                }}
+                                title="Edit Submittal"
+                                className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDuplicateRow(item);
+                                }}
+                                title="Duplicate Submittal"
+                                className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition"
+                              >
+                                <Copy className="w-3.5 h-3.5" />
+                              </button>
+                              {!isReadonly && (() => {
+                                const isApproved = item.status === 'Approved' || item.status === 'Approved / Closed' || item.status === 'Approved with Comment' || item.status === 'Approved with Comments' || item.status.toLowerCase().includes('approved');
+                                const isAdminUser = currentUserObj?.role === 'admin' || currentUserObj?.role === 'master_admin' || currentUserObj?.role === 'cpm_admin' || currentUserObj?.username === 'proj_1781786415663';
+                                if (isApproved && !isAdminUser) {
+                                  return (
+                                    <span title="Approved submittals can only be deleted by Administrators" className="p-1.5 text-slate-300 dark:text-slate-700 cursor-not-allowed">
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </span>
+                                  );
+                                }
+                                return (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeleteRow(item.id);
+                                    }}
+                                    title="Delete Submittal"
+                                    className="p-1.5 rounded-lg hover:bg-rose-100 dark:hover:bg-rose-950/60 text-rose-600 dark:text-rose-400 transition"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                );
+                              })()}
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+
+                      {/* Expandable In-View Row for Detailed Status History and Reviewer Comments */}
+                      {isExpanded && (
+                        <tr 
+                          key={`expanded-row-${item.id}`} 
+                          className="bg-slate-50/95 dark:bg-slate-900/95 border-b-2 border-indigo-200 dark:border-indigo-900/70"
+                        >
+                          <td 
+                            colSpan={9 + (!isContractorEditor ? 2 : 0) + (isConsultantApproverOrMasterAdmin ? 1 : 0)} 
+                            className="p-4 sm:p-6"
+                          >
+                            <div className="bg-white dark:bg-slate-850 rounded-2xl border border-indigo-150 dark:border-indigo-900/60 p-5 shadow-sm space-y-5">
+                              {/* Top Banner Header */}
+                              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="px-2.5 py-1 bg-indigo-600 text-white font-mono font-bold text-xs rounded-lg shadow-2xs">
+                                    {item.submittalNo}
+                                  </span>
+                                  <span className="px-2.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold">
+                                    {item.type}
+                                  </span>
+                                  <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                                    item.priority === 'Critical' ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300' :
+                                    item.priority === 'High' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300' :
+                                    'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300'
+                                  }`}>
+                                    Priority: {item.priority || 'Medium'}
+                                  </span>
+                                  <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                                    item.status === 'Approved' || item.status === 'Approved / Closed' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300' :
+                                    item.status === 'Closed' ? 'bg-slate-200 text-slate-800 dark:bg-slate-800 dark:text-slate-200' :
+                                    item.status === 'Approved with Comment' || item.status === 'Approved with Comments' ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300' :
+                                    item.status === 'Under Review' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300' :
+                                    'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300'
+                                  }`}>
+                                    Current Status: {item.status}
+                                  </span>
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                  {isConsultantApproverOrMasterAdmin && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleStartRowEdit(item)}
+                                      className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                                    >
+                                      <Edit3 className="w-3.5 h-3.5" />
+                                      <span>Edit Record</span>
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenAttachmentModal(item)}
+                                    className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                                  >
+                                    <Paperclip className="w-3.5 h-3.5" />
+                                    <span>Attachments ({fileCount})</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleRowExpanded(item.id)}
+                                    className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                                    title="Close expanded details"
+                                  >
+                                    <ChevronUp className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* Title Description */}
+                              <div>
+                                <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                                  {item.title}
+                                </h4>
+                              </div>
+
+                              {/* 2-Column Main Section: Left = Detailed Status History, Right = Reviewer Comments & Feedback */}
+                              <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                                {/* Left Column: Detailed Status History & Turnaround Timeline */}
+                                <div className="lg:col-span-5 bg-slate-50/80 dark:bg-slate-900/50 rounded-xl p-4 border border-slate-200/80 dark:border-slate-800 space-y-4">
+                                  <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-800 pb-2">
+                                    <Clock className="w-4 h-4 text-indigo-500" />
+                                    <span>Detailed Status History & SLA Turnaround</span>
+                                  </div>
+
+                                  {/* Stepper Timeline */}
+                                  <div className="relative pl-6 space-y-5 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-indigo-200 dark:before:bg-indigo-900">
+                                    
+                                    {/* Event 1: Contractor Submission */}
+                                    <div className="relative">
+                                      <div className="absolute -left-6 top-0.5 w-4 h-4 rounded-full bg-indigo-600 border-2 border-white dark:border-slate-900 flex items-center justify-center">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-white"></div>
+                                      </div>
+                                      <div>
+                                        <div className="flex items-center justify-between text-xs">
+                                          <span className="font-bold text-slate-900 dark:text-white">Contractor Formal Submission</span>
+                                          <span className="font-mono text-indigo-600 dark:text-indigo-400 font-bold">{item.submittedDate || 'N/A'}</span>
+                                        </div>
+                                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                                          Transmitted by {item.contractorCompany || project.contractor || 'Contractor Project Directorate'}
+                                          {item.contractorContact ? ` (${item.contractorContact})` : ''}
+                                        </p>
+                                        {item.contractorInquiry && (
+                                          <div className="mt-1.5 p-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60 text-[11px] text-slate-700 dark:text-slate-300 italic">
+                                            "{item.contractorInquiry}"
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    {/* Event 2: Supervision Consultant Review & SLA Monitoring */}
+                                    <div className="relative">
+                                      <div className="absolute -left-6 top-0.5 w-4 h-4 rounded-full bg-purple-600 border-2 border-white dark:border-slate-900 flex items-center justify-center">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-white"></div>
+                                      </div>
+                                      <div>
+                                        <div className="flex items-center justify-between text-xs">
+                                          <span className="font-bold text-slate-900 dark:text-white">Supervision Consultant Review SLA</span>
+                                          <span className="font-mono font-bold text-purple-600 dark:text-purple-400">Target: {target}d</span>
+                                        </div>
+                                        <div className="mt-1 grid grid-cols-2 gap-2 text-[11px] bg-white dark:bg-slate-800 p-2 rounded-lg border border-slate-200/60 dark:border-slate-700/60">
+                                          <div>
+                                            <span className="text-slate-400 block text-[10px]">Assigned Engineer:</span>
+                                            <span className="font-semibold text-slate-800 dark:text-slate-200">{item.assignedEngineer || consultant.residentEngineerName || 'Resident Engineer'}</span>
+                                          </div>
+                                          <div>
+                                            <span className="text-slate-400 block text-[10px]">Turnaround Time:</span>
+                                            <span className={`font-mono font-bold ${delayInfo.isDelayed ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                                              {delayInfo.elapsedDays} Days {delayInfo.isResolved ? '(Completed)' : '(Elapsed)'}
+                                            </span>
+                                          </div>
+                                        </div>
+                                        <div className="mt-1.5 text-[10px]">
+                                          {delayInfo.isDelayed ? (
+                                            <span className="px-2 py-0.5 rounded font-bold bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
+                                              ⚠️ Overdue: SLA exceeded by {delayInfo.delayDays} day(s)
+                                            </span>
+                                          ) : (
+                                            <span className="px-2 py-0.5 rounded font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                                              ✅ Within contractual SLA turnaround limit
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    {/* Event 3: Official Determination & Action */}
+                                    <div className="relative">
+                                      <div className={`absolute -left-6 top-0.5 w-4 h-4 rounded-full border-2 border-white dark:border-slate-900 flex items-center justify-center ${
+                                        item.respondedDate ? 'bg-emerald-600' : 'bg-amber-500'
+                                      }`}>
+                                        <div className="w-1.5 h-1.5 rounded-full bg-white"></div>
+                                      </div>
+                                      <div>
+                                        <div className="flex items-center justify-between text-xs">
+                                          <span className="font-bold text-slate-900 dark:text-white">Determination / Action to Employer</span>
+                                          <span className="font-mono font-bold text-slate-600 dark:text-slate-300">{item.respondedDate || 'Under Technical Review'}</span>
+                                        </div>
+                                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                                          {item.respondedDate 
+                                            ? `Final review determination issued on ${item.respondedDate} by ${item.consultantResponder || item.assignedEngineer || 'Supervision Consultant Team'}.`
+                                            : 'Pending final certification and submission to Employer.'}
+                                        </p>
+                                      </div>
+                                    </div>
+
+                                  </div>
+                                </div>
+
+                                {/* Right Column: Reviewer Comments & Feedback + Engineering Data */}
+                                <div className="lg:col-span-7 space-y-4">
+                                  
+                                  {/* Reviewer Comments & Feedback Box */}
+                                  <div className="bg-blue-50/60 dark:bg-blue-950/30 rounded-xl p-4 border border-blue-200/80 dark:border-blue-900/60 space-y-3">
+                                    <div className="flex items-center justify-between border-b border-blue-200 dark:border-blue-800/60 pb-2">
+                                      <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-blue-900 dark:text-blue-200">
+                                        <MessageSquare className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                                        <span>Supervision Consultant Reviewer Comments & Technical Notes</span>
+                                      </div>
+                                      {isConsultantApproverOrMasterAdmin && editingCommentSubmittalId !== item.id && (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleStartEditingComment(item)}
+                                          className="px-2 py-0.5 rounded-lg bg-blue-100 hover:bg-blue-200 dark:bg-blue-900/80 dark:hover:bg-blue-800 text-blue-800 dark:text-blue-200 text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
+                                        >
+                                          <Edit2 className="w-3 h-3" />
+                                          <span>Edit Comments</span>
+                                        </button>
+                                      )}
+                                    </div>
+
+                                    {editingCommentSubmittalId === item.id ? (
+                                      <div className="space-y-2">
+                                        <textarea
+                                          rows={4}
+                                          value={editingCommentDraft}
+                                          onChange={(e) => setEditingCommentDraft(e.target.value)}
+                                          placeholder="Enter detailed engineering comments, technical specifications compliance notes, or reviewer feedback..."
+                                          className="w-full p-3 bg-white dark:bg-slate-800 border border-blue-300 dark:border-blue-700 rounded-xl text-xs font-medium text-slate-800 dark:text-slate-100 outline-none focus:ring-2 focus:ring-blue-500"
+                                        />
+                                        <div className="flex items-center justify-end gap-2">
+                                          <button
+                                            type="button"
+                                            onClick={() => setEditingCommentSubmittalId(null)}
+                                            className="px-3 py-1 rounded-lg text-xs font-bold text-slate-500 hover:text-slate-700 cursor-pointer"
+                                          >
+                                            Cancel
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleSaveInlineReviewerComment(item.id)}
+                                            className="px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition cursor-pointer flex items-center gap-1"
+                                          >
+                                            <Save className="w-3.5 h-3.5" />
+                                            <span>Save Reviewer Comments</span>
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div className="space-y-2">
+                                        <div className="text-xs text-slate-800 dark:text-slate-200 leading-relaxed bg-white dark:bg-slate-850 p-3.5 rounded-xl border border-blue-150 dark:border-blue-950 font-sans">
+                                          {item.consultantResponse || item.notes ? (
+                                            <p className="whitespace-pre-wrap">{item.consultantResponse || item.notes}</p>
+                                          ) : (
+                                            <p className="text-slate-400 italic text-[11px]">
+                                              No specific reviewer comments or instructions recorded yet. Authorized consultant engineers can click "Edit Comments" above to record formal review feedback.
+                                            </p>
+                                          )}
+                                        </div>
+                                        {(item.consultantResponder || item.assignedEngineer) && (
+                                          <div className="text-[10px] text-slate-500 flex items-center justify-between px-1">
+                                            <span>Certified by: <strong className="text-slate-700 dark:text-slate-300">{item.consultantResponder || item.assignedEngineer}</strong></span>
+                                            {item.respondedDate && <span>Date: <strong className="font-mono text-slate-700 dark:text-slate-300">{item.respondedDate}</strong></span>}
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* Technical Specifications & Alignment Details */}
+                                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs">
+                                    <div className="bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded-xl border border-slate-200/70 dark:border-slate-800">
+                                      <span className="text-[10px] text-slate-400 block font-bold uppercase">Chainage / Station</span>
+                                      <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{item.stationKm || 'KM 0+000 - Alignment'}</span>
+                                    </div>
+                                    <div className="bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded-xl border border-slate-200/70 dark:border-slate-800">
+                                      <span className="text-[10px] text-slate-400 block font-bold uppercase">Discipline</span>
+                                      <span className="font-semibold text-slate-800 dark:text-slate-200 truncate block">{item.discipline || 'General Civil Works'}</span>
+                                    </div>
+                                    <div className="bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded-xl border border-slate-200/70 dark:border-slate-800">
+                                      <span className="text-[10px] text-slate-400 block font-bold uppercase">Drawing Reference</span>
+                                      <span className="font-mono font-semibold text-slate-800 dark:text-slate-200 truncate block">{item.drawingRef || 'Standard Drawings'}</span>
+                                    </div>
+                                    <div className="bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded-xl border border-slate-200/70 dark:border-slate-800">
+                                      <span className="text-[10px] text-slate-400 block font-bold uppercase">Spec Reference</span>
+                                      <span className="font-mono font-semibold text-slate-800 dark:text-slate-200 truncate block">{item.specificationRef || 'ERA Standard Specs'}</span>
+                                    </div>
+                                    <div className="bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded-xl border border-slate-200/70 dark:border-slate-800">
+                                      <span className="text-[10px] text-slate-400 block font-bold uppercase">Schedule Impact</span>
+                                      <span className={`font-bold ${item.scheduleImpact?.includes('Delay') ? 'text-rose-600' : 'text-slate-700 dark:text-slate-300'}`}>
+                                        {item.scheduleImpact || 'None'}
+                                      </span>
+                                    </div>
+                                    <div className="bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded-xl border border-slate-200/70 dark:border-slate-800">
+                                      <span className="text-[10px] text-slate-400 block font-bold uppercase">Cost Impact</span>
+                                      <span className={`font-bold ${item.costImpact?.includes('Additional') ? 'text-rose-600' : 'text-slate-700 dark:text-slate-300'}`}>
+                                        {item.costImpact || 'None'}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  {/* Attached PDF Documents Preview List */}
+                                  {item.attachments && item.attachments.length > 0 && (
+                                    <div className="bg-slate-50 dark:bg-slate-900/60 p-3 rounded-xl border border-slate-200/70 dark:border-slate-800 space-y-2">
+                                      <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
+                                        <span className="flex items-center gap-1.5">
+                                          <Paperclip className="w-3.5 h-3.5 text-indigo-500" />
+                                          <span>Attached Technical Documents ({item.attachments.length})</span>
+                                        </span>
+                                      </div>
+                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                        {item.attachments.map((att, aIdx) => (
+                                          <div 
+                                            key={att.id || aIdx}
+                                            className="flex items-center justify-between gap-2 p-2 bg-white dark:bg-slate-850 rounded-lg border border-slate-200 dark:border-slate-700 text-xs"
+                                          >
+                                            <div className="flex items-center gap-2 truncate">
+                                              <FileText className="w-4 h-4 text-rose-500 shrink-0" />
+                                              <span className="font-medium text-slate-800 dark:text-slate-200 truncate" title={att.name}>{att.name}</span>
+                                            </div>
+                                            <span className="text-[10px] font-mono text-slate-400 shrink-0">{att.size || 'PDF'}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                </div>
+                              </div>
+
+                            </div>
+                          </td>
+                        </tr>
                       )}
-                    </tr>
+                    </React.Fragment>
                   );
                 })
               )}

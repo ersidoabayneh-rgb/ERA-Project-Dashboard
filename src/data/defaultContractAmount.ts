@@ -42,6 +42,19 @@ export const DEFAULT_CONDITION_1_STAFF: ContractStaffRateCondition1[] = [
   { id: 'c1_4_2', no: '4.2', position: 'Head Office & Technical Staff (4 bi-annual quality audits)', name: 'TBN', category: 'Head Office', mmConstr: 4, mmDlp: 0, totalMm: 4, rateEtb: 50000, totalEtb: 200000 }
 ];
 
+export const DEFAULT_CONDITION_1_DLP_STAFF: ContractStaffRateCondition1[] = [
+  { id: 'c1_dlp_1', no: '1.1', position: 'Resident Engineer', name: 'Berhanu Geremew', category: 'Key Professional', mmConstr: 0, mmDlp: 2, totalMm: 2, rateEtb: 37500, totalEtb: 75000 },
+  { id: 'c1_dlp_2', no: '1.2', position: 'Sr. Pavement/Materials Eng.', name: 'Abreham Hisbte', category: 'Key Professional', mmConstr: 0, mmDlp: 1, totalMm: 1, rateEtb: 30000, totalEtb: 30000 },
+  { id: 'c1_dlp_3', no: '1.3', position: 'Sr. Quantity Surveyor', name: 'Hablom Berhane', category: 'Key Professional', mmConstr: 0, mmDlp: 1, totalMm: 1, rateEtb: 18500, totalEtb: 18500 },
+  { id: 'c1_dlp_4', no: '1.4', position: 'Sr. Surveyor', name: 'Tesfaye Alemu', category: 'Key Professional', mmConstr: 0, mmDlp: 1, totalMm: 1, rateEtb: 18500, totalEtb: 18500 },
+  { id: 'c1_dlp_5', no: '1.5', position: 'Sr. Claims Expert', name: 'Asfaw Dabebe', category: 'Key Professional', mmConstr: 0, mmDlp: 1, totalMm: 1, rateEtb: 15000, totalEtb: 15000 },
+  { id: 'c1_dlp_6', no: '1.6', position: 'Sr. Environmentalist', name: 'To be nominated', category: 'Key Professional', mmConstr: 0, mmDlp: 1, totalMm: 1, rateEtb: 15000, totalEtb: 15000 },
+  { id: 'c1_dlp_7', no: '1.7', position: 'Sr. Hydrologist/Hydraulic Eng.', name: 'To be nominated', category: 'Key Professional', mmConstr: 0, mmDlp: 1, totalMm: 1, rateEtb: 15000, totalEtb: 15000 },
+  { id: 'c1_dlp_8', no: '1.8', position: 'Sr. Road Safety & Audit Spec.', name: 'To be nominated', category: 'Key Professional', mmConstr: 0, mmDlp: 1, totalMm: 1, rateEtb: 15000, totalEtb: 15000 },
+  { id: 'c1_dlp_9', no: '1.9', position: 'Right of Way Mgmt Specialist', name: 'To be nominated', category: 'Key Professional', mmConstr: 0, mmDlp: 1, totalMm: 1, rateEtb: 15000, totalEtb: 15000 },
+  { id: 'c1_dlp_10', no: '4.1', position: 'Project Coordinator (Head Office)', name: 'TBN', category: 'Head Office', mmConstr: 0, mmDlp: 2, totalMm: 2, rateEtb: 12500, totalEtb: 25000 }
+];
+
 export const DEFAULT_CONDITION_1_REIMBURSABLES = [
   { id: 'c1_r_1', no: '1', item: 'Per diem', amountEtb: 8506789.75, basis: 'Daily allowance per actual site attendance records' },
   { id: 'c1_r_2', no: '2', item: 'Communication', amountEtb: 240000.00, basis: 'Monthly internet, satellite & telephone links' },
@@ -62,7 +75,8 @@ export const DEFAULT_CONDITION_1_DATA: ContractCondition1Data = {
     communication: 240000.00,
     professionalIndemnity: 500000.00
   },
-  staffFees: DEFAULT_CONDITION_1_STAFF
+  staffFees: DEFAULT_CONDITION_1_STAFF,
+  dlpStaffFees: DEFAULT_CONDITION_1_DLP_STAFF
 };
 
 export const DEFAULT_CONDITION_2_STAFF: ContractStaffRateCondition2[] = [

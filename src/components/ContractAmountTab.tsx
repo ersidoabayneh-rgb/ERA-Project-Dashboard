@@ -34,6 +34,7 @@ import {
 import { 
   DEFAULT_CONDITION_1_DATA, 
   DEFAULT_CONDITION_1_STAFF,
+  DEFAULT_CONDITION_1_DLP_STAFF,
   DEFAULT_CONDITION_1_REIMBURSABLES,
   DEFAULT_CONDITION_2_DATA,
   DEFAULT_CONDITION_2_STAFF,
@@ -80,7 +81,7 @@ export const ContractAmountTab: React.FC<Props> = ({
 
   const savedSchedule = consultant.contractAmountSchedule?.condition1;
 
-  // Initialize Condition 1 State (ETB Only)
+  // Initialize Condition 1 State (ETB Only) with independent Construction and DLP staff schedules
   const [c1Data, setC1Data] = useState<ContractCondition1Data>(() => {
     if (savedSchedule) {
       const reimbList = savedSchedule.reimbursableList && savedSchedule.reimbursableList.length > 0
@@ -91,17 +92,32 @@ export const ContractAmountTab: React.FC<Props> = ({
         ? savedSchedule.staffFees
         : DEFAULT_CONDITION_1_STAFF;
 
+      const dlpStaffList = savedSchedule.dlpStaffFees && savedSchedule.dlpStaffFees.length > 0
+        ? savedSchedule.dlpStaffFees
+        : (savedSchedule.staffFees && savedSchedule.staffFees.some(s => (s.mmDlp || 0) > 0))
+          ? savedSchedule.staffFees.filter(s => (s.mmDlp || 0) > 0).map(s => ({
+              ...s,
+              id: s.id?.startsWith('dlp_') ? s.id : `dlp_${s.id}`,
+              mmConstr: 0,
+              totalMm: s.mmDlp,
+              totalEtb: (Number(s.mmDlp) || 0) * (Number(s.rateEtb) || 0),
+              totalUsd: (Number(s.mmDlp) || 0) * (Number(s.rateUsd) || 0)
+            }))
+          : DEFAULT_CONDITION_1_DLP_STAFF;
+
       return {
         ...DEFAULT_CONDITION_1_DATA,
         ...savedSchedule,
         reimbursableList: reimbList,
-        staffFees: staffList
+        staffFees: staffList,
+        dlpStaffFees: dlpStaffList
       };
     }
     return {
       ...DEFAULT_CONDITION_1_DATA,
       reimbursableList: DEFAULT_CONDITION_1_REIMBURSABLES,
-      staffFees: DEFAULT_CONDITION_1_STAFF
+      staffFees: DEFAULT_CONDITION_1_STAFF,
+      dlpStaffFees: DEFAULT_CONDITION_1_DLP_STAFF
     };
   });
 
@@ -114,26 +130,27 @@ export const ContractAmountTab: React.FC<Props> = ({
   const [isSplitSettingsOpen, setIsSplitSettingsOpen] = useState(false);
   // Table 4 is visible and available only if user chooses to add/manage reimbursables
   const [isTable4Visible, setIsTable4Visible] = useState(false);
-  // Overall Cost calculation source: invoice monthly man-month inputs vs contract baseline
-  const [costCalculationMode, setCostCalculationMode] = useState<'invoice_monthly_mm' | 'contract_baseline'>('invoice_monthly_mm');
+  // Overall Cost calculation source: default to official master contract baseline schedule (820 MM)
+  const [costCalculationMode, setCostCalculationMode] = useState<'contract_baseline'>('contract_baseline');
 
-  // Modal state for adding a new staff position
+  // Modal state for adding a new staff position (supports independent Table 2 Construction and Table 3 DLP)
   const [isAddStaffOpen, setIsAddStaffOpen] = useState(false);
+  const [addStaffTargetTable, setAddStaffTargetTable] = useState<'construction' | 'dlp'>('construction');
   const [newStaffCategory, setNewStaffCategory] = useState<'Key Professional' | 'Intermediate' | 'Support' | 'Head Office'>('Key Professional');
   const [newStaffNo, setNewStaffNo] = useState('');
   const [newStaffPosition, setNewStaffPosition] = useState('');
   const [newStaffName, setNewStaffName] = useState('To be nominated');
   const [newStaffMmConstr, setNewStaffMmConstr] = useState<number>(24);
-  const [newStaffMmDlp, setNewStaffMmDlp] = useState<number>(0);
+  const [newStaffMmDlp, setNewStaffMmDlp] = useState<number>(1);
   const [newStaffRateEtb, setNewStaffRateEtb] = useState<number>(15000);
+  const [newStaffRateUsd, setNewStaffRateUsd] = useState<number>(0);
   const [addMode, setAddMode] = useState<'staff' | 'subtable'>('staff');
   const [newSubTableTitle, setNewSubTableTitle] = useState('');
 
-
   // -------------------------------------------------------------
-  // COMPUTED STAFF BREAKDOWNS & SUB-TOTALS (DYNAMIC SUB-TABLES SUPPORT)
+  // TABLE 2: COMPUTED CONSTRUCTION STAFF BREAKDOWNS & SUB-TOTALS
   // -------------------------------------------------------------
-  const staffSubtotals = useMemo(() => {
+  const constructionSubtotals = useMemo(() => {
     const list = c1Data.staffFees || [];
     const defaultCats = ['Key Professional', 'Intermediate', 'Support', 'Head Office'];
     const set = new Set<string>(defaultCats);
@@ -154,14 +171,8 @@ export const ContractAmountTab: React.FC<Props> = ({
         return false;
       });
       const constrMm = rows.reduce((s, r) => s + (Number(r.mmConstr) || 0), 0);
-      const dlpMm = rows.reduce((s, r) => s + (Number(r.mmDlp) || 0), 0);
-      const totalMm = rows.reduce((s, r) => s + (Number(r.totalMm) || 0), 0);
       const constrEtb = rows.reduce((s, r) => s + ((Number(r.mmConstr) || 0) * (Number(r.rateEtb) || 0)), 0);
       const constrUsd = rows.reduce((s, r) => s + ((Number(r.mmConstr) || 0) * (Number(r.rateUsd) || 0)), 0);
-      const dlpEtb = rows.reduce((s, r) => s + ((Number(r.mmDlp) || 0) * (Number(r.rateEtb) || 0)), 0);
-      const dlpUsd = rows.reduce((s, r) => s + ((Number(r.mmDlp) || 0) * (Number(r.rateUsd) || 0)), 0);
-      const totalEtb = rows.reduce((s, r) => s + (Number(r.totalEtb) || 0), 0);
-      const totalUsd = rows.reduce((s, r) => s + (Number(r.totalUsd) || 0), 0);
 
       let label = cat;
       if (cat === 'Key Professional') label = '1. Key Professional Staff (Supervision & Management)';
@@ -174,32 +185,96 @@ export const ContractAmountTab: React.FC<Props> = ({
         label,
         rows,
         constrMm,
-        dlpMm,
-        totalMm,
         constrEtb,
-        constrUsd,
-        dlpEtb,
-        dlpUsd,
-        totalEtb,
-        totalUsd
+        constrUsd
       };
     }).filter(g => g.rows.length > 0 || defaultCats.includes(g.categoryKey));
 
     const totalConstrMm = groups.reduce((s, g) => s + g.constrMm, 0);
-    const totalDlpMm = groups.reduce((s, g) => s + g.dlpMm, 0);
-    const grandTotalMm = groups.reduce((s, g) => s + g.totalMm, 0);
-    const grandTotalFeesEtb = groups.reduce((s, g) => s + g.totalEtb, 0);
-    const grandTotalFeesUsd = groups.reduce((s, g) => s + g.totalUsd, 0);
+    const totalConstrEtb = groups.reduce((s, g) => s + g.constrEtb, 0);
+    const totalConstrUsd = groups.reduce((s, g) => s + (g.constrUsd || 0), 0);
 
     return {
       groups,
+      totalConstrMm,
+      totalConstrEtb,
+      totalConstrUsd
+    };
+  }, [c1Data.staffFees]);
+
+  // -------------------------------------------------------------
+  // TABLE 3: COMPUTED DLP STAFF BREAKDOWNS & SUB-TOTALS (INDEPENDENT)
+  // -------------------------------------------------------------
+  const dlpSubtotals = useMemo(() => {
+    const list = c1Data.dlpStaffFees || [];
+    const defaultCats = ['Key Professional', 'Intermediate', 'Support', 'Head Office'];
+    const set = new Set<string>(defaultCats);
+    list.forEach(s => {
+      if (s.category) set.add(s.category);
+    });
+
+    const cats = Array.from(set);
+    const groups = cats.map(cat => {
+      const rows = list.filter(s => {
+        if (s.category === cat) return true;
+        if (!s.category) {
+          if (cat === 'Key Professional' && s.no?.startsWith('1.')) return true;
+          if (cat === 'Intermediate' && s.no?.startsWith('2.')) return true;
+          if (cat === 'Support' && s.no?.startsWith('3.')) return true;
+          if (cat === 'Head Office' && s.no?.startsWith('4.')) return true;
+        }
+        return false;
+      });
+      const dlpMm = rows.reduce((s, r) => s + (Number(r.mmDlp) || 0), 0);
+      const dlpEtb = rows.reduce((s, r) => s + ((Number(r.mmDlp) || 0) * (Number(r.rateEtb) || 0)), 0);
+      const dlpUsd = rows.reduce((s, r) => s + ((Number(r.mmDlp) || 0) * (Number(r.rateUsd) || 0)), 0);
+
+      let label = cat;
+      if (cat === 'Key Professional') label = '1. Key Professional Staff (DLP Supervision)';
+      else if (cat === 'Intermediate') label = '2. Intermediate Technical Staff';
+      else if (cat === 'Support') label = '3. Field & Laboratory Support Personnel';
+      else if (cat === 'Head Office') label = '4. Head Office Support';
+
+      return {
+        categoryKey: cat,
+        label,
+        rows,
+        dlpMm,
+        dlpEtb,
+        dlpUsd
+      };
+    }).filter(g => g.rows.length > 0 || defaultCats.includes(g.categoryKey));
+
+    const totalDlpMm = groups.reduce((s, g) => s + g.dlpMm, 0);
+    const totalDlpEtb = groups.reduce((s, g) => s + g.dlpEtb, 0);
+    const totalDlpUsd = groups.reduce((s, g) => s + (g.dlpUsd || 0), 0);
+
+    return {
+      groups,
+      totalDlpMm,
+      totalDlpEtb,
+      totalDlpUsd
+    };
+  }, [c1Data.dlpStaffFees]);
+
+  // Combined staff totals for Table 1 and overall metrics
+  const staffSubtotals = useMemo(() => {
+    const totalConstrMm = constructionSubtotals.totalConstrMm;
+    const totalDlpMm = dlpSubtotals.totalDlpMm;
+    const grandTotalMm = totalConstrMm + totalDlpMm;
+    const grandTotalFeesEtb = constructionSubtotals.totalConstrEtb + dlpSubtotals.totalDlpEtb;
+    const grandTotalFeesUsd = constructionSubtotals.totalConstrUsd + dlpSubtotals.totalDlpUsd;
+
+    return {
+      groups: constructionSubtotals.groups,
+      dlpGroups: dlpSubtotals.groups,
       totalConstrMm,
       totalDlpMm,
       grandTotalMm,
       grandTotalFeesEtb,
       grandTotalFeesUsd
     };
-  }, [c1Data.staffFees]);
+  }, [constructionSubtotals, dlpSubtotals]);
 
   // -------------------------------------------------------------
   // COMPUTED REIMBURSABLE EXPENSES TOTAL (SUM OF REIMBURSABLE ITEMS)
@@ -392,10 +467,10 @@ export const ContractAmountTab: React.FC<Props> = ({
   // COMPUTED SUMMARY OF CONTRACT PRICE (TABLE 1.1 BASELINE)
   // -------------------------------------------------------------
   const summaryPrice = useMemo(() => {
-    const feesConstruction = staffSubtotals.groups.reduce((s, g) => s + g.constrEtb, 0);
-    const feesConstructionUsd = staffSubtotals.groups.reduce((s, g) => s + g.constrUsd, 0);
-    const feesDlp = staffSubtotals.groups.reduce((s, g) => s + g.dlpEtb, 0);
-    const feesDlpUsd = staffSubtotals.groups.reduce((s, g) => s + g.dlpUsd, 0);
+    const feesConstruction = constructionSubtotals.totalConstrEtb;
+    const feesConstructionUsd = constructionSubtotals.totalConstrUsd;
+    const feesDlp = dlpSubtotals.totalDlpEtb;
+    const feesDlpUsd = dlpSubtotals.totalDlpUsd;
     const fees = feesConstruction + feesDlp;
     const feesUsd = feesConstructionUsd + feesDlpUsd;
     const reimb = reimbursableTotal;
@@ -443,94 +518,49 @@ export const ContractAmountTab: React.FC<Props> = ({
       grandTotal,
       grandTotalUsd
     };
-  }, [staffSubtotals.groups, reimbursableTotal, reimbursableTotalUsd, c1Data.contingencyPct, c1Data.vatPct]);
+  }, [constructionSubtotals, dlpSubtotals, reimbursableTotal, reimbursableTotalUsd, c1Data.contingencyPct, c1Data.vatPct]);
 
   // -------------------------------------------------------------
-  // ACTIVE SUMMARY DERIVED BASED ON USER SELECTION (INVOICE MM INPUTS OR BASELINE)
+  // ACTIVE SUMMARY (MASTER CONTRACT BASELINE SCHEDULE)
   // -------------------------------------------------------------
   const activeSummaryPrice = useMemo(() => {
-    if (costCalculationMode === 'invoice_monthly_mm') {
-      const fees = invoiceManMonthCosts.staffExpendedFees;
-      const feesConstruction = invoiceManMonthCosts.staffConstructionFees > 0 ? invoiceManMonthCosts.staffConstructionFees : fees;
-      const feesDlp = invoiceManMonthCosts.staffDlpFees;
-      const reimb = invoiceManMonthCosts.reimbursableExpended > 0 ? invoiceManMonthCosts.reimbursableExpended : reimbursableTotal;
-      const directSubTotal = fees + reimb;
-      const contingencyPct = Number(c1Data.contingencyPct ?? 15);
-      const vatPct = Number(c1Data.vatPct ?? 15);
-
-      const contingency = directSubTotal * (contingencyPct / 100);
-      const baseBeforeVat = directSubTotal + contingency;
-      const vat = baseBeforeVat * (vatPct / 100);
-      const grandTotal = baseBeforeVat + vat;
-
-      return {
-        feesConstruction,
-        feesConstructionUsd: summaryPrice.feesConstructionUsd,
-        feesDlp,
-        feesDlpUsd: summaryPrice.feesDlpUsd,
-        fees,
-        feesUsd: summaryPrice.feesUsd,
-        reimb,
-        reimbUsd: summaryPrice.reimbUsd,
-        directSubTotal,
-        directSubTotalUsd: summaryPrice.directSubTotalUsd,
-        contingencyPct,
-        contingency,
-        contingencyUsd: summaryPrice.contingencyUsd,
-        baseBeforeVat,
-        baseBeforeVatUsd: summaryPrice.baseBeforeVatUsd,
-        vatPct,
-        vat,
-        vatUsd: summaryPrice.vatUsd,
-        grandTotal,
-        grandTotalUsd: summaryPrice.grandTotalUsd,
-        isDerivedFromInvoices: true,
-        expendedMm: invoiceManMonthCosts.totalExpendedMM
-      };
-    }
-
     return {
       ...summaryPrice,
       isDerivedFromInvoices: false,
       expendedMm: staffSubtotals.grandTotalMm
     };
-  }, [costCalculationMode, invoiceManMonthCosts, reimbursableTotal, c1Data.contingencyPct, c1Data.vatPct, summaryPrice, staffSubtotals.grandTotalMm]);
+  }, [summaryPrice, staffSubtotals.grandTotalMm]);
 
   // -------------------------------------------------------------
-  // ROW EDITING, ADDING & DELETING HANDLERS
+  // TABLE 2 (CONSTRUCTION) ROW EDITING & DELETING (INDEPENDENT FROM TABLE 3)
   // -------------------------------------------------------------
-  const handleUpdateStaffRow = (id: string, field: keyof ContractStaffRateCondition1, value: any) => {
+  const handleUpdateConstructionStaffRow = (id: string, field: keyof ContractStaffRateCondition1, value: any) => {
     setC1Data(prev => {
-      const updated = (prev.staffFees || []).map(row => {
+      const updatedConstruction = (prev.staffFees || []).map(row => {
         if (row.id === id) {
           const newRow = { ...row, [field]: value };
-          if (field === 'mmConstr' || field === 'mmDlp') {
-            const constr = field === 'mmConstr' ? Number(value) || 0 : Number(row.mmConstr) || 0;
-            const dlp = field === 'mmDlp' ? Number(value) || 0 : Number(row.mmDlp) || 0;
-            newRow.totalMm = constr + dlp;
-            newRow.totalEtb = newRow.totalMm * (Number(row.rateEtb) || 0);
-            newRow.totalUsd = newRow.totalMm * (Number(row.rateUsd) || 0);
-          } else if (field === 'totalMm') {
-            const mm = Number(value) || 0;
-            newRow.totalEtb = mm * (Number(row.rateEtb) || 0);
-            newRow.totalUsd = mm * (Number(row.rateUsd) || 0);
-          } else if (field === 'rateEtb') {
-            const rate = Number(value) || 0;
-            newRow.totalEtb = (Number(newRow.totalMm) || 0) * rate;
-          } else if (field === 'rateUsd') {
-            const rate = Number(value) || 0;
-            newRow.totalUsd = (Number(newRow.totalMm) || 0) * rate;
+          if (field === 'mmConstr' || field === 'rateEtb') {
+            const mm = field === 'mmConstr' ? (Number(value) || 0) : (Number(row.mmConstr) || 0);
+            const rate = field === 'rateEtb' ? (Number(value) || 0) : (Number(row.rateEtb) || 0);
+            newRow.totalMm = mm;
+            newRow.totalEtb = mm * rate;
+          }
+          if (field === 'mmConstr' || field === 'rateUsd') {
+            const mm = field === 'mmConstr' ? (Number(value) || 0) : (Number(row.mmConstr) || 0);
+            const rateUsd = field === 'rateUsd' ? (Number(value) || 0) : (Number(row.rateUsd) || 0);
+            newRow.totalUsd = mm * rateUsd;
           }
           return newRow;
         }
         return row;
       });
-      return { ...prev, staffFees: updated };
+
+      return { ...prev, staffFees: updatedConstruction };
     });
   };
 
-  const handleDeleteStaffRow = (id: string, positionName: string) => {
-    if (!window.confirm(`Are you sure you want to delete row "${positionName}" from the staff remuneration schedule?`)) {
+  const handleDeleteConstructionStaffRow = (id: string, positionName: string) => {
+    if (!window.confirm(`Are you sure you want to delete row "${positionName}" from Table 2 (Construction Schedule)? Note: This will NOT affect Table 3 (DLP).`)) {
       return;
     }
     setC1Data(prev => ({
@@ -539,40 +569,104 @@ export const ContractAmountTab: React.FC<Props> = ({
     }));
   };
 
+  // -------------------------------------------------------------
+  // TABLE 3 (DLP) ROW EDITING & DELETING (INDEPENDENT FROM TABLE 2)
+  // -------------------------------------------------------------
+  const handleUpdateDlpStaffRow = (id: string, field: keyof ContractStaffRateCondition1, value: any) => {
+    setC1Data(prev => {
+      const updatedDlp = (prev.dlpStaffFees || []).map(row => {
+        if (row.id === id) {
+          const newRow = { ...row, [field]: value };
+          if (field === 'mmDlp' || field === 'rateEtb') {
+            const mm = field === 'mmDlp' ? (Number(value) || 0) : (Number(row.mmDlp) || 0);
+            const rate = field === 'rateEtb' ? (Number(value) || 0) : (Number(row.rateEtb) || 0);
+            newRow.totalMm = mm;
+            newRow.totalEtb = mm * rate;
+          }
+          if (field === 'mmDlp' || field === 'rateUsd') {
+            const mm = field === 'mmDlp' ? (Number(value) || 0) : (Number(row.mmDlp) || 0);
+            const rateUsd = field === 'rateUsd' ? (Number(value) || 0) : (Number(row.rateUsd) || 0);
+            newRow.totalUsd = mm * rateUsd;
+          }
+          return newRow;
+        }
+        return row;
+      });
+
+      return { ...prev, dlpStaffFees: updatedDlp };
+    });
+  };
+
+  const handleDeleteDlpStaffRow = (id: string, positionName: string) => {
+    if (!window.confirm(`Are you sure you want to delete row "${positionName}" from Table 3 (DLP Schedule)? Note: This will NOT affect Table 2 (Construction).`)) {
+      return;
+    }
+    setC1Data(prev => ({
+      ...prev,
+      dlpStaffFees: (prev.dlpStaffFees || []).filter(row => row.id !== id)
+    }));
+  };
+
   const handleAddStaffRowSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newStaffPosition.trim()) return;
 
-    const constrNum = Number(newStaffMmConstr);
-    const dlpNum = Number(newStaffMmDlp);
     const rateNum = Number(newStaffRateEtb);
-
-    if (isNaN(constrNum) || constrNum < 0 || isNaN(dlpNum) || dlpNum < 0 || isNaN(rateNum) || rateNum < 0) {
-      alert('Validation Error: Construction MM, DLP MM, and Rate (ETB) must be valid non-negative numbers.');
-      return;
-    }
-
+    const rateUsdNum = Number(newStaffRateUsd) || 0;
     const categoryName = addMode === 'subtable' ? (newSubTableTitle.trim() || 'Custom Sub-Table') : newStaffCategory;
-    const totalMm = constrNum + dlpNum;
-    const totalEtb = totalMm * rateNum;
 
-    const newRow: ContractStaffRateCondition1 = {
-      id: `c1_staff_${Date.now()}`,
-      no: newStaffNo.trim() || (addMode === 'subtable' ? '5.1' : '1.X'),
-      position: newStaffPosition.trim(),
-      name: newStaffName.trim() || 'To be nominated',
-      category: categoryName,
-      mmConstr: constrNum,
-      mmDlp: dlpNum,
-      totalMm,
-      rateEtb: rateNum,
-      totalEtb
-    };
+    if (addStaffTargetTable === 'construction') {
+      const constrNum = Number(newStaffMmConstr);
+      if (isNaN(constrNum) || constrNum < 0 || isNaN(rateNum) || rateNum < 0) {
+        alert('Validation Error: Construction MM and Rate (ETB) must be valid non-negative numbers.');
+        return;
+      }
+      const newRow: ContractStaffRateCondition1 = {
+        id: `c1_constr_${Date.now()}`,
+        no: newStaffNo.trim() || (addMode === 'subtable' ? '5.1' : '1.X'),
+        position: newStaffPosition.trim(),
+        name: newStaffName.trim() || 'To be nominated',
+        category: categoryName,
+        mmConstr: constrNum,
+        mmDlp: 0,
+        totalMm: constrNum,
+        rateEtb: rateNum,
+        rateUsd: rateUsdNum,
+        totalEtb: constrNum * rateNum,
+        totalUsd: constrNum * rateUsdNum
+      };
 
-    setC1Data(prev => ({
-      ...prev,
-      staffFees: [...(prev.staffFees || []), newRow]
-    }));
+      setC1Data(prev => ({
+        ...prev,
+        staffFees: [...(prev.staffFees || []), newRow]
+      }));
+    } else {
+      // Adding to Table 3 (DLP Schedule)
+      const dlpNum = Number(newStaffMmDlp);
+      if (isNaN(dlpNum) || dlpNum < 0 || isNaN(rateNum) || rateNum < 0) {
+        alert('Validation Error: DLP MM and Rate (ETB) must be valid non-negative numbers.');
+        return;
+      }
+      const newRow: ContractStaffRateCondition1 = {
+        id: `c1_dlp_${Date.now()}`,
+        no: newStaffNo.trim() || (addMode === 'subtable' ? '5.1' : '1.X'),
+        position: newStaffPosition.trim(),
+        name: newStaffName.trim() || 'To be nominated',
+        category: categoryName,
+        mmConstr: 0,
+        mmDlp: dlpNum,
+        totalMm: dlpNum,
+        rateEtb: rateNum,
+        rateUsd: rateUsdNum,
+        totalEtb: dlpNum * rateNum,
+        totalUsd: dlpNum * rateUsdNum
+      };
+
+      setC1Data(prev => ({
+        ...prev,
+        dlpStaffFees: [...(prev.dlpStaffFees || []), newRow]
+      }));
+    }
 
     setIsAddStaffOpen(false);
     setAddMode('staff');
@@ -645,12 +739,22 @@ export const ContractAmountTab: React.FC<Props> = ({
           reimbursableTotal: summaryPrice.reimb,
           summary: {
             fees: summaryPrice.fees,
+            feesUsd: summaryPrice.feesUsd,
+            feesConstruction: summaryPrice.feesConstruction,
+            feesConstructionUsd: summaryPrice.feesConstructionUsd,
+            feesDlp: summaryPrice.feesDlp,
+            feesDlpUsd: summaryPrice.feesDlpUsd,
             reimbursableExpenses: summaryPrice.reimb,
+            reimbursableUsd: summaryPrice.reimbUsd,
             contingency: summaryPrice.contingency,
+            contingencyUsd: summaryPrice.contingencyUsd,
             vat: summaryPrice.vat,
-            subTotal: summaryPrice.grandTotal
+            vatUsd: summaryPrice.vatUsd,
+            subTotal: summaryPrice.grandTotal,
+            subTotalUsd: summaryPrice.grandTotalUsd
           },
-          staffFees: c1Data.staffFees
+          staffFees: c1Data.staffFees,
+          dlpStaffFees: c1Data.dlpStaffFees
         },
         condition2: c2Data
       }
@@ -668,7 +772,8 @@ export const ContractAmountTab: React.FC<Props> = ({
   const handleApplySplits = (
     updatedStaff: ContractStaffRateCondition1[],
     updatedReimbursables: ContractReimbursableCondition1[],
-    newExchangeRate: number
+    newExchangeRate: number,
+    advancedSplitMode?: boolean
   ) => {
     const newReimbTotalEtb = updatedReimbursables.reduce((s, r) => s + (Number(r.amountEtb) || 0), 0);
     const newStaffFeesEtb = updatedStaff.reduce((s, r) => s + (Number(r.totalEtb) || 0), 0);
@@ -702,6 +807,7 @@ export const ContractAmountTab: React.FC<Props> = ({
       const updatedConsultant: SupervisionConsultantInfo = {
         ...consultant,
         enableUsdPayments: true,
+        advancedSplitMode: advancedSplitMode !== undefined ? advancedSplitMode : consultant.advancedSplitMode,
         exchangeRate: newExchangeRate,
         originalFeeEtb: grandEtb,
         revisedFeeEtb: grandEtb,
@@ -733,7 +839,8 @@ export const ContractAmountTab: React.FC<Props> = ({
     setC1Data({
       ...DEFAULT_CONDITION_1_DATA,
       reimbursableList: DEFAULT_CONDITION_1_REIMBURSABLES,
-      staffFees: DEFAULT_CONDITION_1_STAFF
+      staffFees: DEFAULT_CONDITION_1_STAFF,
+      dlpStaffFees: DEFAULT_CONDITION_1_DLP_STAFF
     });
     setSaveSuccessMessage('Values restored to standard baseline contract figures.');
     setTimeout(() => setSaveSuccessMessage(null), 3000);
@@ -747,6 +854,7 @@ export const ContractAmountTab: React.FC<Props> = ({
   const isUsdEnabled = Boolean(
     consultant.enableUsdPayments || 
     project.enableUsdPayments || 
+    consultant.advancedSplitMode ||
     isUsd || 
     (consultant.originalFeeUsd && consultant.originalFeeUsd > 0) ||
     (staffSubtotals.grandTotalFeesUsd > 0) ||
@@ -907,7 +1015,7 @@ export const ContractAmountTab: React.FC<Props> = ({
       <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-3xl border border-slate-200 dark:border-slate-800 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
-            <span className="p-2 bg-blue-600 text-white rounded-xl shadow-xs">
+            <span className="p-2 bg-emerald-600 text-white rounded-xl shadow-xs">
               <Calculator className="w-4 h-4" />
             </span>
             <div>
@@ -915,45 +1023,14 @@ export const ContractAmountTab: React.FC<Props> = ({
                 <span className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">
                   Contract Cost Calculation Source:
                 </span>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                  costCalculationMode === 'invoice_monthly_mm'
-                    ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border-blue-300 dark:border-blue-700'
-                    : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
-                }`}>
-                  {costCalculationMode === 'invoice_monthly_mm' ? '⚡ Calculated from Invoice Monthly Man-Month Inputs' : 'Planned Contract Budget Schedule'}
+                <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full border bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700">
+                  Planned Contract Baseline Schedule (820 Planned MM)
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                {costCalculationMode === 'invoice_monthly_mm'
-                  ? `Overall cost is dynamically computed based on ${invoiceManMonthCosts.invoicesCount} monthly fee invoice(s) personnel attendance inputs (${fmt(invoiceManMonthCosts.totalExpendedMM, 2)} MM).`
-                  : 'Displaying original master contract price schedule (820 planned man-months).'}
+                Displaying official master contract price schedule (820 planned man-months baseline).
               </p>
             </div>
-          </div>
-
-          <div className="flex items-center bg-white dark:bg-slate-900 p-1 rounded-2xl border border-slate-300 dark:border-slate-700 text-xs font-bold shrink-0 shadow-xs">
-            <button
-              type="button"
-              onClick={() => setCostCalculationMode('invoice_monthly_mm')}
-              className={`px-3 py-1.5 rounded-xl transition cursor-pointer flex items-center gap-1.5 ${
-                costCalculationMode === 'invoice_monthly_mm'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-              }`}
-            >
-              <span>⚡ Invoice Monthly MM Inputs</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setCostCalculationMode('contract_baseline')}
-              className={`px-3 py-1.5 rounded-xl transition cursor-pointer flex items-center gap-1.5 ${
-                costCalculationMode === 'contract_baseline'
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-              }`}
-            >
-              <span>Contract Baseline (820 MM)</span>
-            </button>
           </div>
         </div>
 
@@ -964,24 +1041,13 @@ export const ContractAmountTab: React.FC<Props> = ({
               {currencySymbol}{fmtCurrency(activeSummaryPrice.fees)} <span className="text-xs text-slate-400">{currencyUnit}</span>
             </div>
             <div className="text-[11px] text-slate-500 mt-0.5 font-medium">
-              {fmt(activeSummaryPrice.expendedMm, 1)} MM ({costCalculationMode === 'invoice_monthly_mm' ? 'Expended from Invoices' : 'Planned Baseline'})
+              {fmt(activeSummaryPrice.expendedMm, 1)} MM (Planned Baseline)
             </div>
           </div>
 
           <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Reimbursables (Table 4)</span>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsTable4Visible(true);
-                  setActiveTableTab('all');
-                }}
-                className="text-[10px] text-amber-600 dark:text-amber-400 font-bold hover:underline cursor-pointer"
-                title="Open Table 4 to add or manage reimbursables"
-              >
-                + Add / View
-              </button>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Direct Reimbursables</span>
             </div>
             <div className="text-xl font-black font-mono text-amber-700 dark:text-amber-400 mt-1">
               {currencySymbol}{fmtCurrency(activeSummaryPrice.reimb)} <span className="text-xs text-slate-400">{currencyUnit}</span>
@@ -1007,7 +1073,7 @@ export const ContractAmountTab: React.FC<Props> = ({
             <div className={`text-[11px] font-bold uppercase tracking-wider ${
               isUsd ? 'text-purple-800 dark:text-purple-300' : 'text-emerald-800 dark:text-emerald-300'
             }`}>
-              {costCalculationMode === 'invoice_monthly_mm' ? 'Overall Cost (From Invoices)' : 'Total Contract Price (E)'}
+              Total Contract Price (E)
             </div>
             <div className={`text-xl font-black font-mono mt-1 ${
               isUsd ? 'text-purple-700 dark:text-purple-300' : 'text-emerald-700 dark:text-emerald-400'
@@ -1015,9 +1081,7 @@ export const ContractAmountTab: React.FC<Props> = ({
               {currencySymbol}{fmtCurrency(activeSummaryPrice.grandTotal)} <span className="text-xs opacity-75">{currencyUnit}</span>
             </div>
             <div className="text-[11px] opacity-80 font-semibold mt-0.5">
-              {costCalculationMode === 'invoice_monthly_mm' 
-                ? 'Derived from Monthly MM Inputs' 
-                : isUsd ? `Converted @ 1 USD = ${effRate.toFixed(2)} ETB` : '100% Local Currency ETB'}
+              {isUsd ? `Converted @ 1 USD = ${effRate.toFixed(2)} ETB` : '100% Local Currency ETB'}
             </div>
           </div>
         </div>
@@ -1117,6 +1181,7 @@ export const ContractAmountTab: React.FC<Props> = ({
           contingencyPct={Number(c1Data.contingencyPct ?? 15)}
           vatPct={Number(c1Data.vatPct ?? 15)}
           initialExchangeRate={effRate}
+          initialAdvancedSplitMode={Boolean(consultant.advancedSplitMode)}
           isReadonly={isReadonly}
           onApplySplits={handleApplySplits}
           onClose={() => {
@@ -1384,7 +1449,7 @@ export const ContractAmountTab: React.FC<Props> = ({
                 <th className="p-3 text-right font-bold w-28">MM (Constr.)</th>
                 <th className="p-3 text-right font-bold w-32">Rate (ETB)</th>
                 <th className="p-3 text-right font-bold w-36">Total (ETB)</th>
-                {consultant.enableUsdPayments && (
+                {isUsdEnabled && (
                   <>
                     <th className="p-3 text-right font-bold w-32 text-purple-700 dark:text-purple-300">Rate (USD)</th>
                     <th className="p-3 text-right font-bold w-36 text-purple-700 dark:text-purple-300">Total (USD)</th>
@@ -1397,7 +1462,7 @@ export const ContractAmountTab: React.FC<Props> = ({
               {staffSubtotals.groups.map((group) => (
                 <React.Fragment key={group.categoryKey}>
                   <tr className="bg-slate-100/90 dark:bg-slate-800/90 font-bold text-slate-900 dark:text-white">
-                    <td className="p-3 text-left" colSpan={!isReadonly ? (consultant.enableUsdPayments ? 9 : 7) : (consultant.enableUsdPayments ? 8 : 6)}>
+                    <td className="p-3 text-left" colSpan={!isReadonly ? (isUsdEnabled ? 9 : 7) : (isUsdEnabled ? 8 : 6)}>
                       {group.label}
                     </td>
                   </tr>
@@ -1412,7 +1477,7 @@ export const ContractAmountTab: React.FC<Props> = ({
                             type="text"
                             disabled={isReadonly}
                             value={row.position}
-                            onChange={(e) => handleUpdateStaffRow(row.id!, 'position', e.target.value)}
+                            onChange={(e) => handleUpdateConstructionStaffRow(row.id!, 'position', e.target.value)}
                             className="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-500 outline-none"
                           />
                         </td>
@@ -1421,7 +1486,7 @@ export const ContractAmountTab: React.FC<Props> = ({
                             type="text"
                             disabled={isReadonly}
                             value={row.name}
-                            onChange={(e) => handleUpdateStaffRow(row.id!, 'name', e.target.value)}
+                            onChange={(e) => handleUpdateConstructionStaffRow(row.id!, 'name', e.target.value)}
                             className="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-500 outline-none"
                           />
                         </td>
@@ -1431,7 +1496,7 @@ export const ContractAmountTab: React.FC<Props> = ({
                             step="any"
                             disabled={isReadonly}
                             value={row.mmConstr}
-                            onChange={(e) => handleUpdateStaffRow(row.id!, 'mmConstr', parseFloat(e.target.value) || 0)}
+                            onChange={(e) => handleUpdateConstructionStaffRow(row.id!, 'mmConstr', parseFloat(e.target.value) || 0)}
                             className="w-full text-right bg-transparent border-b border-dashed border-slate-300 hover:border-blue-500 focus:border-blue-500 outline-none"
                           />
                         </td>
@@ -1441,14 +1506,14 @@ export const ContractAmountTab: React.FC<Props> = ({
                             step="any"
                             disabled={isReadonly}
                             value={row.rateEtb}
-                            onChange={(e) => handleUpdateStaffRow(row.id!, 'rateEtb', parseFloat(e.target.value) || 0)}
+                            onChange={(e) => handleUpdateConstructionStaffRow(row.id!, 'rateEtb', parseFloat(e.target.value) || 0)}
                             className="w-full text-right bg-transparent border-b border-dashed border-slate-300 hover:border-blue-500 focus:border-blue-500 outline-none font-bold text-emerald-600"
                           />
                         </td>
                         <td className="p-3 text-right font-bold text-slate-900 dark:text-white">
                           {fmt(constrTotalEtb)}
                         </td>
-                        {consultant.enableUsdPayments && (
+                        {isUsdEnabled && (
                           <>
                             <td className="p-3 text-right">
                               <input
@@ -1456,7 +1521,7 @@ export const ContractAmountTab: React.FC<Props> = ({
                                 step="any"
                                 disabled={isReadonly}
                                 value={row.rateUsd || 0}
-                                onChange={(e) => handleUpdateStaffRow(row.id!, 'rateUsd', parseFloat(e.target.value) || 0)}
+                                onChange={(e) => handleUpdateConstructionStaffRow(row.id!, 'rateUsd', parseFloat(e.target.value) || 0)}
                                 className="w-full text-right bg-transparent border-b border-dashed border-slate-300 hover:border-blue-500 focus:border-blue-500 outline-none font-bold text-purple-600"
                               />
                             </td>
@@ -1469,7 +1534,7 @@ export const ContractAmountTab: React.FC<Props> = ({
                           <td className="p-3 text-center">
                             <button
                               type="button"
-                              onClick={() => handleDeleteStaffRow(row.id!, row.position)}
+                              onClick={() => handleDeleteConstructionStaffRow(row.id!, row.position)}
                               className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg transition"
                               title="Delete position"
                             >
@@ -1485,7 +1550,7 @@ export const ContractAmountTab: React.FC<Props> = ({
                     <td className="p-3 text-right">{fmt(group.constrMm, 1)}</td>
                     <td className="p-3 text-right">—</td>
                     <td className="p-3 text-right text-emerald-700 dark:text-emerald-300">{fmt(group.constrEtb)}</td>
-                    {consultant.enableUsdPayments && (
+                    {isUsdEnabled && (
                       <>
                         <td className="p-3 text-right">—</td>
                         <td className="p-3 text-right text-purple-700 dark:text-purple-300">{fmt(group.constrUsd)}</td>
@@ -1502,7 +1567,7 @@ export const ContractAmountTab: React.FC<Props> = ({
                 <td className="p-3.5 text-right text-emerald-800 dark:text-emerald-200">
                   {fmt(staffSubtotals.groups.reduce((s, g) => s + g.constrEtb, 0))}
                 </td>
-                {consultant.enableUsdPayments && (
+                {isUsdEnabled && (
                   <>
                     <td className="p-3.5 text-right">—</td>
                     <td className="p-3.5 text-right text-purple-800 dark:text-purple-200">
@@ -1576,7 +1641,7 @@ export const ContractAmountTab: React.FC<Props> = ({
                             step="any"
                             disabled={isReadonly}
                             value={row.mmDlp}
-                            onChange={(e) => handleUpdateStaffRow(row.id!, 'mmDlp', parseFloat(e.target.value) || 0)}
+                            onChange={(e) => handleUpdateDlpStaffRow(row.id!, 'mmDlp', parseFloat(e.target.value) || 0)}
                             className="w-full text-right bg-transparent border-b border-dashed border-slate-300 hover:border-blue-500 focus:border-blue-500 outline-none"
                           />
                         </td>
@@ -1594,7 +1659,7 @@ export const ContractAmountTab: React.FC<Props> = ({
                                 step="any"
                                 disabled={isReadonly}
                                 value={row.rateUsd || 0}
-                                onChange={(e) => handleUpdateStaffRow(row.id!, 'rateUsd', parseFloat(e.target.value) || 0)}
+                                onChange={(e) => handleUpdateDlpStaffRow(row.id!, 'rateUsd', parseFloat(e.target.value) || 0)}
                                 className="w-full text-right bg-transparent border-b border-dashed border-purple-300 hover:border-purple-500 focus:border-purple-500 outline-none font-bold text-purple-600"
                               />
                             </td>
@@ -1607,7 +1672,7 @@ export const ContractAmountTab: React.FC<Props> = ({
                           <td className="p-3 text-center">
                             <button
                               type="button"
-                              onClick={() => handleDeleteStaffRow(row.id!, row.position)}
+                              onClick={() => handleDeleteDlpStaffRow(row.id!, row.position)}
                               className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg transition"
                               title="Delete position"
                             >

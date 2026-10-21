@@ -25,11 +25,13 @@ interface Props {
   contingencyPct: number;
   vatPct: number;
   initialExchangeRate?: number;
+  initialAdvancedSplitMode?: boolean;
   isReadonly?: boolean;
   onApplySplits: (
     updatedStaff: ContractStaffRateCondition1[],
     updatedReimbursables: ContractReimbursableCondition1[],
-    exchangeRate: number
+    exchangeRate: number,
+    advancedSplitMode?: boolean
   ) => void;
   onClose?: () => void;
 }
@@ -40,12 +42,13 @@ export const ContractCurrencySplitSettingsPanel: React.FC<Props> = ({
   contingencyPct,
   vatPct,
   initialExchangeRate = 125.0,
+  initialAdvancedSplitMode = false,
   isReadonly = false,
   onApplySplits,
   onClose
 }) => {
   const [exchangeRate, setExchangeRate] = useState<number>(initialExchangeRate > 0 ? initialExchangeRate : 125.0);
-  const [advancedSplitMode, setAdvancedSplitMode] = useState<boolean>(false);
+  const [advancedSplitMode, setAdvancedSplitMode] = useState<boolean>(initialAdvancedSplitMode);
   const [activeSubSection, setActiveSubSection] = useState<'all' | 'staff' | 'reimbursables'>('all');
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -402,7 +405,7 @@ export const ContractCurrencySplitSettingsPanel: React.FC<Props> = ({
   };
 
   const handleApply = () => {
-    onApplySplits(localStaff, localReimb, exchangeRate);
+    onApplySplits(localStaff, localReimb, exchangeRate, advancedSplitMode);
   };
 
   return (

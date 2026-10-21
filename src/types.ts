@@ -1042,6 +1042,7 @@ export interface SupervisionConsultantInfo {
   originalFeeEtb: number;
   revisedFeeEtb?: number;
   enableUsdPayments?: boolean; // When true, enables foreign USD currency tracking and invoices
+  advancedSplitMode?: boolean; // When true, enables advanced split-editing mode for USD and ETB amounts
   exchangeRate?: number; // Operational Exchange Rate for USD/ETB conversion (e.g. 125.00)
   originalFeeUsd?: number;
   revisedFeeUsd?: number;
@@ -1144,6 +1145,7 @@ export interface ContractCondition1Data {
     customItems?: ContractReimbursableCondition1[];
   };
   staffFees?: ContractStaffRateCondition1[];
+  dlpStaffFees?: ContractStaffRateCondition1[];
   summary?: {
     fees: number;
     reimbursableExpenses: number;

@@ -1017,6 +1017,16 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
   const grossToDate = subtotalWithContingencyToDate + vatToDate;
   const netToDate = Math.max(0, subtotalWithContingencyToDate + (overtimeEtb || 0) - totalDeductionsThisInvoice);
 
+  // USD Mode Active (when enableUsdPayments is on, or project.enableUsdPayments, or advancedSplitMode is enabled)
+  const isUsdModeActive = Boolean(
+    consultant.enableUsdPayments ||
+    project.enableUsdPayments ||
+    consultant.advancedSplitMode ||
+    viewCurrency === 'USD' ||
+    (consultant.originalFeeUsd && consultant.originalFeeUsd > 0) ||
+    (consultant.contractAmountSchedule?.condition1?.summary?.feesUsd && consultant.contractAmountSchedule.condition1.summary.feesUsd > 0)
+  );
+
   // USD Contract and Invoice Totals for Table 5
   const linkedFeesContractUsd = consultant.contractAmountSchedule?.condition1?.summary?.feesUsd ?? 0;
   const linkedReimbContractUsd = consultant.contractAmountSchedule?.condition1?.summary?.reimbursableUsd ?? 0;
@@ -1028,7 +1038,7 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
   const totalContractDueUsd = grandContractWithContingencyUsd + vatContractUsd;
 
   const subTotal1ThisInvoiceUsd = useMemo(() => {
-    if (!consultant.enableUsdPayments) return 0;
+    if (!isUsdModeActive) return 0;
     const c1 = consultant.contractAmountSchedule?.condition1;
     const c1ExchangeRate = Number(c1?.currencySplitExchangeRate || c1?.exchangeRate || 120);
     let total = 0;
@@ -1060,7 +1070,7 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
   }, [staffRows, consultant, totalDaysInMonth]);
 
   const subTotal2ThisInvoiceUsd = useMemo(() => {
-    if (!consultant.enableUsdPayments) return 0;
+    if (!isUsdModeActive) return 0;
     const c1 = consultant.contractAmountSchedule?.condition1;
     const c1ExchangeRate = Number(c1?.currencySplitExchangeRate || c1?.exchangeRate || 120);
     let total = 0;
@@ -2788,17 +2798,17 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                     <th className="py-2.5 px-3 w-12 text-center">Item</th>
                     <th className="py-2.5 px-4 min-w-[280px]">Summary Claim Component</th>
                     <th className="py-2.5 px-4 text-right min-w-[130px]">Contract Baseline (ETB)</th>
-                    {consultant.enableUsdPayments && <th className="py-2.5 px-4 text-right min-w-[130px] text-purple-700 dark:text-purple-300 bg-purple-50/40">Contract Baseline (USD)</th>}
+                    {isUsdModeActive && <th className="py-2.5 px-4 text-right min-w-[130px] text-purple-700 dark:text-purple-300 bg-purple-50/40">Contract Baseline (USD)</th>}
                     <th className="py-2.5 px-4 text-right min-w-[140px] font-black text-blue-600 dark:text-blue-400 bg-blue-50/30 dark:bg-blue-950/20">
                       This Month Claim (ETB)
                     </th>
-                    {consultant.enableUsdPayments && <th className="py-2.5 px-4 text-right min-w-[140px] font-black text-purple-700 dark:text-purple-300 bg-purple-50/40">This Month Claim (USD)</th>}
+                    {isUsdModeActive && <th className="py-2.5 px-4 text-right min-w-[140px] font-black text-purple-700 dark:text-purple-300 bg-purple-50/40">This Month Claim (USD)</th>}
                     <th className="py-2.5 px-4 text-right min-w-[130px]">Preceding Claim (ETB)</th>
-                    {consultant.enableUsdPayments && <th className="py-2.5 px-4 text-right min-w-[130px] text-purple-700 dark:text-purple-300 bg-purple-50/40">Preceding Claim (USD)</th>}
+                    {isUsdModeActive && <th className="py-2.5 px-4 text-right min-w-[130px] text-purple-700 dark:text-purple-300 bg-purple-50/40">Preceding Claim (USD)</th>}
                     <th className="py-2.5 px-4 text-right min-w-[130px] font-bold">To-Date Claim (ETB)</th>
-                    {consultant.enableUsdPayments && <th className="py-2.5 px-4 text-right min-w-[130px] font-bold text-purple-700 dark:text-purple-300 bg-purple-50/40">To-Date Claim (USD)</th>}
+                    {isUsdModeActive && <th className="py-2.5 px-4 text-right min-w-[130px] font-bold text-purple-700 dark:text-purple-300 bg-purple-50/40">To-Date Claim (USD)</th>}
                     <th className="py-2.5 px-4 text-right min-w-[130px] font-bold text-slate-600 dark:text-slate-400">Remaining Balance (ETB)</th>
-                    {consultant.enableUsdPayments && <th className="py-2.5 px-4 text-right min-w-[130px] font-bold text-purple-700 dark:text-purple-300 bg-purple-50/40">Remaining Balance (USD)</th>}
+                    {isUsdModeActive && <th className="py-2.5 px-4 text-right min-w-[130px] font-bold text-purple-700 dark:text-purple-300 bg-purple-50/40">Remaining Balance (USD)</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-sans text-xs">
@@ -2812,19 +2822,19 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                       <span className="text-[10px] text-slate-400 block font-mono">Linked to Contract Table 2 (Construction Schedule)</span>
                     </td>
                     <td className="py-2.5 px-4 text-right font-mono font-semibold">{fmt(linkedFeesContract)}</td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono font-semibold text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(linkedFeesContractUsd)}</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono font-semibold text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(linkedFeesContractUsd)}</td>}
                     <td className="py-2.5 px-4 text-right font-mono font-bold text-blue-600 dark:text-blue-400 bg-blue-50/20 dark:bg-blue-950/10">
                       {fmt(subTotal1ThisInvoice)}
                     </td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(subTotal1ThisInvoiceUsd)}</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(subTotal1ThisInvoiceUsd)}</td>}
                     <td className="py-2.5 px-4 text-right font-mono text-slate-600 dark:text-slate-400">{fmt(subTotal1Preceding)}</td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono text-purple-600/80 bg-purple-50/20">-</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-purple-600/80 bg-purple-50/20">-</td>}
                     <td className="py-2.5 px-4 text-right font-mono font-bold">{fmt(subTotal1ToDate)}</td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(subTotal1ThisInvoiceUsd)}</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(subTotal1ThisInvoiceUsd)}</td>}
                     <td className="py-2.5 px-4 text-right font-mono text-emerald-600 dark:text-emerald-400 font-semibold">
                       {fmt(Math.max(0, linkedFeesContract - subTotal1ToDate))}
                     </td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono text-purple-600 dark:text-purple-400 font-semibold bg-purple-50/20">${fmt(Math.max(0, linkedFeesContractUsd - subTotal1ThisInvoiceUsd))}</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-purple-600 dark:text-purple-400 font-semibold bg-purple-50/20">${fmt(Math.max(0, linkedFeesContractUsd - subTotal1ThisInvoiceUsd))}</td>}
                   </tr>
 
                   {/* Row 2: Sub Total 2 */}
@@ -2837,19 +2847,19 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                       <span className="text-[10px] text-slate-400 block font-mono">Linked to Contract Table 1 Item B</span>
                     </td>
                     <td className="py-2.5 px-4 text-right font-mono font-semibold">{fmt(linkedReimbContract)}</td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono font-semibold text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(linkedReimbContractUsd)}</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono font-semibold text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(linkedReimbContractUsd)}</td>}
                     <td className="py-2.5 px-4 text-right font-mono font-bold text-indigo-600 dark:text-indigo-400 bg-blue-50/20 dark:bg-blue-950/10">
                       {fmt(subTotal2ThisInvoice)}
                     </td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(subTotal2ThisInvoiceUsd)}</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(subTotal2ThisInvoiceUsd)}</td>}
                     <td className="py-2.5 px-4 text-right font-mono text-slate-600 dark:text-slate-400">{fmt(subTotal2Preceding)}</td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono text-purple-600/80 bg-purple-50/20">-</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-purple-600/80 bg-purple-50/20">-</td>}
                     <td className="py-2.5 px-4 text-right font-mono font-bold">{fmt(subTotal2ToDate)}</td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(subTotal2ThisInvoiceUsd)}</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(subTotal2ThisInvoiceUsd)}</td>}
                     <td className="py-2.5 px-4 text-right font-mono text-emerald-600 dark:text-emerald-400 font-semibold">
                       {fmt(Math.max(0, linkedReimbContract - subTotal2ToDate))}
                     </td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono text-purple-600 dark:text-purple-400 font-semibold bg-purple-50/20">${fmt(Math.max(0, linkedReimbContractUsd - subTotal2ThisInvoiceUsd))}</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-purple-600 dark:text-purple-400 font-semibold bg-purple-50/20">${fmt(Math.max(0, linkedReimbContractUsd - subTotal2ThisInvoiceUsd))}</td>}
                   </tr>
 
                   {/* Row 3: Sub Total 3 Defect */}
@@ -2862,19 +2872,19 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                       <span className="text-[10px] text-indigo-600 dark:text-indigo-400 block font-mono">Linked to Contract Table 3 (DLP Remuneration Schedule)</span>
                     </td>
                     <td className="py-2.5 px-4 text-right font-mono font-semibold">{fmt(subTotal3Contract)}</td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono font-semibold text-purple-700 dark:text-purple-300 bg-purple-50/20">$0.00</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono font-semibold text-purple-700 dark:text-purple-300 bg-purple-50/20">$0.00</td>}
                     <td className="py-2.5 px-4 text-right font-mono font-bold text-indigo-600 dark:text-indigo-400 bg-blue-50/20 dark:bg-blue-950/10">
                       {fmt(subTotal3ThisInvoice)}
                     </td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-50/20">$0.00</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-50/20">$0.00</td>}
                     <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono text-purple-600/80 bg-purple-50/20">-</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-purple-600/80 bg-purple-50/20">-</td>}
                     <td className="py-2.5 px-4 text-right font-mono font-bold text-indigo-600 dark:text-indigo-400">{fmt(subTotal3ThisInvoice)}</td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-50/20">$0.00</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-50/20">$0.00</td>}
                     <td className="py-2.5 px-4 text-right font-mono text-emerald-600 dark:text-emerald-400 font-semibold">
                       {fmt(Math.max(0, subTotal3Contract - subTotal3ThisInvoice))}
                     </td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono text-purple-600 dark:text-purple-400 font-semibold bg-purple-50/20">$0.00</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-purple-600 dark:text-purple-400 font-semibold bg-purple-50/20">$0.00</td>}
                   </tr>
 
                   {/* Direct Sum (1 + 2 + 3) */}
@@ -2884,19 +2894,19 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                       Subtotal Direct Services & Expenses (1 + 2 + 3)
                     </td>
                     <td className="py-2.5 px-4 text-right font-mono">{fmt(totalBaseContract)}</td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(totalBaseContractUsd)}</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(totalBaseContractUsd)}</td>}
                     <td className="py-2.5 px-4 text-right font-mono font-black text-slate-900 dark:text-white bg-blue-50/30 dark:bg-blue-950/20">
                       {fmt(totalSubtotalThisInvoice)}
                     </td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono font-black text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(totalSubtotalThisInvoiceUsd)}</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono font-black text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(totalSubtotalThisInvoiceUsd)}</td>}
                     <td className="py-2.5 px-4 text-right font-mono">{fmt(totalSubtotalPreceding)}</td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono text-purple-600/80 bg-purple-50/20">-</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-purple-600/80 bg-purple-50/20">-</td>}
                     <td className="py-2.5 px-4 text-right font-mono font-black">{fmt(totalSubtotalToDate)}</td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono font-black text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(totalSubtotalThisInvoiceUsd)}</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono font-black text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(totalSubtotalThisInvoiceUsd)}</td>}
                     <td className="py-2.5 px-4 text-right font-mono font-black text-emerald-700 dark:text-emerald-300">
                       {fmt(Math.max(0, totalBaseContract - totalSubtotalToDate))}
                     </td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono font-black text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(Math.max(0, totalBaseContractUsd - totalSubtotalThisInvoiceUsd))}</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono font-black text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(Math.max(0, totalBaseContractUsd - totalSubtotalThisInvoiceUsd))}</td>}
                   </tr>
 
                   {/* Contingency */}
@@ -2928,7 +2938,7 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                       </div>
                     </td>
                     <td className="py-2.5 px-4 text-right font-mono text-slate-500">{fmt(contingencyContract)}</td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(contingencyContractUsd)}</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(contingencyContractUsd)}</td>}
                     <td className="py-2.5 px-4 text-right bg-blue-50/20 dark:bg-blue-950/10">
                       <div className="flex flex-col items-end gap-1">
                         <input
@@ -2948,7 +2958,7 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                         <span className="text-[9px] text-blue-600 dark:text-blue-400 font-semibold">User-Assigned Claim</span>
                       </div>
                     </td>
-                    {consultant.enableUsdPayments && (
+                    {isUsdModeActive && (
                       <td className="py-2.5 px-4 text-right font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-50/20">
                         ${fmt(contingencyThisInvoiceUsd)}
                       </td>
@@ -2969,11 +2979,11 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                         }`}
                       />
                     </td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono text-purple-600/80 bg-purple-50/20">-</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-purple-600/80 bg-purple-50/20">-</td>}
                     <td className="py-2.5 px-4 text-right font-mono font-bold text-slate-900 dark:text-white">
                       {fmt(contingencyToDate)}
                     </td>
-                    {consultant.enableUsdPayments && (
+                    {isUsdModeActive && (
                       <td className="py-2.5 px-4 text-right font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-50/20">
                         ${fmt(contingencyThisInvoiceUsd)}
                       </td>
@@ -2981,7 +2991,7 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                     <td className="py-2.5 px-4 text-right font-mono text-emerald-600 dark:text-emerald-400 font-semibold">
                       {fmt(Math.max(0, contingencyContract - contingencyToDate))}
                     </td>
-                    {consultant.enableUsdPayments && (
+                    {isUsdModeActive && (
                       <td className="py-2.5 px-4 text-right font-mono text-purple-600 dark:text-purple-400 font-semibold bg-purple-50/20">
                         ${fmt(Math.max(0, contingencyContractUsd - contingencyThisInvoiceUsd))}
                       </td>
@@ -3009,19 +3019,19 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                       <span className="text-[10px] text-purple-600/80 block font-mono">Linked to Contract Table 1 Item D</span>
                     </td>
                     <td className="py-2.5 px-4 text-right font-mono text-purple-700 dark:text-purple-300">{fmt(vatContract)}</td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(vatContractUsd)}</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(vatContractUsd)}</td>}
                     <td className="py-2.5 px-4 text-right font-mono font-black text-purple-700 dark:text-purple-300 bg-purple-100/40 dark:bg-purple-950/30">
                       {fmt(vatThisInvoice)}
                     </td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono font-black text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(vatThisInvoiceUsd)}</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono font-black text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(vatThisInvoiceUsd)}</td>}
                     <td className="py-2.5 px-4 text-right font-mono text-purple-600/80">{fmt(vatPreceding)}</td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono text-purple-600/80 bg-purple-50/20">-</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-purple-600/80 bg-purple-50/20">-</td>}
                     <td className="py-2.5 px-4 text-right font-mono font-black text-purple-700 dark:text-purple-300">{fmt(vatToDate)}</td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono font-black text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(vatThisInvoiceUsd)}</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono font-black text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(vatThisInvoiceUsd)}</td>}
                     <td className="py-2.5 px-4 text-right font-mono text-purple-600 dark:text-purple-400 font-semibold">
                       {fmt(Math.max(0, vatContract - vatToDate))}
                     </td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono text-purple-600 dark:text-purple-400 font-semibold bg-purple-50/20">${fmt(Math.max(0, vatContractUsd - vatThisInvoiceUsd))}</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-purple-600 dark:text-purple-400 font-semibold bg-purple-50/20">${fmt(Math.max(0, vatContractUsd - vatThisInvoiceUsd))}</td>}
                   </tr>
 
                   {/* GROSS CLAIM TOTAL */}
@@ -3032,19 +3042,19 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                       <span className="text-[10px] text-slate-400 lowercase font-normal block">Total contract price ceiling (mirrors Table 1 Item E)</span>
                     </td>
                     <td className="py-3 px-4 text-right font-mono text-slate-900 dark:text-white font-black">{fmt(totalContractDue)}</td>
-                    {consultant.enableUsdPayments && <td className="py-3 px-4 text-right font-mono text-purple-700 dark:text-purple-300 font-black bg-purple-50/20">${fmt(totalContractDueUsd)}</td>}
+                    {isUsdModeActive && <td className="py-3 px-4 text-right font-mono text-purple-700 dark:text-purple-300 font-black bg-purple-50/20">${fmt(totalContractDueUsd)}</td>}
                     <td className="py-3 px-4 text-right font-mono text-blue-600 dark:text-blue-400 bg-blue-100/40 dark:bg-blue-950/40">
                       {fmt(grossPayableBase)}
                     </td>
-                    {consultant.enableUsdPayments && <td className="py-3 px-4 text-right font-mono text-purple-700 dark:text-purple-300 font-black bg-purple-50/20">${fmt(grossPayableBaseUsd)}</td>}
+                    {isUsdModeActive && <td className="py-3 px-4 text-right font-mono text-purple-700 dark:text-purple-300 font-black bg-purple-50/20">${fmt(grossPayableBaseUsd)}</td>}
                     <td className="py-3 px-4 text-right font-mono text-slate-700 dark:text-slate-300">{fmt(grossPreceding)}</td>
-                    {consultant.enableUsdPayments && <td className="py-3 px-4 text-right font-mono text-purple-600/80 bg-purple-50/20">-</td>}
+                    {isUsdModeActive && <td className="py-3 px-4 text-right font-mono text-purple-600/80 bg-purple-50/20">-</td>}
                     <td className="py-3 px-4 text-right font-mono text-slate-900 dark:text-white">{fmt(grossToDate)}</td>
-                    {consultant.enableUsdPayments && <td className="py-3 px-4 text-right font-mono text-purple-700 dark:text-purple-300 font-black bg-purple-50/20">${fmt(grossPayableBaseUsd)}</td>}
+                    {isUsdModeActive && <td className="py-3 px-4 text-right font-mono text-purple-700 dark:text-purple-300 font-black bg-purple-50/20">${fmt(grossPayableBaseUsd)}</td>}
                     <td className="py-3 px-4 text-right font-mono font-black text-emerald-700 dark:text-emerald-300">
                       {fmt(Math.max(0, totalContractDue - grossToDate))}
                     </td>
-                    {consultant.enableUsdPayments && <td className="py-3 px-4 text-right font-mono font-black text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(Math.max(0, totalContractDueUsd - grossPayableBaseUsd))}</td>}
+                    {isUsdModeActive && <td className="py-3 px-4 text-right font-mono font-black text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(Math.max(0, totalContractDueUsd - grossPayableBaseUsd))}</td>}
                   </tr>
 
                   {/* Overtime Row */}
@@ -3052,7 +3062,7 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                     <td className="py-2.5 px-3 text-center font-mono font-bold text-slate-400">5a</td>
                     <td className="py-2.5 px-4 font-semibold text-slate-800 dark:text-slate-200">Overtime</td>
                     <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>}
                     <td className="py-2.5 px-4 text-right bg-blue-50/20 dark:bg-blue-950/10">
                       <input
                         type="number"
@@ -3067,13 +3077,13 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                         }`}
                       />
                     </td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>}
                     <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>}
                     <td className="py-2.5 px-4 text-right font-mono font-bold text-blue-600">{fmt(overtimeEtb)}</td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>}
                     <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>}
                   </tr>
 
                   {/* DEDUCTIONS SECTION */}
@@ -3083,7 +3093,7 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                       <span className="font-semibold text-rose-900 dark:text-rose-300">Less: Advance Payment Recovery (Birr)</span>
                     </td>
                     <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>}
                     <td className="py-2.5 px-4 text-right bg-rose-50/50 dark:bg-rose-950/20">
                       <input
                         type="number"
@@ -3098,13 +3108,13 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                         }`}
                       />
                     </td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>}
                     <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>}
                     <td className="py-2.5 px-4 text-right font-mono font-bold text-rose-600">-{fmt(advanceDeductionEtb)}</td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>}
                     <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>}
                   </tr>
 
                   <tr className="bg-rose-50/40 dark:bg-rose-950/10">
@@ -3113,7 +3123,7 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                       <span className="font-semibold text-rose-900 dark:text-rose-300">Less: Withholding / Statutory Tax Deduction (2%)</span>
                     </td>
                     <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>}
                     <td className="py-2.5 px-4 text-right bg-rose-50/50 dark:bg-rose-950/20">
                       <input
                         type="number"
@@ -3128,13 +3138,13 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                         }`}
                       />
                     </td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>}
                     <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>}
                     <td className="py-2.5 px-4 text-right font-mono font-bold text-rose-600">-{fmt(taxDeductionEtb)}</td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>}
                     <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>}
                   </tr>
 
                   <tr className="bg-rose-50/40 dark:bg-rose-950/10">
@@ -3143,7 +3153,7 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                       <span className="font-semibold text-rose-900 dark:text-rose-300">Less: Overtime Deduction from Contractor</span>
                     </td>
                     <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>}
                     <td className="py-2.5 px-4 text-right bg-rose-50/50 dark:bg-rose-950/20">
                       <input
                         type="number"
@@ -3158,13 +3168,13 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                         }`}
                       />
                     </td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>}
                     <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>}
                     <td className="py-2.5 px-4 text-right font-mono font-bold text-rose-600">-{fmt(overtimeDeductionEtb)}</td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>}
                     <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>
-                    {consultant.enableUsdPayments && <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>}
                   </tr>
 
 
@@ -3194,7 +3204,7 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                       </div>
                     </td>
                     <td className="py-3.5 px-4 text-right font-mono text-slate-700 dark:text-slate-300 font-bold">{fmt(contractNetAmount)}</td>
-                    {consultant.enableUsdPayments && <td className="py-3.5 px-4 text-right font-mono text-purple-700 dark:text-purple-300 font-bold bg-purple-50/20">${fmt(grandContractWithContingencyUsd)}</td>}
+                    {isUsdModeActive && <td className="py-3.5 px-4 text-right font-mono text-purple-700 dark:text-purple-300 font-bold bg-purple-50/20">${fmt(grandContractWithContingencyUsd)}</td>}
                     <td className="py-3.5 px-4 text-right font-mono text-base text-emerald-700 dark:text-emerald-300 bg-emerald-200/50 dark:bg-emerald-900/40">
                       <div className="flex flex-col items-end">
                         <span className="font-mono font-black text-lg">
@@ -3207,17 +3217,17 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                         )}
                       </div>
                     </td>
-                    {consultant.enableUsdPayments && (
+                    {isUsdModeActive && (
                       <td className="py-3.5 px-4 text-right font-mono text-purple-700 dark:text-purple-300 bg-purple-50/20 font-black text-base">
                         ${fmt(Math.max(0, grossPayableBaseUsd - vatThisInvoiceUsd))}
                       </td>
                     )}
                     <td className="py-3.5 px-4 text-right font-mono text-slate-700 dark:text-slate-300 font-bold">{fmt(netPreceding)}</td>
-                    {consultant.enableUsdPayments && <td className="py-3.5 px-4 text-right font-mono text-purple-600/80 bg-purple-50/20">-</td>}
+                    {isUsdModeActive && <td className="py-3.5 px-4 text-right font-mono text-purple-600/80 bg-purple-50/20">-</td>}
                     <td className="py-3.5 px-4 text-right font-mono text-base text-emerald-800 dark:text-emerald-200 font-black">
                       {fmt(netToDate)} ETB
                     </td>
-                    {consultant.enableUsdPayments && (
+                    {isUsdModeActive && (
                       <td className="py-3.5 px-4 text-right font-mono text-purple-700 dark:text-purple-300 bg-purple-50/20 font-black text-base">
                         ${fmt(Math.max(0, grossPayableBaseUsd - vatThisInvoiceUsd))}
                       </td>
@@ -3463,11 +3473,11 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                           <th className="py-3 px-4">Invoice No</th>
                           <th className="py-3 px-4">Period</th>
                           <th className="py-3 px-4 text-right">Fees (ETB)</th>
-                          {consultant.enableUsdPayments && <th className="py-3 px-4 text-right">Fees (USD)</th>}
+                          {isUsdModeActive && <th className="py-3 px-4 text-right">Fees (USD)</th>}
                           <th className="py-3 px-4 text-right">Reimb. (ETB)</th>
-                          {consultant.enableUsdPayments && <th className="py-3 px-4 text-right">Reimb. (USD)</th>}
+                          {isUsdModeActive && <th className="py-3 px-4 text-right">Reimb. (USD)</th>}
                           <th className="py-3 px-4 text-right">Gross (ETB)</th>
-                          {consultant.enableUsdPayments && <th className="py-3 px-4 text-right">Gross (USD)</th>}
+                          {isUsdModeActive && <th className="py-3 px-4 text-right">Gross (USD)</th>}
                           <th className="py-3 px-4 text-center">Status</th>
                         </tr>
                       </thead>
@@ -3491,11 +3501,11 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                                 <td className="py-3 px-4 font-bold">{inv.invoiceNo}</td>
                                 <td className="py-3 px-4 font-sans">{inv.billingPeriod}</td>
                                 <td className="py-3 px-4 text-right">{fmt(feeAmtEtb)}</td>
-                                {consultant.enableUsdPayments && <td className="py-3 px-4 text-right text-purple-600 font-bold">{fmt(feeAmtUsd)}</td>}
+                                {isUsdModeActive && <td className="py-3 px-4 text-right text-purple-600 font-bold">{fmt(feeAmtUsd)}</td>}
                                 <td className="py-3 px-4 text-right">{fmt(reimbAmtEtb)}</td>
-                                {consultant.enableUsdPayments && <td className="py-3 px-4 text-right text-purple-600 font-bold">{fmt(reimbAmtUsd)}</td>}
+                                {isUsdModeActive && <td className="py-3 px-4 text-right text-purple-600 font-bold">{fmt(reimbAmtUsd)}</td>}
                                 <td className="py-3 px-4 text-right font-black">{fmt(grossEtb)}</td>
-                                {consultant.enableUsdPayments && <td className="py-3 px-4 text-right font-black text-purple-600">{fmt(grossUsd)}</td>}
+                                {isUsdModeActive && <td className="py-3 px-4 text-right font-black text-purple-600">{fmt(grossUsd)}</td>}
                                 <td className="py-3 px-4 text-center">
                                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                                     inv.status === 'Paid' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300' :
@@ -3522,7 +3532,7 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                             .reduce((sum, inv) => sum + (inv.grossAmountEtb || (inv.feesAmountEtb || 0) + (inv.reimbursableAmountEtb || 0)), 0)
                         )} ETB
                       </span>
-                      {consultant.enableUsdPayments && (
+                      {isUsdModeActive && (
                         <span className="font-mono font-black text-sm text-purple-700">
                           {fmt(
                             allInvoices
