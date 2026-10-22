@@ -45,10 +45,13 @@ import {
   DEFAULT_CONSULTANT_SCORING_WEIGHTS,
   CustomScoringCriterion,
   PdfReportConfig,
-  DEFAULT_PDF_REPORT_CONFIG
+  DEFAULT_PDF_REPORT_CONFIG,
+  WorkflowAuditLogEntry,
+  Project
 } from '../types';
 import { safeSyncScoringWeights } from '../lib/apiSync';
 import DatabaseSavedPopupModal from './DatabaseSavedPopupModal';
+import { SecurityAuditLogView } from './SecurityAuditLogView';
 
 const CONTRACTOR_CRITERIA_META: Array<{ key: string; defaultLabel: string; defaultDesc: string; defaultWeight: number }> = [
   { key: 'fidic', defaultLabel: '1. FIDIC Contract Compliance', defaultDesc: 'Performance/Mobilization Guarantees & Risk notices', defaultWeight: 15 },
@@ -95,6 +98,9 @@ interface SettingsViewProps {
   onRejectUser?: (username: string) => void;
   pdfReportConfig?: PdfReportConfig;
   onUpdatePdfReportConfig?: (config: PdfReportConfig) => void;
+  auditLogs?: WorkflowAuditLogEntry[];
+  projects?: Project[];
+  onClearAuditLogs?: () => void;
 }
 
 export default function SettingsView({
@@ -121,7 +127,10 @@ export default function SettingsView({
   onApproveUser,
   onRejectUser,
   pdfReportConfig: propsPdfConfig,
-  onUpdatePdfReportConfig
+  onUpdatePdfReportConfig,
+  auditLogs = [],
+  projects = [],
+  onClearAuditLogs
 }: SettingsViewProps) {
 
   const isMasterAdmin = Boolean(
@@ -131,6 +140,7 @@ export default function SettingsView({
     (currentUser?.username && currentUser.username.toLowerCase().includes('ersido'))
   );
 
+  const [activeSettingsTab, setActiveSettingsTab] = useState<'security_audit' | 'scoring' | 'pdf' | 'appearance' | 'users' | 'all'>('security_audit');
   const [activeModelTab, setActiveModelTab] = useState<'contractor' | 'consultant'>('contractor');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [tempContractorWeights, setTempContractorWeights] = useState<ContractorScoringWeights>(contractorWeights);
@@ -280,7 +290,112 @@ export default function SettingsView({
         </motion.div>
       )}
 
+      {/* Settings Navigation Sub-Tabs */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 border-b border-slate-200 dark:border-slate-700">
+        <button
+          type="button"
+          onClick={() => setActiveSettingsTab('security_audit')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer ${
+            activeSettingsTab === 'security_audit'
+              ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20 ring-2 ring-blue-400/40'
+              : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-350 hover:bg-slate-100 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-700/80'
+          }`}
+        >
+          <Shield className="w-4 h-4 text-amber-400" />
+          <span>Security & Audit Log</span>
+          {auditLogs.length > 0 && (
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${
+              activeSettingsTab === 'security_audit' ? 'bg-blue-800 text-white' : 'bg-slate-150 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
+            }`}>
+              {auditLogs.length}
+            </span>
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveSettingsTab('scoring')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer ${
+            activeSettingsTab === 'scoring'
+              ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20 ring-2 ring-blue-400/40'
+              : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-350 hover:bg-slate-100 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-700/80'
+          }`}
+        >
+          <Scale className="w-4 h-4 text-indigo-400" />
+          <span>Scoring Model Weights</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveSettingsTab('pdf')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer ${
+            activeSettingsTab === 'pdf'
+              ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20 ring-2 ring-blue-400/40'
+              : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-350 hover:bg-slate-100 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-700/80'
+          }`}
+        >
+          <Printer className="w-4 h-4 text-emerald-400" />
+          <span>PDF Report Config</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveSettingsTab('appearance')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer ${
+            activeSettingsTab === 'appearance'
+              ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20 ring-2 ring-blue-400/40'
+              : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-350 hover:bg-slate-100 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-700/80'
+          }`}
+        >
+          <Palette className="w-4 h-4 text-pink-400" />
+          <span>Theme & Appearance</span>
+        </button>
+
+        {isMasterAdmin && (
+          <button
+            type="button"
+            onClick={() => setActiveSettingsTab('users')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer ${
+              activeSettingsTab === 'users'
+                ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20 ring-2 ring-blue-400/40'
+                : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-350 hover:bg-slate-100 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-700/80'
+            }`}
+          >
+            <Shield className="w-4 h-4 text-amber-500" />
+            <span>User Registrations</span>
+            {allUsers.filter(u => u.isPendingApproval).length > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-mono font-black bg-rose-500 text-white animate-pulse">
+                {allUsers.filter(u => u.isPendingApproval).length}
+              </span>
+            )}
+          </button>
+        )}
+
+        <button
+          type="button"
+          onClick={() => setActiveSettingsTab('all')}
+          className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer ml-auto ${
+            activeSettingsTab === 'all'
+              ? 'bg-slate-800 text-white dark:bg-slate-200 dark:text-slate-900 shadow-sm'
+              : 'bg-slate-100 dark:bg-slate-800/60 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 border border-slate-200 dark:border-slate-700'
+          }`}
+        >
+          <span>📑 View All</span>
+        </button>
+      </div>
+
+      {/* DEDICATED SECURITY & AUDIT LOG PAGE */}
+      {(activeSettingsTab === 'security_audit' || activeSettingsTab === 'all') && (
+        <SecurityAuditLogView
+          auditLogs={auditLogs}
+          projects={projects}
+          currentUser={currentUser}
+          onClearLogs={onClearAuditLogs}
+        />
+      )}
+
       {/* MASTER ADMIN EXCLUSIVE: Contractor & Consultant Compliance & Grade Scoring Model Section */}
+      {(activeSettingsTab === 'scoring' || activeSettingsTab === 'all') && (
       <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/70 p-6 rounded-2xl shadow-sm space-y-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-700/60 pb-4">
           <div className="flex items-center gap-3">
@@ -359,8 +474,10 @@ export default function SettingsView({
           </div>
         </div>
       </div>
+      )}
 
       {/* Executive PDF Report Configuration & Module Selection Section */}
+      {(activeSettingsTab === 'pdf' || activeSettingsTab === 'all') && (
       <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/70 p-6 rounded-2xl shadow-sm space-y-6">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-700/60 pb-4">
           <div className="flex items-start gap-3">
@@ -578,8 +695,11 @@ export default function SettingsView({
           </div>
         </div>
       </div>
+      )}
 
       {/* Direct Theme, Colors & Background Customizer launch banner */}
+      {(activeSettingsTab === 'appearance' || activeSettingsTab === 'all') && (
+      <>
       <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl text-slate-850 dark:text-zinc-100 shadow-sm border border-slate-200 dark:border-slate-700/60 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3.5">
           <div className="w-11 h-11 bg-indigo-50 dark:bg-indigo-950/40 rounded-2xl flex items-center justify-center text-indigo-600 dark:text-indigo-400 shrink-0 border border-indigo-200 dark:border-indigo-800/50">
@@ -823,9 +943,11 @@ export default function SettingsView({
         </div>
 
       </div>
+      </>
+      )}
 
       {/* USER SIGN-UP APPROVALS (MASTER ADMIN ONLY) */}
-      {isMasterAdmin && (
+      {(activeSettingsTab === 'users' || activeSettingsTab === 'all') && isMasterAdmin && (
         <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/70 p-6 rounded-2xl shadow-sm space-y-5">
            <div className="flex items-center gap-3 border-b border-slate-100 dark:border-slate-700/60 pb-4">
               <Shield className="w-6 h-6 text-amber-500" />

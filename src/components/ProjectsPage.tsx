@@ -339,6 +339,37 @@ export default function ProjectsPage({
     return { actual, planned, variance };
   };
 
+  const getScurveDeviation = (proj: Project) => {
+    const actual = proj.physicalProgress ?? 0;
+    let projected = 0;
+    
+    // Evaluate project's S-curve data (proj.monthly) considering lastModifiedAt
+    if (proj.monthly && proj.monthly.length > 0) {
+      let matchedPlan = null;
+      for (const m of proj.monthly) {
+        const planVal = m.revisedPlan ?? m.originalPlan;
+        if (planVal !== null && planVal !== undefined && planVal !== '' && !isNaN(Number(planVal))) {
+          matchedPlan = Number(planVal);
+        }
+      }
+      projected = matchedPlan !== null ? matchedPlan : (proj.progressPlan?.contractor?.todate ?? proj.progressPlan?.era?.todate ?? actual);
+    } else {
+      const start = proj.startDate ? new Date(proj.startDate).getTime() : Date.now();
+      const totalDays = (proj.origDays || 0) + (proj.eotDays || 0) + (proj.interimEotDays || 0);
+      const modTime = proj.lastModifiedAt ? new Date(proj.lastModifiedAt).getTime() : Date.now();
+      if (totalDays > 0) {
+        const elapsedDays = Math.max(0, (modTime - start) / (1000 * 60 * 60 * 24));
+        projected = Math.min(100, (elapsedDays / totalDays) * 100);
+      } else {
+        projected = actual;
+      }
+    }
+
+    const deviation = actual - projected;
+    const isDeviated = Math.abs(deviation) > 15;
+    return { actual, projected, deviation, isDeviated };
+  };
+
   React.useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && inspectProjectId) {
@@ -1298,7 +1329,13 @@ export default function ProjectsPage({
 
           {/* Title */}
           <div>
-            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 line-clamp-1 group-hover:text-amber-500 dark:group-hover:text-amber-400 transition-colors flex items-center gap-1.5">
+            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 line-clamp-1 group-hover:text-amber-500 dark:group-hover:text-amber-400 transition-colors flex items-center gap-1.5 flex-wrap">
+              {getScurveDeviation(p).isDeviated && (
+                <span className="inline-flex items-center gap-1 bg-red-100 dark:bg-red-950/60 text-red-600 dark:text-red-400 text-[10px] font-bold px-2 py-0.5 rounded-full border border-red-200 dark:border-red-800 animate-pulse" title={`Critical S-Curve Deviation (>15%): Actual (${getScurveDeviation(p).actual.toFixed(1)}%) vs Projected S-Curve (${getScurveDeviation(p).projected.toFixed(1)}% as of ${p.lastModifiedAt ? new Date(p.lastModifiedAt).toLocaleDateString() : 'current date'})`}>
+                  <AlertTriangle className="w-3.5 h-3.5 text-red-600 animate-pulse" />
+                  <span>Dev {Math.abs(getScurveDeviation(p).deviation).toFixed(1)}%</span>
+                </span>
+              )}
               {hasPendingChangesForApprover && (
                 <span className="relative flex h-2 w-2 shrink-0" title="This contract has pending, unapproved changes requiring your review as designated approver">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-450 opacity-75"></span>

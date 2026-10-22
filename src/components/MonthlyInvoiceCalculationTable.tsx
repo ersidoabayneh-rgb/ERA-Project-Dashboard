@@ -16,6 +16,7 @@ import {
   Landmark, 
   Clock, 
   Layers, 
+  Receipt,
   ArrowLeft,
   ChevronRight,
   Info,
@@ -90,12 +91,15 @@ export interface EditableReimbursableRow {
 export interface EditableDefectLiabilityRow {
   id: string;
   position: string;
+  name?: string;
   unit: string;
   rate: number;
   contractQty: number;
   contractAmount: number;
   thisInvoiceQty: number;
   thisInvoiceAmount: number;
+  precedingQty?: number;
+  precedingAmount?: number;
 }
 
 export const OFFICIAL_DKS_REIMBURSABLE_DEFAULT: EditableReimbursableRow[] = [
@@ -192,12 +196,11 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
   exchangeRate = 125.0
 }) => {
   // Navigation tabs for the tables
-  const [activeTableTab, setActiveTableTab] = useState<'all' | 'summary' | 'construction' | 'dlp' | 'attendance'>('all');
+  const [activeTableTab, setActiveTableTab] = useState<'all' | 'attendance' | 'reimbursables' | 'dlp' | 'summary'>('all');
 
   // Staff Directory Filter (All Assigned, Active Only, Replaced History)
   const [personnelFilter, setPersonnelFilter] = useState<'all' | 'active_only' | 'replaced_only'>('all');
 
-  // Metadata
   // Metadata
   const [invoiceNo, setInvoiceNo] = useState<string>('INV-DKS-01');
   const [billingMonth, setBillingMonth] = useState<string>('October');
@@ -243,8 +246,25 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
   const [replacementDateInput, setReplacementDateInput] = useState<string>(new Date().toISOString().split('T')[0]);
   const [replacementRemarks, setReplacementRemarks] = useState<string>('');
 
-  // Financial percentages and deductions
-  const [contingencyRatePct, setContingencyRatePct] = useState<number>(5.0);
+  // Contingency % is derived directly from Contract Amount Schedule & locked
+  // "and the Contingency amount and % should be similar in both page and once set on the contract amount page don't change it"
+  const contractContingencyPct = useMemo(() => {
+    if (consultant.contractAmountSchedule?.condition1?.contingencyPct !== undefined) {
+      return Number(consultant.contractAmountSchedule.condition1.contingencyPct);
+    }
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem(`era_contract_contingency_${project.id}`);
+        if (cached) {
+          const parsed = parseFloat(cached);
+          if (!isNaN(parsed)) return parsed;
+        }
+      } catch (e) {}
+    }
+    return 15.0; // Official default ERA standard
+  }, [consultant.contractAmountSchedule?.condition1?.contingencyPct, project.id]);
+
+  const contingencyRatePct = contractContingencyPct;
   const [contingencyThisInvoiceClaim, setContingencyThisInvoiceClaim] = useState<number>(0);
   const [contingencyPrecedingClaim, setContingencyPrecedingClaim] = useState<number>(0);
   const [vatRatePct, setVatRatePct] = useState<number>(15.0);
@@ -585,7 +605,9 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
       if (activeInvoice.clientName) setClientName(activeInvoice.clientName);
       if (activeInvoice.consultantFirmName) setConsultantFirm(activeInvoice.consultantFirmName);
       if (activeInvoice.vatRate !== undefined) setVatRatePct(activeInvoice.vatRate);
-      if (activeInvoice.contingencyRate !== undefined) setContingencyRatePct(activeInvoice.contingencyRate);
+      if (activeInvoice.contingencyThisInvoiceClaim !== undefined) {
+        setContingencyThisInvoiceClaim(activeInvoice.contingencyThisInvoiceClaim);
+      }
       if (activeInvoice.bankDetails) {
         if (activeInvoice.bankDetails.bankName) setBankName(activeInvoice.bankDetails.bankName);
         if (activeInvoice.bankDetails.branch) setBankBranch(activeInvoice.bankDetails.branch);
@@ -950,15 +972,40 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
     setReducedPositionIds(nextMap);
   };
 
-  // --- Dynamic Computations for Table 4 (Defect Liability) ---
+  // --- Dynamic Computations for Defect Liability (Sub Total 3) ---
   const defectRowsComputed = defectRows.map(row => {
-    const thisAmount = Number((row.thisInvoiceQty * row.rate).toFixed(2));
+    const precQty = Number(row.precedingQty || 0);
+    const precAmt = row.precedingAmount !== undefined ? Number(row.precedingAmount) || 0 : Number((precQty * row.rate).toFixed(2));
+    const thisQty = Number(row.thisInvoiceQty || 0);
+    const thisAmount = row.thisInvoiceAmount !== undefined && row.thisInvoiceAmount > 0
+      ? Number(row.thisInvoiceAmount)
+      : Number((thisQty * row.rate).toFixed(2));
+    const toDateQty = Number((precQty + thisQty).toFixed(2));
+    const toDateAmount = Number((precAmt + thisAmount).toFixed(2));
+    const contractQty = Number(row.contractQty || 0);
+    const contractAmount = row.contractAmount || Number((contractQty * row.rate).toFixed(2));
+    const remainingQty = Math.max(0, Number((contractQty - toDateQty).toFixed(2)));
+    const remainingAmount = Math.max(0, Number((contractAmount - toDateAmount).toFixed(2)));
+
     return {
       ...row,
-      computedThisAmount: thisAmount
+      contractAmount,
+      contractQty,
+      computedThisAmount: thisAmount,
+      precedingQty: precQty,
+      precedingAmount: precAmt,
+      toDateQty,
+      toDateAmount,
+      remainingQty,
+      remainingAmount
     };
   });
+
+  const subTotal3Contract = defectRowsComputed.reduce((sum, r) => sum + (r.contractAmount || 0), 0);
+  const subTotal3Preceding = defectRowsComputed.reduce((sum, r) => sum + (r.precedingAmount || 0), 0);
   const subTotal3ThisInvoice = defectRowsComputed.reduce((sum, r) => sum + (r.computedThisAmount || 0), 0);
+  const subTotal3ToDate = defectRowsComputed.reduce((sum, r) => sum + (r.toDateAmount || 0), 0);
+  const subTotal3Remaining = defectRowsComputed.reduce((sum, r) => sum + (r.remainingAmount || 0), 0);
 
   // --- Dynamic Grand Invoice Summary (Table 5) Linked with Contract Amount Table 1 ---
   const c1StaffFees = consultant.contractAmountSchedule?.condition1?.staffFees || DEFAULT_CONDITION_1_STAFF;
@@ -967,17 +1014,24 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
   }, [c1StaffFees]);
 
   const feesDlpContract = useMemo(() => {
+    if (subTotal3Contract > 0) return subTotal3Contract;
     return c1StaffFees.reduce((sum, r) => sum + ((Number(r.mmDlp) || 0) * (Number(r.rateEtb) || 0)), 0);
-  }, [c1StaffFees]);
+  }, [c1StaffFees, subTotal3Contract]);
 
   const c1Summary = consultant.contractAmountSchedule?.condition1?.summary;
   const linkedFeesContract = feesConstructionContract > 0 ? feesConstructionContract : (c1Summary?.fees ?? subTotal1Contract);
-  const linkedReimbContract = consultant.contractAmountSchedule?.condition1?.reimbursableTotal ?? c1Summary?.reimbursableExpenses ?? subTotal2Contract;
-  const subTotal3Contract = feesDlpContract > 0 ? feesDlpContract : defectRowsComputed.reduce((sum, r) => sum + (r.contractAmount || 0), 0);
+  const linkedReimbContract = subTotal2Contract > 0 ? subTotal2Contract : (consultant.contractAmountSchedule?.condition1?.reimbursableTotal ?? c1Summary?.reimbursableExpenses ?? subTotal2Contract);
   const linkedSubTotalDirect = linkedFeesContract + linkedReimbContract + subTotal3Contract;
 
   const totalBaseContract = linkedSubTotalDirect;
-  const contingencyContract = Number((totalBaseContract * (contingencyRatePct / 100)).toFixed(2));
+  // Contingency Contract Provision: identical to Contract Amount Schedule (once set on contract amount page don't change it)
+  const contingencyContract = useMemo(() => {
+    if (consultant.contractAmountSchedule?.condition1?.summary?.contingency !== undefined && consultant.contractAmountSchedule.condition1.summary.contingency > 0) {
+      return consultant.contractAmountSchedule.condition1.summary.contingency;
+    }
+    return Number((totalBaseContract * (contingencyRatePct / 100)).toFixed(2));
+  }, [consultant.contractAmountSchedule?.condition1?.summary?.contingency, totalBaseContract, contingencyRatePct]);
+
   const grandContractWithContingency = totalBaseContract + contingencyContract;
   const vatContract = Number((grandContractWithContingency * (vatRatePct / 100)).toFixed(2));
   const totalContractDue = grandContractWithContingency + vatContract;
@@ -1004,14 +1058,14 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
   const netDueThisInvoice = isPaymentLocked ? (savedPaymentAmount as number) : calculatedNetDueThisInvoice;
 
   // Preceding Invoice Grand Totals (Minus VAT)
-  const totalSubtotalPreceding = subTotal1Preceding + subTotal2Preceding;
+  const totalSubtotalPreceding = subTotal1Preceding + subTotal2Preceding + subTotal3Preceding;
   const subtotalWithContingencyPreceding = totalSubtotalPreceding + (contingencyPrecedingClaim || 0);
   const vatPreceding = Number((subtotalWithContingencyPreceding * (vatRatePct / 100)).toFixed(2));
   const grossPreceding = subtotalWithContingencyPreceding + vatPreceding;
   const netPreceding = subtotalWithContingencyPreceding;
 
   // To-Date Cumulative (Minus VAT)
-  const totalSubtotalToDate = subTotal1ToDate + subTotal2ToDate;
+  const totalSubtotalToDate = subTotal1ToDate + subTotal2ToDate + subTotal3ToDate;
   const subtotalWithContingencyToDate = totalSubtotalToDate + contingencyToDate;
   const vatToDate = Number((subtotalWithContingencyToDate * (vatRatePct / 100)).toFixed(2));
   const grossToDate = subtotalWithContingencyToDate + vatToDate;
@@ -1199,6 +1253,49 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
     setReimbursableRows(prev => prev.filter(item => item.id !== id));
   };
 
+  // Defect Liability Staff Allocation Editing (Sub Total 3)
+  const handleUpdateDefectRow = (id: string, updates: Partial<EditableDefectLiabilityRow>) => {
+    setDefectRows(prev => prev.map(item => {
+      if (item.id === id) {
+        const updated = { ...item, ...updates };
+        if (updates.rate !== undefined || updates.contractQty !== undefined) {
+          const rate = updates.rate !== undefined ? Number(updates.rate) || 0 : item.rate;
+          const qty = updates.contractQty !== undefined ? Number(updates.contractQty) || 0 : item.contractQty;
+          updated.contractAmount = Number((rate * qty).toFixed(2));
+        }
+        if (updates.thisInvoiceQty !== undefined) {
+          const qty = Number(updates.thisInvoiceQty) || 0;
+          updated.thisInvoiceAmount = Number((qty * (updated.rate || item.rate)).toFixed(2));
+        }
+        return updated;
+      }
+      return item;
+    }));
+  };
+
+  const handleAddDefectRow = () => {
+    const newId = `dl_custom_${Date.now()}`;
+    const newRow: EditableDefectLiabilityRow = {
+      id: newId,
+      position: 'Additional Defect Liability Expert',
+      name: 'To be nominated',
+      unit: 'Month',
+      rate: 18500.00,
+      contractQty: 1.0,
+      contractAmount: 18500.00,
+      thisInvoiceQty: 0,
+      thisInvoiceAmount: 0,
+      precedingQty: 0,
+      precedingAmount: 0
+    };
+    setDefectRows(prev => [...prev, newRow]);
+  };
+
+  const handleDeleteDefectRow = (id: string) => {
+    if (defectRows.length <= 1) return;
+    setDefectRows(prev => prev.filter(item => item.id !== id));
+  };
+
   // =========================================================================
   // PROCEED TO NEXT MONTH (ROLL FORWARD)
   // Preserves replaced predecessor records, rolls cumulative amounts to preceding,
@@ -1234,6 +1331,15 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
       precedingAmount: r.toDateAmount
     }));
 
+    // Roll forward defect liability rows
+    const rolledDefectRows: EditableDefectLiabilityRow[] = defectRowsComputed.map(d => ({
+      ...d,
+      thisInvoiceQty: 0,
+      thisInvoiceAmount: 0,
+      precedingQty: d.toDateQty,
+      precedingAmount: d.toDateAmount
+    }));
+
     // Update local state
     setInvoiceNo(nextInvNo);
     setBillingMonth(nextMonthName);
@@ -1242,6 +1348,7 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
     setTotalDaysInMonth(nextDaysInMonth);
     setStaffRows(rolledStaffRows);
     setReimbursableRows(rolledReimbursables);
+    setDefectRows(rolledDefectRows);
     setContingencyPrecedingClaim(contingencyToDate);
     setContingencyThisInvoiceClaim(0);
     setStatus('Submitted');
@@ -1294,7 +1401,7 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
         precedingQty: r.precedingQty,
         precedingAmount: r.precedingAmount,
       })),
-      defectLiabilityRecords: defectRowsComputed.map(d => ({
+      defectLiabilityRecords: rolledDefectRows.map(d => ({
         id: d.id,
         position: d.position,
         unit: d.unit,
@@ -1302,7 +1409,9 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
         contractQty: d.contractQty,
         contractAmount: d.contractAmount,
         thisInvoiceQty: 0,
-        thisInvoiceAmount: 0
+        thisInvoiceAmount: 0,
+        precedingQty: d.precedingQty,
+        precedingAmount: d.precedingAmount
       })),
       vatRate: vatRatePct,
       contingencyRate: contingencyRatePct,
@@ -1506,6 +1615,8 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
         contractAmount: d.contractAmount,
         thisInvoiceQty: d.thisInvoiceQty,
         thisInvoiceAmount: d.computedThisAmount,
+        precedingQty: d.precedingQty,
+        precedingAmount: d.precedingAmount
       })),
       vatRate: vatRatePct,
       contingencyRate: contingencyRatePct,
@@ -1820,9 +1931,9 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
           desc: 'Sub Total 3 (Defect Liability Personnel Allocation)',
           contract: fmt(subTotal3Contract),
           thisMonth: fmt(subTotal3ThisInvoice),
-          preceding: '-',
-          toDate: fmt(subTotal3ThisInvoice),
-          remaining: fmt(Math.max(0, subTotal3Contract - subTotal3ThisInvoice))
+          preceding: subTotal3Preceding > 0 ? fmt(subTotal3Preceding) : '-',
+          toDate: fmt(subTotal3ToDate),
+          remaining: fmt(subTotal3Remaining)
         },
         {
           item: 'A+B',
@@ -2444,40 +2555,66 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
           <button
             type="button"
             onClick={() => setActiveTableTab('all')}
-            className={`px-3.5 py-1.5 rounded-xl transition flex items-center gap-1.5 cursor-pointer ${
+            className={`px-3 py-1.5 rounded-xl transition flex items-center gap-1.5 cursor-pointer ${
               activeTableTab === 'all'
                 ? 'bg-blue-600 text-white shadow-xs'
                 : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
             <Layers className="w-3.5 h-3.5" />
-            <span>Complete 2-Table Consolidated View</span>
+            <span>Complete View (All Tables)</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTableTab('attendance')}
-            className={`px-3.5 py-1.5 rounded-xl transition flex items-center gap-1.5 cursor-pointer ${
+            className={`px-3 py-1.5 rounded-xl transition flex items-center gap-1.5 cursor-pointer ${
               activeTableTab === 'attendance'
                 ? 'bg-blue-600 text-white shadow-xs'
                 : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
             <Calendar className="w-3.5 h-3.5" />
-            <span>Table 1: Staff Attendance</span>
+            <span>Table 1: Staff Attendance (Sub Total 1)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTableTab('reimbursables')}
+            className={`px-3 py-1.5 rounded-xl transition flex items-center gap-1.5 cursor-pointer ${
+              activeTableTab === 'reimbursables'
+                ? 'bg-amber-600 text-white shadow-xs'
+                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <Receipt className="w-3.5 h-3.5" />
+            <span>Sub Total 2: Reimbursables</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTableTab('dlp')}
+            className={`px-3 py-1.5 rounded-xl transition flex items-center gap-1.5 cursor-pointer ${
+              activeTableTab === 'dlp'
+                ? 'bg-indigo-600 text-white shadow-xs'
+                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <ShieldCheck className="w-3.5 h-3.5" />
+            <span>Sub Total 3: Defect Liability</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTableTab('summary')}
-            className={`px-3.5 py-1.5 rounded-xl transition flex items-center gap-1.5 cursor-pointer ${
+            className={`px-3 py-1.5 rounded-xl transition flex items-center gap-1.5 cursor-pointer ${
               activeTableTab === 'summary'
-                ? 'bg-blue-600 text-white shadow-xs'
+                ? 'bg-emerald-600 text-white shadow-xs'
                 : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
             <DollarSign className="w-3.5 h-3.5" />
-            <span>Table 5: Summary & Deductions</span>
+            <span>Table 5: Consolidated Summary</span>
           </button>
         </div>
 
@@ -2760,7 +2897,412 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
         </div>
       )}
 
+      {/* ========================================================================= */}
+      {/* SUB TOTAL 2: REIMBURSABLE OPERATING DIRECT COSTS COMPUTATION             */}
+      {/* ========================================================================= */}
+      {(activeTableTab === 'all' || activeTableTab === 'reimbursables') && (
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm space-y-3">
+          <div className="p-4 bg-slate-50/80 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h4 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-lg bg-amber-600 text-white text-xs flex items-center justify-center font-mono font-bold">2</span>
+                  Sub Total 2: Reimbursable Operating Direct Costs Calculation
+                </h4>
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300 dark:border-amber-800 flex items-center gap-1">
+                  <span>Linked to Contract Table 1 Item B / Table B</span>
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Direct field operating expenses (per diem, transport, communications, reports). Enter claimed quantity or claim amount for this period to compute Sub Total 2 before Table 5.
+              </p>
+            </div>
 
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="px-3 py-1 bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 font-bold rounded-xl text-xs border border-amber-200 dark:border-amber-800">
+                This Month Claim: <span className="font-mono">{fmt(subTotal2ThisInvoice)} ETB</span>
+              </span>
+              <button
+                type="button"
+                onClick={handleAddReimbursable}
+                disabled={isPaymentLocked}
+                className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Reimbursable</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="bg-slate-100 dark:bg-slate-800 text-[10px] text-slate-600 dark:text-slate-300 uppercase tracking-wider font-black border-b border-slate-200 dark:border-slate-700">
+                  <th className="py-2.5 px-3 w-10 text-center">#</th>
+                  <th className="py-2.5 px-3 min-w-[220px]">Item Description</th>
+                  <th className="py-2.5 px-2 text-center w-16">Unit</th>
+                  <th className="py-2.5 px-2 text-right min-w-[100px]">Rate (ETB)</th>
+                  <th className="py-2.5 px-2 text-right min-w-[80px]">Contract Qty</th>
+                  <th className="py-2.5 px-3 text-right min-w-[110px]">Contract Amount</th>
+                  <th className="py-2.5 px-2 text-right min-w-[80px]">Preceding Qty</th>
+                  <th className="py-2.5 px-3 text-right min-w-[105px]">Preceding Amount</th>
+                  <th className="py-2.5 px-2 text-center min-w-[100px] bg-amber-50/50 dark:bg-amber-950/20 text-amber-900 dark:text-amber-200 font-black">
+                    This Month Claim Qty
+                  </th>
+                  <th className="py-2.5 px-3 text-right min-w-[125px] bg-amber-50/60 dark:bg-amber-950/30 text-amber-900 dark:text-amber-200 font-black">
+                    This Month Claim (ETB)
+                  </th>
+                  <th className="py-2.5 px-2 text-right min-w-[80px]">To-Date Qty</th>
+                  <th className="py-2.5 px-3 text-right min-w-[110px] font-bold">To-Date Amount</th>
+                  <th className="py-2.5 px-3 text-right min-w-[110px] text-emerald-600 font-bold">Remaining Balance</th>
+                  <th className="py-2.5 px-2 text-center w-12">Act</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-sans text-xs">
+                {reimbursableRowsComputed.length === 0 ? (
+                  <tr>
+                    <td colSpan={14} className="py-8 text-center text-slate-400">
+                      No reimbursable operating expenses defined. Click "+ Add Reimbursable" to add.
+                    </td>
+                  </tr>
+                ) : (
+                  reimbursableRowsComputed.map((row, idx) => (
+                    <tr key={row.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
+                      <td className="py-2 px-3 text-center font-mono text-slate-400 font-bold">{idx + 1}</td>
+                      <td className="py-2 px-3 font-semibold text-slate-800 dark:text-slate-200">
+                        <input
+                          type="text"
+                          value={row.description}
+                          disabled={isPaymentLocked}
+                          onChange={(e) => handleUpdateReimbursable(row.id, { description: e.target.value })}
+                          className="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-amber-500 focus:outline-none text-xs"
+                        />
+                      </td>
+                      <td className="py-2 px-2 text-center font-mono">
+                        <input
+                          type="text"
+                          value={row.unit}
+                          disabled={isPaymentLocked}
+                          onChange={(e) => handleUpdateReimbursable(row.id, { unit: e.target.value })}
+                          className="w-12 text-center bg-transparent border-b border-transparent hover:border-slate-300 focus:border-amber-500 focus:outline-none text-xs font-mono"
+                        />
+                      </td>
+                      <td className="py-2 px-2 text-right font-mono">
+                        <input
+                          type="number"
+                          step="any"
+                          value={row.rate}
+                          disabled={isPaymentLocked}
+                          onChange={(e) => handleUpdateReimbursable(row.id, { rate: parseFloat(e.target.value) || 0 })}
+                          className="w-24 text-right bg-transparent border-b border-transparent hover:border-slate-300 focus:border-amber-500 focus:outline-none text-xs font-mono"
+                        />
+                      </td>
+                      <td className="py-2 px-2 text-right font-mono text-slate-600 dark:text-slate-400">
+                        <input
+                          type="number"
+                          step="any"
+                          value={row.contractQty}
+                          disabled={isPaymentLocked}
+                          onChange={(e) => handleUpdateReimbursable(row.id, { contractQty: parseFloat(e.target.value) || 0 })}
+                          className="w-16 text-right bg-transparent border-b border-transparent hover:border-slate-300 focus:border-amber-500 focus:outline-none text-xs font-mono"
+                        />
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono font-semibold text-slate-700 dark:text-slate-300">
+                        {fmt(row.contractAmount)}
+                      </td>
+                      <td className="py-2 px-2 text-right font-mono text-slate-500">
+                        {(row.precedingQty || 0).toFixed(2)}
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono text-slate-500">
+                        {fmt(row.precedingAmount || 0)}
+                      </td>
+                      <td className="py-2 px-2 text-center bg-amber-50/30 dark:bg-amber-950/20">
+                        <input
+                          type="number"
+                          step="any"
+                          min="0"
+                          value={row.thisInvoiceQty}
+                          disabled={isPaymentLocked}
+                          onChange={(e) => {
+                            const qty = parseFloat(e.target.value) || 0;
+                            handleUpdateReimbursable(row.id, { 
+                              thisInvoiceQty: qty,
+                              thisInvoiceAmount: Number((qty * row.rate).toFixed(2))
+                            });
+                          }}
+                          className={`w-20 text-center px-1.5 py-1 rounded border font-mono font-bold text-xs ${
+                            isPaymentLocked
+                              ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200'
+                              : 'border-amber-300 dark:border-amber-800 bg-white dark:bg-slate-900 text-amber-700 dark:text-amber-300 focus:ring-1 focus:ring-amber-500'
+                          }`}
+                        />
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono font-bold bg-amber-50/40 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300">
+                        <input
+                          type="number"
+                          step="any"
+                          min="0"
+                          value={row.computedThisAmount}
+                          disabled={isPaymentLocked}
+                          onChange={(e) => {
+                            const amt = parseFloat(e.target.value) || 0;
+                            handleUpdateReimbursable(row.id, { 
+                              thisInvoiceAmount: amt,
+                              thisInvoiceQty: row.rate > 0 ? Number((amt / row.rate).toFixed(2)) : row.thisInvoiceQty
+                            });
+                          }}
+                          className={`w-28 text-right px-1.5 py-1 rounded border font-mono font-bold text-xs ${
+                            isPaymentLocked
+                              ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200'
+                              : 'border-amber-300 dark:border-amber-800 bg-white dark:bg-slate-900 text-amber-700 dark:text-amber-300 focus:ring-1 focus:ring-amber-500'
+                          }`}
+                        />
+                      </td>
+                      <td className="py-2 px-2 text-right font-mono font-semibold">
+                        {row.toDateQty.toFixed(2)}
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono font-bold">
+                        {fmt(row.toDateAmount)}
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono font-semibold text-emerald-600 dark:text-emerald-400">
+                        {fmt(row.remainingAmount)}
+                      </td>
+                      <td className="py-2 px-2 text-center">
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteReimbursable(row.id)}
+                          disabled={isPaymentLocked}
+                          className="p-1 hover:bg-rose-50 dark:hover:bg-rose-950 text-rose-500 rounded transition cursor-pointer"
+                          title="Delete reimbursable line item"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+              <tfoot className="border-t-2 border-slate-300 dark:border-slate-700 font-bold bg-amber-50/50 dark:bg-slate-800 text-xs">
+                <tr>
+                  <td colSpan={5} className="py-2.5 px-3 text-amber-900 dark:text-amber-200 uppercase text-[10px] font-black">
+                    Sub-Total 2 (Reimbursable Direct Operating Costs):
+                  </td>
+                  <td className="py-2.5 px-3 text-right font-mono text-slate-900 dark:text-white">
+                    {fmt(subTotal2Contract)} ETB
+                  </td>
+                  <td></td>
+                  <td className="py-2.5 px-3 text-right font-mono text-slate-600 dark:text-slate-400">
+                    {fmt(subTotal2Preceding)} ETB
+                  </td>
+                  <td></td>
+                  <td className="py-2.5 px-3 text-right font-mono font-black text-amber-700 dark:text-amber-300">
+                    {fmt(subTotal2ThisInvoice)} ETB
+                  </td>
+                  <td></td>
+                  <td className="py-2.5 px-3 text-right font-mono font-black">
+                    {fmt(subTotal2ToDate)} ETB
+                  </td>
+                  <td className="py-2.5 px-3 text-right font-mono font-black text-emerald-600 dark:text-emerald-400">
+                    {fmt(subTotal2Remaining)} ETB
+                  </td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* SUB TOTAL 3: DEFECT LIABILITY PERSONNEL ALLOCATION COMPUTATION           */}
+      {/* ========================================================================= */}
+      {(activeTableTab === 'all' || activeTableTab === 'dlp') && (
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm space-y-3">
+          <div className="p-4 bg-slate-50/80 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h4 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-lg bg-indigo-600 text-white text-xs flex items-center justify-center font-mono font-bold">3</span>
+                  Sub Total 3: Defect Liability Period (DLP) Personnel Allocation
+                </h4>
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-800 flex items-center gap-1">
+                  <span>Linked to Contract Table 3 (DLP Remuneration Schedule)</span>
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Defect Liability Period supervisory personnel allocation. Enter man-months expended for this billing period to compute Sub Total 3 before Table 5.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="px-3 py-1 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-300 font-bold rounded-xl text-xs border border-indigo-200 dark:border-indigo-800">
+                This Month Claim: <span className="font-mono">{fmt(subTotal3ThisInvoice)} ETB</span>
+              </span>
+              <button
+                type="button"
+                onClick={handleAddDefectRow}
+                disabled={isPaymentLocked}
+                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add DLP Position</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="bg-slate-100 dark:bg-slate-800 text-[10px] text-slate-600 dark:text-slate-300 uppercase tracking-wider font-black border-b border-slate-200 dark:border-slate-700">
+                  <th className="py-2.5 px-3 w-10 text-center">#</th>
+                  <th className="py-2.5 px-3 min-w-[220px]">DLP Personnel Position & Name</th>
+                  <th className="py-2.5 px-2 text-center w-16">Unit</th>
+                  <th className="py-2.5 px-2 text-right min-w-[105px]">Monthly Rate (ETB)</th>
+                  <th className="py-2.5 px-2 text-right min-w-[90px]">Contract MM</th>
+                  <th className="py-2.5 px-3 text-right min-w-[110px]">Contract Amount</th>
+                  <th className="py-2.5 px-2 text-right min-w-[85px]">Preceding MM</th>
+                  <th className="py-2.5 px-3 text-right min-w-[105px]">Preceding Claim</th>
+                  <th className="py-2.5 px-2 text-center min-w-[100px] bg-indigo-50/50 dark:bg-indigo-950/20 text-indigo-900 dark:text-indigo-200 font-black">
+                    This Month MM Input
+                  </th>
+                  <th className="py-2.5 px-3 text-right min-w-[125px] bg-indigo-50/60 dark:bg-indigo-950/30 text-indigo-900 dark:text-indigo-200 font-black">
+                    This Month Claim (ETB)
+                  </th>
+                  <th className="py-2.5 px-2 text-right min-w-[85px]">To-Date MM</th>
+                  <th className="py-2.5 px-3 text-right min-w-[110px] font-bold">To-Date Claim</th>
+                  <th className="py-2.5 px-3 text-right min-w-[110px] text-emerald-600 font-bold">Remaining Balance</th>
+                  <th className="py-2.5 px-2 text-center w-12">Act</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-sans text-xs">
+                {defectRowsComputed.length === 0 ? (
+                  <tr>
+                    <td colSpan={14} className="py-8 text-center text-slate-400">
+                      No DLP personnel allocation rows defined. Click "+ Add DLP Position" to add.
+                    </td>
+                  </tr>
+                ) : (
+                  defectRowsComputed.map((row, idx) => (
+                    <tr key={row.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
+                      <td className="py-2 px-3 text-center font-mono text-slate-400 font-bold">{idx + 1}</td>
+                      <td className="py-2 px-3 font-semibold text-slate-800 dark:text-slate-200">
+                        <input
+                          type="text"
+                          value={row.position}
+                          disabled={isPaymentLocked}
+                          onChange={(e) => handleUpdateDefectRow(row.id, { position: e.target.value })}
+                          className="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-500 focus:outline-none text-xs font-medium"
+                        />
+                      </td>
+                      <td className="py-2 px-2 text-center font-mono text-slate-500">{row.unit || 'Month'}</td>
+                      <td className="py-2 px-2 text-right font-mono">
+                        <input
+                          type="number"
+                          step="any"
+                          value={row.rate}
+                          disabled={isPaymentLocked}
+                          onChange={(e) => handleUpdateDefectRow(row.id, { rate: parseFloat(e.target.value) || 0 })}
+                          className="w-24 text-right bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-500 focus:outline-none text-xs font-mono"
+                        />
+                      </td>
+                      <td className="py-2 px-2 text-right font-mono text-slate-600 dark:text-slate-400">
+                        <input
+                          type="number"
+                          step="any"
+                          value={row.contractQty}
+                          disabled={isPaymentLocked}
+                          onChange={(e) => handleUpdateDefectRow(row.id, { contractQty: parseFloat(e.target.value) || 0 })}
+                          className="w-16 text-right bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-500 focus:outline-none text-xs font-mono"
+                        />
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono font-semibold text-slate-700 dark:text-slate-300">
+                        {fmt(row.contractAmount)}
+                      </td>
+                      <td className="py-2 px-2 text-right font-mono text-slate-500">
+                        {(row.precedingQty || 0).toFixed(2)}
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono text-slate-500">
+                        {fmt(row.precedingAmount || 0)}
+                      </td>
+                      <td className="py-2 px-2 text-center bg-indigo-50/30 dark:bg-indigo-950/20">
+                        <input
+                          type="number"
+                          step="any"
+                          min="0"
+                          max={row.contractQty || 12}
+                          value={row.thisInvoiceQty}
+                          disabled={isPaymentLocked}
+                          onChange={(e) => {
+                            const mm = parseFloat(e.target.value) || 0;
+                            handleUpdateDefectRow(row.id, { 
+                              thisInvoiceQty: mm,
+                              thisInvoiceAmount: Number((mm * row.rate).toFixed(2))
+                            });
+                          }}
+                          className={`w-20 text-center px-1.5 py-1 rounded border font-mono font-bold text-xs ${
+                            isPaymentLocked
+                              ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200'
+                              : 'border-indigo-300 dark:border-indigo-800 bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-300 focus:ring-1 focus:ring-indigo-500'
+                          }`}
+                        />
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono font-bold bg-indigo-50/40 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300">
+                        {fmt(row.computedThisAmount)}
+                      </td>
+                      <td className="py-2 px-2 text-right font-mono font-semibold">
+                        {row.toDateQty.toFixed(2)}
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono font-bold">
+                        {fmt(row.toDateAmount)}
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono font-semibold text-emerald-600 dark:text-emerald-400">
+                        {fmt(row.remainingAmount)}
+                      </td>
+                      <td className="py-2 px-2 text-center">
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteDefectRow(row.id)}
+                          disabled={isPaymentLocked}
+                          className="p-1 hover:bg-rose-50 dark:hover:bg-rose-950 text-rose-500 rounded transition cursor-pointer"
+                          title="Delete DLP position"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+              <tfoot className="border-t-2 border-slate-300 dark:border-slate-700 font-bold bg-indigo-50/50 dark:bg-slate-800 text-xs">
+                <tr>
+                  <td colSpan={5} className="py-2.5 px-3 text-indigo-900 dark:text-indigo-200 uppercase text-[10px] font-black">
+                    Sub-Total 3 (Defect Liability Personnel Allocation):
+                  </td>
+                  <td className="py-2.5 px-3 text-right font-mono text-slate-900 dark:text-white">
+                    {fmt(subTotal3Contract)} ETB
+                  </td>
+                  <td></td>
+                  <td className="py-2.5 px-3 text-right font-mono text-slate-600 dark:text-slate-400">
+                    {fmt(subTotal3Preceding)} ETB
+                  </td>
+                  <td></td>
+                  <td className="py-2.5 px-3 text-right font-mono font-black text-indigo-700 dark:text-indigo-300">
+                    {fmt(subTotal3ThisInvoice)} ETB
+                  </td>
+                  <td></td>
+                  <td className="py-2.5 px-3 text-right font-mono font-black">
+                    {fmt(subTotal3ToDate)} ETB
+                  </td>
+                  <td className="py-2.5 px-3 text-right font-mono font-black text-emerald-600 dark:text-emerald-400">
+                    {fmt(subTotal3Remaining)} ETB
+                  </td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* ========================================================================= */}
       {/* TABLE 5: CONSOLIDATED SUMMARY & DEDUCTION COMPUTATION                    */}
@@ -2877,12 +3419,12 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                       {fmt(subTotal3ThisInvoice)}
                     </td>
                     {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-50/20">$0.00</td>}
-                    <td className="py-2.5 px-4 text-right font-mono text-slate-400">-</td>
+                    <td className="py-2.5 px-4 text-right font-mono text-slate-600 dark:text-slate-400">{subTotal3Preceding > 0 ? fmt(subTotal3Preceding) : '-'}</td>
                     {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-purple-600/80 bg-purple-50/20">-</td>}
-                    <td className="py-2.5 px-4 text-right font-mono font-bold text-indigo-600 dark:text-indigo-400">{fmt(subTotal3ThisInvoice)}</td>
+                    <td className="py-2.5 px-4 text-right font-mono font-bold text-indigo-600 dark:text-indigo-400">{fmt(subTotal3ToDate)}</td>
                     {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-50/20">$0.00</td>}
                     <td className="py-2.5 px-4 text-right font-mono text-emerald-600 dark:text-emerald-400 font-semibold">
-                      {fmt(Math.max(0, subTotal3Contract - subTotal3ThisInvoice))}
+                      {fmt(subTotal3Remaining)}
                     </td>
                     {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-purple-600 dark:text-purple-400 font-semibold bg-purple-50/20">$0.00</td>}
                   </tr>
@@ -2922,18 +3464,11 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                         </div>
                         <div className="flex items-center gap-2 text-[11px] text-slate-500 flex-wrap">
                           <span>Contract Provision Baseline:</span>
-                          <div className="flex items-center gap-1 font-mono text-xs bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded border border-slate-300 dark:border-slate-700">
-                            <input
-                              type="number"
-                              step="0.5"
-                              value={contingencyRatePct}
-                              onChange={(e) => setContingencyRatePct(parseFloat(e.target.value) || 0)}
-                              className="w-10 text-center bg-transparent focus:outline-none font-bold text-slate-800 dark:text-white"
-                              title="Contract baseline contingency ceiling"
-                            />
-                            <span>%</span>
-                          </div>
-                          <span className="text-[10px] text-slate-400 font-mono">({fmt(contingencyContract)} ETB Contract Total)</span>
+                          <span className="px-2 py-0.5 rounded-md font-mono font-bold text-xs bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800 flex items-center gap-1" title="Contingency % is set on Contract Amount Schedule and locked">
+                            <Lock className="w-2.5 h-2.5" />
+                            <span>{contingencyRatePct}% of Direct Services (A+B)</span>
+                          </span>
+                          <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">({fmt(contingencyContract)} ETB Contract Total)</span>
                         </div>
                       </div>
                     </td>

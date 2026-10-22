@@ -5819,6 +5819,12 @@ let isBatchSyncRunning = false;
                   onRejectUser={handleRejectUserSetting}
                   pdfReportConfig={pdfReportConfig}
                   onUpdatePdfReportConfig={setPdfReportConfig}
+                  auditLogs={workflowAuditLogs}
+                  projects={projects}
+                  onClearAuditLogs={() => {
+                    setWorkflowAuditLogs([]);
+                    safeSetItem('era_workflow_audit_logs_v1', JSON.stringify([]));
+                  }}
                 />
               )}
             </>

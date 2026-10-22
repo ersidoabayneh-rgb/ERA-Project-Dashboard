@@ -2268,6 +2268,37 @@ export default function DashboardView({
           </div>
         </div>
 
+        {/* Custom Linear Items from Linear Diagram Page */}
+        {project.customLinearItems && project.customLinearItems.length > 0 && (
+          <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-3 sm:p-4 rounded-xl shadow-xs space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700/50 pb-2">
+              <div className="flex items-center gap-2">
+                <Layers className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                <h3 className="text-xs font-bold text-slate-800 dark:text-zinc-100 uppercase tracking-tight">Custom Linear Milestone Items (Added from Linear Diagram)</h3>
+              </div>
+              <span className="text-[10px] font-mono bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 px-2 py-0.5 rounded-full border border-indigo-200 dark:border-indigo-800">
+                {project.customLinearItems.length} Item{project.customLinearItems.length > 1 ? 's' : ''}
+              </span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+              {project.customLinearItems.map((item, idx) => (
+                <div key={item.id || idx} className="bg-slate-50 dark:bg-slate-850 p-3 rounded-xl border border-slate-200 dark:border-slate-800 space-y-1.5">
+                  <div className="flex justify-between items-start">
+                    <span className="font-bold text-xs text-slate-900 dark:text-white">{item.name}</span>
+                    <span className="text-[9px] font-black uppercase bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 px-1.5 py-0.5 rounded">
+                      {item.layer}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center text-[10px] text-slate-500 font-mono pt-1 border-t border-slate-200/50 dark:border-slate-700/50">
+                    <span>Station: {item.station}</span>
+                    <span className="font-bold text-slate-700 dark:text-slate-200">{item.km} Km</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Progress target column chart */}
         <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-3 sm:p-3.5 rounded-xl shadow-xs space-y-2 min-w-0">
           <div className="flex flex-col gap-2 border-b border-slate-100 dark:border-slate-700/50 pb-2">

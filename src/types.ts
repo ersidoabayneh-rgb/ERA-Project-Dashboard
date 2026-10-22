@@ -735,6 +735,7 @@ export interface Project {
     lastUpdated?: string;
     updatedBy?: string;
   }>;
+  customLinearItems?: any[];
 }
 
 export interface DailyActivityEquipmentItem {
