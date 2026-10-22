@@ -75,7 +75,9 @@ export interface EditableStaffRow {
 
 export interface EditableReimbursableRow {
   id: string;
+  no?: string;
   description: string;
+  basis?: string;
   unit: string;
   rate: number;
   effectiveRate?: number;
@@ -266,7 +268,9 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
 
   const contingencyRatePct = contractContingencyPct;
   const [contingencyThisInvoiceClaim, setContingencyThisInvoiceClaim] = useState<number>(0);
-  const [contingencyPrecedingClaim, setContingencyPrecedingClaim] = useState<number>(0);
+  const [contingencyThisInvoiceClaimUsd, setContingencyThisInvoiceClaimUsd] = useState<number>(0);
+  const [contingencyToDateEtb, setContingencyToDateEtb] = useState<number>(0);
+  const [contingencyToDateUsd, setContingencyToDateUsd] = useState<number>(0);
   const [vatRatePct, setVatRatePct] = useState<number>(15.0);
   const [advanceDeductionEtb, setAdvanceDeductionEtb] = useState<number>(0);
   const [taxDeductionEtb, setTaxDeductionEtb] = useState<number>(0);
@@ -491,47 +495,53 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
     // and synchronize contract reimbursable items from Table 1.2
     const c1ReimbList = consultant.contractAmountSchedule?.condition1?.reimbursableList || [];
     setReimbursableRows(prev => {
+      if (c1ReimbList.length > 0) {
+        return c1ReimbList.map((c, idx) => {
+          const matchedPrev = prev.find(r => 
+            r.id === c.id || 
+            (r.no && c.no && r.no.trim() === c.no.trim()) ||
+            r.description.toLowerCase().trim() === c.item.toLowerCase().trim() ||
+            c.item.toLowerCase().includes(r.description.toLowerCase()) ||
+            r.description.toLowerCase().includes(c.item.toLowerCase())
+          );
+          const cum = cumulativeReimbInputs[c.id || ''] || cumulativeReimbInputs[c.item] || (matchedPrev ? cumulativeReimbInputs[matchedPrev.id] : { qty: 0, amount: 0 }) || { qty: 0, amount: 0 };
+          const matchedInv = activeInvoice?.reimbursableRecords?.find((s: any) => 
+            s.id === c.id || s.description === c.item || (matchedPrev && s.id === matchedPrev.id)
+          );
+
+          const contractAmount = c.amountEtb !== undefined ? c.amountEtb : (matchedPrev?.contractAmount ?? 0);
+          const contractQty = matchedPrev?.contractQty ?? 1;
+          const rate = matchedPrev?.rate ?? (contractQty > 0 ? Number((contractAmount / contractQty).toFixed(2)) : contractAmount);
+
+          return {
+            id: c.id || matchedPrev?.id || `reimb_${idx + 1}`,
+            no: c.no || String(idx + 1),
+            description: c.item,
+            basis: c.basis || matchedPrev?.basis || '',
+            unit: matchedPrev?.unit || 'LS',
+            rate: rate,
+            contractQty: contractQty,
+            contractAmount: contractAmount,
+            precedingQty: cum.qty,
+            precedingAmount: cum.amount,
+            thisInvoiceQty: matchedInv?.thisInvoiceQty !== undefined ? matchedInv.thisInvoiceQty : (matchedPrev?.thisInvoiceQty || 0),
+            thisInvoiceAmount: matchedInv?.thisInvoiceAmount !== undefined ? matchedInv.thisInvoiceAmount : (matchedPrev?.thisInvoiceAmount || 0)
+          };
+        });
+      }
+
       const updated = prev.map(r => {
         const cum = cumulativeReimbInputs[r.id] || cumulativeReimbInputs[r.description] || { qty: 0, amount: 0 };
         const matched = activeInvoice?.reimbursableRecords?.find((s: any) => s.id === r.id || s.description === r.description);
-        const contractMatched = c1ReimbList.find(c => 
-          c.item.toLowerCase().trim() === r.description.toLowerCase().trim() ||
-          c.item.toLowerCase().includes(r.description.toLowerCase()) ||
-          r.description.toLowerCase().includes(c.item.toLowerCase())
-        );
 
         return {
           ...r,
-          contractAmount: contractMatched?.amountEtb !== undefined ? contractMatched.amountEtb : r.contractAmount,
           precedingQty: cum.qty,
           precedingAmount: cum.amount,
           thisInvoiceQty: matched?.thisInvoiceQty !== undefined ? matched.thisInvoiceQty : (matched?.thisQty !== undefined ? matched.thisQty : r.thisInvoiceQty),
           thisInvoiceAmount: matched?.thisInvoiceAmount !== undefined ? matched.thisInvoiceAmount : r.thisInvoiceAmount,
           rate: matched?.rate !== undefined ? matched.rate : r.rate
         };
-      });
-
-      // Add any reimbursables from Table 1.2 not already in list
-      c1ReimbList.forEach(c => {
-        const exists = updated.some(r => 
-          r.description.toLowerCase().trim() === c.item.toLowerCase().trim() ||
-          r.description.toLowerCase().includes(c.item.toLowerCase()) ||
-          c.item.toLowerCase().includes(r.description.toLowerCase())
-        );
-        if (!exists) {
-          updated.push({
-            id: c.id || `reimb_${Date.now()}_${Math.random()}`,
-            description: c.item,
-            unit: 'LS',
-            rate: c.amountEtb,
-            contractQty: 1,
-            contractAmount: c.amountEtb,
-            thisInvoiceQty: 0,
-            thisInvoiceAmount: 0,
-            precedingQty: 0,
-            precedingAmount: 0
-          });
-        }
       });
 
       return updated;
@@ -607,6 +617,15 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
       if (activeInvoice.vatRate !== undefined) setVatRatePct(activeInvoice.vatRate);
       if (activeInvoice.contingencyThisInvoiceClaim !== undefined) {
         setContingencyThisInvoiceClaim(activeInvoice.contingencyThisInvoiceClaim);
+      }
+      if (activeInvoice.contingencyThisInvoiceClaimUsd !== undefined) {
+        setContingencyThisInvoiceClaimUsd(activeInvoice.contingencyThisInvoiceClaimUsd);
+      }
+      if (activeInvoice.contingencyToDateEtb !== undefined) {
+        setContingencyToDateEtb(activeInvoice.contingencyToDateEtb);
+      }
+      if (activeInvoice.contingencyToDateUsd !== undefined) {
+        setContingencyToDateUsd(activeInvoice.contingencyToDateUsd);
       }
       if (activeInvoice.bankDetails) {
         if (activeInvoice.bankDetails.bankName) setBankName(activeInvoice.bankDetails.bankName);
@@ -687,9 +706,9 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
     return (val || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
 
-  // Convert numbers to text words
-  const numberToWords = (num: number): string => {
-    if (num === 0) return 'Zero Birr Only';
+  // Convert numbers to text words with currency support (ETB & USD)
+  const numberToWordsCurrency = (num: number, currency: 'ETB' | 'USD' = 'ETB'): string => {
+    if (num === 0) return currency === 'USD' ? 'Zero US Dollars Only' : 'Zero Birr Only';
     const a = ['', 'One ', 'Two ', 'Three ', 'Four ', 'Five ', 'Six ', 'Seven ', 'Eight ', 'Nine ', 'Ten ', 'Eleven ', 'Twelve ', 'Thirteen ', 'Fourteen ', 'Fifteen ', 'Sixteen ', 'Seventeen ', 'Eighteen ', 'Nineteen '];
     const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
 
@@ -728,9 +747,15 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
 
     const wholeWords = inWords(n).trim();
     const cents = parseInt(decimalPartStr, 10);
+    if (currency === 'USD') {
+      const centsWords = cents > 0 ? ` and ${inWords(cents).trim()} Cents` : ' and Zero Cents';
+      return `${wholeWords} US Dollars${centsWords} Only`;
+    }
     const centsWords = cents > 0 ? ` and ${inWords(cents).trim()} Cents` : ' and Zero Cents';
     return `${wholeWords} Birr${centsWords} Only`;
   };
+
+  const numberToWords = (num: number): string => numberToWordsCurrency(num, 'ETB');
 
   // Personnel count metrics
   const activeStaffCount = useMemo(() => staffRows.filter(r => r.status === 'Active').length, [staffRows]);
@@ -1040,9 +1065,12 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
 
   // This Invoice Grand Totals
   const totalSubtotalThisInvoice = subTotal1ThisInvoice + subTotal2ThisInvoice + subTotal3ThisInvoice;
-  // User-assigned contingency claim for this invoice (not directly calculated from contract)
+  // User-assigned contingency claim for this invoice
   const contingencyThisInvoice = Number((contingencyThisInvoiceClaim || 0).toFixed(2));
-  const contingencyToDate = Number(((contingencyPrecedingClaim || 0) + contingencyThisInvoice).toFixed(2));
+  // Total To-Date Contingency: defaults to contract contingency baseline if not set explicitly
+  const contingencyToDate = contingencyToDateEtb > 0 ? contingencyToDateEtb : contingencyContract;
+  // Previous month amount (Preceding Claim) computed dynamically: Preceding ETB = To-Date ETB - This Month ETB
+  const contingencyPrecedingClaim = Math.max(0, Number((contingencyToDate - contingencyThisInvoice).toFixed(2)));
   const subtotalWithContingencyThisInvoice = totalSubtotalThisInvoice + contingencyThisInvoice;
   const vatThisInvoice = Number((subtotalWithContingencyThisInvoice * (vatRatePct / 100)).toFixed(2));
   const grossPayableBase = subtotalWithContingencyThisInvoice + vatThisInvoice;
@@ -1151,7 +1179,10 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
 
   const subTotal3ThisInvoiceUsd = 0;
   const totalSubtotalThisInvoiceUsd = subTotal1ThisInvoiceUsd + subTotal2ThisInvoiceUsd + subTotal3ThisInvoiceUsd;
-  const contingencyThisInvoiceUsd = Number(((contingencyThisInvoice || 0) * (subTotal1ThisInvoiceUsd / (subTotal1ThisInvoice || 1))).toFixed(2));
+  const contingencyThisInvoiceUsd = Number((contingencyThisInvoiceClaimUsd || 0).toFixed(2));
+  const contingencyToDateUsdValue = contingencyToDateUsd > 0 ? contingencyToDateUsd : contingencyContractUsd;
+  // Previous month amount (Preceding Claim USD) computed dynamically: Preceding USD = To-Date USD - This Month USD
+  const contingencyPrecedingClaimUsd = Math.max(0, Number((contingencyToDateUsdValue - contingencyThisInvoiceUsd).toFixed(2)));
   const subtotalWithContingencyThisInvoiceUsd = totalSubtotalThisInvoiceUsd + contingencyThisInvoiceUsd;
   const vatThisInvoiceUsd = Number((subtotalWithContingencyThisInvoiceUsd * (vatRatePct / 100)).toFixed(2));
   const grossPayableBaseUsd = subtotalWithContingencyThisInvoiceUsd + vatThisInvoiceUsd;
@@ -1349,8 +1380,10 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
     setStaffRows(rolledStaffRows);
     setReimbursableRows(rolledReimbursables);
     setDefectRows(rolledDefectRows);
-    setContingencyPrecedingClaim(contingencyToDate);
+    setContingencyToDateEtb(contingencyToDate);
+    setContingencyToDateUsd(contingencyToDateUsdValue);
     setContingencyThisInvoiceClaim(0);
+    setContingencyThisInvoiceClaimUsd(0);
     setStatus('Submitted');
     setPaymentReference('');
     setPaymentDate('');
@@ -1415,6 +1448,10 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
       })),
       vatRate: vatRatePct,
       contingencyRate: contingencyRatePct,
+      contingencyThisInvoiceClaim: 0,
+      contingencyThisInvoiceClaimUsd: 0,
+      contingencyToDateEtb: contingencyToDate,
+      contingencyToDateUsd: contingencyToDateUsdValue,
       clientName: clientName,
       consultantFirmName: consultantFirm,
       bankDetails: {
@@ -1620,6 +1657,10 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
       })),
       vatRate: vatRatePct,
       contingencyRate: contingencyRatePct,
+      contingencyThisInvoiceClaim: contingencyThisInvoiceClaim,
+      contingencyThisInvoiceClaimUsd: contingencyThisInvoiceClaimUsd,
+      contingencyToDateEtb: contingencyToDate,
+      contingencyToDateUsd: contingencyToDateUsdValue,
       clientName: clientName,
       consultantFirmName: consultantFirm,
       bankDetails: {
@@ -1649,7 +1690,10 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
     setTimeout(() => setSaveSuccessMsg(null), 4000);
   };
 
-  // Export Monthly Invoice Tables (Table 1 Attendance & Table 5 Consolidated Summary) as a Formatted PDF Report
+  // Compact PDF Export Mode Toggle
+  const [isCompactPdfMode, setIsCompactPdfMode] = useState<boolean>(false);
+
+  // Export Monthly Invoice Tables (Table 1, Sub Total 2, Sub Total 3, & Table 5) as a Formatted PDF Report
   const handleExportMonthlyInvoicePDF = () => {
     try {
       const doc = new jsPDF({
@@ -1660,7 +1704,14 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
       const margin = 36;
-      let pageNum = 1;
+      const contentWidth = pageWidth - margin * 2;
+      const totalPages = 4;
+
+      // Compact Mode Dynamic Formatting Parameters
+      const fontSizeData = isCompactPdfMode ? 5.5 : 6;
+      const fontSizeHeader = isCompactPdfMode ? 5.5 : 6;
+      const lineStep = isCompactPdfMode ? 6.5 : 7.5;
+      const minRowH = isCompactPdfMode ? 9.5 : 12;
 
       const drawPageHeader = (pNum: number, tableTitle: string) => {
         // Outer border frame
@@ -1691,7 +1742,7 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(6);
         doc.setTextColor(71, 85, 105);
-        doc.text(`INVOICE: ${invoiceNo}`, stampX + 6, margin + 31);
+        doc.text(`INVOICE: ${invoiceNo}${isCompactPdfMode ? ' [COMPACT]' : ''}`, stampX + 6, margin + 31);
 
         // Titles
         doc.setFont('helvetica', 'bold');
@@ -1717,8 +1768,8 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
         doc.line(margin + 2, footerY - 6, pageWidth - margin - 2, footerY - 6);
         doc.setFontSize(6.5);
         doc.setTextColor(148, 163, 184);
-        doc.text("ETHIOPIAN ROADS ADMINISTRATION • OFFICIAL SUPERVISION VALUATION & INVOICE CERTIFICATE", margin + 8, footerY + 2);
-        doc.text(`Page ${pNum} of 2`, pageWidth - margin - 50, footerY + 2);
+        doc.text(`ETHIOPIAN ROADS ADMINISTRATION • OFFICIAL SUPERVISION VALUATION & INVOICE CERTIFICATE${isCompactPdfMode ? ' (COMPACT LAYOUT MODE)' : ''}`, margin + 8, footerY + 2);
+        doc.text(`Page ${pNum} of ${totalPages}`, pageWidth - margin - 60, footerY + 2);
       };
 
       // =========================================================================
@@ -1726,193 +1777,490 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
       // =========================================================================
       drawPageHeader(1, "Table 1: Personnel Attendance Record & Input Derivation");
       let y = margin + 52;
-      const contentWidth = pageWidth - margin * 2;
 
       // Formula notification box
+      const boxH = isCompactPdfMode ? 16 : 20;
       doc.setFillColor(239, 246, 255); // blue-50
       doc.setDrawColor(191, 219, 254);
-      doc.roundedRect(margin + 6, y, contentWidth - 12, 20, 3, 3, 'DF');
+      doc.roundedRect(margin + 6, y, contentWidth - 12, boxH, 3, 3, 'DF');
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7);
+      doc.setFontSize(isCompactPdfMode ? 6.5 : 7);
       doc.setTextColor(30, 64, 175);
-      doc.text("Derived Man-Month (MM) Formula:", margin + 14, y + 13);
+      doc.text("Derived Man-Month (MM) Formula:", margin + 14, y + (boxH * 0.65));
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(71, 85, 105);
-      doc.text(`Derived MM Input = Days Worked ÷ Month Length (${totalDaysInMonth} Days) • Contract Staff Rates Linked to Contract Table 2`, margin + 142, y + 13);
+      doc.text(`Derived MM Input = Days Worked ÷ Month Length (${totalDaysInMonth} Days) • Contract Staff Rates Linked to Contract Table 1.3`, margin + 142, y + (boxH * 0.65));
 
-      y += 26;
+      y += boxH + (isCompactPdfMode ? 4 : 6);
 
-      // Table 1 Headers
+      // Table 1 Headers (Total width = 756 pt)
       const t1Headers = [
         { title: 'No', width: 24, align: 'center' },
-        { title: 'Supervisory Position', width: 140, align: 'left' },
-        { title: 'Assigned Personnel Name', width: 120, align: 'left' },
-        { title: 'Category', width: 75, align: 'left' },
-        { title: 'Days Worked', width: 55, align: 'right' },
-        { title: 'Month Days', width: 55, align: 'right' },
+        { title: 'Supervisory Position', width: 130, align: 'left' },
+        { title: 'Assigned Personnel Name', width: 115, align: 'left' },
+        { title: 'Category', width: 70, align: 'left' },
+        { title: 'Days Worked', width: 50, align: 'right' },
+        { title: 'Month Days', width: 50, align: 'right' },
         { title: 'Derived MM', width: 55, align: 'right' },
-        { title: 'Contract Rate (ETB)', width: 85, align: 'right' },
-        { title: 'This Month (ETB)', width: 85, align: 'right' },
-        { title: 'Preceding MM', width: 55, align: 'right' },
-        { title: 'To-Date MM', width: 55, align: 'right' }
+        { title: 'Contract Rate (ETB)', width: 80, align: 'right' },
+        { title: 'This Month (ETB)', width: 82, align: 'right' },
+        { title: 'Preceding MM', width: 50, align: 'right' },
+        { title: 'To-Date MM', width: 50, align: 'right' }
       ];
 
+      const headerBoxH = isCompactPdfMode ? 14 : 16;
       doc.setFillColor(30, 41, 59);
-      doc.roundedRect(margin + 6, y, contentWidth - 12, 16, 2, 2, 'F');
+      doc.roundedRect(margin + 6, y, contentWidth - 12, headerBoxH, 2, 2, 'F');
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(6);
+      doc.setFontSize(fontSizeHeader);
       doc.setTextColor(255, 255, 255);
 
       let curX = margin + 8;
       t1Headers.forEach(h => {
         if (h.align === 'right') {
-          doc.text(h.title, curX + h.width - 2, y + 10.5, { align: 'right' });
+          doc.text(h.title, curX + h.width - 2, y + (headerBoxH * 0.65), { align: 'right' });
         } else if (h.align === 'center') {
-          doc.text(h.title, curX + h.width / 2, y + 10.5, { align: 'center' });
+          doc.text(h.title, curX + h.width / 2, y + (headerBoxH * 0.65), { align: 'center' });
         } else {
-          doc.text(h.title, curX + 2, y + 10.5);
+          doc.text(h.title, curX + 2, y + (headerBoxH * 0.65));
         }
         curX += h.width;
       });
 
-      y += 18;
+      y += headerBoxH + 2;
 
-      // Table 1 Rows
+      // Table 1 Rows with Word-Wrapping
       displayFeeRowsComputed.forEach((row, idx) => {
-        if (y > pageHeight - margin - 40) return; // stay within single page for Table 1
+        if (y > pageHeight - margin - 35) return; // stay within page height
+
+        // Word-wrap long strings
+        const posLines = doc.splitTextToSize(row.position || '', 130 - 4);
+        const nameLines = doc.splitTextToSize(row.name || '', 115 - 4);
+        const catLines = doc.splitTextToSize(row.category || 'Professional', 70 - 4);
+        const maxLines = Math.max(posLines.length, nameLines.length, catLines.length, 1);
+        const rowH = Math.max(maxLines * lineStep + (isCompactPdfMode ? 2 : 4), minRowH);
 
         if (idx % 2 === 1) {
           doc.setFillColor(248, 250, 252);
-          doc.rect(margin + 6, y, contentWidth - 12, 13, 'F');
+          doc.rect(margin + 6, y, contentWidth - 12, rowH, 'F');
         }
 
         doc.setFont('helvetica', 'normal');
-        doc.setFontSize(6);
+        doc.setFontSize(fontSizeData);
         doc.setTextColor(30, 41, 59);
 
         let rX = margin + 8;
+        const textYOffset = isCompactPdfMode ? 6.5 : 8;
+
         // No
-        doc.text(String(idx + 1), rX + 12, y + 9, { align: 'center' });
+        doc.text(String(idx + 1), rX + 12, y + textYOffset, { align: 'center' });
         rX += 24;
 
-        // Position
+        // Position (Wrapped)
         doc.setFont('helvetica', 'bold');
-        const posText = row.position.length > 28 ? `${row.position.substring(0, 26)}...` : row.position;
-        doc.text(posText, rX + 2, y + 9);
+        posLines.forEach((line: string, lIdx: number) => {
+          doc.text(line, rX + 2, y + textYOffset + (lIdx * lineStep));
+        });
         doc.setFont('helvetica', 'normal');
-        rX += 140;
+        rX += 130;
 
-        // Name
-        const nameText = row.name.length > 24 ? `${row.name.substring(0, 22)}...` : row.name;
-        doc.text(nameText, rX + 2, y + 9);
-        rX += 120;
+        // Name (Wrapped)
+        nameLines.forEach((line: string, lIdx: number) => {
+          doc.text(line, rX + 2, y + textYOffset + (lIdx * lineStep));
+        });
+        rX += 115;
 
-        // Category
-        doc.text(row.category || 'Professional', rX + 2, y + 9);
-        rX += 75;
+        // Category (Wrapped)
+        catLines.forEach((line: string, lIdx: number) => {
+          doc.text(line, rX + 2, y + textYOffset + (lIdx * lineStep));
+        });
+        rX += 70;
 
         // Days Worked
-        doc.text(String(row.daysWorked || 0), rX + 55 - 2, y + 9, { align: 'right' });
-        rX += 55;
+        doc.text(String(row.daysWorked || 0), rX + 50 - 2, y + textYOffset, { align: 'right' });
+        rX += 50;
 
         // Month Days
-        doc.text(String(totalDaysInMonth), rX + 55 - 2, y + 9, { align: 'right' });
-        rX += 55;
+        doc.text(String(totalDaysInMonth), rX + 50 - 2, y + textYOffset, { align: 'right' });
+        rX += 50;
 
         // Derived MM
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(37, 99, 235);
-        doc.text(row.thisInvoiceQty.toFixed(2), rX + 55 - 2, y + 9, { align: 'right' });
+        doc.text(row.thisInvoiceQty.toFixed(2), rX + 55 - 2, y + textYOffset, { align: 'right' });
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(30, 41, 59);
         rX += 55;
 
         // Rate
-        doc.text(fmt(row.effectiveRate || row.rate), rX + 85 - 2, y + 9, { align: 'right' });
-        rX += 85;
+        doc.text(fmt(row.effectiveRate || row.rate), rX + 80 - 2, y + textYOffset, { align: 'right' });
+        rX += 80;
 
         // This Month Amount
         doc.setFont('helvetica', 'bold');
-        doc.text(fmt(row.thisInvoiceAmount), rX + 85 - 2, y + 9, { align: 'right' });
+        doc.text(fmt(row.thisInvoiceAmount), rX + 82 - 2, y + textYOffset, { align: 'right' });
         doc.setFont('helvetica', 'normal');
-        rX += 85;
+        rX += 82;
 
         // Preceding MM
-        doc.text(row.precedingQty.toFixed(2), rX + 55 - 2, y + 9, { align: 'right' });
-        rX += 55;
+        doc.text(row.precedingQty.toFixed(2), rX + 50 - 2, y + textYOffset, { align: 'right' });
+        rX += 50;
 
         // To-Date MM
         doc.setFont('helvetica', 'bold');
-        doc.text(row.toDateQty.toFixed(2), rX + 55 - 2, y + 9, { align: 'right' });
+        doc.text(row.toDateQty.toFixed(2), rX + 50 - 2, y + textYOffset, { align: 'right' });
 
         doc.setDrawColor(241, 245, 249);
-        doc.line(margin + 6, y + 13, margin + contentWidth - 6, y + 13);
-        y += 13;
+        doc.line(margin + 6, y + rowH, margin + contentWidth - 6, y + rowH);
+        y += rowH;
       });
 
       // Table 1 Totals Row
+      const totalsBoxH = isCompactPdfMode ? 14 : 16;
       doc.setFillColor(238, 242, 255);
-      doc.rect(margin + 6, y, contentWidth - 12, 16, 'F');
+      doc.rect(margin + 6, y, contentWidth - 12, totalsBoxH, 'F');
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(6.5);
+      doc.setFontSize(isCompactPdfMode ? 6 : 6.5);
       doc.setTextColor(30, 64, 175);
-      doc.text("TOTAL SUB-TOTAL 1 (SUPERVISORY PERSONNEL REMUNERATION CLAIM):", margin + 14, y + 11);
+      doc.text("TOTAL SUB-TOTAL 1 (SUPERVISORY PERSONNEL REMUNERATION CLAIM):", margin + 14, y + (totalsBoxH * 0.65));
 
       const totDerivedMM = displayFeeRowsComputed.reduce((s, r) => s + r.thisInvoiceQty, 0).toFixed(2);
       const totThisMonthClaim = displayFeeRowsComputed.reduce((s, r) => s + r.thisInvoiceAmount, 0);
       const totToDateMM = displayFeeRowsComputed.reduce((s, r) => s + r.toDateQty, 0).toFixed(2);
 
-      let t1X = margin + 8 + 24 + 140 + 120 + 75 + 55 + 55;
-      doc.text(`${totDerivedMM} MM`, t1X + 55 - 2, y + 11, { align: 'right' });
-      t1X += 55 + 85;
-      doc.text(`${fmt(totThisMonthClaim)} ETB`, t1X + 85 - 2, y + 11, { align: 'right' });
-      t1X += 85 + 55;
-      doc.text(`${totToDateMM} MM`, t1X + 55 - 2, y + 11, { align: 'right' });
+      let t1X = margin + 8 + 24 + 130 + 115 + 70 + 50 + 50;
+      doc.text(`${totDerivedMM} MM`, t1X + 55 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+      t1X += 55 + 80;
+      doc.text(`${fmt(totThisMonthClaim)} ETB`, t1X + 82 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+      t1X += 82 + 50;
+      doc.text(`${totToDateMM} MM`, t1X + 50 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
 
       // =========================================================================
-      // PAGE 2: TABLE 5 — CONSOLIDATED SUMMARY & NET PAYMENT COMPUTATION
+      // PAGE 2: SUB TOTAL 2 — REIMBURSABLE DIRECT OPERATING EXPENSES SCHEDULE
       // =========================================================================
       doc.addPage();
-      drawPageHeader(2, "Table 5: Consolidated Summary & Net Payment Computation");
+      drawPageHeader(2, "Sub Total 2: Reimbursable Direct Operating Expenses Schedule");
       y = margin + 52;
 
-      // Table 5 Baseline & Claim Computation Table
+      // Table 2 Headers (Total width = 756 pt)
+      const t2Headers = [
+        { title: 'Item', width: 24, align: 'center' },
+        { title: 'Description of Direct Expenses', width: 180, align: 'left' },
+        { title: 'Unit', width: 36, align: 'center' },
+        { title: 'Contract Rate', width: 65, align: 'right' },
+        { title: 'Contract Qty', width: 40, align: 'right' },
+        { title: 'Contract Amt (ETB)', width: 75, align: 'right' },
+        { title: 'Preceding Qty', width: 40, align: 'right' },
+        { title: 'Preceding Amt (ETB)', width: 70, align: 'right' },
+        { title: 'This Qty', width: 45, align: 'right' },
+        { title: 'This Amt (ETB)', width: 75, align: 'right' },
+        { title: 'To-Date Qty', width: 36, align: 'right' },
+        { title: 'To-Date Amt (ETB)', width: 70, align: 'right' }
+      ];
+
+      doc.setFillColor(30, 41, 59);
+      doc.roundedRect(margin + 6, y, contentWidth - 12, headerBoxH, 2, 2, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(fontSizeHeader);
+      doc.setTextColor(255, 255, 255);
+
+      let t2cX = margin + 8;
+      t2Headers.forEach(h => {
+        if (h.align === 'right') {
+          doc.text(h.title, t2cX + h.width - 2, y + (headerBoxH * 0.65), { align: 'right' });
+        } else if (h.align === 'center') {
+          doc.text(h.title, t2cX + h.width / 2, y + (headerBoxH * 0.65), { align: 'center' });
+        } else {
+          doc.text(h.title, t2cX + 2, y + (headerBoxH * 0.65));
+        }
+        t2cX += h.width;
+      });
+
+      y += headerBoxH + 2;
+
+      reimbursableRowsComputed.forEach((row, idx) => {
+        if (y > pageHeight - margin - 35) return;
+
+        const descLines = doc.splitTextToSize(row.description || '', 180 - 4);
+        const rowH = Math.max(descLines.length * lineStep + (isCompactPdfMode ? 2 : 4), minRowH);
+
+        if (idx % 2 === 1) {
+          doc.setFillColor(248, 250, 252);
+          doc.rect(margin + 6, y, contentWidth - 12, rowH, 'F');
+        }
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(fontSizeData);
+        doc.setTextColor(30, 41, 59);
+
+        let rX = margin + 8;
+        const textYOffset = isCompactPdfMode ? 6.5 : 8;
+
+        // Item No
+        doc.text(String(row.no || (idx + 1)), rX + 12, y + textYOffset, { align: 'center' });
+        rX += 24;
+
+        // Description (Wrapped)
+        doc.setFont('helvetica', 'bold');
+        descLines.forEach((line: string, lIdx: number) => {
+          doc.text(line, rX + 2, y + textYOffset + (lIdx * lineStep));
+        });
+        doc.setFont('helvetica', 'normal');
+        rX += 180;
+
+        // Unit
+        doc.text(row.unit || 'Month', rX + 18, y + textYOffset, { align: 'center' });
+        rX += 36;
+
+        // Contract Rate
+        doc.text(fmt(row.effectiveRate || row.rate), rX + 65 - 2, y + textYOffset, { align: 'right' });
+        rX += 65;
+
+        // Contract Qty
+        doc.text(String(row.contractQty || 0), rX + 40 - 2, y + textYOffset, { align: 'right' });
+        rX += 40;
+
+        // Contract Amount
+        doc.text(fmt(row.contractAmount), rX + 75 - 2, y + textYOffset, { align: 'right' });
+        rX += 75;
+
+        // Preceding Qty
+        doc.text((row.precedingQty || 0).toFixed(2), rX + 40 - 2, y + textYOffset, { align: 'right' });
+        rX += 40;
+
+        // Preceding Amount
+        doc.text(fmt(row.precedingAmount), rX + 70 - 2, y + textYOffset, { align: 'right' });
+        rX += 70;
+
+        // This Invoice Qty
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(37, 99, 235);
+        doc.text((row.thisInvoiceQty || 0).toFixed(2), rX + 45 - 2, y + textYOffset, { align: 'right' });
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(30, 41, 59);
+        rX += 45;
+
+        // This Invoice Amount
+        doc.setFont('helvetica', 'bold');
+        doc.text(fmt(row.computedThisAmount), rX + 75 - 2, y + textYOffset, { align: 'right' });
+        doc.setFont('helvetica', 'normal');
+        rX += 75;
+
+        // To-Date Qty
+        doc.text((row.toDateQty || 0).toFixed(2), rX + 36 - 2, y + textYOffset, { align: 'right' });
+        rX += 36;
+
+        // To-Date Amount
+        doc.setFont('helvetica', 'bold');
+        doc.text(fmt(row.toDateAmount), rX + 70 - 2, y + textYOffset, { align: 'right' });
+
+        doc.setDrawColor(241, 245, 249);
+        doc.line(margin + 6, y + rowH, margin + contentWidth - 6, y + rowH);
+        y += rowH;
+      });
+
+      // Table 2 Totals Row
+      doc.setFillColor(238, 242, 255);
+      doc.rect(margin + 6, y, contentWidth - 12, totalsBoxH, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(isCompactPdfMode ? 6 : 6.5);
+      doc.setTextColor(30, 64, 175);
+      doc.text("SUB TOTAL 2 (REIMBURSABLE DIRECT OPERATING EXPENSES CLAIM):", margin + 14, y + (totalsBoxH * 0.65));
+
+      let t2x = margin + 8 + 24 + 180 + 36 + 65 + 40;
+      doc.text(`${fmt(subTotal2Contract)} ETB`, t2x + 75 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+      t2x += 75 + 40;
+      doc.text(fmt(subTotal2Preceding), t2x + 70 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+      t2x += 70 + 45;
+      doc.text(`${fmt(subTotal2ThisInvoice)} ETB`, t2x + 75 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+      t2x += 75 + 36;
+      doc.text(fmt(subTotal2ToDate), t2x + 70 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+
+      // =========================================================================
+      // PAGE 3: SUB TOTAL 3 — DEFECT LIABILITY PERIOD STAFF REMUNERATION SCHEDULE
+      // =========================================================================
+      doc.addPage();
+      drawPageHeader(3, "Sub Total 3: Defect Liability Period Staff Remuneration Schedule");
+      y = margin + 52;
+
+      // Table 3 Headers (Total width = 756 pt)
+      const t3Headers = [
+        { title: 'Item', width: 24, align: 'center' },
+        { title: 'Defect Liability Supervisory Position & Staff', width: 180, align: 'left' },
+        { title: 'Unit', width: 36, align: 'center' },
+        { title: 'Contract Rate', width: 65, align: 'right' },
+        { title: 'Contract Qty', width: 40, align: 'right' },
+        { title: 'Contract Amt (ETB)', width: 75, align: 'right' },
+        { title: 'Preceding Qty', width: 40, align: 'right' },
+        { title: 'Preceding Amt (ETB)', width: 70, align: 'right' },
+        { title: 'This Qty', width: 45, align: 'right' },
+        { title: 'This Amt (ETB)', width: 75, align: 'right' },
+        { title: 'To-Date Qty', width: 36, align: 'right' },
+        { title: 'To-Date Amt (ETB)', width: 70, align: 'right' }
+      ];
+
+      doc.setFillColor(30, 41, 59);
+      doc.roundedRect(margin + 6, y, contentWidth - 12, headerBoxH, 2, 2, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(fontSizeHeader);
+      doc.setTextColor(255, 255, 255);
+
+      let t3cX = margin + 8;
+      t3Headers.forEach(h => {
+        if (h.align === 'right') {
+          doc.text(h.title, t3cX + h.width - 2, y + (headerBoxH * 0.65), { align: 'right' });
+        } else if (h.align === 'center') {
+          doc.text(h.title, t3cX + h.width / 2, y + (headerBoxH * 0.65), { align: 'center' });
+        } else {
+          doc.text(h.title, t3cX + 2, y + (headerBoxH * 0.65));
+        }
+        t3cX += h.width;
+      });
+
+      y += headerBoxH + 2;
+
+      defectRowsComputed.forEach((row, idx) => {
+        if (y > pageHeight - margin - 35) return;
+
+        const posLines = doc.splitTextToSize(row.position || '', 180 - 4);
+        const rowH = Math.max(posLines.length * lineStep + (isCompactPdfMode ? 2 : 4), minRowH);
+
+        if (idx % 2 === 1) {
+          doc.setFillColor(248, 250, 252);
+          doc.rect(margin + 6, y, contentWidth - 12, rowH, 'F');
+        }
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(fontSizeData);
+        doc.setTextColor(30, 41, 59);
+
+        let rX = margin + 8;
+        const textYOffset = isCompactPdfMode ? 6.5 : 8;
+
+        // Item No
+        doc.text(String(idx + 1), rX + 12, y + textYOffset, { align: 'center' });
+        rX += 24;
+
+        // Position (Wrapped)
+        doc.setFont('helvetica', 'bold');
+        posLines.forEach((line: string, lIdx: number) => {
+          doc.text(line, rX + 2, y + textYOffset + (lIdx * lineStep));
+        });
+        doc.setFont('helvetica', 'normal');
+        rX += 180;
+
+        // Unit
+        doc.text(row.unit || 'Month', rX + 18, y + textYOffset, { align: 'center' });
+        rX += 36;
+
+        // Contract Rate
+        doc.text(fmt(row.rate), rX + 65 - 2, y + textYOffset, { align: 'right' });
+        rX += 65;
+
+        // Contract Qty
+        doc.text(String(row.contractQty || 0), rX + 40 - 2, y + textYOffset, { align: 'right' });
+        rX += 40;
+
+        // Contract Amount
+        doc.text(fmt(row.contractAmount), rX + 75 - 2, y + textYOffset, { align: 'right' });
+        rX += 75;
+
+        // Preceding Qty
+        doc.text((row.precedingQty || 0).toFixed(2), rX + 40 - 2, y + textYOffset, { align: 'right' });
+        rX += 40;
+
+        // Preceding Amount
+        doc.text(fmt(row.precedingAmount), rX + 70 - 2, y + textYOffset, { align: 'right' });
+        rX += 70;
+
+        // This Invoice Qty
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(37, 99, 235);
+        doc.text((row.thisInvoiceQty || 0).toFixed(2), rX + 45 - 2, y + textYOffset, { align: 'right' });
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(30, 41, 59);
+        rX += 45;
+
+        // This Invoice Amount
+        doc.setFont('helvetica', 'bold');
+        doc.text(fmt(row.computedThisAmount), rX + 75 - 2, y + textYOffset, { align: 'right' });
+        doc.setFont('helvetica', 'normal');
+        rX += 75;
+
+        // To-Date Qty
+        doc.text((row.toDateQty || 0).toFixed(2), rX + 36 - 2, y + textYOffset, { align: 'right' });
+        rX += 36;
+
+        // To-Date Amount
+        doc.setFont('helvetica', 'bold');
+        doc.text(fmt(row.toDateAmount), rX + 70 - 2, y + textYOffset, { align: 'right' });
+
+        doc.setDrawColor(241, 245, 249);
+        doc.line(margin + 6, y + rowH, margin + contentWidth - 6, y + rowH);
+        y += rowH;
+      });
+
+      // Table 3 Totals Row
+      doc.setFillColor(238, 242, 255);
+      doc.rect(margin + 6, y, contentWidth - 12, totalsBoxH, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(isCompactPdfMode ? 6 : 6.5);
+      doc.setTextColor(30, 64, 175);
+      doc.text("SUB TOTAL 3 (DEFECT LIABILITY PERSONNEL ALLOCATION CLAIM):", margin + 14, y + (totalsBoxH * 0.65));
+
+      let t3x = margin + 8 + 24 + 180 + 36 + 65 + 40;
+      doc.text(`${fmt(subTotal3Contract)} ETB`, t3x + 75 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+      t3x += 75 + 40;
+      doc.text(fmt(subTotal3Preceding), t3x + 70 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+      t3x += 70 + 45;
+      doc.text(`${fmt(subTotal3ThisInvoice)} ETB`, t3x + 75 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+      t3x += 75 + 36;
+      doc.text(fmt(subTotal3ToDate), t3x + 70 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+
+      // =========================================================================
+      // PAGE 4: TABLE 5 — CONSOLIDATED SUMMARY & NET PAYMENT COMPUTATION
+      // =========================================================================
+      doc.addPage();
+      drawPageHeader(4, "Table 5: Consolidated Summary & Net Payment Computation");
+      y = margin + 52;
+
+      // Table 5 Headers (Total width = 756 pt)
       const t5Headers = [
         { title: 'Item', width: 28, align: 'center' },
-        { title: 'Claim Component Description', width: 260, align: 'left' },
-        { title: 'Contract Baseline (ETB)', width: 105, align: 'right' },
-        { title: 'This Month Claim (ETB)', width: 110, align: 'right' },
-        { title: 'Preceding Claim (ETB)', width: 105, align: 'right' },
-        { title: 'To-Date Claim (ETB)', width: 105, align: 'right' },
+        { title: 'Claim Component Description', width: 220, align: 'left' },
+        { title: `Contract Baseline (${isUsdModeActive ? 'ETB / USD' : 'ETB'})`, width: 108, align: 'right' },
+        { title: 'Preceding Claim (ETB)', width: 95, align: 'right' },
+        { title: `This Month (${isUsdModeActive ? 'ETB / USD' : 'ETB'})`, width: 110, align: 'right' },
+        { title: 'To-Date Claim (ETB)', width: 100, align: 'right' },
         { title: 'Remaining Balance (ETB)', width: 95, align: 'right' }
       ];
 
       doc.setFillColor(30, 41, 59);
-      doc.roundedRect(margin + 6, y, contentWidth - 12, 16, 2, 2, 'F');
+      doc.roundedRect(margin + 6, y, contentWidth - 12, headerBoxH, 2, 2, 'F');
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(6.5);
+      doc.setFontSize(fontSizeHeader);
       doc.setTextColor(255, 255, 255);
 
       let cX = margin + 8;
       t5Headers.forEach(h => {
         if (h.align === 'right') {
-          doc.text(h.title, cX + h.width - 2, y + 11, { align: 'right' });
+          doc.text(h.title, cX + h.width - 2, y + (headerBoxH * 0.65), { align: 'right' });
         } else if (h.align === 'center') {
-          doc.text(h.title, cX + h.width / 2, y + 11, { align: 'center' });
+          doc.text(h.title, cX + h.width / 2, y + (headerBoxH * 0.65), { align: 'center' });
         } else {
-          doc.text(h.title, cX + 2, y + 11);
+          doc.text(h.title, cX + 2, y + (headerBoxH * 0.65));
         }
         cX += h.width;
       });
 
-      y += 18;
+      y += headerBoxH + 2;
 
       const t5Rows = [
         {
           item: '1',
           desc: 'Sub Total 1 (Remuneration of Construction Supervisory Staff)',
-          contract: fmt(linkedFeesContract),
-          thisMonth: fmt(subTotal1ThisInvoice),
+          contract: isUsdModeActive && linkedFeesContractUsd > 0 ? `${fmt(linkedFeesContract)}\n($${fmt(linkedFeesContractUsd)})` : fmt(linkedFeesContract),
+          thisMonth: isUsdModeActive && subTotal1ThisInvoiceUsd > 0 ? `${fmt(subTotal1ThisInvoice)}\n($${fmt(subTotal1ThisInvoiceUsd)})` : fmt(subTotal1ThisInvoice),
           preceding: fmt(subTotal1Preceding),
           toDate: fmt(subTotal1ToDate),
           remaining: fmt(Math.max(0, linkedFeesContract - subTotal1ToDate))
@@ -1920,8 +2268,8 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
         {
           item: '2',
           desc: 'Sub Total 2 (Reimbursable Operating Direct Costs — Per Diem, Transport, Communication)',
-          contract: fmt(linkedReimbContract),
-          thisMonth: fmt(subTotal2ThisInvoice),
+          contract: isUsdModeActive && linkedReimbContractUsd > 0 ? `${fmt(linkedReimbContract)}\n($${fmt(linkedReimbContractUsd)})` : fmt(linkedReimbContract),
+          thisMonth: isUsdModeActive && subTotal2ThisInvoiceUsd > 0 ? `${fmt(subTotal2ThisInvoice)}\n($${fmt(subTotal2ThisInvoiceUsd)})` : fmt(subTotal2ThisInvoice),
           preceding: fmt(subTotal2Preceding),
           toDate: fmt(subTotal2ToDate),
           remaining: fmt(Math.max(0, linkedReimbContract - subTotal2ToDate))
@@ -1938,8 +2286,8 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
         {
           item: 'A+B',
           desc: 'SUBTOTAL DIRECT SERVICES & EXPENSES (1 + 2 + 3)',
-          contract: fmt(totalBaseContract),
-          thisMonth: fmt(totalSubtotalThisInvoice),
+          contract: isUsdModeActive && totalBaseContractUsd > 0 ? `${fmt(totalBaseContract)}\n($${fmt(totalBaseContractUsd)})` : fmt(totalBaseContract),
+          thisMonth: isUsdModeActive && totalSubtotalThisInvoiceUsd > 0 ? `${fmt(totalSubtotalThisInvoice)}\n($${fmt(totalSubtotalThisInvoiceUsd)})` : fmt(totalSubtotalThisInvoice),
           preceding: fmt(totalSubtotalPreceding),
           toDate: fmt(totalSubtotalToDate),
           remaining: fmt(Math.max(0, totalBaseContract - totalSubtotalToDate)),
@@ -1948,17 +2296,17 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
         {
           item: '4',
           desc: `Contingency Provision (${contingencyRatePct}% Contract Ceiling)`,
-          contract: fmt(contingencyContract),
-          thisMonth: fmt(contingencyThisInvoice),
-          preceding: fmt(contingencyPrecedingClaim),
-          toDate: fmt(contingencyToDate),
-          remaining: fmt(Math.max(0, contingencyContract - contingencyToDate))
+          contract: isUsdModeActive && contingencyContractUsd > 0 ? `${fmt(contingencyContract)}\n($${fmt(contingencyContractUsd)})` : fmt(contingencyContract),
+          thisMonth: isUsdModeActive && contingencyThisInvoiceUsd > 0 ? `${fmt(contingencyThisInvoice)}\n($${fmt(contingencyThisInvoiceUsd)})` : fmt(contingencyThisInvoice),
+          preceding: isUsdModeActive && contingencyPrecedingClaimUsd > 0 ? `${fmt(contingencyPrecedingClaim)}\n($${fmt(contingencyPrecedingClaimUsd)})` : fmt(contingencyPrecedingClaim),
+          toDate: isUsdModeActive && contingencyToDateUsdValue > 0 ? `${fmt(contingencyToDate)}\n($${fmt(contingencyToDateUsdValue)})` : fmt(contingencyToDate),
+          remaining: isUsdModeActive && Math.max(0, contingencyContractUsd - contingencyToDateUsdValue) > 0 ? `${fmt(Math.max(0, contingencyContract - contingencyToDate))}\n($${fmt(Math.max(0, contingencyContractUsd - contingencyToDateUsdValue))})` : fmt(Math.max(0, contingencyContract - contingencyToDate))
         },
         {
           item: '5',
           desc: `Value Added Tax (${vatRatePct}% VAT)`,
-          contract: fmt(vatContract),
-          thisMonth: fmt(vatThisInvoice),
+          contract: isUsdModeActive && vatContractUsd > 0 ? `${fmt(vatContract)}\n($${fmt(vatContractUsd)})` : fmt(vatContract),
+          thisMonth: isUsdModeActive && vatThisInvoiceUsd > 0 ? `${fmt(vatThisInvoice)}\n($${fmt(vatThisInvoiceUsd)})` : fmt(vatThisInvoice),
           preceding: fmt(vatPreceding),
           toDate: fmt(vatToDate),
           remaining: fmt(Math.max(0, vatContract - vatToDate))
@@ -1966,8 +2314,8 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
         {
           item: '6',
           desc: 'GROSS INVOICE CLAIM AMOUNT (ETB)',
-          contract: fmt(totalContractDue),
-          thisMonth: fmt(grossPayableBase),
+          contract: isUsdModeActive && totalContractDueUsd > 0 ? `${fmt(totalContractDue)}\n($${fmt(totalContractDueUsd)})` : fmt(totalContractDue),
+          thisMonth: isUsdModeActive && grossPayableBaseUsd > 0 ? `${fmt(grossPayableBase)}\n($${fmt(grossPayableBaseUsd)})` : fmt(grossPayableBase),
           preceding: fmt(grossPreceding),
           toDate: fmt(grossToDate),
           remaining: fmt(Math.max(0, totalContractDue - grossToDate)),
@@ -2022,7 +2370,11 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
       ];
 
       t5Rows.forEach((r, idx) => {
-        const rowHeight = r.isNetPayable ? 18 : 14;
+        const descLines = doc.splitTextToSize(r.desc, 220 - 4);
+        const contractLines = r.contract.split('\n');
+        const thisMonthLines = r.thisMonth.split('\n');
+        const maxLines = Math.max(descLines.length, contractLines.length, thisMonthLines.length, 1);
+        const rowHeight = Math.max(maxLines * lineStep + (isCompactPdfMode ? 2 : 4), r.isNetPayable ? (isCompactPdfMode ? 14 : 16) : (isCompactPdfMode ? 10.5 : 13));
 
         if (r.isNetPayable) {
           doc.setFillColor(209, 250, 229); // emerald-100
@@ -2038,81 +2390,108 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
         }
 
         doc.setFont('helvetica', (r.isNetPayable || r.isHeader || r.isBold) ? 'bold' : 'normal');
-        doc.setFontSize(r.isNetPayable ? 7.5 : 6.5);
-        doc.setTextColor(r.isNetPayable ? 6 : (r.isHeader ? 15 : 30), r.isNetPayable ? 95 : (r.isHeader ? 23 : 41), r.isNetPayable ? 70 : (r.isHeader ? 42 : 59));
+        doc.setFontSize(r.isNetPayable ? (isCompactPdfMode ? 7 : 7.5) : (isCompactPdfMode ? 6 : 6.5));
+        doc.setTextColor(
+          r.isNetPayable ? 6 : (r.isHeader ? 15 : 30),
+          r.isNetPayable ? 95 : (r.isHeader ? 23 : 41),
+          r.isNetPayable ? 70 : (r.isHeader ? 42 : 59)
+        );
 
         let roX = margin + 8;
+        const textYOffset = isCompactPdfMode ? 6.5 : 8;
+
         // Item
-        doc.text(r.item, roX + 14, y + (rowHeight * 0.65), { align: 'center' });
+        doc.text(r.item, roX + 14, y + (rowHeight * 0.5) + 2, { align: 'center' });
         roX += 28;
 
-        // Desc
-        doc.text(r.desc, roX + 2, y + (rowHeight * 0.65));
-        roX += 260;
+        // Desc (Wrapped)
+        descLines.forEach((line: string, lIdx: number) => {
+          doc.text(line, roX + 2, y + textYOffset + (lIdx * lineStep));
+        });
+        roX += 220;
 
-        // Contract
-        doc.text(r.contract, roX + 105 - 2, y + (rowHeight * 0.65), { align: 'right' });
-        roX += 105;
-
-        // This Month
-        if (r.isNetPayable) {
-          doc.setTextColor(5, 150, 105);
-        }
-        doc.text(r.thisMonth, roX + 110 - 2, y + (rowHeight * 0.65), { align: 'right' });
-        if (r.isNetPayable) {
-          doc.setTextColor(6, 95, 70);
-        }
-        roX += 110;
+        // Contract Baseline
+        contractLines.forEach((line: string, lIdx: number) => {
+          doc.text(line, roX + 108 - 2, y + textYOffset + (lIdx * lineStep), { align: 'right' });
+        });
+        roX += 108;
 
         // Preceding
-        doc.text(r.preceding, roX + 105 - 2, y + (rowHeight * 0.65), { align: 'right' });
-        roX += 105;
+        doc.text(r.preceding, roX + 95 - 2, y + textYOffset, { align: 'right' });
+        roX += 95;
+
+        // This Month
+        if (r.isNetPayable) doc.setTextColor(5, 150, 105);
+        thisMonthLines.forEach((line: string, lIdx: number) => {
+          doc.text(line, roX + 110 - 2, y + textYOffset + (lIdx * lineStep), { align: 'right' });
+        });
+        if (r.isNetPayable) doc.setTextColor(6, 95, 70);
+        roX += 110;
 
         // To-Date
-        doc.text(r.toDate, roX + 105 - 2, y + (rowHeight * 0.65), { align: 'right' });
-        roX += 105;
+        doc.text(r.toDate, roX + 100 - 2, y + textYOffset, { align: 'right' });
+        roX += 100;
 
         // Remaining
-        doc.text(r.remaining, roX + 95 - 2, y + (rowHeight * 0.65), { align: 'right' });
+        doc.text(r.remaining, roX + 95 - 2, y + textYOffset, { align: 'right' });
 
         doc.setDrawColor(226, 232, 240);
         doc.line(margin + 6, y + rowHeight, margin + contentWidth - 6, y + rowHeight);
         y += rowHeight;
       });
 
-      y += 8;
+      y += isCompactPdfMode ? 4 : 6;
 
       // Net Amount in Words Box
+      const netDueThisInvoiceUsd = Math.max(0, grossPayableBaseUsd - vatThisInvoiceUsd);
+      const etbWording = `"${numberToWordsCurrency(netDueThisInvoice, 'ETB')}"`;
+      const usdWording = (isUsdModeActive && netDueThisInvoiceUsd > 0)
+        ? `   •   USD Portion: "${numberToWordsCurrency(netDueThisInvoiceUsd, 'USD')}"`
+        : '';
+      const fullWordsText = `${etbWording}${usdWording}`;
+      const wordsLines = doc.splitTextToSize(fullWordsText, contentWidth - 28);
+      const wordsBoxH = Math.max(wordsLines.length * (isCompactPdfMode ? 7.5 : 8.5) + (isCompactPdfMode ? 8 : 12), isCompactPdfMode ? 18 : 22);
+
       doc.setFillColor(248, 250, 252);
       doc.setDrawColor(226, 232, 240);
-      doc.roundedRect(margin + 6, y, contentWidth - 12, 24, 3, 3, 'DF');
+      doc.roundedRect(margin + 6, y, contentWidth - 12, wordsBoxH, 3, 3, 'DF');
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(6.5);
+      doc.setFontSize(isCompactPdfMode ? 6 : 6.5);
       doc.setTextColor(100, 116, 139);
-      doc.text("NET AMOUNT PAYABLE IN ETHIOPIAN BIRR WORDS:", margin + 14, y + 10);
+      doc.text(
+        (isUsdModeActive && netDueThisInvoiceUsd > 0)
+          ? "NET AMOUNT PAYABLE IN BIRR & US DOLLAR WORDS:"
+          : "NET AMOUNT PAYABLE IN ETHIOPIAN BIRR WORDS:",
+        margin + 14,
+        y + (isCompactPdfMode ? 8 : 9)
+      );
       doc.setFont('times', 'italic');
-      doc.setFontSize(7.5);
+      doc.setFontSize(isCompactPdfMode ? 6.5 : 7.5);
       doc.setTextColor(15, 23, 42);
-      doc.text(`"${numberToWords(netDueThisInvoice)}"`, margin + 14, y + 19);
+      wordsLines.forEach((line: string, lIdx: number) => {
+        doc.text(line, margin + 14, y + (isCompactPdfMode ? 15 : 17) + (lIdx * (isCompactPdfMode ? 7.5 : 8.5)));
+      });
 
-      y += 28;
+      y += wordsBoxH + (isCompactPdfMode ? 3 : 4);
 
       // Bank Transfer Particulars Box
+      const bankBoxH = isCompactPdfMode ? 15 : 18;
       doc.setFillColor(248, 250, 252);
-      doc.roundedRect(margin + 6, y, contentWidth - 12, 20, 3, 3, 'DF');
+      doc.setDrawColor(226, 232, 240);
+      doc.roundedRect(margin + 6, y, contentWidth - 12, bankBoxH, 3, 3, 'DF');
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(6.5);
+      doc.setFontSize(isCompactPdfMode ? 6 : 6.5);
       doc.setTextColor(30, 64, 175);
-      doc.text("CONSULTANT WIRE TRANSFER & BANK DETAILS:", margin + 14, y + 13);
+      doc.text("CONSULTANT WIRE TRANSFER & BANK DETAILS:", margin + 14, y + (bankBoxH * 0.65));
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(51, 65, 85);
-      doc.text(`Bank: ${bankName || 'Commercial Bank of Ethiopia'}   •   Branch: ${bankBranch || 'Main Branch'}   •   Account No: ${bankAccountNo || '1000123456789'}`, margin + 200, y + 13);
+      doc.text(`Bank: ${bankName || 'Commercial Bank of Ethiopia'}   •   Branch: ${bankBranch || 'Main Branch'}   •   Account No: ${bankAccountNo || '1000123456789'}`, margin + 200, y + (bankBoxH * 0.65));
 
-      y += 26;
+      y += bankBoxH + (isCompactPdfMode ? 3 : 4);
 
       // Official 4 Sign-Off Signatures Block
       const signW = (contentWidth - 12) / 4;
-      const signY = y + 4;
+      const signY = y + (isCompactPdfMode ? 1 : 2);
 
       const signees = [
         { title: 'PREPARED BY', name: preparedBy || 'Resident Engineer', role: 'Resident Engineer / Team Leader' },
@@ -2124,25 +2503,25 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
       signees.forEach((s, idx) => {
         const sX = margin + 6 + idx * signW;
         doc.setDrawColor(203, 213, 225);
-        doc.line(sX + 6, signY + 22, sX + signW - 12, signY + 22);
+        doc.line(sX + 6, signY + (isCompactPdfMode ? 16 : 20), sX + signW - 12, signY + (isCompactPdfMode ? 16 : 20));
 
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(6);
+        doc.setFontSize(isCompactPdfMode ? 5.5 : 6);
         doc.setTextColor(100, 116, 139);
-        doc.text(s.title, sX + 6, signY + 6);
+        doc.text(s.title, sX + 6, signY + 5);
 
-        doc.setFontSize(6.5);
+        doc.setFontSize(isCompactPdfMode ? 6 : 6.5);
         doc.setTextColor(15, 23, 42);
-        doc.text(s.name, sX + 6, signY + 30);
+        doc.text(s.name, sX + 6, signY + (isCompactPdfMode ? 23 : 28));
 
         doc.setFont('helvetica', 'normal');
-        doc.setFontSize(5.5);
+        doc.setFontSize(5);
         doc.setTextColor(100, 116, 139);
-        doc.text(s.role, sX + 6, signY + 37);
+        doc.text(s.role, sX + 6, signY + (isCompactPdfMode ? 29 : 35));
       });
 
       const cleanInv = invoiceNo.replace(/[^a-zA-Z0-9-_]/g, '_');
-      doc.save(`Monthly_Invoice_${cleanInv}_${billingMonth}_${billingYear}.pdf`);
+      doc.save(`Monthly_Invoice_${cleanInv}_${billingMonth}_${billingYear}${isCompactPdfMode ? '_Compact' : ''}.pdf`);
     } catch (err) {
       console.error("Failed to export Monthly Invoice PDF:", err);
       alert("Failed to export Monthly Invoice PDF. Please check browser permissions.");
@@ -2229,15 +2608,30 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
               Proceed to Next Month (Roll Forward)
             </button>
 
+            {/* COMPACT PDF REPORT MODE TOGGLE */}
+            <button
+              type="button"
+              onClick={() => setIsCompactPdfMode(!isCompactPdfMode)}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border cursor-pointer ${
+                isCompactPdfMode
+                  ? 'bg-amber-500 text-white border-amber-600 shadow-xs ring-2 ring-amber-400/40'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
+              }`}
+              title="Toggle compact PDF report mode: Reduces table row padding and font sizing to maximize single-page row density"
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5" />
+              <span>Compact PDF: {isCompactPdfMode ? 'ON (Dense)' : 'OFF (Standard)'}</span>
+            </button>
+
             {/* EXPORT FORMATTED PDF REPORT BUTTON */}
             <button
               type="button"
               onClick={handleExportMonthlyInvoicePDF}
               className="px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
-              title="Export Tables 1 & 5 as an official formatted Ethiopian Roads Administration monthly certificate PDF report"
+              title="Export Tables 1, 2, 3, & 5 as an official formatted Ethiopian Roads Administration monthly certificate PDF report"
             >
               <FileDown className="w-3.5 h-3.5" />
-              <span>Export Invoice PDF (Tables 1 & 5)</span>
+              <span>Export Invoice PDF (Tables 1-5)</span>
             </button>
 
             <button
@@ -2968,15 +3362,33 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                 ) : (
                   reimbursableRowsComputed.map((row, idx) => (
                     <tr key={row.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
-                      <td className="py-2 px-3 text-center font-mono text-slate-400 font-bold">{idx + 1}</td>
-                      <td className="py-2 px-3 font-semibold text-slate-800 dark:text-slate-200">
+                      <td className="py-2 px-3 text-center font-mono text-slate-400 font-bold">
                         <input
                           type="text"
-                          value={row.description}
+                          value={row.no || String(idx + 1)}
                           disabled={isPaymentLocked}
-                          onChange={(e) => handleUpdateReimbursable(row.id, { description: e.target.value })}
-                          className="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-amber-500 focus:outline-none text-xs"
+                          onChange={(e) => handleUpdateReimbursable(row.id, { no: e.target.value })}
+                          className="w-10 text-center bg-transparent border-b border-transparent hover:border-slate-300 focus:border-amber-500 focus:outline-none text-xs font-mono font-bold"
                         />
+                      </td>
+                      <td className="py-2 px-3 font-semibold text-slate-800 dark:text-slate-200">
+                        <div className="flex flex-col gap-0.5">
+                          <input
+                            type="text"
+                            value={row.description}
+                            disabled={isPaymentLocked}
+                            onChange={(e) => handleUpdateReimbursable(row.id, { description: e.target.value })}
+                            className="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-amber-500 focus:outline-none text-xs font-bold"
+                          />
+                          <input
+                            type="text"
+                            placeholder="Contractual basis / justification"
+                            value={row.basis || ''}
+                            disabled={isPaymentLocked}
+                            onChange={(e) => handleUpdateReimbursable(row.id, { basis: e.target.value })}
+                            className="w-full bg-transparent border-b border-transparent hover:border-slate-200 focus:border-amber-400 focus:outline-none text-[10px] text-slate-400 italic"
+                          />
+                        </div>
                       </td>
                       <td className="py-2 px-2 text-center font-mono">
                         <input
@@ -3194,7 +3606,15 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                           className="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-500 focus:outline-none text-xs font-medium"
                         />
                       </td>
-                      <td className="py-2 px-2 text-center font-mono text-slate-500">{row.unit || 'Month'}</td>
+                      <td className="py-2 px-2 text-center font-mono text-slate-500">
+                        <input
+                          type="text"
+                          value={row.unit || 'Month'}
+                          disabled={isPaymentLocked}
+                          onChange={(e) => handleUpdateDefectRow(row.id, { unit: e.target.value })}
+                          className="w-16 text-center bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-500 focus:outline-none text-xs font-mono"
+                        />
+                      </td>
                       <td className="py-2 px-2 text-right font-mono">
                         <input
                           type="number"
@@ -3483,44 +3903,51 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                           disabled={isPaymentLocked}
                           onChange={(e) => setContingencyThisInvoiceClaim(parseFloat(e.target.value) || 0)}
                           placeholder="0.00"
-                          title={isPaymentLocked ? "Payment amount is saved and locked (no change permitted)" : "Assign this month's contingency claim"}
+                          title={isPaymentLocked ? "Payment amount is saved and locked (no change permitted)" : "Assign this month's contingency claim (ETB)"}
                           className={`w-32 text-right px-2 py-1 rounded-lg border font-mono font-bold text-xs ${
                             isPaymentLocked 
                               ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700 cursor-not-allowed opacity-70' 
                               : 'border-blue-300 dark:border-blue-800 text-blue-700 dark:text-blue-300 bg-white dark:bg-slate-900 focus:ring-1 focus:ring-blue-500 shadow-xs'
                           }`}
                         />
-                        <span className="text-[9px] text-blue-600 dark:text-blue-400 font-semibold">User-Assigned Claim</span>
+                        <span className="text-[9px] text-blue-600 dark:text-blue-400 font-semibold">ETB Claim</span>
                       </div>
                     </td>
                     {isUsdModeActive && (
-                      <td className="py-2.5 px-4 text-right font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-50/20">
-                        ${fmt(contingencyThisInvoiceUsd)}
+                      <td className="py-2.5 px-4 text-right bg-purple-50/20 dark:bg-purple-950/10">
+                        <div className="flex flex-col items-end gap-1">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={contingencyThisInvoiceClaimUsd}
+                            disabled={isPaymentLocked}
+                            onChange={(e) => setContingencyThisInvoiceClaimUsd(parseFloat(e.target.value) || 0)}
+                            placeholder="0.00"
+                            title={isPaymentLocked ? "Payment amount is saved and locked (no change permitted)" : "Assign this month's contingency claim (USD)"}
+                            className={`w-28 text-right px-2 py-1 rounded-lg border font-mono font-bold text-xs ${
+                              isPaymentLocked 
+                                ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700 cursor-not-allowed opacity-70' 
+                                : 'border-purple-300 dark:border-purple-800 text-purple-700 dark:text-purple-300 bg-white dark:bg-slate-900 focus:ring-1 focus:ring-purple-500 shadow-xs'
+                            }`}
+                          />
+                          <span className="text-[9px] text-purple-600 dark:text-purple-400 font-semibold">USD Claim</span>
+                        </div>
                       </td>
                     )}
-                    <td className="py-2.5 px-4 text-right">
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={contingencyPrecedingClaim}
-                        disabled={isPaymentLocked}
-                        onChange={(e) => setContingencyPrecedingClaim(parseFloat(e.target.value) || 0)}
-                        placeholder="0.00"
-                        title={isPaymentLocked ? "Payment amount is saved and locked (no change permitted)" : "Cumulative contingency claimed in previous invoices"}
-                        className={`w-28 text-right px-1.5 py-0.5 rounded border font-mono text-xs ${
-                          isPaymentLocked 
-                            ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700 cursor-not-allowed opacity-70' 
-                            : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800'
-                        }`}
-                      />
+                    <td className="py-2.5 px-4 text-right font-mono text-slate-700 dark:text-slate-300 font-bold">
+                      {fmt(contingencyPrecedingClaim)}
                     </td>
-                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-purple-600/80 bg-purple-50/20">-</td>}
+                    {isUsdModeActive && (
+                      <td className="py-2.5 px-4 text-right font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-50/20">
+                        ${fmt(contingencyPrecedingClaimUsd)}
+                      </td>
+                    )}
                     <td className="py-2.5 px-4 text-right font-mono font-bold text-slate-900 dark:text-white">
                       {fmt(contingencyToDate)}
                     </td>
                     {isUsdModeActive && (
                       <td className="py-2.5 px-4 text-right font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-50/20">
-                        ${fmt(contingencyThisInvoiceUsd)}
+                        ${fmt(contingencyToDateUsdValue)}
                       </td>
                     )}
                     <td className="py-2.5 px-4 text-right font-mono text-emerald-600 dark:text-emerald-400 font-semibold">
@@ -3824,13 +4251,20 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
             )}
 
             {/* Net Amount in Words Box */}
-            <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-1">
+            <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-1.5">
               <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-                Net Payable Amount in Ethiopian Birr Words:
+                {isUsdModeActive && Math.max(0, grossPayableBaseUsd - vatThisInvoiceUsd) > 0
+                  ? 'Net Payable Amount in Birr & US Dollar Words:'
+                  : 'Net Payable Amount in Ethiopian Birr Words:'}
               </span>
-              <p className="text-sm font-serif italic text-slate-900 dark:text-white font-semibold">
-                "{numberToWords(netDueThisInvoice)}"
-              </p>
+              <div className="text-sm font-serif italic text-slate-900 dark:text-white font-semibold flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span>"{numberToWordsCurrency(netDueThisInvoice, 'ETB')}"</span>
+                {isUsdModeActive && Math.max(0, grossPayableBaseUsd - vatThisInvoiceUsd) > 0 && (
+                  <span className="text-purple-700 dark:text-purple-300 font-bold not-italic font-sans text-xs">
+                    • USD Portion: "{numberToWordsCurrency(Math.max(0, grossPayableBaseUsd - vatThisInvoiceUsd), 'USD')}"
+                  </span>
+                )}
+              </div>
             </div>
 
             {/* Consultant Bank Account Details */}

@@ -294,7 +294,7 @@ export const ContractAmountTab: React.FC<Props> = ({
     return 0;
   }, [c1Data.reimbursableList]);
 
-  const handleUpdateReimbursableItem = (id: string, field: 'item' | 'basis' | 'amountEtb' | 'amountUsd', value: any) => {
+  const handleUpdateReimbursableItem = (id: string, field: 'no' | 'item' | 'basis' | 'amountEtb' | 'amountUsd', value: any) => {
     setC1Data(prev => {
       const updatedList = (prev.reimbursableList || []).map(r => {
         if (r.id === id) {
@@ -1364,7 +1364,15 @@ export const ContractAmountTab: React.FC<Props> = ({
                         : ((Number(row.rateEtb) || 0) * (Number(row.mmConstr) || 0));
                       return (
                         <tr key={row.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
-                          <td className="p-3 text-slate-500 font-bold">{row.no}</td>
+                          <td className="p-3 text-slate-500 font-bold">
+                            <input
+                              type="text"
+                              disabled={isReadonly}
+                              value={row.no || ''}
+                              onChange={(e) => handleUpdateConstructionStaffRow(row.id!, 'no', e.target.value)}
+                              className="w-12 bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-500 outline-none font-bold text-slate-700 dark:text-slate-300"
+                            />
+                          </td>
                           <td className="p-3 font-sans font-semibold text-slate-900 dark:text-white">
                             <input
                               type="text"
@@ -1534,7 +1542,15 @@ export const ContractAmountTab: React.FC<Props> = ({
                   const rowTotal = (Number(row.amountEtb) || 0) + (isUsdEnabled ? ((Number(row.amountUsd) || 0) * effRate) : 0);
                   return (
                     <tr key={row.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
-                      <td className="p-3 text-slate-500 font-bold">{row.no || idx + 1}</td>
+                      <td className="p-3 text-slate-500 font-bold">
+                        <input
+                          type="text"
+                          disabled={isReadonly}
+                          value={row.no || String(idx + 1)}
+                          onChange={(e) => handleUpdateReimbursableItem(row.id, 'no', e.target.value)}
+                          className="w-12 bg-transparent border-b border-transparent hover:border-amber-300 focus:border-amber-500 outline-none font-bold text-slate-700 dark:text-slate-300"
+                        />
+                      </td>
                       <td className="p-3 font-sans font-semibold text-slate-900 dark:text-white">
                         <input
                           type="text"
@@ -1688,7 +1704,15 @@ export const ContractAmountTab: React.FC<Props> = ({
                         : ((Number(row.rateEtb) || 0) * (Number(row.mmDlp) || 0));
                       return (
                         <tr key={`dlp_row_${row.id}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
-                          <td className="p-3 text-slate-500 font-bold">{row.no}</td>
+                          <td className="p-3 text-slate-500 font-bold">
+                            <input
+                              type="text"
+                              disabled={isReadonly}
+                              value={row.no || ''}
+                              onChange={(e) => handleUpdateDlpStaffRow(row.id!, 'no', e.target.value)}
+                              className="w-12 bg-transparent border-b border-transparent hover:border-indigo-300 focus:border-indigo-500 outline-none font-bold text-slate-700 dark:text-slate-300"
+                            />
+                          </td>
                           <td className="p-3 font-sans font-semibold text-slate-900 dark:text-white">
                             <input
                               type="text"

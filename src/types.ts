@@ -901,6 +901,10 @@ export interface ConsultantInvoice {
     branch?: string;
     accountNo?: string;
   };
+  contingencyThisInvoiceClaim?: number;
+  contingencyThisInvoiceClaimUsd?: number;
+  contingencyToDateEtb?: number;
+  contingencyToDateUsd?: number;
   isPaymentSaved?: boolean;
   paymentLocked?: boolean;
   savedPaymentAmount?: number;
