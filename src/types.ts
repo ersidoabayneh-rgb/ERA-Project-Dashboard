@@ -719,6 +719,7 @@ export interface Project {
   annualInterestRate?: number;
   enableUsdPayments?: boolean; // When true, enables foreign currency (USD) tracking in Financial Data / IPCs
   hasForeignCurrency?: boolean;
+  isAmountLocked?: boolean; // When true, locks contract amount page table data entry preventing edits by non-admin users
   risks?: RiskItem[];
   issues?: IssueLogItem[];
   dailyActivities?: DailyActivityRecord[];
@@ -1156,6 +1157,10 @@ export interface ContractCondition1Data {
   totalManMonths?: number;
   contingencyPct?: number;
   vatPct?: number;
+  isLocked?: boolean;
+  lockJustification?: string;
+  validatedAt?: string;
+  validatedBy?: string;
   feesTimeBased?: number;
   reimbursableTotal?: number;
   reimbursableList?: ContractReimbursableCondition1[];

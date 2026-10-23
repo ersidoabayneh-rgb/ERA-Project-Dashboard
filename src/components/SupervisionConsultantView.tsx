@@ -2991,6 +2991,7 @@ export default function SupervisionConsultantView({
           project={project}
           consultant={consultant}
           isReadonly={isReadonly}
+          currentUser={currentUser}
           onUpdateProject={onUpdateProject}
           viewCurrency={viewCurrency}
           exchangeRate={activeExchangeRate}
