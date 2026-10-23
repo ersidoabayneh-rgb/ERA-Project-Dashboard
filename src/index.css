@@ -113,6 +113,7 @@ td.col-engineer,
   overflow-wrap: anywhere !important;
   word-break: break-word !important;
   white-space: normal !important;
+  position: relative;
 }
 
 .col-contractor,
@@ -125,6 +126,7 @@ td.col-contractor,
   overflow-wrap: anywhere !important;
   word-break: break-word !important;
   white-space: normal !important;
+  position: relative;
 }
 
 .col-firm,
@@ -137,6 +139,28 @@ td.col-firm,
   overflow-wrap: anywhere !important;
   word-break: break-word !important;
   white-space: normal !important;
+  position: relative;
+}
+
+/* Draggable Column Resizer Handle */
+.col-resizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 4px;
+  cursor: col-resize;
+  z-index: 40;
+  transition: background-color 0.2s;
+}
+
+.col-resizer:hover {
+  background-color: rgba(37, 99, 235, 0.4);
+}
+
+.col-resizer.resizing {
+  background-color: #2563eb;
+  width: 2px;
 }
 
 /* Explicit Width Utility Classes for Report Tables */

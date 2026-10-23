@@ -85,6 +85,8 @@ import {
   evaluateQualitativeGrade, 
   DEFAULT_GRADE_THRESHOLDS 
 } from '../data/consultantEvaluationMatrix';
+import { ColumnResizer } from './ColumnResizer';
+import { ThemeSettings } from '../types';
 
 const getLengthClass = (text: string) => {
   const len = (text || '').length;
@@ -228,6 +230,8 @@ interface GroupReportGeneratorProps {
   onClose: () => void;
   onUpdateProject?: (project: Project, sectionName: string) => void;
   onSelectProject?: (projectId: string, autoOpenApprovals?: boolean, initialTab?: string) => void;
+  themeSettings?: ThemeSettings;
+  onUpdateThemeSettings?: (updated: ThemeSettings) => void;
 }
 
 export default function GroupReportGenerator({
@@ -237,7 +241,9 @@ export default function GroupReportGenerator({
   pmos,
   onClose,
   onUpdateProject,
-  onSelectProject
+  onSelectProject,
+  themeSettings,
+  onUpdateThemeSettings
 }: GroupReportGeneratorProps) {
   const roleStr = String(currentUserObj?.role || '').toLowerCase();
   const usernameStr = String(currentUserObj?.username || '').toLowerCase();
@@ -10239,6 +10245,8 @@ export default function GroupReportGenerator({
           onUpdateProject={onUpdateProject}
           onSelectProject={onSelectProject}
           onClose={onClose}
+          themeSettings={themeSettings}
+          onUpdateThemeSettings={onUpdateThemeSettings}
         />
       ) : (
         /* Grid Layout Container (Full width for progressComparison landscape view, 12-column grid for others) */
@@ -12019,12 +12027,40 @@ export default function GroupReportGenerator({
 
                   {isGroupPortfolioSummaryExpanded && (
                     <div className="overflow-auto max-h-[500px]">
-                      <table className="w-full text-left border-collapse text-xs min-w-[1200px]">
+                      <table className="w-full text-left border-collapse text-xs min-w-[1200px] table-fixed-report">
                         <thead>
                           <tr className="bg-slate-100 dark:bg-slate-800 text-[9px] font-black uppercase text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-20 shadow-2xs">
                             <th className="px-3 py-2.5 min-w-[170px]">Project ID & Title</th>
-                            <th className="px-3 py-2.5 min-w-[130px]">Contractor</th>
-                            <th className="px-3 py-2.5 min-w-[140px]">Supervision Consultant</th>
+                            <th className="px-3 py-2.5 min-w-[130px] col-contractor">
+                              Contractor
+                              {onUpdateThemeSettings && themeSettings && (
+                                <ColumnResizer
+                                  columnId="colContractorWidth"
+                                  currentWidth={themeSettings.colContractorWidth || 32}
+                                  onWidthChange={(newWidth) => {
+                                    onUpdateThemeSettings({
+                                      ...themeSettings,
+                                      colContractorWidth: newWidth
+                                    });
+                                  }}
+                                />
+                              )}
+                            </th>
+                            <th className="px-3 py-2.5 min-w-[140px] col-engineer">
+                              Supervision Consultant
+                              {onUpdateThemeSettings && themeSettings && (
+                                <ColumnResizer
+                                  columnId="colEngineerWidth"
+                                  currentWidth={themeSettings.colEngineerWidth || 32}
+                                  onWidthChange={(newWidth) => {
+                                    onUpdateThemeSettings({
+                                      ...themeSettings,
+                                      colEngineerWidth: newWidth
+                                    });
+                                  }}
+                                />
+                              )}
+                            </th>
                             <th className="px-3 py-2.5 text-center min-w-[145px]">Month ({activeMilestone?.monthLabel})</th>
                             <th className="px-3 py-2.5 text-center min-w-[130px]">Quarter ({activeMilestone?.quarterLabel})</th>
                             <th className="px-3 py-2.5 text-center min-w-[130px]">EFY {activeMilestone?.efyLabel}</th>

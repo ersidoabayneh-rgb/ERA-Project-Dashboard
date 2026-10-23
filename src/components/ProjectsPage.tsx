@@ -45,7 +45,7 @@ import {
   ShieldCheck,
   FileSpreadsheet
 } from 'lucide-react';
-import { Project, User, ApprovalRequest, ProjectLifecycleStatus, isProjectClosed, isProjectArchived, isCpmOrMasterAdmin, isMasterAdminOnly, isRecentlyUpdated, formatRelativeTime, ETHIOPIAN_REGIONAL_STATES, EthiopianRegionalState } from '../types';
+import { Project, User, ApprovalRequest, ProjectLifecycleStatus, isProjectClosed, isProjectArchived, isCpmOrMasterAdmin, isMasterAdminOnly, isRecentlyUpdated, formatRelativeTime, ETHIOPIAN_REGIONAL_STATES, EthiopianRegionalState, ThemeSettings } from '../types';
 import { canUserApproveRequest, hasApprovalCredentials } from '../App';
 import eraLogo from '../assets/logo.png';
 import GroupReportGenerator from './GroupReportGenerator';
@@ -76,6 +76,8 @@ interface ProjectsPageProps {
   programDirectorates?: string[];
   pmos?: string[];
   allUsers?: User[];
+  themeSettings?: ThemeSettings;
+  onUpdateThemeSettings?: (updated: ThemeSettings) => void;
 }
 
 export default function ProjectsPage({
@@ -102,7 +104,9 @@ export default function ProjectsPage({
   onlineUsers,
   programDirectorates = ['Southern', 'North', 'East', 'West', 'Central', 'Expressway'],
   pmos = ['PMO 1', 'PMO 2', 'PMO 3'],
-  allUsers = []
+  allUsers = [],
+  themeSettings,
+  onUpdateThemeSettings
 }: ProjectsPageProps) {
   const isMasterAdmin = Boolean(
     currentUserObj?.role === 'admin' || 
@@ -2142,6 +2146,8 @@ export default function ProjectsPage({
               onClose={() => setShowReportGenerator(false)}
               onSelectProject={onSelectProject}
               onUpdateProject={onUpdateProject}
+              themeSettings={themeSettings}
+              onUpdateThemeSettings={onUpdateThemeSettings}
             />
           )}
         </AnimatePresence>

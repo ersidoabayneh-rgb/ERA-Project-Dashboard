@@ -3899,6 +3899,8 @@ let isBatchSyncRunning = false;
             <ProjectsPage
               projects={projects}
               currentUserObj={currentUserObj}
+              themeSettings={themeSettings}
+              onUpdateThemeSettings={handleUpdateTheme}
               pendingApprovals={pendingApprovals}
               onSelectProject={handleSelectProject}
               onAddNewProject={handleAddNewProject}

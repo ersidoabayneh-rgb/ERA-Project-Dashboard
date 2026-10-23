@@ -29,7 +29,8 @@ import {
   Layers,
   MoreHorizontal
 } from 'lucide-react';
-import { RegisteredFirm, Project, SupervisionConsultantInfo, User, formatAccounting } from '../types';
+import { RegisteredFirm, Project, SupervisionConsultantInfo, User, formatAccounting, ThemeSettings } from '../types';
+import { ColumnResizer } from './ColumnResizer';
 import { DEFAULT_REGISTERED_FIRMS } from '../data/defaultFirms';
 
 interface FirmsManagementViewProps {
@@ -38,6 +39,8 @@ interface FirmsManagementViewProps {
   onUpdateProject?: (project: Project, sectionName: string) => void;
   onSelectProject?: (projectId: string, autoOpenApprovals?: boolean, initialTab?: string) => void;
   onClose?: () => void;
+  themeSettings?: ThemeSettings;
+  onUpdateThemeSettings?: (updated: ThemeSettings) => void;
 }
 
 const STORAGE_KEY = 'era_registered_firms_v1';
@@ -47,7 +50,9 @@ export default function FirmsManagementView({
   currentUserObj,
   onUpdateProject,
   onSelectProject,
-  onClose
+  onClose,
+  themeSettings,
+  onUpdateThemeSettings
 }: FirmsManagementViewProps) {
   // State for registered firms
   const [firms, setFirms] = useState<RegisteredFirm[]>(() => {
@@ -619,11 +624,25 @@ export default function FirmsManagementView({
       {/* Main Firms Table matching screenshot columns */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs sm:text-sm">
+          <table className="w-full text-left border-collapse text-xs sm:text-sm table-fixed-report">
             <thead>
               <tr className="bg-slate-50/80 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-bold">
                 <th className="p-3.5 w-12 text-center">#</th>
-                <th className="p-3.5">Firm Name</th>
+                <th className="p-3.5 col-firm">
+                  Firm Name
+                  {onUpdateThemeSettings && themeSettings && (
+                    <ColumnResizer
+                      columnId="colFirmWidth"
+                      currentWidth={themeSettings.colFirmWidth || 32}
+                      onWidthChange={(newWidth) => {
+                        onUpdateThemeSettings({
+                          ...themeSettings,
+                          colFirmWidth: newWidth
+                        });
+                      }}
+                    />
+                  )}
+                </th>
                 <th className="p-3.5">Tin Number</th>
                 <th className="p-3.5">Firm Type</th>
                 <th className="p-3.5">Country of Origin</th>
@@ -667,7 +686,7 @@ export default function FirmsManagementView({
                       </td>
 
                       {/* Firm Name */}
-                      <td className="p-3.5">
+                      <td className="p-3.5 col-firm">
                         <div className="font-semibold text-slate-900 dark:text-white leading-relaxed">
                           {firm.firmName}
                         </div>
