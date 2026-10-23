@@ -1122,19 +1122,32 @@ export interface ContractReimbursableCondition1 {
   id: string;
   no?: string;
   item: string;
+  description?: string;
   unit?: string;
   rate?: number;
+  rateUsd?: number;
   contractQty?: number;
   amountEtb: number;
+  contractAmount?: number;
   amountUsd?: number;
   basis?: string;
   // USD / ETB Specific Split Settings
-  splitType?: 'percentage' | 'fixed';
+  splitType?: 'percentage' | 'fixed' | 'rate_split' | 'etb_only' | string;
   usdPercentage?: number;
   etbPercentage?: number;
   fixedUsdAmount?: number;
   fixedEtbAmount?: number;
   baseAmountEtb?: number;
+}
+
+export interface SharedReimbursableRow {
+  id: string;
+  no?: string;
+  item: string;
+  unit: string;
+  rate: number;
+  contractQty: number;
+  contractAmount: number;
 }
 
 export interface ContractCondition1Data {

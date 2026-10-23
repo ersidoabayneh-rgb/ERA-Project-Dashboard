@@ -1,26 +1,30 @@
-# Implementation Plan: ERP Dashboard Enhancements
+# Implementation Plan: Ethiopian Roads Table Consistency and Functionality
 
-## 1. Contract Amount Access Control
-- **Backend**: Update `src/middleware/auth.ts` to check `user.role === 'director_general'`. Add check to contract amount API routes.
-- **Frontend**: Update `FinancialDataPage` and `SupervisionConsultantView` to disable/hide edit controls based on `user.role`.
+## Goal
+Improve table consistency, remove unnecessary buttons, implement draggable column resizing, and link reimbursement calculations between the Contract Amount and Fee Invoice pages.
 
-## 2. Contract Amount Validation & Locking Workflow
-- **Database**: Add `status` (e.g., 'Draft', 'Submitted', 'Validated') to `contractAmount` objects in Firestore.
-- **Backend**: API handlers for `updateContractAmount` will check `status !== 'Validated'`.
-- **Frontend**: 
-    - Add "Submit for Validation" button.
-    - CPM Admin: Add "Validate" button. 
-    - When `Validated`, disable all edit controls.
+## Proposed Changes
 
-## 3. Group Report: Asphalt & Base Course Analytics
-- **Backend**: Update query in `GroupReportGenerator` to aggregate actual and planned data for 'Asphalt' and 'Base Course'.
-- **Frontend**: Add UI components to display these metrics.
+### 1. Table Row Standardization
+- **Goal:** Make row structures consistent for Construction Staff, Reimbursable Expenses, and Invoice/Payment tables across `ContractAmountTab.tsx` and `MonthlyInvoiceCalculationTable.tsx`.
+- **Action:** Review table header and cell definitions in both components. Align columns (e.g., Position, Unit, Rate, Quantity, Amount) and ensure consistent styling.
 
-## 4. Supervision Consultant Page: Contract & Scope Profile Table
-- **Backend**: Create new collection/sub-collection in Firestore for Supervision Consultant Contract Tables.
-- **Frontend**:
-    - Add `SupervisionConsultantContractTable` component.
-    - Implement dynamic row addition.
-    - Implement submission/approval flow (Directorate Admin).
-    - Locking mechanism upon approval.
-    - Automatic new table creation on consultant change.
+### 2. UI Cleanup
+- **Goal:** Remove "Add DLP Position" and "Add Reimbursable" buttons from the `Fee Invoices & Payments` page (`MonthlyInvoiceCalculationTable.tsx`).
+- **Action:** Locate the button components and remove them from the UI.
+
+### 3. Draggable Column Separators
+- **Goal:** Allow users to dynamically resize column widths for `.col-engineer`, `.col-contractor`, and `.col-firm`.
+- **Action:** 
+    - Reuse or adapt `src/components/ColumnResizer.tsx` if applicable, or implement a standard draggable handler using `onMouseDown` events to update column width state in the parent components.
+
+### 4. Linking Table B to Sub Total 2
+- **Goal:** Ensure changes in `Table B - Reimbursable Direct Expenses Schedule` in the Contract Amount page reflect in `Sub Total 2 - Reimbursable Operating Direct Costs Calculation` on the Fee Invoices & Payments page.
+- **Action:** 
+    - The current codebase appears to save contract amount data in the project state (`onUpdateProject`). I need to ensure `MonthlyInvoiceCalculationTable.tsx` is properly reading and synchronizing with the updated `reimbursableList` from the `consultant.contractAmountSchedule.condition1` state.
+
+## Verification
+- Run `compile_applet` to ensure no build errors.
+- Verify table structure in UI.
+- Test draggable resizing for the specified columns.
+- Test that updating Table B in Contract Amount updates Sub Total 2 in Invoice/Payments.

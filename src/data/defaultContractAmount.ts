@@ -3,6 +3,7 @@ import {
   ContractCondition2Data, 
   ContractStaffRateCondition1, 
   ContractStaffRateCondition2, 
+  ContractReimbursableCondition1,
   ContractReimbursableCondition2 
 } from '../types';
 
@@ -55,10 +56,17 @@ export const DEFAULT_CONDITION_1_DLP_STAFF: ContractStaffRateCondition1[] = [
   { id: 'c1_dlp_10', no: '4.1', position: 'Project Coordinator (Head Office)', name: 'TBN', category: 'Head Office', mmConstr: 0, mmDlp: 2, totalMm: 2, rateEtb: 12500, totalEtb: 25000 }
 ];
 
-export const DEFAULT_CONDITION_1_REIMBURSABLES = [
-  { id: 'c1_r_1', no: '1', item: 'Per diem', unit: 'Day', rate: 250, contractQty: 34027.16, amountEtb: 8506789.75, basis: 'Daily allowance per actual site attendance records' },
-  { id: 'c1_r_2', no: '2', item: 'Communication', unit: 'Month', rate: 10000, contractQty: 24, amountEtb: 240000.00, basis: 'Monthly internet, satellite & telephone links' },
-  { id: 'c1_r_3', no: '3', item: 'Professional indemnity', unit: 'LS', rate: 500000, contractQty: 1, amountEtb: 500000.00, basis: 'Insurance certificate submission lump-sum' }
+export const DEFAULT_CONDITION_1_REIMBURSABLES: ContractReimbursableCondition1[] = [
+  { id: 'reimb_1', no: '1', item: 'Head office Support', description: 'Head office Support', unit: 'Month', rate: 19000.00, contractQty: 36, amountEtb: 684000.00, contractAmount: 684000.00, basis: 'Approved monthly head office technical support quota' },
+  { id: 'reimb_2', no: '2', item: 'Communication Cost', description: 'Communication Cost', unit: 'Month', rate: 12000.00, contractQty: 36, amountEtb: 432000.00, contractAmount: 432000.00, basis: 'Monthly communication, satellite, internet & telephone links' },
+  { id: 'reimb_3', no: '3', item: 'Insurance cost', description: 'Insurance cost', unit: 'LS', rate: 400000.00, contractQty: 1, amountEtb: 400000.00, contractAmount: 400000.00, basis: 'Lump-sum professional indemnity insurance certificate' },
+  { id: 'reimb_4', no: '4', item: "Accommodation - Engineer's Key Staffs", description: "Accommodation - Engineer's Key Staffs", unit: 'MM', rate: 30000.00, contractQty: 36, amountEtb: 1080000.00, contractAmount: 1080000.00, basis: 'Approved monthly housing allowance for Key Staff' },
+  { id: 'reimb_5', no: '5', item: "Accommodation - Engineer's Intermediate Staffs", description: "Accommodation - Engineer's Intermediate Staffs", unit: 'MM', rate: 24000.00, contractQty: 42, amountEtb: 1008000.00, contractAmount: 1008000.00, basis: 'Approved monthly housing allowance for Intermediate Staff' },
+  { id: 'reimb_6', no: '6', item: "Accommodation - Engineer's Support Staffs", description: "Accommodation - Engineer's Support Staffs", unit: 'MM', rate: 22500.00, contractQty: 30, amountEtb: 675000.00, contractAmount: 675000.00, basis: 'Approved monthly housing allowance for Field Support Staff' },
+  { id: 'reimb_7', no: '7', item: "Surveying Equipment For the Engineer's Staffs", description: "Surveying Equipment For the Engineer's Staffs", unit: 'Month', rate: 85000.00, contractQty: 6, amountEtb: 510000.00, contractAmount: 510000.00, basis: 'Total station and survey instrument monthly rental' },
+  { id: 'reimb_8', no: '8', item: 'Production Of Report', description: 'Production Of Report', unit: 'Month', rate: 15000.00, contractQty: 36, amountEtb: 540000.00, contractAmount: 540000.00, basis: 'Monthly, quarterly, and special report printing & reproduction' },
+  { id: 'reimb_9', no: '9', item: 'Vehicle Rental & Operation', description: 'Vehicle Rental & Operation', unit: 'Month', rate: 75000.00, contractQty: 36, amountEtb: 2700000.00, contractAmount: 2700000.00, basis: 'Field vehicles operational lease, maintenance & fuel costs' },
+  { id: 'reimb_10', no: '10', item: 'Materials Testing & Quality Laboratory Operations', description: 'Materials Testing & Quality Laboratory Operations', unit: 'LS', rate: 350000.00, contractQty: 1, amountEtb: 350000.00, contractAmount: 350000.00, basis: 'Site laboratory consumables, testing equipment & calibration' }
 ];
 
 export const DEFAULT_CONDITION_1_DATA: ContractCondition1Data = {
@@ -68,13 +76,8 @@ export const DEFAULT_CONDITION_1_DATA: ContractCondition1Data = {
   contingencyPct: 15,
   vatPct: 15,
   feesTimeBased: 9539500.00,
-  reimbursableTotal: 9246789.75,
+  reimbursableTotal: 8379000.00,
   reimbursableList: DEFAULT_CONDITION_1_REIMBURSABLES,
-  reimbursables: {
-    perDiem: 8506789.75,
-    communication: 240000.00,
-    professionalIndemnity: 500000.00
-  },
   staffFees: DEFAULT_CONDITION_1_STAFF,
   dlpStaffFees: DEFAULT_CONDITION_1_DLP_STAFF
 };

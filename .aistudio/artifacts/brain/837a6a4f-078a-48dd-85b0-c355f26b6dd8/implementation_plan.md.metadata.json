@@ -1,6 +1,6 @@
 {
-  "summary": "Implementation plan for:\n1. Contract Amount Access Control\n2. Contract Amount Validation & Locking Workflow\n3. Group Report: Asphalt & Base Course Analytics\n4. Supervision Consultant Page: Contract & Scope Profile Table",
-  "updatedAt": "2026-10-14T11:32:24.803723246Z",
-  "requestFeedback": true,
-  "userFacing": true
+  "summary":  "Implementation plan to address user requests:\n1. Standardize table row structure in ContractAmountTab.tsx and MonthlyInvoiceCalculationTable.tsx.\n2. Remove \"Add DLP Position\" and \"Add Reimbursable\" buttons from MonthlyInvoiceCalculationTable.tsx.\n3. Implement draggable column separators in the relevant components.\n4. Link Table B in ContractAmountTab to Sub Total 2 in MonthlyInvoiceCalculationTable via state/context.",
+  "updatedAt":  "2026-10-23T09:31:30.489021357Z",
+  "requestFeedback":  true,
+  "userFacing":  true
 }

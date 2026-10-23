@@ -2746,6 +2746,15 @@ export default function SupervisionConsultantView({
                   <Users className="w-3.5 h-3.5" />
                   Assign Personnel
                 </button>
+
+                <button
+                  onClick={handleCrossModuleSyncAll}
+                  title="Cross-reference all personnel rates, man-months, and contract schedules"
+                  className="px-3.5 py-2 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5 transition shadow-xs cursor-pointer"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  Sync All Data
+                </button>
               </div>
             )}
 
@@ -4001,6 +4010,26 @@ export default function SupervisionConsultantView({
                   personnel: updatedPersonnel
                 }, 'Calculated assigned personnel man-month inputs from monthly invoice total to-date man-months');
               }}
+              onUpdateContractReimbursables={(reimbursables) => {
+                const c1 = consultant.contractAmountSchedule?.condition1;
+                const newTotal = reimbursables.reduce((s, r) => s + (Number(r.amountEtb ?? r.contractAmount) || 0), 0);
+                const updatedC1 = {
+                  ...(c1 || {}),
+                  reimbursableList: reimbursables,
+                  reimbursableTotal: newTotal,
+                  summary: {
+                    ...(c1?.summary || {}),
+                    reimbursableExpenses: newTotal
+                  }
+                };
+                saveConsultantData({
+                  ...consultant,
+                  contractAmountSchedule: {
+                    ...consultant.contractAmountSchedule,
+                    condition1: updatedC1 as any
+                  }
+                }, 'Synced reimbursables from invoice calculation table to Contract Amount Table B');
+              }}
               onBackToLedger={() => setInvoiceViewMode('table')}
               onSelectInvoice={(inv) => setSelectedInvoiceForPdfModal(inv)}
               onNavigateToContractAmount={() => setActiveTab('contract_amount')}
@@ -4120,13 +4149,6 @@ export default function SupervisionConsultantView({
 
                         {!isReadonly && (
                           <div className="flex items-center gap-1">
-                            <button
-                              onClick={() => handleOpenEditInvoice(inv)}
-                              title="Calculate and edit invoice tables"
-                              className="p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950/30 text-blue-600 dark:text-blue-400 transition cursor-pointer"
-                            >
-                              <Calculator className="w-3.5 h-3.5" />
-                            </button>
                             <button
                               onClick={() => handleDeleteInvoice(inv.id, inv.invoiceNo)}
                               title="Delete invoice"

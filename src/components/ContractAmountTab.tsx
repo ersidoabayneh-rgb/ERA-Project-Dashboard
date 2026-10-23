@@ -11,7 +11,8 @@ import {
   Receipt,
   Users,
   Calculator,
-  Sliders
+  Sliders,
+  AlertTriangle
 } from 'lucide-react';
 import { 
   Project, 
@@ -82,8 +83,15 @@ export const ContractAmountTab: React.FC<Props> = ({
     }
 
     if (savedSchedule) {
-      const reimbList = savedSchedule.reimbursableList && savedSchedule.reimbursableList.length > 0
-        ? savedSchedule.reimbursableList
+      const hasOldPlaceholder = savedSchedule.reimbursableList && savedSchedule.reimbursableList.length === 3 && savedSchedule.reimbursableList[0].item === 'Per diem';
+      const reimbList = savedSchedule.reimbursableList && savedSchedule.reimbursableList.length > 0 && !hasOldPlaceholder
+        ? savedSchedule.reimbursableList.map(r => ({
+            ...r,
+            description: r.description || r.item,
+            item: r.item || r.description || '',
+            amountEtb: r.amountEtb ?? r.contractAmount ?? 0,
+            contractAmount: r.amountEtb ?? r.contractAmount ?? 0
+          }))
         : DEFAULT_CONDITION_1_REIMBURSABLES;
       
       const staffList = savedSchedule.staffFees && savedSchedule.staffFees.length > 0
@@ -122,6 +130,15 @@ export const ContractAmountTab: React.FC<Props> = ({
   });
 
   const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
+  const [reimbSyncStatus, setReimbSyncStatus] = useState<{
+    status: 'synced' | 'error' | 'syncing';
+    message?: string;
+    invalidRowId?: string;
+    lastRecalculatedAt?: string;
+  }>({
+    status: 'synced',
+    message: 'Sub Total 2 synchronized with Fee Invoices'
+  });
   const [activeTableTab, setActiveTableTab] = useState<'all' | 'summary' | 'construction' | 'dlp' | 'reimbursable' | 'currency_split'>('all');
   const [isSplitSettingsOpen, setIsSplitSettingsOpen] = useState(false);
 
@@ -297,33 +314,152 @@ export const ContractAmountTab: React.FC<Props> = ({
     return 0;
   }, [c1Data.reimbursableList]);
 
+  // Real-time synchronization helper to project state with strict validation check
+  const syncReimbursableListToProject = (updatedList: ContractReimbursableCondition1[], newTotal: number): boolean => {
+    // 1. Validation check across all reimbursable rows
+    const invalidRow = updatedList.find(r => 
+      (r.rate !== undefined && (isNaN(r.rate) || r.rate < 0)) ||
+      (r.contractQty !== undefined && (isNaN(r.contractQty) || r.contractQty < 0)) ||
+      (r.rateUsd !== undefined && (isNaN(r.rateUsd) || r.rateUsd < 0)) ||
+      (r.amountEtb !== undefined && (isNaN(r.amountEtb) || r.amountEtb < 0)) ||
+      !(r.item || r.description)?.trim()
+    );
+
+    if (invalidRow) {
+      const reason = !(invalidRow.item || invalidRow.description)?.trim()
+        ? 'Item description cannot be blank'
+        : 'Unit Rate, Contract Quantity, and Amount must be valid non-negative numbers';
+      
+      setReimbSyncStatus({
+        status: 'error',
+        message: `Validation Error on Item #${invalidRow.no || '?'}: ${reason}. Sub Total 2 synchronization halted.`,
+        invalidRowId: invalidRow.id
+      });
+      return false;
+    }
+
+    if (!onUpdateProject) {
+      setReimbSyncStatus({
+        status: 'error',
+        message: 'Project persistence handler is not connected. Sub Total 2 row synchronization failed.',
+        invalidRowId: undefined
+      });
+      return false;
+    }
+
+    try {
+      const currentSchedule = consultant.contractAmountSchedule?.condition1 || DEFAULT_CONDITION_1_DATA;
+      const updatedCondition1: ContractCondition1Data = {
+        ...currentSchedule,
+        ...c1Data,
+        reimbursableList: updatedList,
+        reimbursableTotal: newTotal,
+        summary: {
+          ...(currentSchedule.summary || {}),
+          reimbursableExpenses: newTotal
+        }
+      };
+
+      onUpdateProject({
+        supervisionConsultant: {
+          ...consultant,
+          contractAmountSchedule: {
+            ...consultant.contractAmountSchedule,
+            condition1: updatedCondition1
+          }
+        }
+      }, 'contract_amount');
+
+      setReimbSyncStatus({
+        status: 'synced',
+        message: `Sub Total 2 recalculated (${fmt(newTotal)} ETB) and synchronized with Fee Invoices.`,
+        lastRecalculatedAt: new Date().toLocaleTimeString(),
+        invalidRowId: undefined
+      });
+      return true;
+    } catch (err: any) {
+      setReimbSyncStatus({
+        status: 'error',
+        message: `Sub Total 2 synchronization failed: ${err?.message || 'Database update error'}`,
+        invalidRowId: undefined
+      });
+      return false;
+    }
+  };
+
   const handleUpdateReimbursableItem = (id: string, field: keyof ContractReimbursableCondition1, value: any) => {
+    let isRowInvalid = false;
+    let rowValidationMsg = '';
+    let updatedList: ContractReimbursableCondition1[] = [];
+    let newTotal = 0;
+
     setC1Data(prev => {
-      const updatedList = (prev.reimbursableList || []).map(r => {
+      updatedList = (prev.reimbursableList || []).map(r => {
         if (r.id === id) {
-          const updated = {
+          const parsedVal = (field === 'amountEtb' || field === 'amountUsd' || field === 'rate' || field === 'rateUsd' || field === 'contractQty' || field === 'contractAmount') 
+            ? (value === '' ? 0 : parseFloat(value)) 
+            : value;
+
+          if (typeof parsedVal === 'number' && (isNaN(parsedVal) || parsedVal < 0)) {
+            isRowInvalid = true;
+            rowValidationMsg = `${String(field)} must be a positive number`;
+          }
+
+          const updated: ContractReimbursableCondition1 = {
             ...r,
-            [field]: (field === 'amountEtb' || field === 'amountUsd' || field === 'rate' || field === 'contractQty') ? (parseFloat(value) || 0) : value
+            [field]: isNaN(parsedVal) ? 0 : parsedVal
           };
           
-          // Auto-calculate amount if rate or qty changes
+          if (field === 'item') {
+            updated.description = value;
+          } else if (field === 'description') {
+            updated.item = value;
+          }
+
           if (field === 'rate' || field === 'contractQty') {
             const rate = field === 'rate' ? (parseFloat(value) || 0) : (r.rate || 0);
             const qty = field === 'contractQty' ? (parseFloat(value) || 0) : (r.contractQty || 0);
             updated.amountEtb = Number((rate * qty).toFixed(2));
+            updated.contractAmount = updated.amountEtb;
+          }
+          if (field === 'amountEtb' || field === 'contractAmount') {
+            const amt = parseFloat(value) || 0;
+            updated.amountEtb = amt;
+            updated.contractAmount = amt;
+          }
+          if (field === 'rateUsd' || field === 'contractQty') {
+            const rateUsd = field === 'rateUsd' ? (parseFloat(value) || 0) : (r.rateUsd || 0);
+            const qty = field === 'contractQty' ? (parseFloat(value) || 0) : (r.contractQty || 0);
+            if (rateUsd > 0) {
+              updated.amountUsd = Number((rateUsd * qty).toFixed(2));
+            }
           }
           
           return updated;
         }
         return r;
       });
-      const newTotal = updatedList.reduce((sum, r) => sum + (Number(r.amountEtb) || 0), 0);
+
+      newTotal = updatedList.reduce((sum, r) => sum + (Number(r.amountEtb ?? r.contractAmount) || 0), 0);
+
       return {
         ...prev,
         reimbursableList: updatedList,
         reimbursableTotal: newTotal
       };
     });
+
+    if (isRowInvalid) {
+      setReimbSyncStatus({
+        status: 'error',
+        message: `Validation Error on Item: ${rowValidationMsg}. Recalculation halted.`,
+        invalidRowId: id
+      });
+    } else {
+      setTimeout(() => {
+        syncReimbursableListToProject(updatedList, newTotal);
+      }, 0);
+    }
   };
 
   const handleAddReimbursableItem = () => {
@@ -333,33 +469,61 @@ export const ContractAmountTab: React.FC<Props> = ({
       id: `reimb_${Date.now()}`,
       no: newNo,
       item: 'New Reimbursable Direct Expense Sub-Item',
+      description: 'New Reimbursable Direct Expense Sub-Item',
       basis: 'Actual site expenditure & approved vouchers',
-      unit: 'LS',
-      rate: 0,
-      contractQty: 1,
-      amountEtb: 0
+      unit: 'Month',
+      rate: 15000,
+      contractQty: 12,
+      amountEtb: 180000,
+      contractAmount: 180000
     };
+    let updatedList: ContractReimbursableCondition1[] = [];
+    let newTotal = 0;
     setC1Data(prev => {
-      const updatedList = [...(prev.reimbursableList || []), newItem];
-      const newTotal = updatedList.reduce((sum, r) => sum + (Number(r.amountEtb) || 0), 0);
+      updatedList = [...(prev.reimbursableList || []), newItem];
+      newTotal = updatedList.reduce((sum, r) => sum + (Number(r.amountEtb ?? r.contractAmount) || 0), 0);
       return {
         ...prev,
         reimbursableList: updatedList,
         reimbursableTotal: newTotal
       };
     });
+    setTimeout(() => {
+      syncReimbursableListToProject(updatedList, newTotal);
+    }, 0);
   };
 
   const handleDeleteReimbursableItem = (id: string) => {
+    let updatedList: ContractReimbursableCondition1[] = [];
+    let newTotal = 0;
     setC1Data(prev => {
-      const updatedList = (prev.reimbursableList || []).filter(r => r.id !== id);
-      const newTotal = updatedList.reduce((sum, r) => sum + (Number(r.amountEtb) || 0), 0);
+      updatedList = (prev.reimbursableList || []).filter(r => r.id !== id);
+      newTotal = updatedList.reduce((sum, r) => sum + (Number(r.amountEtb ?? r.contractAmount) || 0), 0);
       return {
         ...prev,
         reimbursableList: updatedList,
         reimbursableTotal: newTotal
       };
     });
+    setTimeout(() => {
+      syncReimbursableListToProject(updatedList, newTotal);
+    }, 0);
+  };
+
+  const handleResetToOfficialReimbursables = () => {
+    if (!window.confirm('Reset Table B back to the official 10 DKS Reimbursable Direct Operating Cost items from Fee Invoices Sub Total 2?')) {
+      return;
+    }
+    const officialRows = DEFAULT_CONDITION_1_REIMBURSABLES;
+    const newTotal = officialRows.reduce((sum, r) => sum + (Number(r.amountEtb ?? r.contractAmount) || 0), 0);
+    setC1Data(prev => ({
+      ...prev,
+      reimbursableList: officialRows,
+      reimbursableTotal: newTotal
+    }));
+    setTimeout(() => {
+      syncReimbursableListToProject(officialRows, newTotal);
+    }, 0);
   };
 
   // -------------------------------------------------------------
@@ -1492,62 +1656,133 @@ export const ContractAmountTab: React.FC<Props> = ({
       {/* TABLE B — REIMBURSABLE DIRECT EXPENSES SCHEDULE */}
       {(activeTableTab === 'all' || activeTableTab === 'reimbursable') && (
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-xs overflow-hidden mt-6">
-          <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <span className="w-6 h-6 rounded-lg bg-amber-600 text-white text-xs flex items-center justify-center font-mono font-bold">B</span>
-              <div>
+          <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="w-6 h-6 rounded-lg bg-amber-600 text-white text-xs flex items-center justify-center font-mono font-bold">2</span>
                 <h4 className="text-sm font-bold uppercase tracking-wider text-slate-900 dark:text-white">
-                  Table B — Reimbursable Direct Expenses Schedule
+                  Table B — Reimbursable Direct Expenses Schedule (Sub Total 2)
                 </h4>
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  Itemized direct operating costs, daily allowances, communication, and professional insurances.
-                </p>
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300 dark:border-amber-800 flex items-center gap-1">
+                  <span>🔗 Linked to Fee Invoices Sub Total 2</span>
+                </span>
+                <span className="px-2 py-0.5 rounded-md text-[10px] font-mono bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                  {(c1Data.reimbursableList || []).length} items
+                </span>
               </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Direct field operating expenses (Head office support, communication, insurance, accommodation, surveying equipment, reports, vehicles, laboratory). Any changes here instantly synchronize with Sub Total 2 on the Fee Invoices & Payments page.
+              </p>
             </div>
 
-            <div className="flex items-center gap-2">
-              <span className="text-xs bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 font-bold px-2.5 py-1 rounded-lg border border-amber-300 dark:border-amber-800 flex items-center gap-1.5">
-                <span>Total: {fmt(reimbursableTotal)} ETB</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 font-bold px-3 py-1.5 rounded-xl border border-amber-200 dark:border-amber-800 flex items-center gap-1.5 shadow-2xs font-mono">
+                <span>Sub-Total 2: <strong>{fmt(reimbursableTotal)} ETB</strong></span>
+                {isUsdEnabled && reimbursableTotalUsd > 0 && (
+                  <span className="text-purple-700 dark:text-purple-300 font-bold">(${fmt(reimbursableTotalUsd)} USD)</span>
+                )}
               </span>
+
+              {/* Real-time Sub Total 2 recalculation & sync status visual feedback */}
+              {reimbSyncStatus.status === 'synced' ? (
+                <span className="px-2.5 py-1 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 flex items-center gap-1.5 shadow-2xs" title={`Recalculated & Synced at ${reimbSyncStatus.lastRecalculatedAt || 'live'}`}>
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <span>Sub Total 2 Synced ({fmt(reimbursableTotal)} ETB)</span>
+                </span>
+              ) : (
+                <span className="px-2.5 py-1 rounded-xl text-xs font-black bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-200 border border-rose-400 dark:border-rose-700 flex items-center gap-1.5 shadow-xs animate-pulse">
+                  <AlertTriangle className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+                  <span>Sync Failed: Sub Total 2 Error</span>
+                </span>
+              )}
+
               {!isReadonly && (
-                <button
-                  type="button"
-                  onClick={handleAddReimbursableItem}
-                  className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  Add Expense Item
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={handleResetToOfficialReimbursables}
+                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border border-slate-300 dark:border-slate-700 cursor-pointer shadow-xs"
+                    title="Reset to the 10 official DKS reimbursable rows"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    Reset to Standard 10 Items
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleAddReimbursableItem}
+                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Add Expense Item
+                  </button>
+                </>
               )}
             </div>
           </div>
+
+          {/* Immediate Visual Alert if Row Validation or Synchronization Fails */}
+          {reimbSyncStatus.status === 'error' && (
+            <div className="mx-6 mt-3 p-3 bg-rose-50 dark:bg-rose-950/60 border border-rose-300 dark:border-rose-800 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-rose-800 dark:text-rose-200 shadow-sm animate-fadeIn">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
+                <div>
+                  <span className="font-black">Sub Total 2 Recalculation / Row Sync Failure: </span>
+                  <span className="font-medium">{reimbSyncStatus.message}</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const newTotal = (c1Data.reimbursableList || []).reduce((sum, r) => sum + (Number(r.amountEtb ?? r.contractAmount) || 0), 0);
+                  syncReimbursableListToProject(c1Data.reimbursableList || [], newTotal);
+                }}
+                className="px-3 py-1 bg-rose-200 hover:bg-rose-300 dark:bg-rose-900 text-rose-900 dark:text-rose-100 rounded-xl font-bold text-[11px] transition cursor-pointer self-start sm:self-center"
+              >
+                Re-validate & Sync Now
+              </button>
+            </div>
+          )}
 
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
                 <tr className="bg-slate-100 dark:bg-slate-800 text-[10px] text-slate-600 dark:text-slate-300 uppercase tracking-wider font-black border-b border-slate-200 dark:border-slate-700">
                   <th className="py-2.5 px-3 w-10 text-center">#</th>
-                  <th className="py-2.5 px-3 min-w-[220px]">Item Description</th>
+                  <th className="py-2.5 px-3 min-w-[240px]">Item Description</th>
                   <th className="py-2.5 px-2 text-center w-16">Unit</th>
-                  <th className="py-2.5 px-2 text-right min-w-[100px]">Rate (ETB)</th>
+                  <th className="py-2.5 px-2 text-right min-w-[105px]">Rate (ETB)</th>
                   {isUsdEnabled && <th className="py-2.5 px-2 text-right min-w-[100px] text-purple-700 dark:text-purple-300">Rate (USD)</th>}
-                  <th className="py-2.5 px-2 text-right min-w-[80px]">Contract Qty</th>
-                  <th className="py-2.5 px-3 text-right min-w-[110px]">Contract Amount</th>
-                  <th className="py-2.5 px-2 text-center w-12">Act</th>
+                  <th className="py-2.5 px-2 text-right min-w-[85px]">Contract Qty</th>
+                  <th className="py-2.5 px-3 text-right min-w-[120px]">Contract Amount (ETB)</th>
+                  {isUsdEnabled && <th className="py-2.5 px-3 text-right min-w-[110px] text-purple-700 dark:text-purple-300">Amount (USD)</th>}
+                  <th className="py-2.5 px-2 text-center w-14">Act</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-sans text-xs text-slate-800 dark:text-slate-200">
                 {(c1Data.reimbursableList || []).length === 0 ? (
                   <tr>
-                    <td colSpan={isUsdEnabled ? 15 : 14} className="py-8 text-center text-slate-400">
+                    <td colSpan={isUsdEnabled ? 9 : 8} className="py-8 text-center text-slate-400">
                       No reimbursable operating expenses defined. Click "+ Add Expense Item" to add.
                     </td>
                   </tr>
                 ) : (
                   (c1Data.reimbursableList || []).map((row, idx) => {
-                    const contractAmount = (Number(row.amountEtb) || 0);
+                    const contractAmount = (Number(row.amountEtb ?? row.contractAmount) || 0);
+                    const contractAmountUsd = (Number(row.amountUsd) || 0);
+                    const isRowInError = reimbSyncStatus.invalidRowId === row.id ||
+                      (row.rate !== undefined && (isNaN(row.rate) || row.rate < 0)) ||
+                      (row.contractQty !== undefined && (isNaN(row.contractQty) || row.contractQty < 0)) ||
+                      !(row.item || row.description)?.trim();
+
                     return (
-                      <tr key={row.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
+                      <tr 
+                        key={row.id} 
+                        className={`transition ${
+                          isRowInError 
+                            ? 'bg-rose-50/70 dark:bg-rose-950/40 border-l-4 border-l-rose-500' 
+                            : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                        }`}
+                      >
                         <td className="py-2 px-3 text-center font-mono text-slate-400 font-bold">
                           <input
                             type="text"
@@ -1561,10 +1796,14 @@ export const ContractAmountTab: React.FC<Props> = ({
                           <div className="flex flex-col gap-0.5">
                             <input
                               type="text"
-                              value={row.item}
+                              value={row.item || row.description || ''}
                               disabled={isReadonly}
                               onChange={(e) => handleUpdateReimbursableItem(row.id, 'item', e.target.value)}
-                              className="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-amber-500 focus:outline-none text-xs font-bold"
+                              className={`w-full bg-transparent border-b text-xs font-bold focus:outline-none ${
+                                !row.item?.trim() 
+                                  ? 'border-rose-500 bg-rose-100/50 text-rose-800' 
+                                  : 'border-transparent hover:border-slate-300 focus:border-amber-500'
+                              }`}
                             />
                             <input
                               type="text"
@@ -1579,9 +1818,9 @@ export const ContractAmountTab: React.FC<Props> = ({
                         <td className="py-2 px-2 text-center font-mono text-slate-500">
                           <input
                             type="text"
-                            value={row.unit || 'LS'}
+                            value={row.unit || 'Month'}
                             disabled={isReadonly}
-                            onChange={(e) => handleUpdateReimbursableItem(row.id, 'unit' as any, e.target.value)}
+                            onChange={(e) => handleUpdateReimbursableItem(row.id, 'unit', e.target.value)}
                             className="w-12 text-center bg-transparent border-b border-transparent hover:border-slate-300 focus:border-amber-500 focus:outline-none text-xs font-mono"
                           />
                         </td>
@@ -1591,8 +1830,12 @@ export const ContractAmountTab: React.FC<Props> = ({
                             step="any"
                             value={row.rate || 0}
                             disabled={isReadonly}
-                            onChange={(e) => handleUpdateReimbursableItem(row.id, 'rate' as any, parseFloat(e.target.value) || 0)}
-                            className="w-24 text-right bg-transparent border-b border-transparent hover:border-slate-300 focus:border-amber-500 focus:outline-none text-xs font-mono"
+                            onChange={(e) => handleUpdateReimbursableItem(row.id, 'rate', parseFloat(e.target.value))}
+                            className={`w-24 text-right bg-transparent border-b text-xs font-mono focus:outline-none ${
+                              row.rate !== undefined && (isNaN(row.rate) || row.rate < 0)
+                                ? 'border-rose-500 bg-rose-100/50 text-rose-800 font-bold'
+                                : 'border-transparent hover:border-slate-300 focus:border-amber-500'
+                            }`}
                           />
                         </td>
                         {isUsdEnabled && (
@@ -1600,9 +1843,9 @@ export const ContractAmountTab: React.FC<Props> = ({
                             <input
                               type="number"
                               step="any"
-                              value={row.amountUsd || 0}
+                              value={row.rateUsd || (row.contractQty ? Number(((row.amountUsd || 0) / row.contractQty).toFixed(2)) : 0)}
                               disabled={isReadonly}
-                              onChange={(e) => handleUpdateReimbursableItem(row.id, 'amountUsd', parseFloat(e.target.value) || 0)}
+                              onChange={(e) => handleUpdateReimbursableItem(row.id, 'rateUsd', parseFloat(e.target.value))}
                               className="w-20 text-right bg-transparent border-b border-transparent hover:border-slate-300 focus:border-purple-500 focus:outline-none text-xs font-mono"
                             />
                           </td>
@@ -1613,13 +1856,22 @@ export const ContractAmountTab: React.FC<Props> = ({
                             step="any"
                             value={row.contractQty || 1}
                             disabled={isReadonly}
-                            onChange={(e) => handleUpdateReimbursableItem(row.id, 'contractQty' as any, parseFloat(e.target.value) || 0)}
-                            className="w-16 text-right bg-transparent border-b border-transparent hover:border-slate-300 focus:border-amber-500 focus:outline-none text-xs font-mono"
+                            onChange={(e) => handleUpdateReimbursableItem(row.id, 'contractQty', parseFloat(e.target.value))}
+                            className={`w-16 text-right bg-transparent border-b text-xs font-mono focus:outline-none ${
+                              row.contractQty !== undefined && (isNaN(row.contractQty) || row.contractQty < 0)
+                                ? 'border-rose-500 bg-rose-100/50 text-rose-800 font-bold'
+                                : 'border-transparent hover:border-slate-300 focus:border-amber-500'
+                            }`}
                           />
                         </td>
-                        <td className="py-2 px-3 text-right font-mono font-semibold text-slate-700 dark:text-slate-300">
+                        <td className="py-2 px-3 text-right font-mono font-bold text-slate-800 dark:text-slate-200">
                           {fmt(contractAmount)}
                         </td>
+                        {isUsdEnabled && (
+                          <td className="py-2 px-3 text-right font-mono font-bold text-purple-700 dark:text-purple-300">
+                            ${fmt(contractAmountUsd)}
+                          </td>
+                        )}
                         <td className="py-2 px-2 text-center">
                           <div className="flex items-center justify-center gap-1">
                             <button
@@ -1647,12 +1899,17 @@ export const ContractAmountTab: React.FC<Props> = ({
               </tbody>
               <tfoot className="border-t-2 border-slate-300 dark:border-slate-700 font-bold bg-amber-50/50 dark:bg-slate-800 text-xs">
                 <tr>
-                  <td colSpan={5} className="py-2.5 px-3 text-amber-900 dark:text-amber-200 uppercase text-[10px] font-black">
+                  <td colSpan={isUsdEnabled ? 6 : 5} className="py-2.5 px-3 text-amber-900 dark:text-amber-200 uppercase text-[10px] font-black">
                     Sub-Total 2 (Reimbursable Direct Operating Costs):
                   </td>
-                  <td className="py-2.5 px-3 text-right font-mono text-slate-900 dark:text-white">
+                  <td className="py-2.5 px-3 text-right font-mono text-slate-900 dark:text-white font-black">
                     {fmt(reimbursableTotal)} ETB
                   </td>
+                  {isUsdEnabled && (
+                    <td className="py-2.5 px-3 text-right font-mono text-purple-700 dark:text-purple-300 font-black">
+                      ${fmt(reimbursableTotalUsd)} USD
+                    </td>
+                  )}
                   <td></td>
                 </tr>
               </tfoot>

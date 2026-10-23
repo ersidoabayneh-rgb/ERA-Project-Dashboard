@@ -628,7 +628,7 @@ export default function FirmsManagementView({
             <thead>
               <tr className="bg-slate-50/80 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-bold">
                 <th className="p-3.5 w-12 text-center">#</th>
-                <th className="p-3.5 col-firm">
+                <th className="p-3.5 col-firm relative">
                   Firm Name
                   {onUpdateThemeSettings && themeSettings && (
                     <ColumnResizer
