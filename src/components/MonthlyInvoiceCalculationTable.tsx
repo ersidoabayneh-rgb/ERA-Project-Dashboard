@@ -48,17 +48,21 @@ export interface EditableStaffRow {
   name: string;
   unit: string;
   rate: number;
+  rateUsd?: number;
   originalRate?: number;
   effectiveRate?: number;
   isReduced?: boolean;
   contractQty: number;
   contractAmount: number;
+  contractAmountUsd?: number;
   mmConstr?: number;
   mmDlp?: number;
   totalMm?: number;
   daysWorked: number;
   precedingQty: number;
   precedingAmount: number;
+  precedingAmountUsd?: number;
+  thisInvoiceAmount?: number;
   dailyReimbursableRate?: number;
   // Directory Linkage & Replacement Tracking
   status?: 'Active' | 'Demobilized' | 'Replaced' | 'On Leave' | string;
@@ -80,14 +84,18 @@ export interface EditableReimbursableRow {
   basis?: string;
   unit: string;
   rate: number;
+  rateUsd?: number;
   effectiveRate?: number;
   isReduced?: boolean;
   contractQty: number;
   contractAmount: number;
+  contractAmountUsd?: number;
   thisInvoiceQty: number;
   thisInvoiceAmount: number;
+  thisInvoiceAmountUsd?: number;
   precedingQty: number;
   precedingAmount: number;
+  precedingAmountUsd?: number;
 }
 
 export interface EditableDefectLiabilityRow {
@@ -96,12 +104,16 @@ export interface EditableDefectLiabilityRow {
   name?: string;
   unit: string;
   rate: number;
+  rateUsd?: number;
   contractQty: number;
   contractAmount: number;
+  contractAmountUsd?: number;
   thisInvoiceQty: number;
   thisInvoiceAmount: number;
+  thisInvoiceAmountUsd?: number;
   precedingQty?: number;
   precedingAmount?: number;
+  precedingAmountUsd?: number;
 }
 
 export const OFFICIAL_DKS_REIMBURSABLE_DEFAULT: EditableReimbursableRow[] = [
@@ -548,7 +560,12 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
     });
 
     // Synchronize Defect Liability Period (DLP) rows directly from Contract Amount Schedule Table 3
-    const c1DlpStaff = c1ScheduleStaff.filter(s => (Number(s.mmDlp) || 0) > 0);
+    // Filter out Head Office staff from DLP as requested
+    const c1DlpStaff = c1ScheduleStaff.filter(s => 
+      (Number(s.mmDlp) || 0) > 0 && 
+      s.category !== 'Head Office' && 
+      !s.position?.toLowerCase().includes('project coordinator')
+    );
     if (c1DlpStaff.length > 0) {
       setDefectRows(prev => {
         return c1DlpStaff.map((s, idx) => {
@@ -565,6 +582,7 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
             id: s.id || `dl_${idx + 1}`,
             position: posLabel,
             unit: 'Month',
+            category: s.category, // Preserve category for logic but we won't use it for grouping in UI
             rate,
             contractQty: dlpMm,
             contractAmount,
@@ -702,8 +720,12 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
 
 
   // Format currency helper
-  const fmt = (val: number) => {
-    return (val || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmt = (val: number | undefined, decimals = 2) => {
+    if (val === undefined || isNaN(val)) return '0.00';
+    return Number(val).toLocaleString('en-US', { 
+      minimumFractionDigits: decimals, 
+      maximumFractionDigits: decimals 
+    });
   };
 
   // Convert numbers to text words with currency support (ETB & USD)
@@ -784,8 +806,12 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
     const effectiveRate = isReduced ? Number((row.rate * 0.9).toFixed(2)) : row.rate;
     const contractAmount = Number((row.contractQty * effectiveRate).toFixed(2));
     const qty = row.daysWorked > 0 ? Number((row.daysWorked / totalDaysInMonth).toFixed(2)) : 0;
-    const thisAmount = Number((qty * effectiveRate).toFixed(2));
-    const precAmount = Number((row.precedingQty * effectiveRate).toFixed(2));
+    const thisAmount = row.thisInvoiceAmount !== undefined && row.thisInvoiceAmount > 0
+      ? row.thisInvoiceAmount
+      : Number((qty * effectiveRate).toFixed(2));
+    const precAmount = row.precedingAmount !== undefined && row.precedingAmount > 0
+      ? row.precedingAmount
+      : Number((row.precedingQty * effectiveRate).toFixed(2));
     const toDateQty = Number((row.precedingQty + qty).toFixed(2));
     const toDateAmount = Number((precAmount + thisAmount).toFixed(2));
     const remainingQty = Math.max(0, Number((row.contractQty - toDateQty).toFixed(2)));
@@ -877,7 +903,9 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
     const thisAmount = row.thisInvoiceAmount !== undefined && row.thisInvoiceAmount !== 0 && !isReduced
       ? row.thisInvoiceAmount
       : Number((row.thisInvoiceQty * effectiveRate).toFixed(2));
-    const precAmount = Number((row.precedingQty * effectiveRate).toFixed(2));
+    const precAmount = row.precedingAmount !== undefined && row.precedingAmount > 0
+      ? row.precedingAmount
+      : Number((row.precedingQty * effectiveRate).toFixed(2));
     const toDateQty = Number((row.precedingQty + row.thisInvoiceQty).toFixed(2));
     const toDateAmount = Number((precAmount + thisAmount).toFixed(2));
     const remainingQty = Math.max(0, Number((row.contractQty - toDateQty).toFixed(2)));
@@ -1000,13 +1028,15 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
   // --- Dynamic Computations for Defect Liability (Sub Total 3) ---
   const defectRowsComputed = defectRows.map(row => {
     const precQty = Number(row.precedingQty || 0);
-    const precAmt = row.precedingAmount !== undefined ? Number(row.precedingAmount) || 0 : Number((precQty * row.rate).toFixed(2));
+    const precAmount = row.precedingAmount !== undefined && row.precedingAmount > 0
+      ? row.precedingAmount
+      : Number((precQty * row.rate).toFixed(2));
     const thisQty = Number(row.thisInvoiceQty || 0);
     const thisAmount = row.thisInvoiceAmount !== undefined && row.thisInvoiceAmount > 0
       ? Number(row.thisInvoiceAmount)
       : Number((thisQty * row.rate).toFixed(2));
     const toDateQty = Number((precQty + thisQty).toFixed(2));
-    const toDateAmount = Number((precAmt + thisAmount).toFixed(2));
+    const toDateAmount = Number((precAmount + thisAmount).toFixed(2));
     const contractQty = Number(row.contractQty || 0);
     const contractAmount = row.contractAmount || Number((contractQty * row.rate).toFixed(2));
     const remainingQty = Math.max(0, Number((contractQty - toDateQty).toFixed(2)));
@@ -1018,13 +1048,64 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
       contractQty,
       computedThisAmount: thisAmount,
       precedingQty: precQty,
-      precedingAmount: precAmt,
+      precedingAmount: precAmount,
       toDateQty,
       toDateAmount,
       remainingQty,
       remainingAmount
     };
   });
+
+  // Category grouped rows matching Contract Amount Table 3 categories & sub-totals
+  const groupedDlpRows = useMemo(() => {
+    const list = defectRowsComputed;
+    const defaultCats = ['Key Professional', 'Intermediate', 'Support', 'Head Office'];
+    const set = new Set<string>(defaultCats);
+    list.forEach(r => {
+      if (r.category) set.add(r.category);
+    });
+
+    return Array.from(set).map(cat => {
+      const rows = list.filter(r => {
+        if (r.category === cat) return true;
+        if (!r.category) {
+          const p = (r.position || '').toLowerCase();
+          if (cat === 'Key Professional' && (p.includes('engineer') || p.includes('leader') || p.includes('manager') || p.includes('specialist'))) return true;
+          if (cat === 'Intermediate' && (p.includes('inspector') || p.includes('surveyor') || p.includes('quantity'))) return true;
+          if (cat === 'Support' && (p.includes('laboratory') || p.includes('technician') || p.includes('cad') || p.includes('driver') || p.includes('clerk'))) return true;
+          if (cat === 'Head Office' && (p.includes('head') || p.includes('office') || p.includes('director') || p.includes('coordinator'))) return true;
+        }
+        return false;
+      });
+
+      const contractAmount = rows.reduce((s, r) => s + (r.contractAmount || 0), 0);
+      const contractQty = rows.reduce((s, r) => s + (r.contractQty || 0), 0);
+      const thisInvoiceAmount = rows.reduce((s, r) => s + (r.computedThisAmount || 0), 0);
+      const thisInvoiceQty = rows.reduce((s, r) => s + (r.thisInvoiceQty || 0), 0);
+      const precedingAmount = rows.reduce((s, r) => s + (r.precedingAmount || 0), 0);
+      const toDateAmount = rows.reduce((s, r) => s + (r.toDateAmount || 0), 0);
+      const remainingAmount = rows.reduce((s, r) => s + (r.remainingAmount || 0), 0);
+
+      let label = cat;
+      if (cat === 'Key Professional') label = '1. Key Professional Staff (DLP Supervision)';
+      else if (cat === 'Intermediate') label = '2. Intermediate Technical Staff';
+      else if (cat === 'Support') label = '3. Field & Laboratory Support Personnel';
+      else if (cat === 'Head Office') label = '4. Head Office Support';
+
+      return {
+        categoryKey: cat,
+        label,
+        rows,
+        contractQty,
+        contractAmount,
+        thisInvoiceQty,
+        thisInvoiceAmount,
+        precedingAmount,
+        toDateAmount,
+        remainingAmount
+      };
+    }).filter(g => g.rows.length > 0 || defaultCats.includes(g.categoryKey));
+  }, [defectRowsComputed]);
 
   const subTotal3Contract = defectRowsComputed.reduce((sum, r) => sum + (r.contractAmount || 0), 0);
   const subTotal3Preceding = defectRowsComputed.reduce((sum, r) => sum + (r.precedingAmount || 0), 0);
@@ -1201,6 +1282,11 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
     }));
   };
 
+  const handleDeleteStaff = (id: string) => {
+    if (staffRows.length <= 1) return;
+    setStaffRows(prev => prev.filter(item => item.id !== id));
+  };
+
   // At the end of each month calculate the assigned personnel man month input from the invoice total to-date man month
   const handleCalculatePersonnelMMFromInvoice = (showNotification = true): ConsultantPersonnel[] | undefined => {
     if (!onUpdateConsultantPersonnel) return;
@@ -1256,6 +1342,9 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
         if (updates.thisInvoiceQty !== undefined && updates.thisInvoiceAmount === undefined) {
           updated.thisInvoiceAmount = Number(((updates.thisInvoiceQty || 0) * updated.rate).toFixed(2));
         }
+        if (updates.thisInvoiceAmount !== undefined && updates.thisInvoiceQty === undefined && updated.rate > 0) {
+          updated.thisInvoiceQty = Number((updates.thisInvoiceAmount / updated.rate).toFixed(2));
+        }
         return updated;
       }
       return item;
@@ -1294,9 +1383,12 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
           const qty = updates.contractQty !== undefined ? Number(updates.contractQty) || 0 : item.contractQty;
           updated.contractAmount = Number((rate * qty).toFixed(2));
         }
-        if (updates.thisInvoiceQty !== undefined) {
+        if (updates.thisInvoiceQty !== undefined && updates.thisInvoiceAmount === undefined) {
           const qty = Number(updates.thisInvoiceQty) || 0;
           updated.thisInvoiceAmount = Number((qty * (updated.rate || item.rate)).toFixed(2));
+        }
+        if (updates.thisInvoiceAmount !== undefined && updates.thisInvoiceQty === undefined && updated.rate > 0) {
+          updated.thisInvoiceQty = Number((updates.thisInvoiceAmount / updated.rate).toFixed(2));
         }
         return updated;
       }
@@ -3292,6 +3384,238 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
       )}
 
       {/* ========================================================================= */}
+      {/* TABLE 2: CONSTRUCTION SUPERVISORY STAFF FEES COMPUTATION                 */}
+      {/* ========================================================================= */}
+      {(activeTableTab === 'all' || activeTableTab === 'attendance') && (
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm space-y-3 mt-6">
+          <div className="p-4 bg-slate-50/80 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h4 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-lg bg-emerald-600 text-white text-xs flex items-center justify-center font-mono font-bold">2</span>
+                  Table 2: Construction Supervisory Staff Fees Calculation
+                </h4>
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 flex items-center gap-1">
+                  <span>🔗 Linked to Attendance Table 1 & Contract Table 2</span>
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Financial derivation of staff remuneration based on derived man-month inputs from Table 1 and contract unit rates.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="px-3 py-1 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 font-bold rounded-xl text-xs border border-emerald-200 dark:border-emerald-800">
+                Sub-Total 1: <span className="font-mono">{fmt(subTotal1ThisInvoice)} ETB</span>
+              </span>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="bg-slate-100 dark:bg-slate-800 text-[10px] text-slate-600 dark:text-slate-300 uppercase tracking-wider font-black border-b border-slate-200 dark:border-slate-700">
+                  <th className="py-2.5 px-3 w-10 text-center">#</th>
+                  <th className="py-2.5 px-3 min-w-[200px]">Position & Assigned Name</th>
+                  <th className="py-2.5 px-2 text-center w-14">Unit</th>
+                  <th className="py-2.5 px-2 text-right min-w-[100px]">Rate (ETB)</th>
+                  {isUsdModeActive && <th className="py-2.5 px-2 text-right min-w-[100px] text-purple-700 dark:text-purple-300">Rate (USD)</th>}
+                  <th className="py-2.5 px-2 text-right min-w-[70px]">Contr. MM</th>
+                  <th className="py-2.5 px-2 text-right min-w-[70px]">Prev. MM</th>
+                  <th className="py-2.5 px-2 text-right min-w-[80px] bg-blue-50/50 dark:bg-blue-950/20 text-blue-900 dark:text-blue-200">This Month MM</th>
+                  <th className="py-2.5 px-3 text-right min-w-[120px] bg-blue-50/60 dark:bg-blue-950/30 text-blue-900 dark:text-blue-200 font-black">This Month Fee (ETB)</th>
+                  {isUsdModeActive && <th className="py-2.5 px-3 text-right min-w-[120px] bg-purple-50/20 text-purple-700 dark:text-purple-300 font-black">This Month Fee (USD)</th>}
+                  <th className="py-2.5 px-2 text-right min-w-[70px]">Total MM</th>
+                  <th className="py-2.5 px-3 text-right min-w-[110px] font-bold">Total Fee (ETB)</th>
+                  <th className="py-2.5 px-2 text-center w-12">Act</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-sans text-xs">
+                {groupedFeeRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={isUsdModeActive ? 13 : 11} className="py-8 text-center text-slate-400 font-medium">
+                      No staff fee records available. Update Table 1 to generate fee rows.
+                    </td>
+                  </tr>
+                ) : (
+                  groupedFeeRows.map((group) => (
+                    <React.Fragment key={group.categoryKey}>
+                      <tr className="bg-slate-50/80 dark:bg-slate-800/80 font-bold text-slate-900 dark:text-white border-t border-slate-200 dark:border-slate-700">
+                        <td className="py-2 px-3 text-left" colSpan={isUsdModeActive ? 13 : 11}>
+                          {group.label}
+                        </td>
+                      </tr>
+                      {group.rows.map((row, idx) => {
+                        const derivedMM = row.thisInvoiceQty;
+                        const thisInvoiceFeeUsd = isUsdModeActive ? (derivedMM * (row.rateUsd || 0)) : 0;
+                        return (
+                          <tr key={row.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
+                            <td className="py-2 px-3 text-center font-mono text-slate-400 font-bold">{idx + 1}</td>
+                            <td className="py-2 px-3">
+                              <div className="flex flex-col gap-0.5">
+                                <input
+                                  type="text"
+                                  value={row.position}
+                                  disabled={isPaymentLocked}
+                                  onChange={(e) => handleUpdateStaff(row.id, { position: e.target.value })}
+                                  className="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-emerald-500 focus:outline-none text-xs font-bold"
+                                />
+                                <input
+                                  type="text"
+                                  value={row.name}
+                                  disabled={isPaymentLocked}
+                                  onChange={(e) => handleUpdateStaff(row.id, { name: e.target.value })}
+                                  className="w-full bg-transparent border-b border-transparent hover:border-slate-200 focus:border-emerald-400 focus:outline-none text-[10px] text-slate-500 font-bold italic"
+                                />
+                              </div>
+                            </td>
+                            <td className="py-2 px-2 text-center font-mono text-slate-500">
+                              <input
+                                type="text"
+                                value={row.unit}
+                                disabled={isPaymentLocked}
+                                onChange={(e) => handleUpdateStaff(row.id, { unit: e.target.value })}
+                                className="w-12 text-center bg-transparent border-b border-transparent hover:border-slate-300 focus:border-emerald-500 focus:outline-none text-xs font-mono"
+                              />
+                            </td>
+                            <td className="py-2 px-2 text-right font-mono">
+                              <input
+                                type="number"
+                                step="any"
+                                value={row.rate}
+                                disabled={isPaymentLocked}
+                                onChange={(e) => handleUpdateStaff(row.id, { rate: parseFloat(e.target.value) || 0 })}
+                                className="w-24 text-right bg-transparent border-b border-transparent hover:border-slate-300 focus:border-emerald-500 focus:outline-none text-xs font-mono"
+                              />
+                            </td>
+                            {isUsdModeActive && (
+                              <td className="py-2 px-2 text-right font-mono text-purple-700 dark:text-purple-300">
+                                <input
+                                  type="number"
+                                  step="any"
+                                  value={row.rateUsd || 0}
+                                  disabled={isPaymentLocked}
+                                  onChange={(e) => handleUpdateStaff(row.id, { rateUsd: parseFloat(e.target.value) || 0 })}
+                                  className="w-20 text-right bg-transparent border-b border-transparent hover:border-slate-300 focus:border-purple-500 focus:outline-none text-xs font-mono"
+                                />
+                              </td>
+                            )}
+                            <td className="py-2 px-2 text-right font-mono text-slate-400">
+                              <input
+                                type="number"
+                                step="any"
+                                value={row.contractQty}
+                                disabled={isPaymentLocked}
+                                onChange={(e) => handleUpdateStaff(row.id, { contractQty: parseFloat(e.target.value) || 0 })}
+                                className="w-16 text-right bg-transparent border-b border-transparent hover:border-slate-300 focus:border-emerald-500 focus:outline-none text-xs font-mono"
+                              />
+                            </td>
+                            <td className="py-2 px-2 text-right font-mono text-slate-500">
+                              <div className="flex flex-col items-end gap-1">
+                                <input
+                                  type="number"
+                                  step="any"
+                                  value={row.precedingQty}
+                                  disabled={isPaymentLocked}
+                                  onChange={(e) => handleUpdateStaff(row.id, { precedingQty: parseFloat(e.target.value) || 0 })}
+                                  className="w-16 text-right bg-transparent border-b border-transparent hover:border-slate-300 focus:border-emerald-500 focus:outline-none text-xs font-mono"
+                                />
+                                <input
+                                  type="number"
+                                  step="any"
+                                  placeholder="Prev. Amt"
+                                  value={row.precedingAmount}
+                                  disabled={isPaymentLocked}
+                                  onChange={(e) => handleUpdateStaff(row.id, { precedingAmount: parseFloat(e.target.value) || 0 })}
+                                  className="w-20 text-right bg-transparent border-b border-transparent hover:border-slate-300 focus:border-emerald-500 focus:outline-none text-[9px] font-mono text-slate-400"
+                                />
+                              </div>
+                            </td>
+                            <td className="py-2 px-2 text-right font-mono font-bold text-blue-600 bg-blue-50/20">{derivedMM.toFixed(2)}</td>
+                            <td className="py-2 px-3 text-right bg-blue-50/30">
+                              <div className="flex flex-col items-end gap-1">
+                                <input
+                                  type="number"
+                                  step="any"
+                                  value={row.thisInvoiceAmount}
+                                  disabled={isPaymentLocked}
+                                  onChange={(e) => handleUpdateStaff(row.id, { thisInvoiceAmount: parseFloat(e.target.value) || 0 })}
+                                  className={`w-28 text-right px-1.5 py-1 rounded border font-mono font-bold text-xs ${
+                                    isPaymentLocked
+                                      ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200'
+                                      : 'border-blue-300 dark:border-blue-800 bg-white dark:bg-slate-900 text-blue-700 focus:ring-1 focus:ring-blue-500 shadow-xs'
+                                  }`}
+                                />
+                                <span className="text-[9px] text-blue-600/50 uppercase tracking-tighter">Amount Override</span>
+                              </div>
+                            </td>
+                            {isUsdModeActive && (
+                              <td className="py-2 px-3 text-right font-mono font-black text-purple-700 bg-purple-50/20">
+                                ${fmt(thisInvoiceFeeUsd)}
+                              </td>
+                            )}
+                            <td className="py-2 px-2 text-right font-mono font-semibold">{row.toDateQty.toFixed(2)}</td>
+                            <td className="py-2 px-3 text-right font-mono font-bold">
+                              <div className="flex flex-col items-end gap-0.5">
+                                <span className="font-bold">{fmt(row.toDateAmount)}</span>
+                                <span className="text-[9px] text-slate-400 font-normal">({fmt(row.precedingAmount)} + {fmt(row.thisInvoiceAmount)})</span>
+                              </div>
+                            </td>
+                            <td className="py-2 px-2 text-center">
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteStaff(row.id)}
+                                disabled={isPaymentLocked}
+                                className="p-1 text-slate-300 hover:text-rose-500 transition cursor-pointer"
+                                title="Remove staff row from invoice"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      <tr className="bg-emerald-50/40 dark:bg-emerald-950/20 font-bold text-slate-900 dark:text-white border-t border-slate-200 dark:border-slate-700">
+                        <td className="py-2 px-3" colSpan={3}>Sub-total ({group.categoryKey})</td>
+                        <td className="py-2 px-2 text-right">—</td>
+                        {isUsdModeActive && <td className="py-2 px-2 text-right">—</td>}
+                        <td className="py-2 px-2 text-right font-mono">{fmt(group.contractQty, 1)}</td>
+                        <td className="py-2 px-2 text-right font-mono text-slate-500">{fmt(group.precedingAmount)}</td>
+                        <td className="py-2 px-2 text-right font-mono text-blue-600">{fmt(group.thisInvoiceQty, 2)}</td>
+                        <td className="py-2 px-3 text-right font-mono text-blue-700">{fmt(group.thisInvoiceAmount)}</td>
+                        {isUsdModeActive && <td className="py-2 px-3 text-right">—</td>}
+                        <td className="py-2 px-2 text-right font-mono">{fmt(group.toDateAmount / (group.rows[0]?.rate || 1), 2)}</td>
+                        <td className="py-2 px-3 text-right font-mono">{fmt(group.toDateAmount)}</td>
+                        <td></td>
+                      </tr>
+                    </React.Fragment>
+                  ))
+                )}
+              </tbody>
+              <tfoot className="border-t-2 border-slate-300 dark:border-slate-700 font-bold bg-slate-50 dark:bg-slate-800 text-[10px]">
+                <tr className="uppercase tracking-tight">
+                  <td colSpan={3} className="py-2.5 px-3">Sub-Total 1 Construction Fees:</td>
+                  <td className="py-2.5 px-2 text-right">—</td>
+                  {isUsdModeActive && <td className="py-2.5 px-2 text-right">—</td>}
+                  <td className="py-2.5 px-2 text-right font-mono">{displayFeeRowsComputed.reduce((s, r) => s + r.contractQty, 0).toFixed(2)}</td>
+                  <td className="py-2.5 px-2 text-right font-mono">{displayFeeRowsComputed.reduce((s, r) => s + r.precedingQty, 0).toFixed(2)}</td>
+                  <td className="py-2.5 px-2 text-right font-mono text-blue-600">{displayFeeRowsComputed.reduce((s, r) => s + r.thisInvoiceQty, 0).toFixed(2)}</td>
+                  <td className="py-2.5 px-3 text-right font-mono font-black text-blue-700">{fmt(subTotal1ThisInvoice)} ETB</td>
+                  {isUsdModeActive && (
+                    <td className="py-2.5 px-3 text-right font-mono font-black text-purple-700">
+                      ${fmt(displayFeeRowsComputed.reduce((s, r) => s + (r.thisInvoiceQty * (r.rateUsd || 0)), 0))} USD
+                    </td>
+                  )}
+                  <td className="py-2.5 px-2 text-right font-mono">{displayFeeRowsComputed.reduce((s, r) => s + r.toDateQty, 0).toFixed(2)}</td>
+                  <td className="py-2.5 px-3 text-right font-mono font-black">{fmt(displayFeeRowsComputed.reduce((s, r) => s + r.toDateAmount, 0))} ETB</td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
       {/* SUB TOTAL 2: REIMBURSABLE OPERATING DIRECT COSTS COMPUTATION             */}
       {/* ========================================================================= */}
       {(activeTableTab === 'all' || activeTableTab === 'reimbursables') && (
@@ -3316,15 +3640,6 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
               <span className="px-3 py-1 bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 font-bold rounded-xl text-xs border border-amber-200 dark:border-amber-800">
                 This Month Claim: <span className="font-mono">{fmt(subTotal2ThisInvoice)} ETB</span>
               </span>
-              <button
-                type="button"
-                onClick={handleAddReimbursable}
-                disabled={isPaymentLocked}
-                className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Add Reimbursable</span>
-              </button>
             </div>
           </div>
 
@@ -3336,16 +3651,17 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                   <th className="py-2.5 px-3 min-w-[220px]">Item Description</th>
                   <th className="py-2.5 px-2 text-center w-16">Unit</th>
                   <th className="py-2.5 px-2 text-right min-w-[100px]">Rate (ETB)</th>
+                  {isUsdModeActive && <th className="py-2.5 px-2 text-right min-w-[100px] text-purple-700 dark:text-purple-300">Rate (USD)</th>}
                   <th className="py-2.5 px-2 text-right min-w-[80px]">Contract Qty</th>
                   <th className="py-2.5 px-3 text-right min-w-[110px]">Contract Amount</th>
                   <th className="py-2.5 px-2 text-right min-w-[80px]">Preceding Qty</th>
-                  <th className="py-2.5 px-3 text-right min-w-[105px]">Preceding Amount</th>
                   <th className="py-2.5 px-2 text-center min-w-[100px] bg-amber-50/50 dark:bg-amber-950/20 text-amber-900 dark:text-amber-200 font-black">
                     This Month Claim Qty
                   </th>
                   <th className="py-2.5 px-3 text-right min-w-[125px] bg-amber-50/60 dark:bg-amber-950/30 text-amber-900 dark:text-amber-200 font-black">
                     This Month Claim (ETB)
                   </th>
+                  {isUsdModeActive && <th className="py-2.5 px-3 text-right min-w-[125px] bg-purple-50/20 text-purple-700 dark:text-purple-300 font-black">This Month Claim (USD)</th>}
                   <th className="py-2.5 px-2 text-right min-w-[80px]">To-Date Qty</th>
                   <th className="py-2.5 px-3 text-right min-w-[110px] font-bold">To-Date Amount</th>
                   <th className="py-2.5 px-3 text-right min-w-[110px] text-emerald-600 font-bold">Remaining Balance</th>
@@ -3356,7 +3672,7 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                 {reimbursableRowsComputed.length === 0 ? (
                   <tr>
                     <td colSpan={14} className="py-8 text-center text-slate-400">
-                      No reimbursable operating expenses defined. Click "+ Add Reimbursable" to add.
+                      No reimbursable operating expenses defined in Contract Baseline.
                     </td>
                   </tr>
                 ) : (
@@ -3390,7 +3706,7 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                           />
                         </div>
                       </td>
-                      <td className="py-2 px-2 text-center font-mono">
+                      <td className="py-2 px-2 text-center font-mono text-slate-500">
                         <input
                           type="text"
                           value={row.unit}
@@ -3409,6 +3725,18 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                           className="w-24 text-right bg-transparent border-b border-transparent hover:border-slate-300 focus:border-amber-500 focus:outline-none text-xs font-mono"
                         />
                       </td>
+                      {isUsdModeActive && (
+                        <td className="py-2 px-2 text-right font-mono text-purple-700 dark:text-purple-300">
+                          <input
+                            type="number"
+                            step="any"
+                            value={row.rateUsd || 0}
+                            disabled={isPaymentLocked}
+                            onChange={(e) => handleUpdateReimbursable(row.id, { rateUsd: parseFloat(e.target.value) || 0 })}
+                            className="w-20 text-right bg-transparent border-b border-transparent hover:border-slate-300 focus:border-purple-500 focus:outline-none text-xs font-mono"
+                          />
+                        </td>
+                      )}
                       <td className="py-2 px-2 text-right font-mono text-slate-600 dark:text-slate-400">
                         <input
                           type="number"
@@ -3423,10 +3751,25 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                         {fmt(row.contractAmount)}
                       </td>
                       <td className="py-2 px-2 text-right font-mono text-slate-500">
-                        {(row.precedingQty || 0).toFixed(2)}
-                      </td>
-                      <td className="py-2 px-3 text-right font-mono text-slate-500">
-                        {fmt(row.precedingAmount || 0)}
+                        <div className="flex flex-col items-end gap-1">
+                          <input
+                            type="number"
+                            step="any"
+                            value={row.precedingQty}
+                            disabled={isPaymentLocked}
+                            onChange={(e) => handleUpdateReimbursable(row.id, { precedingQty: parseFloat(e.target.value) || 0 })}
+                            className="w-16 text-right bg-transparent border-b border-transparent hover:border-slate-300 focus:border-amber-500 focus:outline-none text-[10px] font-mono"
+                          />
+                          <input
+                            type="number"
+                            step="any"
+                            placeholder="Prev. Amt"
+                            value={row.precedingAmount}
+                            disabled={isPaymentLocked}
+                            onChange={(e) => handleUpdateReimbursable(row.id, { precedingAmount: parseFloat(e.target.value) || 0 })}
+                            className="w-20 text-right bg-transparent border-b border-transparent hover:border-slate-300 focus:border-amber-500 focus:outline-none text-[9px] font-mono text-slate-400"
+                          />
+                        </div>
                       </td>
                       <td className="py-2 px-2 text-center bg-amber-50/30 dark:bg-amber-950/20">
                         <input
@@ -3439,37 +3782,39 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                             const qty = parseFloat(e.target.value) || 0;
                             handleUpdateReimbursable(row.id, { 
                               thisInvoiceQty: qty,
-                              thisInvoiceAmount: Number((qty * row.rate).toFixed(2))
+                              thisInvoiceAmount: Number((qty * row.rate).toFixed(2)),
+                              thisInvoiceAmountUsd: isUsdModeActive ? Number((qty * (row.rateUsd || 0)).toFixed(2)) : 0
                             });
                           }}
                           className={`w-20 text-center px-1.5 py-1 rounded border font-mono font-bold text-xs ${
                             isPaymentLocked
                               ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200'
-                              : 'border-amber-300 dark:border-amber-800 bg-white dark:bg-slate-900 text-amber-700 dark:text-amber-300 focus:ring-1 focus:ring-amber-500'
+                              : 'border-amber-300 dark:border-amber-800 bg-white dark:bg-slate-900 text-amber-700 focus:ring-1 focus:ring-amber-500 shadow-xs'
                           }`}
                         />
                       </td>
-                      <td className="py-2 px-3 text-right font-mono font-bold bg-amber-50/40 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300">
-                        <input
-                          type="number"
-                          step="any"
-                          min="0"
-                          value={row.computedThisAmount}
-                          disabled={isPaymentLocked}
-                          onChange={(e) => {
-                            const amt = parseFloat(e.target.value) || 0;
-                            handleUpdateReimbursable(row.id, { 
-                              thisInvoiceAmount: amt,
-                              thisInvoiceQty: row.rate > 0 ? Number((amt / row.rate).toFixed(2)) : row.thisInvoiceQty
-                            });
-                          }}
-                          className={`w-28 text-right px-1.5 py-1 rounded border font-mono font-bold text-xs ${
-                            isPaymentLocked
-                              ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200'
-                              : 'border-amber-300 dark:border-amber-800 bg-white dark:bg-slate-900 text-amber-700 dark:text-amber-300 focus:ring-1 focus:ring-amber-500'
-                          }`}
-                        />
+                      <td className="py-2 px-3 text-right bg-amber-50/40 dark:bg-amber-950/30 text-amber-800 dark:text-amber-200">
+                        <div className="flex flex-col items-end gap-1">
+                          <input
+                            type="number"
+                            step="any"
+                            value={row.thisInvoiceAmount}
+                            disabled={isPaymentLocked}
+                            onChange={(e) => handleUpdateReimbursable(row.id, { thisInvoiceAmount: parseFloat(e.target.value) || 0 })}
+                            className={`w-28 text-right px-1.5 py-1 rounded border font-mono font-bold text-xs ${
+                              isPaymentLocked
+                                ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200'
+                                : 'border-amber-300 dark:border-amber-800 bg-white dark:bg-slate-900 text-amber-800 dark:text-amber-200 focus:ring-1 focus:ring-amber-500 shadow-xs'
+                            }`}
+                          />
+                          <span className="text-[9px] opacity-50 uppercase tracking-tighter">Amount Override</span>
+                        </div>
                       </td>
+                      {isUsdModeActive && (
+                        <td className="py-2 px-3 text-right font-mono font-bold bg-purple-50/20 text-purple-700 dark:text-purple-300">
+                          ${fmt(row.thisInvoiceAmountUsd || (row.thisInvoiceQty * (row.rateUsd || 0)))}
+                        </td>
+                      )}
                       <td className="py-2 px-2 text-right font-mono font-semibold">
                         {row.toDateQty.toFixed(2)}
                       </td>
@@ -3477,18 +3822,10 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                         {fmt(row.toDateAmount)}
                       </td>
                       <td className="py-2 px-3 text-right font-mono font-semibold text-emerald-600 dark:text-emerald-400">
-                        {fmt(row.remainingAmount)}
+                        {fmt(Math.max(0, row.contractAmount - row.toDateAmount))}
                       </td>
                       <td className="py-2 px-2 text-center">
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteReimbursable(row.id)}
-                          disabled={isPaymentLocked}
-                          className="p-1 hover:bg-rose-50 dark:hover:bg-rose-950 text-rose-500 rounded transition cursor-pointer"
-                          title="Delete reimbursable line item"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        {/* Row deletion disabled for invoice synchronization */}
                       </td>
                     </tr>
                   ))
@@ -3550,15 +3887,6 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
               <span className="px-3 py-1 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-300 font-bold rounded-xl text-xs border border-indigo-200 dark:border-indigo-800">
                 This Month Claim: <span className="font-mono">{fmt(subTotal3ThisInvoice)} ETB</span>
               </span>
-              <button
-                type="button"
-                onClick={handleAddDefectRow}
-                disabled={isPaymentLocked}
-                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Add DLP Position</span>
-              </button>
             </div>
           </div>
 
@@ -3570,16 +3898,17 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                   <th className="py-2.5 px-3 min-w-[220px]">DLP Personnel Position & Name</th>
                   <th className="py-2.5 px-2 text-center w-16">Unit</th>
                   <th className="py-2.5 px-2 text-right min-w-[105px]">Monthly Rate (ETB)</th>
+                  {isUsdModeActive && <th className="py-2.5 px-2 text-right min-w-[100px] text-purple-700 dark:text-purple-300">Rate (USD)</th>}
                   <th className="py-2.5 px-2 text-right min-w-[90px]">Contract MM</th>
                   <th className="py-2.5 px-3 text-right min-w-[110px]">Contract Amount</th>
                   <th className="py-2.5 px-2 text-right min-w-[85px]">Preceding MM</th>
-                  <th className="py-2.5 px-3 text-right min-w-[105px]">Preceding Claim</th>
                   <th className="py-2.5 px-2 text-center min-w-[100px] bg-indigo-50/50 dark:bg-indigo-950/20 text-indigo-900 dark:text-indigo-200 font-black">
                     This Month MM Input
                   </th>
                   <th className="py-2.5 px-3 text-right min-w-[125px] bg-indigo-50/60 dark:bg-indigo-950/30 text-indigo-900 dark:text-indigo-200 font-black">
                     This Month Claim (ETB)
                   </th>
+                  {isUsdModeActive && <th className="py-2.5 px-3 text-right min-w-[125px] bg-purple-50/20 text-purple-700 dark:text-purple-300 font-black">This Month Claim (USD)</th>}
                   <th className="py-2.5 px-2 text-right min-w-[85px]">To-Date MM</th>
                   <th className="py-2.5 px-3 text-right min-w-[110px] font-bold">To-Date Claim</th>
                   <th className="py-2.5 px-3 text-right min-w-[110px] text-emerald-600 font-bold">Remaining Balance</th>
@@ -3589,108 +3918,150 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-sans text-xs">
                 {defectRowsComputed.length === 0 ? (
                   <tr>
-                    <td colSpan={14} className="py-8 text-center text-slate-400">
-                      No DLP personnel allocation rows defined. Click "+ Add DLP Position" to add.
+                    <td colSpan={isUsdModeActive ? 15 : 14} className="py-8 text-center text-slate-400">
+                      No DLP personnel allocation rows defined in Contract Baseline.
                     </td>
                   </tr>
                 ) : (
-                  defectRowsComputed.map((row, idx) => (
-                    <tr key={row.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
-                      <td className="py-2 px-3 text-center font-mono text-slate-400 font-bold">{idx + 1}</td>
-                      <td className="py-2 px-3 font-semibold text-slate-800 dark:text-slate-200">
-                        <input
-                          type="text"
-                          value={row.position}
-                          disabled={isPaymentLocked}
-                          onChange={(e) => handleUpdateDefectRow(row.id, { position: e.target.value })}
-                          className="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-500 focus:outline-none text-xs font-medium"
-                        />
-                      </td>
-                      <td className="py-2 px-2 text-center font-mono text-slate-500">
-                        <input
-                          type="text"
-                          value={row.unit || 'Month'}
-                          disabled={isPaymentLocked}
-                          onChange={(e) => handleUpdateDefectRow(row.id, { unit: e.target.value })}
-                          className="w-16 text-center bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-500 focus:outline-none text-xs font-mono"
-                        />
-                      </td>
-                      <td className="py-2 px-2 text-right font-mono">
-                        <input
-                          type="number"
-                          step="any"
-                          value={row.rate}
-                          disabled={isPaymentLocked}
-                          onChange={(e) => handleUpdateDefectRow(row.id, { rate: parseFloat(e.target.value) || 0 })}
-                          className="w-24 text-right bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-500 focus:outline-none text-xs font-mono"
-                        />
-                      </td>
-                      <td className="py-2 px-2 text-right font-mono text-slate-600 dark:text-slate-400">
-                        <input
-                          type="number"
-                          step="any"
-                          value={row.contractQty}
-                          disabled={isPaymentLocked}
-                          onChange={(e) => handleUpdateDefectRow(row.id, { contractQty: parseFloat(e.target.value) || 0 })}
-                          className="w-16 text-right bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-500 focus:outline-none text-xs font-mono"
-                        />
-                      </td>
-                      <td className="py-2 px-3 text-right font-mono font-semibold text-slate-700 dark:text-slate-300">
-                        {fmt(row.contractAmount)}
-                      </td>
-                      <td className="py-2 px-2 text-right font-mono text-slate-500">
-                        {(row.precedingQty || 0).toFixed(2)}
-                      </td>
-                      <td className="py-2 px-3 text-right font-mono text-slate-500">
-                        {fmt(row.precedingAmount || 0)}
-                      </td>
-                      <td className="py-2 px-2 text-center bg-indigo-50/30 dark:bg-indigo-950/20">
-                        <input
-                          type="number"
-                          step="any"
-                          min="0"
-                          max={row.contractQty || 12}
-                          value={row.thisInvoiceQty}
-                          disabled={isPaymentLocked}
-                          onChange={(e) => {
-                            const mm = parseFloat(e.target.value) || 0;
-                            handleUpdateDefectRow(row.id, { 
-                              thisInvoiceQty: mm,
-                              thisInvoiceAmount: Number((mm * row.rate).toFixed(2))
-                            });
-                          }}
-                          className={`w-20 text-center px-1.5 py-1 rounded border font-mono font-bold text-xs ${
-                            isPaymentLocked
-                              ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200'
-                              : 'border-indigo-300 dark:border-indigo-800 bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-300 focus:ring-1 focus:ring-indigo-500'
-                          }`}
-                        />
-                      </td>
-                      <td className="py-2 px-3 text-right font-mono font-bold bg-indigo-50/40 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300">
-                        {fmt(row.computedThisAmount)}
-                      </td>
-                      <td className="py-2 px-2 text-right font-mono font-semibold">
-                        {row.toDateQty.toFixed(2)}
-                      </td>
-                      <td className="py-2 px-3 text-right font-mono font-bold">
-                        {fmt(row.toDateAmount)}
-                      </td>
-                      <td className="py-2 px-3 text-right font-mono font-semibold text-emerald-600 dark:text-emerald-400">
-                        {fmt(row.remainingAmount)}
-                      </td>
-                      <td className="py-2 px-2 text-center">
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteDefectRow(row.id)}
-                          disabled={isPaymentLocked}
-                          className="p-1 hover:bg-rose-50 dark:hover:bg-rose-950 text-rose-500 rounded transition cursor-pointer"
-                          title="Delete DLP position"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))
+                  defectRowsComputed.map((row, idx) => {
+                    const thisInvoiceAmountUsd = isUsdModeActive ? (row.thisInvoiceQty * (row.rateUsd || 0)) : 0;
+                    return (
+                      <tr key={row.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
+                        <td className="py-2 px-3 text-center font-mono text-slate-400 font-bold">{idx + 1}</td>
+                        <td className="py-2 px-3 font-semibold text-slate-800 dark:text-slate-200">
+                          <input
+                            type="text"
+                            value={row.position}
+                            disabled={isPaymentLocked}
+                            onChange={(e) => handleUpdateDefectRow(row.id, { position: e.target.value })}
+                            className="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-500 focus:outline-none text-xs font-medium"
+                          />
+                        </td>
+                        <td className="py-2 px-2 text-center font-mono text-slate-500">
+                          <input
+                            type="text"
+                            value={row.unit || 'Month'}
+                            disabled={isPaymentLocked}
+                            onChange={(e) => handleUpdateDefectRow(row.id, { unit: e.target.value })}
+                            className="w-16 text-center bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-500 focus:outline-none text-xs font-mono"
+                          />
+                        </td>
+                        <td className="py-2 px-2 text-right font-mono">
+                          <input
+                            type="number"
+                            step="any"
+                            value={row.rate}
+                            disabled={isPaymentLocked}
+                            onChange={(e) => handleUpdateDefectRow(row.id, { rate: parseFloat(e.target.value) || 0 })}
+                            className="w-24 text-right bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-500 focus:outline-none text-xs font-mono"
+                          />
+                        </td>
+                        {isUsdModeActive && (
+                          <td className="py-2 px-2 text-right font-mono text-purple-700 dark:text-purple-300">
+                            <input
+                              type="number"
+                              step="any"
+                              value={row.rateUsd || 0}
+                              disabled={isPaymentLocked}
+                              onChange={(e) => handleUpdateDefectRow(row.id, { rateUsd: parseFloat(e.target.value) || 0 })}
+                              className="w-20 text-right bg-transparent border-b border-transparent hover:border-slate-300 focus:border-purple-500 focus:outline-none text-xs font-mono"
+                            />
+                          </td>
+                        )}
+                        <td className="py-2 px-2 text-right font-mono text-slate-600 dark:text-slate-400">
+                          <input
+                            type="number"
+                            step="any"
+                            value={row.contractQty}
+                            disabled={isPaymentLocked}
+                            onChange={(e) => handleUpdateDefectRow(row.id, { contractQty: parseFloat(e.target.value) || 0 })}
+                            className="w-16 text-right bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-500 focus:outline-none text-xs font-mono"
+                          />
+                        </td>
+                        <td className="py-2 px-3 text-right font-mono font-semibold text-slate-700 dark:text-slate-300">
+                          {fmt(row.contractAmount)}
+                        </td>
+                        <td className="py-2 px-2 text-right font-mono text-slate-500">
+                          <div className="flex flex-col items-end gap-1">
+                            <input
+                              type="number"
+                              step="any"
+                              value={row.precedingQty}
+                              disabled={isPaymentLocked}
+                              onChange={(e) => handleUpdateDefectRow(row.id, { precedingQty: parseFloat(e.target.value) || 0 })}
+                              className="w-16 text-right bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-500 focus:outline-none text-[10px] font-mono"
+                            />
+                            <input
+                              type="number"
+                              step="any"
+                              placeholder="Prev. Amt"
+                              value={row.precedingAmount}
+                              disabled={isPaymentLocked}
+                              onChange={(e) => handleUpdateDefectRow(row.id, { precedingAmount: parseFloat(e.target.value) || 0 })}
+                              className="w-20 text-right bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-500 focus:outline-none text-[9px] font-mono text-slate-400"
+                            />
+                          </div>
+                        </td>
+                        <td className="py-2 px-2 text-center bg-indigo-50/30 dark:bg-indigo-950/20">
+                          <input
+                            type="number"
+                            step="any"
+                            min="0"
+                            max={row.contractQty || 12}
+                            value={row.thisInvoiceQty}
+                            disabled={isPaymentLocked}
+                            onChange={(e) => {
+                              const mm = parseFloat(e.target.value) || 0;
+                              handleUpdateDefectRow(row.id, { 
+                                thisInvoiceQty: mm,
+                                thisInvoiceAmount: Number((mm * row.rate).toFixed(2)),
+                                thisInvoiceAmountUsd: isUsdModeActive ? Number((mm * (row.rateUsd || 0)).toFixed(2)) : 0
+                              });
+                            }}
+                            className={`w-20 text-center px-1.5 py-1 rounded border font-mono font-bold text-xs ${
+                              isPaymentLocked
+                                ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200'
+                                : 'border-indigo-300 dark:border-indigo-800 bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-300 focus:ring-1 focus:ring-indigo-500'
+                            }`}
+                          />
+                        </td>
+                        <td className="py-2 px-3 text-right bg-indigo-50/40 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300">
+                          <div className="flex flex-col items-end gap-1">
+                            <input
+                              type="number"
+                              step="any"
+                              value={row.computedThisAmount}
+                              disabled={isPaymentLocked}
+                              onChange={(e) => handleUpdateDefectRow(row.id, { thisInvoiceAmount: parseFloat(e.target.value) || 0 })}
+                              className={`w-28 text-right px-1.5 py-1 rounded border font-mono font-bold text-xs ${
+                                isPaymentLocked
+                                  ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200'
+                                  : 'border-indigo-300 dark:border-indigo-800 bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-300 focus:ring-1 focus:ring-indigo-500 shadow-xs'
+                              }`}
+                            />
+                            <span className="text-[9px] opacity-50 uppercase tracking-tighter">Amount Override</span>
+                          </div>
+                        </td>
+                        {isUsdModeActive && (
+                          <td className="py-2 px-3 text-right font-mono font-bold bg-purple-50/20 text-purple-700 dark:text-purple-300">
+                            ${fmt(row.thisInvoiceAmountUsd || (row.thisInvoiceQty * (row.rateUsd || 0)))}
+                          </td>
+                        )}
+                        <td className="py-2 px-2 text-right font-mono font-semibold">
+                          {row.toDateQty.toFixed(2)}
+                        </td>
+                        <td className="py-2 px-3 text-right font-mono font-bold">
+                          {fmt(row.toDateAmount)}
+                        </td>
+                        <td className="py-2 px-3 text-right font-mono font-semibold text-emerald-600 dark:text-emerald-400">
+                          {fmt(row.remainingAmount)}
+                        </td>
+                        <td className="py-2 px-2 text-center">
+                          {/* Row deletion disabled for invoice synchronization */}
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
               <tfoot className="border-t-2 border-slate-300 dark:border-slate-700 font-bold bg-indigo-50/50 dark:bg-slate-800 text-xs">
@@ -3942,12 +4313,44 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                         ${fmt(contingencyPrecedingClaimUsd)}
                       </td>
                     )}
-                    <td className="py-2.5 px-4 text-right font-mono font-bold text-slate-900 dark:text-white">
-                      {fmt(contingencyToDate)}
+                    <td className="py-2.5 px-4 text-right bg-slate-50/50 dark:bg-slate-800/40">
+                      <div className="flex flex-col items-end gap-1">
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={contingencyToDate}
+                          disabled={isPaymentLocked}
+                          onChange={(e) => setContingencyToDateEtb(parseFloat(e.target.value) || 0)}
+                          placeholder="0.00"
+                          title={isPaymentLocked ? "Payment amount is saved and locked" : "Assign total to-date contingency claim (ETB)"}
+                          className={`w-32 text-right px-2 py-1 rounded-lg border font-mono font-bold text-xs ${
+                            isPaymentLocked 
+                              ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700 cursor-not-allowed opacity-70' 
+                              : 'border-slate-300 dark:border-slate-600 text-slate-900 dark:text-white bg-white dark:bg-slate-900 focus:ring-1 focus:ring-emerald-500 shadow-xs'
+                          }`}
+                        />
+                        <span className="text-[9px] text-slate-500 font-semibold uppercase tracking-tight">To-Date (ETB)</span>
+                      </div>
                     </td>
                     {isUsdModeActive && (
-                      <td className="py-2.5 px-4 text-right font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-50/20">
-                        ${fmt(contingencyToDateUsdValue)}
+                      <td className="py-2.5 px-4 text-right bg-purple-50/10 dark:bg-purple-900/10">
+                        <div className="flex flex-col items-end gap-1">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={contingencyToDateUsdValue}
+                            disabled={isPaymentLocked}
+                            onChange={(e) => setContingencyToDateUsd(parseFloat(e.target.value) || 0)}
+                            placeholder="0.00"
+                            title={isPaymentLocked ? "Payment amount is saved and locked" : "Assign total to-date contingency claim (USD)"}
+                            className={`w-28 text-right px-2 py-1 rounded-lg border font-mono font-bold text-xs ${
+                              isPaymentLocked 
+                                ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700 cursor-not-allowed opacity-70' 
+                                : 'border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300 bg-white dark:bg-slate-900 focus:ring-1 focus:ring-purple-500 shadow-xs'
+                            }`}
+                          />
+                          <span className="text-[9px] text-purple-600 dark:text-purple-400 font-semibold uppercase tracking-tight">To-Date (USD)</span>
+                        </div>
                       </td>
                     )}
                     <td className="py-2.5 px-4 text-right font-mono text-emerald-600 dark:text-emerald-400 font-semibold">
@@ -3955,7 +4358,7 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                     </td>
                     {isUsdModeActive && (
                       <td className="py-2.5 px-4 text-right font-mono text-purple-600 dark:text-purple-400 font-semibold bg-purple-50/20">
-                        ${fmt(Math.max(0, contingencyContractUsd - contingencyThisInvoiceUsd))}
+                        ${fmt(Math.max(0, contingencyContractUsd - contingencyToDateUsdValue))}
                       </td>
                     )}
                   </tr>

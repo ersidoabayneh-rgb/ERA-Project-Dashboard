@@ -3779,10 +3779,13 @@ let isBatchSyncRunning = false;
               border-color: #1e293b !important;
             }
           ` : ''}
+          :root {
+            ${themeSettings.accentColor ? `--era-theme-accent: ${themeSettings.accentColor};` : ''}
+            --col-engineer-width: ${themeSettings.colEngineerWidth || 32}%;
+            --col-contractor-width: ${themeSettings.colContractorWidth || 32}%;
+            --col-firm-width: ${themeSettings.colFirmWidth || 32}%;
+          }
           ${themeSettings.accentColor ? `
-            :root {
-              --era-theme-accent: ${themeSettings.accentColor};
-            }
             .bg-blue-600, .hover\\:bg-blue-600:hover, .hover\\:bg-blue-700:hover {
               background-color: ${themeSettings.accentColor} !important;
             }
@@ -5824,6 +5827,11 @@ let isBatchSyncRunning = false;
                   onClearAuditLogs={() => {
                     setWorkflowAuditLogs([]);
                     safeSetItem('era_workflow_audit_logs_v1', JSON.stringify([]));
+                  }}
+                  themeSettings={themeSettings}
+                  onUpdateThemeSettings={(updated) => {
+                    setThemeSettings(updated);
+                    localStorage.setItem('era_theme_settings', JSON.stringify(updated));
                   }}
                 />
               )}

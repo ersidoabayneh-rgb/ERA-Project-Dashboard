@@ -205,8 +205,13 @@ export const ContractAmountTab: React.FC<Props> = ({
   // TABLE 3: COMPUTED DLP STAFF BREAKDOWNS & SUB-TOTALS
   // -------------------------------------------------------------
   const dlpSubtotals = useMemo(() => {
-    const list = c1Data.dlpStaffFees || [];
-    const defaultCats = ['Key Professional', 'Intermediate', 'Support', 'Head Office'];
+    // Filter out Head Office staff from DLP as requested
+    const list = (c1Data.dlpStaffFees || []).filter(s => 
+      s.category !== 'Head Office' && 
+      !s.position?.toLowerCase().includes('project coordinator')
+    );
+    
+    const defaultCats = ['Key Professional', 'Intermediate', 'Support'];
     const set = new Set<string>(defaultCats);
     list.forEach(s => {
       if (s.category) set.add(s.category);
@@ -220,7 +225,6 @@ export const ContractAmountTab: React.FC<Props> = ({
           if (cat === 'Key Professional' && s.no?.startsWith('1.')) return true;
           if (cat === 'Intermediate' && s.no?.startsWith('2.')) return true;
           if (cat === 'Support' && s.no?.startsWith('3.')) return true;
-          if (cat === 'Head Office' && s.no?.startsWith('4.')) return true;
         }
         return false;
       });
@@ -232,7 +236,6 @@ export const ContractAmountTab: React.FC<Props> = ({
       if (cat === 'Key Professional') label = '1. Key Professional Staff (DLP Supervision)';
       else if (cat === 'Intermediate') label = '2. Intermediate Technical Staff';
       else if (cat === 'Support') label = '3. Field & Laboratory Support Personnel';
-      else if (cat === 'Head Office') label = '4. Head Office Support';
 
       return {
         categoryKey: cat,
@@ -242,7 +245,7 @@ export const ContractAmountTab: React.FC<Props> = ({
         dlpEtb,
         dlpUsd
       };
-    }).filter(g => g.rows.length > 0 || defaultCats.includes(g.categoryKey));
+    }).filter(g => g.rows.length > 0); // Only keep groups with actual rows for Table 3
 
     const totalDlpMm = groups.reduce((s, g) => s + g.dlpMm, 0);
     const totalDlpEtb = groups.reduce((s, g) => s + g.dlpEtb, 0);
@@ -294,14 +297,23 @@ export const ContractAmountTab: React.FC<Props> = ({
     return 0;
   }, [c1Data.reimbursableList]);
 
-  const handleUpdateReimbursableItem = (id: string, field: 'no' | 'item' | 'basis' | 'amountEtb' | 'amountUsd', value: any) => {
+  const handleUpdateReimbursableItem = (id: string, field: keyof ContractReimbursableCondition1, value: any) => {
     setC1Data(prev => {
       const updatedList = (prev.reimbursableList || []).map(r => {
         if (r.id === id) {
-          return {
+          const updated = {
             ...r,
-            [field]: (field === 'amountEtb' || field === 'amountUsd') ? (parseFloat(value) || 0) : value
+            [field]: (field === 'amountEtb' || field === 'amountUsd' || field === 'rate' || field === 'contractQty') ? (parseFloat(value) || 0) : value
           };
+          
+          // Auto-calculate amount if rate or qty changes
+          if (field === 'rate' || field === 'contractQty') {
+            const rate = field === 'rate' ? (parseFloat(value) || 0) : (r.rate || 0);
+            const qty = field === 'contractQty' ? (parseFloat(value) || 0) : (r.contractQty || 0);
+            updated.amountEtb = Number((rate * qty).toFixed(2));
+          }
+          
+          return updated;
         }
         return r;
       });
@@ -317,11 +329,14 @@ export const ContractAmountTab: React.FC<Props> = ({
   const handleAddReimbursableItem = () => {
     const list = c1Data.reimbursableList || [];
     const newNo = String(list.length + 1);
-    const newItem = {
+    const newItem: ContractReimbursableCondition1 = {
       id: `reimb_${Date.now()}`,
       no: newNo,
       item: 'New Reimbursable Direct Expense Sub-Item',
       basis: 'Actual site expenditure & approved vouchers',
+      unit: 'LS',
+      rate: 0,
+      contractQty: 1,
       amountEtb: 0
     };
     setC1Data(prev => {
@@ -1335,155 +1350,140 @@ export const ContractAmountTab: React.FC<Props> = ({
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-xs sm:text-sm border-collapse">
+            <table className="w-full text-left border-collapse text-xs">
               <thead>
-                <tr className="bg-slate-100/75 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700">
-                  <th className="p-3 text-left font-bold w-14">No.</th>
-                  <th className="p-3 text-left font-bold min-w-[190px]">Position</th>
-                  <th className="p-3 text-left font-bold min-w-[160px]">Nominated Staff Name</th>
-                  <th className="p-3 text-right font-bold w-28">MM (Constr.)</th>
-                  <th className="p-3 text-right font-bold w-32">Rate (ETB)</th>
-                  {isUsdEnabled && (
-                    <th className="p-3 text-right font-bold w-32 text-purple-700 dark:text-purple-300">Rate (USD)</th>
-                  )}
-                  <th className="p-3 text-right font-bold w-36 text-emerald-800 dark:text-emerald-300">Total Amount ({currencyUnit})</th>
-                  {!isReadonly && <th className="p-3 text-center font-bold w-14">Actions</th>}
+                <tr className="bg-slate-100 dark:bg-slate-800 text-[10px] text-slate-600 dark:text-slate-300 uppercase tracking-wider font-black border-b border-slate-200 dark:border-slate-700">
+                  <th className="py-2.5 px-3 w-10 text-center">#</th>
+                  <th className="py-2.5 px-3 min-w-[200px]">Position & Assigned Name</th>
+                  <th className="py-2.5 px-2 text-center w-14">Unit</th>
+                  <th className="py-2.5 px-2 text-right min-w-[100px]">Rate (ETB)</th>
+                  {isUsdEnabled && <th className="py-2.5 px-2 text-right min-w-[100px] text-purple-700 dark:text-purple-300">Rate (USD)</th>}
+                  <th className="py-2.5 px-2 text-right min-w-[70px]">Contr. MM</th>
+                  <th className="py-2.5 px-3 text-right min-w-[110px] font-bold">Total Fee (ETB)</th>
+                  <th className="py-2.5 px-2 text-center w-12">Act</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200 dark:divide-slate-800 text-slate-800 dark:text-slate-200 font-mono">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-sans text-xs">
                 {staffSubtotals.groups.map((group) => (
                   <React.Fragment key={group.categoryKey}>
-                    <tr className="bg-slate-100/90 dark:bg-slate-800/90 font-bold text-slate-900 dark:text-white">
-                      <td className="p-3 text-left" colSpan={!isReadonly ? (isUsdEnabled ? 8 : 7) : (isUsdEnabled ? 7 : 6)}>
+                    <tr className="bg-slate-50/80 dark:bg-slate-800/80 font-bold text-slate-900 dark:text-white border-t border-slate-200 dark:border-slate-700">
+                      <td className="py-2 px-3 text-left" colSpan={isUsdEnabled ? 8 : 7}>
                         {group.label}
                       </td>
                     </tr>
-                    {group.rows.map((row) => {
-                      const totalAmount = isUsdEnabled
-                        ? (((Number(row.rateEtb) || 0) + ((Number(row.rateUsd) || 0) * effRate)) * (Number(row.mmConstr) || 0))
-                        : ((Number(row.rateEtb) || 0) * (Number(row.mmConstr) || 0));
+                    {group.rows.map((row, idx) => {
+                      const totalAmount = (Number(row.rateEtb) || 0) * (Number(row.mmConstr) || 0);
+                      const totalAmountUsd = (Number(row.rateUsd) || 0) * (Number(row.mmConstr) || 0);
                       return (
                         <tr key={row.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
-                          <td className="p-3 text-slate-500 font-bold">
+                          <td className="py-2 px-3 text-center font-mono text-slate-400 font-bold">{idx + 1}</td>
+                          <td className="py-2 px-3">
+                            <div className="flex flex-col gap-0.5">
+                              <input
+                                type="text"
+                                value={row.position}
+                                disabled={isReadonly}
+                                onChange={(e) => handleUpdateConstructionStaffRow(row.id!, 'position', e.target.value)}
+                                className="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-emerald-500 focus:outline-none text-xs font-bold"
+                              />
+                              <input
+                                type="text"
+                                value={row.name}
+                                disabled={isReadonly}
+                                onChange={(e) => handleUpdateConstructionStaffRow(row.id!, 'name', e.target.value)}
+                                className="w-full bg-transparent border-b border-transparent hover:border-slate-200 focus:border-emerald-400 focus:outline-none text-[10px] text-slate-500 font-bold italic"
+                              />
+                            </div>
+                          </td>
+                          <td className="py-2 px-2 text-center font-mono text-slate-500">
                             <input
                               type="text"
+                              value={row.unit || 'Month'}
                               disabled={isReadonly}
-                              value={row.no || ''}
-                              onChange={(e) => handleUpdateConstructionStaffRow(row.id!, 'no', e.target.value)}
-                              className="w-12 bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-500 outline-none font-bold text-slate-700 dark:text-slate-300"
+                              onChange={(e) => handleUpdateConstructionStaffRow(row.id!, 'unit' as any, e.target.value)}
+                              className="w-12 text-center bg-transparent border-b border-transparent hover:border-slate-300 focus:border-emerald-500 focus:outline-none text-xs font-mono"
                             />
                           </td>
-                          <td className="p-3 font-sans font-semibold text-slate-900 dark:text-white">
-                            <input
-                              type="text"
-                              disabled={isReadonly}
-                              value={row.position}
-                              onChange={(e) => handleUpdateConstructionStaffRow(row.id!, 'position', e.target.value)}
-                              className="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-500 outline-none"
-                            />
-                          </td>
-                          <td className="p-3 font-sans text-slate-600 dark:text-slate-300">
-                            <input
-                              type="text"
-                              disabled={isReadonly}
-                              value={row.name}
-                              onChange={(e) => handleUpdateConstructionStaffRow(row.id!, 'name', e.target.value)}
-                              className="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-500 outline-none"
-                            />
-                          </td>
-                          <td className="p-3 text-right">
+                          <td className="py-2 px-2 text-right font-mono">
                             <input
                               type="number"
                               step="any"
-                              disabled={isReadonly}
-                              value={row.mmConstr}
-                              onChange={(e) => handleUpdateConstructionStaffRow(row.id!, 'mmConstr', parseFloat(e.target.value) || 0)}
-                              className={`w-full text-right bg-transparent border-b border-dashed outline-none ${
-                                isInvalidValue(row.mmConstr) ? 'border-red-500 text-red-600 bg-red-50/20' : 'border-slate-300 hover:border-blue-500 focus:border-blue-500'
-                              }`}
-                              title={isInvalidValue(row.mmConstr) ? 'Error: Man Month must be a positive numerical value (>= 0)' : 'Construction Man-Months'}
-                            />
-                          </td>
-                          <td className="p-3 text-right">
-                            <input
-                              type="number"
-                              step="any"
-                              disabled={isReadonly}
                               value={row.rateEtb}
+                              disabled={isReadonly}
                               onChange={(e) => handleUpdateConstructionStaffRow(row.id!, 'rateEtb', parseFloat(e.target.value) || 0)}
-                              className={`w-full text-right bg-transparent border-b border-dashed outline-none font-bold text-emerald-600 ${
-                                isInvalidValue(row.rateEtb) ? 'border-red-500 text-red-600 bg-red-50/20' : 'border-slate-300 hover:border-blue-500 focus:border-blue-500'
-                              }`}
-                              title={isInvalidValue(row.rateEtb) ? 'Error: Rate (ETB) must be a positive numerical value (>= 0)' : 'Monthly Rate in ETB'}
+                              className="w-24 text-right bg-transparent border-b border-transparent hover:border-slate-300 focus:border-emerald-500 focus:outline-none text-xs font-mono"
                             />
                           </td>
                           {isUsdEnabled && (
-                            <td className="p-3 text-right">
+                            <td className="py-2 px-2 text-right font-mono text-purple-700 dark:text-purple-300">
                               <input
                                 type="number"
                                 step="any"
-                                disabled={isReadonly}
                                 value={row.rateUsd || 0}
+                                disabled={isReadonly}
                                 onChange={(e) => handleUpdateConstructionStaffRow(row.id!, 'rateUsd', parseFloat(e.target.value) || 0)}
-                                className={`w-full text-right bg-transparent border-b border-dashed outline-none font-bold text-purple-600 ${
-                                  isInvalidValue(row.rateUsd) ? 'border-red-500 text-red-600 bg-red-50/20' : 'border-slate-300 hover:border-blue-500 focus:border-blue-500'
-                                }`}
-                                title={isInvalidValue(row.rateUsd) ? 'Error: Rate (USD) must be a non-negative numerical value (>= 0)' : 'Monthly Rate in USD'}
+                                className="w-20 text-right bg-transparent border-b border-transparent hover:border-slate-300 focus:border-purple-500 focus:outline-none text-xs font-mono"
                               />
                             </td>
                           )}
-                          <td className="p-3 text-right font-bold text-slate-900 dark:text-white">
-                            {fmt(totalAmount)}
+                          <td className="py-2 px-2 text-right font-mono text-slate-600 dark:text-slate-400">
+                            <input
+                              type="number"
+                              step="any"
+                              value={row.mmConstr}
+                              disabled={isReadonly}
+                              onChange={(e) => handleUpdateConstructionStaffRow(row.id!, 'mmConstr', parseFloat(e.target.value) || 0)}
+                              className="w-16 text-right bg-transparent border-b border-transparent hover:border-slate-300 focus:border-emerald-500 focus:outline-none text-xs font-mono"
+                            />
                           </td>
-                          {!isReadonly && (
-                            <td className="p-3 text-center flex items-center justify-center gap-1">
+                          <td className="py-2 px-3 text-right font-mono font-bold">{fmt(totalAmount)}</td>
+                          <td className="py-2 px-2 text-center">
+                            <div className="flex items-center justify-center gap-1">
                               <button
                                 type="button"
                                 onClick={() => {
                                   setAddStaffTargetTable('construction');
                                   setIsAddStaffOpen(true);
                                 }}
-                                className="p-1 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded-lg transition"
-                                title="Add Row Below / Staff Position"
+                                className="p-1 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition"
+                                title="Add Row Below"
                               >
                                 <Plus className="w-3.5 h-3.5" />
                               </button>
                               <button
                                 type="button"
                                 onClick={() => handleDeleteConstructionStaffRow(row.id!, row.position)}
-                                className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg transition"
+                                className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition"
                                 title="Delete Row"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
-                            </td>
-                          )}
+                            </div>
+                          </td>
                         </tr>
                       );
                     })}
-                    <tr className="bg-emerald-50/50 dark:bg-emerald-950/20 font-bold text-slate-900 dark:text-white border-t border-slate-300 dark:border-slate-700">
-                      <td className="p-3" colSpan={3}>Sub-total ({group.categoryKey})</td>
-                      <td className="p-3 text-right">{fmt(group.constrMm, 1)}</td>
-                      <td className="p-3 text-right">—</td>
-                      {isUsdEnabled && <td className="p-3 text-right">—</td>}
-                      <td className="p-3 text-right text-emerald-700 dark:text-emerald-300">
-                        {fmt(group.constrEtb + (isUsdEnabled ? ((group.constrUsd || 0) * effRate) : 0))}
-                      </td>
-                      {!isReadonly && <td></td>}
+                    <tr className="bg-emerald-50/40 dark:bg-emerald-950/20 font-bold text-slate-900 dark:text-white border-t border-slate-200 dark:border-slate-700 text-[10px]">
+                      <td className="py-2 px-3" colSpan={3}>Sub-total ({group.categoryKey})</td>
+                      <td className="py-2 px-2 text-right">—</td>
+                      {isUsdEnabled && <td className="py-2 px-2 text-right">—</td>}
+                      <td className="py-2 px-2 text-right font-mono">{fmt(group.constrMm, 1)}</td>
+                      <td className="py-2 px-3 text-right font-mono">{fmt(group.constrEtb)}</td>
+                      <td></td>
                     </tr>
                   </React.Fragment>
                 ))}
-                <tr className="bg-emerald-100 dark:bg-emerald-900/60 font-black text-slate-900 dark:text-white text-sm border-t-2 border-emerald-400 dark:border-emerald-600">
-                  <td className="p-3.5" colSpan={3}>TOTAL CONSTRUCTION REMUNERATION</td>
-                  <td className="p-3.5 text-right">{fmt(staffSubtotals.totalConstrMm, 1)}</td>
-                  <td className="p-3.5 text-right">—</td>
-                  {isUsdEnabled && <td className="p-3.5 text-right">—</td>}
-                  <td className="p-3.5 text-right text-emerald-800 dark:text-emerald-200">
-                    {fmt(staffSubtotals.groups.reduce((s, g) => s + g.constrEtb + (isUsdEnabled ? ((g.constrUsd || 0) * effRate) : 0), 0))}
-                  </td>
-                  {!isReadonly && <td></td>}
-                </tr>
               </tbody>
+              <tfoot className="border-t-2 border-slate-300 dark:border-slate-700 font-bold bg-slate-50 dark:bg-slate-800 text-[10px]">
+                <tr className="uppercase tracking-tight">
+                  <td colSpan={3} className="py-2.5 px-3">Sub-Total 1 Construction Fees:</td>
+                  <td className="py-2.5 px-2 text-right">—</td>
+                  {isUsdEnabled && <td className="py-2.5 px-2 text-right">—</td>}
+                  <td className="py-2.5 px-2 text-right font-mono">{fmt(staffSubtotals.totalConstrMm, 1)}</td>
+                  <td className="py-2.5 px-3 text-right font-mono font-black">{fmt(staffSubtotals.totalConstrEtb)} ETB</td>
+                  <td></td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </div>
@@ -1523,122 +1523,139 @@ export const ContractAmountTab: React.FC<Props> = ({
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-xs sm:text-sm border-collapse">
+            <table className="w-full text-left border-collapse text-xs">
               <thead>
-                <tr className="bg-slate-100/75 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700 font-bold">
-                  <th className="p-3 text-left w-14">No.</th>
-                  <th className="p-3 text-left min-w-[220px]">Reimbursable Expense Item</th>
-                  <th className="p-3 text-left min-w-[260px]">Contractual Basis / Justification</th>
-                  <th className="p-3 text-right w-36 text-amber-700 dark:text-amber-400">Amount (ETB)</th>
-                  {isUsdEnabled && (
-                    <th className="p-3 text-right w-36 text-purple-700 dark:text-purple-300">Amount (USD)</th>
-                  )}
-                  <th className="p-3 text-right w-40 text-emerald-800 dark:text-emerald-300">Total Amount ({currencyUnit})</th>
-                  {!isReadonly && <th className="p-3 text-center w-14">Actions</th>}
+                <tr className="bg-slate-100 dark:bg-slate-800 text-[10px] text-slate-600 dark:text-slate-300 uppercase tracking-wider font-black border-b border-slate-200 dark:border-slate-700">
+                  <th className="py-2.5 px-3 w-10 text-center">#</th>
+                  <th className="py-2.5 px-3 min-w-[220px]">Item Description</th>
+                  <th className="py-2.5 px-2 text-center w-16">Unit</th>
+                  <th className="py-2.5 px-2 text-right min-w-[100px]">Rate (ETB)</th>
+                  {isUsdEnabled && <th className="py-2.5 px-2 text-right min-w-[100px] text-purple-700 dark:text-purple-300">Rate (USD)</th>}
+                  <th className="py-2.5 px-2 text-right min-w-[80px]">Contract Qty</th>
+                  <th className="py-2.5 px-3 text-right min-w-[110px]">Contract Amount</th>
+                  <th className="py-2.5 px-2 text-center w-12">Act</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200 dark:divide-slate-800 text-slate-800 dark:text-slate-200 font-mono">
-                {(c1Data.reimbursableList || []).map((row, idx) => {
-                  const rowTotal = (Number(row.amountEtb) || 0) + (isUsdEnabled ? ((Number(row.amountUsd) || 0) * effRate) : 0);
-                  return (
-                    <tr key={row.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
-                      <td className="p-3 text-slate-500 font-bold">
-                        <input
-                          type="text"
-                          disabled={isReadonly}
-                          value={row.no || String(idx + 1)}
-                          onChange={(e) => handleUpdateReimbursableItem(row.id, 'no', e.target.value)}
-                          className="w-12 bg-transparent border-b border-transparent hover:border-amber-300 focus:border-amber-500 outline-none font-bold text-slate-700 dark:text-slate-300"
-                        />
-                      </td>
-                      <td className="p-3 font-sans font-semibold text-slate-900 dark:text-white">
-                        <input
-                          type="text"
-                          disabled={isReadonly}
-                          value={row.item}
-                          onChange={(e) => handleUpdateReimbursableItem(row.id, 'item', e.target.value)}
-                          className="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-500 outline-none"
-                        />
-                      </td>
-                      <td className="p-3 font-sans text-slate-600 dark:text-slate-300">
-                        <input
-                          type="text"
-                          disabled={isReadonly}
-                          value={row.basis || ''}
-                          onChange={(e) => handleUpdateReimbursableItem(row.id, 'basis', e.target.value)}
-                          className="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-500 outline-none"
-                        />
-                      </td>
-                      <td className="p-3 text-right">
-                        <input
-                          type="number"
-                          step="any"
-                          disabled={isReadonly}
-                          value={row.amountEtb}
-                          onChange={(e) => handleUpdateReimbursableItem(row.id, 'amountEtb', parseFloat(e.target.value) || 0)}
-                          className={`w-full text-right bg-transparent border-b border-dashed outline-none font-bold text-amber-700 dark:text-amber-400 ${
-                            isInvalidValue(row.amountEtb) ? 'border-red-500 text-red-600 bg-red-50/20' : 'border-slate-300 hover:border-blue-500 focus:border-blue-500'
-                          }`}
-                          title={isInvalidValue(row.amountEtb) ? 'Error: Amount must be a positive numerical value (>= 0)' : 'Amount in ETB'}
-                        />
-                      </td>
-                      {isUsdEnabled && (
-                        <td className="p-3 text-right">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-sans text-xs text-slate-800 dark:text-slate-200">
+                {(c1Data.reimbursableList || []).length === 0 ? (
+                  <tr>
+                    <td colSpan={isUsdEnabled ? 15 : 14} className="py-8 text-center text-slate-400">
+                      No reimbursable operating expenses defined. Click "+ Add Expense Item" to add.
+                    </td>
+                  </tr>
+                ) : (
+                  (c1Data.reimbursableList || []).map((row, idx) => {
+                    const contractAmount = (Number(row.amountEtb) || 0);
+                    return (
+                      <tr key={row.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
+                        <td className="py-2 px-3 text-center font-mono text-slate-400 font-bold">
+                          <input
+                            type="text"
+                            value={row.no || String(idx + 1)}
+                            disabled={isReadonly}
+                            onChange={(e) => handleUpdateReimbursableItem(row.id, 'no', e.target.value)}
+                            className="w-10 text-center bg-transparent border-b border-transparent hover:border-amber-300 focus:border-amber-500 focus:outline-none text-xs font-mono font-bold"
+                          />
+                        </td>
+                        <td className="py-2 px-3 font-semibold text-slate-800 dark:text-slate-200">
+                          <div className="flex flex-col gap-0.5">
+                            <input
+                              type="text"
+                              value={row.item}
+                              disabled={isReadonly}
+                              onChange={(e) => handleUpdateReimbursableItem(row.id, 'item', e.target.value)}
+                              className="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-amber-500 focus:outline-none text-xs font-bold"
+                            />
+                            <input
+                              type="text"
+                              placeholder="Contractual basis / justification"
+                              value={row.basis || ''}
+                              disabled={isReadonly}
+                              onChange={(e) => handleUpdateReimbursableItem(row.id, 'basis', e.target.value)}
+                              className="w-full bg-transparent border-b border-transparent hover:border-slate-200 focus:border-amber-400 focus:outline-none text-[10px] text-slate-400 italic"
+                            />
+                          </div>
+                        </td>
+                        <td className="py-2 px-2 text-center font-mono text-slate-500">
+                          <input
+                            type="text"
+                            value={row.unit || 'LS'}
+                            disabled={isReadonly}
+                            onChange={(e) => handleUpdateReimbursableItem(row.id, 'unit' as any, e.target.value)}
+                            className="w-12 text-center bg-transparent border-b border-transparent hover:border-slate-300 focus:border-amber-500 focus:outline-none text-xs font-mono"
+                          />
+                        </td>
+                        <td className="py-2 px-2 text-right font-mono">
                           <input
                             type="number"
                             step="any"
+                            value={row.rate || 0}
                             disabled={isReadonly}
-                            value={row.amountUsd || 0}
-                            onChange={(e) => handleUpdateReimbursableItem(row.id, 'amountUsd', parseFloat(e.target.value) || 0)}
-                            className={`w-full text-right bg-transparent border-b border-dashed outline-none font-bold text-purple-600 ${
-                              isInvalidValue(row.amountUsd) ? 'border-red-500 text-red-600 bg-red-50/20' : 'border-slate-300 hover:border-blue-500 focus:border-blue-500'
-                            }`}
-                            title={isInvalidValue(row.amountUsd) ? 'Error: Amount must be a positive numerical value (>= 0)' : 'Amount in USD'}
+                            onChange={(e) => handleUpdateReimbursableItem(row.id, 'rate' as any, parseFloat(e.target.value) || 0)}
+                            className="w-24 text-right bg-transparent border-b border-transparent hover:border-slate-300 focus:border-amber-500 focus:outline-none text-xs font-mono"
                           />
                         </td>
-                      )}
-                      <td className="p-3 text-right font-bold text-slate-900 dark:text-white">
-                        {fmt(rowTotal)}
-                      </td>
-                      {!isReadonly && (
-                        <td className="p-3 text-center flex items-center justify-center gap-1">
-                          <button
-                            type="button"
-                            onClick={handleAddReimbursableItem}
-                            className="p-1 text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/40 rounded-lg transition"
-                            title="Add Reimbursable Below"
-                          >
-                            <Plus className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteReimbursableItem(row.id)}
-                            className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg transition"
-                            title="Delete Reimbursable"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                        {isUsdEnabled && (
+                          <td className="py-2 px-2 text-right font-mono text-purple-700 dark:text-purple-300">
+                            <input
+                              type="number"
+                              step="any"
+                              value={row.amountUsd || 0}
+                              disabled={isReadonly}
+                              onChange={(e) => handleUpdateReimbursableItem(row.id, 'amountUsd', parseFloat(e.target.value) || 0)}
+                              className="w-20 text-right bg-transparent border-b border-transparent hover:border-slate-300 focus:border-purple-500 focus:outline-none text-xs font-mono"
+                            />
+                          </td>
+                        )}
+                        <td className="py-2 px-2 text-right font-mono text-slate-600 dark:text-slate-400">
+                          <input
+                            type="number"
+                            step="any"
+                            value={row.contractQty || 1}
+                            disabled={isReadonly}
+                            onChange={(e) => handleUpdateReimbursableItem(row.id, 'contractQty' as any, parseFloat(e.target.value) || 0)}
+                            className="w-16 text-right bg-transparent border-b border-transparent hover:border-slate-300 focus:border-amber-500 focus:outline-none text-xs font-mono"
+                          />
                         </td>
-                      )}
-                    </tr>
-                  );
-                })}
-                <tr className="bg-amber-50 dark:bg-amber-950/40 font-black text-slate-900 dark:text-white text-sm border-t-2 border-amber-400 dark:border-amber-600">
-                  <td className="p-3.5" colSpan={3}>TOTAL REIMBURSABLE DIRECT EXPENSES (Sub-Total B)</td>
-                  <td className="p-3.5 text-right text-amber-800 dark:text-amber-300">
+                        <td className="py-2 px-3 text-right font-mono font-semibold text-slate-700 dark:text-slate-300">
+                          {fmt(contractAmount)}
+                        </td>
+                        <td className="py-2 px-2 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              type="button"
+                              onClick={handleAddReimbursableItem}
+                              className="p-1 text-amber-600 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition"
+                              title="Add Row Below"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteReimbursableItem(row.id)}
+                              className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition"
+                              title="Delete Row"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+              <tfoot className="border-t-2 border-slate-300 dark:border-slate-700 font-bold bg-amber-50/50 dark:bg-slate-800 text-xs">
+                <tr>
+                  <td colSpan={5} className="py-2.5 px-3 text-amber-900 dark:text-amber-200 uppercase text-[10px] font-black">
+                    Sub-Total 2 (Reimbursable Direct Operating Costs):
+                  </td>
+                  <td className="py-2.5 px-3 text-right font-mono text-slate-900 dark:text-white">
                     {fmt(reimbursableTotal)} ETB
                   </td>
-                  {isUsdEnabled && (
-                    <td className="p-3.5 text-right text-purple-800 dark:text-purple-300">
-                      ${fmt(reimbursableTotalUsd)} USD
-                    </td>
-                  )}
-                  <td className="p-3.5 text-right text-slate-900 dark:text-white">
-                    {fmt(reimbursableTotal + (isUsdEnabled ? (reimbursableTotalUsd * effRate) : 0))}
-                  </td>
-                  {!isReadonly && <td></td>}
+                  <td></td>
                 </tr>
-              </tbody>
+              </tfoot>
             </table>
           </div>
         </div>
@@ -1677,153 +1694,134 @@ export const ContractAmountTab: React.FC<Props> = ({
           <div className="overflow-x-auto">
             <table className="w-full text-xs sm:text-sm border-collapse">
               <thead>
-                <tr className="bg-slate-100/75 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700">
-                  <th className="p-3 text-left font-bold w-14">No.</th>
-                  <th className="p-3 text-left font-bold min-w-[190px]">Position</th>
-                  <th className="p-3 text-left font-bold min-w-[160px]">Nominated Staff Name</th>
-                  <th className="p-3 text-right font-bold w-28">MM (DLP)</th>
-                  <th className="p-3 text-right font-bold w-32">Rate (ETB)</th>
-                  {isUsdEnabled && (
-                    <th className="p-3 text-right font-bold w-32 text-purple-700 dark:text-purple-300">Rate (USD)</th>
-                  )}
-                  <th className="p-3 text-right font-bold w-36 text-indigo-800 dark:text-indigo-300">Total Amount ({currencyUnit})</th>
-                  {!isReadonly && <th className="p-3 text-center font-bold w-14">Actions</th>}
+                <tr className="bg-slate-100 dark:bg-slate-800 text-[10px] text-slate-600 dark:text-slate-300 uppercase tracking-wider font-black border-b border-slate-200 dark:border-slate-700">
+                  <th className="py-2.5 px-3 w-10 text-center">#</th>
+                  <th className="py-2.5 px-3 min-w-[220px]">DLP Personnel Position & Name</th>
+                  <th className="py-2.5 px-2 text-center w-16">Unit</th>
+                  <th className="py-2.5 px-2 text-right min-w-[105px]">Monthly Rate (ETB)</th>
+                  {isUsdEnabled && <th className="py-2.5 px-2 text-right min-w-[100px] text-purple-700 dark:text-purple-300">Rate (USD)</th>}
+                  <th className="py-2.5 px-2 text-right min-w-[90px]">Contract MM</th>
+                  <th className="py-2.5 px-3 text-right min-w-[110px]">Contract Amount</th>
+                  <th className="py-2.5 px-2 text-center w-12">Act</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200 dark:divide-slate-800 text-slate-800 dark:text-slate-200 font-mono">
-                {staffSubtotals.dlpGroups.map((group) => (
-                  <React.Fragment key={`dlp_${group.categoryKey}`}>
-                    <tr className="bg-slate-100/90 dark:bg-slate-800/90 font-bold text-slate-900 dark:text-white">
-                      <td className="p-3 text-left" colSpan={!isReadonly ? (isUsdEnabled ? 8 : 7) : (isUsdEnabled ? 7 : 6)}>
-                        {group.label} (DLP Period)
-                      </td>
-                    </tr>
-                    {group.rows.map((row) => {
-                      const totalAmount = isUsdEnabled
-                        ? (((Number(row.rateEtb) || 0) + ((Number(row.rateUsd) || 0) * effRate)) * (Number(row.mmDlp) || 0))
-                        : ((Number(row.rateEtb) || 0) * (Number(row.mmDlp) || 0));
-                      return (
-                        <tr key={`dlp_row_${row.id}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
-                          <td className="p-3 text-slate-500 font-bold">
-                            <input
-                              type="text"
-                              disabled={isReadonly}
-                              value={row.no || ''}
-                              onChange={(e) => handleUpdateDlpStaffRow(row.id!, 'no', e.target.value)}
-                              className="w-12 bg-transparent border-b border-transparent hover:border-indigo-300 focus:border-indigo-500 outline-none font-bold text-slate-700 dark:text-slate-300"
-                            />
-                          </td>
-                          <td className="p-3 font-sans font-semibold text-slate-900 dark:text-white">
-                            <input
-                              type="text"
-                              disabled={isReadonly}
-                              value={row.position}
-                              onChange={(e) => handleUpdateDlpStaffRow(row.id!, 'position', e.target.value)}
-                              className="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-500 outline-none"
-                            />
-                          </td>
-                          <td className="p-3 font-sans text-slate-600 dark:text-slate-300">
-                            <input
-                              type="text"
-                              disabled={isReadonly}
-                              value={row.name}
-                              onChange={(e) => handleUpdateDlpStaffRow(row.id!, 'name', e.target.value)}
-                              className="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-500 outline-none"
-                            />
-                          </td>
-                          <td className="p-3 text-right">
-                            <input
-                              type="number"
-                              step="any"
-                              disabled={isReadonly}
-                              value={row.mmDlp}
-                              onChange={(e) => handleUpdateDlpStaffRow(row.id!, 'mmDlp', parseFloat(e.target.value) || 0)}
-                              className={`w-full text-right bg-transparent border-b border-dashed outline-none ${
-                                isInvalidValue(row.mmDlp) ? 'border-red-500 text-red-600 bg-red-50/20' : 'border-slate-300 hover:border-blue-500 focus:border-blue-500'
-                              }`}
-                              title={isInvalidValue(row.mmDlp) ? 'Error: DLP Man Month must be a positive numerical value (>= 0)' : 'DLP Man-Months'}
-                            />
-                          </td>
-                          <td className="p-3 text-right">
-                            <input
-                              type="number"
-                              step="any"
-                              disabled={isReadonly}
-                              value={row.rateEtb}
-                              onChange={(e) => handleUpdateDlpStaffRow(row.id!, 'rateEtb', parseFloat(e.target.value) || 0)}
-                              className={`w-full text-right bg-transparent border-b border-dashed outline-none font-bold text-emerald-600 ${
-                                isInvalidValue(row.rateEtb) ? 'border-red-500 text-red-600 bg-red-50/20' : 'border-slate-300 hover:border-blue-500 focus:border-blue-500'
-                              }`}
-                              title={isInvalidValue(row.rateEtb) ? 'Error: Rate (ETB) must be a positive numerical value (>= 0)' : 'Monthly Rate in ETB'}
-                            />
-                          </td>
-                          {isUsdEnabled && (
-                            <td className="p-3 text-right">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-sans text-xs">
+                {staffSubtotals.dlpGroups.length === 0 ? (
+                  <tr>
+                    <td colSpan={isUsdEnabled ? 8 : 7} className="py-8 text-center text-slate-400">
+                      No DLP personnel allocation rows defined. Click "+ Add Staff Position" to add.
+                    </td>
+                  </tr>
+                ) : (
+                  staffSubtotals.dlpGroups.flatMap(g => g.rows).map((row, idx) => {
+                    const totalAmount = (Number(row.rateEtb) || 0) * (Number(row.mmDlp) || 0);
+                    return (
+                      <tr key={row.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
+                        <td className="py-2 px-3 text-center font-mono text-slate-400 font-bold">{idx + 1}</td>
+                        <td className="py-2 px-3 font-semibold text-slate-800 dark:text-slate-200">
+                              <div className="flex flex-col gap-0.5">
+                                <input
+                                  type="text"
+                                  value={row.position}
+                                  disabled={isReadonly}
+                                  onChange={(e) => handleUpdateDlpStaffRow(row.id!, 'position', e.target.value)}
+                                  className="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-500 focus:outline-none text-xs font-bold"
+                                />
+                                <input
+                                  type="text"
+                                  value={row.name}
+                                  disabled={isReadonly}
+                                  onChange={(e) => handleUpdateDlpStaffRow(row.id!, 'name', e.target.value)}
+                                  className="w-full bg-transparent border-b border-transparent hover:border-slate-200 focus:border-indigo-400 focus:outline-none text-[10px] text-slate-500 font-bold italic"
+                                />
+                              </div>
+                            </td>
+                            <td className="py-2 px-2 text-center font-mono text-slate-500">
+                              <input
+                                type="text"
+                                value={row.unit || 'Month'}
+                                disabled={isReadonly}
+                                onChange={(e) => handleUpdateDlpStaffRow(row.id!, 'unit' as any, e.target.value)}
+                                className="w-16 text-center bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-500 focus:outline-none text-xs font-mono"
+                              />
+                            </td>
+                            <td className="py-2 px-2 text-right font-mono">
                               <input
                                 type="number"
                                 step="any"
+                                value={row.rateEtb}
                                 disabled={isReadonly}
-                                value={row.rateUsd || 0}
-                                onChange={(e) => handleUpdateDlpStaffRow(row.id!, 'rateUsd', parseFloat(e.target.value) || 0)}
-                                className={`w-full text-right bg-transparent border-b border-dashed outline-none font-bold text-purple-600 ${
-                                  isInvalidValue(row.rateUsd) ? 'border-red-500 text-red-600 bg-red-50/20' : 'border-slate-300 hover:border-blue-500 focus:border-blue-500'
-                                }`}
-                                title={isInvalidValue(row.rateUsd) ? 'Error: Rate (USD) must be a non-negative numerical value (>= 0)' : 'Monthly Rate in USD'}
+                                onChange={(e) => handleUpdateDlpStaffRow(row.id!, 'rateEtb', parseFloat(e.target.value) || 0)}
+                                className="w-24 text-right bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-500 focus:outline-none text-xs font-mono"
                               />
                             </td>
-                          )}
-                          <td className="p-3 text-right font-bold text-slate-900 dark:text-white">
-                            {fmt(totalAmount)}
-                          </td>
-                          {!isReadonly && (
-                            <td className="p-3 text-center flex items-center justify-center gap-1">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setAddStaffTargetTable('dlp');
-                                  setIsAddStaffOpen(true);
-                                }}
-                                className="p-1 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 rounded-lg transition"
-                                title="Add Row Below / Staff Position"
-                              >
-                                <Plus className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteDlpStaffRow(row.id!, row.position)}
-                                className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg transition"
-                                title="Delete Row"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
+                            {isUsdEnabled && (
+                              <td className="py-2 px-2 text-right font-mono text-purple-700 dark:text-purple-300">
+                                <input
+                                  type="number"
+                                  step="any"
+                                  value={row.rateUsd || 0}
+                                  disabled={isReadonly}
+                                  onChange={(e) => handleUpdateDlpStaffRow(row.id!, 'rateUsd', parseFloat(e.target.value) || 0)}
+                                  className="w-20 text-right bg-transparent border-b border-transparent hover:border-slate-300 focus:border-purple-500 focus:outline-none text-xs font-mono"
+                                />
+                              </td>
+                            )}
+                            <td className="py-2 px-2 text-right font-mono text-slate-600 dark:text-slate-400">
+                              <input
+                                type="number"
+                                step="any"
+                                value={row.mmDlp}
+                                disabled={isReadonly}
+                                onChange={(e) => handleUpdateDlpStaffRow(row.id!, 'mmDlp', parseFloat(e.target.value) || 0)}
+                                className="w-16 text-right bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-500 focus:outline-none text-xs font-mono"
+                              />
                             </td>
-                          )}
-                        </tr>
-                      );
-                    })}
-                    <tr className="bg-indigo-50/50 dark:bg-indigo-950/20 font-bold text-slate-900 dark:text-white border-t border-slate-300 dark:border-slate-700">
-                      <td className="p-3" colSpan={3}>Sub-total DLP ({group.categoryKey})</td>
-                      <td className="p-3 text-right">{fmt(group.dlpMm, 1)}</td>
-                      <td className="p-3 text-right">—</td>
-                      {isUsdEnabled && <td className="p-3 text-right">—</td>}
-                      <td className="p-3 text-right text-indigo-700 dark:text-indigo-300">
-                        {fmt(group.dlpEtb + (isUsdEnabled ? ((group.dlpUsd || 0) * effRate) : 0))}
-                      </td>
-                      {!isReadonly && <td></td>}
-                    </tr>
-                  </React.Fragment>
-                ))}
-                <tr className="bg-indigo-100 dark:bg-indigo-900/60 font-black text-slate-900 dark:text-white text-sm border-t-2 border-indigo-400 dark:border-indigo-600">
-                  <td className="p-3.5" colSpan={3}>TOTAL DLP REMUNERATION (Table 3)</td>
-                  <td className="p-3.5 text-right">{fmt(staffSubtotals.totalDlpMm, 1)}</td>
-                  <td className="p-3.5 text-right">—</td>
-                  {isUsdEnabled && <td className="p-3.5 text-right">—</td>}
-                  <td className="p-3.5 text-right text-indigo-800 dark:text-indigo-200">
-                    {fmt(staffSubtotals.dlpGroups.reduce((s, g) => s + g.dlpEtb + (isUsdEnabled ? ((g.dlpUsd || 0) * effRate) : 0), 0))}
-                  </td>
-                  {!isReadonly && <td></td>}
-                </tr>
+                            <td className="py-2 px-3 text-right font-mono font-semibold text-slate-700 dark:text-slate-300">
+                              {fmt(totalAmount)}
+                            </td>
+                            <td className="py-2 px-2 text-center">
+                              <div className="flex items-center justify-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setAddStaffTargetTable('dlp');
+                                    setIsAddStaffOpen(true);
+                                  }}
+                                  className="p-1 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg transition"
+                                  title="Add Row Below"
+                                >
+                                  <Plus className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteDlpStaffRow(row.id!, row.position)}
+                                  className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition"
+                                  title="Delete Row"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                    );
+                  })
+                )}
               </tbody>
+              <tfoot className="border-t-2 border-slate-300 dark:border-slate-700 font-bold bg-indigo-50/50 dark:bg-slate-800 text-xs">
+                <tr>
+                  <td colSpan={5} className="py-2.5 px-3 text-indigo-900 dark:text-indigo-200 uppercase text-[10px] font-black">
+                    Sub-Total 3 (DLP Staff Remuneration):
+                  </td>
+                  <td className="py-2.5 px-2 text-right font-mono text-slate-900 dark:text-white">
+                    {fmt(staffSubtotals.totalDlpMm, 1)} MM
+                  </td>
+                  <td className="py-2.5 px-3 text-right font-mono font-black text-indigo-700 dark:text-indigo-300">
+                    {fmt(staffSubtotals.totalDlpEtb)} ETB
+                  </td>
+                  <td></td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </div>
@@ -1859,7 +1857,9 @@ export const ContractAmountTab: React.FC<Props> = ({
                   <option value="Key Professional">1. Key Professional Staff</option>
                   <option value="Intermediate">2. Intermediate Technical Staff</option>
                   <option value="Support">3. Field & Laboratory Support Personnel</option>
-                  <option value="Head Office">4. Head Office Support</option>
+                  {addStaffTargetTable === 'construction' && (
+                    <option value="Head Office">4. Head Office Support</option>
+                  )}
                 </select>
               </div>
 

@@ -56,9 +56,9 @@ export const DEFAULT_CONDITION_1_DLP_STAFF: ContractStaffRateCondition1[] = [
 ];
 
 export const DEFAULT_CONDITION_1_REIMBURSABLES = [
-  { id: 'c1_r_1', no: '1', item: 'Per diem', amountEtb: 8506789.75, basis: 'Daily allowance per actual site attendance records' },
-  { id: 'c1_r_2', no: '2', item: 'Communication', amountEtb: 240000.00, basis: 'Monthly internet, satellite & telephone links' },
-  { id: 'c1_r_3', no: '3', item: 'Professional indemnity', amountEtb: 500000.00, basis: 'Insurance certificate submission lump-sum' }
+  { id: 'c1_r_1', no: '1', item: 'Per diem', unit: 'Day', rate: 250, contractQty: 34027.16, amountEtb: 8506789.75, basis: 'Daily allowance per actual site attendance records' },
+  { id: 'c1_r_2', no: '2', item: 'Communication', unit: 'Month', rate: 10000, contractQty: 24, amountEtb: 240000.00, basis: 'Monthly internet, satellite & telephone links' },
+  { id: 'c1_r_3', no: '3', item: 'Professional indemnity', unit: 'LS', rate: 500000, contractQty: 1, amountEtb: 500000.00, basis: 'Insurance certificate submission lump-sum' }
 ];
 
 export const DEFAULT_CONDITION_1_DATA: ContractCondition1Data = {

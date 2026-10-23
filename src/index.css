@@ -104,19 +104,35 @@ input:disabled, select:disabled {
 
 /* Key Column Width Definitions for Consulting Engineer & Contractor Names */
 .col-engineer,
-.col-contractor,
-.col-firm,
 th.col-engineer,
 td.col-engineer,
+[data-col="engineer"] {
+  width: var(--col-engineer-width, 32%) !important;
+  max-width: var(--col-engineer-width, 32%) !important;
+  word-wrap: break-word !important;
+  overflow-wrap: anywhere !important;
+  word-break: break-word !important;
+  white-space: normal !important;
+}
+
+.col-contractor,
 th.col-contractor,
 td.col-contractor,
+[data-col="contractor"] {
+  width: var(--col-contractor-width, 32%) !important;
+  max-width: var(--col-contractor-width, 32%) !important;
+  word-wrap: break-word !important;
+  overflow-wrap: anywhere !important;
+  word-break: break-word !important;
+  white-space: normal !important;
+}
+
+.col-firm,
 th.col-firm,
 td.col-firm,
-[data-col="engineer"],
-[data-col="contractor"],
 [data-col="firm"] {
-  width: 32% !important;
-  max-width: 32% !important;
+  width: var(--col-firm-width, 32%) !important;
+  max-width: var(--col-firm-width, 32%) !important;
   word-wrap: break-word !important;
   overflow-wrap: anywhere !important;
   word-break: break-word !important;

@@ -1122,6 +1122,9 @@ export interface ContractReimbursableCondition1 {
   id: string;
   no?: string;
   item: string;
+  unit?: string;
+  rate?: number;
+  contractQty?: number;
   amountEtb: number;
   amountUsd?: number;
   basis?: string;
@@ -1595,6 +1598,9 @@ export interface ThemeSettings {
   opacity: number; // 0 - 90 %
   customBgColor?: string;
   customTxtColor?: string;
+  colEngineerWidth?: number;
+  colContractorWidth?: number;
+  colFirmWidth?: number;
 }
 
 export const DEFAULT_THEME_SETTINGS: ThemeSettings = {
@@ -1603,6 +1609,9 @@ export const DEFAULT_THEME_SETTINGS: ThemeSettings = {
   wallpaper: '',
   blur: 0,
   opacity: 30,
+  colEngineerWidth: 32,
+  colContractorWidth: 32,
+  colFirmWidth: 32,
 };
 
 export interface PdfReportConfig {

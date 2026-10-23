@@ -35,7 +35,8 @@ import {
   CreditCard,
   MapPin,
   RotateCcw,
-  Check
+  Check,
+  Table
 } from 'lucide-react';
 import { 
   User, 
@@ -47,7 +48,9 @@ import {
   PdfReportConfig,
   DEFAULT_PDF_REPORT_CONFIG,
   WorkflowAuditLogEntry,
-  Project
+  Project,
+  ThemeSettings,
+  DEFAULT_THEME_SETTINGS
 } from '../types';
 import { safeSyncScoringWeights } from '../lib/apiSync';
 import DatabaseSavedPopupModal from './DatabaseSavedPopupModal';
@@ -101,6 +104,8 @@ interface SettingsViewProps {
   auditLogs?: WorkflowAuditLogEntry[];
   projects?: Project[];
   onClearAuditLogs?: () => void;
+  themeSettings?: ThemeSettings;
+  onUpdateThemeSettings?: (settings: ThemeSettings) => void;
 }
 
 export default function SettingsView({
@@ -130,7 +135,9 @@ export default function SettingsView({
   onUpdatePdfReportConfig,
   auditLogs = [],
   projects = [],
-  onClearAuditLogs
+  onClearAuditLogs,
+  themeSettings = DEFAULT_THEME_SETTINGS,
+  onUpdateThemeSettings
 }: SettingsViewProps) {
 
   const isMasterAdmin = Boolean(
@@ -140,7 +147,7 @@ export default function SettingsView({
     (currentUser?.username && currentUser.username.toLowerCase().includes('ersido'))
   );
 
-  const [activeSettingsTab, setActiveSettingsTab] = useState<'security_audit' | 'scoring' | 'pdf' | 'appearance' | 'users' | 'all'>('security_audit');
+  const [activeSettingsTab, setActiveSettingsTab] = useState<'security_audit' | 'scoring' | 'pdf' | 'appearance' | 'users' | 'tables' | 'all'>('security_audit');
   const [activeModelTab, setActiveModelTab] = useState<'contractor' | 'consultant'>('contractor');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [tempContractorWeights, setTempContractorWeights] = useState<ContractorScoringWeights>(contractorWeights);
@@ -370,6 +377,19 @@ export default function SettingsView({
             )}
           </button>
         )}
+
+        <button
+          type="button"
+          onClick={() => setActiveSettingsTab('tables')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer ${
+            activeSettingsTab === 'tables'
+              ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20 ring-2 ring-blue-400/40'
+              : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-350 hover:bg-slate-100 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-700/80'
+          }`}
+        >
+          <Table className="w-4 h-4 text-emerald-400" />
+          <span>Table Layout</span>
+        </button>
 
         <button
           type="button"
@@ -1373,6 +1393,99 @@ export default function SettingsView({
               </div>
             </div>
           </motion.div>
+        </div>
+      )}
+
+      {/* ADMINISTRATOR CONFIGURATION: Table Column Layout Optimization */}
+      {(activeSettingsTab === 'tables' || activeSettingsTab === 'all') && (
+        <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/70 p-6 rounded-3xl shadow-sm space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-700/60 pb-4">
+            <div>
+              <h3 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
+                <Table className="w-5 h-5 text-emerald-500" />
+                Table Column Width Optimization
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Define custom width percentages for primary project entity columns to handle varying text lengths and improve readability in PDF reports.
+              </p>
+            </div>
+            {isMasterAdmin ? (
+              <span className="px-2.5 py-1 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 rounded-xl text-[10px] font-black uppercase border border-emerald-200 dark:border-emerald-800 tracking-tighter">
+                Admin Privileged Access
+              </span>
+            ) : (
+              <span className="px-2.5 py-1 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 rounded-xl text-[10px] font-black uppercase border border-amber-200 dark:border-amber-800 tracking-tighter">
+                Read-Only View
+              </span>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Engineer Column Width */}
+            <div className="space-y-4 p-4 bg-slate-50 dark:bg-slate-900/40 rounded-2xl border border-slate-100 dark:border-slate-800">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wide">Consulting Engineer (.col-engineer)</label>
+                <span className="font-mono font-black text-emerald-600 dark:text-emerald-400">{themeSettings.colEngineerWidth || 32}%</span>
+              </div>
+              <input
+                type="range"
+                min="10"
+                max="60"
+                step="1"
+                disabled={!isMasterAdmin}
+                value={themeSettings.colEngineerWidth || 32}
+                onChange={(e) => onUpdateThemeSettings?.({ ...themeSettings, colEngineerWidth: parseInt(e.target.value) })}
+                className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+              />
+              <p className="text-[10px] text-slate-400 leading-tight">Controls width of Consultant/Engineer names in report tables.</p>
+            </div>
+
+            {/* Contractor Column Width */}
+            <div className="space-y-4 p-4 bg-slate-50 dark:bg-slate-900/40 rounded-2xl border border-slate-100 dark:border-slate-800">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wide">Contractor (.col-contractor)</label>
+                <span className="font-mono font-black text-blue-600 dark:text-blue-400">{themeSettings.colContractorWidth || 32}%</span>
+              </div>
+              <input
+                type="range"
+                min="10"
+                max="60"
+                step="1"
+                disabled={!isMasterAdmin}
+                value={themeSettings.colContractorWidth || 32}
+                onChange={(e) => onUpdateThemeSettings?.({ ...themeSettings, colContractorWidth: parseInt(e.target.value) })}
+                className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+              />
+              <p className="text-[10px] text-slate-400 leading-tight">Controls width of Contractor names and credentials.</p>
+            </div>
+
+            {/* Firm Column Width */}
+            <div className="space-y-4 p-4 bg-slate-50 dark:bg-slate-900/40 rounded-2xl border border-slate-100 dark:border-slate-800">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wide">Registered Firm (.col-firm)</label>
+                <span className="font-mono font-black text-indigo-600 dark:text-indigo-400">{themeSettings.colFirmWidth || 32}%</span>
+              </div>
+              <input
+                type="range"
+                min="10"
+                max="60"
+                step="1"
+                disabled={!isMasterAdmin}
+                value={themeSettings.colFirmWidth || 32}
+                onChange={(e) => onUpdateThemeSettings?.({ ...themeSettings, colFirmWidth: parseInt(e.target.value) })}
+                className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+              />
+              <p className="text-[10px] text-slate-400 leading-tight">Controls width of Firm names in Firms Management views.</p>
+            </div>
+          </div>
+
+          <div className="bg-amber-50 dark:bg-amber-950/20 p-4 rounded-2xl border border-amber-200 dark:border-amber-900/40 flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
+            <div className="text-[11px] text-amber-800 dark:text-amber-200 leading-relaxed">
+              <span className="font-bold block mb-1">Interactive Layout Tuning:</span>
+              These percentages directly override the standard 32% width defined in global CSS. Changes are applied instantly across all project views, financial ledgers, and PDF exports using the <code>.col-engineer</code>, <code>.col-contractor</code>, and <code>.col-firm</code> classes.
+            </div>
+          </div>
         </div>
       )}
 
