@@ -169,9 +169,8 @@ export const ContractAmountTab: React.FC<Props> = ({
   const [activeTableTab, setActiveTableTab] = useState<'all' | 'summary' | 'construction' | 'dlp' | 'reimbursable' | 'currency_split'>('all');
   const [isSplitSettingsOpen, setIsSplitSettingsOpen] = useState(false);
 
-  // Once locked by Master Admin or Directorate Admin, no change can be made until the new assignment of Supervision Consultant
-  const isLocked = Boolean(project.isAmountLocked || c1Data.isLocked || consultant.isContractLocked);
-  const effectiveReadonly = isReadonly || isLocked;
+  const isLocked = false;
+  const effectiveReadonly = isReadonly;
 
   const handleToggleLockContract = () => {
     if (isLocked) {
@@ -1008,30 +1007,7 @@ export const ContractAmountTab: React.FC<Props> = ({
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-8 max-w-7xl mx-auto">
-      {/* Master / Directorate Admin Lock / Open Banner */}
-      {isMasterOrDirectorateAdmin && (
-        <div className={`p-4 rounded-3xl border flex flex-col md:flex-row md:items-center justify-between gap-4 ${
-          isLocked 
-            ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 shadow-xs' 
-            : 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200 shadow-xs'
-        }`}>
-          <div className="flex items-center gap-3">
-            <div className={`p-2.5 rounded-2xl ${isLocked ? 'bg-amber-200 text-amber-800' : 'bg-emerald-200 text-emerald-800'}`}>
-              {isLocked ? <Lock className="w-5 h-5" /> : <Unlock className="w-5 h-5" />}
-            </div>
-            <div>
-              <h4 className="font-bold text-sm">
-                {isLocked ? 'Contract Amount Table Data Entry is LOCKED (Validation Approved)' : 'Contract Amount Table Data Entry is OPEN for Edits'}
-              </h4>
-              <p className="text-xs opacity-90">
-                {isLocked 
-                  ? `Locked by ${c1Data.validatedBy || 'Master/Directorate Admin'} on ${c1Data.validatedAt ? new Date(c1Data.validatedAt).toLocaleString() : 'validated record'}. Table edits are frozen for non-admin roles.`
-                  : 'Data entry and table rows are currently open for modifications and validation.'}
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
+
 
       {/* Top Header Banner: Dual Currency Switchable */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -1088,21 +1064,7 @@ export const ContractAmountTab: React.FC<Props> = ({
 
         {/* Global Action Bar */}
         <div className="flex flex-wrap items-center gap-2.5">
-          {isMasterOrDirectorateAdmin && (
-            <button
-              type="button"
-              onClick={handleToggleLockContract}
-              className={`px-4 py-2 text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-xs border cursor-pointer ${
-                isLocked
-                  ? 'bg-rose-600 hover:bg-rose-700 text-white border-rose-700 shadow-sm'
-                  : 'bg-amber-500 hover:bg-amber-600 text-white border-amber-600 shadow-sm'
-              }`}
-              title={isLocked ? "Contract Data is locked. No changes can be made until a new Supervision Consultant assignment." : "Officially lock contract data per ERA governance"}
-            >
-              <Lock className="w-4 h-4" />
-              <span>{isLocked ? '🔒 Contract Data Locked' : '🔒 Lock Contract Data'}</span>
-            </button>
-          )}
+
 
           {isLocked && onNavigateToHistory && (
             <button
@@ -1158,28 +1120,7 @@ export const ContractAmountTab: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* Locked Notice Banner */}
-      {isLocked && (
-        <div className="p-4 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 rounded-2xl text-amber-900 dark:text-amber-200 text-xs font-semibold flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
-          <div className="flex items-center gap-2.5">
-            <Lock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
-            <div>
-              <strong className="block text-amber-950 dark:text-amber-100 font-bold">Contract Data Locked by Master / Directorate Admin</strong>
-              <span>Per ERA governance policy, once locked, no change will be made anywhere on Contract Data until a new assignment of Supervision Consultant occurs. The previous consultant records are preserved fully booked under Service History.</span>
-            </div>
-          </div>
-          {onNavigateToHistory && (
-            <button
-              type="button"
-              onClick={onNavigateToHistory}
-              className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 self-start sm:self-center shadow-xs cursor-pointer"
-            >
-              <ArrowRightLeft className="w-3.5 h-3.5" />
-              <span>Service History & New Assignment</span>
-            </button>
-          )}
-        </div>
-      )}
+
 
       {/* Success Notification */}
       {saveSuccessMessage && (
