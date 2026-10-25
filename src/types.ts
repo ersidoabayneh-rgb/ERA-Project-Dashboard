@@ -946,6 +946,8 @@ export interface HistoricalSupervisionConsultant {
   archivedBy?: string;
   personnel?: ConsultantPersonnel[];
   invoices?: ConsultantInvoice[];
+  contractAmountSchedule?: ContractAmountSchedule;
+  isContractLocked?: boolean;
   // Historical Evaluation & Submittal KPI Snapshot
   performanceRating?: 'Outstanding' | 'Satisfactory' | 'Needs Improvement' | 'Critical' | string;
   officialGrade?: 'A' | 'B' | 'C' | 'D' | 'F';
@@ -1088,6 +1090,8 @@ export interface SupervisionConsultantInfo {
   invoices: ConsultantInvoice[];
   previousConsultants?: HistoricalSupervisionConsultant[]; // Archive of predecessor supervision consultants
   contractAmountSchedule?: ContractAmountSchedule;
+  isContractLocked?: boolean;
+  isAmountLocked?: boolean;
   evaluationChangeLog?: Array<{
     criterionCode: string;
     oldScore: number;

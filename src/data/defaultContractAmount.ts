@@ -73,7 +73,7 @@ export const DEFAULT_CONDITION_1_DATA: ContractCondition1Data = {
   projectName: 'Stadia',
   scope: 'Construction supervision plus DLP. Total 820 man-months.',
   totalManMonths: 820,
-  contingencyPct: 15,
+  contingencyPct: 10,
   vatPct: 15,
   feesTimeBased: 9539500.00,
   reimbursableTotal: 8379000.00,
@@ -112,7 +112,7 @@ export const DEFAULT_CONDITION_2_DATA: ContractCondition2Data = {
   scope: 'Phase II only — Defect Liability Period (DLP). Total 12 man-months.',
   totalManMonths: 12,
   exchangeRate: 35,
-  contingencyPct: 15,
+  contingencyPct: 10,
   vatPct: 15,
   reimbursables: DEFAULT_CONDITION_2_EXPENSES,
   staffFees: DEFAULT_CONDITION_2_STAFF

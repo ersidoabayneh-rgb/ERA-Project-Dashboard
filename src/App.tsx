@@ -58,6 +58,11 @@ import { createProjectHistoryEntry } from './lib/projectAuditDiff';
 import { getProjectDlpInfo, calculateCappedElapsedTimePct } from './lib/dlpUtils';
 import DlpDefectModal from './components/DlpDefectModal';
 import DatabaseSavedPopupModal from './components/DatabaseSavedPopupModal';
+import { 
+  runAutomatedDailyBackupCheck, 
+  syncProgressPlanHistoryToPersistentStorage, 
+  restoreProgressPlanHistoryFromPersistentStorage 
+} from './lib/dailyBackupScheduler';
 
 export function hasApprovalCredentials(user: User | null): boolean {
   if (!user) return false;
@@ -553,6 +558,19 @@ export default function App() {
       localStorage.removeItem('era_current_project_id');
     }
   }, [currentProjectId]);
+
+  // Automated Recovery: If currentProject progressPlanHistory is missing/empty (e.g., localStorage was cleared),
+  // immediately recover from 3-tier persistent storage (IndexedDB, Server disk backup, or Firestore)
+  useEffect(() => {
+    if (currentProject?.id && (!currentProject.progressPlanHistory || currentProject.progressPlanHistory.length === 0)) {
+      restoreProgressPlanHistoryFromPersistentStorage(currentProject.id).then(recovered => {
+        if (recovered && recovered.length > 0) {
+          setCurrentProject(prev => prev && prev.id === currentProject.id ? { ...prev, progressPlanHistory: recovered } : prev);
+          setProjects(prevProjects => prevProjects.map(p => p.id === currentProject.id ? { ...p, progressPlanHistory: recovered } : p));
+        }
+      });
+    }
+  }, [currentProject?.id]);
 
   // Enforce project access restriction
   useEffect(() => {
@@ -2673,6 +2691,18 @@ let isBatchSyncRunning = false;
     setOnlinePeers(defaultPeers);
   }, []);
 
+  // Automated 24-hour Daily Backup Trigger for progressPlanHistory records
+  useEffect(() => {
+    if (projects && projects.length > 0) {
+      runAutomatedDailyBackupCheck(projects);
+      // Run periodic check every 30 minutes to guarantee execution every 24 hours
+      const backupInterval = setInterval(() => {
+        runAutomatedDailyBackupCheck(projects);
+      }, 30 * 60 * 1000);
+      return () => clearInterval(backupInterval);
+    }
+  }, [projects]);
+
 
 
   // Update light/dark modes
@@ -3079,6 +3109,8 @@ let isBatchSyncRunning = false;
     } else if (Array.isArray(fields.progressPlanHistory) && fields.progressPlanHistory.length > 0) {
       try {
         localStorage.setItem(`era_hist_backup_${currentProject.id}`, JSON.stringify(fields.progressPlanHistory));
+        // Persist to multi-tier persistent storage (Disk, Firestore, and IndexedDB)
+        syncProgressPlanHistoryToPersistentStorage(currentProject.id, currentProject.name, fields.progressPlanHistory);
       } catch {}
     } else if (Array.isArray(fields.progressPlanHistory) && fields.progressPlanHistory.length === 0) {
       // Explicit deletion by authorized admin

@@ -231,9 +231,8 @@ export default function SupervisionConsultantView({
     };
   }, [project.supervisionConsultant, project.consultant, project.signDate, project.startDate, project.id]);
 
-  // Active view subtab
-  // Active view subtab - Defaults to Contract Amount & Baseline
-  const [activeTab, setActiveTab] = useState<'personnel' | 'invoices' | 'kpis' | 'profile' | 'history' | 'personnel_audit' | 'contract_amount'>('contract_amount');
+  // Active view subtab - Defaults to Contract Data (merged baseline & profile)
+  const [activeTab, setActiveTab] = useState<'contract_data' | 'personnel' | 'invoices' | 'kpis' | 'history' | 'personnel_audit'>('contract_data');
 
   // JV Partner Individual Performance Toggle State
   const [isJvPerformanceExpanded, setIsJvPerformanceExpanded] = useState<boolean>(true);
@@ -1326,6 +1325,8 @@ export default function SupervisionConsultantView({
       archivedBy: currentUser?.username || 'ERA Project Admin',
       personnel: [...(consultant.personnel || [])],
       invoices: [...(consultant.invoices || [])],
+      contractAmountSchedule: consultant.contractAmountSchedule ? JSON.parse(JSON.stringify(consultant.contractAmountSchedule)) : undefined,
+      isContractLocked: Boolean(consultant.isContractLocked || project.isAmountLocked || consultant.contractAmountSchedule?.condition1?.isLocked),
       // Evaluation snapshot
       performanceRating: consultant.performanceRating || (evalScore >= 85 ? 'Outstanding' : 'Satisfactory'),
       officialGrade: evalGrade,
@@ -1398,12 +1399,33 @@ export default function SupervisionConsultantView({
       personnel: newPersonnelList,
       invoices: [], // Start clean invoice register for new consultant
       submittalKpis: [], // Start clean submittals register from commencement date
+      isContractLocked: false,
+      isAmountLocked: false,
+      contractAmountSchedule: {
+        condition1: {
+          ...DEFAULT_CONDITION_1_DATA,
+          contingencyPct: 10,
+          isLocked: false
+        }
+      },
       previousConsultants: [archivedPredecessor, ...(consultant.previousConsultants || [])]
     };
 
-    saveConsultantData(updatedConsultantInfo, `Assigned new supervision consultant: ${updatedConsultantInfo.firmName} (Continuation of Service)`);
+    if (onUpdateProject) {
+      onUpdateProject({
+        supervisionConsultant: updatedConsultantInfo,
+        consultant: updatedConsultantInfo.firmName,
+        isAmountLocked: false
+      }, `Assigned new supervision consultant: ${updatedConsultantInfo.firmName} (Continuation of Service)`);
+    } else {
+      saveConsultantData(updatedConsultantInfo, `Assigned new supervision consultant: ${updatedConsultantInfo.firmName} (Continuation of Service)`);
+    }
     setIsAssignNewConsultantOpen(false);
-    setActiveTab('profile');
+    setActiveTab('contract_data');
+    setInAppNotification({
+      type: 'success',
+      message: `Assigned new consultant ${updatedConsultantInfo.firmName}. Predecessor records are fully booked under Service History, and Contract Data is now unlocked.`
+    });
   };
 
   // Handler for Add/Edit Personnel
@@ -2713,56 +2735,11 @@ export default function SupervisionConsultantView({
             </h1>
           </div>
 
-          {/* Right Header Area: Unified Action Toolbar */}
-          <div className="flex flex-wrap items-center gap-3">
-            {/* Primary Action Group */}
-            {!isReadonly && (
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => {
-                    setConsultantForm(consultant);
-                    setEditModalSection('all');
-                    setIsEditConsultantOpen(true);
-                  }}
-                  className="px-3.5 py-2 text-xs font-bold rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center gap-1.5 transition shadow-xs cursor-pointer border border-slate-200 dark:border-slate-700"
-                >
-                  <Edit3 className="w-3.5 h-3.5" />
-                  Edit Contract
-                </button>
-
-                <button
-                  onClick={handleOpenAssignNewConsultant}
-                  title="Assign Successor"
-                  className="px-3.5 py-2 text-xs font-bold rounded-xl bg-amber-500 hover:bg-amber-600 text-white flex items-center gap-1.5 transition shadow-xs cursor-pointer"
-                >
-                  <ArrowRightLeft className="w-3.5 h-3.5" />
-                  Assign Successor
-                </button>
-
-                <button
-                  onClick={handleOpenAddPersonnel}
-                  className="px-3.5 py-2 text-xs font-bold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1.5 transition shadow-xs cursor-pointer"
-                >
-                  <Users className="w-3.5 h-3.5" />
-                  Assign Personnel
-                </button>
-
-                <button
-                  onClick={handleCrossModuleSyncAll}
-                  title="Cross-reference all personnel rates, man-months, and contract schedules"
-                  className="px-3.5 py-2 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5 transition shadow-xs cursor-pointer"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  Sync All Data
-                </button>
-              </div>
-            )}
-
-            {/* Secondary Utility Group */}
-            <div className="flex items-center gap-1.5 border-l border-slate-200 dark:border-slate-800 pl-3">
-              <button
-                onClick={() => setIsWorkloadReportOpen(true)}
-                title="Print Workload Report"
+          {/* Right Header Area: Utility Group */}
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setIsWorkloadReportOpen(true)}
+              title="Print Workload Report"
                 className="p-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 transition cursor-pointer border border-indigo-200 dark:border-indigo-800"
               >
                 <Table className="w-4 h-4" />
@@ -2785,7 +2762,6 @@ export default function SupervisionConsultantView({
               </button>
             </div>
           </div>
-        </div>
 
         {/* Supervision Time Assigned Completed / Expiration Alert Banner */}
         {scheduleStatus.effectiveCompletionDate && (scheduleStatus.isTimeExpired || scheduleStatus.daysRemaining <= 180) && (
@@ -2821,20 +2797,6 @@ export default function SupervisionConsultantView({
                 </p>
               </div>
             </div>
-
-            {!isReadonly && (
-              <button
-                onClick={handleOpenAssignNewConsultant}
-                className={`px-4 py-2 text-xs font-bold rounded-xl whitespace-nowrap shadow-sm transition flex items-center justify-center gap-1.5 ${
-                  scheduleStatus.isTimeExpired
-                    ? 'bg-rose-600 hover:bg-rose-700 text-white'
-                    : 'bg-amber-600 hover:bg-amber-700 text-white'
-                }`}
-              >
-                <ArrowRightLeft className="w-4 h-4" />
-                Assign Successor Consultant
-              </button>
-            )}
           </div>
         )}
       </div>
@@ -2871,27 +2833,15 @@ export default function SupervisionConsultantView({
       {/* Internal Navigation Subtabs - Interlinked primary workflows first */}
       <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
         <button
-          onClick={() => setActiveTab('contract_amount')}
+          onClick={() => setActiveTab('contract_data')}
           className={`px-4 py-2 rounded-2xl text-xs md:text-sm font-bold flex items-center gap-2 transition cursor-pointer ${
-            activeTab === 'contract_amount'
+            activeTab === 'contract_data'
               ? 'bg-emerald-600 text-white shadow-sm'
               : 'bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
           }`}
         >
-          <DollarSign className="w-4 h-4" />
-          Contract Amount & Baseline
-        </button>
-
-        <button
-          onClick={() => setActiveTab('profile')}
-          className={`px-4 py-2 rounded-2xl text-xs md:text-sm font-bold flex items-center gap-2 transition cursor-pointer ${
-            activeTab === 'profile'
-              ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 shadow-sm'
-              : 'bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
-          }`}
-        >
           <Briefcase className="w-4 h-4" />
-          Contract & Scope Profile
+          Contract Data
         </button>
 
         <button
@@ -2985,25 +2935,445 @@ export default function SupervisionConsultantView({
         )}
       </div>
 
-      {/* TAB 0: CONTRACT AMOUNT */}
-      {activeTab === 'contract_amount' && (
-        <ContractAmountTab
-          project={project}
-          consultant={consultant}
-          isReadonly={isReadonly}
-          currentUser={currentUser}
-          onUpdateProject={onUpdateProject}
-          viewCurrency={viewCurrency}
-          exchangeRate={activeExchangeRate}
-          onCurrencyToggle={setViewCurrency}
-          onNavigateToInvoices={() => {
-            setActiveTab('invoices');
-            setInvoiceViewMode('table');
-          }}
-          onNavigateToPersonnel={() => {
-            setActiveTab('personnel');
-          }}
-        />
+      {/* TAB: CONTRACT DATA (MERGED CONTRACT PROFILE & FINANCIAL REMUNERATION BASELINE) */}
+      {activeTab === 'contract_data' && (
+        <div className="space-y-6">
+          {/* Prominent Admin Lock Status Banner */}
+          {Boolean(project.isAmountLocked || consultant.isContractLocked || consultant.contractAmountSchedule?.condition1?.isLocked) && (
+            <div className="bg-amber-50 dark:bg-amber-950/40 border-2 border-amber-400 dark:border-amber-700 p-4 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-3 text-amber-900 dark:text-amber-200 shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-amber-200 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300 shrink-0">
+                  <Lock className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="font-bold text-sm flex items-center gap-2">
+                    <span>Contract Data Permanently Locked by Directorate / Master Admin</span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-200/80 dark:bg-amber-900 text-amber-900 dark:text-amber-200 font-bold uppercase">Policy Enforced</span>
+                  </div>
+                  <div className="text-xs text-amber-800/90 dark:text-amber-300/90 mt-0.5">
+                    No change can be made to the contract profile, remuneration terms, staff fees, or reimbursables until a new assignment of Supervision Consultant is recorded.
+                  </div>
+                </div>
+              </div>
+              {!isReadonly && (
+                <button
+                  type="button"
+                  onClick={handleOpenAssignNewConsultant}
+                  className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl transition shadow-xs flex items-center gap-1.5 whitespace-nowrap cursor-pointer shrink-0"
+                >
+                  <ArrowRightLeft className="w-3.5 h-3.5" />
+                  Assign New Supervision Consultant
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Section 1: Supervision Contract & Scope Profile */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Main Contract Details Card */}
+            <div className="lg:col-span-2 space-y-6">
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-5">
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                      <Briefcase className="w-4 h-4 text-blue-600" />
+                      Supervision Agreement & Contractual Terms
+                    </h3>
+                    <span className="text-xs text-slate-400">Official consultancy parameters and remuneration structure</span>
+                  </div>
+                  {!isReadonly && !Boolean(project.isAmountLocked || consultant.isContractLocked || consultant.contractAmountSchedule?.condition1?.isLocked) && (
+                    <button
+                      onClick={() => {
+                        setConsultantForm(consultant);
+                        setEditModalSection('all');
+                        setIsEditConsultantOpen(true);
+                      }}
+                      className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
+                    >
+                      <Edit3 className="w-3 h-3" />
+                      Edit Contract
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                  <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-2xl border border-slate-100 dark:border-slate-800">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-400 font-semibold uppercase tracking-wider text-[10px] block">Consulting Firm</span>
+                    </div>
+                    <div className="font-bold text-slate-900 dark:text-white text-sm mt-1 flex flex-wrap items-center gap-2">
+                      <span>{consultant.firmName || '-'}</span>
+                      <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800" title="Bidirectionally linked with Supervising Consultant on Project Information">
+                        🔗 Linked to Project Info
+                      </span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className="text-slate-400 font-semibold uppercase tracking-wider text-[10px] block">
+                      {consultant.associationType === 'Sole Consultant' ? 'Engagement / Consultancy Model' : 'Association / JV Arrangement'}
+                    </span>
+                    <div className="font-bold text-slate-800 dark:text-slate-200 text-sm mt-0.5">
+                      {consultant.associationType || 'Sole Consultant'}
+                    </div>
+                    {consultant.associationType !== 'Sole Consultant' && consultant.jvPartners && (
+                      <div className="text-[11px] text-slate-500 mt-0.5">
+                        Partners: {consultant.jvPartners}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <span className="text-slate-400 font-semibold uppercase tracking-wider text-[10px] block">Contract Agreement Reference</span>
+                    <div className="font-mono font-bold text-slate-800 dark:text-slate-200 text-sm mt-0.5">
+                      {consultant.contractRefNo || 'N/A'}
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className="text-slate-400 font-semibold uppercase tracking-wider text-[10px] block">Contract Remuneration Type</span>
+                    <div className="font-bold text-slate-800 dark:text-slate-200 text-sm mt-0.5">
+                      {consultant.contractType || 'Time-Based (Man-Months + Reimbursables)'}
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className="text-slate-400 font-semibold uppercase tracking-wider text-[10px] block">Contract Signing Date</span>
+                    <div className="font-mono font-bold text-slate-800 dark:text-slate-200 mt-0.5">
+                      {consultant.contractSignDate || 'N/A'}
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className="text-slate-400 font-semibold uppercase tracking-wider text-[10px] block">Supervision Commencement Date</span>
+                    <div className="font-mono font-bold text-indigo-600 dark:text-indigo-400 mt-0.5">
+                      {consultant.commencementDate || 'N/A'}
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className="text-slate-400 font-semibold uppercase tracking-wider text-[10px] block">Original Completion Date</span>
+                    <div className="font-mono font-bold text-slate-800 dark:text-slate-200 mt-0.5">
+                      {consultant.originalCompletionDate || 'N/A'}
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className="text-slate-400 font-semibold uppercase tracking-wider text-[10px] block">Revised / Approved Completion Date</span>
+                    <div className="font-mono font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">
+                      {consultant.revisedCompletionDate || consultant.originalCompletionDate || 'N/A'}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Currency & View Settings: Centralized Control */}
+                <div className="p-6 rounded-3xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/80 space-y-6">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                    <div className="space-y-1">
+                      <h4 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                        <Coins className="w-4 h-4 text-purple-600" />
+                        Currency & View Configuration
+                      </h4>
+                      <p className="text-xs text-slate-500">Configure how financial data is calculated and displayed across all modules.</p>
+                    </div>
+
+                    <div className="flex items-center gap-4">
+                      {/* View Currency Toggle (Global for this view) */}
+                      <div className="flex items-center gap-2 bg-white dark:bg-slate-900 p-1 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                        <button
+                          type="button"
+                          onClick={() => setViewCurrency('ETB')}
+                          className={`px-4 py-1.5 rounded-lg text-xs font-black transition cursor-pointer ${
+                            viewCurrency === 'ETB'
+                              ? 'bg-emerald-600 text-white shadow-sm'
+                              : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                          }`}
+                        >
+                          ETB
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setViewCurrency('USD')}
+                          className={`px-4 py-1.5 rounded-lg text-xs font-black transition cursor-pointer ${
+                            viewCurrency === 'USD'
+                              ? 'bg-purple-600 text-white shadow-sm'
+                              : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                          }`}
+                        >
+                          USD
+                        </button>
+                      </div>
+
+                      {!isReadonly && !Boolean(project.isAmountLocked || consultant.isContractLocked || consultant.contractAmountSchedule?.condition1?.isLocked) && (
+                        <div className="h-8 w-px bg-slate-200 dark:bg-slate-700 mx-1"></div>
+                      )}
+
+                      {!isReadonly && !Boolean(project.isAmountLocked || consultant.isContractLocked || consultant.contractAmountSchedule?.condition1?.isLocked) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const nextVal = !hasUsdPayments;
+                            saveConsultantData({
+                              ...consultant,
+                              enableUsdPayments: nextVal
+                            }, `${nextVal ? 'Enabled' : 'Disabled'} USD foreign currency remuneration option`);
+                            setInAppNotification({
+                              type: 'success',
+                              message: nextVal 
+                                ? 'USD Option selected! The Fee Invoices table now displays the dedicated USD Certificate column like an IPC table.'
+                                : 'USD Option turned off. Fee Invoices table is now showing local ETB currency.'
+                            });
+                          }}
+                          className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-sm border ${
+                            hasUsdPayments
+                              ? 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/30 dark:text-purple-300 dark:border-purple-800'
+                              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-50'
+                          }`}
+                        >
+                          <ShieldCheck className={`w-3.5 h-3.5 ${hasUsdPayments ? 'text-purple-600' : 'text-slate-400'}`} />
+                          {hasUsdPayments ? 'USD Contract Active' : 'Enable USD Option'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="pt-2">
+                    {/* Exchange Rate Card */}
+                    <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Operational Exchange Rate</span>
+                        <Sparkles className="w-3.5 h-3.5 text-blue-500" />
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1 flex items-center gap-2 px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+                          <span className="text-xs font-bold text-slate-500">1 USD =</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            disabled={isReadonly || Boolean(project.isAmountLocked || consultant.isContractLocked || consultant.contractAmountSchedule?.condition1?.isLocked)}
+                            value={exchangeRateInput}
+                            onChange={(e) => setExchangeRateInput(parseFloat(e.target.value) || 0)}
+                            className="flex-1 bg-transparent border-none focus:ring-0 text-sm font-mono font-black text-slate-900 dark:text-white p-0"
+                          />
+                          <span className="text-xs font-bold text-slate-500">ETB</span>
+                        </div>
+                        {!isReadonly && !Boolean(project.isAmountLocked || consultant.isContractLocked || consultant.contractAmountSchedule?.condition1?.isLocked) && (
+                          <button
+                            type="button"
+                            onClick={() => handleSaveExchangeRate(exchangeRateInput)}
+                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition shadow-sm cursor-pointer"
+                          >
+                            Apply
+                          </button>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-slate-500 italic">This rate is used to convert ETB values to USD for real-time reporting and dashboard analysis.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Service Continuation & Handover Management Card */}
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                  <div className="flex items-center gap-2">
+                    <ArrowRightLeft className="w-4 h-4 text-amber-500" />
+                    <h4 className="font-bold text-slate-900 dark:text-white text-sm">
+                      Service Continuation & Successor Assignment
+                    </h4>
+                  </div>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                    scheduleStatus.isTimeExpired ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300' : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                  }`}>
+                    {scheduleStatus.isTimeExpired ? 'Time Expired' : 'Active Contract'}
+                  </span>
+                </div>
+
+                <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                  When the time assigned for the supervision consultant is completed (including all approved contract time extensions), or if a contract transition is necessary, you can assign a new consulting firm as continuation of service. The current consultant's historical invoices, personnel records, and baseline financial schedule are fully archived in the project service history.
+                </p>
+
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                  <div className="text-xs text-slate-500">
+                    <span>Archived Predecessors: </span>
+                    <span className="font-bold text-slate-800 dark:text-slate-200">{consultant.previousConsultants?.length || 0} firms on record</span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('history')}
+                      className="text-xs font-bold text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1 cursor-pointer"
+                    >
+                      <History className="w-3.5 h-3.5" />
+                      <span>View Service History</span>
+                    </button>
+                    {!isReadonly && (
+                      <button
+                        type="button"
+                        onClick={handleOpenAssignNewConsultant}
+                        className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-xl transition shadow-xs flex items-center gap-1 cursor-pointer"
+                      >
+                        <ArrowRightLeft className="w-3.5 h-3.5" />
+                        <span>Assign Continuation</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Right Column: Head Office & Resident Engineer Profile Cards */}
+            <div className="space-y-6">
+              {/* Head Office Details Card */}
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 flex items-center justify-center text-blue-600 dark:text-blue-400">
+                      <Building2 className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="font-black text-slate-900 dark:text-white text-sm">
+                        Head Office & Corporate Contacts
+                      </h4>
+                      <span className="text-[10px] text-slate-400 block">Consultant Headquarters</span>
+                    </div>
+                  </div>
+
+                  {!isReadonly && !Boolean(project.isAmountLocked || consultant.isContractLocked || consultant.contractAmountSchedule?.condition1?.isLocked) && (
+                    <button
+                      onClick={() => {
+                        setHeadOfficeForm({
+                          headOfficeAddress: consultant.headOfficeAddress || '',
+                          headOfficePhone: consultant.headOfficePhone || '',
+                          headOfficeEmail: consultant.headOfficeEmail || '',
+                          headOfficeContactPerson: consultant.headOfficeContactPerson || ''
+                        });
+                        setIsEditHeadOfficeQuickOpen(true);
+                      }}
+                      className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
+                    >
+                      <Edit3 className="w-3 h-3" />
+                      Edit
+                    </button>
+                  )}
+                </div>
+
+                <div className="space-y-3 text-xs">
+                  <div>
+                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Physical Address</span>
+                    <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5 flex items-start gap-1.5">
+                      <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+                      <span>{consultant.headOfficeAddress || 'Head Office Address not specified'}</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Contact Person / Authorized Representative</span>
+                    <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">
+                      {consultant.headOfficeContactPerson || 'Managing Director / Corporate Liaison'}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                    <div>
+                      <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Phone Number</span>
+                      <div className="font-mono text-slate-700 dark:text-slate-300 mt-0.5 flex items-center gap-1.5">
+                        <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <span>{consultant.headOfficePhone || 'N/A'}</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Corporate Email</span>
+                      <div className="text-slate-700 dark:text-slate-300 mt-0.5 flex items-center gap-1.5 truncate">
+                        <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <span className="truncate">{consultant.headOfficeEmail || 'N/A'}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Resident Engineer Profile Card */}
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 flex items-center justify-center text-indigo-600 dark:text-indigo-400 font-black text-lg">
+                    RE
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider block">Resident Engineer</span>
+                    <h4 className="font-black text-slate-900 dark:text-white text-base">
+                      {consultant.residentEngineerName || 'Eng. Girma Bekele'}
+                    </h4>
+                    <span className="text-xs text-slate-400">Team Leader / Project Director</span>
+                  </div>
+                </div>
+
+                <div className="space-y-2.5 pt-3 border-t border-slate-100 dark:border-slate-800 text-xs">
+                  {consultant.residentEngineerPhone && (
+                    <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
+                      <Phone className="w-4 h-4 text-slate-400" />
+                      <span className="font-mono">{consultant.residentEngineerPhone}</span>
+                    </div>
+                  )}
+
+                  {consultant.residentEngineerEmail && (
+                    <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300 truncate">
+                      <Mail className="w-4 h-4 text-slate-400 shrink-0" />
+                      <span className="truncate">{consultant.residentEngineerEmail}</span>
+                    </div>
+                  )}
+
+                  {consultant.siteOfficeLocation && (
+                    <div className="flex items-start gap-2 text-slate-700 dark:text-slate-300">
+                      <MapPin className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+                      <span>{consultant.siteOfficeLocation}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Performance Assurance Card */}
+              <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white p-6 rounded-3xl shadow-sm space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Consultant Compliance</span>
+                  <Award className="w-5 h-5 text-amber-400" />
+                </div>
+                <h4 className="font-black text-lg text-white">
+                  FIDIC Engineer Obligations
+                </h4>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  The supervision team operates under delegated authority from the Ethiopian Roads Administration to administer the civil works contract impartially and enforce high standards of quality assurance.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 2: Contract Financial Remuneration & Fees Baseline Schedule */}
+          <div className="pt-2">
+            <ContractAmountTab
+              project={project}
+              consultant={consultant}
+              isReadonly={isReadonly || Boolean(project.isAmountLocked || consultant.isContractLocked || consultant.contractAmountSchedule?.condition1?.isLocked)}
+              currentUser={currentUser}
+              onUpdateProject={onUpdateProject}
+              viewCurrency={viewCurrency}
+              exchangeRate={activeExchangeRate}
+              onCurrencyToggle={setViewCurrency}
+              onNavigateToInvoices={() => {
+                setActiveTab('invoices');
+                setInvoiceViewMode('table');
+              }}
+              onNavigateToPersonnel={() => {
+                setActiveTab('personnel');
+              }}
+              onNavigateToHistory={() => {
+                setActiveTab('history');
+              }}
+            />
+          </div>
+        </div>
       )}
 
       {/* TAB 1: ASSIGNED PERSONNEL DIRECTORY */}
@@ -3064,10 +3434,10 @@ export default function SupervisionConsultantView({
                 type="button"
                 onClick={handleCrossModuleSyncAll}
                 className="px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
-                title="Cross-reference all personnel rates with Condition 1 Contract Schedules"
+                title="Cross-reference all personnel rates with Contract Schedule and calculate to-date man-months from invoices"
               >
                 <RefreshCw className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-                <span>Sync Rates with Contract Schedule</span>
+                <span>Sync Rates & Man-Months</span>
               </button>
 
               {/* View Switcher: Table vs Cards */}
@@ -3144,16 +3514,6 @@ export default function SupervisionConsultantView({
                 <option value="On Leave">On Leave</option>
                 <option value="Replaced">Replaced</option>
               </select>
-
-              <button
-                type="button"
-                onClick={handleRecalculateAllPersonnelMMFromInvoices}
-                className="bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/50 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 text-xs font-bold px-3 py-1.5 rounded-xl flex items-center gap-1.5 shadow-xs transition cursor-pointer"
-                title="Calculate assigned personnel man-month inputs from latest invoice total to-date man-months"
-              >
-                <Calculator className="w-3.5 h-3.5 text-blue-600" />
-                <span>Calculate MM from Invoices</span>
-              </button>
 
               {!isReadonly && (
                 <button
@@ -3625,18 +3985,6 @@ export default function SupervisionConsultantView({
                                   <Info className="w-3.5 h-3.5" />
                                 </button>
 
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setActiveTab('invoices');
-                                    setInvoiceSearch(p.name);
-                                    setInvoiceViewMode('table');
-                                  }}
-                                  title="Filter Fee Invoices for this Expert"
-                                  className="p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950/40 text-blue-600 dark:text-blue-400 transition cursor-pointer"
-                                >
-                                  <Receipt className="w-3.5 h-3.5" />
-                                </button>
 
                                 {!isReadonly && (
                                   <>
@@ -3879,50 +4227,6 @@ export default function SupervisionConsultantView({
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              {!isReadonly && invoiceViewMode === 'table' && (
-                <button
-                  type="button"
-                  onClick={() => setIsInlineTableEdit(!isInlineTableEdit)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border cursor-pointer ${
-                    isInlineTableEdit
-                      ? 'bg-amber-500 text-white border-amber-600 shadow-xs'
-                      : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
-                  }`}
-                  title="Toggle inline editing for all rows directly in the summary table"
-                >
-                  <Edit3 className="w-3.5 h-3.5" />
-                  {isInlineTableEdit ? 'Done Inline Editing' : '✏️ Quick Inline Table Edit'}
-                </button>
-              )}
-              {/* Currency Option Toggle (Linked with Contract & Scope Profile) */}
-              <button
-                type="button"
-                onClick={() => {
-                  const nextVal = !hasUsdPayments;
-                  saveConsultantData({
-                    ...consultant,
-                    enableUsdPayments: nextVal
-                  }, `${nextVal ? 'Enabled' : 'Disabled'} USD foreign currency option`);
-                  setInAppNotification({
-                    type: 'success',
-                    message: nextVal 
-                      ? 'USD Currency Option enabled! The Invoice table now displays the dedicated USD Certificate column.'
-                      : 'USD Currency Option turned off. Invoice table is showing local ETB currency.'
-                  });
-                }}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition border cursor-pointer ${
-                  hasUsdPayments
-                    ? 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800 hover:bg-purple-100'
-                    : 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800 hover:bg-emerald-100'
-                }`}
-                title="Foreign Currency USD Option (selected on Contract & Scope Profile)"
-              >
-                <Coins className="w-3.5 h-3.5" />
-                <span>{hasUsdPayments ? 'Currency: Dual (ETB + USD)' : 'Currency: ETB Only'}</span>
-                <span className="text-[9px] uppercase font-mono px-1.5 py-0.2 rounded bg-white/80 dark:bg-slate-900/80 border border-current font-extrabold">
-                  {hasUsdPayments ? 'USD Active' : 'USD Off'}
-                </span>
-              </button>
 
               <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
                 <button
@@ -4547,14 +4851,6 @@ export default function SupervisionConsultantView({
                               >
                                 {inv.invoiceNo}
                               </span>
-                              <button
-                                type="button"
-                                onClick={() => handleOpenEditInvoice(inv)}
-                                title="View & Edit Calculation Tables (Attendance, Multiplier, Reimbursables, Summary)"
-                                className="text-blue-600 dark:text-blue-400 hover:underline text-[10px] font-semibold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-1.5 py-0.5 rounded cursor-pointer"
-                              >
-                                [Tables]
-                              </button>
                             </td>
 
                             <td className="py-3.5 px-3 font-semibold text-slate-700 dark:text-slate-200">
@@ -4705,503 +5001,7 @@ export default function SupervisionConsultantView({
         />
       )}
 
-      {/* TAB 3: CONTRACT & SCOPE PROFILE */}
-      {activeTab === 'profile' && (
-        <div className="space-y-6">
-          {/* Profile Cross-Module Interactive Quick Jump Strip */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <button
-              type="button"
-              onClick={() => setActiveTab('contract_amount')}
-              className="bg-white dark:bg-slate-900 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-emerald-300 dark:hover:border-emerald-700 text-left transition group shadow-2xs cursor-pointer"
-            >
-              <div className="flex items-center justify-between text-slate-400 text-[10px] font-bold uppercase tracking-wider">
-                <span>Contract Baseline</span>
-                <DollarSign className="w-3.5 h-3.5 text-emerald-500 group-hover:scale-110 transition" />
-              </div>
-              <div className="font-mono font-black text-sm md:text-base text-slate-900 dark:text-white mt-1">
-                {formatAccounting(contractScheduleSummary.baselineOverall, '')} M ETB
-              </div>
-              <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1 mt-0.5">
-                <span>Inspect Schedules</span>
-                <ExternalLink className="w-2.5 h-2.5" />
-              </span>
-            </button>
 
-            <button
-              type="button"
-              onClick={() => setActiveTab('personnel')}
-              className="bg-white dark:bg-slate-900 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-700 text-left transition group shadow-2xs cursor-pointer"
-            >
-              <div className="flex items-center justify-between text-slate-400 text-[10px] font-bold uppercase tracking-wider">
-                <span>Assigned Staff</span>
-                <Users className="w-3.5 h-3.5 text-indigo-500 group-hover:scale-110 transition" />
-              </div>
-              <div className="font-mono font-black text-sm md:text-base text-slate-900 dark:text-white mt-1">
-                {personnelSummary.totalCount} Staff ({personnelSummary.activeCount} Active)
-              </div>
-              <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold flex items-center gap-1 mt-0.5">
-                <span>{personnelSummary.keyStaffCount} Key Experts</span>
-                <ExternalLink className="w-2.5 h-2.5" />
-              </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setActiveTab('invoices');
-                setInvoiceViewMode('table');
-              }}
-              className="bg-white dark:bg-slate-900 hover:bg-blue-50 dark:hover:bg-blue-950/30 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700 text-left transition group shadow-2xs cursor-pointer"
-            >
-              <div className="flex items-center justify-between text-slate-400 text-[10px] font-bold uppercase tracking-wider">
-                <span>Fee Invoices</span>
-                <Receipt className="w-3.5 h-3.5 text-blue-500 group-hover:scale-110 transition" />
-              </div>
-              <div className="font-mono font-black text-sm md:text-base text-slate-900 dark:text-white mt-1">
-                {(consultant.invoices || []).length} Invoices
-              </div>
-              <span className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold flex items-center gap-1 mt-0.5">
-                <span>{financialSummary.paymentDisbursementPct.toFixed(0)}% Disbursed</span>
-                <ExternalLink className="w-2.5 h-2.5" />
-              </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab('kpis')}
-              className="bg-white dark:bg-slate-900 hover:bg-purple-50 dark:hover:bg-purple-950/30 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-purple-300 dark:hover:border-purple-700 text-left transition group shadow-2xs cursor-pointer"
-            >
-              <div className="flex items-center justify-between text-slate-400 text-[10px] font-bold uppercase tracking-wider">
-                <span>Evaluation</span>
-                <Clock className="w-3.5 h-3.5 text-purple-500 group-hover:scale-110 transition" />
-              </div>
-              <div className="font-mono font-black text-sm md:text-base text-purple-600 dark:text-purple-400 mt-1">
-                Grade {jvScoreSummary.weightedJvGrade} ({jvScoreSummary.weightedJvScore.toFixed(1)}%)
-              </div>
-              <span className="text-[10px] text-purple-600 dark:text-purple-400 font-semibold flex items-center gap-1 mt-0.5">
-                <span>Section 2 Matrix</span>
-                <ExternalLink className="w-2.5 h-2.5" />
-              </span>
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Main Contract Details Card */}
-          <div className="lg:col-span-2 space-y-6">
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-5">
-              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
-                <div>
-                  <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                    <Briefcase className="w-4 h-4 text-blue-600" />
-                    Supervision Agreement & Contractual Terms
-                  </h3>
-                  <span className="text-xs text-slate-400">Official consultancy parameters and remuneration structure</span>
-                </div>
-                {!isReadonly && (
-                  <button
-                    onClick={() => {
-                      setConsultantForm(consultant);
-                      setEditModalSection('all');
-                      setIsEditConsultantOpen(true);
-                    }}
-                    className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
-                  >
-                    <Edit3 className="w-3 h-3" />
-                    Edit Contract
-                  </button>
-                )}
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-2xl border border-slate-100 dark:border-slate-800">
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-400 font-semibold uppercase tracking-wider text-[10px] block">Consulting Firm</span>
-                    {!isReadonly && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setConsultantForm(consultant);
-                          setEditModalSection('firm');
-                          setIsEditConsultantOpen(true);
-                        }}
-                        className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 flex items-center gap-1 text-[11px] font-semibold hover:underline cursor-pointer"
-                        title="Edit Consulting Firm (synchronizes with Project Information Supervising Consultant)"
-                      >
-                        <Edit3 className="w-3 h-3" />
-                        Modify
-                      </button>
-                    )}
-                  </div>
-                  <div className="font-bold text-slate-900 dark:text-white text-sm mt-1 flex flex-wrap items-center gap-2">
-                    <span>{consultant.firmName || '-'}</span>
-                    <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800" title="Bidirectionally linked with Supervising Consultant on Project Information">
-                      🔗 Linked to Project Info
-                    </span>
-                  </div>
-                </div>
-
-                <div>
-                  <span className="text-slate-400 font-semibold uppercase tracking-wider text-[10px] block">
-                    {consultant.associationType === 'Sole Consultant' ? 'Engagement / Consultancy Model' : 'Association / JV Arrangement'}
-                  </span>
-                  <div className="font-bold text-slate-800 dark:text-slate-200 text-sm mt-0.5">
-                    {consultant.associationType || 'Sole Consultant'}
-                  </div>
-                  {consultant.associationType !== 'Sole Consultant' && consultant.jvPartners && (
-                    <div className="text-[11px] text-slate-500 mt-0.5">
-                      Partners: {consultant.jvPartners}
-                    </div>
-                  )}
-                </div>
-
-                <div>
-                  <span className="text-slate-400 font-semibold uppercase tracking-wider text-[10px] block">Contract Agreement Reference</span>
-                  <div className="font-mono font-bold text-slate-800 dark:text-slate-200 text-sm mt-0.5">
-                    {consultant.contractRefNo || 'N/A'}
-                  </div>
-                </div>
-
-                <div>
-                  <span className="text-slate-400 font-semibold uppercase tracking-wider text-[10px] block">Contract Remuneration Type</span>
-                  <div className="font-bold text-slate-800 dark:text-slate-200 text-sm mt-0.5">
-                    {consultant.contractType || 'Time-Based (Man-Months + Reimbursables)'}
-                  </div>
-                </div>
-
-                <div>
-                  <span className="text-slate-400 font-semibold uppercase tracking-wider text-[10px] block">Contract Signing Date</span>
-                  <div className="font-mono font-bold text-slate-800 dark:text-slate-200 mt-0.5">
-                    {consultant.contractSignDate || 'N/A'}
-                  </div>
-                </div>
-
-                <div>
-                  <span className="text-slate-400 font-semibold uppercase tracking-wider text-[10px] block">Supervision Commencement Date</span>
-                  <div className="font-mono font-bold text-indigo-600 dark:text-indigo-400 mt-0.5">
-                    {consultant.commencementDate || 'N/A'}
-                  </div>
-                </div>
-
-                <div>
-                  <span className="text-slate-400 font-semibold uppercase tracking-wider text-[10px] block">Original Completion Date</span>
-                  <div className="font-mono font-bold text-slate-800 dark:text-slate-200 mt-0.5">
-                    {consultant.originalCompletionDate || 'N/A'}
-                  </div>
-                </div>
-
-                <div>
-                  <span className="text-slate-400 font-semibold uppercase tracking-wider text-[10px] block">Revised / Approved Completion Date</span>
-                  <div className="font-mono font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">
-                    {consultant.revisedCompletionDate || consultant.originalCompletionDate || 'N/A'}
-                  </div>
-                </div>
-              </div>
-
-              {/* Currency & View Settings: Centralized Control */}
-              <div className="p-6 rounded-3xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/80 space-y-6">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                  <div className="space-y-1">
-                    <h4 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                      <Coins className="w-4 h-4 text-purple-600" />
-                      Currency & View Configuration
-                    </h4>
-                    <p className="text-xs text-slate-500">Configure how financial data is calculated and displayed across all modules.</p>
-                  </div>
-
-                  <div className="flex items-center gap-4">
-                    {/* View Currency Toggle (Global for this view) */}
-                    <div className="flex items-center gap-2 bg-white dark:bg-slate-900 p-1 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
-                      <button
-                        type="button"
-                        onClick={() => setViewCurrency('ETB')}
-                        className={`px-4 py-1.5 rounded-lg text-xs font-black transition cursor-pointer ${
-                          viewCurrency === 'ETB'
-                            ? 'bg-emerald-600 text-white shadow-sm'
-                            : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
-                        }`}
-                      >
-                        ETB
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setViewCurrency('USD')}
-                        className={`px-4 py-1.5 rounded-lg text-xs font-black transition cursor-pointer ${
-                          viewCurrency === 'USD'
-                            ? 'bg-purple-600 text-white shadow-sm'
-                            : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
-                        }`}
-                      >
-                        USD
-                      </button>
-                    </div>
-
-                    {!isReadonly && (
-                      <div className="h-8 w-px bg-slate-200 dark:bg-slate-700 mx-1"></div>
-                    )}
-
-                    {!isReadonly && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const nextVal = !hasUsdPayments;
-                          saveConsultantData({
-                            ...consultant,
-                            enableUsdPayments: nextVal
-                          }, `${nextVal ? 'Enabled' : 'Disabled'} USD foreign currency remuneration option`);
-                          setInAppNotification({
-                            type: 'success',
-                            message: nextVal 
-                              ? 'USD Option selected! The Fee Invoices table now displays the dedicated USD Certificate column like an IPC table.'
-                              : 'USD Option turned off. Fee Invoices table is now showing local ETB currency.'
-                          });
-                        }}
-                        className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-sm border ${
-                          hasUsdPayments
-                            ? 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/30 dark:text-purple-300 dark:border-purple-800'
-                            : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-50'
-                        }`}
-                      >
-                        <ShieldCheck className={`w-3.5 h-3.5 ${hasUsdPayments ? 'text-purple-600' : 'text-slate-400'}`} />
-                        {hasUsdPayments ? 'USD Contract Active' : 'Enable USD Option'}
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
-                  {/* Exchange Rate Card */}
-                  <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Operational Exchange Rate</span>
-                      <Sparkles className="w-3.5 h-3.5 text-blue-500" />
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <div className="flex-1 flex items-center gap-2 px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
-                        <span className="text-xs font-bold text-slate-500">1 USD =</span>
-                        <input
-                          type="number"
-                          step="0.01"
-                          disabled={isReadonly}
-                          value={exchangeRateInput}
-                          onChange={(e) => setExchangeRateInput(parseFloat(e.target.value) || 0)}
-                          className="flex-1 bg-transparent border-none focus:ring-0 text-sm font-mono font-black text-slate-900 dark:text-white p-0"
-                        />
-                        <span className="text-xs font-bold text-slate-500">ETB</span>
-                      </div>
-                      {!isReadonly && (
-                        <button
-                          type="button"
-                          onClick={() => handleSaveExchangeRate(exchangeRateInput)}
-                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition shadow-sm"
-                        >
-                          Apply
-                        </button>
-                      )}
-                    </div>
-                    <p className="text-[10px] text-slate-500 italic">This rate is used to convert ETB values to USD for real-time reporting and dashboard analysis.</p>
-                  </div>
-
-                  {/* Currency Summary Card */}
-                  <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Financial Summary ({viewCurrency})</span>
-                      <BarChart3 className="w-3.5 h-3.5 text-emerald-500" />
-                    </div>
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="text-slate-500">Revised Contract Fee:</span>
-                        <span className="font-bold text-slate-900 dark:text-white font-mono">
-                          {formatViewCurrency(consultant.revisedFeeEtb || consultant.originalFeeEtb || 0)}
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="text-slate-500">Total Net Disbursed:</span>
-                        <span className="font-bold text-emerald-600 dark:text-emerald-400 font-mono">
-                          {formatViewCurrency(financialSummary.totalPaidEtb)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Scope of Services */}
-              <div className="pt-4 border-t border-slate-100 dark:border-slate-800 space-y-1.5">
-                <span className="text-slate-400 font-semibold uppercase tracking-wider text-[10px] block">Consultancy Scope of Services</span>
-                <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed bg-slate-50 dark:bg-slate-800/60 p-3.5 rounded-2xl border border-slate-100 dark:border-slate-800">
-                  {consultant.scopeOfServices || 'Full engineering construction supervision, alignment design review, material testing & quality assurance, day-to-day work inspections, measurement & IPC valuation, claims review, and environmental compliance monitoring under standard ERA FIDIC Conditions of Contract.'}
-                </p>
-              </div>
-            </div>
-
-            {/* Service Continuation & Handover Management Card */}
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-                <div className="flex items-center gap-2">
-                  <ArrowRightLeft className="w-4 h-4 text-amber-500" />
-                  <h4 className="font-bold text-slate-900 dark:text-white text-sm">
-                    Service Continuation & Successor Assignment
-                  </h4>
-                </div>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                  scheduleStatus.isTimeExpired ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300' : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
-                }`}>
-                  {scheduleStatus.isTimeExpired ? 'Time Expired' : 'Active Contract'}
-                </span>
-              </div>
-
-              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                When the time assigned for the supervision consultant is completed (including all approved contract time extensions), or if a contract transition is necessary, you can assign a new consulting firm as continuation of service. The current consultant's historical invoices and personnel records are safely archived in the project service history.
-              </p>
-
-              <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-                <div className="text-xs text-slate-500">
-                  <span>Archived Predecessors: </span>
-                  <span className="font-bold text-slate-800 dark:text-slate-200">{consultant.previousConsultants?.length || 0} firms on record</span>
-                </div>
-
-                {!isReadonly && (
-                  <button
-                    onClick={handleOpenAssignNewConsultant}
-                    className="px-4 py-2 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white rounded-xl shadow-xs flex items-center gap-1.5 transition"
-                  >
-                    <ArrowRightLeft className="w-3.5 h-3.5" />
-                    Assign New Consultant (Continuation of Service)
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Right Column: Head Office & Resident Engineer Profile Cards */}
-          <div className="space-y-6">
-            {/* Head Office Details Card (Editable & Updatable) */}
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 flex items-center justify-center text-blue-600 dark:text-blue-400">
-                    <Building2 className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h4 className="font-black text-slate-900 dark:text-white text-sm">
-                      Head Office & Corporate Contacts
-                    </h4>
-                    <span className="text-[10px] text-slate-400 block">Consultant Headquarters</span>
-                  </div>
-                </div>
-
-                {!isReadonly && (
-                  <button
-                    onClick={() => {
-                      setHeadOfficeForm({
-                        headOfficeAddress: consultant.headOfficeAddress || '',
-                        headOfficePhone: consultant.headOfficePhone || '',
-                        headOfficeEmail: consultant.headOfficeEmail || '',
-                        headOfficeContactPerson: consultant.headOfficeContactPerson || ''
-                      });
-                      setIsEditHeadOfficeQuickOpen(true);
-                    }}
-                    className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
-                  >
-                    <Edit3 className="w-3 h-3" />
-                    Edit
-                  </button>
-                )}
-              </div>
-
-              <div className="space-y-3 text-xs">
-                <div>
-                  <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Physical Address</span>
-                  <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5 flex items-start gap-1.5">
-                    <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
-                    <span>{consultant.headOfficeAddress || 'Head Office Address not specified'}</span>
-                  </div>
-                </div>
-
-                <div>
-                  <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Contact Person / Authorized Representative</span>
-                  <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">
-                    {consultant.headOfficeContactPerson || 'Managing Director / Corporate Liaison'}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                  <div>
-                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Phone Number</span>
-                    <div className="font-mono text-slate-700 dark:text-slate-300 mt-0.5 flex items-center gap-1.5">
-                      <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                      <span>{consultant.headOfficePhone || 'N/A'}</span>
-                    </div>
-                  </div>
-
-                  <div>
-                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Corporate Email</span>
-                    <div className="text-slate-700 dark:text-slate-300 mt-0.5 flex items-center gap-1.5 truncate">
-                      <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                      <span className="truncate">{consultant.headOfficeEmail || 'N/A'}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Resident Engineer Profile Card */}
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 flex items-center justify-center text-indigo-600 dark:text-indigo-400 font-black text-lg">
-                  RE
-                </div>
-                <div>
-                  <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider block">Resident Engineer</span>
-                  <h4 className="font-black text-slate-900 dark:text-white text-base">
-                    {consultant.residentEngineerName || 'Eng. Girma Bekele'}
-                  </h4>
-                  <span className="text-xs text-slate-400">Team Leader / Project Director</span>
-                </div>
-              </div>
-
-              <div className="space-y-2.5 pt-3 border-t border-slate-100 dark:border-slate-800 text-xs">
-                {consultant.residentEngineerPhone && (
-                  <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
-                    <Phone className="w-4 h-4 text-slate-400" />
-                    <span className="font-mono">{consultant.residentEngineerPhone}</span>
-                  </div>
-                )}
-
-                {consultant.residentEngineerEmail && (
-                  <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300 truncate">
-                    <Mail className="w-4 h-4 text-slate-400 shrink-0" />
-                    <span className="truncate">{consultant.residentEngineerEmail}</span>
-                  </div>
-                )}
-
-                {consultant.siteOfficeLocation && (
-                  <div className="flex items-start gap-2 text-slate-700 dark:text-slate-300">
-                    <MapPin className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
-                    <span>{consultant.siteOfficeLocation}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Performance Assurance Card */}
-            <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white p-6 rounded-3xl shadow-sm space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Consultant Compliance</span>
-                <Award className="w-5 h-5 text-amber-400" />
-              </div>
-              <h4 className="font-black text-lg text-white">
-                FIDIC Engineer Obligations
-              </h4>
-              <p className="text-xs text-slate-300 leading-relaxed">
-                The supervision team operates under delegated authority from the Ethiopian Roads Administration to administer the civil works contract impartially and enforce high standards of quality assurance.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-      )}
 
       {/* TAB 4: SERVICE HISTORY & PREDECESSORS */}
       {activeTab === 'history' && (
@@ -7252,6 +7052,47 @@ export default function SupervisionConsultantView({
                     </div>
                   </div>
                 </div>
+
+                {/* Archived Contract Baseline & Remuneration Schedule (Fully Booked) */}
+                {selectedHistoricalConsultant.contractAmountSchedule?.condition1 && (
+                  <div className="p-3.5 rounded-2xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/60 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <Briefcase className="w-3.5 h-3.5 text-emerald-600" />
+                        Archived Contract Baseline Schedule (Fully Booked)
+                      </span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200 font-bold">
+                        Archived Record
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] pt-1">
+                      <div className="bg-white dark:bg-slate-900 p-2 rounded-xl border border-emerald-100 dark:border-emerald-900">
+                        <span className="text-slate-400 block text-[9px] uppercase font-bold">Staff Fees</span>
+                        <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
+                          {formatAccounting(selectedHistoricalConsultant.contractAmountSchedule.condition1.feesTimeBased || selectedHistoricalConsultant.contractAmountSchedule.condition1.summary?.fees || 0, 'ETB')}
+                        </span>
+                      </div>
+                      <div className="bg-white dark:bg-slate-900 p-2 rounded-xl border border-emerald-100 dark:border-emerald-900">
+                        <span className="text-slate-400 block text-[9px] uppercase font-bold">Reimbursables</span>
+                        <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
+                          {formatAccounting(selectedHistoricalConsultant.contractAmountSchedule.condition1.reimbursableTotal || selectedHistoricalConsultant.contractAmountSchedule.condition1.summary?.reimbursableExpenses || 0, 'ETB')}
+                        </span>
+                      </div>
+                      <div className="bg-white dark:bg-slate-900 p-2 rounded-xl border border-emerald-100 dark:border-emerald-900">
+                        <span className="text-slate-400 block text-[9px] uppercase font-bold">10% Cont. + 15% VAT</span>
+                        <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
+                          {formatAccounting((selectedHistoricalConsultant.contractAmountSchedule.condition1.summary?.contingency || 0) + (selectedHistoricalConsultant.contractAmountSchedule.condition1.summary?.vat || 0), 'ETB')}
+                        </span>
+                      </div>
+                      <div className="bg-white dark:bg-slate-900 p-2 rounded-xl border border-emerald-100 dark:border-emerald-900">
+                        <span className="text-slate-400 block text-[9px] uppercase font-bold">Total Baseline</span>
+                        <span className="font-mono font-black text-emerald-600 dark:text-emerald-400">
+                          {formatAccounting(selectedHistoricalConsultant.contractAmountSchedule.condition1.summary?.subTotal || selectedHistoricalConsultant.revisedFeeEtb || selectedHistoricalConsultant.originalFeeEtb || 0, 'ETB')}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Historical Submittals Log / KPI Summary (Admin Only) */}
                 {isAdmin && selectedHistoricalConsultant.submittalKpis && selectedHistoricalConsultant.submittalKpis.length > 0 && (

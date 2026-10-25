@@ -14,7 +14,8 @@ import {
   Sliders,
   AlertTriangle,
   Lock,
-  Unlock
+  Unlock,
+  ArrowRightLeft
 } from 'lucide-react';
 import { 
   Project, 
@@ -41,6 +42,7 @@ interface Props {
   onUpdateProject?: (updates: Partial<Project>, section?: string) => void;
   onNavigateToInvoices?: () => void;
   onNavigateToPersonnel?: () => void;
+  onNavigateToHistory?: () => void;
   viewCurrency?: 'ETB' | 'USD';
   exchangeRate?: number;
   onCurrencyToggle?: (newCurrency: 'ETB' | 'USD') => void;
@@ -54,6 +56,7 @@ export const ContractAmountTab: React.FC<Props> = ({
   onUpdateProject,
   onNavigateToInvoices,
   onNavigateToPersonnel,
+  onNavigateToHistory,
   viewCurrency = 'ETB',
   exchangeRate,
   onCurrencyToggle
@@ -138,7 +141,7 @@ export const ContractAmountTab: React.FC<Props> = ({
       return {
         ...DEFAULT_CONDITION_1_DATA,
         ...savedSchedule,
-        contingencyPct: savedSchedule.contingencyPct ?? cachedContingency ?? 15,
+        contingencyPct: savedSchedule.contingencyPct ?? cachedContingency ?? 10,
         reimbursableList: reimbList,
         staffFees: staffList,
         dlpStaffFees: dlpStaffList
@@ -146,7 +149,7 @@ export const ContractAmountTab: React.FC<Props> = ({
     }
     return {
       ...DEFAULT_CONDITION_1_DATA,
-      contingencyPct: cachedContingency ?? DEFAULT_CONDITION_1_DATA.contingencyPct ?? 15,
+      contingencyPct: cachedContingency ?? DEFAULT_CONDITION_1_DATA.contingencyPct ?? 10,
       reimbursableList: DEFAULT_CONDITION_1_REIMBURSABLES,
       staffFees: DEFAULT_CONDITION_1_STAFF,
       dlpStaffFees: DEFAULT_CONDITION_1_DLP_STAFF
@@ -166,27 +169,33 @@ export const ContractAmountTab: React.FC<Props> = ({
   const [activeTableTab, setActiveTableTab] = useState<'all' | 'summary' | 'construction' | 'dlp' | 'reimbursable' | 'currency_split'>('all');
   const [isSplitSettingsOpen, setIsSplitSettingsOpen] = useState(false);
 
-  const isLocked = Boolean(project.isAmountLocked || c1Data.isLocked);
-  const effectiveReadonly = isReadonly || (isLocked && !isMasterOrDirectorateAdmin);
+  // Once locked by Master Admin or Directorate Admin, no change can be made until the new assignment of Supervision Consultant
+  const isLocked = Boolean(project.isAmountLocked || c1Data.isLocked || consultant.isContractLocked);
+  const effectiveReadonly = isReadonly || isLocked;
 
   const handleToggleLockContract = () => {
     if (!isMasterOrDirectorateAdmin) {
-      alert('Access Denied: Only Master Administrators and Directorate Administrators are authorized to lock or open contract amount data entry.');
+      alert('Access Denied: Only Master Administrators and Directorate Administrators are authorized to lock contract data entry.');
       return;
     }
-    const nextLocked = !(project.isAmountLocked || c1Data.isLocked);
+
+    if (isLocked) {
+      alert('🔒 Contract Data Locked Policy: Once locked by Master Admin or Directorate Admin, no changes can be made anywhere on Contract Data until a new assignment of Supervision Consultant occurs. Please proceed to Service History to assign a new or continuation Supervision Consultant.');
+      return;
+    }
+
     const justification = window.prompt(
-      `Please provide justification comment for ${nextLocked ? 'locking' : 'unlocking / overriding'} the locked project state:`,
-      nextLocked ? 'Validated contract amount and approved baseline figures' : 'Authorized override to unlock contract table data entry for adjustments'
+      'Please provide justification comment for officially locking Supervision Consultant contract data (no further modifications will be permitted until a new consultant is assigned):',
+      'Contract amount, staffing remuneration rates, reimbursables, and baseline figures officially validated and locked per ERA standards.'
     );
     if (justification === null) return; // user cancelled
 
     const updatedC1: ContractCondition1Data = {
       ...c1Data,
-      isLocked: nextLocked,
+      isLocked: true,
       lockJustification: justification,
-      validatedAt: nextLocked ? new Date().toISOString() : c1Data.validatedAt,
-      validatedBy: nextLocked ? (currentUser?.username || 'Master/Directorate Admin') : c1Data.validatedBy
+      validatedAt: new Date().toISOString(),
+      validatedBy: currentUser?.username || 'Master/Directorate Admin'
     };
     setC1Data(updatedC1);
 
@@ -197,14 +206,14 @@ export const ContractAmountTab: React.FC<Props> = ({
       const auditEntry = {
         id: 'audit_' + Date.now(),
         timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
-        action: 'LOCKED_STATE_OVERRIDDEN',
-        draftId: 'lock_override_' + project.id,
+        action: 'CONTRACT_DATA_OFFICIALLY_LOCKED',
+        draftId: 'lock_' + project.id,
         projectId: project.id,
         projectName: project.name,
-        section: 'Supervision Consultant - Contract Amount & Baseline',
+        section: 'Supervision Consultant - Contract Data',
         actor: currentUser?.username || 'Master/Directorate Admin',
         actorRole: currentUser?.role || 'master_admin',
-        details: nextLocked ? 'Locked contract amount table data entry' : 'Unlocked/Opened contract amount table data entry (Locked State Overridden)',
+        details: 'Supervision Consultant contract data locked by Master/Directorate Admin (Enforced until new Supervision Consultant assignment)',
         comments: justification,
         ipAddress: '127.0.0.1',
         deviceInfo: navigator.userAgent.substring(0, 50)
@@ -217,15 +226,16 @@ export const ContractAmountTab: React.FC<Props> = ({
 
     if (onUpdateProject && consultant) {
       onUpdateProject({
-        isAmountLocked: nextLocked,
+        isAmountLocked: true,
         supervisionConsultant: {
           ...consultant,
+          isContractLocked: true,
           contractAmountSchedule: {
             ...consultant.contractAmountSchedule,
             condition1: updatedC1
           }
         }
-      }, nextLocked ? `Locked contract amount table data entry. Justification: ${justification}` : `Opened contract amount table data entry (State Overridden). Justification: ${justification}`);
+      }, `Officially locked Supervision Consultant contract data. Justification: ${justification}`);
     }
   };
 
@@ -1025,19 +1035,6 @@ export const ContractAmountTab: React.FC<Props> = ({
               </p>
             </div>
           </div>
-
-          <button
-            type="button"
-            onClick={handleToggleLockContract}
-            className={`px-4 py-2 rounded-2xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer whitespace-nowrap ${
-              isLocked
-                ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                : 'bg-amber-600 hover:bg-amber-700 text-white'
-            }`}
-          >
-            {isLocked ? <Unlock className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
-            {isLocked ? '🔓 Open Contract Data Entry' : '🔒 Lock Contract Data Entry'}
-          </button>
         </div>
       )}
 
@@ -1102,17 +1099,29 @@ export const ContractAmountTab: React.FC<Props> = ({
               onClick={handleToggleLockContract}
               className={`px-4 py-2 text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-xs border cursor-pointer ${
                 isLocked
-                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-700 shadow-sm'
+                  ? 'bg-rose-600 hover:bg-rose-700 text-white border-rose-700 shadow-sm'
                   : 'bg-amber-500 hover:bg-amber-600 text-white border-amber-600 shadow-sm'
               }`}
-              title="Lock or open contract amount data entry for non-admin users"
+              title={isLocked ? "Contract Data is locked. No changes can be made until a new Supervision Consultant assignment." : "Officially lock contract data per ERA governance"}
             >
-              {isLocked ? <Unlock className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
-              <span>{isLocked ? '🔓 Open Table Data' : '🔒 Lock Table Data'}</span>
+              <Lock className="w-4 h-4" />
+              <span>{isLocked ? '🔒 Contract Data Locked' : '🔒 Lock Contract Data'}</span>
             </button>
           )}
 
-          {!isReadonly && (
+          {isLocked && onNavigateToHistory && (
+            <button
+              type="button"
+              onClick={onNavigateToHistory}
+              className="px-4 py-2 text-xs font-bold rounded-xl bg-amber-500 hover:bg-amber-600 text-white transition flex items-center gap-1.5 shadow-xs border border-amber-600 cursor-pointer"
+              title="Assign continuation Supervision Consultant under Service History"
+            >
+              <ArrowRightLeft className="w-3.5 h-3.5" />
+              <span>Assign New Consultant</span>
+            </button>
+          )}
+
+          {!effectiveReadonly && (
             <>
               <button
                 type="button"
@@ -1146,36 +1155,36 @@ export const ContractAmountTab: React.FC<Props> = ({
                 title="Save contract schedule and link staff rates directly to monthly invoice calculation engine"
               >
                 <Save className="w-3.5 h-3.5" />
-                Save & Link to Invoices
+                <span>Save & Link to Invoices</span>
               </button>
             </>
           )}
 
-          {onNavigateToPersonnel && (
-            <button
-              type="button"
-              onClick={onNavigateToPersonnel}
-              className="px-3.5 py-2 text-xs font-bold text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl transition flex items-center gap-1.5 cursor-pointer"
-            >
-              <Users className="w-3.5 h-3.5 text-indigo-500" />
-              <span>Go to Personnel Directory</span>
-              <ExternalLink className="w-3 h-3 text-slate-400" />
-            </button>
-          )}
+        </div>
+      </div>
 
-          {onNavigateToInvoices && (
+      {/* Locked Notice Banner */}
+      {isLocked && (
+        <div className="p-4 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 rounded-2xl text-amber-900 dark:text-amber-200 text-xs font-semibold flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-2.5">
+            <Lock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+            <div>
+              <strong className="block text-amber-950 dark:text-amber-100 font-bold">Contract Data Locked by Master / Directorate Admin</strong>
+              <span>Per ERA governance policy, once locked, no change will be made anywhere on Contract Data until a new assignment of Supervision Consultant occurs. The previous consultant records are preserved fully booked under Service History.</span>
+            </div>
+          </div>
+          {onNavigateToHistory && (
             <button
               type="button"
-              onClick={onNavigateToInvoices}
-              className="px-3.5 py-2 text-xs font-bold text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+              onClick={onNavigateToHistory}
+              className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 self-start sm:self-center shadow-xs cursor-pointer"
             >
-              <Receipt className="w-3.5 h-3.5 text-blue-500" />
-              <span>Go to Monthly Invoices</span>
-              <ExternalLink className="w-3 h-3 text-slate-400" />
+              <ArrowRightLeft className="w-3.5 h-3.5" />
+              <span>Service History & New Assignment</span>
             </button>
           )}
         </div>
-      </div>
+      )}
 
       {/* Success Notification */}
       {saveSuccessMessage && (
@@ -1232,11 +1241,11 @@ export const ContractAmountTab: React.FC<Props> = ({
           </div>
 
           <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
-            <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Contingency & VAT (15%)</div>
+            <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Contingency ({c1Data.contingencyPct ?? 10}%) & VAT (15%)</div>
             <div className="text-xl font-black font-mono text-indigo-600 dark:text-indigo-400 mt-1">
               {currencySymbol}{fmtCurrency(activeSummaryPrice.contingency + activeSummaryPrice.vat)} <span className="text-xs text-slate-400">{currencyUnit}</span>
             </div>
-            <div className="text-[11px] text-indigo-600/80 mt-0.5">15% Contingency + 15% VAT</div>
+            <div className="text-[11px] text-indigo-600/80 mt-0.5">{c1Data.contingencyPct ?? 10}% Contingency + 15% VAT</div>
           </div>
 
           <div className={`p-4 rounded-2xl border shadow-xs ${
@@ -1687,14 +1696,14 @@ export const ContractAmountTab: React.FC<Props> = ({
                               <input
                                 type="text"
                                 value={row.position}
-                                disabled={isReadonly}
+                                disabled={effectiveReadonly}
                                 onChange={(e) => handleUpdateConstructionStaffRow(row.id!, 'position', e.target.value)}
                                 className="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-emerald-500 focus:outline-none text-xs font-bold"
                               />
                               <input
                                 type="text"
                                 value={row.name}
-                                disabled={isReadonly}
+                                disabled={effectiveReadonly}
                                 onChange={(e) => handleUpdateConstructionStaffRow(row.id!, 'name', e.target.value)}
                                 className="w-full bg-transparent border-b border-transparent hover:border-slate-200 focus:border-emerald-400 focus:outline-none text-[10px] text-slate-500 font-bold italic"
                               />
@@ -1704,7 +1713,7 @@ export const ContractAmountTab: React.FC<Props> = ({
                             <input
                               type="text"
                               value={row.unit || 'Month'}
-                              disabled={isReadonly}
+                              disabled={effectiveReadonly}
                               onChange={(e) => handleUpdateConstructionStaffRow(row.id!, 'unit' as any, e.target.value)}
                               className="w-12 text-center bg-transparent border-b border-transparent hover:border-slate-300 focus:border-emerald-500 focus:outline-none text-xs font-mono"
                             />
@@ -1714,7 +1723,7 @@ export const ContractAmountTab: React.FC<Props> = ({
                               type="number"
                               step="any"
                               value={row.rateEtb}
-                              disabled={isReadonly}
+                              disabled={effectiveReadonly}
                               onChange={(e) => handleUpdateConstructionStaffRow(row.id!, 'rateEtb', parseFloat(e.target.value) || 0)}
                               className="w-24 text-right bg-transparent border-b border-transparent hover:border-slate-300 focus:border-emerald-500 focus:outline-none text-xs font-mono"
                             />
@@ -1725,7 +1734,7 @@ export const ContractAmountTab: React.FC<Props> = ({
                                 type="number"
                                 step="any"
                                 value={row.rateUsd || 0}
-                                disabled={isReadonly}
+                                disabled={effectiveReadonly}
                                 onChange={(e) => handleUpdateConstructionStaffRow(row.id!, 'rateUsd', parseFloat(e.target.value) || 0)}
                                 className="w-20 text-right bg-transparent border-b border-transparent hover:border-slate-300 focus:border-purple-500 focus:outline-none text-xs font-mono"
                               />
@@ -1736,25 +1745,14 @@ export const ContractAmountTab: React.FC<Props> = ({
                               type="number"
                               step="any"
                               value={row.mmConstr}
-                              disabled={isReadonly}
+                              disabled={effectiveReadonly}
                               onChange={(e) => handleUpdateConstructionStaffRow(row.id!, 'mmConstr', parseFloat(e.target.value) || 0)}
                               className="w-16 text-right bg-transparent border-b border-transparent hover:border-slate-300 focus:border-emerald-500 focus:outline-none text-xs font-mono"
                             />
                           </td>
                           <td className="py-2 px-3 text-right font-mono font-bold">{fmt(totalAmount)}</td>
                           <td className="py-2 px-2 text-center">
-                            <div className="flex items-center justify-center gap-1">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setAddStaffTargetTable('construction');
-                                  setIsAddStaffOpen(true);
-                                }}
-                                className="p-1 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition"
-                                title="Add Row Below"
-                              >
-                                <Plus className="w-3.5 h-3.5" />
-                              </button>
+                            {!effectiveReadonly ? (
                               <button
                                 type="button"
                                 onClick={() => handleDeleteConstructionStaffRow(row.id!, row.position)}
@@ -1763,7 +1761,9 @@ export const ContractAmountTab: React.FC<Props> = ({
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
-                            </div>
+                            ) : (
+                              <span className="text-slate-300 dark:text-slate-600 font-mono text-xs">—</span>
+                            )}
                           </td>
                         </tr>
                       );
@@ -1928,7 +1928,7 @@ export const ContractAmountTab: React.FC<Props> = ({
                           <input
                             type="text"
                             value={row.no || String(idx + 1)}
-                            disabled={isReadonly}
+                            disabled={effectiveReadonly}
                             onChange={(e) => handleUpdateReimbursableItem(row.id, 'no', e.target.value)}
                             className="w-10 text-center bg-transparent border-b border-transparent hover:border-amber-300 focus:border-amber-500 focus:outline-none text-xs font-mono font-bold"
                           />
@@ -1938,7 +1938,7 @@ export const ContractAmountTab: React.FC<Props> = ({
                             <input
                               type="text"
                               value={row.item || row.description || ''}
-                              disabled={isReadonly}
+                              disabled={effectiveReadonly}
                               onChange={(e) => handleUpdateReimbursableItem(row.id, 'item', e.target.value)}
                               className={`w-full bg-transparent border-b text-xs font-bold focus:outline-none ${
                                 !row.item?.trim() 
@@ -1950,7 +1950,7 @@ export const ContractAmountTab: React.FC<Props> = ({
                               type="text"
                               placeholder="Contractual basis / justification"
                               value={row.basis || ''}
-                              disabled={isReadonly}
+                              disabled={effectiveReadonly}
                               onChange={(e) => handleUpdateReimbursableItem(row.id, 'basis', e.target.value)}
                               className="w-full bg-transparent border-b border-transparent hover:border-slate-200 focus:border-amber-400 focus:outline-none text-[10px] text-slate-400 italic"
                             />
@@ -1960,7 +1960,7 @@ export const ContractAmountTab: React.FC<Props> = ({
                           <input
                             type="text"
                             value={row.unit || 'Month'}
-                            disabled={isReadonly}
+                            disabled={effectiveReadonly}
                             onChange={(e) => handleUpdateReimbursableItem(row.id, 'unit', e.target.value)}
                             className="w-12 text-center bg-transparent border-b border-transparent hover:border-slate-300 focus:border-amber-500 focus:outline-none text-xs font-mono"
                           />
@@ -1970,7 +1970,7 @@ export const ContractAmountTab: React.FC<Props> = ({
                             type="number"
                             step="any"
                             value={row.rate || 0}
-                            disabled={isReadonly}
+                            disabled={effectiveReadonly}
                             onChange={(e) => handleUpdateReimbursableItem(row.id, 'rate', parseFloat(e.target.value))}
                             className={`w-24 text-right bg-transparent border-b text-xs font-mono focus:outline-none ${
                               row.rate !== undefined && (isNaN(row.rate) || row.rate < 0)
@@ -1985,7 +1985,7 @@ export const ContractAmountTab: React.FC<Props> = ({
                               type="number"
                               step="any"
                               value={row.rateUsd || (row.contractQty ? Number(((row.amountUsd || 0) / row.contractQty).toFixed(2)) : 0)}
-                              disabled={isReadonly}
+                              disabled={effectiveReadonly}
                               onChange={(e) => handleUpdateReimbursableItem(row.id, 'rateUsd', parseFloat(e.target.value))}
                               className="w-20 text-right bg-transparent border-b border-transparent hover:border-slate-300 focus:border-purple-500 focus:outline-none text-xs font-mono"
                             />
@@ -1996,7 +1996,7 @@ export const ContractAmountTab: React.FC<Props> = ({
                             type="number"
                             step="any"
                             value={row.contractQty || 1}
-                            disabled={isReadonly}
+                            disabled={effectiveReadonly}
                             onChange={(e) => handleUpdateReimbursableItem(row.id, 'contractQty', parseFloat(e.target.value))}
                             className={`w-16 text-right bg-transparent border-b text-xs font-mono focus:outline-none ${
                               row.contractQty !== undefined && (isNaN(row.contractQty) || row.contractQty < 0)
@@ -2014,15 +2014,7 @@ export const ContractAmountTab: React.FC<Props> = ({
                           </td>
                         )}
                         <td className="py-2 px-2 text-center">
-                          <div className="flex items-center justify-center gap-1">
-                            <button
-                              type="button"
-                              onClick={handleAddReimbursableItem}
-                              className="p-1 text-amber-600 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition"
-                              title="Add Row Below"
-                            >
-                              <Plus className="w-3.5 h-3.5" />
-                            </button>
+                          {!effectiveReadonly ? (
                             <button
                               type="button"
                               onClick={() => handleDeleteReimbursableItem(row.id)}
@@ -2031,7 +2023,9 @@ export const ContractAmountTab: React.FC<Props> = ({
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
-                          </div>
+                          ) : (
+                            <span className="text-slate-300 dark:text-slate-600 font-mono text-xs">—</span>
+                          )}
                         </td>
                       </tr>
                     );
@@ -2121,14 +2115,14 @@ export const ContractAmountTab: React.FC<Props> = ({
                                 <input
                                   type="text"
                                   value={row.position}
-                                  disabled={isReadonly}
+                                  disabled={effectiveReadonly}
                                   onChange={(e) => handleUpdateDlpStaffRow(row.id!, 'position', e.target.value)}
                                   className="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-500 focus:outline-none text-xs font-bold"
                                 />
                                 <input
                                   type="text"
                                   value={row.name}
-                                  disabled={isReadonly}
+                                  disabled={effectiveReadonly}
                                   onChange={(e) => handleUpdateDlpStaffRow(row.id!, 'name', e.target.value)}
                                   className="w-full bg-transparent border-b border-transparent hover:border-slate-200 focus:border-indigo-400 focus:outline-none text-[10px] text-slate-500 font-bold italic"
                                 />
@@ -2138,7 +2132,7 @@ export const ContractAmountTab: React.FC<Props> = ({
                               <input
                                 type="text"
                                 value={row.unit || 'Month'}
-                                disabled={isReadonly}
+                                disabled={effectiveReadonly}
                                 onChange={(e) => handleUpdateDlpStaffRow(row.id!, 'unit' as any, e.target.value)}
                                 className="w-16 text-center bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-500 focus:outline-none text-xs font-mono"
                               />
@@ -2148,7 +2142,7 @@ export const ContractAmountTab: React.FC<Props> = ({
                                 type="number"
                                 step="any"
                                 value={row.rateEtb}
-                                disabled={isReadonly}
+                                disabled={effectiveReadonly}
                                 onChange={(e) => handleUpdateDlpStaffRow(row.id!, 'rateEtb', parseFloat(e.target.value) || 0)}
                                 className="w-24 text-right bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-500 focus:outline-none text-xs font-mono"
                               />
@@ -2159,7 +2153,7 @@ export const ContractAmountTab: React.FC<Props> = ({
                                   type="number"
                                   step="any"
                                   value={row.rateUsd || 0}
-                                  disabled={isReadonly}
+                                  disabled={effectiveReadonly}
                                   onChange={(e) => handleUpdateDlpStaffRow(row.id!, 'rateUsd', parseFloat(e.target.value) || 0)}
                                   className="w-20 text-right bg-transparent border-b border-transparent hover:border-slate-300 focus:border-purple-500 focus:outline-none text-xs font-mono"
                                 />
@@ -2170,7 +2164,7 @@ export const ContractAmountTab: React.FC<Props> = ({
                                 type="number"
                                 step="any"
                                 value={row.mmDlp}
-                                disabled={isReadonly}
+                                disabled={effectiveReadonly}
                                 onChange={(e) => handleUpdateDlpStaffRow(row.id!, 'mmDlp', parseFloat(e.target.value) || 0)}
                                 className="w-16 text-right bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-500 focus:outline-none text-xs font-mono"
                               />
@@ -2179,18 +2173,7 @@ export const ContractAmountTab: React.FC<Props> = ({
                               {fmt(totalAmount)}
                             </td>
                             <td className="py-2 px-2 text-center">
-                              <div className="flex items-center justify-center gap-1">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setAddStaffTargetTable('dlp');
-                                    setIsAddStaffOpen(true);
-                                  }}
-                                  className="p-1 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg transition"
-                                  title="Add Row Below"
-                                >
-                                  <Plus className="w-3.5 h-3.5" />
-                                </button>
+                              {!effectiveReadonly ? (
                                 <button
                                   type="button"
                                   onClick={() => handleDeleteDlpStaffRow(row.id!, row.position)}
@@ -2199,7 +2182,9 @@ export const ContractAmountTab: React.FC<Props> = ({
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
-                              </div>
+                              ) : (
+                                <span className="text-slate-300 dark:text-slate-600 font-mono text-xs">—</span>
+                              )}
                             </td>
                           </tr>
                     );

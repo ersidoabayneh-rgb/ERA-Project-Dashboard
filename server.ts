@@ -1,6 +1,7 @@
 import express from 'express';
 import type { Request, Response } from 'express';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
 import { createServer as createViteServer } from 'vite';
@@ -17,6 +18,13 @@ const db = getFirestore();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const BACKUP_DIR = path.resolve(__dirname, '.data', 'progress_plan_backups');
+if (!fs.existsSync(BACKUP_DIR)) {
+  try {
+    fs.mkdirSync(BACKUP_DIR, { recursive: true });
+  } catch (e) {}
+}
+
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 const isProd = process.env.NODE_ENV === 'production';
@@ -32,6 +40,69 @@ app.get('/api/health', (_req: Request, res: Response) => {
     application: 'ERA ERP Management System',
     timestamp: new Date().toISOString()
   });
+});
+
+// Automated Daily Backup API for project progressPlanHistory records (Persistent File & Cloud Storage)
+app.post('/api/backup/progress-plan-history', async (req: Request, res: Response) => {
+  const { projectId, progressPlanHistory, timestamp, projectName } = req.body;
+  if (!projectId || !Array.isArray(progressPlanHistory)) {
+    return res.status(400).json({ error: 'Invalid payload. projectId and progressPlanHistory array required.' });
+  }
+  
+  const backupPayload = {
+    projectId,
+    projectName: projectName || projectId,
+    progressPlanHistory,
+    backedUpAt: timestamp || new Date().toISOString(),
+    recordCount: progressPlanHistory.length
+  };
+
+  try {
+    // 1. Write to persistent filesystem storage
+    const filePath = path.join(BACKUP_DIR, `${projectId}.json`);
+    fs.writeFileSync(filePath, JSON.stringify(backupPayload, null, 2), 'utf-8');
+
+    // 2. Also persist in Firestore database
+    try {
+      await db.collection('progress_plan_history_backups').doc(projectId).set(backupPayload, { merge: true });
+    } catch (fsErr) {
+      console.warn('[ERA Backup] Firestore history backup warning:', fsErr);
+    }
+
+    res.json({
+      success: true,
+      projectId,
+      recordCount: progressPlanHistory.length,
+      backedUpAt: backupPayload.backedUpAt,
+      storage: 'persistent_disk_and_firestore'
+    });
+  } catch (err: any) {
+    console.error('[ERA Backup] Error saving progress plan history backup:', err);
+    res.status(500).json({ error: 'Failed to persist progress plan history backup', details: err?.message });
+  }
+});
+
+app.get('/api/backup/progress-plan-history/:projectId', async (req: Request, res: Response) => {
+  const { projectId } = req.params;
+  
+  // 1. Try local disk backup first
+  const filePath = path.join(BACKUP_DIR, `${projectId}.json`);
+  if (fs.existsSync(filePath)) {
+    try {
+      const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+      return res.json({ success: true, source: 'disk', ...data });
+    } catch (e) {}
+  }
+
+  // 2. Fallback to Firestore
+  try {
+    const docSnap = await db.collection('progress_plan_history_backups').doc(projectId).get();
+    if (docSnap.exists) {
+      return res.json({ success: true, source: 'firestore', ...docSnap.data() });
+    }
+  } catch (e) {}
+
+  res.status(404).json({ error: 'No persistent backup found for project' });
 });
 
 app.post('/api/projects/:projectId/contract-amount', requireAuth, checkRole(['director_general', 'master_admin', 'cpm_admin']), async (req: any, res: Response) => {
