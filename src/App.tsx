@@ -1889,6 +1889,7 @@ let isBatchSyncRunning = false;
     };
 
     const initWebSocket = () => {
+      if (typeof window === 'undefined' || typeof window.WebSocket !== 'function') return;
       try {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${protocol}//${window.location.host}/ws`;
@@ -1924,6 +1925,7 @@ let isBatchSyncRunning = false;
     let sseReconnectTimeout: any = null;
 
     const initSSE = () => {
+      if (typeof window === 'undefined' || typeof window.EventSource !== 'function') return;
       try {
         if (eventSource) {
           try { eventSource.close(); } catch (e) {}
@@ -2207,7 +2209,7 @@ let isBatchSyncRunning = false;
 
     let broadcastChannel: BroadcastChannel | null = null;
     let eraChannel: BroadcastChannel | null = null;
-    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+    if (typeof window !== 'undefined' && typeof window.BroadcastChannel === 'function') {
       try {
         broadcastChannel = new BroadcastChannel('era_frontend_sync');
         broadcastChannel.onmessage = (event) => {

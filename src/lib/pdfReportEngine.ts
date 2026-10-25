@@ -770,19 +770,8 @@ export function drawDocumentWatermark(
   const angle = options.angle ?? -32;
   const fontSize = options.fontSize ?? (pageWidth > pageHeight ? 76 : 64);
 
-  // Set graphics state opacity if supported
-  let hasGState = false;
-  try {
-    const docAny = doc as any;
-    if (docAny.GState && typeof docAny.setGState === 'function') {
-      docAny.saveGraphicsState();
-      const gState = new docAny.GState({ opacity: options.opacity ?? 0.12 });
-      docAny.setGState(gState);
-      hasGState = true;
-    }
-  } catch {
-    hasGState = false;
-  }
+  // Use clean pastel colors for watermark without GState constructor issues
+  const hasGState = false;
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(fontSize);

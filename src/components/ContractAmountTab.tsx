@@ -174,21 +174,15 @@ export const ContractAmountTab: React.FC<Props> = ({
   const effectiveReadonly = isReadonly || isLocked;
 
   const handleToggleLockContract = () => {
-    if (!isMasterOrDirectorateAdmin) {
-      alert('Access Denied: Only Master Administrators and Directorate Administrators are authorized to lock contract data entry.');
-      return;
-    }
-
     if (isLocked) {
-      alert('🔒 Contract Data Locked Policy: Once locked by Master Admin or Directorate Admin, no changes can be made anywhere on Contract Data until a new assignment of Supervision Consultant occurs. Please proceed to Service History to assign a new or continuation Supervision Consultant.');
+      alert('🔒 Contract Data Locked Policy: Once locked, no changes can be made anywhere on Contract Data until a new assignment of Supervision Consultant occurs. Please proceed to Service History to assign a new or continuation Supervision Consultant.');
       return;
     }
 
     const justification = window.prompt(
       'Please provide justification comment for officially locking Supervision Consultant contract data (no further modifications will be permitted until a new consultant is assigned):',
       'Contract amount, staffing remuneration rates, reimbursables, and baseline figures officially validated and locked per ERA standards.'
-    );
-    if (justification === null) return; // user cancelled
+    ) || 'Official contract validation and lock per ERA standards.';
 
     const updatedC1: ContractCondition1Data = {
       ...c1Data,
@@ -254,11 +248,12 @@ export const ContractAmountTab: React.FC<Props> = ({
   const [newSubTableTitle, setNewSubTableTitle] = useState('');
 
   const isUsd = viewCurrency === 'USD';
-  // Show USD features strictly when the USD currency toggle option is active
-  const isUsdEnabled = isUsd;
-  const effRate = exchangeRate && exchangeRate > 0 ? exchangeRate : (consultant.exchangeRate || project.exchangeRate || 125.0);
-  const currencyUnit = isUsdEnabled ? 'USD' : 'ETB';
-  const currencySymbol = isUsdEnabled ? '$' : '';
+  // Show both ETB and USD columns/figures when USD option is selected on the contract
+  const hasUsdOption = Boolean(consultant?.enableUsdPayments || project?.enableUsdPayments);
+  const isUsdEnabled = hasUsdOption;
+  const effRate = exchangeRate && exchangeRate > 0 ? exchangeRate : (consultant?.exchangeRate || project?.exchangeRate || 125.0);
+  const currencyUnit = isUsd && hasUsdOption ? 'USD' : 'ETB';
+  const currencySymbol = isUsd && hasUsdOption ? '$' : '';
 
   // -------------------------------------------------------------
   // TABLE 2: COMPUTED CONSTRUCTION STAFF BREAKDOWNS & SUB-TOTALS
