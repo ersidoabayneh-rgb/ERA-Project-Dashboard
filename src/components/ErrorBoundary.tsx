@@ -8,12 +8,14 @@ interface Props {
 interface State {
   hasError: boolean;
   error: Error | null;
+  componentStack?: string | null;
 }
 
 export default class ErrorBoundary extends (Component as any) {
   state: State = {
     hasError: false,
     error: null,
+    componentStack: null,
   };
 
   static getDerivedStateFromError(error: Error): State {
@@ -27,6 +29,7 @@ export default class ErrorBoundary extends (Component as any) {
     console.error('ERA Dashboard Uncaught Exception caught by ErrorBoundary:', error, errorInfo);
     this.setState({
       error,
+      componentStack: errorInfo?.componentStack || null,
     });
   }
 
@@ -73,8 +76,13 @@ export default class ErrorBoundary extends (Component as any) {
             </div>
 
             {this.state.error && (
-              <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-4 text-left overflow-auto max-h-48 text-xs font-mono text-rose-300">
+              <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-4 text-left overflow-auto max-h-56 text-xs font-mono text-rose-300">
                 <div className="font-bold text-rose-400 mb-1">{this.state.error.name}: {this.state.error.message}</div>
+                {this.state.componentStack && (
+                  <pre className="text-[11px] text-amber-300/90 whitespace-pre-wrap mb-2 font-mono">
+                    Component Stack:{this.state.componentStack}
+                  </pre>
+                )}
                 {this.state.error.stack && (
                   <pre className="text-[10px] text-slate-500 whitespace-pre-wrap">
                     {this.state.error.stack}

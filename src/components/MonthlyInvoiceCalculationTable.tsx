@@ -197,6 +197,7 @@ interface MonthlyInvoiceCalculationTableProps {
   onUpdateContractReimbursables?: (reimbursables: ContractReimbursableCondition1[]) => void;
   viewCurrency?: 'ETB' | 'USD';
   exchangeRate?: number;
+  onProceedToNextMonth?: (currentLockedInvoice: ConsultantInvoice, newMonthInvoice: ConsultantInvoice) => void;
 }
 
 export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationTableProps> = ({
@@ -209,6 +210,7 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
   onUpdateConsultantPersonnel,
   onNavigateToContractAmount,
   onUpdateContractReimbursables,
+  onProceedToNextMonth,
   viewCurrency = 'ETB',
   exchangeRate = 125.0
 }) => {
@@ -344,7 +346,37 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
   const [preparedBy, setPreparedBy] = useState<string>(consultant.residentEngineerName || 'Resident Engineer Mulualem Ergogo (Team Leader)');
   const [checkedBy, setCheckedBy] = useState<string>('Counterpart Engineer / Payment Officer');
   const [reviewedBy, setReviewedBy] = useState<string>('Senior / Lead Supervision Engineer');
+  const [recommendedBy, setRecommendedBy] = useState<string>('Supervision Directorate Director / Team Leader');
   const [approvedBy, setApprovedBy] = useState<string>('Director General / Project Director (ERA South Region)');
+
+  // Policy Rule: Once invoice is saved and synchronized with ledger and requested to process next month,
+  // no changes or updates are permitted across all previous month invoices.
+  const isPreviousInvoiceFrozen = useMemo(() => {
+    if (!activeInvoice) return false;
+    if (activeInvoice.isPreviousInvoiceLocked) return true;
+    const allInvoices = consultant.invoices || [];
+    if (allInvoices.length > 0) {
+      const sorted = [...allInvoices].sort((a, b) => {
+        const numA = parseInt((a.invoiceNo || '').replace(/\D/g, '') || '0', 10);
+        const numB = parseInt((b.invoiceNo || '').replace(/\D/g, '') || '0', 10);
+        if (numA !== numB) return numA - numB;
+        return (a.submissionDate || '').localeCompare(b.submissionDate || '');
+      });
+      const curIdx = sorted.findIndex(i => i.id === activeInvoice.id || i.invoiceNo === activeInvoice.invoiceNo);
+      // If any subsequent invoice exists in the chronological ledger
+      if (curIdx >= 0 && curIdx < sorted.length - 1) {
+        return true;
+      }
+    }
+    if (activeInvoice.isPaymentSaved && (activeInvoice.paymentLocked || Boolean(activeInvoice.savedPaymentAmount))) {
+      const hasSubsequent = (consultant.invoices || []).some(
+        other => other.id !== activeInvoice.id && other.invoiceNo !== activeInvoice.invoiceNo &&
+        ((other.submissionDate || '') > (activeInvoice.submissionDate || '') || other.invoiceNo > activeInvoice.invoiceNo)
+      );
+      if (hasSubsequent) return true;
+    }
+    return false;
+  }, [activeInvoice, consultant.invoices]);
 
   // Helper: Standard billing rate estimator linked directly with Contract Amount Schedule (Condition 1 / Condition 2)
   const getStandardRateForPosition = (position: string, category?: string, staffName?: string): number => {
@@ -743,7 +775,13 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
           return d;
         }));
       }
-      if (activeInvoice.isPaymentSaved || activeInvoice.paymentLocked || (activeInvoice.savedPaymentAmount !== undefined && activeInvoice.savedPaymentAmount > 0) || (activeInvoice.netAmountEtb !== undefined && activeInvoice.netAmountEtb > 0 && (activeInvoice.status === 'Paid' || activeInvoice.status === 'Certified'))) {
+      if (activeInvoice.preparedBy) setPreparedBy(activeInvoice.preparedBy);
+      if (activeInvoice.checkedBy) setCheckedBy(activeInvoice.checkedBy);
+      if (activeInvoice.reviewedBy) setReviewedBy(activeInvoice.reviewedBy);
+      if (activeInvoice.recommendedBy) setRecommendedBy(activeInvoice.recommendedBy);
+      if (activeInvoice.approvedBy) setApprovedBy(activeInvoice.approvedBy);
+
+      if (activeInvoice.isPreviousInvoiceLocked || activeInvoice.isPaymentSaved || activeInvoice.paymentLocked || (activeInvoice.savedPaymentAmount !== undefined && activeInvoice.savedPaymentAmount > 0) || (activeInvoice.netAmountEtb !== undefined && activeInvoice.netAmountEtb > 0 && (activeInvoice.status === 'Paid' || activeInvoice.status === 'Certified'))) {
         setIsPaymentSaved(true);
         setSavedPaymentAmount(activeInvoice.savedPaymentAmount ?? activeInvoice.netAmountEtb);
         setAllowAdminUnlock(false);
@@ -1261,8 +1299,9 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
   // In Ethiopian road supervision contracts, net payment certificate is net of 15% VAT (VAT is remitted separately)
   const calculatedNetDueThisInvoice = Math.max(0, (grossPayableBase - vatThisInvoice) + (overtimeEtb || 0) - totalDeductionsThisInvoice);
 
-  // Once the payment is saved, no change on the amount of the payment unless explicitly unlocked by admin
-  const isPaymentLocked = isPaymentSaved && !allowAdminUnlock && savedPaymentAmount !== null;
+  // Once the payment is saved, no change on the amount of the payment unless explicitly unlocked by admin.
+  // ERA Policy Rule: If this invoice is a previous month invoice rolled forward to next month, it is permanently frozen with no change permitted.
+  const isPaymentLocked = isPreviousInvoiceFrozen ? true : (isPaymentSaved && !allowAdminUnlock && savedPaymentAmount !== null);
   const netDueThisInvoice = isPaymentLocked ? (savedPaymentAmount as number) : calculatedNetDueThisInvoice;
 
   // Preceding Invoice Grand Totals (Minus VAT)
@@ -1641,17 +1680,170 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
   // advances billing period, and prepares active replacement staff for the new month.
   // =========================================================================
   const handleProceedToNextMonth = () => {
+    if (isPreviousInvoiceFrozen) {
+      alert('🔒 Billing Process Restriction: This invoice is a historical previous month invoice that has already been rolled forward and synchronized with the ledger. Progression to next month can only be initiated from the current active invoice.');
+      return;
+    }
+
     const { nextPeriodStr, nextDaysInMonth, nextMonthName } = computeNextBillingPeriod(`${billingMonth} ${billingYear}`);
     const nextInvNo = computeNextInvoiceNumber(invoiceNo);
 
     const confirmMsg = `Proceed and roll forward invoice to next month?\n\n` +
       `• New Billing Period: ${nextPeriodStr}\n` +
       `• New Invoice No: ${nextInvNo}\n` +
+      `• Permanent Lock Rule: Current invoice (${invoiceNo}) and all previous month invoices will be permanently frozen with no changes or updates permitted.\n` +
       `• Roll Forward Rule: Current 'To-Date' amounts will lock into 'Preceding' history.\n` +
       `• Replaced Personnel: Predecessor records are permanently preserved in historical audit.\n` +
       `• Active Successors: Days worked resets to 0 for ${nextMonthName} attendance logging.`;
 
     if (!window.confirm(confirmMsg)) return;
+
+    // Calculate USD amounts if USD payments enabled
+    let feesAmountUsd = 0;
+    let reimbursableAmountUsd = 0;
+    let grossAmountUsd = 0;
+    let netAmountUsd = 0;
+
+    if (consultant.enableUsdPayments) {
+      const c1 = consultant.contractAmountSchedule?.condition1;
+      const c1ExchangeRate = Number(c1?.currencySplitExchangeRate || c1?.exchangeRate || 120);
+
+      staffRows.forEach(s => {
+        const qty = s.daysWorked > 0 ? Number((s.daysWorked / totalDaysInMonth).toFixed(2)) : 0;
+        const matchedC1 = (c1?.staffFees || []).find(
+          f => f.id === s.id || (f.name && f.name.toLowerCase().trim() === s.name.toLowerCase().trim()) || (f.position && f.position.toLowerCase().trim() === s.position.toLowerCase().trim())
+        );
+        let usdRateForStaff = 0;
+        if (matchedC1) {
+          if (matchedC1.splitType === 'fixed_amount' && matchedC1.fixedUsdRate !== undefined) {
+            usdRateForStaff = Number(matchedC1.fixedUsdRate) || 0;
+          } else if (matchedC1.usdPercentage && matchedC1.usdPercentage > 0) {
+            usdRateForStaff = Number(((s.rate * matchedC1.usdPercentage / 100) / (c1ExchangeRate || 120)).toFixed(2));
+          } else if (matchedC1.rateUsd) {
+            usdRateForStaff = Number(matchedC1.rateUsd) || 0;
+          }
+        }
+        feesAmountUsd += Number((qty * usdRateForStaff).toFixed(2));
+      });
+
+      reimbursableRows.forEach(r => {
+        const matchedReimb = (c1?.reimbursableList || []).find(
+          item => item.id === r.id || (item.item && item.item.toLowerCase().trim() === r.description.toLowerCase().trim())
+        );
+        let usdAmount = 0;
+        if (matchedReimb) {
+          if (matchedReimb.splitType === 'fixed_amount' && matchedReimb.fixedUsdAmount !== undefined) {
+            const ratio = (Number(matchedReimb.amountEtb) || 1) > 0 ? (r.thisInvoiceAmount / Number(matchedReimb.amountEtb)) : 1;
+            usdAmount = Number((matchedReimb.fixedUsdAmount * ratio).toFixed(2));
+          } else if (matchedReimb.usdPercentage && matchedReimb.usdPercentage > 0) {
+            usdAmount = Number(((r.thisInvoiceAmount * matchedReimb.usdPercentage / 100) / (c1ExchangeRate || 120)).toFixed(2));
+          } else if (matchedReimb.amountUsd) {
+            const ratio = (Number(matchedReimb.amountEtb) || 1) > 0 ? (r.thisInvoiceAmount / Number(matchedReimb.amountEtb)) : 1;
+            usdAmount = Number((matchedReimb.amountUsd * ratio).toFixed(2));
+          }
+        }
+        reimbursableAmountUsd += usdAmount;
+      });
+
+      grossAmountUsd = Number((feesAmountUsd + reimbursableAmountUsd).toFixed(2));
+      const advanceDeductionUsd = activeInvoice?.advanceDeductionUsd || 0;
+      const taxDeductionUsd = activeInvoice?.taxDeductionUsd || 0;
+      netAmountUsd = Number((grossAmountUsd - advanceDeductionUsd - taxDeductionUsd).toFixed(2));
+    }
+
+    const currentFinalPayment = (isPaymentLocked && savedPaymentAmount !== null) ? savedPaymentAmount : calculatedNetDueThisInvoice;
+
+    // 1. Build finalized outgoing current month invoice (permanently locked into ledger)
+    const finalizedCurrentInvoice: ConsultantInvoice = {
+      id: activeInvoice?.id || `inv_${Date.now()}`,
+      invoiceNo: invoiceNo.trim() || 'INV-01',
+      billingPeriod: `${billingMonth} ${billingYear}`.trim(),
+      submissionDate: submissionDate || new Date().toISOString().split('T')[0],
+      certificationDate: invoiceDate,
+      grossAmountEtb: grossPayableBase,
+      netAmountEtb: currentFinalPayment,
+      totalDueEtb: currentFinalPayment,
+      savedPaymentAmount: currentFinalPayment,
+      isPaymentSaved: true,
+      paymentLocked: true,
+      isPreviousInvoiceLocked: true,
+      vatAmountEtb: vatThisInvoice,
+      feesAmountEtb: subTotal1ThisInvoice,
+      reimbursableAmountEtb: subTotal2ThisInvoice,
+      advanceDeductionEtb: advanceDeductionEtb || 0,
+      taxDeductionEtb: taxDeductionEtb || 0,
+      overtimeEtb: overtimeEtb || 0,
+      overtimeDeductionEtb: overtimeDeductionEtb || 0,
+      grossAmountUsd: consultant.enableUsdPayments ? grossAmountUsd : undefined,
+      netAmountUsd: consultant.enableUsdPayments ? netAmountUsd : undefined,
+      foreignCurrencyAmount: consultant.enableUsdPayments ? netAmountUsd : undefined,
+      foreignCurrencyCode: consultant.enableUsdPayments ? 'USD' : undefined,
+      feesAmountUsd: consultant.enableUsdPayments ? feesAmountUsd : undefined,
+      reimbursableAmountUsd: consultant.enableUsdPayments ? reimbursableAmountUsd : undefined,
+      status: (status === 'Submitted' ? 'Certified' : status) as any,
+      paymentReference: paymentReference || undefined,
+      paymentDate: paymentDate || undefined,
+      remarks: remarks || `Computed from Attendance × Rate Tables. Synchronized with ledger and locked upon rolling forward to next month.`,
+      attendanceRecords: staffRows.map(s => {
+        const qty = s.daysWorked > 0 ? Number((s.daysWorked / totalDaysInMonth).toFixed(2)) : 0;
+        const thisAmount = Number((qty * s.rate).toFixed(2));
+        return {
+          id: s.id,
+          personnelId: s.id,
+          position: s.position,
+          name: s.name,
+          days: s.daysWorked,
+          daysWorked: s.daysWorked,
+          thisInvoiceQty: qty,
+          derivedMmInput: qty,
+          thisInvoiceAmount: thisAmount,
+          rate: s.rate,
+          contractQty: s.contractQty,
+          contractAmount: s.contractAmount,
+          precedingQty: s.precedingQty,
+          precedingAmount: s.precedingAmount,
+        };
+      }),
+      reimbursableRecords: reimbursableRows.map(r => ({
+        id: r.id,
+        description: r.description,
+        rate: r.rate,
+        thisInvoiceQty: r.thisInvoiceQty,
+        thisInvoiceAmount: r.thisInvoiceAmount,
+        precedingQty: r.precedingQty,
+        precedingAmount: r.precedingAmount,
+      })),
+      defectLiabilityRecords: defectRowsComputed.map(d => ({
+        id: d.id,
+        position: d.position,
+        unit: d.unit,
+        rate: d.rate,
+        contractQty: d.contractQty,
+        contractAmount: d.contractAmount,
+        thisInvoiceQty: d.thisInvoiceQty,
+        thisInvoiceAmount: d.computedThisAmount,
+        precedingQty: d.precedingQty,
+        precedingAmount: d.precedingAmount
+      })),
+      vatRate: vatRatePct,
+      contingencyRate: contingencyRatePct,
+      contingencyThisInvoiceClaim: contingencyThisInvoiceClaim,
+      contingencyThisInvoiceClaimUsd: contingencyThisInvoiceClaimUsd,
+      contingencyToDateEtb: contingencyToDate,
+      contingencyToDateUsd: contingencyToDateUsdValue,
+      clientName: clientName,
+      consultantFirmName: consultantFirm,
+      preparedBy,
+      checkedBy,
+      reviewedBy,
+      recommendedBy,
+      approvedBy,
+      bankDetails: {
+        bankName,
+        branch: bankBranch,
+        accountNo: bankAccountNo,
+      }
+    };
 
     // Roll forward staff rows
     const rolledStaffRows: EditableStaffRow[] = feeRowsComputed.map(r => ({
@@ -1703,9 +1895,9 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
     // At end of month: calculate assigned personnel man month input from invoice total to-date man month
     handleCalculatePersonnelMMFromInvoice(false);
 
-    // Build and automatically save the new month invoice
+    // 2. Build new month invoice
     const newMonthInvoice: ConsultantInvoice = {
-      id: `inv_${Date.now()}`,
+      id: `inv_${Date.now() + 1}`,
       invoiceNo: nextInvNo,
       billingPeriod: nextPeriodStr,
       submissionDate: new Date().toISOString().split('T')[0],
@@ -1719,6 +1911,9 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
       advanceDeductionEtb: 0,
       taxDeductionEtb: 0,
       status: 'Submitted',
+      isPaymentSaved: false,
+      paymentLocked: false,
+      isPreviousInvoiceLocked: false,
       remarks: `Rolled forward to ${nextPeriodStr}. Preceding cumulative records locked; active assigned personnel ready for attendance.`,
       attendanceRecords: rolledStaffRows.map(s => ({
         id: s.id,
@@ -1762,6 +1957,11 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
       contingencyToDateUsd: contingencyToDateUsdValue,
       clientName: clientName,
       consultantFirmName: consultantFirm,
+      preparedBy,
+      checkedBy,
+      reviewedBy,
+      recommendedBy,
+      approvedBy,
       bankDetails: {
         bankName,
         branch: bankBranch,
@@ -1769,8 +1969,14 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
       }
     };
 
-    onSaveInvoice(newMonthInvoice);
-    setSaveSuccessMsg(`Proceeded to ${nextMonthName}! New invoice ${nextInvNo} created. Assigned personnel MM inputs updated.`);
+    if (onProceedToNextMonth) {
+      onProceedToNextMonth(finalizedCurrentInvoice, newMonthInvoice);
+    } else {
+      onSaveInvoice(finalizedCurrentInvoice);
+      onSaveInvoice(newMonthInvoice);
+    }
+
+    setSaveSuccessMsg(`Proceeded to ${nextMonthName}! New invoice ${nextInvNo} created. Preceding invoice ${invoiceNo} permanently locked into ledger.`);
     setTimeout(() => setSaveSuccessMsg(null), 5000);
   };
 
@@ -1815,6 +2021,11 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
 
   // Synchronize and Save to Invoices Register
   const handleSaveAndSync = () => {
+    if (isPreviousInvoiceFrozen) {
+      alert('🔒 Invoice Frozen: Once an invoice is saved, synchronized with the ledger, and rolled forward to process next month, no changes or updates are permitted across all previous month invoices.');
+      return;
+    }
+
     // At the end of each month calculate the assigned personnel man month input from the invoice total to-date man month
     handleCalculatePersonnelMMFromInvoice(false);
 
@@ -1971,6 +2182,11 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
       contingencyToDateUsd: contingencyToDateUsdValue,
       clientName: clientName,
       consultantFirmName: consultantFirm,
+      preparedBy,
+      checkedBy,
+      reviewedBy,
+      recommendedBy,
+      approvedBy,
       bankDetails: {
         bankName,
         branch: bankBranch,
@@ -2797,14 +3013,15 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
 
       y += bankBoxH + (isCompactPdfMode ? 3 : 4);
 
-      // Official 4 Sign-Off Signatures Block
-      const signW = (contentWidth - 12) / 4;
+      // Official 5 Sign-Off Signatures Block
+      const signW = (contentWidth - 12) / 5;
       const signY = y + (isCompactPdfMode ? 1 : 2);
 
       const signees = [
         { title: 'PREPARED BY', name: preparedBy || 'Resident Engineer', role: 'Resident Engineer / Team Leader' },
         { title: 'CHECKED BY', name: checkedBy || 'Payment Officer', role: 'Payment & Valuation Officer' },
         { title: 'REVIEWED BY', name: reviewedBy || 'Lead Engineer', role: 'Lead Supervision Engineer' },
+        { title: 'RECOMMENDED BY', name: recommendedBy || 'Directorate Director', role: 'Supervision Directorate Director' },
         { title: 'CERTIFIED & APPROVED', name: approvedBy || 'Project Director', role: 'Director General / Project Director (ERA)' }
       ];
 
@@ -2838,6 +3055,35 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
 
   return (
     <div className="space-y-5 animate-in fade-in duration-200">
+      {/* Historical Previous Month Invoice Lock Notice Banner */}
+      {isPreviousInvoiceFrozen && (
+        <div className="bg-amber-50 dark:bg-amber-950/40 border-2 border-amber-400 dark:border-amber-700 p-4 rounded-3xl flex flex-col md:flex-row md:items-center justify-between gap-3 text-amber-900 dark:text-amber-200 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-2xl bg-amber-200 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300 shrink-0">
+              <ShieldCheck className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="font-bold text-sm flex items-center gap-2">
+                <span>Previous Month Invoice Permanently Frozen</span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-200/80 dark:bg-amber-900 text-amber-900 dark:text-amber-200 font-bold uppercase">Ledger Synchronized</span>
+              </div>
+              <div className="text-xs text-amber-800/90 dark:text-amber-300/90 mt-0.5">
+                Invoice <strong>{invoiceNo}</strong> ({billingMonth} {billingYear}) has been saved, synchronized with the financial ledger, and rolled forward to subsequent billing periods. In accordance with ERA contract administration regulations, no changes or updates are permitted across all previous month invoices.
+              </div>
+            </div>
+          </div>
+          {onBackToLedger && (
+            <button
+              type="button"
+              onClick={onBackToLedger}
+              className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs shrink-0 cursor-pointer"
+            >
+              Back to Invoices Ledger
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Top Banner & Header Information Bar */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-sm space-y-4">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800">
@@ -4930,15 +5176,16 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
               </div>
             </div>
 
-            {/* Project Verification & Certification Sign-Offs */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 text-xs pt-1">
+            {/* Project Verification & Certification Sign-Offs (Table 5) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 text-xs pt-1">
               <div className="bg-slate-50 dark:bg-slate-800/40 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-1.5">
                 <span className="text-[10px] uppercase font-bold text-slate-400 block">Prepared By:</span>
                 <input
                   type="text"
                   value={preparedBy}
+                  disabled={isPaymentLocked}
                   onChange={(e) => setPreparedBy(e.target.value)}
-                  className="w-full px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg font-bold text-xs"
+                  className="w-full px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg font-bold text-xs disabled:opacity-75 disabled:bg-slate-100 dark:disabled:bg-slate-800"
                 />
                 <span className="text-[10px] text-slate-500 block">Resident Engineer / Team Leader</span>
               </div>
@@ -4948,8 +5195,9 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                 <input
                   type="text"
                   value={checkedBy}
+                  disabled={isPaymentLocked}
                   onChange={(e) => setCheckedBy(e.target.value)}
-                  className="w-full px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg font-bold text-xs"
+                  className="w-full px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg font-bold text-xs disabled:opacity-75 disabled:bg-slate-100 dark:disabled:bg-slate-800"
                 />
                 <span className="text-[10px] text-slate-500 block">Payment & Valuation Officer</span>
               </div>
@@ -4959,10 +5207,23 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                 <input
                   type="text"
                   value={reviewedBy}
+                  disabled={isPaymentLocked}
                   onChange={(e) => setReviewedBy(e.target.value)}
-                  className="w-full px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg font-bold text-xs"
+                  className="w-full px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg font-bold text-xs disabled:opacity-75 disabled:bg-slate-100 dark:disabled:bg-slate-800"
                 />
                 <span className="text-[10px] text-slate-500 block">Lead Supervision Engineer</span>
+              </div>
+
+              <div className="bg-slate-50 dark:bg-slate-800/40 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-1.5">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block">Recommended By:</span>
+                <input
+                  type="text"
+                  value={recommendedBy}
+                  disabled={isPaymentLocked}
+                  onChange={(e) => setRecommendedBy(e.target.value)}
+                  className="w-full px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg font-bold text-xs disabled:opacity-75 disabled:bg-slate-100 dark:disabled:bg-slate-800"
+                />
+                <span className="text-[10px] text-slate-500 block">Supervision Directorate Director / Team Leader</span>
               </div>
 
               <div className="bg-slate-50 dark:bg-slate-800/40 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-1.5">
@@ -4970,8 +5231,9 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                 <input
                   type="text"
                   value={approvedBy}
+                  disabled={isPaymentLocked}
                   onChange={(e) => setApprovedBy(e.target.value)}
-                  className="w-full px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg font-bold text-xs"
+                  className="w-full px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg font-bold text-xs disabled:opacity-75 disabled:bg-slate-100 dark:disabled:bg-slate-800"
                 />
                 <span className="text-[10px] text-slate-500 block">Director General / Project Director (ERA)</span>
               </div>
@@ -4981,7 +5243,11 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
             <div className="pt-3 border-t border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="text-xs text-slate-500 flex items-center gap-1.5">
                 <Info className="w-4 h-4 text-blue-500 shrink-0" />
-                <span>Saving updates the project's Supervision Invoices register and synchronizes with the financial ledger.</span>
+                <span>
+                  {isPreviousInvoiceFrozen 
+                    ? "This previous month invoice is synchronized with the ledger and permanently frozen (no modifications permitted)."
+                    : "Saving updates the project's Supervision Invoices register and synchronizes with the financial ledger."}
+                </span>
               </div>
 
               <div className="flex items-center gap-2">
@@ -4995,15 +5261,22 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                   </button>
                 )}
 
-                <button
-                  type="button"
-                  onClick={handleProceedToNextMonth}
-                  className="px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md cursor-pointer"
-                  title="Proceed to next month, carry forward cumulative inputs into preceding totals, and preserve predecessor records"
-                >
-                  <FastForward className="w-4 h-4" />
-                  Proceed to Next Month
-                </button>
+                {isPreviousInvoiceFrozen ? (
+                  <span className="px-3 py-2 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-xl text-xs font-semibold flex items-center gap-1.5 border border-slate-200 dark:border-slate-700">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+                    Preceding Month (Rolled Forward)
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleProceedToNextMonth}
+                    className="px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md cursor-pointer"
+                    title="Proceed to next month, carry forward cumulative inputs into preceding totals, and preserve predecessor records"
+                  >
+                    <FastForward className="w-4 h-4" />
+                    Proceed to Next Month
+                  </button>
+                )}
 
                 <button
                   type="button"
@@ -5015,14 +5288,26 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                   Export Invoice PDF
                 </button>
 
-                <button
-                  type="button"
-                  onClick={handleSaveAndSync}
-                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-md cursor-pointer"
-                >
-                  <Save className="w-4 h-4" />
-                  Save & Synchronize Invoice with Ledger
-                </button>
+                {isPreviousInvoiceFrozen ? (
+                  <button
+                    type="button"
+                    disabled
+                    className="px-5 py-2.5 bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-not-allowed border border-slate-300 dark:border-slate-700"
+                    title="Previous month invoice is frozen and synchronized with the ledger. Audit policy prohibits changes to preceding billing periods."
+                  >
+                    <ShieldCheck className="w-4 h-4 text-amber-500" />
+                    Previous Month Locked (Read-Only)
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleSaveAndSync}
+                    className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-md cursor-pointer"
+                  >
+                    <Save className="w-4 h-4" />
+                    Save & Synchronize Invoice with Ledger
+                  </button>
+                )}
               </div>
             </div>
           </div>

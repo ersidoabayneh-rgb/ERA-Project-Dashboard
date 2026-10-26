@@ -28,7 +28,7 @@ export function safeSetItem(key: string, value: string): void {
     if (typeof window !== 'undefined') {
       setTimeout(() => {
         safeDispatchCustomEvent('local_project_mutated', { key });
-        if ('BroadcastChannel' in window) {
+        if (typeof window.BroadcastChannel === 'function') {
           try {
             const bc = new BroadcastChannel('era_frontend_sync');
             bc.postMessage({ type: 'storage_update', key });

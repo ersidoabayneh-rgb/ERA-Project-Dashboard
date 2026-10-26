@@ -57,7 +57,8 @@ import {
   Calculator,
   Link,
   ExternalLink,
-  Info
+  Info,
+  History
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { drawEraLogo } from '../lib/pdfReportEngine';

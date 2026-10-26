@@ -1859,6 +1859,15 @@ export default function SupervisionConsultantView({
   // Immediate Inline Table Field Updation & Persistence
   const handleUpdateInlineInvoiceField = (invId: string, field: keyof ConsultantInvoice, value: any) => {
     const currentList = consultant.invoices || [];
+    const target = currentList.find(i => i.id === invId);
+    if (target && (target.isPreviousInvoiceLocked || (target.isPaymentSaved && target.paymentLocked))) {
+      if (field === 'paymentReference' || field === 'paymentDate' || (field === 'status' && (value === 'Paid' || value === 'Certified'))) {
+        // permitted metadata tracking (wire ref / payment date)
+      } else {
+        alert('🔒 Previous Month Invoice Frozen: Once an invoice is saved, synchronized with the ledger, and rolled forward to process next month, no changes or updates are permitted across all previous month invoices.');
+        return;
+      }
+    }
     const updatedList = currentList.map(inv => {
       if (inv.id === invId) {
         const updated = { ...inv, [field]: value };
@@ -2050,6 +2059,11 @@ export default function SupervisionConsultantView({
   const handleDeleteInvoice = (invId: string, invNo: string) => {
     if (!isAdmin) {
       alert('Access Denied: Only administrators have the permission to delete invoices.');
+      return;
+    }
+    const target = (consultant.invoices || []).find(item => item.id === invId);
+    if (target && (target.isPreviousInvoiceLocked || target.paymentLocked || target.isPaymentSaved)) {
+      alert(`Cannot delete invoice "${invNo}": This previous month invoice has been saved and synchronized with the ledger. In accordance with ERA contract audit policy, no changes or deletions are permitted across preceding month invoices.`);
       return;
     }
     if (!window.confirm(`Are you sure you want to delete invoice "${invNo}"?`)) {
@@ -2598,13 +2612,14 @@ export default function SupervisionConsultantView({
         y = margin + 52;
       }
 
-      const signW = (contentWidth - 12) / 4;
+      const signW = (contentWidth - 12) / 5;
       const signY = Math.min(y + 8, pageHeight - margin - 50);
 
       const roles = [
         { title: 'PREPARED BY', name: 'Resident Engineer', sub: 'Supervision Consultant' },
         { title: 'CHECKED BY', name: 'Valuation & Payment Officer', sub: 'ERA Financial Directorate' },
         { title: 'REVIEWED BY', name: 'Lead Supervision Engineer', sub: 'ERA Directorate' },
+        { title: 'RECOMMENDED BY', name: 'Directorate Director', sub: 'Supervision Directorate' },
         { title: 'CERTIFIED & APPROVED', name: 'Project Director', sub: 'Ethiopian Roads Admin' }
       ];
 
@@ -2943,7 +2958,7 @@ export default function SupervisionConsultantView({
             <div className="bg-amber-50 dark:bg-amber-950/40 border-2 border-amber-400 dark:border-amber-700 p-4 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-3 text-amber-900 dark:text-amber-200 shadow-sm">
               <div className="flex items-center gap-3">
                 <div className="p-2.5 rounded-xl bg-amber-200 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300 shrink-0">
-                  <Lock className="w-5 h-5" />
+                  <ShieldCheck className="w-5 h-5" />
                 </div>
                 <div>
                   <div className="font-bold text-sm flex items-center gap-2">
@@ -4309,6 +4324,40 @@ export default function SupervisionConsultantView({
                 }, `Saved Monthly Supervision Invoice ${computedInvoice.invoiceNo} calculated from Attendance & Multiplication Tables`);
                 setSelectedInvoiceForPdfModal(computedInvoice);
               }}
+              onProceedToNextMonth={(currentLockedInvoice, newMonthInvoice) => {
+                const currentList = consultant.invoices || [];
+                // Permanently freeze all previous invoices in ledger history
+                const updatedList = currentList.map(inv => {
+                  if (inv.invoiceNo === currentLockedInvoice.invoiceNo || inv.id === currentLockedInvoice.id) {
+                    return {
+                      ...currentLockedInvoice,
+                      isPreviousInvoiceLocked: true,
+                      isPaymentSaved: true,
+                      paymentLocked: true
+                    };
+                  }
+                  return {
+                    ...inv,
+                    isPreviousInvoiceLocked: true,
+                    paymentLocked: true,
+                    isPaymentSaved: true
+                  };
+                });
+                if (!updatedList.some(inv => inv.id === currentLockedInvoice.id || inv.invoiceNo === currentLockedInvoice.invoiceNo)) {
+                  updatedList.unshift({
+                    ...currentLockedInvoice,
+                    isPreviousInvoiceLocked: true,
+                    isPaymentSaved: true,
+                    paymentLocked: true
+                  });
+                }
+                const finalList = [newMonthInvoice, ...updatedList];
+                saveConsultantData({
+                  ...consultant,
+                  invoices: finalList
+                }, `Processed next month invoice ${newMonthInvoice.invoiceNo} and permanently locked previous month invoice ${currentLockedInvoice.invoiceNo} in ledger`);
+                setSelectedInvoiceForPdfModal(newMonthInvoice);
+              }}
               onUpdateConsultantPersonnel={(updatedPersonnel) => {
                 saveConsultantData({
                   ...consultant,
@@ -4454,13 +4503,22 @@ export default function SupervisionConsultantView({
 
                         {!isReadonly && (
                           <div className="flex items-center gap-1">
-                            <button
-                              onClick={() => handleDeleteInvoice(inv.id, inv.invoiceNo)}
-                              title="Delete invoice"
-                              className="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30 text-rose-600 dark:text-rose-400 transition cursor-pointer"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                            {inv.isPreviousInvoiceLocked || inv.paymentLocked || inv.isPaymentSaved ? (
+                              <span 
+                                title="Previous month invoice is saved, rolled forward, and permanently frozen"
+                                className="p-1.5 text-slate-400 dark:text-slate-500 inline-flex items-center"
+                              >
+                                <ShieldCheck className="w-3.5 h-3.5 text-slate-400" />
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => handleDeleteInvoice(inv.id, inv.invoiceNo)}
+                                title="Delete invoice"
+                                className="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30 text-rose-600 dark:text-rose-400 transition cursor-pointer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                           </div>
                         )}
                       </div>
@@ -4691,30 +4749,53 @@ export default function SupervisionConsultantView({
 
                         // INLINE EDITABLE ROW
                         if (isInlineTableEdit && !isReadonly) {
+                          const isRowLocked = Boolean(inv.isPreviousInvoiceLocked || inv.paymentLocked || inv.isPaymentSaved || inv.status === 'Paid');
                           return (
-                            <tr key={inv.id} className="bg-amber-50/20 dark:bg-amber-950/10 hover:bg-amber-50/40 transition">
+                            <tr key={inv.id} className={`${isRowLocked ? 'bg-slate-100/40 dark:bg-slate-800/20' : 'bg-amber-50/20 dark:bg-amber-950/10'} hover:bg-amber-50/40 transition`}>
                               <td className="py-2.5 px-3">
-                                <input
-                                  type="text"
-                                  value={inv.invoiceNo}
-                                  onChange={(e) => handleUpdateInlineInvoiceField(inv.id, 'invoiceNo', e.target.value)}
-                                  className="w-full px-2 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg font-mono font-bold text-xs"
-                                />
+                                <div className="flex items-center gap-1.5">
+                                  <input
+                                    type="text"
+                                    value={inv.invoiceNo}
+                                    disabled={isRowLocked}
+                                    onChange={(e) => handleUpdateInlineInvoiceField(inv.id, 'invoiceNo', e.target.value)}
+                                    className={`w-full px-2 py-1 rounded-lg font-mono font-bold text-xs ${
+                                      isRowLocked 
+                                        ? 'bg-slate-100 dark:bg-slate-800/60 text-slate-500 border border-slate-200 dark:border-slate-700 cursor-not-allowed opacity-75' 
+                                        : 'bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700'
+                                    }`}
+                                  />
+                                  {isRowLocked && (
+                                    <span title="Previous month invoice frozen and synchronized with ledger">
+                                      <ShieldCheck className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                                    </span>
+                                  )}
+                                </div>
                               </td>
                               <td className="py-2.5 px-3">
                                 <input
                                   type="text"
                                   value={inv.billingPeriod}
+                                  disabled={isRowLocked}
                                   onChange={(e) => handleUpdateInlineInvoiceField(inv.id, 'billingPeriod', e.target.value)}
-                                  className="w-full px-2 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg font-sans text-xs"
+                                  className={`w-full px-2 py-1 rounded-lg font-sans text-xs ${
+                                    isRowLocked 
+                                      ? 'bg-slate-100 dark:bg-slate-800/60 text-slate-500 border border-slate-200 dark:border-slate-700 cursor-not-allowed opacity-75' 
+                                      : 'bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700'
+                                  }`}
                                 />
                               </td>
                               <td className="py-2.5 px-3">
                                 <input
                                   type="date"
                                   value={inv.submissionDate || ''}
+                                  disabled={isRowLocked}
                                   onChange={(e) => handleUpdateInlineInvoiceField(inv.id, 'submissionDate', e.target.value)}
-                                  className="w-full px-2 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg font-mono text-xs"
+                                  className={`w-full px-2 py-1 rounded-lg font-mono text-xs ${
+                                    isRowLocked 
+                                      ? 'bg-slate-100 dark:bg-slate-800/60 text-slate-500 border border-slate-200 dark:border-slate-700 cursor-not-allowed opacity-75' 
+                                      : 'bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700'
+                                  }`}
                                 />
                               </td>
                               <td className="py-2.5 px-2 text-center font-mono text-[11px] text-slate-500">
@@ -4724,8 +4805,13 @@ export default function SupervisionConsultantView({
                                 <input
                                   type="number"
                                   value={inv.grossAmountEtb || 0}
+                                  disabled={isRowLocked}
                                   onChange={(e) => handleUpdateInlineInvoiceField(inv.id, 'grossAmountEtb', parseFloat(e.target.value) || 0)}
-                                  className="w-28 text-right px-2 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg font-mono font-bold text-xs"
+                                  className={`w-28 text-right px-2 py-1 rounded-lg font-mono font-bold text-xs ${
+                                    isRowLocked 
+                                      ? 'bg-slate-100 dark:bg-slate-800/60 text-slate-500 border border-slate-200 dark:border-slate-700 cursor-not-allowed opacity-75' 
+                                      : 'bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700'
+                                  }`}
                                 />
                               </td>
                               {hasUsdPayments && (
@@ -4734,8 +4820,13 @@ export default function SupervisionConsultantView({
                                     type="number"
                                     step="0.01"
                                     value={inv.grossAmountUsd || 0}
+                                    disabled={isRowLocked}
                                     onChange={(e) => handleUpdateInlineInvoiceField(inv.id, 'grossAmountUsd', parseFloat(e.target.value) || 0)}
-                                    className="w-24 text-right px-2 py-1 bg-white dark:bg-slate-800 border border-purple-300 dark:border-purple-700 rounded-lg font-mono text-purple-700 dark:text-purple-300 font-bold text-xs"
+                                    className={`w-24 text-right px-2 py-1 rounded-lg font-mono font-bold text-xs ${
+                                      isRowLocked 
+                                        ? 'bg-slate-100 dark:bg-slate-800/60 text-slate-400 border border-slate-200 dark:border-slate-700 cursor-not-allowed opacity-75' 
+                                        : 'bg-white dark:bg-slate-800 border border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-300'
+                                    }`}
                                     placeholder="0.00 USD"
                                   />
                                 </td>
@@ -4744,8 +4835,13 @@ export default function SupervisionConsultantView({
                                 <input
                                   type="number"
                                   value={inv.advanceDeductionEtb || 0}
+                                  disabled={isRowLocked}
                                   onChange={(e) => handleUpdateInlineInvoiceField(inv.id, 'advanceDeductionEtb', parseFloat(e.target.value) || 0)}
-                                  className="w-24 text-right px-2 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg font-mono text-rose-600 text-xs"
+                                  className={`w-24 text-right px-2 py-1 rounded-lg font-mono text-xs ${
+                                    isRowLocked 
+                                      ? 'bg-slate-100 dark:bg-slate-800/60 text-slate-400 border border-slate-200 dark:border-slate-700 cursor-not-allowed opacity-75' 
+                                      : 'bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-rose-600'
+                                  }`}
                                 />
                               </td>
                               {hasUsdPayments && (
@@ -4754,8 +4850,13 @@ export default function SupervisionConsultantView({
                                     type="number"
                                     step="0.01"
                                     value={inv.advanceDeductionUsd || 0}
+                                    disabled={isRowLocked}
                                     onChange={(e) => handleUpdateInlineInvoiceField(inv.id, 'advanceDeductionUsd', parseFloat(e.target.value) || 0)}
-                                    className="w-24 text-right px-2 py-1 bg-white dark:bg-slate-800 border border-rose-300 dark:border-rose-700 rounded-lg font-mono text-rose-600 text-xs"
+                                    className={`w-24 text-right px-2 py-1 rounded-lg font-mono text-xs ${
+                                      isRowLocked 
+                                        ? 'bg-slate-100 dark:bg-slate-800/60 text-slate-400 border border-slate-200 dark:border-slate-700 cursor-not-allowed opacity-75' 
+                                        : 'bg-white dark:bg-slate-800 border border-rose-300 dark:border-rose-700 text-rose-600'
+                                    }`}
                                     placeholder="0.00 USD"
                                   />
                                 </td>
@@ -4764,11 +4865,11 @@ export default function SupervisionConsultantView({
                                 <input
                                   type="number"
                                   value={inv.netAmountEtb || 0}
-                                  disabled={Boolean(inv.isPaymentSaved || inv.paymentLocked || inv.status === 'Paid')}
+                                  disabled={isRowLocked}
                                   onChange={(e) => handleUpdateInlineInvoiceField(inv.id, 'netAmountEtb', parseFloat(e.target.value) || 0)}
-                                  title={inv.isPaymentSaved || inv.paymentLocked || inv.status === 'Paid' ? "Payment saved: no change permitted on payment amount" : "Net amount payable (minus VAT)"}
+                                  title={isRowLocked ? "Payment saved: no change permitted on payment amount" : "Net amount payable (minus VAT)"}
                                   className={`w-28 text-right px-2 py-1 rounded-lg font-mono font-black text-xs ${
-                                    inv.isPaymentSaved || inv.paymentLocked || inv.status === 'Paid'
+                                    isRowLocked
                                       ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed opacity-75 border border-slate-200 dark:border-slate-700'
                                       : 'bg-white dark:bg-slate-800 border border-emerald-300 dark:border-emerald-700 text-emerald-600'
                                   }`}
@@ -4780,12 +4881,17 @@ export default function SupervisionConsultantView({
                                     type="number"
                                     step="0.01"
                                     value={inv.netAmountUsd || inv.foreignCurrencyAmount || 0}
+                                    disabled={isRowLocked}
                                     onChange={(e) => {
                                       const val = parseFloat(e.target.value) || 0;
                                       handleUpdateInlineInvoiceField(inv.id, 'netAmountUsd', val);
                                       handleUpdateInlineInvoiceField(inv.id, 'foreignCurrencyAmount', val);
                                     }}
-                                    className="w-24 text-right px-2 py-1 bg-white dark:bg-slate-800 border border-purple-300 dark:border-purple-700 rounded-lg font-mono text-purple-600 dark:text-purple-300 font-bold text-xs"
+                                    className={`w-24 text-right px-2 py-1 rounded-lg font-mono font-bold text-xs ${
+                                      isRowLocked 
+                                        ? 'bg-slate-100 dark:bg-slate-800/60 text-slate-400 border border-slate-200 dark:border-slate-700 cursor-not-allowed opacity-75' 
+                                        : 'bg-white dark:bg-slate-800 border border-purple-300 dark:border-purple-700 text-purple-600 dark:text-purple-300'
+                                    }`}
                                     placeholder="0.00 USD"
                                   />
                                 </td>
@@ -4793,6 +4899,7 @@ export default function SupervisionConsultantView({
                               <td className="py-2.5 px-3 text-center">
                                 <select
                                   value={inv.status}
+                                  disabled={isRowLocked && inv.status === 'Paid'}
                                   onChange={(e) => handleUpdateInlineInvoiceField(inv.id, 'status', e.target.value)}
                                   className="w-full px-2 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg font-bold text-xs"
                                 >
@@ -4822,13 +4929,19 @@ export default function SupervisionConsultantView({
                                     <Calculator className="w-3 h-3" />
                                     Tables
                                   </button>
-                                  <button
-                                    onClick={() => handleDeleteInvoice(inv.id, inv.invoiceNo)}
-                                    title="Delete invoice"
-                                    className="p-1 rounded-lg hover:bg-rose-50 text-rose-600 transition cursor-pointer"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
+                                  {isRowLocked ? (
+                                    <span title="Previous month invoice synchronized with ledger cannot be deleted (policy enforced)" className="p-1 rounded-lg text-slate-300 dark:text-slate-600 cursor-not-allowed">
+                                      <Trash2 className="w-3.5 h-3.5 opacity-30" />
+                                    </span>
+                                  ) : (
+                                    <button
+                                      onClick={() => handleDeleteInvoice(inv.id, inv.invoiceNo)}
+                                      title="Delete invoice"
+                                      className="p-1 rounded-lg hover:bg-rose-50 text-rose-600 transition cursor-pointer"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
                                 </div>
                               </td>
                             </tr>
@@ -4921,18 +5034,27 @@ export default function SupervisionConsultantView({
                                 <div className="flex items-center justify-end gap-1">
                                   <button
                                     onClick={() => handleOpenEditInvoice(inv)}
-                                    title="Calculate and view invoice tables"
+                                    title={inv.isPreviousInvoiceLocked ? "View frozen invoice tables (read-only)" : "Calculate and view invoice tables"}
                                     className="p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950/30 text-blue-600 dark:text-blue-400 transition cursor-pointer"
                                   >
                                     <Calculator className="w-3.5 h-3.5" />
                                   </button>
-                                  <button
-                                    onClick={() => handleDeleteInvoice(inv.id, inv.invoiceNo)}
-                                    title="Delete invoice"
-                                    className="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30 text-rose-600 dark:text-rose-400 transition cursor-pointer"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
+                                  {inv.isPreviousInvoiceLocked || inv.paymentLocked || inv.isPaymentSaved ? (
+                                    <span
+                                      title="Previous month invoice is frozen and immutable"
+                                      className="p-1.5 text-slate-400 dark:text-slate-500 inline-flex items-center"
+                                    >
+                                      <ShieldCheck className="w-3.5 h-3.5 text-slate-400" />
+                                    </span>
+                                  ) : (
+                                    <button
+                                      onClick={() => handleDeleteInvoice(inv.id, inv.invoiceNo)}
+                                      title="Delete invoice"
+                                      className="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30 text-rose-600 dark:text-rose-400 transition cursor-pointer"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
                                 </div>
                               ) : (
                                 <span className="text-slate-400 text-xs">-</span>

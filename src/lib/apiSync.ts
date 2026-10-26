@@ -436,7 +436,7 @@ export async function safeDeleteProject(id: string, projectName?: string, delete
   safeDispatchCustomEvent('project_globally_deleted', { id, projectName });
   if (typeof window !== 'undefined') {
     try {
-      if ('BroadcastChannel' in window) {
+      if (typeof window.BroadcastChannel === 'function') {
         const bc = new BroadcastChannel('era_broadcast_channel');
         bc.postMessage({ type: 'PROJECT_DELETED', id, projectName, timestamp: Date.now() });
         bc.close();

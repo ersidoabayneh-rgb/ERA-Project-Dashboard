@@ -909,6 +909,12 @@ export interface ConsultantInvoice {
   isPaymentSaved?: boolean;
   paymentLocked?: boolean;
   savedPaymentAmount?: number;
+  isPreviousInvoiceLocked?: boolean;
+  preparedBy?: string;
+  checkedBy?: string;
+  reviewedBy?: string;
+  recommendedBy?: string;
+  approvedBy?: string;
 }
 
 export interface HistoricalSupervisionConsultant {

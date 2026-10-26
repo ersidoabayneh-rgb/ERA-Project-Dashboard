@@ -169,53 +169,84 @@ export const ContractAmountTab: React.FC<Props> = ({
   const [activeTableTab, setActiveTableTab] = useState<'all' | 'summary' | 'construction' | 'dlp' | 'reimbursable' | 'currency_split'>('all');
   const [isSplitSettingsOpen, setIsSplitSettingsOpen] = useState(false);
 
-  const isLocked = false;
-  const effectiveReadonly = isReadonly;
+  const isMasterAdmin = useMemo(() => {
+    if (!currentUser) return false;
+    const role = (currentUser.role || '').toLowerCase().trim();
+    const username = (currentUser.username || '').toLowerCase().trim();
+    const email = (currentUser.email || '').toLowerCase().trim();
+    return (
+      role === 'master_admin' ||
+      role === 'master admin' ||
+      role === 'admin' ||
+      username === 'proj_1781786415663' ||
+      username.includes('ersido') ||
+      email.includes('ersido')
+    );
+  }, [currentUser]);
+
+  const canLockContract = useMemo(() => {
+    if (!currentUser) return false;
+    const role = (currentUser.role || '').toLowerCase().trim();
+    return (
+      isMasterAdmin ||
+      role === 'directorate_admin' ||
+      role === 'directorate admin' ||
+      role === 'cpm_admin' ||
+      role === 'cpm admin'
+    );
+  }, [currentUser, isMasterAdmin]);
+
+  const isLocked = Boolean(project.isAmountLocked || c1Data.isLocked || consultant.isContractLocked);
+  const effectiveReadonly = isReadonly || isLocked;
 
   const handleToggleLockContract = () => {
     if (isLocked) {
-      alert('🔒 Contract Data Locked Policy: Once locked, no changes can be made anywhere on Contract Data until a new assignment of Supervision Consultant occurs. Please proceed to Service History to assign a new or continuation Supervision Consultant.');
+      if (!isMasterAdmin) {
+        alert('🔒 Contract Data Locked Policy: Once validated and locked by Directorate Admin or Master Admin, modifications are frozen. Only Master Admin has privileges to unlock or revert validation.');
+        return;
+      }
+      // Master Admin unlocking / reverting validation
+      const updatedC1: ContractCondition1Data = {
+        ...c1Data,
+        isLocked: false,
+        validatedAt: undefined,
+        validatedBy: undefined
+      };
+      setC1Data(updatedC1);
+      if (onUpdateProject && consultant) {
+        onUpdateProject({
+          isAmountLocked: false,
+          supervisionConsultant: {
+            ...consultant,
+            isContractLocked: false,
+            contractAmountSchedule: {
+              ...consultant.contractAmountSchedule,
+              condition1: updatedC1
+            }
+          }
+        }, 'Unlocked and reverted Supervision Consultant contract data validation by Master Admin');
+      }
+      return;
+    }
+
+    if (!canLockContract) {
+      alert('You do not have permission to validate and lock contract data.');
       return;
     }
 
     const justification = window.prompt(
-      'Please provide justification comment for officially locking Supervision Consultant contract data (no further modifications will be permitted until a new consultant is assigned):',
-      'Contract amount, staffing remuneration rates, reimbursables, and baseline figures officially validated and locked per ERA standards.'
-    ) || 'Official contract validation and lock per ERA standards.';
+      'Please provide justification comment for officially validating and locking Supervision Consultant contract data (no further modifications will be permitted unless reverted by Master Admin):',
+      'Contract amount, staffing remuneration rates, reimbursables, and baseline figures officially validated and locked by Directorate Admin.'
+    ) || 'Official contract validation and lock.';
 
     const updatedC1: ContractCondition1Data = {
       ...c1Data,
       isLocked: true,
       lockJustification: justification,
       validatedAt: new Date().toISOString(),
-      validatedBy: currentUser?.username || 'Master/Directorate Admin'
+      validatedBy: currentUser?.username || 'Directorate Admin'
     };
     setC1Data(updatedC1);
-
-    // Log in Workflow Audit Log
-    try {
-      const existingLogsStr = localStorage.getItem('era_workflow_audit_logs_v1');
-      const logs = existingLogsStr ? JSON.parse(existingLogsStr) : [];
-      const auditEntry = {
-        id: 'audit_' + Date.now(),
-        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
-        action: 'CONTRACT_DATA_OFFICIALLY_LOCKED',
-        draftId: 'lock_' + project.id,
-        projectId: project.id,
-        projectName: project.name,
-        section: 'Supervision Consultant - Contract Data',
-        actor: currentUser?.username || 'Master/Directorate Admin',
-        actorRole: currentUser?.role || 'master_admin',
-        details: 'Supervision Consultant contract data locked by Master/Directorate Admin (Enforced until new Supervision Consultant assignment)',
-        comments: justification,
-        ipAddress: '127.0.0.1',
-        deviceInfo: navigator.userAgent.substring(0, 50)
-      };
-      logs.unshift(auditEntry);
-      localStorage.setItem('era_workflow_audit_logs_v1', JSON.stringify(logs));
-    } catch (err) {
-      console.error('Failed to log workflow audit entry:', err);
-    }
 
     if (onUpdateProject && consultant) {
       onUpdateProject({
@@ -228,7 +259,7 @@ export const ContractAmountTab: React.FC<Props> = ({
             condition1: updatedC1
           }
         }
-      }, `Officially locked Supervision Consultant contract data. Justification: ${justification}`);
+      }, `Officially validated and locked Supervision Consultant contract data by Directorate/Master Admin. Justification: ${justification}`);
     }
   };
 
@@ -1007,6 +1038,29 @@ export const ContractAmountTab: React.FC<Props> = ({
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-8 max-w-7xl mx-auto">
+      {canLockContract && (
+        <div className={`p-4 rounded-3xl border flex flex-col md:flex-row md:items-center justify-between gap-4 ${
+          isLocked 
+            ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 shadow-xs' 
+            : 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200 shadow-xs'
+        }`}>
+          <div className="flex items-center gap-3">
+            <div className={`p-2.5 rounded-2xl ${isLocked ? 'bg-amber-200 text-amber-800' : 'bg-emerald-200 text-emerald-800'}`}>
+              {isLocked ? <Lock className="w-5 h-5" /> : <Unlock className="w-5 h-5" />}
+            </div>
+            <div>
+              <h4 className="font-bold text-sm">
+                {isLocked ? 'Contract Data is VALIDATED and LOCKED' : 'Contract Data Entry is Open for Edits & Validation'}
+              </h4>
+              <p className="text-xs opacity-90">
+                {isLocked 
+                  ? `Validated and locked by ${c1Data.validatedBy || 'Directorate Admin'}. Modifications are frozen. Only Master Admin can revert/unlock.`
+                  : 'Data entry is open. Directorate Admin or Master Admin can validate and lock contract data.'}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
 
       {/* Top Header Banner: Dual Currency Switchable */}
@@ -1064,6 +1118,29 @@ export const ContractAmountTab: React.FC<Props> = ({
 
         {/* Global Action Bar */}
         <div className="flex flex-wrap items-center gap-2.5">
+          {canLockContract && (
+            <button
+              type="button"
+              onClick={handleToggleLockContract}
+              className={`px-4 py-2 text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-xs border cursor-pointer ${
+                isLocked
+                  ? (isMasterAdmin ? 'bg-rose-600 hover:bg-rose-700 text-white border-rose-700 shadow-sm' : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-300 dark:border-slate-700 cursor-not-allowed')
+                  : 'bg-amber-500 hover:bg-amber-600 text-white border-amber-600 shadow-sm'
+              }`}
+              title={
+                isLocked
+                  ? (isMasterAdmin ? "Unlock and revert validation (Master Admin privilege)" : "Contract data validated & locked by Directorate Admin. Only Master Admin can revert.")
+                  : "Officially validate and lock contract data (freezes edits)"
+              }
+            >
+              <Lock className="w-4 h-4" />
+              <span>
+                {isLocked
+                  ? (isMasterAdmin ? '🔓 Unlock / Revert Validation (Master Admin)' : '🔒 Locked & Validated (Master Admin Revert)')
+                  : '🔒 Validate & Lock Contract Data'}
+              </span>
+            </button>
+          )}
 
 
           {isLocked && onNavigateToHistory && (

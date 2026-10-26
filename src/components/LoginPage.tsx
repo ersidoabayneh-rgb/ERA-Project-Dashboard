@@ -77,7 +77,7 @@ export default function LoginPage({ onLoginSuccess, getUsers, saveUsers }: Login
   // Listen for real-time Master Admin approval cross-tab / cross-window
   useEffect(() => {
     let bc: BroadcastChannel | null = null;
-    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+    if (typeof window !== 'undefined' && typeof window.BroadcastChannel === 'function') {
       try {
         bc = new BroadcastChannel('era_frontend_sync');
         bc.onmessage = (event) => {
@@ -128,7 +128,7 @@ export default function LoginPage({ onLoginSuccess, getUsers, saveUsers }: Login
     safeDispatchCustomEvent('new_user_registered', updatedUser);
 
     // 4. Broadcast across tabs and windows
-    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+    if (typeof window !== 'undefined' && typeof window.BroadcastChannel === 'function') {
       try {
         const bc = new BroadcastChannel('era_frontend_sync');
         bc.postMessage({ type: 'USER_SIGNIN_APPROVAL_REQUESTED', user: updatedUser });
@@ -322,7 +322,7 @@ export default function LoginPage({ onLoginSuccess, getUsers, saveUsers }: Login
     safeDispatchCustomEvent('new_user_registered', newUser);
     safeDispatchCustomEvent('user_requested_signin_approval', newUser);
 
-    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+    if (typeof window !== 'undefined' && typeof window.BroadcastChannel === 'function') {
       try {
         const bc = new BroadcastChannel('era_frontend_sync');
         bc.postMessage({ type: 'USER_REGISTRATION_SUBMITTED', user: newUser });
