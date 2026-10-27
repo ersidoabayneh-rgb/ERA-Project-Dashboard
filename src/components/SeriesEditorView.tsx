@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Database, Plus, Trash2, ArrowUpRight, Calculator, Coins, Milestone, Shield, BarChart2, DollarSign, Save, RotateCcw, Check, AlertCircle, CheckCircle2, Send } from 'lucide-react';
+import { Database, Plus, Trash2, ArrowUpRight, Calculator, Coins, Milestone, Shield, BarChart2, DollarSign, Save, RotateCcw, Check, AlertCircle, AlertTriangle, CheckCircle2, Send } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { Project, SeriesItem, IpcItem, PaymentItem, AnnualItem, formatAccounting } from '../types';
 import { MILLION } from '../data/defaultProject';
@@ -12,9 +12,11 @@ interface AmountInputProps {
   onChange: (v: number) => void;
   readOnly?: boolean;
   className?: string;
+  hasError?: boolean;
+  hasWarning?: boolean;
 }
 
-function AmountInput({ value, onChange, readOnly = false, className = '' }: AmountInputProps) {
+function AmountInput({ value, onChange, readOnly = false, className = '', hasError = false, hasWarning = false }: AmountInputProps) {
   const [isFocused, setIsFocused] = useState(false);
   const [localVal, setLocalVal] = useState('');
 
@@ -44,6 +46,12 @@ function AmountInput({ value, onChange, readOnly = false, className = '' }: Amou
     onChange(isNaN(parsed) ? 0 : parsed);
   };
 
+  const borderClass = hasError
+    ? 'border border-rose-500 text-rose-600 bg-rose-50/50 dark:bg-rose-950/40'
+    : hasWarning
+    ? 'border border-amber-400 text-amber-700 bg-amber-50/40 dark:bg-amber-950/30'
+    : '';
+
   if (!isFocused) {
     const formatMoney = (v: number) => formatAccounting(v, '');
     return (
@@ -52,7 +60,7 @@ function AmountInput({ value, onChange, readOnly = false, className = '' }: Amou
         value={numVal === 0 ? '-' : formatMoney(numVal)}
         onFocus={handleFocus}
         readOnly
-        className={`${className} cursor-pointer hover:bg-slate-100/50 dark:hover:bg-slate-900/30 rounded px-1 transition-all outline-none`}
+        className={`${className} ${borderClass} cursor-pointer hover:bg-slate-100/50 dark:hover:bg-slate-900/30 rounded px-1 transition-all outline-none`}
       />
     );
   }
@@ -65,7 +73,7 @@ function AmountInput({ value, onChange, readOnly = false, className = '' }: Amou
       value={localVal}
       onChange={handleChange}
       onBlur={handleBlur}
-      className={`${className} focus:ring-1 focus:ring-emerald-500 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 rounded px-1 py-0.5 outline-none`}
+      className={`${className} ${borderClass} focus:ring-1 focus:ring-emerald-500 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 rounded px-1 py-0.5 outline-none`}
     />
   );
 }
@@ -77,9 +85,11 @@ interface EditableCurrencyCellProps {
   placeholder?: string;
   className?: string;
   disabled?: boolean;
+  hasError?: boolean;
+  hasWarning?: boolean;
 }
 
-function EditableCurrencyCell({ value, onChange, placeholder = '0.00', className = '', disabled = false }: EditableCurrencyCellProps) {
+function EditableCurrencyCell({ value, onChange, placeholder = '0.00', className = '', disabled = false, hasError = false, hasWarning = false }: EditableCurrencyCellProps) {
   const [isFocused, setIsFocused] = useState(false);
   const [rawText, setRawText] = useState<string>(value !== undefined && value !== null ? String(value) : '');
 
@@ -111,6 +121,12 @@ function EditableCurrencyCell({ value, onChange, placeholder = '0.00', className
     setRawText(String(finalVal));
   };
 
+  const borderClass = hasError
+    ? '!border-rose-500 !text-rose-600 dark:!text-rose-400 !bg-rose-50/50 dark:!bg-rose-950/40'
+    : hasWarning
+    ? '!border-amber-400 !text-amber-700 dark:!text-amber-300 !bg-amber-50/40 dark:!bg-amber-950/30'
+    : '';
+
   return (
     <input
       type="text"
@@ -120,7 +136,7 @@ function EditableCurrencyCell({ value, onChange, placeholder = '0.00', className
       onChange={handleChange}
       onBlur={handleBlur}
       placeholder={placeholder}
-      className={className}
+      className={`${className} ${borderClass}`}
     />
   );
 }
@@ -566,8 +582,88 @@ export default function SeriesEditorView({ project, onUpdateSeries, onProjectUpd
     triggerFinanceUpdate(updatedPay, annual, updatedTracker, rateToUse, annualRateToUse);
   };
 
+  // Typical Project Contract Limits for Series & Financial Data
+  const TYPICAL_DIVISION_CONTRACT_LIMIT_BIRR = 10_000_000_000; // 10 Billion ETB per division
+  const TYPICAL_TOTAL_CONTRACT_LIMIT_BIRR = 50_000_000_000; // 50 Billion ETB total contract
+
+  const seriesValidationWarnings = useMemo(() => {
+    const list: string[] = [];
+
+    draftSeries.forEach((s) => {
+      const codeStr = s.code ? `Item ${s.code}` : 'Division Item';
+      if ((s.contractAmt || 0) < 0) {
+        list.push(`${codeStr} (${s.desc || 'Item'}): Contract sum cannot be negative.`);
+      }
+      if ((s.execAmt || 0) < 0) {
+        list.push(`${codeStr} (${s.desc || 'Item'}): Executed amount cannot be negative.`);
+      }
+      if (s.contractPct !== undefined && s.contractPct < 0) {
+        list.push(`${codeStr} (${s.desc || 'Item'}): Contract percentage cannot be negative.`);
+      }
+      if ((s.contractAmt || 0) > TYPICAL_DIVISION_CONTRACT_LIMIT_BIRR) {
+        list.push(`${codeStr} (${s.desc || 'Item'}): Contract sum (${formatAccounting(s.contractAmt)}) exceeds typical single division limit (10 Billion Birr).`);
+      }
+      if ((s.execAmt || 0) > (s.contractAmt || 0) && (s.contractAmt || 0) > 0) {
+        list.push(`${codeStr} (${s.desc || 'Item'}): Executed amount (${formatAccounting(s.execAmt)}) exceeds contract sum (${formatAccounting(s.contractAmt)}).`);
+      }
+    });
+
+    if (draftProvisionalSum < 0) {
+      list.push(`Provisional Sum Deduction: Amount cannot be negative.`);
+    }
+    if (tc > 0 && draftProvisionalSum > tc * 0.30) {
+      list.push(`Provisional Sum Deduction: Amount (${formatAccounting(draftProvisionalSum)}) exceeds 30% of total series sum (${formatAccounting(tc * 0.30)}).`);
+    }
+
+    if (gt > TYPICAL_TOTAL_CONTRACT_LIMIT_BIRR) {
+      list.push(`Grand Contract Total: Amount (${formatAccounting(gt)}) exceeds typical total project contract limit (50 Billion Birr).`);
+    }
+
+    payment.forEach((p) => {
+      if ((p.amount || 0) < 0) {
+        list.push(`Payment Milestone ("${p.item}"): Certified amount cannot be negative.`);
+      }
+      if (gt > 0 && (p.amount || 0) > gt) {
+        list.push(`Payment Milestone ("${p.item}"): Amount (${formatAccounting(p.amount)}) exceeds total contract sum (${formatAccounting(gt)}).`);
+      }
+    });
+
+    let cumKm = 0;
+    annual.forEach((a) => {
+      const kmVal = a.km !== undefined ? a.km : (a.amount <= (totalProjectKm * 2) ? a.amount : Number(((a.percent / 100) * totalProjectKm).toFixed(2)));
+      cumKm += kmVal;
+      if (kmVal < 0) {
+        list.push(`Annual Accomplishment (Year ${a.year}): Accomplished length cannot be negative.`);
+      }
+      if (kmVal > totalProjectKm) {
+        list.push(`Annual Accomplishment (Year ${a.year}): Length (${kmVal} Km) exceeds total project length (${totalProjectKm} Km).`);
+      }
+    });
+
+    if (cumKm > totalProjectKm) {
+      list.push(`Annual Accomplishments Cumulative Total: Total accomplished length (${cumKm.toFixed(2)} Km) exceeds total project length (${totalProjectKm} Km).`);
+    }
+
+    return list;
+  }, [draftSeries, draftProvisionalSum, tc, gt, payment, annual, totalProjectKm]);
+
   return (
     <div className="space-y-6">
+      {/* Input Validation and Contract Limit Warnings Banner */}
+      {seriesValidationWarnings.length > 0 && (
+        <div className="p-4 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/80 rounded-2xl text-amber-900 dark:text-amber-200 text-xs shadow-sm space-y-1.5 animate-fadeIn">
+          <div className="flex items-center gap-2 font-bold text-sm text-amber-800 dark:text-amber-300">
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>Financial Input Validation &amp; Contract Limit Warnings ({seriesValidationWarnings.length})</span>
+          </div>
+          <ul className="list-disc list-inside space-y-1 pl-1 text-xs opacity-90 font-medium">
+            {seriesValidationWarnings.map((warn, i) => (
+              <li key={i}>{warn}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* Toast Notification for Successful Save */}
       <AnimatePresence>
         {saveSuccessMessage && (
@@ -596,7 +692,7 @@ export default function SeriesEditorView({ project, onUpdateSeries, onProjectUpd
         <div>
           <h2 className="text-lg font-bold text-slate-800 dark:text-zinc-100 mb-1 flex items-center gap-2">
             <Database className="w-5 h-5 text-blue-500" />
-            Division Work Quantities & Financial Data
+            Division Work Quantities &amp; Financial Data
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400">
             Edit contract codes, descriptions, sums, executed amounts, and provisional sums freely. Click {isApprover ? <strong className="text-blue-600 dark:text-blue-400">Save to Database</strong> : <strong className="text-emerald-600 dark:text-emerald-400">Submit for Approval</strong>} to save changes.
@@ -704,29 +800,53 @@ export default function SeriesEditorView({ project, onUpdateSeries, onProjectUpd
                         value={item.contractPct !== undefined && item.contractPct !== null ? item.contractPct : ''}
                         onChange={(e) => handleFieldChange(idx, 'contractPct', e.target.value === '' ? 0 : parseFloat(e.target.value) || 0)}
                         placeholder="0.00"
-                        className="w-20 bg-slate-50 dark:bg-slate-900/60 border border-slate-350 dark:border-slate-755 text-center font-mono font-bold text-xs px-1.5 py-1 rounded-lg outline-none focus:border-blue-500 dark:focus:border-blue-450 focus:ring-2 focus:ring-blue-500/20 focus:bg-white dark:focus:bg-slate-950 transition-all duration-150 h-7 text-slate-850 dark:text-zinc-50"
+                        className={`w-20 bg-slate-50 dark:bg-slate-900/60 border text-center font-mono font-bold text-xs px-1.5 py-1 rounded-lg outline-none focus:border-blue-500 dark:focus:border-blue-450 focus:ring-2 focus:ring-blue-500/20 focus:bg-white dark:focus:bg-slate-950 transition-all duration-150 h-7 ${
+                          (item.contractPct || 0) < 0
+                            ? 'border-rose-500 text-rose-600 bg-rose-50/50 dark:bg-rose-950/40'
+                            : 'border-slate-350 dark:border-slate-755 text-slate-850 dark:text-zinc-50'
+                        }`}
                       />
                     </td>
                   )}
 
                   {/* Contract Sum Cell - Fully Editable unhindered */}
                   <td className="p-3">
-                    <EditableCurrencyCell
-                      value={item.contractAmt || 0}
-                      onChange={(val) => handleFieldChange(idx, 'contractAmt', val)}
-                      placeholder="0.00"
-                      className="w-full bg-slate-50 dark:bg-slate-900/60 border border-slate-350 dark:border-slate-755 text-right font-mono font-black text-xs px-2.5 py-1 rounded-lg outline-none focus:border-blue-500 dark:focus:border-blue-450 focus:ring-2 focus:ring-blue-500/20 focus:bg-white dark:focus:bg-slate-950 transition-all duration-150 h-7 text-slate-850 dark:text-zinc-50"
-                    />
+                    <div className="flex flex-col items-end gap-0.5">
+                      <EditableCurrencyCell
+                        value={item.contractAmt || 0}
+                        onChange={(val) => handleFieldChange(idx, 'contractAmt', val)}
+                        hasError={(item.contractAmt || 0) < 0}
+                        hasWarning={(item.contractAmt || 0) > TYPICAL_DIVISION_CONTRACT_LIMIT_BIRR}
+                        placeholder="0.00"
+                        className="w-full bg-slate-50 dark:bg-slate-900/60 border border-slate-350 dark:border-slate-755 text-right font-mono font-black text-xs px-2.5 py-1 rounded-lg outline-none focus:border-blue-500 dark:focus:border-blue-450 focus:ring-2 focus:ring-blue-500/20 focus:bg-white dark:focus:bg-slate-950 transition-all duration-150 h-7 text-slate-850 dark:text-zinc-50"
+                      />
+                      {(item.contractAmt || 0) < 0 && (
+                        <span className="text-[10px] text-rose-500 font-bold block">Must be positive</span>
+                      )}
+                      {(item.contractAmt || 0) > TYPICAL_DIVISION_CONTRACT_LIMIT_BIRR && (
+                        <span className="text-[9px] text-amber-600 dark:text-amber-400 font-bold block">⚠️ &gt; 10B Birr</span>
+                      )}
+                    </div>
                   </td>
 
                   {/* To-Date Executed Cell - Fully Editable unhindered */}
                   <td className="p-3">
-                    <EditableCurrencyCell
-                      value={item.execAmt || 0}
-                      onChange={(val) => handleFieldChange(idx, 'execAmt', val)}
-                      placeholder="0.00"
-                      className="w-full bg-slate-50 dark:bg-slate-900/60 border border-slate-350 dark:border-slate-755 text-right font-mono font-black text-xs px-2.5 py-1 rounded-lg outline-none focus:border-blue-500 dark:focus:border-blue-450 focus:ring-2 focus:ring-blue-500/20 focus:bg-white dark:focus:bg-slate-950 transition-all duration-150 h-7 text-emerald-600 dark:text-emerald-400"
-                    />
+                    <div className="flex flex-col items-end gap-0.5">
+                      <EditableCurrencyCell
+                        value={item.execAmt || 0}
+                        onChange={(val) => handleFieldChange(idx, 'execAmt', val)}
+                        hasError={(item.execAmt || 0) < 0}
+                        hasWarning={(item.execAmt || 0) > (item.contractAmt || 0) && (item.contractAmt || 0) > 0}
+                        placeholder="0.00"
+                        className="w-full bg-slate-50 dark:bg-slate-900/60 border border-slate-350 dark:border-slate-755 text-right font-mono font-black text-xs px-2.5 py-1 rounded-lg outline-none focus:border-blue-500 dark:focus:border-blue-450 focus:ring-2 focus:ring-blue-500/20 focus:bg-white dark:focus:bg-slate-950 transition-all duration-150 h-7 text-emerald-600 dark:text-emerald-400"
+                      />
+                      {(item.execAmt || 0) < 0 && (
+                        <span className="text-[10px] text-rose-500 font-bold block">Must be positive</span>
+                      )}
+                      {(item.execAmt || 0) > (item.contractAmt || 0) && (item.contractAmt || 0) > 0 && (
+                        <span className="text-[9px] text-amber-600 dark:text-amber-400 font-bold block">⚠️ Exceeds contract</span>
+                      )}
+                    </div>
                   </td>
 
                   {/* Progress % Cell - Automatically calculated, not editable */}
@@ -762,12 +882,22 @@ export default function SeriesEditorView({ project, onUpdateSeries, onProjectUpd
                   <tr className="bg-slate-50/40 dark:bg-slate-900/5 font-semibold">
                     <td colSpan={2} className="p-3 text-right text-slate-400 uppercase tracking-wide">B - Provisional Sum deduction:</td>
                     <td className="p-3 text-right">
-                      <EditableCurrencyCell
-                        value={ps}
-                        onChange={handleProvisionalSumChange}
-                        placeholder="0.00"
-                        className="w-full bg-slate-50 dark:bg-slate-900/60 border border-slate-350 dark:border-slate-755 text-right font-mono font-black text-xs px-2.5 py-1 rounded-lg outline-none focus:border-blue-500 dark:focus:border-blue-450 focus:ring-2 focus:ring-blue-500/20 focus:bg-white dark:focus:bg-slate-950 transition-all duration-150 h-7 text-slate-850 dark:text-zinc-50"
-                      />
+                      <div className="flex flex-col items-end gap-0.5">
+                        <EditableCurrencyCell
+                          value={ps}
+                          onChange={handleProvisionalSumChange}
+                          hasError={ps < 0}
+                          hasWarning={tc > 0 && ps > tc * 0.30}
+                          placeholder="0.00"
+                          className="w-full bg-slate-50 dark:bg-slate-900/60 border border-slate-350 dark:border-slate-755 text-right font-mono font-black text-xs px-2.5 py-1 rounded-lg outline-none focus:border-blue-500 dark:focus:border-blue-450 focus:ring-2 focus:ring-blue-500/20 focus:bg-white dark:focus:bg-slate-950 transition-all duration-150 h-7 text-slate-850 dark:text-zinc-50"
+                        />
+                        {ps < 0 && (
+                          <span className="text-[10px] text-rose-500 font-bold block">Must be positive</span>
+                        )}
+                        {tc > 0 && ps > tc * 0.30 && (
+                          <span className="text-[9px] text-amber-600 dark:text-amber-400 font-bold block">⚠️ &gt; 30% of total</span>
+                        )}
+                      </div>
                     </td>
                     <td></td>
                     <td></td>
@@ -844,7 +974,7 @@ export default function SeriesEditorView({ project, onUpdateSeries, onProjectUpd
         <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 p-5 rounded-2xl shadow-sm">
           <h2 className="text-lg font-bold text-slate-800 dark:text-zinc-100 mb-1 flex items-center gap-2">
             <Coins className="w-5 h-5 text-blue-500" />
-            Payment Certificate Data & Annual Fund Distributions
+            Payment Certificate Data &amp; Annual Fund Distributions
           </h2>
         </div>
 
@@ -899,14 +1029,24 @@ export default function SeriesEditorView({ project, onUpdateSeries, onProjectUpd
                           </div>
                         </td>
                         <td className="p-2 text-right">
-                          <AmountInput
-                            value={p.amount}
-                            readOnly={isReadonly}
-                            onChange={(val) => handlePaymentFieldChange(idx, 'amount', val)}
-                            className={`bg-transparent text-right font-mono font-bold text-xs border-none w-full outline-none ${
-                              isReadonly ? 'text-slate-900 dark:text-white font-extrabold' : 'text-slate-600 dark:text-slate-350'
-                            }`}
-                          />
+                          <div className="flex flex-col items-end gap-0.5">
+                            <AmountInput
+                              value={p.amount}
+                              readOnly={isReadonly}
+                              onChange={(val) => handlePaymentFieldChange(idx, 'amount', val)}
+                              hasError={(p.amount || 0) < 0}
+                              hasWarning={gt > 0 && (p.amount || 0) > gt}
+                              className={`bg-transparent text-right font-mono font-bold text-xs border-none w-full outline-none ${
+                                isReadonly ? 'text-slate-900 dark:text-white font-extrabold' : 'text-slate-600 dark:text-slate-350'
+                              }`}
+                            />
+                            {(p.amount || 0) < 0 && (
+                              <span className="text-[10px] text-rose-500 font-bold block">Must be positive</span>
+                            )}
+                            {gt > 0 && (p.amount || 0) > gt && (
+                              <span className="text-[9px] text-amber-600 dark:text-amber-400 font-bold block">⚠️ Exceeds contract</span>
+                            )}
+                          </div>
                         </td>
                         <td className="p-2 text-center font-mono font-black text-blue-600 dark:text-blue-450 border border-transparent">
                           {(() => {
@@ -986,17 +1126,31 @@ export default function SeriesEditorView({ project, onUpdateSeries, onProjectUpd
                           />
                         </td>
                         <td className="p-2 text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            <input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              value={kmVal}
-                              onChange={(e) => handleAnnualFieldChange(idx, 'km', e.target.value)}
-                              className="w-28 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-right font-mono font-bold text-slate-700 dark:text-slate-300 py-0.5 px-2 text-xs focus:ring-1 focus:ring-emerald-500 outline-none"
-                              placeholder="0.00"
-                            />
-                            <span className="text-slate-400 text-[10px] font-mono">Km</span>
+                          <div className="flex flex-col items-end gap-0.5">
+                            <div className="flex items-center justify-end gap-1">
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={kmVal}
+                                onChange={(e) => handleAnnualFieldChange(idx, 'km', e.target.value)}
+                                className={`w-28 bg-slate-50 dark:bg-slate-900 border rounded-lg text-right font-mono font-bold text-xs py-0.5 px-2 outline-none ${
+                                  kmVal < 0
+                                    ? 'border-rose-500 text-rose-600 bg-rose-50/50 dark:bg-rose-950/40'
+                                    : kmVal > totalProjectKm
+                                    ? 'border-amber-400 text-amber-700 bg-amber-50/40 dark:bg-amber-950/30'
+                                    : 'border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 focus:ring-1 focus:ring-emerald-500'
+                                }`}
+                                placeholder="0.00"
+                              />
+                              <span className="text-slate-400 text-[10px] font-mono">Km</span>
+                            </div>
+                            {kmVal < 0 && (
+                              <span className="text-[10px] text-rose-500 font-bold block">Must be positive</span>
+                            )}
+                            {kmVal > totalProjectKm && (
+                              <span className="text-[9px] text-amber-600 dark:text-amber-400 font-bold block">⚠️ &gt; Total ({totalProjectKm} Km)</span>
+                            )}
                           </div>
                         </td>
                         <td className="p-2 text-center font-mono font-black text-blue-600 dark:text-blue-400">

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   DollarSign, 
   Save, 
@@ -15,7 +15,8 @@ import {
   AlertTriangle,
   Lock,
   Unlock,
-  ArrowRightLeft
+  ArrowRightLeft,
+  ShieldCheck
 } from 'lucide-react';
 import { 
   Project, 
@@ -46,6 +47,8 @@ interface Props {
   viewCurrency?: 'ETB' | 'USD';
   exchangeRate?: number;
   onCurrencyToggle?: (newCurrency: 'ETB' | 'USD') => void;
+  onSaveExchangeRate?: (newRate: number) => void;
+  onToggleUsdPayments?: () => void;
 }
 
 export const ContractAmountTab: React.FC<Props> = ({ 
@@ -59,7 +62,9 @@ export const ContractAmountTab: React.FC<Props> = ({
   onNavigateToHistory,
   viewCurrency = 'ETB',
   exchangeRate,
-  onCurrencyToggle
+  onCurrencyToggle,
+  onSaveExchangeRate,
+  onToggleUsdPayments
 }) => {
   if (!project) return <div className="p-8 text-center text-slate-500 font-medium">Loading project contract data...</div>;
 
@@ -282,6 +287,12 @@ export const ContractAmountTab: React.FC<Props> = ({
   const hasUsdOption = Boolean(consultant?.enableUsdPayments || project?.enableUsdPayments);
   const isUsdEnabled = hasUsdOption;
   const effRate = exchangeRate && exchangeRate > 0 ? exchangeRate : (consultant?.exchangeRate || project?.exchangeRate || 125.0);
+  const [rateInput, setRateInput] = useState<number>(effRate);
+
+  useEffect(() => {
+    setRateInput(effRate);
+  }, [effRate]);
+
   const currencyUnit = isUsd && hasUsdOption ? 'USD' : 'ETB';
   const currencySymbol = isUsd && hasUsdOption ? '$' : '';
 
@@ -1038,86 +1049,95 @@ export const ContractAmountTab: React.FC<Props> = ({
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-8 max-w-7xl mx-auto">
-      {canLockContract && (
-        <div className={`p-4 rounded-3xl border flex flex-col md:flex-row md:items-center justify-between gap-4 ${
-          isLocked 
-            ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 shadow-xs' 
-            : 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200 shadow-xs'
-        }`}>
-          <div className="flex items-center gap-3">
-            <div className={`p-2.5 rounded-2xl ${isLocked ? 'bg-amber-200 text-amber-800' : 'bg-emerald-200 text-emerald-800'}`}>
-              {isLocked ? <Lock className="w-5 h-5" /> : <Unlock className="w-5 h-5" />}
-            </div>
-            <div>
-              <h4 className="font-bold text-sm">
-                {isLocked ? 'Contract Data is VALIDATED and LOCKED' : 'Contract Data Entry is Open for Edits & Validation'}
-              </h4>
-              <p className="text-xs opacity-90">
-                {isLocked 
-                  ? `Validated and locked by ${c1Data.validatedBy || 'Directorate Admin'}. Modifications are frozen. Only Master Admin can revert/unlock.`
-                  : 'Data entry is open. Directorate Admin or Master Admin can validate and lock contract data.'}
-              </p>
-            </div>
+      {/* Contract Data Status & Action Bar */}
+      <div className={`p-4 rounded-3xl border flex flex-col md:flex-row md:items-center justify-between gap-4 ${
+        isLocked 
+          ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 shadow-xs' 
+          : 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200 shadow-xs'
+      }`}>
+        <div className="flex items-center gap-3">
+          <div className={`p-2.5 rounded-2xl ${isLocked ? 'bg-amber-200 text-amber-800' : 'bg-emerald-200 text-emerald-800'}`}>
+            {isLocked ? <Lock className="w-5 h-5" /> : <Unlock className="w-5 h-5" />}
           </div>
-        </div>
-      )}
-
-
-      {/* Top Header Banner: Dual Currency Switchable */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className={`p-2.5 rounded-2xl ${isUsdEnabled ? 'bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-400' : 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400'}`}>
-              <DollarSign className="w-5 h-5" />
-            </span>
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className={`px-3 py-1 text-xs font-bold rounded-lg uppercase tracking-wider ${
-                  isUsdEnabled ? 'bg-purple-100 text-purple-800 dark:bg-purple-950/70 dark:text-purple-300' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300'
-                }`}>
-                  Condition 1 {isUsdEnabled ? '(Dual USD & ETB Mode)' : '(ETB)'}
-                </span>
-                
-                {/* Real-Time Currency Switcher Switch */}
-                <div className="flex items-center bg-slate-100 dark:bg-slate-800 rounded-xl p-0.5 border border-slate-200 dark:border-slate-700 text-xs font-bold">
-                  <button
-                    type="button"
-                    onClick={() => onCurrencyToggle && onCurrencyToggle('ETB')}
-                    className={`px-2.5 py-0.5 rounded-lg transition cursor-pointer ${
-                      !isUsd ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                    }`}
-                  >
-                    ETB
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onCurrencyToggle && onCurrencyToggle('USD')}
-                    className={`px-2.5 py-0.5 rounded-lg transition cursor-pointer ${
-                      isUsd ? 'bg-purple-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                    }`}
-                  >
-                    USD
-                  </button>
-                </div>
-
-                {isUsdEnabled && (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 text-xs font-mono font-bold border border-purple-200 dark:border-purple-800">
-                    1 USD = {effRate.toFixed(2)} ETB
-                  </span>
-                )}
-              </div>
-              <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight mt-1.5">
-                Supervision Consultant Contract Amount & Remuneration
-              </h2>
-              <p className="text-xs text-slate-500 font-medium mt-0.5">
-                Scope: Construction supervision plus DLP. Total 820 man-months.
-              </p>
-            </div>
+          <div>
+            <h4 className="font-bold text-sm">
+              {isLocked ? 'Contract Data is VALIDATED and LOCKED' : 'Contract Data Entry & Remuneration Schedule'}
+            </h4>
+            <p className="text-xs opacity-90">
+              {isLocked 
+                ? `Validated and locked by ${c1Data.validatedBy || 'Directorate Admin'}. Modifications are frozen. Only Master Admin can revert/unlock.`
+                : 'Data entry is open. Directorate Admin or Master Admin can validate and lock contract data.'}
+            </p>
           </div>
         </div>
 
-        {/* Global Action Bar */}
+        {/* Global Action Bar & Currency Controls */}
         <div className="flex flex-wrap items-center gap-2.5">
+          {/* USD Contract Active Status Toggle Button */}
+          <button
+            type="button"
+            onClick={() => {
+              if (onToggleUsdPayments) {
+                onToggleUsdPayments();
+              } else if (onUpdateProject) {
+                const nextVal = !hasUsdOption;
+                onUpdateProject({
+                  supervisionConsultant: {
+                    ...consultant,
+                    enableUsdPayments: nextVal
+                  }
+                }, `${nextVal ? 'Enabled' : 'Disabled'} USD foreign currency remuneration option`);
+              }
+            }}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs border ${
+              hasUsdOption
+                ? 'bg-purple-100 text-purple-800 border-purple-300 dark:bg-purple-950/60 dark:text-purple-300 dark:border-purple-800'
+                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-50'
+            }`}
+            title="Toggle USD foreign currency remuneration option"
+          >
+            <ShieldCheck className={`w-4 h-4 ${hasUsdOption ? 'text-purple-600 dark:text-purple-400' : 'text-slate-400'}`} />
+            <span>{hasUsdOption ? 'USD Contract Active' : 'Enable USD Option'}</span>
+          </button>
+
+          {/* Operational Exchange Rate Inline Input - Only show when USD option is enabled */}
+          {hasUsdOption && (
+            <div className="flex items-center gap-2 bg-white dark:bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold shadow-xs">
+              <span className="text-slate-500 font-semibold text-[11px] whitespace-nowrap">Operational Exchange Rate</span>
+              <span className="text-slate-600 dark:text-slate-300 text-xs font-mono font-bold">1 USD =</span>
+              <input
+                type="number"
+                step="0.01"
+                disabled={isReadonly || isLocked}
+                value={rateInput}
+                onChange={(e) => setRateInput(parseFloat(e.target.value) || 0)}
+                className="w-16 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-0.5 text-xs font-mono font-black text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+              <span className="text-slate-500 text-xs font-mono">ETB</span>
+              {!isReadonly && !isLocked && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (rateInput <= 0) return;
+                    if (onSaveExchangeRate) {
+                      onSaveExchangeRate(rateInput);
+                    } else if (onUpdateProject) {
+                      onUpdateProject({
+                        supervisionConsultant: {
+                          ...consultant,
+                          exchangeRate: rateInput
+                        }
+                      }, `Updated operational exchange rate to 1 USD = ${rateInput.toFixed(2)} ETB`);
+                    }
+                  }}
+                  className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold rounded-lg transition cursor-pointer shadow-2xs"
+                >
+                  Apply
+                </button>
+              )}
+            </div>
+          )}
+
           {canLockContract && (
             <button
               type="button"
@@ -1142,7 +1162,6 @@ export const ContractAmountTab: React.FC<Props> = ({
             </button>
           )}
 
-
           {isLocked && onNavigateToHistory && (
             <button
               type="button"
@@ -1156,44 +1175,16 @@ export const ContractAmountTab: React.FC<Props> = ({
           )}
 
           {!effectiveReadonly && (
-            <>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsSplitSettingsOpen(prev => !prev);
-                  if (!isSplitSettingsOpen) setActiveTableTab('currency_split');
-                }}
-                className={`px-4 py-2 text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-xs border cursor-pointer ${
-                  isSplitSettingsOpen || activeTableTab === 'currency_split'
-                    ? 'bg-purple-600 text-white border-purple-700 shadow-md ring-2 ring-purple-300'
-                    : 'bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800 hover:bg-purple-100 dark:hover:bg-purple-900/40'
-                }`}
-                title="Configure USD & ETB percentage or fixed split for individual staff and reimbursable items"
-              >
-                <Sliders className="w-3.5 h-3.5" />
-                <span>USD/ETB Split Settings</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleResetDefaults}
-                className="px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition flex items-center gap-1.5 cursor-pointer"
-                title="Reset to default baseline figures"
-              >
-                <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
-                Reset Defaults
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveAndSyncContract}
-                className="px-4 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition flex items-center gap-1.5 shadow-xs cursor-pointer"
-                title="Save contract schedule and link staff rates directly to monthly invoice calculation engine"
-              >
-                <Save className="w-3.5 h-3.5" />
-                <span>Save & Link to Invoices</span>
-              </button>
-            </>
+            <button
+              type="button"
+              onClick={handleSaveAndSyncContract}
+              className="px-4 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+              title="Save contract schedule and link staff rates directly to monthly invoice calculation engine"
+            >
+              <Save className="w-3.5 h-3.5" />
+              <span>Save & Link to Invoices</span>
+            </button>
           )}
-
         </div>
       </div>
 
@@ -1351,21 +1342,23 @@ export const ContractAmountTab: React.FC<Props> = ({
             <span>Table 3: Defect Liability (DLP)</span>
           </button>
 
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTableTab('currency_split');
-              setIsSplitSettingsOpen(true);
-            }}
-            className={`px-3.5 py-1.5 rounded-xl transition flex items-center gap-1.5 cursor-pointer ${
-              activeTableTab === 'currency_split' || isSplitSettingsOpen
-                ? 'bg-purple-600 text-white shadow-xs'
-                : 'text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/40 hover:bg-purple-100 dark:hover:bg-purple-900/40 border border-purple-200 dark:border-purple-800'
-            }`}
-          >
-            <Sliders className="w-3.5 h-3.5" />
-            <span>⚙️ USD/ETB Split Settings</span>
-          </button>
+          {hasUsdOption && (
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTableTab('currency_split');
+                setIsSplitSettingsOpen(true);
+              }}
+              className={`px-3.5 py-1.5 rounded-xl transition flex items-center gap-1.5 cursor-pointer ${
+                activeTableTab === 'currency_split' || isSplitSettingsOpen
+                  ? 'bg-purple-600 text-white shadow-xs'
+                  : 'text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/40 hover:bg-purple-100 dark:hover:bg-purple-900/40 border border-purple-200 dark:border-purple-800'
+              }`}
+            >
+              <Sliders className="w-3.5 h-3.5" />
+              <span>⚙️ USD/ETB Split Settings</span>
+            </button>
+          )}
         </div>
 
         {onNavigateToInvoices && (
@@ -1409,9 +1402,6 @@ export const ContractAmountTab: React.FC<Props> = ({
                 <h4 className="text-sm font-bold uppercase tracking-wider text-slate-900 dark:text-white">
                   Table 1 — Summary of Contract Price {isUsdEnabled ? '(ETB & USD Combined)' : '(ETB)'}
                 </h4>
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  Consolidated master summary derived from sub-tables (Table 2 Construction, Table B Reimbursables, Table 3 DLP, Contingency & VAT).
-                </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -1683,8 +1673,8 @@ export const ContractAmountTab: React.FC<Props> = ({
                   <th className="py-2.5 px-3 w-10 text-center">#</th>
                   <th className="py-2.5 px-3 min-w-[200px]">Position & Assigned Name</th>
                   <th className="py-2.5 px-2 text-center w-14">Unit</th>
-                  <th className="py-2.5 px-2 text-right min-w-[100px]">Rate (ETB)</th>
-                  {isUsdEnabled && <th className="py-2.5 px-2 text-right min-w-[100px] text-purple-700 dark:text-purple-300">Rate (USD)</th>}
+                  <th className="py-2.5 px-2 text-right min-w-[100px]">Unit Price (ETB)</th>
+                  {isUsdEnabled && <th className="py-2.5 px-2 text-right min-w-[100px] text-purple-700 dark:text-purple-300">Unit Price (USD)</th>}
                   <th className="py-2.5 px-2 text-right min-w-[70px]">Contr. MM</th>
                   <th className="py-2.5 px-3 text-right min-w-[110px] font-bold">Total Fee (ETB)</th>
                   <th className="py-2.5 px-2 text-center w-12">Act</th>
@@ -1817,16 +1807,7 @@ export const ContractAmountTab: React.FC<Props> = ({
                 <h4 className="text-sm font-bold uppercase tracking-wider text-slate-900 dark:text-white">
                   Table B — Reimbursable Direct Expenses Schedule (Sub Total 2)
                 </h4>
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300 dark:border-amber-800 flex items-center gap-1">
-                  <span>🔗 Linked to Fee Invoices Sub Total 2</span>
-                </span>
-                <span className="px-2 py-0.5 rounded-md text-[10px] font-mono bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-                  {(c1Data.reimbursableList || []).length} items
-                </span>
               </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Direct field operating expenses (Head office support, communication, insurance, accommodation, surveying equipment, reports, vehicles, laboratory). Any changes here instantly synchronize with Sub Total 2 on the Fee Invoices & Payments page.
-              </p>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
@@ -1904,8 +1885,8 @@ export const ContractAmountTab: React.FC<Props> = ({
                   <th className="py-2.5 px-3 w-10 text-center">#</th>
                   <th className="py-2.5 px-3 min-w-[240px]">Item Description</th>
                   <th className="py-2.5 px-2 text-center w-16">Unit</th>
-                  <th className="py-2.5 px-2 text-right min-w-[105px]">Rate (ETB)</th>
-                  {isUsdEnabled && <th className="py-2.5 px-2 text-right min-w-[100px] text-purple-700 dark:text-purple-300">Rate (USD)</th>}
+                  <th className="py-2.5 px-2 text-right min-w-[105px]">Unit Price (ETB)</th>
+                  {isUsdEnabled && <th className="py-2.5 px-2 text-right min-w-[100px] text-purple-700 dark:text-purple-300">Unit Price (USD)</th>}
                   <th className="py-2.5 px-2 text-right min-w-[85px]">Contract Qty</th>
                   <th className="py-2.5 px-3 text-right min-w-[120px]">Contract Amount (ETB)</th>
                   {isUsdEnabled && <th className="py-2.5 px-3 text-right min-w-[110px] text-purple-700 dark:text-purple-300">Amount (USD)</th>}
@@ -2103,8 +2084,8 @@ export const ContractAmountTab: React.FC<Props> = ({
                   <th className="py-2.5 px-3 w-10 text-center">#</th>
                   <th className="py-2.5 px-3 min-w-[220px]">DLP Personnel Position & Name</th>
                   <th className="py-2.5 px-2 text-center w-16">Unit</th>
-                  <th className="py-2.5 px-2 text-right min-w-[105px]">Monthly Rate (ETB)</th>
-                  {isUsdEnabled && <th className="py-2.5 px-2 text-right min-w-[100px] text-purple-700 dark:text-purple-300">Rate (USD)</th>}
+                  <th className="py-2.5 px-2 text-right min-w-[105px]">Unit Price (ETB)</th>
+                  {isUsdEnabled && <th className="py-2.5 px-2 text-right min-w-[100px] text-purple-700 dark:text-purple-300">Unit Price (USD)</th>}
                   <th className="py-2.5 px-2 text-right min-w-[90px]">Contract MM</th>
                   <th className="py-2.5 px-3 text-right min-w-[110px]">Contract Amount</th>
                   <th className="py-2.5 px-2 text-center w-12">Act</th>

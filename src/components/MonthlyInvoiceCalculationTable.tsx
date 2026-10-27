@@ -44,6 +44,7 @@ import { DEFAULT_CONDITION_1_STAFF } from '../data/defaultContractAmount';
 
 export interface EditableStaffRow {
   id: string;
+  no?: string;
   personnelId?: string;
   position: string;
   name: string;
@@ -219,6 +220,11 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
 
   // Staff Directory Filter (All Assigned, Active Only, Replaced History)
   const [personnelFilter, setPersonnelFilter] = useState<'all' | 'active_only' | 'replaced_only'>('all');
+
+  // USD Billing Toggle State
+  const [usdBillingEnabled, setUsdBillingEnabled] = useState<boolean>(
+    Boolean(project.enableUsdPayments === true || consultant.enableUsdPayments === true)
+  );
 
   // Metadata
   const [invoiceNo, setInvoiceNo] = useState<string>('INV-DKS-01');
@@ -495,51 +501,44 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
     const c1ScheduleStaff = (consultant.contractAmountSchedule?.condition1?.staffFees && consultant.contractAmountSchedule.condition1.staffFees.length > 0)
       ? consultant.contractAmountSchedule.condition1.staffFees
       : DEFAULT_CONDITION_1_STAFF;
-    const assignedPosSet = new Set(assignedPersonnel.map(p => (p.position || '').toLowerCase().trim()));
-    const missingFromPersonnel: ConsultantPersonnel[] = [];
-    
-    c1ScheduleStaff.forEach(s => {
-      const posKey = (s.position || '').toLowerCase().trim();
-      if (!assignedPosSet.has(posKey)) {
-        missingFromPersonnel.push({
-          id: s.id || `pos_${(s.no || 'item').replace(/[^a-zA-Z0-9]/g, '_')}`,
-          name: s.name || 'To be nominated',
-          position: s.position,
-          category: s.category || 'Key Personnel',
-          assignmentDate: project.startDate || '2020-10-01',
-          status: 'Active',
-          manMonthsAllocated: s.totalMm || 24,
-          monthlyBillingRate: s.rateEtb || 15000,
-          manMonthsInput: 0
-        });
-      }
-    });
 
-    const effectivePersonnel = [...assignedPersonnel, ...missingFromPersonnel];
+    // Directly derive rows from c1ScheduleStaff to guarantee exact identical rows and sequence with Contract Data Table 2
+    const rows: EditableStaffRow[] = c1ScheduleStaff.map((s, idx) => {
+      const sPosLower = (s.position || '').toLowerCase().trim();
+      const sNameLower = (s.name || '').toLowerCase().trim();
 
-    const rows: EditableStaffRow[] = effectivePersonnel.map(p => {
-      const cumulative = cumulativeInputs[p.id] || { qty: 0, amount: 0 };
-      const matchedSaved = activeInvoice?.attendanceRecords?.find(s => s.id === p.id || s.personnelId === p.id || s.name === p.name || s.position === p.position);
+      // Find matching personnel from assigned personnel directory if available
+      const matchedPersonnel = assignedPersonnel.find(p => {
+        const pPosLower = (p.position || '').toLowerCase().trim();
+        const pNameLower = (p.name || '').toLowerCase().trim();
+        return p.id === s.id ||
+          (sNameLower && sNameLower !== 'to be nominated' && sNameLower !== 'tbn' && pNameLower === sNameLower) ||
+          (pPosLower && (pPosLower === sPosLower || pPosLower.includes(sPosLower) || sPosLower.includes(pPosLower)));
+      });
 
-      const pPosLower = (p.position || '').toLowerCase().trim();
-      const pNameLower = (p.name || '').toLowerCase().trim();
-
-      const matchedContract = c1ScheduleStaff.find(s => 
-        (pNameLower && s.name && s.name !== 'To be nominated' && s.name !== 'TBN' && s.name.toLowerCase().trim() === pNameLower) ||
-        (pPosLower && s.position && (
-          s.position.toLowerCase().trim() === pPosLower ||
-          s.position.toLowerCase().includes(pPosLower) ||
-          pPosLower.includes(s.position.toLowerCase().trim())
-        ))
+      // Find saved attendance record in activeInvoice
+      const matchedSaved = activeInvoice?.attendanceRecords?.find(r =>
+        r.id === s.id ||
+        r.personnelId === s.id ||
+        (matchedPersonnel && (r.id === matchedPersonnel.id || r.personnelId === matchedPersonnel.id)) ||
+        (r.position && r.position.toLowerCase().trim() === sPosLower) ||
+        (sNameLower && sNameLower !== 'to be nominated' && sNameLower !== 'tbn' && r.name && r.name.toLowerCase().trim() === sNameLower)
       );
 
-      const standardRate = matchedContract?.rateEtb || p.monthlyBillingRate || getStandardRateForPosition(p.position, p.category, p.name);
-      const standardDaily = p.dailyReimbursableRate || getStandardDailyReimbRate(p.position);
-      
-      const mmConstr = matchedContract?.mmConstr;
-      const mmDlp = matchedContract?.mmDlp;
-      const totalMm = matchedContract?.totalMm ?? (p.manMonthsAllocated || 36);
-      const allocatedMM = totalMm;
+      // Match cumulative preceding values
+      const pId = matchedPersonnel?.id || s.id;
+      const cumulative = cumulativeInputs[s.id] || (matchedPersonnel ? cumulativeInputs[matchedPersonnel.id] : undefined) || cumulativeInputs[pId] || { qty: 0, amount: 0 };
+
+      const staffName = (matchedPersonnel?.name && matchedPersonnel.name !== 'To be nominated' && matchedPersonnel.name !== 'TBN')
+        ? matchedPersonnel.name
+        : (s.name || 'To be nominated');
+
+      const standardRate = s.rateEtb || matchedPersonnel?.monthlyBillingRate || getStandardRateForPosition(s.position, s.category, staffName);
+      const standardRateUsd = s.rateUsd || 0;
+      const standardDaily = matchedPersonnel?.dailyReimbursableRate || getStandardDailyReimbRate(s.position);
+
+      const mmConstr = Number(s.mmConstr) || Number(s.totalMm) || 0;
+      const allocatedMM = mmConstr;
 
       let days = 0;
       if (matchedSaved && matchedSaved.daysWorked !== undefined) {
@@ -548,37 +547,40 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
         days = matchedSaved.days;
       }
 
-      const isReplaced = p.status === 'Replaced';
+      const isReplaced = matchedPersonnel?.status === 'Replaced';
       const precQty = cumulative.qty;
       const precAmt = cumulative.amount;
       const rate = matchedSaved?.rate !== undefined ? matchedSaved.rate : standardRate;
-      const contractAmount = matchedContract?.totalEtb ?? (allocatedMM * rate);
+      const rateUsd = matchedSaved?.rateUsd !== undefined ? matchedSaved.rateUsd : standardRateUsd;
+      const contractAmount = (s.totalEtb !== undefined && s.totalEtb > 0) ? s.totalEtb : (allocatedMM * rate);
 
       return {
-        id: p.id,
-        personnelId: p.id,
-        position: p.position,
-        name: p.name,
-        category: p.category,
-        status: p.status,
-        unit: 'Month',
+        id: s.id || `c1_staff_${idx + 1}`,
+        no: s.no || `${idx + 1}`,
+        personnelId: matchedPersonnel?.id || s.id,
+        position: s.position,
+        name: staffName,
+        category: s.category || 'Key Professional',
+        status: matchedPersonnel?.status || 'Active',
+        unit: s.unit || 'Month',
         rate,
+        rateUsd,
         contractQty: allocatedMM,
         contractAmount,
-        mmConstr,
-        mmDlp,
-        totalMm,
+        mmConstr: s.mmConstr,
+        mmDlp: s.mmDlp,
+        totalMm: s.totalMm,
         daysWorked: days,
         precedingQty: precQty,
         precedingAmount: precAmt,
         dailyReimbursableRate: matchedSaved?.dailyReimbursableRate || standardDaily,
-        assignmentDate: p.assignmentDate,
-        demobilizationDate: p.demobilizationDate,
-        replacementDate: p.replacementDate,
-        predecessorId: p.predecessorId,
-        predecessorName: p.predecessorName,
-        replacedById: p.replacedById,
-        replacedByName: p.replacedByName,
+        assignmentDate: matchedPersonnel?.assignmentDate || project.startDate || '2020-10-01',
+        demobilizationDate: matchedPersonnel?.demobilizationDate,
+        replacementDate: matchedPersonnel?.replacementDate,
+        predecessorId: matchedPersonnel?.predecessorId,
+        predecessorName: matchedPersonnel?.predecessorName,
+        replacedById: matchedPersonnel?.replacedById,
+        replacedByName: matchedPersonnel?.replacedByName,
         isHistoricalPredecessor: isReplaced
       };
     });
@@ -650,21 +652,25 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
 
     // Synchronize Defect Liability Period (DLP) rows directly from Contract Amount Schedule Table 3
     // Filter out Head Office staff from DLP as requested
-    const c1DlpStaff = c1ScheduleStaff.filter(s => 
-      (Number(s.mmDlp) || 0) > 0 && 
+    const c1DlpSource = (consultant.contractAmountSchedule?.condition1?.dlpStaffFees && consultant.contractAmountSchedule.condition1.dlpStaffFees.length > 0)
+      ? consultant.contractAmountSchedule.condition1.dlpStaffFees
+      : c1ScheduleStaff.filter(s => (Number(s.mmDlp) || 0) > 0);
+
+    const c1DlpStaff = c1DlpSource.filter(s => 
       s.category !== 'Head Office' && 
       !s.position?.toLowerCase().includes('project coordinator')
     );
+
     if (c1DlpStaff.length > 0) {
       setDefectRows(prev => {
         return c1DlpStaff.map((s, idx) => {
           const matched = activeInvoice?.defectLiabilityRecords?.find((d: any) => d.id === s.id || (d.position && d.position.toLowerCase().trim().startsWith(s.position.toLowerCase().trim())))
             || prev.find(p => p.id === s.id || (p.position && p.position.toLowerCase().trim().startsWith(s.position.toLowerCase().trim())));
           
-          const dlpMm = Number(s.mmDlp) || 0;
+          const dlpMm = Number(s.mmDlp) || Number(s.totalMm) || 0;
           const rate = Number(s.rateEtb) || 0;
           const contractAmount = dlpMm * rate;
-          const nameSuffix = s.name && s.name !== 'To be nominated' ? ` (${s.name})` : '';
+          const nameSuffix = s.name && s.name !== 'To be nominated' && s.name !== 'TBN' ? ` (${s.name})` : '';
           const posLabel = `${s.position}${nameSuffix}`;
 
           return {
@@ -954,6 +960,18 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
     const remainingQty = Math.max(0, Number((row.contractQty - toDateQty).toFixed(2)));
     const remainingAmount = Math.max(0, Number((contractAmount - toDateAmount).toFixed(2)));
 
+    // USD computations
+    const rateUsd = row.rateUsd || 0;
+    const contractAmountUsd = Number(((row.contractQty || 0) * rateUsd).toFixed(2));
+    const precAmountUsd = row.precedingAmountUsd !== undefined && row.precedingAmountUsd > 0
+      ? row.precedingAmountUsd
+      : Number(((row.precedingQty || 0) * rateUsd).toFixed(2));
+    const thisAmountUsd = row.thisInvoiceAmountUsd !== undefined && row.thisInvoiceAmountUsd > 0
+      ? row.thisInvoiceAmountUsd
+      : Number((qty * rateUsd).toFixed(2));
+    const toDateAmountUsd = Number((precAmountUsd + thisAmountUsd).toFixed(2));
+    const remainingAmountUsd = Math.max(0, Number((contractAmountUsd - toDateAmountUsd).toFixed(2)));
+
     return {
       ...row,
       isReduced,
@@ -965,7 +983,13 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
       toDateQty,
       toDateAmount,
       remainingQty,
-      remainingAmount
+      remainingAmount,
+      rateUsd,
+      contractAmountUsd,
+      precedingAmountUsd: precAmountUsd,
+      thisInvoiceAmountUsd: thisAmountUsd,
+      toDateAmountUsd,
+      remainingAmountUsd
     };
   });
 
@@ -990,10 +1014,15 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
       if (r.category) set.add(r.category);
     });
 
-    return Array.from(set).map(cat => {
+    const cats = Array.from(set);
+    return cats.map(cat => {
       const rows = list.filter(r => {
         if (r.category === cat) return true;
         if (!r.category) {
+          if (cat === 'Key Professional' && r.no?.startsWith('1.')) return true;
+          if (cat === 'Intermediate' && r.no?.startsWith('2.')) return true;
+          if (cat === 'Support' && r.no?.startsWith('3.')) return true;
+          if (cat === 'Head Office' && r.no?.startsWith('4.')) return true;
           const p = (r.position || '').toLowerCase();
           if (cat === 'Key Professional' && (p.includes('engineer') || p.includes('leader') || p.includes('manager') || p.includes('specialist'))) return true;
           if (cat === 'Intermediate' && (p.includes('inspector') || p.includes('surveyor') || p.includes('quantity'))) return true;
@@ -1004,12 +1033,20 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
       });
 
       const contractAmount = rows.reduce((s, r) => s + (r.contractAmount || 0), 0);
+      const contractAmountUsd = rows.reduce((s, r) => s + (r.contractAmountUsd || 0), 0);
       const contractQty = rows.reduce((s, r) => s + (r.contractQty || 0), 0);
-      const thisInvoiceAmount = rows.reduce((s, r) => s + (r.thisInvoiceAmount || 0), 0);
-      const thisInvoiceQty = rows.reduce((s, r) => s + (r.thisInvoiceQty || 0), 0);
+      const precedingQty = rows.reduce((s, r) => s + (r.precedingQty || 0), 0);
       const precedingAmount = rows.reduce((s, r) => s + (r.precedingAmount || 0), 0);
+      const precedingAmountUsd = rows.reduce((s, r) => s + (r.precedingAmountUsd || 0), 0);
+      const thisInvoiceQty = rows.reduce((s, r) => s + (r.thisInvoiceQty || 0), 0);
+      const thisInvoiceAmount = rows.reduce((s, r) => s + (r.thisInvoiceAmount || 0), 0);
+      const thisInvoiceAmountUsd = rows.reduce((s, r) => s + (r.thisInvoiceAmountUsd || 0), 0);
+      const toDateQty = rows.reduce((s, r) => s + (r.toDateQty || 0), 0);
       const toDateAmount = rows.reduce((s, r) => s + (r.toDateAmount || 0), 0);
+      const toDateAmountUsd = rows.reduce((s, r) => s + (r.toDateAmountUsd || 0), 0);
+      const remainingQty = rows.reduce((s, r) => s + (r.remainingQty || 0), 0);
       const remainingAmount = rows.reduce((s, r) => s + (r.remainingAmount || 0), 0);
+      const remainingAmountUsd = rows.reduce((s, r) => s + (r.remainingAmountUsd || 0), 0);
 
       let label = cat;
       if (cat === 'Key Professional') label = '1. Key Professional Staff (Supervision & Management)';
@@ -1023,11 +1060,19 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
         rows,
         contractQty,
         contractAmount,
+        contractAmountUsd,
+        precedingQty,
+        precedingAmount,
+        precedingAmountUsd,
         thisInvoiceQty,
         thisInvoiceAmount,
-        precedingAmount,
+        thisInvoiceAmountUsd,
+        toDateQty,
         toDateAmount,
-        remainingAmount
+        toDateAmountUsd,
+        remainingQty,
+        remainingAmount,
+        remainingAmountUsd
       };
     }).filter(g => g.rows.length > 0 || defaultCats.includes(g.categoryKey));
   }, [displayFeeRowsComputed]);
@@ -1048,6 +1093,20 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
     const remainingQty = Math.max(0, Number((row.contractQty - toDateQty).toFixed(2)));
     const remainingAmount = Math.max(0, Number((contractAmount - toDateAmount).toFixed(2)));
 
+    // USD computations
+    const rateUsd = row.rateUsd || 0;
+    const contractAmountUsd = row.contractAmountUsd !== undefined && row.contractAmountUsd > 0
+      ? row.contractAmountUsd
+      : Number(((row.contractQty || 0) * rateUsd).toFixed(2));
+    const precAmountUsd = row.precedingAmountUsd !== undefined && row.precedingAmountUsd > 0
+      ? row.precedingAmountUsd
+      : Number(((row.precedingQty || 0) * rateUsd).toFixed(2));
+    const thisAmountUsd = row.thisInvoiceAmountUsd !== undefined && row.thisInvoiceAmountUsd > 0
+      ? row.thisInvoiceAmountUsd
+      : Number(((row.thisInvoiceQty || 0) * rateUsd).toFixed(2));
+    const toDateAmountUsd = Number((precAmountUsd + thisAmountUsd).toFixed(2));
+    const remainingAmountUsd = Math.max(0, Number((contractAmountUsd - toDateAmountUsd).toFixed(2)));
+
     return {
       ...row,
       isReduced,
@@ -1058,7 +1117,13 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
       toDateQty,
       toDateAmount,
       remainingQty,
-      remainingAmount
+      remainingAmount,
+      rateUsd,
+      contractAmountUsd,
+      precedingAmountUsd: precAmountUsd,
+      thisInvoiceAmountUsd: thisAmountUsd,
+      toDateAmountUsd,
+      remainingAmountUsd
     };
   });
 
@@ -1179,6 +1244,20 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
     const remainingQty = Math.max(0, Number((contractQty - toDateQty).toFixed(2)));
     const remainingAmount = Math.max(0, Number((contractAmount - toDateAmount).toFixed(2)));
 
+    // USD computations
+    const rateUsd = row.rateUsd || 0;
+    const contractAmountUsd = row.contractAmountUsd !== undefined && row.contractAmountUsd > 0
+      ? row.contractAmountUsd
+      : Number((contractQty * rateUsd).toFixed(2));
+    const precAmountUsd = row.precedingAmountUsd !== undefined && row.precedingAmountUsd > 0
+      ? row.precedingAmountUsd
+      : Number((precQty * rateUsd).toFixed(2));
+    const thisAmountUsd = row.thisInvoiceAmountUsd !== undefined && row.thisInvoiceAmountUsd > 0
+      ? row.thisInvoiceAmountUsd
+      : Number((thisQty * rateUsd).toFixed(2));
+    const toDateAmountUsd = Number((precAmountUsd + thisAmountUsd).toFixed(2));
+    const remainingAmountUsd = Math.max(0, Number((contractAmountUsd - toDateAmountUsd).toFixed(2)));
+
     return {
       ...row,
       contractAmount,
@@ -1189,7 +1268,13 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
       toDateQty,
       toDateAmount,
       remainingQty,
-      remainingAmount
+      remainingAmount,
+      rateUsd,
+      contractAmountUsd,
+      precedingAmountUsd: precAmountUsd,
+      thisInvoiceAmountUsd: thisAmountUsd,
+      toDateAmountUsd,
+      remainingAmountUsd
     };
   });
 
@@ -1318,93 +1403,103 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
   const grossToDate = subtotalWithContingencyToDate + vatToDate;
   const netToDate = Math.max(0, subtotalWithContingencyToDate + (overtimeEtb || 0) - totalDeductionsThisInvoice);
 
-  // USD Mode Active (when enableUsdPayments is on, or project.enableUsdPayments, or advancedSplitMode is enabled)
-  const isUsdModeActive = Boolean(
-    consultant.enableUsdPayments ||
-    project.enableUsdPayments ||
-    consultant.advancedSplitMode ||
-    viewCurrency === 'USD' ||
-    (consultant.originalFeeUsd && consultant.originalFeeUsd > 0) ||
-    (consultant.contractAmountSchedule?.condition1?.summary?.feesUsd && consultant.contractAmountSchedule.condition1.summary.feesUsd > 0)
-  );
+  // USD Mode Active: Controlled by usdBillingEnabled toggle state
+  const isUsdModeActive = usdBillingEnabled;
 
-  // USD Contract and Invoice Totals for Table 5
+  // USD Contract and Invoice Totals for Table 5 and Sub Tables
   const linkedFeesContractUsd = consultant.contractAmountSchedule?.condition1?.summary?.feesUsd ?? 0;
   const linkedReimbContractUsd = consultant.contractAmountSchedule?.condition1?.summary?.reimbursableUsd ?? 0;
-  const subTotal3ContractUsd = 0;
-  const totalBaseContractUsd = linkedFeesContractUsd + linkedReimbContractUsd + subTotal3ContractUsd;
-  const contingencyContractUsd = Number((totalBaseContractUsd * (contingencyRatePct / 100)).toFixed(2));
-  const grandContractWithContingencyUsd = totalBaseContractUsd + contingencyContractUsd;
-  const vatContractUsd = Number((grandContractWithContingencyUsd * (vatRatePct / 100)).toFixed(2));
-  const totalContractDueUsd = grandContractWithContingencyUsd + vatContractUsd;
+
+  const subTotal1ContractUsd = useMemo(() => {
+    const computed = feeRowsComputed.reduce((s, r) => s + (r.contractAmountUsd || 0), 0);
+    return computed > 0 ? computed : linkedFeesContractUsd;
+  }, [feeRowsComputed, linkedFeesContractUsd]);
+
+  const subTotal1PrecedingUsd = useMemo(() => {
+    return feeRowsComputed.reduce((s, r) => s + (r.precedingAmountUsd || 0), 0);
+  }, [feeRowsComputed]);
 
   const subTotal1ThisInvoiceUsd = useMemo(() => {
-    if (!isUsdModeActive) return 0;
-    const c1 = consultant.contractAmountSchedule?.condition1;
-    const c1ExchangeRate = Number(c1?.currencySplitExchangeRate || c1?.exchangeRate || 120);
-    let total = 0;
-    staffRows.forEach(s => {
-      const qty = s.daysWorked > 0 ? Number((s.daysWorked / totalDaysInMonth).toFixed(2)) : 0;
-      const matchedC1 = (c1?.staffFees || []).find(
-        f => f.id === s.id || (f.name && f.name.toLowerCase().trim() === s.name.toLowerCase().trim()) || (f.position && f.position.toLowerCase().trim() === s.position.toLowerCase().trim())
-      );
-      let usdRateForStaff = 0;
-      if (matchedC1) {
-        if (matchedC1.splitType === 'fixed_amount' && matchedC1.fixedUsdRate !== undefined) {
-          usdRateForStaff = Number(matchedC1.fixedUsdRate) || 0;
-        } else if (matchedC1.usdPercentage && matchedC1.usdPercentage > 0) {
-          usdRateForStaff = Number(((s.rate * matchedC1.usdPercentage / 100) / (c1ExchangeRate || 120)).toFixed(2));
-        } else if (matchedC1.rateUsd) {
-          usdRateForStaff = Number(matchedC1.rateUsd) || 0;
-        }
-      } else {
-        const matchedC2 = (consultant.contractAmountSchedule?.condition2?.staffFees || []).find(
-          f => (f.name && f.name.toLowerCase().trim() === s.name.toLowerCase().trim()) || (f.position && f.position.toLowerCase().trim() === s.position.toLowerCase().trim())
-        );
-        if (matchedC2 && matchedC2.rateUsd) {
-          usdRateForStaff = Number(matchedC2.rateUsd) || 0;
-        }
-      }
-      total += Number((qty * usdRateForStaff).toFixed(2));
-    });
-    return total;
-  }, [staffRows, consultant, totalDaysInMonth]);
+    return feeRowsComputed.reduce((s, r) => s + (r.thisInvoiceAmountUsd || 0), 0);
+  }, [feeRowsComputed]);
+
+  const subTotal1ToDateUsd = useMemo(() => {
+    return Number((subTotal1PrecedingUsd + subTotal1ThisInvoiceUsd).toFixed(2));
+  }, [subTotal1PrecedingUsd, subTotal1ThisInvoiceUsd]);
+
+  const subTotal1RemainingUsd = useMemo(() => {
+    return Math.max(0, Number((subTotal1ContractUsd - subTotal1ToDateUsd).toFixed(2)));
+  }, [subTotal1ContractUsd, subTotal1ToDateUsd]);
+
+  const subTotal2ContractUsd = useMemo(() => {
+    const computed = reimbursableRowsComputed.reduce((s, r) => s + (r.contractAmountUsd || 0), 0);
+    return computed > 0 ? computed : linkedReimbContractUsd;
+  }, [reimbursableRowsComputed, linkedReimbContractUsd]);
+
+  const subTotal2PrecedingUsd = useMemo(() => {
+    return reimbursableRowsComputed.reduce((s, r) => s + (r.precedingAmountUsd || 0), 0);
+  }, [reimbursableRowsComputed]);
 
   const subTotal2ThisInvoiceUsd = useMemo(() => {
-    if (!isUsdModeActive) return 0;
-    const c1 = consultant.contractAmountSchedule?.condition1;
-    const c1ExchangeRate = Number(c1?.currencySplitExchangeRate || c1?.exchangeRate || 120);
-    let total = 0;
-    reimbursableRows.forEach(r => {
-      const matchedReimb = (c1?.reimbursableList || []).find(
-        item => item.id === r.id || (item.item && item.item.toLowerCase().trim() === r.description.toLowerCase().trim())
-      );
-      let usdAmount = 0;
-      if (matchedReimb) {
-        if (matchedReimb.splitType === 'fixed_amount' && matchedReimb.fixedUsdAmount !== undefined) {
-          const ratio = (Number(matchedReimb.amountEtb) || 1) > 0 ? (r.thisInvoiceAmount / Number(matchedReimb.amountEtb)) : 1;
-          usdAmount = Number((matchedReimb.fixedUsdAmount * ratio).toFixed(2));
-        } else if (matchedReimb.usdPercentage && matchedReimb.usdPercentage > 0) {
-          usdAmount = Number(((r.thisInvoiceAmount * matchedReimb.usdPercentage / 100) / (c1ExchangeRate || 120)).toFixed(2));
-        } else if (matchedReimb.amountUsd) {
-          const ratio = (Number(matchedReimb.amountEtb) || 1) > 0 ? (r.thisInvoiceAmount / Number(matchedReimb.amountEtb)) : 1;
-          usdAmount = Number((matchedReimb.amountUsd * ratio).toFixed(2));
-        }
-      }
-      total += usdAmount;
-    });
-    return total;
-  }, [reimbursableRows, consultant]);
+    return reimbursableRowsComputed.reduce((s, r) => s + (r.thisInvoiceAmountUsd || 0), 0);
+  }, [reimbursableRowsComputed]);
 
-  const subTotal3ThisInvoiceUsd = 0;
+  const subTotal2ToDateUsd = useMemo(() => {
+    return Number((subTotal2PrecedingUsd + subTotal2ThisInvoiceUsd).toFixed(2));
+  }, [subTotal2PrecedingUsd, subTotal2ThisInvoiceUsd]);
+
+  const subTotal2RemainingUsd = useMemo(() => {
+    return Math.max(0, Number((subTotal2ContractUsd - subTotal2ToDateUsd).toFixed(2)));
+  }, [subTotal2ContractUsd, subTotal2ToDateUsd]);
+
+  const subTotal3ContractUsd = useMemo(() => {
+    return defectRowsComputed.reduce((s, r) => s + (r.contractAmountUsd || 0), 0);
+  }, [defectRowsComputed]);
+
+  const subTotal3PrecedingUsd = useMemo(() => {
+    return defectRowsComputed.reduce((s, r) => s + (r.precedingAmountUsd || 0), 0);
+  }, [defectRowsComputed]);
+
+  const subTotal3ThisInvoiceUsd = useMemo(() => {
+    return defectRowsComputed.reduce((s, r) => s + (r.thisInvoiceAmountUsd || 0), 0);
+  }, [defectRowsComputed]);
+
+  const subTotal3ToDateUsd = useMemo(() => {
+    return Number((subTotal3PrecedingUsd + subTotal3ThisInvoiceUsd).toFixed(2));
+  }, [subTotal3PrecedingUsd, subTotal3ThisInvoiceUsd]);
+
+  const subTotal3RemainingUsd = useMemo(() => {
+    return Math.max(0, Number((subTotal3ContractUsd - subTotal3ToDateUsd).toFixed(2)));
+  }, [subTotal3ContractUsd, subTotal3ToDateUsd]);
+
+  const totalBaseContractUsd = subTotal1ContractUsd + subTotal2ContractUsd + subTotal3ContractUsd;
+  const totalSubtotalPrecedingUsd = subTotal1PrecedingUsd + subTotal2PrecedingUsd + subTotal3PrecedingUsd;
   const totalSubtotalThisInvoiceUsd = subTotal1ThisInvoiceUsd + subTotal2ThisInvoiceUsd + subTotal3ThisInvoiceUsd;
+  const totalSubtotalToDateUsd = subTotal1ToDateUsd + subTotal2ToDateUsd + subTotal3ToDateUsd;
+  const totalSubtotalRemainingUsd = Math.max(0, Number((totalBaseContractUsd - totalSubtotalToDateUsd).toFixed(2)));
+
+  const contingencyContractUsd = Number((totalBaseContractUsd * (contingencyRatePct / 100)).toFixed(2));
   const contingencyThisInvoiceUsd = Number((contingencyThisInvoiceClaimUsd || 0).toFixed(2));
   const contingencyToDateUsdValue = contingencyToDateUsd > 0 ? contingencyToDateUsd : contingencyContractUsd;
-  // Previous month amount (Preceding Claim USD) computed dynamically: Preceding USD = To-Date USD - This Month USD
   const contingencyPrecedingClaimUsd = Math.max(0, Number((contingencyToDateUsdValue - contingencyThisInvoiceUsd).toFixed(2)));
+  const contingencyRemainingUsd = Math.max(0, Number((contingencyContractUsd - contingencyToDateUsdValue).toFixed(2)));
+
+  const subtotalWithContingencyPrecedingUsd = totalSubtotalPrecedingUsd + contingencyPrecedingClaimUsd;
   const subtotalWithContingencyThisInvoiceUsd = totalSubtotalThisInvoiceUsd + contingencyThisInvoiceUsd;
+  const subtotalWithContingencyToDateUsd = totalSubtotalToDateUsd + contingencyToDateUsdValue;
+
+  const grandContractWithContingencyUsd = totalBaseContractUsd + contingencyContractUsd;
+  const vatContractUsd = Number((grandContractWithContingencyUsd * (vatRatePct / 100)).toFixed(2));
+  const vatPrecedingUsd = Number((subtotalWithContingencyPrecedingUsd * (vatRatePct / 100)).toFixed(2));
   const vatThisInvoiceUsd = Number((subtotalWithContingencyThisInvoiceUsd * (vatRatePct / 100)).toFixed(2));
+  const vatToDateUsd = Number((subtotalWithContingencyToDateUsd * (vatRatePct / 100)).toFixed(2));
+  const vatRemainingUsd = Math.max(0, Number((vatContractUsd - vatToDateUsd).toFixed(2)));
+
+  const totalContractDueUsd = totalBaseContractUsd + contingencyContractUsd + vatContractUsd;
+  const grossPrecedingUsd = subtotalWithContingencyPrecedingUsd + vatPrecedingUsd;
   const grossPayableBaseUsd = subtotalWithContingencyThisInvoiceUsd + vatThisInvoiceUsd;
+  const grossToDateUsd = subtotalWithContingencyToDateUsd + vatToDateUsd;
+  const grossRemainingUsd = Math.max(0, Number((totalContractDueUsd - grossToDateUsd).toFixed(2)));
 
   // Handlers for Staff Rows Editing
   const handleUpdateStaff = (id: string, updates: Partial<EditableStaffRow>) => {
@@ -2229,7 +2324,7 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
       const pageHeight = doc.internal.pageSize.getHeight();
       const margin = 36;
       const contentWidth = pageWidth - margin * 2;
-      const totalPages = 4;
+      const totalPages = 6;
 
       // Compact Mode Dynamic Formatting Parameters
       const fontSizeData = isCompactPdfMode ? 5.5 : 6;
@@ -2297,12 +2392,13 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
       };
 
       // =========================================================================
-      // PAGE 1: TABLE 1 — MONTHLY PERSONNEL ATTENDANCE RECORD & INPUT DERIVATION
+      // PAGE 1: TABLE 1 — PERSONNEL ATTENDANCE RECORD & MAN-MONTH ALLOCATION
+      // (Category, Days Worked, Month Days, Derived MM columns removed as requested)
       // =========================================================================
-      drawPageHeader(1, "Table 1: Personnel Attendance Record & Input Derivation");
+      drawPageHeader(1, "Table 1: Personnel Allocation & Man-Month Tracking Record");
       let y = margin + 52;
 
-      // Formula notification box
+      // Formula / description box
       const boxH = isCompactPdfMode ? 16 : 20;
       doc.setFillColor(239, 246, 255); // blue-50
       doc.setDrawColor(191, 219, 254);
@@ -2310,26 +2406,35 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(isCompactPdfMode ? 6.5 : 7);
       doc.setTextColor(30, 64, 175);
-      doc.text("Derived Man-Month (MM) Formula:", margin + 14, y + (boxH * 0.65));
+      doc.text("Supervisory Personnel Allocation Ledger:", margin + 14, y + (boxH * 0.65));
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(71, 85, 105);
-      doc.text(`Derived MM Input = Days Worked ÷ Month Length (${totalDaysInMonth} Days) • Contract Staff Rates Linked to Contract Table 1.3`, margin + 142, y + (boxH * 0.65));
+      doc.text(`Supervision Staff Deployment & Man-Month (MM) Inputs • Cumulative Inputs Linked to Contract Table 1.3 Baseline`, margin + 175, y + (boxH * 0.65));
 
       y += boxH + (isCompactPdfMode ? 4 : 6);
 
-      // Table 1 Headers (Total width = 756 pt)
-      const t1Headers = [
+      // Table 1 Headers without Category, Days Worked, Month Days, Derived MM
+      const t1Headers = isUsdModeActive ? [
         { title: 'No', width: 24, align: 'center' },
-        { title: 'Supervisory Position', width: 130, align: 'left' },
-        { title: 'Assigned Personnel Name', width: 115, align: 'left' },
-        { title: 'Category', width: 70, align: 'left' },
-        { title: 'Days Worked', width: 50, align: 'right' },
-        { title: 'Month Days', width: 50, align: 'right' },
-        { title: 'Derived MM', width: 55, align: 'right' },
-        { title: 'Contract Rate (ETB)', width: 80, align: 'right' },
-        { title: 'This Month (ETB)', width: 82, align: 'right' },
-        { title: 'Preceding MM', width: 50, align: 'right' },
-        { title: 'To-Date MM', width: 50, align: 'right' }
+        { title: 'Supervisory Position', width: 175, align: 'left' },
+        { title: 'Assigned Personnel Name', width: 160, align: 'left' },
+        { title: 'Unit', width: 36, align: 'center' },
+        { title: 'Unit Price (ETB)', width: 75, align: 'right' },
+        { title: 'Unit Price (USD)', width: 65, align: 'right' },
+        { title: 'Contr. MM', width: 50, align: 'right' },
+        { title: 'Preceding MM', width: 55, align: 'right' },
+        { title: 'This Month MM', width: 55, align: 'right' },
+        { title: 'To-Date MM', width: 55, align: 'right' }
+      ] : [
+        { title: 'No', width: 26, align: 'center' },
+        { title: 'Supervisory Position', width: 195, align: 'left' },
+        { title: 'Assigned Personnel Name', width: 175, align: 'left' },
+        { title: 'Unit', width: 40, align: 'center' },
+        { title: 'Unit Price (ETB)', width: 85, align: 'right' },
+        { title: 'Contr. MM', width: 55, align: 'right' },
+        { title: 'Preceding MM', width: 60, align: 'right' },
+        { title: 'This Month MM', width: 60, align: 'right' },
+        { title: 'To-Date MM', width: 60, align: 'right' }
       ];
 
       const headerBoxH = isCompactPdfMode ? 14 : 16;
@@ -2355,13 +2460,13 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
 
       // Table 1 Rows with Word-Wrapping
       displayFeeRowsComputed.forEach((row, idx) => {
-        if (y > pageHeight - margin - 35) return; // stay within page height
+        if (y > pageHeight - margin - 35) return;
 
-        // Word-wrap long strings
-        const posLines = doc.splitTextToSize(row.position || '', 130 - 4);
-        const nameLines = doc.splitTextToSize(row.name || '', 115 - 4);
-        const catLines = doc.splitTextToSize(row.category || 'Professional', 70 - 4);
-        const maxLines = Math.max(posLines.length, nameLines.length, catLines.length, 1);
+        const posWidth = isUsdModeActive ? 175 : 195;
+        const nameWidth = isUsdModeActive ? 160 : 175;
+        const posLines = doc.splitTextToSize(row.position || '', posWidth - 4);
+        const nameLines = doc.splitTextToSize(row.name || '', nameWidth - 4);
+        const maxLines = Math.max(posLines.length, nameLines.length, 1);
         const rowH = Math.max(maxLines * lineStep + (isCompactPdfMode ? 2 : 4), minRowH);
 
         if (idx % 2 === 1) {
@@ -2377,8 +2482,9 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
         const textYOffset = isCompactPdfMode ? 6.5 : 8;
 
         // No
-        doc.text(String(idx + 1), rX + 12, y + textYOffset, { align: 'center' });
-        rX += 24;
+        const noW = isUsdModeActive ? 24 : 26;
+        doc.text(String(idx + 1), rX + (noW / 2), y + textYOffset, { align: 'center' });
+        rX += noW;
 
         // Position (Wrapped)
         doc.setFont('helvetica', 'bold');
@@ -2386,53 +2492,54 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
           doc.text(line, rX + 2, y + textYOffset + (lIdx * lineStep));
         });
         doc.setFont('helvetica', 'normal');
-        rX += 130;
+        rX += posWidth;
 
         // Name (Wrapped)
         nameLines.forEach((line: string, lIdx: number) => {
           doc.text(line, rX + 2, y + textYOffset + (lIdx * lineStep));
         });
-        rX += 115;
+        rX += nameWidth;
 
-        // Category (Wrapped)
-        catLines.forEach((line: string, lIdx: number) => {
-          doc.text(line, rX + 2, y + textYOffset + (lIdx * lineStep));
-        });
-        rX += 70;
+        // Unit
+        const unitW = isUsdModeActive ? 36 : 40;
+        doc.text(row.unit || 'Month', rX + (unitW / 2), y + textYOffset, { align: 'center' });
+        rX += unitW;
 
-        // Days Worked
-        doc.text(String(row.daysWorked || 0), rX + 50 - 2, y + textYOffset, { align: 'right' });
-        rX += 50;
+        // Unit Price (ETB)
+        const rateEtbW = isUsdModeActive ? 75 : 85;
+        doc.text(fmt(row.effectiveRate || row.rate), rX + rateEtbW - 2, y + textYOffset, { align: 'right' });
+        rX += rateEtbW;
 
-        // Month Days
-        doc.text(String(totalDaysInMonth), rX + 50 - 2, y + textYOffset, { align: 'right' });
-        rX += 50;
+        // Unit Price (USD) if USD active
+        if (isUsdModeActive) {
+          const rateUsdW = 65;
+          doc.text(row.rateUsd ? `$${fmt(row.rateUsd)}` : '$0.00', rX + rateUsdW - 2, y + textYOffset, { align: 'right' });
+          rX += rateUsdW;
+        }
 
-        // Derived MM
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(37, 99, 235);
-        doc.text(row.thisInvoiceQty.toFixed(2), rX + 55 - 2, y + textYOffset, { align: 'right' });
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(30, 41, 59);
-        rX += 55;
-
-        // Rate
-        doc.text(fmt(row.effectiveRate || row.rate), rX + 80 - 2, y + textYOffset, { align: 'right' });
-        rX += 80;
-
-        // This Month Amount
-        doc.setFont('helvetica', 'bold');
-        doc.text(fmt(row.thisInvoiceAmount), rX + 82 - 2, y + textYOffset, { align: 'right' });
-        doc.setFont('helvetica', 'normal');
-        rX += 82;
+        // Contract MM
+        const contrMmW = isUsdModeActive ? 50 : 55;
+        doc.text(row.contractQty.toFixed(2), rX + contrMmW - 2, y + textYOffset, { align: 'right' });
+        rX += contrMmW;
 
         // Preceding MM
-        doc.text(row.precedingQty.toFixed(2), rX + 50 - 2, y + textYOffset, { align: 'right' });
-        rX += 50;
+        const precMmW = isUsdModeActive ? 55 : 60;
+        doc.text(row.precedingQty.toFixed(2), rX + precMmW - 2, y + textYOffset, { align: 'right' });
+        rX += precMmW;
+
+        // This Month MM
+        const thisMmW = isUsdModeActive ? 55 : 60;
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(37, 99, 235);
+        doc.text(row.thisInvoiceQty.toFixed(2), rX + thisMmW - 2, y + textYOffset, { align: 'right' });
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(30, 41, 59);
+        rX += thisMmW;
 
         // To-Date MM
+        const toDateMmW = isUsdModeActive ? 55 : 60;
         doc.setFont('helvetica', 'bold');
-        doc.text(row.toDateQty.toFixed(2), rX + 50 - 2, y + textYOffset, { align: 'right' });
+        doc.text(row.toDateQty.toFixed(2), rX + toDateMmW - 2, y + textYOffset, { align: 'right' });
 
         doc.setDrawColor(241, 245, 249);
         doc.line(margin + 6, y + rowH, margin + contentWidth - 6, y + rowH);
@@ -2446,32 +2553,380 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(isCompactPdfMode ? 6 : 6.5);
       doc.setTextColor(30, 64, 175);
-      doc.text("TOTAL SUB-TOTAL 1 (SUPERVISORY PERSONNEL REMUNERATION CLAIM):", margin + 14, y + (totalsBoxH * 0.65));
+      doc.text("TOTAL SUPERVISORY PERSONNEL MAN-MONTH ALLOCATION:", margin + 14, y + (totalsBoxH * 0.65));
 
-      const totDerivedMM = displayFeeRowsComputed.reduce((s, r) => s + r.thisInvoiceQty, 0).toFixed(2);
-      const totThisMonthClaim = displayFeeRowsComputed.reduce((s, r) => s + r.thisInvoiceAmount, 0);
-      const totToDateMM = displayFeeRowsComputed.reduce((s, r) => s + r.toDateQty, 0).toFixed(2);
+      const totContrMM = displayFeeRowsComputed.reduce((s, r) => s + r.contractQty, 0).toFixed(2);
+      const totPrecedingMM = displayFeeRowsComputed.reduce((s, r) => s + r.precedingQty, 0).toFixed(2);
+      const totThisMonthMM = displayFeeRowsComputed.reduce((s, r) => s + r.thisInvoiceQty, 0).toFixed(2);
+      const totToDateMMVal = displayFeeRowsComputed.reduce((s, r) => s + r.toDateQty, 0).toFixed(2);
 
-      let t1X = margin + 8 + 24 + 130 + 115 + 70 + 50 + 50;
-      doc.text(`${totDerivedMM} MM`, t1X + 55 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
-      t1X += 55 + 80;
-      doc.text(`${fmt(totThisMonthClaim)} ETB`, t1X + 82 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
-      t1X += 82 + 50;
-      doc.text(`${totToDateMM} MM`, t1X + 50 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+      let t1X = margin + 8 + (isUsdModeActive ? 24 + 175 + 160 + 36 + 75 + 65 : 26 + 195 + 175 + 40 + 85);
+      const contrTotW = isUsdModeActive ? 50 : 55;
+      const precTotW = isUsdModeActive ? 55 : 60;
+      const thisTotW = isUsdModeActive ? 55 : 60;
+      const toDateTotW = isUsdModeActive ? 55 : 60;
+
+      doc.text(`${totContrMM} MM`, t1X + contrTotW - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+      t1X += contrTotW;
+      doc.text(`${totPrecedingMM} MM`, t1X + precTotW - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+      t1X += precTotW;
+      doc.text(`${totThisMonthMM} MM`, t1X + thisTotW - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+      t1X += thisTotW;
+      doc.text(`${totToDateMMVal} MM`, t1X + toDateTotW - 2, y + (totalsBoxH * 0.65), { align: 'right' });
 
       // =========================================================================
-      // PAGE 2: SUB TOTAL 2 — REIMBURSABLE DIRECT OPERATING EXPENSES SCHEDULE
+      // PAGE 2: TABLE 2 — CONSTRUCTION SUPERVISORY STAFF FEES CALCULATION
       // =========================================================================
       doc.addPage();
-      drawPageHeader(2, "Sub Total 2: Reimbursable Direct Operating Expenses Schedule");
+      drawPageHeader(2, "Table 2: Construction Supervisory Staff Fees Calculation");
       y = margin + 52;
 
-      // Table 2 Headers (Total width = 756 pt)
-      const t2Headers = [
+      // Table 2 Notice Box
+      doc.setFillColor(236, 253, 245); // emerald-50
+      doc.setDrawColor(167, 243, 208);
+      doc.roundedRect(margin + 6, y, contentWidth - 12, boxH, 3, 3, 'DF');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(isCompactPdfMode ? 6.5 : 7);
+      doc.setTextColor(6, 95, 70);
+      doc.text("Construction Staff Fees Remuneration Schedule (Sub-Total 1):", margin + 14, y + (boxH * 0.65));
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(71, 85, 105);
+      doc.text(
+        isUsdModeActive
+          ? "Fee Computation = Billed MM × Contract Rates (ETB & USD) • Preceding, This Month & To-Date Complete Remuneration"
+          : "Fee Computation = Billed Man-Months (Table 1) × Contract Unit Price • Preceding & To-Date Remuneration History",
+        margin + 230,
+        y + (boxH * 0.65)
+      );
+
+      y += boxH + (isCompactPdfMode ? 4 : 6);
+
+      // Table 2 Headers: Include USD columns when isUsdModeActive is true
+      const t2Headers = isUsdModeActive ? [
+        { title: 'Item', width: 18, align: 'center' },
+        { title: 'Supervisory Staff Position & Name', width: 130, align: 'left' },
+        { title: 'Unit', width: 24, align: 'center' },
+        { title: 'Rate (ETB)', width: 48, align: 'right' },
+        { title: 'Rate (USD)', width: 42, align: 'right' },
+        { title: 'Contr. MM', width: 32, align: 'right' },
+        { title: 'Contr. (ETB)', width: 52, align: 'right' },
+        { title: 'Contr. (USD)', width: 42, align: 'right' },
+        { title: 'Prec. MM', width: 32, align: 'right' },
+        { title: 'Prec. (ETB)', width: 50, align: 'right' },
+        { title: 'Prec. (USD)', width: 42, align: 'right' },
+        { title: 'This MM', width: 32, align: 'right' },
+        { title: 'This (ETB)', width: 50, align: 'right' },
+        { title: 'This (USD)', width: 42, align: 'right' },
+        { title: 'To-Date MM', width: 32, align: 'right' },
+        { title: 'To-Date (ETB)', width: 52, align: 'right' },
+        { title: 'To-Date (USD)', width: 44, align: 'right' }
+      ] : [
+        { title: 'Item', width: 22, align: 'center' },
+        { title: 'Supervisory Staff Position & Name', width: 165, align: 'left' },
+        { title: 'Unit', width: 34, align: 'center' },
+        { title: 'Unit Price (ETB)', width: 68, align: 'right' },
+        { title: 'Contr. MM', width: 44, align: 'right' },
+        { title: 'Contract Amt (ETB)', width: 75, align: 'right' },
+        { title: 'Prec. MM', width: 42, align: 'right' },
+        { title: 'Prec. Amt (ETB)', width: 70, align: 'right' },
+        { title: 'This MM', width: 42, align: 'right' },
+        { title: 'This Fee (ETB)', width: 75, align: 'right' },
+        { title: 'To-Date MM', width: 42, align: 'right' },
+        { title: 'To-Date Amt (ETB)', width: 75, align: 'right' }
+      ];
+
+      doc.setFillColor(30, 41, 59);
+      doc.roundedRect(margin + 6, y, contentWidth - 12, headerBoxH, 2, 2, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(fontSizeHeader);
+      doc.setTextColor(255, 255, 255);
+
+      let t2CurX = margin + 8;
+      t2Headers.forEach(h => {
+        if (h.align === 'right') {
+          doc.text(h.title, t2CurX + h.width - 2, y + (headerBoxH * 0.65), { align: 'right' });
+        } else if (h.align === 'center') {
+          doc.text(h.title, t2CurX + h.width / 2, y + (headerBoxH * 0.65), { align: 'center' });
+        } else {
+          doc.text(h.title, t2CurX + 2, y + (headerBoxH * 0.65));
+        }
+        t2CurX += h.width;
+      });
+
+      y += headerBoxH + 2;
+
+      // Table 2 Rows
+      displayFeeRowsComputed.forEach((row, idx) => {
+        if (y > pageHeight - margin - 35) return;
+
+        const staffLabel = row.name && row.name !== 'To be nominated'
+          ? `${row.position} — ${row.name}`
+          : row.position;
+        const nameColW = isUsdModeActive ? 130 : 165;
+        const staffLines = doc.splitTextToSize(staffLabel, nameColW - 4);
+        const rowH = Math.max(staffLines.length * lineStep + (isCompactPdfMode ? 2 : 4), minRowH);
+
+        if (idx % 2 === 1) {
+          doc.setFillColor(248, 250, 252);
+          doc.rect(margin + 6, y, contentWidth - 12, rowH, 'F');
+        }
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(fontSizeData);
+        doc.setTextColor(30, 41, 59);
+
+        let rX = margin + 8;
+        const textYOffset = isCompactPdfMode ? 6.5 : 8;
+
+        if (isUsdModeActive) {
+          // Item No (18)
+          doc.text(String(idx + 1), rX + 9, y + textYOffset, { align: 'center' });
+          rX += 18;
+
+          // Position & Name (130)
+          doc.setFont('helvetica', 'bold');
+          staffLines.forEach((line: string, lIdx: number) => {
+            doc.text(line, rX + 2, y + textYOffset + (lIdx * lineStep));
+          });
+          doc.setFont('helvetica', 'normal');
+          rX += 130;
+
+          // Unit (24)
+          doc.text(row.unit || 'Month', rX + 12, y + textYOffset, { align: 'center' });
+          rX += 24;
+
+          // Rate ETB (48)
+          doc.text(fmt(row.effectiveRate || row.rate), rX + 48 - 2, y + textYOffset, { align: 'right' });
+          rX += 48;
+
+          // Rate USD (42)
+          doc.text(row.rateUsd ? `$${fmt(row.rateUsd)}` : '$0.00', rX + 42 - 2, y + textYOffset, { align: 'right' });
+          rX += 42;
+
+          // Contract MM (32)
+          doc.text(row.contractQty.toFixed(2), rX + 32 - 2, y + textYOffset, { align: 'right' });
+          rX += 32;
+
+          // Contract Amt ETB (52)
+          doc.text(fmt(row.contractAmount), rX + 52 - 2, y + textYOffset, { align: 'right' });
+          rX += 52;
+
+          // Contract Amt USD (42)
+          doc.text(`$${fmt(row.contractAmountUsd || 0)}`, rX + 42 - 2, y + textYOffset, { align: 'right' });
+          rX += 42;
+
+          // Preceding MM (32)
+          doc.text(row.precedingQty.toFixed(2), rX + 32 - 2, y + textYOffset, { align: 'right' });
+          rX += 32;
+
+          // Preceding Amt ETB (50)
+          doc.text(fmt(row.precedingAmount), rX + 50 - 2, y + textYOffset, { align: 'right' });
+          rX += 50;
+
+          // Preceding Amt USD (42)
+          doc.text(`$${fmt(row.precedingAmountUsd || 0)}`, rX + 42 - 2, y + textYOffset, { align: 'right' });
+          rX += 42;
+
+          // This MM (32)
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(37, 99, 235);
+          doc.text(row.thisInvoiceQty.toFixed(2), rX + 32 - 2, y + textYOffset, { align: 'right' });
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(30, 41, 59);
+          rX += 32;
+
+          // This Fee ETB (50)
+          doc.setFont('helvetica', 'bold');
+          doc.text(fmt(row.thisInvoiceAmount), rX + 50 - 2, y + textYOffset, { align: 'right' });
+          doc.setFont('helvetica', 'normal');
+          rX += 50;
+
+          // This Fee USD (42)
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(109, 40, 217);
+          doc.text(`$${fmt(row.thisInvoiceAmountUsd || 0)}`, rX + 42 - 2, y + textYOffset, { align: 'right' });
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(30, 41, 59);
+          rX += 42;
+
+          // To-Date MM (32)
+          doc.text(row.toDateQty.toFixed(2), rX + 32 - 2, y + textYOffset, { align: 'right' });
+          rX += 32;
+
+          // To-Date Amt ETB (52)
+          doc.setFont('helvetica', 'bold');
+          doc.text(fmt(row.toDateAmount), rX + 52 - 2, y + textYOffset, { align: 'right' });
+          doc.setFont('helvetica', 'normal');
+          rX += 52;
+
+          // To-Date Amt USD (44)
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(109, 40, 217);
+          doc.text(`$${fmt(row.toDateAmountUsd || 0)}`, rX + 44 - 2, y + textYOffset, { align: 'right' });
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(30, 41, 59);
+        } else {
+          // Item No
+          doc.text(String(idx + 1), rX + 11, y + textYOffset, { align: 'center' });
+          rX += 22;
+
+          // Position & Name
+          doc.setFont('helvetica', 'bold');
+          staffLines.forEach((line: string, lIdx: number) => {
+            doc.text(line, rX + 2, y + textYOffset + (lIdx * lineStep));
+          });
+          doc.setFont('helvetica', 'normal');
+          rX += 165;
+
+          // Unit
+          doc.text(row.unit || 'Month', rX + 17, y + textYOffset, { align: 'center' });
+          rX += 34;
+
+          // Unit Price (ETB)
+          doc.text(fmt(row.effectiveRate || row.rate), rX + 68 - 2, y + textYOffset, { align: 'right' });
+          rX += 68;
+
+          // Contract MM
+          doc.text(row.contractQty.toFixed(2), rX + 44 - 2, y + textYOffset, { align: 'right' });
+          rX += 44;
+
+          // Contract Amount
+          doc.text(fmt(row.contractAmount), rX + 75 - 2, y + textYOffset, { align: 'right' });
+          rX += 75;
+
+          // Preceding MM
+          doc.text(row.precedingQty.toFixed(2), rX + 42 - 2, y + textYOffset, { align: 'right' });
+          rX += 42;
+
+          // Preceding Amount
+          doc.text(fmt(row.precedingAmount), rX + 70 - 2, y + textYOffset, { align: 'right' });
+          rX += 70;
+
+          // This MM
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(37, 99, 235);
+          doc.text(row.thisInvoiceQty.toFixed(2), rX + 42 - 2, y + textYOffset, { align: 'right' });
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(30, 41, 59);
+          rX += 42;
+
+          // This Fee
+          doc.setFont('helvetica', 'bold');
+          doc.text(fmt(row.thisInvoiceAmount), rX + 75 - 2, y + textYOffset, { align: 'right' });
+          doc.setFont('helvetica', 'normal');
+          rX += 75;
+
+          // To-Date MM
+          doc.text(row.toDateQty.toFixed(2), rX + 42 - 2, y + textYOffset, { align: 'right' });
+          rX += 42;
+
+          // To-Date Amount
+          doc.setFont('helvetica', 'bold');
+          doc.text(fmt(row.toDateAmount), rX + 75 - 2, y + textYOffset, { align: 'right' });
+        }
+
+        doc.setDrawColor(241, 245, 249);
+        doc.line(margin + 6, y + rowH, margin + contentWidth - 6, y + rowH);
+        y += rowH;
+      });
+
+      // Table 2 Totals Row
+      doc.setFillColor(238, 242, 255);
+      doc.rect(margin + 6, y, contentWidth - 12, totalsBoxH, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(isCompactPdfMode ? 6 : 6.5);
+      doc.setTextColor(30, 64, 175);
+      doc.text("TOTAL SUB-TOTAL 1 (CONSTRUCTION SUPERVISORY STAFF FEES CLAIM):", margin + 14, y + (totalsBoxH * 0.65));
+
+      const totContrAmtT2 = displayFeeRowsComputed.reduce((s, r) => s + r.contractAmount, 0);
+
+      if (isUsdModeActive) {
+        let t2TotX = margin + 8 + 18 + 130 + 24 + 48 + 42;
+        // Contr. MM
+        doc.text(`${totContrMM}`, t2TotX + 32 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+        t2TotX += 32;
+        // Contr. ETB
+        doc.text(`${fmt(totContrAmtT2)}`, t2TotX + 52 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+        t2TotX += 52;
+        // Contr. USD
+        doc.text(`$${fmt(subTotal1ContractUsd)}`, t2TotX + 42 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+        t2TotX += 42;
+        // Prec. MM
+        doc.text(`${totPrecedingMM}`, t2TotX + 32 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+        t2TotX += 32;
+        // Prec. ETB
+        doc.text(`${fmt(subTotal1Preceding)}`, t2TotX + 50 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+        t2TotX += 50;
+        // Prec. USD
+        doc.text(`$${fmt(subTotal1PrecedingUsd)}`, t2TotX + 42 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+        t2TotX += 42;
+        // This MM
+        doc.text(`${totThisMonthMM}`, t2TotX + 32 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+        t2TotX += 32;
+        // This ETB
+        doc.text(`${fmt(subTotal1ThisInvoice)}`, t2TotX + 50 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+        t2TotX += 50;
+        // This USD
+        doc.text(`$${fmt(subTotal1ThisInvoiceUsd)}`, t2TotX + 42 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+        t2TotX += 42;
+        // ToDate MM
+        doc.text(`${totToDateMMVal}`, t2TotX + 32 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+        t2TotX += 32;
+        // ToDate ETB
+        doc.text(`${fmt(subTotal1ToDate)}`, t2TotX + 52 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+        t2TotX += 52;
+        // ToDate USD
+        doc.text(`$${fmt(subTotal1ToDateUsd)}`, t2TotX + 44 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+      } else {
+        let t2TotX = margin + 8 + 22 + 165 + 34 + 68;
+        doc.text(`${totContrMM}`, t2TotX + 44 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+        t2TotX += 44;
+        doc.text(`${fmt(totContrAmtT2)}`, t2TotX + 75 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+        t2TotX += 75;
+        doc.text(`${totPrecedingMM}`, t2TotX + 42 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+        t2TotX += 42;
+        doc.text(`${fmt(subTotal1Preceding)}`, t2TotX + 70 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+        t2TotX += 70;
+        doc.text(`${totThisMonthMM}`, t2TotX + 42 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+        t2TotX += 42;
+        doc.text(`${fmt(subTotal1ThisInvoice)} ETB`, t2TotX + 75 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+        t2TotX += 75;
+        doc.text(`${totToDateMMVal}`, t2TotX + 42 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+        t2TotX += 42;
+        doc.text(`${fmt(subTotal1ToDate)} ETB`, t2TotX + 75 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+      }
+
+      // =========================================================================
+      // PAGE 3: SUB TOTAL 2 — REIMBURSABLE DIRECT OPERATING EXPENSES SCHEDULE
+      // =========================================================================
+      doc.addPage();
+      drawPageHeader(3, "Sub Total 2: Reimbursable Direct Operating Expenses Schedule");
+      y = margin + 52;
+
+      // Table B Reimbursable Headers: Include USD columns when isUsdModeActive is true
+      const reimbHeaders = isUsdModeActive ? [
+        { title: 'Item', width: 20, align: 'center' },
+        { title: 'Description of Direct Expenses', width: 140, align: 'left' },
+        { title: 'Unit', width: 26, align: 'center' },
+        { title: 'Rate (ETB)', width: 48, align: 'right' },
+        { title: 'Rate (USD)', width: 42, align: 'right' },
+        { title: 'Contr. Qty', width: 32, align: 'right' },
+        { title: 'Contr. (ETB)', width: 52, align: 'right' },
+        { title: 'Contr. (USD)', width: 42, align: 'right' },
+        { title: 'Prec. Qty', width: 32, align: 'right' },
+        { title: 'Prec. (ETB)', width: 50, align: 'right' },
+        { title: 'Prec. (USD)', width: 42, align: 'right' },
+        { title: 'This Qty', width: 32, align: 'right' },
+        { title: 'This (ETB)', width: 50, align: 'right' },
+        { title: 'This (USD)', width: 42, align: 'right' },
+        { title: 'To-Date Qty', width: 32, align: 'right' },
+        { title: 'To-Date (ETB)', width: 52, align: 'right' },
+        { title: 'To-Date (USD)', width: 44, align: 'right' }
+      ] : [
         { title: 'Item', width: 24, align: 'center' },
         { title: 'Description of Direct Expenses', width: 180, align: 'left' },
         { title: 'Unit', width: 36, align: 'center' },
-        { title: 'Contract Rate', width: 65, align: 'right' },
+        { title: 'Unit Price (ETB)', width: 65, align: 'right' },
         { title: 'Contract Qty', width: 40, align: 'right' },
         { title: 'Contract Amt (ETB)', width: 75, align: 'right' },
         { title: 'Preceding Qty', width: 40, align: 'right' },
@@ -2489,7 +2944,7 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
       doc.setTextColor(255, 255, 255);
 
       let t2cX = margin + 8;
-      t2Headers.forEach(h => {
+      reimbHeaders.forEach(h => {
         if (h.align === 'right') {
           doc.text(h.title, t2cX + h.width - 2, y + (headerBoxH * 0.65), { align: 'right' });
         } else if (h.align === 'center') {
@@ -2505,7 +2960,8 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
       reimbursableRowsComputed.forEach((row, idx) => {
         if (y > pageHeight - margin - 35) return;
 
-        const descLines = doc.splitTextToSize(row.description || '', 180 - 4);
+        const descColW = isUsdModeActive ? 140 : 180;
+        const descLines = doc.splitTextToSize(row.description || '', descColW - 4);
         const rowH = Math.max(descLines.length * lineStep + (isCompactPdfMode ? 2 : 4), minRowH);
 
         if (idx % 2 === 1) {
@@ -2520,70 +2976,159 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
         let rX = margin + 8;
         const textYOffset = isCompactPdfMode ? 6.5 : 8;
 
-        // Item No
-        doc.text(String(row.no || (idx + 1)), rX + 12, y + textYOffset, { align: 'center' });
-        rX += 24;
+        if (isUsdModeActive) {
+          // Item No (20)
+          doc.text(String(row.no || (idx + 1)), rX + 10, y + textYOffset, { align: 'center' });
+          rX += 20;
 
-        // Description (Wrapped)
-        doc.setFont('helvetica', 'bold');
-        descLines.forEach((line: string, lIdx: number) => {
-          doc.text(line, rX + 2, y + textYOffset + (lIdx * lineStep));
-        });
-        doc.setFont('helvetica', 'normal');
-        rX += 180;
+          // Description (140)
+          doc.setFont('helvetica', 'bold');
+          descLines.forEach((line: string, lIdx: number) => {
+            doc.text(line, rX + 2, y + textYOffset + (lIdx * lineStep));
+          });
+          doc.setFont('helvetica', 'normal');
+          rX += 140;
 
-        // Unit
-        doc.text(row.unit || 'Month', rX + 18, y + textYOffset, { align: 'center' });
-        rX += 36;
+          // Unit (26)
+          doc.text(row.unit || 'Month', rX + 13, y + textYOffset, { align: 'center' });
+          rX += 26;
 
-        // Contract Rate
-        doc.text(fmt(row.effectiveRate || row.rate), rX + 65 - 2, y + textYOffset, { align: 'right' });
-        rX += 65;
+          // Rate ETB (48)
+          doc.text(fmt(row.effectiveRate || row.rate), rX + 48 - 2, y + textYOffset, { align: 'right' });
+          rX += 48;
 
-        // Contract Qty
-        doc.text(String(row.contractQty || 0), rX + 40 - 2, y + textYOffset, { align: 'right' });
-        rX += 40;
+          // Rate USD (42)
+          doc.text(row.rateUsd ? `$${fmt(row.rateUsd)}` : '$0.00', rX + 42 - 2, y + textYOffset, { align: 'right' });
+          rX += 42;
 
-        // Contract Amount
-        doc.text(fmt(row.contractAmount), rX + 75 - 2, y + textYOffset, { align: 'right' });
-        rX += 75;
+          // Contr Qty (32)
+          doc.text(String(row.contractQty || 0), rX + 32 - 2, y + textYOffset, { align: 'right' });
+          rX += 32;
 
-        // Preceding Qty
-        doc.text((row.precedingQty || 0).toFixed(2), rX + 40 - 2, y + textYOffset, { align: 'right' });
-        rX += 40;
+          // Contr Amt ETB (52)
+          doc.text(fmt(row.contractAmount), rX + 52 - 2, y + textYOffset, { align: 'right' });
+          rX += 52;
 
-        // Preceding Amount
-        doc.text(fmt(row.precedingAmount), rX + 70 - 2, y + textYOffset, { align: 'right' });
-        rX += 70;
+          // Contr Amt USD (42)
+          doc.text(`$${fmt(row.contractAmountUsd || 0)}`, rX + 42 - 2, y + textYOffset, { align: 'right' });
+          rX += 42;
 
-        // This Invoice Qty
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(37, 99, 235);
-        doc.text((row.thisInvoiceQty || 0).toFixed(2), rX + 45 - 2, y + textYOffset, { align: 'right' });
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(30, 41, 59);
-        rX += 45;
+          // Preceding Qty (32)
+          doc.text((row.precedingQty || 0).toFixed(2), rX + 32 - 2, y + textYOffset, { align: 'right' });
+          rX += 32;
 
-        // This Invoice Amount
-        doc.setFont('helvetica', 'bold');
-        doc.text(fmt(row.computedThisAmount), rX + 75 - 2, y + textYOffset, { align: 'right' });
-        doc.setFont('helvetica', 'normal');
-        rX += 75;
+          // Preceding Amt ETB (50)
+          doc.text(fmt(row.precedingAmount), rX + 50 - 2, y + textYOffset, { align: 'right' });
+          rX += 50;
 
-        // To-Date Qty
-        doc.text((row.toDateQty || 0).toFixed(2), rX + 36 - 2, y + textYOffset, { align: 'right' });
-        rX += 36;
+          // Preceding Amt USD (42)
+          doc.text(`$${fmt(row.precedingAmountUsd || 0)}`, rX + 42 - 2, y + textYOffset, { align: 'right' });
+          rX += 42;
 
-        // To-Date Amount
-        doc.setFont('helvetica', 'bold');
-        doc.text(fmt(row.toDateAmount), rX + 70 - 2, y + textYOffset, { align: 'right' });
+          // This Qty (32)
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(37, 99, 235);
+          doc.text((row.thisInvoiceQty || 0).toFixed(2), rX + 32 - 2, y + textYOffset, { align: 'right' });
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(30, 41, 59);
+          rX += 32;
+
+          // This Amt ETB (50)
+          doc.setFont('helvetica', 'bold');
+          doc.text(fmt(row.computedThisAmount), rX + 50 - 2, y + textYOffset, { align: 'right' });
+          doc.setFont('helvetica', 'normal');
+          rX += 50;
+
+          // This Amt USD (42)
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(109, 40, 217);
+          doc.text(`$${fmt(row.thisInvoiceAmountUsd || 0)}`, rX + 42 - 2, y + textYOffset, { align: 'right' });
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(30, 41, 59);
+          rX += 42;
+
+          // To-Date Qty (32)
+          doc.text((row.toDateQty || 0).toFixed(2), rX + 32 - 2, y + textYOffset, { align: 'right' });
+          rX += 32;
+
+          // To-Date Amt ETB (52)
+          doc.setFont('helvetica', 'bold');
+          doc.text(fmt(row.toDateAmount), rX + 52 - 2, y + textYOffset, { align: 'right' });
+          doc.setFont('helvetica', 'normal');
+          rX += 52;
+
+          // To-Date Amt USD (44)
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(109, 40, 217);
+          doc.text(`$${fmt(row.toDateAmountUsd || 0)}`, rX + 44 - 2, y + textYOffset, { align: 'right' });
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(30, 41, 59);
+        } else {
+          // Item No
+          doc.text(String(row.no || (idx + 1)), rX + 12, y + textYOffset, { align: 'center' });
+          rX += 24;
+
+          // Description (Wrapped)
+          doc.setFont('helvetica', 'bold');
+          descLines.forEach((line: string, lIdx: number) => {
+            doc.text(line, rX + 2, y + textYOffset + (lIdx * lineStep));
+          });
+          doc.setFont('helvetica', 'normal');
+          rX += 180;
+
+          // Unit
+          doc.text(row.unit || 'Month', rX + 18, y + textYOffset, { align: 'center' });
+          rX += 36;
+
+          // Contract Rate
+          doc.text(fmt(row.effectiveRate || row.rate), rX + 65 - 2, y + textYOffset, { align: 'right' });
+          rX += 65;
+
+          // Contract Qty
+          doc.text(String(row.contractQty || 0), rX + 40 - 2, y + textYOffset, { align: 'right' });
+          rX += 40;
+
+          // Contract Amount
+          doc.text(fmt(row.contractAmount), rX + 75 - 2, y + textYOffset, { align: 'right' });
+          rX += 75;
+
+          // Preceding Qty
+          doc.text((row.precedingQty || 0).toFixed(2), rX + 40 - 2, y + textYOffset, { align: 'right' });
+          rX += 40;
+
+          // Preceding Amount
+          doc.text(fmt(row.precedingAmount), rX + 70 - 2, y + textYOffset, { align: 'right' });
+          rX += 70;
+
+          // This Invoice Qty
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(37, 99, 235);
+          doc.text((row.thisInvoiceQty || 0).toFixed(2), rX + 45 - 2, y + textYOffset, { align: 'right' });
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(30, 41, 59);
+          rX += 45;
+
+          // This Invoice Amount
+          doc.setFont('helvetica', 'bold');
+          doc.text(fmt(row.computedThisAmount), rX + 75 - 2, y + textYOffset, { align: 'right' });
+          doc.setFont('helvetica', 'normal');
+          rX += 75;
+
+          // To-Date Qty
+          doc.text((row.toDateQty || 0).toFixed(2), rX + 36 - 2, y + textYOffset, { align: 'right' });
+          rX += 36;
+
+          // To-Date Amount
+          doc.setFont('helvetica', 'bold');
+          doc.text(fmt(row.toDateAmount), rX + 70 - 2, y + textYOffset, { align: 'right' });
+        }
 
         doc.setDrawColor(241, 245, 249);
         doc.line(margin + 6, y + rowH, margin + contentWidth - 6, y + rowH);
         y += rowH;
       });
 
-      // Table 2 Totals Row
+      // Table 2 Totals Row (Sub Total 2)
       doc.setFillColor(238, 242, 255);
       doc.rect(margin + 6, y, contentWidth - 12, totalsBoxH, 'F');
       doc.setFont('helvetica', 'bold');
@@ -2591,28 +3136,73 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
       doc.setTextColor(30, 64, 175);
       doc.text("SUB TOTAL 2 (REIMBURSABLE DIRECT OPERATING EXPENSES CLAIM):", margin + 14, y + (totalsBoxH * 0.65));
 
-      let t2x = margin + 8 + 24 + 180 + 36 + 65 + 40;
-      doc.text(`${fmt(subTotal2Contract)} ETB`, t2x + 75 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
-      t2x += 75 + 40;
-      doc.text(fmt(subTotal2Preceding), t2x + 70 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
-      t2x += 70 + 45;
-      doc.text(`${fmt(subTotal2ThisInvoice)} ETB`, t2x + 75 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
-      t2x += 75 + 36;
-      doc.text(fmt(subTotal2ToDate), t2x + 70 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+      if (isUsdModeActive) {
+        let t2x = margin + 8 + 20 + 140 + 26 + 48 + 42 + 32;
+        // Contr ETB
+        doc.text(`${fmt(subTotal2Contract)}`, t2x + 52 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+        t2x += 52;
+        // Contr USD
+        doc.text(`$${fmt(subTotal2ContractUsd)}`, t2x + 42 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+        t2x += 42 + 32;
+        // Prec ETB
+        doc.text(fmt(subTotal2Preceding), t2x + 50 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+        t2x += 50;
+        // Prec USD
+        doc.text(`$${fmt(subTotal2PrecedingUsd)}`, t2x + 42 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+        t2x += 42 + 32;
+        // This ETB
+        doc.text(`${fmt(subTotal2ThisInvoice)}`, t2x + 50 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+        t2x += 50;
+        // This USD
+        doc.text(`$${fmt(subTotal2ThisInvoiceUsd)}`, t2x + 42 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+        t2x += 42 + 32;
+        // ToDate ETB
+        doc.text(fmt(subTotal2ToDate), t2x + 52 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+        t2x += 52;
+        // ToDate USD
+        doc.text(`$${fmt(subTotal2ToDateUsd)}`, t2x + 44 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+      } else {
+        let t2x = margin + 8 + 24 + 180 + 36 + 65 + 40;
+        doc.text(`${fmt(subTotal2Contract)} ETB`, t2x + 75 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+        t2x += 75 + 40;
+        doc.text(fmt(subTotal2Preceding), t2x + 70 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+        t2x += 70 + 45;
+        doc.text(`${fmt(subTotal2ThisInvoice)} ETB`, t2x + 75 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+        t2x += 75 + 36;
+        doc.text(fmt(subTotal2ToDate), t2x + 70 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+      }
 
       // =========================================================================
-      // PAGE 3: SUB TOTAL 3 — DEFECT LIABILITY PERIOD STAFF REMUNERATION SCHEDULE
+      // PAGE 4: SUB TOTAL 3 — DEFECT LIABILITY PERIOD STAFF REMUNERATION SCHEDULE
       // =========================================================================
       doc.addPage();
-      drawPageHeader(3, "Sub Total 3: Defect Liability Period Staff Remuneration Schedule");
+      drawPageHeader(4, "Sub Total 3: Defect Liability Period Staff Remuneration Schedule");
       y = margin + 52;
 
-      // Table 3 Headers (Total width = 756 pt)
-      const t3Headers = [
+      // Table 3 Headers: Include USD columns when isUsdModeActive is true
+      const t3Headers = isUsdModeActive ? [
+        { title: 'Item', width: 20, align: 'center' },
+        { title: 'Defect Liability Supervisory Position & Staff', width: 140, align: 'left' },
+        { title: 'Unit', width: 26, align: 'center' },
+        { title: 'Rate (ETB)', width: 48, align: 'right' },
+        { title: 'Rate (USD)', width: 42, align: 'right' },
+        { title: 'Contr. MM', width: 32, align: 'right' },
+        { title: 'Contr. (ETB)', width: 52, align: 'right' },
+        { title: 'Contr. (USD)', width: 42, align: 'right' },
+        { title: 'Prec. MM', width: 32, align: 'right' },
+        { title: 'Prec. (ETB)', width: 50, align: 'right' },
+        { title: 'Prec. (USD)', width: 42, align: 'right' },
+        { title: 'This MM', width: 32, align: 'right' },
+        { title: 'This (ETB)', width: 50, align: 'right' },
+        { title: 'This (USD)', width: 42, align: 'right' },
+        { title: 'To-Date MM', width: 32, align: 'right' },
+        { title: 'To-Date (ETB)', width: 52, align: 'right' },
+        { title: 'To-Date (USD)', width: 44, align: 'right' }
+      ] : [
         { title: 'Item', width: 24, align: 'center' },
         { title: 'Defect Liability Supervisory Position & Staff', width: 180, align: 'left' },
         { title: 'Unit', width: 36, align: 'center' },
-        { title: 'Contract Rate', width: 65, align: 'right' },
+        { title: 'Unit Price (ETB)', width: 65, align: 'right' },
         { title: 'Contract Qty', width: 40, align: 'right' },
         { title: 'Contract Amt (ETB)', width: 75, align: 'right' },
         { title: 'Preceding Qty', width: 40, align: 'right' },
@@ -2646,7 +3236,8 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
       defectRowsComputed.forEach((row, idx) => {
         if (y > pageHeight - margin - 35) return;
 
-        const posLines = doc.splitTextToSize(row.position || '', 180 - 4);
+        const posColW = isUsdModeActive ? 140 : 180;
+        const posLines = doc.splitTextToSize(row.position || '', posColW - 4);
         const rowH = Math.max(posLines.length * lineStep + (isCompactPdfMode ? 2 : 4), minRowH);
 
         if (idx % 2 === 1) {
@@ -2661,70 +3252,159 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
         let rX = margin + 8;
         const textYOffset = isCompactPdfMode ? 6.5 : 8;
 
-        // Item No
-        doc.text(String(idx + 1), rX + 12, y + textYOffset, { align: 'center' });
-        rX += 24;
+        if (isUsdModeActive) {
+          // Item No (20)
+          doc.text(String(idx + 1), rX + 10, y + textYOffset, { align: 'center' });
+          rX += 20;
 
-        // Position (Wrapped)
-        doc.setFont('helvetica', 'bold');
-        posLines.forEach((line: string, lIdx: number) => {
-          doc.text(line, rX + 2, y + textYOffset + (lIdx * lineStep));
-        });
-        doc.setFont('helvetica', 'normal');
-        rX += 180;
+          // Position (140)
+          doc.setFont('helvetica', 'bold');
+          posLines.forEach((line: string, lIdx: number) => {
+            doc.text(line, rX + 2, y + textYOffset + (lIdx * lineStep));
+          });
+          doc.setFont('helvetica', 'normal');
+          rX += 140;
 
-        // Unit
-        doc.text(row.unit || 'Month', rX + 18, y + textYOffset, { align: 'center' });
-        rX += 36;
+          // Unit (26)
+          doc.text(row.unit || 'Month', rX + 13, y + textYOffset, { align: 'center' });
+          rX += 26;
 
-        // Contract Rate
-        doc.text(fmt(row.rate), rX + 65 - 2, y + textYOffset, { align: 'right' });
-        rX += 65;
+          // Rate ETB (48)
+          doc.text(fmt(row.rate), rX + 48 - 2, y + textYOffset, { align: 'right' });
+          rX += 48;
 
-        // Contract Qty
-        doc.text(String(row.contractQty || 0), rX + 40 - 2, y + textYOffset, { align: 'right' });
-        rX += 40;
+          // Rate USD (42)
+          doc.text(row.rateUsd ? `$${fmt(row.rateUsd)}` : '$0.00', rX + 42 - 2, y + textYOffset, { align: 'right' });
+          rX += 42;
 
-        // Contract Amount
-        doc.text(fmt(row.contractAmount), rX + 75 - 2, y + textYOffset, { align: 'right' });
-        rX += 75;
+          // Contr Qty (32)
+          doc.text(String(row.contractQty || 0), rX + 32 - 2, y + textYOffset, { align: 'right' });
+          rX += 32;
 
-        // Preceding Qty
-        doc.text((row.precedingQty || 0).toFixed(2), rX + 40 - 2, y + textYOffset, { align: 'right' });
-        rX += 40;
+          // Contr Amt ETB (52)
+          doc.text(fmt(row.contractAmount), rX + 52 - 2, y + textYOffset, { align: 'right' });
+          rX += 52;
 
-        // Preceding Amount
-        doc.text(fmt(row.precedingAmount), rX + 70 - 2, y + textYOffset, { align: 'right' });
-        rX += 70;
+          // Contr Amt USD (42)
+          doc.text(`$${fmt(row.contractAmountUsd || 0)}`, rX + 42 - 2, y + textYOffset, { align: 'right' });
+          rX += 42;
 
-        // This Invoice Qty
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(37, 99, 235);
-        doc.text((row.thisInvoiceQty || 0).toFixed(2), rX + 45 - 2, y + textYOffset, { align: 'right' });
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(30, 41, 59);
-        rX += 45;
+          // Preceding Qty (32)
+          doc.text((row.precedingQty || 0).toFixed(2), rX + 32 - 2, y + textYOffset, { align: 'right' });
+          rX += 32;
 
-        // This Invoice Amount
-        doc.setFont('helvetica', 'bold');
-        doc.text(fmt(row.computedThisAmount), rX + 75 - 2, y + textYOffset, { align: 'right' });
-        doc.setFont('helvetica', 'normal');
-        rX += 75;
+          // Preceding Amt ETB (50)
+          doc.text(fmt(row.precedingAmount), rX + 50 - 2, y + textYOffset, { align: 'right' });
+          rX += 50;
 
-        // To-Date Qty
-        doc.text((row.toDateQty || 0).toFixed(2), rX + 36 - 2, y + textYOffset, { align: 'right' });
-        rX += 36;
+          // Preceding Amt USD (42)
+          doc.text(`$${fmt(row.precedingAmountUsd || 0)}`, rX + 42 - 2, y + textYOffset, { align: 'right' });
+          rX += 42;
 
-        // To-Date Amount
-        doc.setFont('helvetica', 'bold');
-        doc.text(fmt(row.toDateAmount), rX + 70 - 2, y + textYOffset, { align: 'right' });
+          // This Qty (32)
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(37, 99, 235);
+          doc.text((row.thisInvoiceQty || 0).toFixed(2), rX + 32 - 2, y + textYOffset, { align: 'right' });
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(30, 41, 59);
+          rX += 32;
+
+          // This Amt ETB (50)
+          doc.setFont('helvetica', 'bold');
+          doc.text(fmt(row.computedThisAmount), rX + 50 - 2, y + textYOffset, { align: 'right' });
+          doc.setFont('helvetica', 'normal');
+          rX += 50;
+
+          // This Amt USD (42)
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(109, 40, 217);
+          doc.text(`$${fmt(row.thisInvoiceAmountUsd || 0)}`, rX + 42 - 2, y + textYOffset, { align: 'right' });
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(30, 41, 59);
+          rX += 42;
+
+          // To-Date Qty (32)
+          doc.text((row.toDateQty || 0).toFixed(2), rX + 32 - 2, y + textYOffset, { align: 'right' });
+          rX += 32;
+
+          // To-Date Amt ETB (52)
+          doc.setFont('helvetica', 'bold');
+          doc.text(fmt(row.toDateAmount), rX + 52 - 2, y + textYOffset, { align: 'right' });
+          doc.setFont('helvetica', 'normal');
+          rX += 52;
+
+          // To-Date Amt USD (44)
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(109, 40, 217);
+          doc.text(`$${fmt(row.toDateAmountUsd || 0)}`, rX + 44 - 2, y + textYOffset, { align: 'right' });
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(30, 41, 59);
+        } else {
+          // Item No
+          doc.text(String(idx + 1), rX + 12, y + textYOffset, { align: 'center' });
+          rX += 24;
+
+          // Position (Wrapped)
+          doc.setFont('helvetica', 'bold');
+          posLines.forEach((line: string, lIdx: number) => {
+            doc.text(line, rX + 2, y + textYOffset + (lIdx * lineStep));
+          });
+          doc.setFont('helvetica', 'normal');
+          rX += 180;
+
+          // Unit
+          doc.text(row.unit || 'Month', rX + 18, y + textYOffset, { align: 'center' });
+          rX += 36;
+
+          // Contract Rate
+          doc.text(fmt(row.rate), rX + 65 - 2, y + textYOffset, { align: 'right' });
+          rX += 65;
+
+          // Contract Qty
+          doc.text(String(row.contractQty || 0), rX + 40 - 2, y + textYOffset, { align: 'right' });
+          rX += 40;
+
+          // Contract Amount
+          doc.text(fmt(row.contractAmount), rX + 75 - 2, y + textYOffset, { align: 'right' });
+          rX += 75;
+
+          // Preceding Qty
+          doc.text((row.precedingQty || 0).toFixed(2), rX + 40 - 2, y + textYOffset, { align: 'right' });
+          rX += 40;
+
+          // Preceding Amount
+          doc.text(fmt(row.precedingAmount), rX + 70 - 2, y + textYOffset, { align: 'right' });
+          rX += 70;
+
+          // This Invoice Qty
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(37, 99, 235);
+          doc.text((row.thisInvoiceQty || 0).toFixed(2), rX + 45 - 2, y + textYOffset, { align: 'right' });
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(30, 41, 59);
+          rX += 45;
+
+          // This Invoice Amount
+          doc.setFont('helvetica', 'bold');
+          doc.text(fmt(row.computedThisAmount), rX + 75 - 2, y + textYOffset, { align: 'right' });
+          doc.setFont('helvetica', 'normal');
+          rX += 75;
+
+          // To-Date Qty
+          doc.text((row.toDateQty || 0).toFixed(2), rX + 36 - 2, y + textYOffset, { align: 'right' });
+          rX += 36;
+
+          // To-Date Amount
+          doc.setFont('helvetica', 'bold');
+          doc.text(fmt(row.toDateAmount), rX + 70 - 2, y + textYOffset, { align: 'right' });
+        }
 
         doc.setDrawColor(241, 245, 249);
         doc.line(margin + 6, y + rowH, margin + contentWidth - 6, y + rowH);
         y += rowH;
       });
 
-      // Table 3 Totals Row
+      // Table 3 Totals Row (Sub Total 3)
       doc.setFillColor(238, 242, 255);
       doc.rect(margin + 6, y, contentWidth - 12, totalsBoxH, 'F');
       doc.setFont('helvetica', 'bold');
@@ -2732,20 +3412,187 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
       doc.setTextColor(30, 64, 175);
       doc.text("SUB TOTAL 3 (DEFECT LIABILITY PERSONNEL ALLOCATION CLAIM):", margin + 14, y + (totalsBoxH * 0.65));
 
-      let t3x = margin + 8 + 24 + 180 + 36 + 65 + 40;
-      doc.text(`${fmt(subTotal3Contract)} ETB`, t3x + 75 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
-      t3x += 75 + 40;
-      doc.text(fmt(subTotal3Preceding), t3x + 70 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
-      t3x += 70 + 45;
-      doc.text(`${fmt(subTotal3ThisInvoice)} ETB`, t3x + 75 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
-      t3x += 75 + 36;
-      doc.text(fmt(subTotal3ToDate), t3x + 70 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+      if (isUsdModeActive) {
+        let t3x = margin + 8 + 20 + 140 + 26 + 48 + 42 + 32;
+        // Contr ETB
+        doc.text(`${fmt(subTotal3Contract)}`, t3x + 52 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+        t3x += 52;
+        // Contr USD
+        doc.text(`$${fmt(subTotal3ContractUsd)}`, t3x + 42 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+        t3x += 42 + 32;
+        // Prec ETB
+        doc.text(fmt(subTotal3Preceding), t3x + 50 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+        t3x += 50;
+        // Prec USD
+        doc.text(`$${fmt(subTotal3PrecedingUsd)}`, t3x + 42 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+        t3x += 42 + 32;
+        // This ETB
+        doc.text(`${fmt(subTotal3ThisInvoice)}`, t3x + 50 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+        t3x += 50;
+        // This USD
+        doc.text(`$${fmt(subTotal3ThisInvoiceUsd)}`, t3x + 42 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+        t3x += 42 + 32;
+        // ToDate ETB
+        doc.text(fmt(subTotal3ToDate), t3x + 52 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+        t3x += 52;
+        // ToDate USD
+        doc.text(`$${fmt(subTotal3ToDateUsd)}`, t3x + 44 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+      } else {
+        let t3x = margin + 8 + 24 + 180 + 36 + 65 + 40;
+        doc.text(`${fmt(subTotal3Contract)} ETB`, t3x + 75 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+        t3x += 75 + 40;
+        doc.text(fmt(subTotal3Preceding), t3x + 70 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+        t3x += 70 + 45;
+        doc.text(`${fmt(subTotal3ThisInvoice)} ETB`, t3x + 75 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+        t3x += 75 + 36;
+        doc.text(fmt(subTotal3ToDate), t3x + 70 - 2, y + (totalsBoxH * 0.65), { align: 'right' });
+      }
 
       // =========================================================================
-      // PAGE 4: TABLE 5 — CONSOLIDATED SUMMARY & NET PAYMENT COMPUTATION
+      // PAGE 5: TABLE 3 — SUMMARY OF TOTAL FEES
       // =========================================================================
       doc.addPage();
-      drawPageHeader(4, "Table 5: Consolidated Summary & Net Payment Computation");
+      drawPageHeader(5, "Table 3: Summary of Total Fees");
+      y = margin + 52;
+
+      // Notice box
+      doc.setFillColor(254, 243, 199); // amber-50
+      doc.setDrawColor(252, 211, 77);
+      doc.roundedRect(margin + 6, y, contentWidth - 12, boxH, 3, 3, 'DF');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(isCompactPdfMode ? 6.5 : 7);
+      doc.setTextColor(180, 83, 9);
+      doc.text("Summary of Total Fees & Aggregated Master Schedule:", margin + 14, y + (boxH * 0.65));
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(71, 85, 105);
+      doc.text("Aggregated Master Summary for Construction Supervision Fees, Reimbursable Expenses & Total Invoice Claim", margin + 220, y + (boxH * 0.65));
+
+      y += boxH + (isCompactPdfMode ? 4 : 6);
+
+      const t3SummaryHeaders = isUsdModeActive ? [
+        { title: 'Item', width: 30, align: 'center' },
+        { title: 'Fee Component Description', width: 220, align: 'left' },
+        { title: 'Contract (ETB / USD)', width: 120, align: 'right' },
+        { title: 'Preceding (ETB / USD)', width: 120, align: 'right' },
+        { title: 'This Month (ETB / USD)', width: 120, align: 'right' },
+        { title: 'To-Date (ETB / USD)', width: 129, align: 'right' }
+      ] : [
+        { title: 'Item', width: 40, align: 'center' },
+        { title: 'Fee Component Description', width: 280, align: 'left' },
+        { title: 'Contract Amount (ETB)', width: 145, align: 'right' },
+        { title: 'Preceding Claim (ETB)', width: 145, align: 'right' },
+        { title: 'This Month Claim (ETB)', width: 145, align: 'right' },
+        { title: 'To-Date Claim (ETB)', width: 144, align: 'right' }
+      ];
+
+      doc.setFillColor(30, 41, 59);
+      doc.roundedRect(margin + 6, y, contentWidth - 12, headerBoxH, 2, 2, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(fontSizeHeader);
+      doc.setTextColor(255, 255, 255);
+
+      let t3SumX = margin + 8;
+      t3SummaryHeaders.forEach(h => {
+        if (h.align === 'right') {
+          doc.text(h.title, t3SumX + h.width - 2, y + (headerBoxH * 0.65), { align: 'right' });
+        } else if (h.align === 'center') {
+          doc.text(h.title, t3SumX + h.width / 2, y + (headerBoxH * 0.65), { align: 'center' });
+        } else {
+          doc.text(h.title, t3SumX + 2, y + (headerBoxH * 0.65));
+        }
+        t3SumX += h.width;
+      });
+
+      y += headerBoxH + 2;
+
+      const summaryRows = [
+        {
+          no: '1',
+          desc: 'Construction Supervision Fees (Sub Total 1)',
+          contract: isUsdModeActive ? `${fmt(subTotal1Contract)}\n($${fmt(subTotal1ContractUsd)})` : fmt(subTotal1Contract),
+          preceding: isUsdModeActive ? `${fmt(subTotal1Preceding)}\n($${fmt(subTotal1PrecedingUsd)})` : fmt(subTotal1Preceding),
+          thisMonth: isUsdModeActive ? `${fmt(subTotal1ThisInvoice)}\n($${fmt(subTotal1ThisInvoiceUsd)})` : fmt(subTotal1ThisInvoice),
+          toDate: isUsdModeActive ? `${fmt(subTotal1ToDate)}\n($${fmt(subTotal1ToDateUsd)})` : fmt(subTotal1ToDate)
+        },
+        {
+          no: '2',
+          desc: 'Reimbursable Expenses (Sub Total 2)',
+          contract: isUsdModeActive ? `${fmt(linkedReimbContract)}\n($${fmt(linkedReimbContractUsd)})` : fmt(linkedReimbContract),
+          preceding: isUsdModeActive ? `${fmt(subTotal2Preceding)}\n($${fmt(subTotal2PrecedingUsd)})` : fmt(subTotal2Preceding),
+          thisMonth: isUsdModeActive ? `${fmt(subTotal2ThisInvoice)}\n($${fmt(subTotal2ThisInvoiceUsd)})` : fmt(subTotal2ThisInvoice),
+          toDate: isUsdModeActive ? `${fmt(subTotal2ToDate)}\n($${fmt(subTotal2ToDateUsd)})` : fmt(subTotal2ToDate)
+        },
+        {
+          no: '3',
+          desc: 'Defect Liability Period Personnel (Sub Total 3)',
+          contract: isUsdModeActive ? `${fmt(subTotal3Contract)}\n($${fmt(subTotal3ContractUsd)})` : fmt(subTotal3Contract),
+          preceding: isUsdModeActive ? `${fmt(subTotal3Preceding)}\n($${fmt(subTotal3PrecedingUsd)})` : fmt(subTotal3Preceding),
+          thisMonth: isUsdModeActive ? `${fmt(subTotal3ThisInvoice)}\n($${fmt(subTotal3ThisInvoiceUsd)})` : fmt(subTotal3ThisInvoice),
+          toDate: isUsdModeActive ? `${fmt(subTotal3ToDate)}\n($${fmt(subTotal3ToDateUsd)})` : fmt(subTotal3ToDate)
+        },
+        {
+          no: 'TOTAL',
+          desc: 'TOTAL INVOICE AMOUNT (AGGREGATED FEES & DIRECT EXPENSES)',
+          contract: isUsdModeActive ? `${fmt(totalBaseContract)}\n($${fmt(totalBaseContractUsd)})` : fmt(totalBaseContract),
+          preceding: isUsdModeActive ? `${fmt(totalSubtotalPreceding)}\n($${fmt(totalSubtotalPrecedingUsd)})` : fmt(totalSubtotalPreceding),
+          thisMonth: isUsdModeActive ? `${fmt(totalSubtotalThisInvoice)}\n($${fmt(totalSubtotalThisInvoiceUsd)})` : fmt(totalSubtotalThisInvoice),
+          toDate: isUsdModeActive ? `${fmt(totalSubtotalToDate)}\n($${fmt(totalSubtotalToDateUsd)})` : fmt(totalSubtotalToDate),
+          isBold: true
+        }
+      ];
+
+      summaryRows.forEach((sRow, idx) => {
+        const rowH = minRowH * (isUsdModeActive ? 1.6 : 1.2);
+        if (idx % 2 === 1) {
+          doc.setFillColor(248, 250, 252);
+          doc.rect(margin + 6, y, contentWidth - 12, rowH, 'F');
+        }
+        if (sRow.isBold) {
+          doc.setFillColor(238, 242, 255);
+          doc.rect(margin + 6, y, contentWidth - 12, rowH, 'F');
+          doc.setFont('helvetica', 'bold');
+        } else {
+          doc.setFont('helvetica', 'normal');
+        }
+        doc.setFontSize(fontSizeData);
+        doc.setTextColor(30, 41, 59);
+
+        let rx = margin + 8;
+        const textYOffset = isCompactPdfMode ? 6.5 : 8;
+
+        // Item
+        doc.text(sRow.no, rx + (isUsdModeActive ? 15 : 20), y + textYOffset, { align: 'center' });
+        rx += isUsdModeActive ? 30 : 40;
+
+        // Desc
+        doc.text(sRow.desc, rx + 2, y + textYOffset);
+        rx += isUsdModeActive ? 220 : 280;
+
+        // Contract
+        doc.text(sRow.contract, rx + (isUsdModeActive ? 120 : 145) - 2, y + textYOffset, { align: 'right' });
+        rx += isUsdModeActive ? 120 : 145;
+
+        // Preceding
+        doc.text(sRow.preceding, rx + (isUsdModeActive ? 120 : 145) - 2, y + textYOffset, { align: 'right' });
+        rx += isUsdModeActive ? 120 : 145;
+
+        // This Month
+        doc.text(sRow.thisMonth, rx + (isUsdModeActive ? 120 : 145) - 2, y + textYOffset, { align: 'right' });
+        rx += isUsdModeActive ? 120 : 145;
+
+        // To-Date
+        doc.text(sRow.toDate, rx + (isUsdModeActive ? 129 : 144) - 2, y + textYOffset, { align: 'right' });
+
+        doc.setDrawColor(241, 245, 249);
+        doc.line(margin + 6, y + rowH, margin + contentWidth - 6, y + rowH);
+        y += rowH;
+      });
+
+      // =========================================================================
+      // PAGE 6: TABLE 5 — CONSOLIDATED SUMMARY & NET PAYMENT COMPUTATION
+      // =========================================================================
+      doc.addPage();
+      drawPageHeader(6, "Table 5: Consolidated Summary & Net Payment Computation");
       y = margin + 52;
 
       // Table 5 Headers (Total width = 756 pt)
@@ -2753,10 +3600,10 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
         { title: 'Item', width: 28, align: 'center' },
         { title: 'Claim Component Description', width: 220, align: 'left' },
         { title: `Contract Baseline (${isUsdModeActive ? 'ETB / USD' : 'ETB'})`, width: 108, align: 'right' },
-        { title: 'Preceding Claim (ETB)', width: 95, align: 'right' },
+        { title: `Preceding Claim (${isUsdModeActive ? 'ETB / USD' : 'ETB'})`, width: 95, align: 'right' },
         { title: `This Month (${isUsdModeActive ? 'ETB / USD' : 'ETB'})`, width: 110, align: 'right' },
-        { title: 'To-Date Claim (ETB)', width: 100, align: 'right' },
-        { title: 'Remaining Balance (ETB)', width: 95, align: 'right' }
+        { title: `To-Date Claim (${isUsdModeActive ? 'ETB / USD' : 'ETB'})`, width: 100, align: 'right' },
+        { title: `Remaining Balance (${isUsdModeActive ? 'ETB / USD' : 'ETB'})`, width: 95, align: 'right' }
       ];
 
       doc.setFillColor(30, 41, 59);
@@ -2785,36 +3632,36 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
           desc: 'Sub Total 1 (Remuneration of Construction Supervisory Staff)',
           contract: isUsdModeActive && linkedFeesContractUsd > 0 ? `${fmt(linkedFeesContract)}\n($${fmt(linkedFeesContractUsd)})` : fmt(linkedFeesContract),
           thisMonth: isUsdModeActive && subTotal1ThisInvoiceUsd > 0 ? `${fmt(subTotal1ThisInvoice)}\n($${fmt(subTotal1ThisInvoiceUsd)})` : fmt(subTotal1ThisInvoice),
-          preceding: fmt(subTotal1Preceding),
-          toDate: fmt(subTotal1ToDate),
-          remaining: fmt(Math.max(0, linkedFeesContract - subTotal1ToDate))
+          preceding: isUsdModeActive && subTotal1PrecedingUsd > 0 ? `${fmt(subTotal1Preceding)}\n($${fmt(subTotal1PrecedingUsd)})` : fmt(subTotal1Preceding),
+          toDate: isUsdModeActive && subTotal1ToDateUsd > 0 ? `${fmt(subTotal1ToDate)}\n($${fmt(subTotal1ToDateUsd)})` : fmt(subTotal1ToDate),
+          remaining: isUsdModeActive && subTotal1RemainingUsd > 0 ? `${fmt(subTotal1Remaining)}\n($${fmt(subTotal1RemainingUsd)})` : fmt(subTotal1Remaining)
         },
         {
           item: '2',
           desc: 'Sub Total 2 (Reimbursable Operating Direct Costs — Per Diem, Transport, Communication)',
           contract: isUsdModeActive && linkedReimbContractUsd > 0 ? `${fmt(linkedReimbContract)}\n($${fmt(linkedReimbContractUsd)})` : fmt(linkedReimbContract),
           thisMonth: isUsdModeActive && subTotal2ThisInvoiceUsd > 0 ? `${fmt(subTotal2ThisInvoice)}\n($${fmt(subTotal2ThisInvoiceUsd)})` : fmt(subTotal2ThisInvoice),
-          preceding: fmt(subTotal2Preceding),
-          toDate: fmt(subTotal2ToDate),
-          remaining: fmt(Math.max(0, linkedReimbContract - subTotal2ToDate))
+          preceding: isUsdModeActive && subTotal2PrecedingUsd > 0 ? `${fmt(subTotal2Preceding)}\n($${fmt(subTotal2PrecedingUsd)})` : fmt(subTotal2Preceding),
+          toDate: isUsdModeActive && subTotal2ToDateUsd > 0 ? `${fmt(subTotal2ToDate)}\n($${fmt(subTotal2ToDateUsd)})` : fmt(subTotal2ToDate),
+          remaining: isUsdModeActive && subTotal2RemainingUsd > 0 ? `${fmt(subTotal2Remaining)}\n($${fmt(subTotal2RemainingUsd)})` : fmt(subTotal2Remaining)
         },
         {
           item: '3',
           desc: 'Sub Total 3 (Defect Liability Personnel Allocation)',
-          contract: fmt(subTotal3Contract),
-          thisMonth: fmt(subTotal3ThisInvoice),
-          preceding: subTotal3Preceding > 0 ? fmt(subTotal3Preceding) : '-',
-          toDate: fmt(subTotal3ToDate),
-          remaining: fmt(subTotal3Remaining)
+          contract: isUsdModeActive && subTotal3ContractUsd > 0 ? `${fmt(subTotal3Contract)}\n($${fmt(subTotal3ContractUsd)})` : fmt(subTotal3Contract),
+          thisMonth: isUsdModeActive && subTotal3ThisInvoiceUsd > 0 ? `${fmt(subTotal3ThisInvoice)}\n($${fmt(subTotal3ThisInvoiceUsd)})` : fmt(subTotal3ThisInvoice),
+          preceding: isUsdModeActive && subTotal3PrecedingUsd > 0 ? `${fmt(subTotal3Preceding)}\n($${fmt(subTotal3PrecedingUsd)})` : (subTotal3Preceding > 0 ? fmt(subTotal3Preceding) : '-'),
+          toDate: isUsdModeActive && subTotal3ToDateUsd > 0 ? `${fmt(subTotal3ToDate)}\n($${fmt(subTotal3ToDateUsd)})` : fmt(subTotal3ToDate),
+          remaining: isUsdModeActive && subTotal3RemainingUsd > 0 ? `${fmt(subTotal3Remaining)}\n($${fmt(subTotal3RemainingUsd)})` : fmt(subTotal3Remaining)
         },
         {
           item: 'A+B',
           desc: 'SUBTOTAL DIRECT SERVICES & EXPENSES (1 + 2 + 3)',
           contract: isUsdModeActive && totalBaseContractUsd > 0 ? `${fmt(totalBaseContract)}\n($${fmt(totalBaseContractUsd)})` : fmt(totalBaseContract),
           thisMonth: isUsdModeActive && totalSubtotalThisInvoiceUsd > 0 ? `${fmt(totalSubtotalThisInvoice)}\n($${fmt(totalSubtotalThisInvoiceUsd)})` : fmt(totalSubtotalThisInvoice),
-          preceding: fmt(totalSubtotalPreceding),
-          toDate: fmt(totalSubtotalToDate),
-          remaining: fmt(Math.max(0, totalBaseContract - totalSubtotalToDate)),
+          preceding: isUsdModeActive && totalSubtotalPrecedingUsd > 0 ? `${fmt(totalSubtotalPreceding)}\n($${fmt(totalSubtotalPrecedingUsd)})` : fmt(totalSubtotalPreceding),
+          toDate: isUsdModeActive && totalSubtotalToDateUsd > 0 ? `${fmt(totalSubtotalToDate)}\n($${fmt(totalSubtotalToDateUsd)})` : fmt(totalSubtotalToDate),
+          remaining: isUsdModeActive && totalSubtotalRemainingUsd > 0 ? `${fmt(Math.max(0, totalBaseContract - totalSubtotalToDate))}\n($${fmt(totalSubtotalRemainingUsd)})` : fmt(Math.max(0, totalBaseContract - totalSubtotalToDate)),
           isBold: true
         },
         {
@@ -2824,25 +3671,25 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
           thisMonth: isUsdModeActive && contingencyThisInvoiceUsd > 0 ? `${fmt(contingencyThisInvoice)}\n($${fmt(contingencyThisInvoiceUsd)})` : fmt(contingencyThisInvoice),
           preceding: isUsdModeActive && contingencyPrecedingClaimUsd > 0 ? `${fmt(contingencyPrecedingClaim)}\n($${fmt(contingencyPrecedingClaimUsd)})` : fmt(contingencyPrecedingClaim),
           toDate: isUsdModeActive && contingencyToDateUsdValue > 0 ? `${fmt(contingencyToDate)}\n($${fmt(contingencyToDateUsdValue)})` : fmt(contingencyToDate),
-          remaining: isUsdModeActive && Math.max(0, contingencyContractUsd - contingencyToDateUsdValue) > 0 ? `${fmt(Math.max(0, contingencyContract - contingencyToDate))}\n($${fmt(Math.max(0, contingencyContractUsd - contingencyToDateUsdValue))})` : fmt(Math.max(0, contingencyContract - contingencyToDate))
+          remaining: isUsdModeActive && contingencyRemainingUsd > 0 ? `${fmt(Math.max(0, contingencyContract - contingencyToDate))}\n($${fmt(contingencyRemainingUsd)})` : fmt(Math.max(0, contingencyContract - contingencyToDate))
         },
         {
           item: '5',
           desc: `Value Added Tax (${vatRatePct}% VAT)`,
           contract: isUsdModeActive && vatContractUsd > 0 ? `${fmt(vatContract)}\n($${fmt(vatContractUsd)})` : fmt(vatContract),
           thisMonth: isUsdModeActive && vatThisInvoiceUsd > 0 ? `${fmt(vatThisInvoice)}\n($${fmt(vatThisInvoiceUsd)})` : fmt(vatThisInvoice),
-          preceding: fmt(vatPreceding),
-          toDate: fmt(vatToDate),
-          remaining: fmt(Math.max(0, vatContract - vatToDate))
+          preceding: isUsdModeActive && vatPrecedingUsd > 0 ? `${fmt(vatPreceding)}\n($${fmt(vatPrecedingUsd)})` : fmt(vatPreceding),
+          toDate: isUsdModeActive && vatToDateUsd > 0 ? `${fmt(vatToDate)}\n($${fmt(vatToDateUsd)})` : fmt(vatToDate),
+          remaining: isUsdModeActive && vatRemainingUsd > 0 ? `${fmt(Math.max(0, vatContract - vatToDate))}\n($${fmt(vatRemainingUsd)})` : fmt(Math.max(0, vatContract - vatToDate))
         },
         {
           item: '6',
           desc: 'GROSS INVOICE CLAIM AMOUNT (ETB)',
           contract: isUsdModeActive && totalContractDueUsd > 0 ? `${fmt(totalContractDue)}\n($${fmt(totalContractDueUsd)})` : fmt(totalContractDue),
           thisMonth: isUsdModeActive && grossPayableBaseUsd > 0 ? `${fmt(grossPayableBase)}\n($${fmt(grossPayableBaseUsd)})` : fmt(grossPayableBase),
-          preceding: fmt(grossPreceding),
-          toDate: fmt(grossToDate),
-          remaining: fmt(Math.max(0, totalContractDue - grossToDate)),
+          preceding: isUsdModeActive && grossPrecedingUsd > 0 ? `${fmt(grossPreceding)}\n($${fmt(grossPrecedingUsd)})` : fmt(grossPreceding),
+          toDate: isUsdModeActive && grossToDateUsd > 0 ? `${fmt(grossToDate)}\n($${fmt(grossToDateUsd)})` : fmt(grossToDate),
+          remaining: isUsdModeActive && grossRemainingUsd > 0 ? `${fmt(Math.max(0, totalContractDue - grossToDate))}\n($${fmt(grossRemainingUsd)})` : fmt(Math.max(0, totalContractDue - grossToDate)),
           isHeader: true
         },
         {
@@ -2897,7 +3744,10 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
         const descLines = doc.splitTextToSize(r.desc, 220 - 4);
         const contractLines = r.contract.split('\n');
         const thisMonthLines = r.thisMonth.split('\n');
-        const maxLines = Math.max(descLines.length, contractLines.length, thisMonthLines.length, 1);
+        const precedingLines = r.preceding.split('\n');
+        const toDateLines = r.toDate.split('\n');
+        const remainingLines = r.remaining.split('\n');
+        const maxLines = Math.max(descLines.length, contractLines.length, thisMonthLines.length, precedingLines.length, toDateLines.length, remainingLines.length, 1);
         const rowHeight = Math.max(maxLines * lineStep + (isCompactPdfMode ? 2 : 4), r.isNetPayable ? (isCompactPdfMode ? 14 : 16) : (isCompactPdfMode ? 10.5 : 13));
 
         if (r.isNetPayable) {
@@ -2941,7 +3791,9 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
         roX += 108;
 
         // Preceding
-        doc.text(r.preceding, roX + 95 - 2, y + textYOffset, { align: 'right' });
+        precedingLines.forEach((line: string, lIdx: number) => {
+          doc.text(line, roX + 95 - 2, y + textYOffset + (lIdx * lineStep), { align: 'right' });
+        });
         roX += 95;
 
         // This Month
@@ -2953,11 +3805,15 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
         roX += 110;
 
         // To-Date
-        doc.text(r.toDate, roX + 100 - 2, y + textYOffset, { align: 'right' });
+        toDateLines.forEach((line: string, lIdx: number) => {
+          doc.text(line, roX + 100 - 2, y + textYOffset + (lIdx * lineStep), { align: 'right' });
+        });
         roX += 100;
 
         // Remaining
-        doc.text(r.remaining, roX + 95 - 2, y + textYOffset, { align: 'right' });
+        remainingLines.forEach((line: string, lIdx: number) => {
+          doc.text(line, roX + 95 - 2, y + textYOffset + (lIdx * lineStep), { align: 'right' });
+        });
 
         doc.setDrawColor(226, 232, 240);
         doc.line(margin + 6, y + rowHeight, margin + contentWidth - 6, y + rowHeight);
@@ -3086,117 +3942,75 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
 
       {/* Top Banner & Header Information Bar */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-sm space-y-4">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800">
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-md">
-              <Calculator className="w-6 h-6" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-base md:text-lg font-black text-slate-900 dark:text-white">
-                  Monthly Supervision Fee Invoice Calculation Tables
-                </h3>
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 border border-indigo-200">
-                  Linked to Contract Amount Schedule
-                </span>
-              </div>
-              <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-1.5">
-                <span>Staff list & billing rates linked directly to Contract Amount (Table 1.3).</span>
-              </p>
-            </div>
-          </div>
+        <div className="flex flex-wrap items-center justify-end gap-2 pb-4 border-b border-slate-100 dark:border-slate-800">
+          {/* PROCEED TO NEXT MONTH BUTTON */}
+          <button
+            type="button"
+            onClick={() => setIsPrecedingBreakdownOpen(true)}
+            className="px-4 py-2 bg-slate-600 hover:bg-slate-700 text-white rounded-xl text-xs font-black transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+          >
+            <History className="w-3.5 h-3.5" />
+            View Preceding Breakdown
+          </button>
+          <button
+            type="button"
+            onClick={handleProceedToNextMonth}
+            className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-black transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+            title="Roll forward current cumulative amounts into preceding history and advance billing period to next month"
+          >
+            <FastForward className="w-4 h-4" />
+            Proceed to Next Month (Roll Forward)
+          </button>
 
-          <div className="flex flex-wrap items-center gap-2">
-            {onBackToLedger && (
-              <button
-                type="button"
-                onClick={onBackToLedger}
-                className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
-              >
-                <ArrowLeft className="w-3.5 h-3.5" />
-                Return to Invoices Ledger
-              </button>
-            )}
+          {/* USD BILLING TOGGLE */}
+          <button
+            type="button"
+            onClick={() => setUsdBillingEnabled(!usdBillingEnabled)}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border cursor-pointer ${
+              usdBillingEnabled
+                ? 'bg-purple-600 text-white border-purple-700 shadow-xs ring-2 ring-purple-400/40'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
+            }`}
+            title="Toggle USD billing mode: When enabled, all payment tables automatically add columns for Preceding USD and To Date USD"
+          >
+            <DollarSign className="w-3.5 h-3.5" />
+            <span>USD Billing: {usdBillingEnabled ? 'ENABLED' : 'DISABLED'}</span>
+          </button>
 
-            {/* NAVIGATE TO CONTRACT AMOUNT */}
-            {onNavigateToContractAmount && (
-              <button
-                type="button"
-                onClick={onNavigateToContractAmount}
-                className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
-                title="View & Edit Master Contract Price, Construction Remuneration, and DLP Schedules"
-              >
-                <DollarSign className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                <span>Go to Contract Amount</span>
-                <ExternalLink className="w-3 h-3" />
-              </button>
-            )}
+          {/* COMPACT PDF REPORT MODE TOGGLE */}
+          <button
+            type="button"
+            onClick={() => setIsCompactPdfMode(!isCompactPdfMode)}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border cursor-pointer ${
+              isCompactPdfMode
+                ? 'bg-amber-500 text-white border-amber-600 shadow-xs ring-2 ring-amber-400/40'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
+            }`}
+            title="Toggle compact PDF report mode: Reduces table row padding and font sizing to maximize single-page row density"
+          >
+            <SlidersHorizontal className="w-3.5 h-3.5" />
+            <span>Compact PDF: {isCompactPdfMode ? 'ON (Dense)' : 'OFF (Standard)'}</span>
+          </button>
 
-            {/* SYNC WITH CONTRACT AMOUNT SCHEDULE */}
-            <button
-              type="button"
-              onClick={handleSyncFromContractSchedule}
-              className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
-              title="Refresh staff rates, reimbursables, and DLP allocations from Contract Amount Schedule"
-            >
-              <RefreshCw className="w-3.5 h-3.5 text-slate-600 dark:text-slate-400" />
-              Sync from Contract Schedule
-            </button>
+          {/* EXPORT FORMATTED PDF REPORT BUTTON */}
+          <button
+            type="button"
+            onClick={handleExportMonthlyInvoicePDF}
+            className="px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+            title="Export Tables 1, 2, 3, & 5 as an official formatted Ethiopian Roads Administration monthly certificate PDF report"
+          >
+            <FileDown className="w-3.5 h-3.5" />
+            <span>Export Invoice PDF (Tables 1-5)</span>
+          </button>
 
-            {/* PROCEED TO NEXT MONTH BUTTON */}
-            <button
-              type="button"
-              onClick={() => setIsPrecedingBreakdownOpen(true)}
-              className="px-4 py-2 bg-slate-600 hover:bg-slate-700 text-white rounded-xl text-xs font-black transition flex items-center gap-1.5 shadow-sm cursor-pointer"
-            >
-              <History className="w-3.5 h-3.5" />
-              View Preceding Breakdown
-            </button>
-            <button
-              type="button"
-              onClick={handleProceedToNextMonth}
-              className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-black transition flex items-center gap-1.5 shadow-sm cursor-pointer"
-              title="Roll forward current cumulative amounts into preceding history and advance billing period to next month"
-            >
-              <FastForward className="w-4 h-4" />
-              Proceed to Next Month (Roll Forward)
-            </button>
-
-            {/* COMPACT PDF REPORT MODE TOGGLE */}
-            <button
-              type="button"
-              onClick={() => setIsCompactPdfMode(!isCompactPdfMode)}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border cursor-pointer ${
-                isCompactPdfMode
-                  ? 'bg-amber-500 text-white border-amber-600 shadow-xs ring-2 ring-amber-400/40'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
-              }`}
-              title="Toggle compact PDF report mode: Reduces table row padding and font sizing to maximize single-page row density"
-            >
-              <SlidersHorizontal className="w-3.5 h-3.5" />
-              <span>Compact PDF: {isCompactPdfMode ? 'ON (Dense)' : 'OFF (Standard)'}</span>
-            </button>
-
-            {/* EXPORT FORMATTED PDF REPORT BUTTON */}
-            <button
-              type="button"
-              onClick={handleExportMonthlyInvoicePDF}
-              className="px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
-              title="Export Tables 1, 2, 3, & 5 as an official formatted Ethiopian Roads Administration monthly certificate PDF report"
-            >
-              <FileDown className="w-3.5 h-3.5" />
-              <span>Export Invoice PDF (Tables 1-5)</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handleSaveAndSync}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
-            >
-              <Save className="w-4 h-4" />
-              Save & Synchronize Invoice
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={handleSaveAndSync}
+            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+          >
+            <Save className="w-4 h-4" />
+            Save & Synchronize Invoice
+          </button>
         </div>
 
         {saveSuccessMsg && (
@@ -3682,6 +4496,8 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                   <th className="py-2 px-3 min-w-[170px]">Position / Role</th>
                   <th className="py-2 px-3 min-w-[200px]">Assigned Personnel (Editable / Turnover)</th>
                   <th className="py-2 px-2 text-center w-14">Unit</th>
+                  <th className="py-2 px-2 text-right min-w-[90px]">Unit Price (ETB)</th>
+                  {isUsdModeActive && <th className="py-2 px-2 text-right min-w-[85px] text-purple-700 dark:text-purple-300">Unit Price (USD)</th>}
                   <th className="py-2 px-2 text-right min-w-[70px]">Contr. MM</th>
                   <th className="py-2 px-2 text-right min-w-[90px]">Days Worked</th>
                   <th className="py-2 px-2 text-center w-14">Divisor</th>
@@ -3694,7 +4510,7 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-sans">
                 {displayStaffRows.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="py-8 text-center text-slate-400">
+                    <td colSpan={isUsdModeActive ? 13 : 12} className="py-8 text-center text-slate-400">
                       <Users className="w-6 h-6 mx-auto mb-1 opacity-40" />
                       <p className="font-semibold text-xs">No personnel match current directory filter.</p>
                     </td>
@@ -3765,6 +4581,14 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                           </div>
                         </td>
                         <td className="py-2 px-2 text-center font-mono text-slate-500">Days</td>
+                        <td className="py-2 px-2 text-right font-mono font-semibold text-slate-700 dark:text-slate-300">
+                          {fmt(row.effectiveRate || row.rate)}
+                        </td>
+                        {isUsdModeActive && (
+                          <td className="py-2 px-2 text-right font-mono font-semibold text-purple-700 dark:text-purple-300">
+                            {row.rateUsd ? `$${fmt(row.rateUsd)}` : '-'}
+                          </td>
+                        )}
                         <td className="py-2 px-2 text-right font-mono text-slate-600 dark:text-slate-400">
                           {row.contractQty.toFixed(2)}
                         </td>
@@ -3818,7 +4642,7 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
               </tbody>
               <tfoot className="border-t-2 border-slate-300 dark:border-slate-700 font-bold bg-slate-50 dark:bg-slate-800 text-xs">
                 <tr>
-                  <td colSpan={4} className="py-2.5 px-3 text-slate-700 dark:text-slate-200 uppercase text-[10px]">
+                  <td colSpan={isUsdModeActive ? 6 : 5} className="py-2.5 px-3 text-slate-700 dark:text-slate-200 uppercase text-[10px]">
                     Sub-Total 1 (Attendance & Contract Baseline):
                   </td>
                   <td className="py-2.5 px-2 text-right font-mono">
@@ -3861,9 +4685,6 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                   <span>🔗 Linked to Attendance Table 1 & Contract Table 2</span>
                 </span>
               </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Financial derivation of staff remuneration based on derived man-month inputs from Table 1 and contract unit rates.
-              </p>
             </div>
             <div className="flex items-center gap-2">
               <span className="px-3 py-1 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 font-bold rounded-xl text-xs border border-emerald-200 dark:border-emerald-800">
@@ -3876,37 +4697,49 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
             <table className="w-full text-left border-collapse text-xs">
               <thead>
                 <tr className="bg-slate-100 dark:bg-slate-800 text-[10px] text-slate-600 dark:text-slate-300 uppercase tracking-wider font-black border-b border-slate-200 dark:border-slate-700">
-                  <th className="py-2.5 px-3 w-10 text-center">#</th>
+                  <th className="py-2.5 px-3 w-12 text-center">#</th>
                   <th className="py-2.5 px-3 min-w-[200px]">Position & Assigned Name</th>
                   <th className="py-2.5 px-2 text-center w-14">Unit</th>
-                  <th className="py-2.5 px-2 text-right min-w-[100px]">Rate (ETB)</th>
-                  {isUsdModeActive && <th className="py-2.5 px-2 text-right min-w-[100px] text-purple-700 dark:text-purple-300">Rate (USD)</th>}
+                  <th className="py-2.5 px-2 text-right min-w-[95px]">Unit Price (ETB)</th>
+                  {isUsdModeActive && <th className="py-2.5 px-2 text-right min-w-[95px] text-purple-700 dark:text-purple-300">Unit Price (USD)</th>}
                   <th className="py-2.5 px-2 text-right min-w-[70px]">Contr. MM</th>
-                  <th className="py-2.5 px-3 text-right min-w-[110px] font-bold">Total Fee (ETB)</th>
+                  <th className="py-2.5 px-3 text-right min-w-[105px] font-bold">Contr. Amount (ETB)</th>
+                  <th className="py-2.5 px-2 text-right min-w-[70px]">Preceding MM</th>
+                  <th className="py-2.5 px-3 text-right min-w-[95px]">Preceding (ETB)</th>
+                  {isUsdModeActive && <th className="py-2.5 px-3 text-right min-w-[95px] text-purple-700 dark:text-purple-300 bg-purple-100/40 dark:bg-purple-950/40 font-bold">Preceding (USD)</th>}
+                  <th className="py-2.5 px-2 text-right min-w-[70px] text-blue-600 dark:text-blue-400 bg-blue-50/40 dark:bg-blue-950/30">This Inv MM</th>
+                  <th className="py-2.5 px-3 text-right min-w-[105px] text-blue-700 dark:text-blue-300 font-bold bg-blue-50/40 dark:bg-blue-950/30">This Inv (ETB)</th>
+                  {isUsdModeActive && <th className="py-2.5 px-3 text-right min-w-[95px] text-purple-700 dark:text-purple-300 bg-purple-100/40 dark:bg-purple-950/40 font-bold">This Inv (USD)</th>}
+                  <th className="py-2.5 px-2 text-right min-w-[70px]">To-Date MM</th>
+                  <th className="py-2.5 px-3 text-right min-w-[110px] font-bold">To-Date (ETB)</th>
+                  {isUsdModeActive && <th className="py-2.5 px-3 text-right min-w-[100px] text-purple-700 dark:text-purple-300 bg-purple-100/40 dark:bg-purple-950/40 font-bold">To-Date (USD)</th>}
+                  <th className="py-2.5 px-3 text-right min-w-[105px] text-slate-500">Remaining (ETB)</th>
+                  {isUsdModeActive && <th className="py-2.5 px-3 text-right min-w-[100px] text-purple-600 dark:text-purple-400 font-semibold bg-purple-50/20">Remaining (USD)</th>}
                   <th className="py-2.5 px-2 text-center w-12">Act</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-sans text-xs">
                 {groupedFeeRows.length === 0 ? (
                   <tr>
-                    <td colSpan={isUsdModeActive ? 8 : 7} className="py-8 text-center text-slate-400 font-medium">
+                    <td colSpan={isUsdModeActive ? 19 : 14} className="py-8 text-center text-slate-400 font-medium">
                       No staff fee records available. Update Table 1 to generate fee rows.
                     </td>
                   </tr>
                 ) : (
                   groupedFeeRows.map((group) => (
                     <React.Fragment key={group.categoryKey}>
-                      <tr className="bg-slate-50/80 dark:bg-slate-800/80 font-bold text-slate-900 dark:text-white border-t border-slate-200 dark:border-slate-700">
-                        <td className="py-2 px-3 text-left" colSpan={isUsdModeActive ? 8 : 7}>
+                      <tr className="bg-slate-100/90 dark:bg-slate-800 font-black text-slate-900 dark:text-white border-t-2 border-b border-slate-200 dark:border-slate-700">
+                        <td className="py-2.5 px-3 text-left uppercase tracking-wider text-xs" colSpan={isUsdModeActive ? 19 : 14}>
                           {group.label}
                         </td>
                       </tr>
                       {group.rows.map((row, idx) => {
                         const derivedMM = row.thisInvoiceQty;
-                        const thisInvoiceFeeUsd = isUsdModeActive ? (derivedMM * (row.rateUsd || 0)) : 0;
                         return (
                           <tr key={row.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
-                            <td className="py-2 px-3 text-center font-mono text-slate-400 font-bold">{idx + 1}</td>
+                            <td className="py-2 px-3 text-center font-mono text-slate-500 font-bold">
+                              {row.no || `${idx + 1}`}
+                            </td>
                             <td className="py-2 px-3">
                               <div className="flex flex-col gap-0.5">
                                 <input
@@ -3928,7 +4761,7 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                             <td className="py-2 px-2 text-center font-mono text-slate-500">
                               <input
                                 type="text"
-                                value={row.unit}
+                                value={row.unit || 'Month'}
                                 disabled={isPaymentLocked}
                                 onChange={(e) => handleUpdateStaff(row.id, { unit: e.target.value })}
                                 className="w-12 text-center bg-transparent border-b border-transparent hover:border-slate-300 focus:border-emerald-500 focus:outline-none text-xs font-mono"
@@ -3941,7 +4774,7 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                                 value={row.rate}
                                 disabled={isPaymentLocked}
                                 onChange={(e) => handleUpdateStaff(row.id, { rate: parseFloat(e.target.value) || 0 })}
-                                className="w-24 text-right bg-transparent border-b border-transparent hover:border-slate-300 focus:border-emerald-500 focus:outline-none text-xs font-mono"
+                                className="w-24 text-right bg-transparent border-b border-transparent hover:border-slate-300 focus:border-emerald-500 focus:outline-none text-xs font-mono font-semibold"
                               />
                             </td>
                             {isUsdModeActive && (
@@ -3956,7 +4789,7 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                                 />
                               </td>
                             )}
-                            <td className="py-2 px-2 text-right font-mono text-slate-400">
+                            <td className="py-2 px-2 text-right font-mono text-slate-600 dark:text-slate-400">
                               <input
                                 type="number"
                                 step="any"
@@ -3966,13 +4799,50 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                                 className="w-16 text-right bg-transparent border-b border-transparent hover:border-slate-300 focus:border-emerald-500 focus:outline-none text-xs font-mono"
                               />
                             </td>
-                            <td className="py-2 px-2 text-right font-mono font-semibold">{row.toDateQty.toFixed(2)}</td>
-                            <td className="py-2 px-3 text-right font-mono font-bold">
-                              <div className="flex flex-col items-end gap-0.5">
-                                <span className="font-bold">{fmt(row.toDateAmount)}</span>
-                                <span className="text-[9px] text-slate-400 font-normal">({fmt(row.precedingAmount)} + {fmt(row.thisInvoiceAmount)})</span>
-                              </div>
+                            <td className="py-2 px-3 text-right font-mono font-medium text-slate-800 dark:text-slate-200">
+                              {fmt(row.contractAmount)}
                             </td>
+                            <td className="py-2 px-2 text-right font-mono text-slate-600 dark:text-slate-400">
+                              {(row.precedingQty || 0).toFixed(2)}
+                            </td>
+                            <td className="py-2 px-3 text-right font-mono text-slate-500">
+                              {fmt(row.precedingAmount || 0)}
+                            </td>
+                            {isUsdModeActive && (
+                              <td className="py-2 px-3 text-right font-mono text-purple-700 dark:text-purple-300 bg-purple-50/20 font-semibold">
+                                ${(row.precedingAmountUsd || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                            )}
+                            <td className="py-2 px-2 text-right font-mono font-bold text-blue-600 dark:text-blue-400 bg-blue-50/20 dark:bg-blue-950/20">
+                              {derivedMM.toFixed(2)}
+                            </td>
+                            <td className="py-2 px-3 text-right font-mono font-bold text-blue-700 dark:text-blue-300 bg-blue-50/20 dark:bg-blue-950/20">
+                              {fmt(row.thisInvoiceAmount)}
+                            </td>
+                            {isUsdModeActive && (
+                              <td className="py-2 px-3 text-right font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-50/20 dark:bg-purple-950/20">
+                                ${(row.thisInvoiceAmountUsd || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                            )}
+                            <td className="py-2 px-2 text-right font-mono font-semibold">
+                              {(row.toDateQty || 0).toFixed(2)}
+                            </td>
+                            <td className="py-2 px-3 text-right font-mono font-bold">
+                              {fmt(row.toDateAmount)}
+                            </td>
+                            {isUsdModeActive && (
+                              <td className="py-2 px-3 text-right font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-50/20 dark:bg-purple-950/20">
+                                ${(row.toDateAmountUsd || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                            )}
+                            <td className="py-2 px-3 text-right font-mono text-slate-500">
+                              {fmt(row.remainingAmount)}
+                            </td>
+                            {isUsdModeActive && (
+                              <td className="py-2 px-3 text-right font-mono text-purple-600 dark:text-purple-400 bg-purple-50/20 font-semibold">
+                                ${(row.remainingAmountUsd || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                            )}
                             <td className="py-2 px-2 text-center">
                               <button
                                 type="button"
@@ -3987,39 +4857,79 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                           </tr>
                         );
                       })}
-                      <tr className="bg-emerald-50/40 dark:bg-emerald-950/20 font-bold text-slate-900 dark:text-white border-t border-slate-200 dark:border-slate-700">
-                        <td className="py-2 px-3" colSpan={3}>Sub-total ({group.categoryKey})</td>
+                      <tr className="bg-emerald-50/50 dark:bg-emerald-950/20 font-bold text-slate-900 dark:text-white border-t border-b border-emerald-200 dark:border-emerald-800/60 text-xs">
+                        <td className="py-2 px-3 font-bold" colSpan={3}>Sub-total ({group.categoryKey})</td>
                         <td className="py-2 px-2 text-right">—</td>
                         {isUsdModeActive && <td className="py-2 px-2 text-right">—</td>}
-                        <td className="py-2 px-2 text-right font-mono">{fmt(group.contractQty, 1)}</td>
-                        <td className="py-2 px-2 text-right font-mono text-slate-500">{fmt(group.precedingAmount)}</td>
-                        <td className="py-2 px-2 text-right font-mono text-blue-600">{fmt(group.thisInvoiceQty, 2)}</td>
-                        <td className="py-2 px-3 text-right font-mono text-blue-700">{fmt(group.thisInvoiceAmount)}</td>
-                        {isUsdModeActive && <td className="py-2 px-3 text-right">—</td>}
-                        <td className="py-2 px-2 text-right font-mono">{fmt(group.toDateAmount / (group.rows[0]?.rate || 1), 2)}</td>
-                        <td className="py-2 px-3 text-right font-mono">{fmt(group.toDateAmount)}</td>
+                        <td className="py-2 px-2 text-right font-mono">{fmt(group.contractQty, 2)}</td>
+                        <td className="py-2 px-3 text-right font-mono">{fmt(group.contractAmount)}</td>
+                        <td className="py-2 px-2 text-right font-mono text-slate-600 dark:text-slate-400">{fmt(group.precedingQty, 2)}</td>
+                        <td className="py-2 px-3 text-right font-mono text-slate-600 dark:text-slate-400">{fmt(group.precedingAmount)}</td>
+                        {isUsdModeActive && (
+                          <td className="py-2 px-3 text-right font-mono text-purple-700 dark:text-purple-300 font-bold">
+                            ${fmt(group.precedingAmountUsd)}
+                          </td>
+                        )}
+                        <td className="py-2 px-2 text-right font-mono font-bold text-blue-600 dark:text-blue-400">{fmt(group.thisInvoiceQty, 2)}</td>
+                        <td className="py-2 px-3 text-right font-mono font-bold text-blue-700 dark:text-blue-300">{fmt(group.thisInvoiceAmount)}</td>
+                        {isUsdModeActive && (
+                          <td className="py-2 px-3 text-right font-mono font-bold text-purple-700 dark:text-purple-300">
+                            ${fmt(group.thisInvoiceAmountUsd)}
+                          </td>
+                        )}
+                        <td className="py-2 px-2 text-right font-mono font-semibold">{fmt(group.toDateQty, 2)}</td>
+                        <td className="py-2 px-3 text-right font-mono font-bold">{fmt(group.toDateAmount)}</td>
+                        {isUsdModeActive && (
+                          <td className="py-2 px-3 text-right font-mono font-bold text-purple-700 dark:text-purple-300">
+                            ${fmt(group.toDateAmountUsd)}
+                          </td>
+                        )}
+                        <td className="py-2 px-3 text-right font-mono text-slate-500">{fmt(group.remainingAmount)}</td>
+                        {isUsdModeActive && (
+                          <td className="py-2 px-3 text-right font-mono text-purple-600 dark:text-purple-400 font-semibold">
+                            ${fmt(group.remainingAmountUsd)}
+                          </td>
+                        )}
                         <td></td>
                       </tr>
                     </React.Fragment>
                   ))
                 )}
               </tbody>
-              <tfoot className="border-t-2 border-slate-300 dark:border-slate-700 font-bold bg-slate-50 dark:bg-slate-800 text-[10px]">
+              <tfoot className="border-t-2 border-slate-300 dark:border-slate-700 font-bold bg-slate-100/80 dark:bg-slate-800 text-xs">
                 <tr className="uppercase tracking-tight">
-                  <td colSpan={3} className="py-2.5 px-3">Sub-Total 1 Construction Fees:</td>
-                  <td className="py-2.5 px-2 text-right">—</td>
-                  {isUsdModeActive && <td className="py-2.5 px-2 text-right">—</td>}
-                  <td className="py-2.5 px-2 text-right font-mono">{displayFeeRowsComputed.reduce((s, r) => s + r.contractQty, 0).toFixed(2)}</td>
-                  <td className="py-2.5 px-2 text-right font-mono">{displayFeeRowsComputed.reduce((s, r) => s + r.precedingQty, 0).toFixed(2)}</td>
-                  <td className="py-2.5 px-2 text-right font-mono text-blue-600">{displayFeeRowsComputed.reduce((s, r) => s + r.thisInvoiceQty, 0).toFixed(2)}</td>
-                  <td className="py-2.5 px-3 text-right font-mono font-black text-blue-700">{fmt(subTotal1ThisInvoice)} ETB</td>
+                  <td colSpan={3} className="py-3 px-3 font-black text-slate-900 dark:text-white">Sub-Total 1 Construction Fees:</td>
+                  <td className="py-3 px-2 text-right">—</td>
+                  {isUsdModeActive && <td className="py-3 px-2 text-right">—</td>}
+                  <td className="py-3 px-2 text-right font-mono font-bold">{displayFeeRowsComputed.reduce((s, r) => s + r.contractQty, 0).toFixed(2)}</td>
+                  <td className="py-3 px-3 text-right font-mono font-bold">{fmt(subTotal1Contract)}</td>
+                  <td className="py-3 px-2 text-right font-mono text-slate-600 dark:text-slate-400">{displayFeeRowsComputed.reduce((s, r) => s + r.precedingQty, 0).toFixed(2)}</td>
+                  <td className="py-3 px-3 text-right font-mono text-slate-600 dark:text-slate-400">{fmt(subTotal1Preceding)}</td>
                   {isUsdModeActive && (
-                    <td className="py-2.5 px-3 text-right font-mono font-black text-purple-700">
-                      ${fmt(displayFeeRowsComputed.reduce((s, r) => s + (r.thisInvoiceQty * (r.rateUsd || 0)), 0))} USD
+                    <td className="py-3 px-3 text-right font-mono font-black text-purple-700 dark:text-purple-300">
+                      ${fmt(subTotal1PrecedingUsd)} USD
                     </td>
                   )}
-                  <td className="py-2.5 px-2 text-right font-mono">{displayFeeRowsComputed.reduce((s, r) => s + r.toDateQty, 0).toFixed(2)}</td>
-                  <td className="py-2.5 px-3 text-right font-mono font-black">{fmt(displayFeeRowsComputed.reduce((s, r) => s + r.toDateAmount, 0))} ETB</td>
+                  <td className="py-3 px-2 text-right font-mono font-black text-blue-600 dark:text-blue-400">{displayFeeRowsComputed.reduce((s, r) => s + r.thisInvoiceQty, 0).toFixed(2)}</td>
+                  <td className="py-3 px-3 text-right font-mono font-black text-blue-700 dark:text-blue-300">{fmt(subTotal1ThisInvoice)} ETB</td>
+                  {isUsdModeActive && (
+                    <td className="py-3 px-3 text-right font-mono font-black text-purple-700 dark:text-purple-300">
+                      ${fmt(subTotal1ThisInvoiceUsd)} USD
+                    </td>
+                  )}
+                  <td className="py-3 px-2 text-right font-mono font-bold">{displayFeeRowsComputed.reduce((s, r) => s + r.toDateQty, 0).toFixed(2)}</td>
+                  <td className="py-3 px-3 text-right font-mono font-black text-emerald-700 dark:text-emerald-300">{fmt(subTotal1ToDate)} ETB</td>
+                  {isUsdModeActive && (
+                    <td className="py-3 px-3 text-right font-mono font-black text-purple-700 dark:text-purple-300">
+                      ${fmt(subTotal1ToDateUsd)} USD
+                    </td>
+                  )}
+                  <td className="py-3 px-3 text-right font-mono font-bold text-slate-600 dark:text-slate-400">{fmt(subTotal1Remaining)} ETB</td>
+                  {isUsdModeActive && (
+                    <td className="py-3 px-3 text-right font-mono font-black text-purple-700 dark:text-purple-300">
+                      ${fmt(subTotal1RemainingUsd)} USD
+                    </td>
+                  )}
                   <td></td>
                 </tr>
               </tfoot>
@@ -4044,9 +4954,6 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                   <span>Linked to Contract Table 1 Item B / Table B</span>
                 </span>
               </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Direct field operating expenses (per diem, transport, communications, reports). Enter claimed quantity or claim amount for this period to compute Sub Total 2 before Table 5.
-              </p>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
@@ -4107,24 +5014,28 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                   <th className="py-2.5 px-3 w-10 text-center">#</th>
                   <th className="py-2.5 px-3 min-w-[220px]">Item Description</th>
                   <th className="py-2.5 px-2 text-center w-16">Unit</th>
-                  <th className="py-2.5 px-2 text-right min-w-[95px]">Rate (ETB)</th>
-                  {isUsdModeActive && <th className="py-2.5 px-2 text-right min-w-[90px] text-purple-700 dark:text-purple-300">Rate (USD)</th>}
+                  <th className="py-2.5 px-2 text-right min-w-[95px]">Unit Price (ETB)</th>
+                  {isUsdModeActive && <th className="py-2.5 px-2 text-right min-w-[90px] text-purple-700 dark:text-purple-300">Unit Price (USD)</th>}
                   <th className="py-2.5 px-2 text-right min-w-[80px]">Contract Qty</th>
-                  <th className="py-2.5 px-3 text-right min-w-[110px]">Contract Amount</th>
+                  <th className="py-2.5 px-3 text-right min-w-[110px]">Contract Amount (ETB)</th>
+                  {isUsdModeActive && <th className="py-2.5 px-3 text-right min-w-[105px] text-purple-700 dark:text-purple-300">Contract Amount (USD)</th>}
                   <th className="py-2.5 px-2 text-right min-w-[100px]">Preceding</th>
+                  {isUsdModeActive && <th className="py-2.5 px-3 text-right min-w-[95px] text-purple-700 dark:text-purple-300 bg-purple-100/40 font-bold">Preceding (USD)</th>}
                   <th className="py-2.5 px-2 text-center min-w-[90px] bg-amber-100/50 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200">This Inv Qty</th>
                   <th className="py-2.5 px-3 text-right min-w-[115px] bg-amber-100/50 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200">This Inv (ETB)</th>
                   {isUsdModeActive && <th className="py-2.5 px-3 text-right min-w-[105px] text-purple-700 dark:text-purple-300 bg-purple-100/40 dark:bg-purple-950/40">This Inv (USD)</th>}
                   <th className="py-2.5 px-2 text-right min-w-[80px]">To-Date Qty</th>
                   <th className="py-2.5 px-3 text-right min-w-[110px]">To-Date (ETB)</th>
-                  <th className="py-2.5 px-3 text-right min-w-[110px] text-emerald-700 dark:text-emerald-400">Remaining</th>
+                  {isUsdModeActive && <th className="py-2.5 px-3 text-right min-w-[100px] text-purple-700 dark:text-purple-300 bg-purple-100/40 font-bold">To-Date (USD)</th>}
+                  <th className="py-2.5 px-3 text-right min-w-[110px] text-emerald-700 dark:text-emerald-400">Remaining (ETB)</th>
+                  {isUsdModeActive && <th className="py-2.5 px-3 text-right min-w-[100px] text-purple-600 dark:text-purple-400 font-semibold bg-purple-50/20">Remaining (USD)</th>}
                   <th className="py-2.5 px-2 text-center w-12">Act</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-sans text-xs">
                 {reimbursableRowsComputed.length === 0 ? (
                   <tr>
-                    <td colSpan={isUsdModeActive ? 15 : 13} className="py-8 text-center text-slate-400">
+                    <td colSpan={isUsdModeActive ? 19 : 13} className="py-8 text-center text-slate-400">
                       No reimbursable operating expenses defined in Contract Baseline. Click "+ Add Expense Item" to add.
                     </td>
                   </tr>
@@ -4230,6 +5141,11 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                       <td className="py-2 px-3 text-right font-mono font-semibold text-slate-700 dark:text-slate-300">
                         {fmt(row.contractAmount)}
                       </td>
+                      {isUsdModeActive && (
+                        <td className="py-2 px-3 text-right font-mono text-purple-700 dark:text-purple-300">
+                          ${fmt(row.contractAmountUsd || 0)}
+                        </td>
+                      )}
                       <td className="py-2 px-2 text-right font-mono text-slate-500">
                         <div className="flex flex-col items-end gap-1">
                           <input
@@ -4251,6 +5167,11 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                           />
                         </div>
                       </td>
+                      {isUsdModeActive && (
+                        <td className="py-2 px-3 text-right font-mono text-purple-700 dark:text-purple-300 bg-purple-50/20 font-semibold">
+                          ${fmt(row.precedingAmountUsd || 0)}
+                        </td>
+                      )}
                       <td className="py-2 px-2 text-center bg-amber-50/30 dark:bg-amber-950/20">
                         <input
                           type="number"
@@ -4301,9 +5222,19 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                       <td className="py-2 px-3 text-right font-mono font-bold">
                         {fmt(row.toDateAmount)}
                       </td>
+                      {isUsdModeActive && (
+                        <td className="py-2 px-3 text-right font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-50/20">
+                          ${fmt(row.toDateAmountUsd || 0)}
+                        </td>
+                      )}
                       <td className="py-2 px-3 text-right font-mono font-semibold text-emerald-600 dark:text-emerald-400">
                         {fmt(Math.max(0, row.contractAmount - row.toDateAmount))}
                       </td>
+                      {isUsdModeActive && (
+                        <td className="py-2 px-3 text-right font-mono text-purple-600 dark:text-purple-400 bg-purple-50/20 font-semibold">
+                          ${fmt(row.remainingAmountUsd || 0)}
+                        </td>
+                      )}
                       <td className="py-2 px-2 text-center">
                         {!isPaymentLocked && (
                           <button
@@ -4329,9 +5260,19 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                   <td className="py-2.5 px-3 text-right font-mono text-slate-900 dark:text-white font-black">
                     {fmt(subTotal2Contract)} ETB
                   </td>
+                  {isUsdModeActive && (
+                    <td className="py-2.5 px-3 text-right font-mono font-black text-purple-700 dark:text-purple-300">
+                      ${fmt(subTotal2ContractUsd)} USD
+                    </td>
+                  )}
                   <td className="py-2.5 px-2 text-right font-mono text-slate-500">
                     {fmt(subTotal2Preceding)}
                   </td>
+                  {isUsdModeActive && (
+                    <td className="py-2.5 px-3 text-right font-mono font-bold text-purple-700 dark:text-purple-300">
+                      ${fmt(subTotal2PrecedingUsd)} USD
+                    </td>
+                  )}
                   <td className="py-2.5 px-2 text-center font-mono text-amber-700 dark:text-amber-300 bg-amber-100/30">
                     -
                   </td>
@@ -4340,7 +5281,7 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                   </td>
                   {isUsdModeActive && (
                     <td className="py-2.5 px-3 text-right font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-100/20">
-                      ${fmt(subTotal2ThisInvoiceUsd)}
+                      ${fmt(subTotal2ThisInvoiceUsd)} USD
                     </td>
                   )}
                   <td className="py-2.5 px-2 text-right font-mono text-slate-700 dark:text-slate-300">
@@ -4349,9 +5290,19 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                   <td className="py-2.5 px-3 text-right font-mono text-slate-900 dark:text-white font-black">
                     {fmt(subTotal2ToDate)} ETB
                   </td>
+                  {isUsdModeActive && (
+                    <td className="py-2.5 px-3 text-right font-mono font-black text-purple-700 dark:text-purple-300">
+                      ${fmt(subTotal2ToDateUsd)} USD
+                    </td>
+                  )}
                   <td className="py-2.5 px-3 text-right font-mono text-emerald-600 dark:text-emerald-400 font-black">
                     {fmt(subTotal2Remaining)} ETB
                   </td>
+                  {isUsdModeActive && (
+                    <td className="py-2.5 px-3 text-right font-mono font-black text-purple-700 dark:text-purple-300">
+                      ${fmt(subTotal2RemainingUsd)} USD
+                    </td>
+                  )}
                   <td></td>
                 </tr>
               </tfoot>
@@ -4376,9 +5327,6 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                   <span>Linked to Contract Table 3 (DLP Remuneration Schedule)</span>
                 </span>
               </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Defect Liability Period supervisory personnel allocation. Enter man-months expended for this billing period to compute Sub Total 3 before Table 5.
-              </p>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
@@ -4392,17 +5340,28 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                   <th className="py-2.5 px-3 w-10 text-center">#</th>
                   <th className="py-2.5 px-3 min-w-[220px]">DLP Personnel Position & Name</th>
                   <th className="py-2.5 px-2 text-center w-16">Unit</th>
-                  <th className="py-2.5 px-2 text-right min-w-[105px]">Monthly Rate (ETB)</th>
-                  {isUsdModeActive && <th className="py-2.5 px-2 text-right min-w-[100px] text-purple-700 dark:text-purple-300">Rate (USD)</th>}
-                  <th className="py-2.5 px-2 text-right min-w-[90px]">Contract MM</th>
-                  <th className="py-2.5 px-3 text-right min-w-[110px]">Contract Amount</th>
+                  <th className="py-2.5 px-2 text-right min-w-[105px]">Unit Price (ETB)</th>
+                  {isUsdModeActive && <th className="py-2.5 px-2 text-right min-w-[100px] text-purple-700 dark:text-purple-300">Unit Price (USD)</th>}
+                  <th className="py-2.5 px-2 text-right min-w-[85px]">Contract MM</th>
+                  <th className="py-2.5 px-3 text-right min-w-[110px]">Contract Amount (ETB)</th>
+                  {isUsdModeActive && <th className="py-2.5 px-3 text-right min-w-[105px] text-purple-700 dark:text-purple-300">Contract Amount (USD)</th>}
+                  <th className="py-2.5 px-2 text-right min-w-[100px]">Preceding</th>
+                  {isUsdModeActive && <th className="py-2.5 px-3 text-right min-w-[95px] text-purple-700 dark:text-purple-300 bg-purple-100/40 font-bold">Preceding (USD)</th>}
+                  <th className="py-2.5 px-2 text-center min-w-[90px] bg-indigo-100/50 dark:bg-indigo-950/30 text-indigo-800 dark:text-indigo-200">This Inv MM</th>
+                  <th className="py-2.5 px-3 text-right min-w-[115px] bg-indigo-100/50 dark:bg-indigo-950/30 text-indigo-800 dark:text-indigo-200">This Inv (ETB)</th>
+                  {isUsdModeActive && <th className="py-2.5 px-3 text-right min-w-[105px] text-purple-700 dark:text-purple-300 bg-purple-100/40 dark:bg-purple-950/40">This Inv (USD)</th>}
+                  <th className="py-2.5 px-2 text-right min-w-[80px]">To-Date MM</th>
+                  <th className="py-2.5 px-3 text-right min-w-[110px]">To-Date (ETB)</th>
+                  {isUsdModeActive && <th className="py-2.5 px-3 text-right min-w-[100px] text-purple-700 dark:text-purple-300 bg-purple-100/40 font-bold">To-Date (USD)</th>}
+                  <th className="py-2.5 px-3 text-right min-w-[110px] text-emerald-700 dark:text-emerald-400">Remaining (ETB)</th>
+                  {isUsdModeActive && <th className="py-2.5 px-3 text-right min-w-[100px] text-purple-600 dark:text-purple-400 font-semibold bg-purple-50/20">Remaining (USD)</th>}
                   <th className="py-2.5 px-2 text-center w-12">Act</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-sans text-xs">
                 {defectRowsComputed.length === 0 ? (
                   <tr>
-                    <td colSpan={isUsdModeActive ? 15 : 14} className="py-8 text-center text-slate-400">
+                    <td colSpan={isUsdModeActive ? 19 : 13} className="py-8 text-center text-slate-400">
                       No DLP personnel allocation rows defined in Contract Baseline.
                     </td>
                   </tr>
@@ -4465,6 +5424,11 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                         <td className="py-2 px-3 text-right font-mono font-semibold text-slate-700 dark:text-slate-300">
                           {fmt(row.contractAmount)}
                         </td>
+                        {isUsdModeActive && (
+                          <td className="py-2 px-3 text-right font-mono text-purple-700 dark:text-purple-300">
+                            ${fmt(row.contractAmountUsd || 0)}
+                          </td>
+                        )}
                         <td className="py-2 px-2 text-right font-mono text-slate-500">
                           <div className="flex flex-col items-end gap-1">
                             <input
@@ -4486,6 +5450,11 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                             />
                           </div>
                         </td>
+                        {isUsdModeActive && (
+                          <td className="py-2 px-3 text-right font-mono text-purple-700 dark:text-purple-300 bg-purple-50/20 font-semibold">
+                            ${fmt(row.precedingAmountUsd || 0)}
+                          </td>
+                        )}
                         <td className="py-2 px-2 text-center bg-indigo-50/30 dark:bg-indigo-950/20">
                           <input
                             type="number"
@@ -4537,9 +5506,19 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                         <td className="py-2 px-3 text-right font-mono font-bold">
                           {fmt(row.toDateAmount)}
                         </td>
+                        {isUsdModeActive && (
+                          <td className="py-2 px-3 text-right font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-50/20">
+                            ${fmt(row.toDateAmountUsd || 0)}
+                          </td>
+                        )}
                         <td className="py-2 px-3 text-right font-mono font-semibold text-emerald-600 dark:text-emerald-400">
                           {fmt(row.remainingAmount)}
                         </td>
+                        {isUsdModeActive && (
+                          <td className="py-2 px-3 text-right font-mono text-purple-600 dark:text-purple-400 bg-purple-50/20 font-semibold">
+                            ${fmt(row.remainingAmountUsd || 0)}
+                          </td>
+                        )}
                         <td className="py-2 px-2 text-center">
                           {/* Row deletion disabled for invoice synchronization */}
                         </td>
@@ -4550,12 +5529,55 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
               </tbody>
               <tfoot className="border-t-2 border-slate-300 dark:border-slate-700 font-bold bg-indigo-50/50 dark:bg-slate-800 text-xs">
                 <tr>
-                  <td colSpan={5} className="py-2.5 px-3 text-indigo-900 dark:text-indigo-200 uppercase text-[10px] font-black">
+                  <td colSpan={isUsdModeActive ? 6 : 5} className="py-2.5 px-3 text-indigo-900 dark:text-indigo-200 uppercase text-[10px] font-black">
                     Sub-Total 3 (Defect Liability Personnel Allocation):
                   </td>
                   <td className="py-2.5 px-3 text-right font-mono text-slate-900 dark:text-white">
                     {fmt(subTotal3Contract)} ETB
                   </td>
+                  {isUsdModeActive && (
+                    <td className="py-2.5 px-3 text-right font-mono font-black text-purple-700 dark:text-purple-300">
+                      ${fmt(subTotal3ContractUsd)} USD
+                    </td>
+                  )}
+                  <td className="py-2.5 px-2 text-right font-mono text-slate-500">
+                    {subTotal3Preceding > 0 ? `${fmt(subTotal3Preceding)} ETB` : '-'}
+                  </td>
+                  {isUsdModeActive && (
+                    <td className="py-2.5 px-3 text-right font-mono font-bold text-purple-700 dark:text-purple-300">
+                      ${fmt(subTotal3PrecedingUsd)} USD
+                    </td>
+                  )}
+                  <td className="py-2.5 px-2 text-center font-mono text-indigo-700 dark:text-indigo-300 font-bold">
+                    -
+                  </td>
+                  <td className="py-2.5 px-3 text-right font-mono text-indigo-800 dark:text-indigo-200 font-black">
+                    {fmt(subTotal3ThisInvoice)} ETB
+                  </td>
+                  {isUsdModeActive && (
+                    <td className="py-2.5 px-3 text-right font-mono font-bold text-purple-700 dark:text-purple-300">
+                      ${fmt(subTotal3ThisInvoiceUsd)} USD
+                    </td>
+                  )}
+                  <td className="py-2.5 px-2 text-right font-mono text-slate-700 dark:text-slate-300">
+                    -
+                  </td>
+                  <td className="py-2.5 px-3 text-right font-mono text-slate-900 dark:text-white font-black">
+                    {fmt(subTotal3ToDate)} ETB
+                  </td>
+                  {isUsdModeActive && (
+                    <td className="py-2.5 px-3 text-right font-mono font-black text-purple-700 dark:text-purple-300">
+                      ${fmt(subTotal3ToDateUsd)} USD
+                    </td>
+                  )}
+                  <td className="py-2.5 px-3 text-right font-mono text-emerald-600 dark:text-emerald-400 font-black">
+                    {fmt(subTotal3Remaining)} ETB
+                  </td>
+                  {isUsdModeActive && (
+                    <td className="py-2.5 px-3 text-right font-mono font-black text-purple-700 dark:text-purple-300">
+                      ${fmt(subTotal3RemainingUsd)} USD
+                    </td>
+                  )}
                   <td></td>
                 </tr>
               </tfoot>
@@ -4580,9 +5602,6 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                   <span>🔗 Master Baseline Linked to Contract Amount Table 1</span>
                 </span>
               </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Official Ethiopian Roads Administration summary sheet with 15% VAT, contractual deductions, and net payable in Ethiopian Birr.
-              </p>
             </div>
             <div className="flex items-center gap-2">
               <span className="px-3 py-1 bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 font-bold rounded-xl text-xs">
@@ -4630,13 +5649,13 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                     </td>
                     {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(subTotal1ThisInvoiceUsd)}</td>}
                     <td className="py-2.5 px-4 text-right font-mono text-slate-600 dark:text-slate-400">{fmt(subTotal1Preceding)}</td>
-                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-purple-600/80 bg-purple-50/20">-</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(subTotal1PrecedingUsd)}</td>}
                     <td className="py-2.5 px-4 text-right font-mono font-bold">{fmt(subTotal1ToDate)}</td>
-                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(subTotal1ThisInvoiceUsd)}</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(subTotal1ToDateUsd)}</td>}
                     <td className="py-2.5 px-4 text-right font-mono text-emerald-600 dark:text-emerald-400 font-semibold">
                       {fmt(Math.max(0, linkedFeesContract - subTotal1ToDate))}
                     </td>
-                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-purple-600 dark:text-purple-400 font-semibold bg-purple-50/20">${fmt(Math.max(0, linkedFeesContractUsd - subTotal1ThisInvoiceUsd))}</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono font-semibold text-purple-600 dark:text-purple-400 bg-purple-50/20">${fmt(subTotal1RemainingUsd)}</td>}
                   </tr>
 
                   {/* Row 2: Sub Total 2 */}
@@ -4655,13 +5674,13 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                     </td>
                     {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(subTotal2ThisInvoiceUsd)}</td>}
                     <td className="py-2.5 px-4 text-right font-mono text-slate-600 dark:text-slate-400">{fmt(subTotal2Preceding)}</td>
-                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-purple-600/80 bg-purple-50/20">-</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(subTotal2PrecedingUsd)}</td>}
                     <td className="py-2.5 px-4 text-right font-mono font-bold">{fmt(subTotal2ToDate)}</td>
-                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(subTotal2ThisInvoiceUsd)}</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(subTotal2ToDateUsd)}</td>}
                     <td className="py-2.5 px-4 text-right font-mono text-emerald-600 dark:text-emerald-400 font-semibold">
                       {fmt(Math.max(0, linkedReimbContract - subTotal2ToDate))}
                     </td>
-                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-purple-600 dark:text-purple-400 font-semibold bg-purple-50/20">${fmt(Math.max(0, linkedReimbContractUsd - subTotal2ThisInvoiceUsd))}</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono font-semibold text-purple-600 dark:text-purple-400 bg-purple-50/20">${fmt(subTotal2RemainingUsd)}</td>}
                   </tr>
 
                   {/* Row 3: Sub Total 3 Defect */}
@@ -4674,19 +5693,19 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                       <span className="text-[10px] text-indigo-600 dark:text-indigo-400 block font-mono">Linked to Contract Table 3 (DLP Remuneration Schedule)</span>
                     </td>
                     <td className="py-2.5 px-4 text-right font-mono font-semibold">{fmt(subTotal3Contract)}</td>
-                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono font-semibold text-purple-700 dark:text-purple-300 bg-purple-50/20">$0.00</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono font-semibold text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(subTotal3ContractUsd)}</td>}
                     <td className="py-2.5 px-4 text-right font-mono font-bold text-indigo-600 dark:text-indigo-400 bg-blue-50/20 dark:bg-blue-950/10">
                       {fmt(subTotal3ThisInvoice)}
                     </td>
-                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-50/20">$0.00</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(subTotal3ThisInvoiceUsd)}</td>}
                     <td className="py-2.5 px-4 text-right font-mono text-slate-600 dark:text-slate-400">{subTotal3Preceding > 0 ? fmt(subTotal3Preceding) : '-'}</td>
-                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-purple-600/80 bg-purple-50/20">-</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(subTotal3PrecedingUsd)}</td>}
                     <td className="py-2.5 px-4 text-right font-mono font-bold text-indigo-600 dark:text-indigo-400">{fmt(subTotal3ToDate)}</td>
-                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-50/20">$0.00</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(subTotal3ToDateUsd)}</td>}
                     <td className="py-2.5 px-4 text-right font-mono text-emerald-600 dark:text-emerald-400 font-semibold">
                       {fmt(subTotal3Remaining)}
                     </td>
-                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-purple-600 dark:text-purple-400 font-semibold bg-purple-50/20">$0.00</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono font-semibold text-purple-600 dark:text-purple-400 bg-purple-50/20">${fmt(subTotal3RemainingUsd)}</td>}
                   </tr>
 
                   {/* Direct Sum (1 + 2 + 3) */}
@@ -4702,13 +5721,13 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                     </td>
                     {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono font-black text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(totalSubtotalThisInvoiceUsd)}</td>}
                     <td className="py-2.5 px-4 text-right font-mono">{fmt(totalSubtotalPreceding)}</td>
-                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-purple-600/80 bg-purple-50/20">-</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(totalSubtotalPrecedingUsd)}</td>}
                     <td className="py-2.5 px-4 text-right font-mono font-black">{fmt(totalSubtotalToDate)}</td>
-                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono font-black text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(totalSubtotalThisInvoiceUsd)}</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono font-black text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(totalSubtotalToDateUsd)}</td>}
                     <td className="py-2.5 px-4 text-right font-mono font-black text-emerald-700 dark:text-emerald-300">
                       {fmt(Math.max(0, totalBaseContract - totalSubtotalToDate))}
                     </td>
-                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono font-black text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(Math.max(0, totalBaseContractUsd - totalSubtotalThisInvoiceUsd))}</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono font-black text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(totalSubtotalRemainingUsd)}</td>}
                   </tr>
 
                   {/* Contingency */}
@@ -4859,13 +5878,13 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                     </td>
                     {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono font-black text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(vatThisInvoiceUsd)}</td>}
                     <td className="py-2.5 px-4 text-right font-mono text-purple-600/80">{fmt(vatPreceding)}</td>
-                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-purple-600/80 bg-purple-50/20">-</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(vatPrecedingUsd)}</td>}
                     <td className="py-2.5 px-4 text-right font-mono font-black text-purple-700 dark:text-purple-300">{fmt(vatToDate)}</td>
-                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono font-black text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(vatThisInvoiceUsd)}</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono font-black text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(vatToDateUsd)}</td>}
                     <td className="py-2.5 px-4 text-right font-mono text-purple-600 dark:text-purple-400 font-semibold">
                       {fmt(Math.max(0, vatContract - vatToDate))}
                     </td>
-                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-purple-600 dark:text-purple-400 font-semibold bg-purple-50/20">${fmt(Math.max(0, vatContractUsd - vatThisInvoiceUsd))}</td>}
+                    {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-purple-600 dark:text-purple-400 font-semibold bg-purple-50/20">${fmt(vatRemainingUsd)}</td>}
                   </tr>
 
                   {/* GROSS CLAIM TOTAL */}
@@ -4882,13 +5901,13 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                     </td>
                     {isUsdModeActive && <td className="py-3 px-4 text-right font-mono text-purple-700 dark:text-purple-300 font-black bg-purple-50/20">${fmt(grossPayableBaseUsd)}</td>}
                     <td className="py-3 px-4 text-right font-mono text-slate-700 dark:text-slate-300">{fmt(grossPreceding)}</td>
-                    {isUsdModeActive && <td className="py-3 px-4 text-right font-mono text-purple-600/80 bg-purple-50/20">-</td>}
+                    {isUsdModeActive && <td className="py-3 px-4 text-right font-mono text-purple-700 dark:text-purple-300 bg-purple-50/20 font-bold">${fmt(grossPrecedingUsd)}</td>}
                     <td className="py-3 px-4 text-right font-mono text-slate-900 dark:text-white">{fmt(grossToDate)}</td>
-                    {isUsdModeActive && <td className="py-3 px-4 text-right font-mono text-purple-700 dark:text-purple-300 font-black bg-purple-50/20">${fmt(grossPayableBaseUsd)}</td>}
+                    {isUsdModeActive && <td className="py-3 px-4 text-right font-mono text-purple-700 dark:text-purple-300 font-black bg-purple-50/20">${fmt(grossToDateUsd)}</td>}
                     <td className="py-3 px-4 text-right font-mono font-black text-emerald-700 dark:text-emerald-300">
                       {fmt(Math.max(0, totalContractDue - grossToDate))}
                     </td>
-                    {isUsdModeActive && <td className="py-3 px-4 text-right font-mono font-black text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(Math.max(0, totalContractDueUsd - grossPayableBaseUsd))}</td>}
+                    {isUsdModeActive && <td className="py-3 px-4 text-right font-mono font-black text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(grossRemainingUsd)}</td>}
                   </tr>
 
                   {/* Overtime Row */}
@@ -5057,13 +6076,17 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                       </td>
                     )}
                     <td className="py-3.5 px-4 text-right font-mono text-slate-700 dark:text-slate-300 font-bold">{fmt(netPreceding)}</td>
-                    {isUsdModeActive && <td className="py-3.5 px-4 text-right font-mono text-purple-600/80 bg-purple-50/20">-</td>}
+                    {isUsdModeActive && (
+                      <td className="py-3.5 px-4 text-right font-mono text-purple-700 dark:text-purple-300 bg-purple-50/20 font-black text-base">
+                        ${fmt(Math.max(0, grossPrecedingUsd - vatPrecedingUsd))}
+                      </td>
+                    )}
                     <td className="py-3.5 px-4 text-right font-mono text-base text-emerald-800 dark:text-emerald-200 font-black">
                       {fmt(netToDate)} ETB
                     </td>
                     {isUsdModeActive && (
                       <td className="py-3.5 px-4 text-right font-mono text-purple-700 dark:text-purple-300 bg-purple-50/20 font-black text-base">
-                        ${fmt(Math.max(0, grossPayableBaseUsd - vatThisInvoiceUsd))}
+                        ${fmt(Math.max(0, grossToDateUsd - vatToDateUsd))}
                       </td>
                     )}
                   </tr>

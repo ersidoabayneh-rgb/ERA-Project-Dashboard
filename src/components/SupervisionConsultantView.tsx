@@ -393,7 +393,7 @@ export default function SupervisionConsultantView({
   const [selectedInvoice, setSelectedInvoice] = useState<ConsultantInvoice | null>(null);
   const [viewDetailPersonnel, setViewDetailPersonnel] = useState<ConsultantPersonnel | null>(null);
   const [selectedHistoricalConsultant, setSelectedHistoricalConsultant] = useState<HistoricalSupervisionConsultant | null>(null);
-  const [invoiceViewMode, setInvoiceViewMode] = useState<'table' | 'cards' | 'calculationTables'>('table');
+  const [invoiceViewMode, setInvoiceViewMode] = useState<'table' | 'cards' | 'calculationTables'>('calculationTables');
   const [selectedInvoiceForPdfModal, setSelectedInvoiceForPdfModal] = useState<ConsultantInvoice | null>(null);
   const [isInlineTableEdit, setIsInlineTableEdit] = useState<boolean>(false);
 
@@ -640,6 +640,12 @@ export default function SupervisionConsultantView({
   const hasUsdPayments = useMemo(() => {
     return project.enableUsdPayments === true || consultant.enableUsdPayments === true;
   }, [project.enableUsdPayments, consultant.enableUsdPayments]);
+
+  useEffect(() => {
+    if (!hasUsdPayments && viewCurrency === 'USD') {
+      setViewCurrency('ETB');
+    }
+  }, [hasUsdPayments, viewCurrency]);
 
   // Calculations for Financials
   const financialSummary = useMemo(() => {
@@ -3081,111 +3087,7 @@ export default function SupervisionConsultantView({
                   </div>
                 </div>
 
-                {/* Currency & View Settings: Centralized Control */}
-                <div className="p-6 rounded-3xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/80 space-y-6">
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                    <div className="space-y-1">
-                      <h4 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                        <Coins className="w-4 h-4 text-purple-600" />
-                        Currency & View Configuration
-                      </h4>
-                      <p className="text-xs text-slate-500">Configure how financial data is calculated and displayed across all modules.</p>
-                    </div>
 
-                    <div className="flex items-center gap-4">
-                      {/* View Currency Toggle (Global for this view) */}
-                      <div className="flex items-center gap-2 bg-white dark:bg-slate-900 p-1 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
-                        <button
-                          type="button"
-                          onClick={() => setViewCurrency('ETB')}
-                          className={`px-4 py-1.5 rounded-lg text-xs font-black transition cursor-pointer ${
-                            viewCurrency === 'ETB'
-                              ? 'bg-emerald-600 text-white shadow-sm'
-                              : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
-                          }`}
-                        >
-                          ETB
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setViewCurrency('USD')}
-                          className={`px-4 py-1.5 rounded-lg text-xs font-black transition cursor-pointer ${
-                            viewCurrency === 'USD'
-                              ? 'bg-purple-600 text-white shadow-sm'
-                              : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
-                          }`}
-                        >
-                          USD
-                        </button>
-                      </div>
-
-                      {!isReadonly && !Boolean(project.isAmountLocked || consultant.isContractLocked || consultant.contractAmountSchedule?.condition1?.isLocked) && (
-                        <div className="h-8 w-px bg-slate-200 dark:bg-slate-700 mx-1"></div>
-                      )}
-
-                      {!isReadonly && !Boolean(project.isAmountLocked || consultant.isContractLocked || consultant.contractAmountSchedule?.condition1?.isLocked) && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const nextVal = !hasUsdPayments;
-                            saveConsultantData({
-                              ...consultant,
-                              enableUsdPayments: nextVal
-                            }, `${nextVal ? 'Enabled' : 'Disabled'} USD foreign currency remuneration option`);
-                            setInAppNotification({
-                              type: 'success',
-                              message: nextVal 
-                                ? 'USD Option selected! The Fee Invoices table now displays the dedicated USD Certificate column like an IPC table.'
-                                : 'USD Option turned off. Fee Invoices table is now showing local ETB currency.'
-                            });
-                          }}
-                          className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-sm border ${
-                            hasUsdPayments
-                              ? 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/30 dark:text-purple-300 dark:border-purple-800'
-                              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-50'
-                          }`}
-                        >
-                          <ShieldCheck className={`w-3.5 h-3.5 ${hasUsdPayments ? 'text-purple-600' : 'text-slate-400'}`} />
-                          {hasUsdPayments ? 'USD Contract Active' : 'Enable USD Option'}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="pt-2">
-                    {/* Exchange Rate Card */}
-                    <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Operational Exchange Rate</span>
-                        <Sparkles className="w-3.5 h-3.5 text-blue-500" />
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <div className="flex-1 flex items-center gap-2 px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
-                          <span className="text-xs font-bold text-slate-500">1 USD =</span>
-                          <input
-                            type="number"
-                            step="0.01"
-                            disabled={isReadonly || Boolean(project.isAmountLocked || consultant.isContractLocked || consultant.contractAmountSchedule?.condition1?.isLocked)}
-                            value={exchangeRateInput}
-                            onChange={(e) => setExchangeRateInput(parseFloat(e.target.value) || 0)}
-                            className="flex-1 bg-transparent border-none focus:ring-0 text-sm font-mono font-black text-slate-900 dark:text-white p-0"
-                          />
-                          <span className="text-xs font-bold text-slate-500">ETB</span>
-                        </div>
-                        {!isReadonly && !Boolean(project.isAmountLocked || consultant.isContractLocked || consultant.contractAmountSchedule?.condition1?.isLocked) && (
-                          <button
-                            type="button"
-                            onClick={() => handleSaveExchangeRate(exchangeRateInput)}
-                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition shadow-sm cursor-pointer"
-                          >
-                            Apply
-                          </button>
-                        )}
-                      </div>
-                      <p className="text-[10px] text-slate-500 italic">This rate is used to convert ETB values to USD for real-time reporting and dashboard analysis.</p>
-                    </div>
-                  </div>
-                </div>
               </div>
 
               {/* Service Continuation & Handover Management Card */}
@@ -3349,19 +3251,7 @@ export default function SupervisionConsultantView({
                 </div>
               </div>
 
-              {/* Performance Assurance Card */}
-              <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white p-6 rounded-3xl shadow-sm space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Consultant Compliance</span>
-                  <Award className="w-5 h-5 text-amber-400" />
-                </div>
-                <h4 className="font-black text-lg text-white">
-                  FIDIC Engineer Obligations
-                </h4>
-                <p className="text-xs text-slate-300 leading-relaxed">
-                  The supervision team operates under delegated authority from the Ethiopian Roads Administration to administer the civil works contract impartially and enforce high standards of quality assurance.
-                </p>
-              </div>
+
             </div>
           </div>
 
@@ -3376,6 +3266,20 @@ export default function SupervisionConsultantView({
               viewCurrency={viewCurrency}
               exchangeRate={activeExchangeRate}
               onCurrencyToggle={setViewCurrency}
+              onSaveExchangeRate={handleSaveExchangeRate}
+              onToggleUsdPayments={() => {
+                const nextVal = !hasUsdPayments;
+                saveConsultantData({
+                  ...consultant,
+                  enableUsdPayments: nextVal
+                }, `${nextVal ? 'Enabled' : 'Disabled'} USD foreign currency remuneration option`);
+                setInAppNotification({
+                  type: 'success',
+                  message: nextVal 
+                    ? 'USD Option selected! The Fee Invoices table now displays the dedicated USD Certificate column like an IPC table.'
+                    : 'USD Option turned off. Fee Invoices table is now showing local ETB currency.'
+                });
+              }}
               onNavigateToInvoices={() => {
                 setActiveTab('invoices');
                 setInvoiceViewMode('table');
@@ -4063,174 +3967,6 @@ export default function SupervisionConsultantView({
       {/* TAB 2: CONSULTANT INVOICES & FEE CLAIMS */}
       {activeTab === 'invoices' && (
         <div className="space-y-4">
-          {/* Invoice Filter, Date Range Picker and Export Bar */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-2xl space-y-3">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-              {/* Search input */}
-              <div className="relative flex-1">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  placeholder="Search invoices by invoice number, billing period, payment ref, or notes..."
-                  value={invoiceSearch}
-                  onChange={(e) => setInvoiceSearch(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2 text-xs md:text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-800 dark:text-slate-100"
-                />
-              </div>
-
-              {/* Status and Action Buttons */}
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="flex items-center gap-1.5 text-xs text-slate-500 font-semibold">
-                  <Filter className="w-3.5 h-3.5" />
-                  Status:
-                </div>
-                <select
-                  value={invoiceStatusFilter}
-                  onChange={(e) => setInvoiceStatusFilter(e.target.value)}
-                  className="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-2 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 font-semibold"
-                >
-                  <option value="ALL">All Statuses</option>
-                  <option value="Paid">Paid</option>
-                  <option value="Certified">Certified</option>
-                  <option value="Submitted">Submitted</option>
-                  <option value="Pending">Pending</option>
-                  <option value="Rejected">Rejected</option>
-                </select>
-
-                {/* Export Formatted PDF Report Button */}
-                <button
-                  type="button"
-                  onClick={handleExportInvoicesAuditPDF}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl flex items-center gap-1.5 shadow-xs transition cursor-pointer"
-                  title="Export displayed Fee Invoices & Payment Ledger as a formatted PDF report for financial auditing and documentation"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Export Financial Audit PDF</span>
-                </button>
-
-                {!isReadonly && (
-                  <button
-                    type="button"
-                    onClick={handleOpenAddInvoice}
-                    className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl flex items-center gap-1.5 shadow-xs transition cursor-pointer"
-                    title="Compute monthly supervision invoice based on staff attendance, rate multiplication, reimbursables, and 15% VAT table formats"
-                  >
-                    <Calculator className="w-3.5 h-3.5" />
-                    <span>Calculate Monthly Invoice</span>
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* DATE RANGE PICKER COMPONENT (Reporting Period Filtering) */}
-            <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800 flex flex-col lg:flex-row lg:items-center justify-between gap-3 text-xs">
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400 font-bold">
-                  <Calendar className="w-3.5 h-3.5 text-blue-500" />
-                  <span>Reporting Period:</span>
-                </div>
-
-                {/* Quick Date Presets */}
-                <div className="flex flex-wrap items-center gap-1 bg-slate-100 dark:bg-slate-800 p-0.5 rounded-xl border border-slate-200 dark:border-slate-700 text-[11px] font-bold">
-                  <button
-                    type="button"
-                    onClick={() => handleSelectDatePreset('ALL')}
-                    className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
-                      invoiceDatePreset === 'ALL' && !invoiceStartDate && !invoiceEndDate
-                        ? 'bg-blue-600 text-white shadow-xs'
-                        : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-                    }`}
-                  >
-                    All Time
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSelectDatePreset('THIS_YEAR')}
-                    className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
-                      invoiceDatePreset === 'THIS_YEAR'
-                        ? 'bg-blue-600 text-white shadow-xs'
-                        : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-                    }`}
-                  >
-                    This Year
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSelectDatePreset('LAST_6_MONTHS')}
-                    className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
-                      invoiceDatePreset === 'LAST_6_MONTHS'
-                        ? 'bg-blue-600 text-white shadow-xs'
-                        : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-                    }`}
-                  >
-                    Last 6 Mos
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSelectDatePreset('THIS_QUARTER')}
-                    className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
-                      invoiceDatePreset === 'THIS_QUARTER'
-                        ? 'bg-blue-600 text-white shadow-xs'
-                        : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-                    }`}
-                  >
-                    This Qtr
-                  </button>
-                </div>
-
-                {/* Date Inputs */}
-                <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-800 px-2.5 py-1 rounded-xl border border-slate-200 dark:border-slate-700">
-                  <span className="text-[10px] uppercase font-bold text-slate-400">From</span>
-                  <input
-                    type="date"
-                    value={invoiceStartDate}
-                    onChange={(e) => {
-                      setInvoiceStartDate(e.target.value);
-                      setInvoiceDatePreset('CUSTOM');
-                    }}
-                    className="bg-transparent font-mono text-xs text-slate-800 dark:text-slate-200 focus:outline-none"
-                    title="Start of reporting period"
-                  />
-                  <span className="text-slate-400 text-xs">→</span>
-                  <span className="text-[10px] uppercase font-bold text-slate-400">To</span>
-                  <input
-                    type="date"
-                    value={invoiceEndDate}
-                    onChange={(e) => {
-                      setInvoiceEndDate(e.target.value);
-                      setInvoiceDatePreset('CUSTOM');
-                    }}
-                    className="bg-transparent font-mono text-xs text-slate-800 dark:text-slate-200 focus:outline-none"
-                    title="End of reporting period"
-                  />
-                  {(invoiceStartDate || invoiceEndDate) && (
-                    <button
-                      type="button"
-                      onClick={() => handleSelectDatePreset('ALL')}
-                      className="text-slate-400 hover:text-rose-500 font-bold px-1 transition cursor-pointer"
-                      title="Clear date range filter"
-                    >
-                      ✕
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Active Filter Period Badge */}
-              <div className="flex items-center gap-2">
-                {(invoiceStartDate || invoiceEndDate) ? (
-                  <span className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200 dark:border-blue-800 flex items-center gap-1">
-                    <span>Filtered: {invoiceStartDate || 'Earliest'} to {invoiceEndDate || 'Latest'} ({filteredInvoices.length} invoices)</span>
-                  </span>
-                ) : (
-                  <span className="text-[11px] text-slate-400 font-normal">
-                    Showing all {filteredInvoices.length} historical invoices
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-
           {/* View Mode Selector: Table vs Calculation Tables vs IPC Picture Cards */}
           <div className="flex flex-wrap items-center justify-between px-2 pt-1 gap-2">
             <div className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
@@ -4242,45 +3978,34 @@ export default function SupervisionConsultantView({
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-
+              {/* Currency Selector: Only show USD when USD is enabled; otherwise only ETB is shown */}
               <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
                 <button
                   type="button"
-                  onClick={() => setInvoiceViewMode('table')}
+                  onClick={() => setViewCurrency('ETB')}
                   className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
-                    invoiceViewMode === 'table'
+                    viewCurrency === 'ETB'
                       ? 'bg-blue-600 text-white shadow-xs'
                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                   }`}
+                  title="View calculations and reports in Ethiopian Birr (ETB)"
                 >
-                  <Table className="w-3.5 h-3.5" />
-                  Ledger Table
+                  ETB
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setInvoiceViewMode('calculationTables')}
-                  className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
-                    invoiceViewMode === 'calculationTables'
-                      ? 'bg-blue-600 text-white shadow-xs'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                  }`}
-                  title="Open interactive 5-table invoice calculation engine"
-                >
-                  <Calculator className="w-3.5 h-3.5" />
-                  Calculation Tables
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setInvoiceViewMode('cards')}
-                  className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
-                    invoiceViewMode === 'cards'
-                      ? 'bg-blue-600 text-white shadow-xs'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                  }`}
-                >
-                  <FileText className="w-3.5 h-3.5" />
-                  IPC Picture Cards
-                </button>
+                {hasUsdPayments && (
+                  <button
+                    type="button"
+                    onClick={() => setViewCurrency('USD')}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
+                      viewCurrency === 'USD'
+                        ? 'bg-purple-600 text-white shadow-xs'
+                        : 'text-purple-600 dark:text-purple-400 hover:text-purple-900 dark:hover:text-white'
+                    }`}
+                    title="View calculations and reports in US Dollars (USD)"
+                  >
+                    USD
+                  </button>
+                )}
               </div>
             </div>
           </div>

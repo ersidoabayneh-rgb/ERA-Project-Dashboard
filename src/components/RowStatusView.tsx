@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { motion } from 'motion/react';
 import { 
   ShieldCheck, 
@@ -11,6 +11,7 @@ import {
   HelpCircle, 
   TrendingUp, 
   AlertCircle,
+  AlertTriangle,
   Zap,
   Wrench,
   Target,
@@ -259,18 +260,94 @@ export default function RowStatusView({
     onUpdateRowStatus(rowStatusItems.filter((_, i) => i !== idx));
   };
 
-  // Section 1: Right-of-Way (ROW) Key Evaluation Metrics
-  // Official comparison for any ROW evaluation is strictly between ROW Request By Contractor and ROW Obstruction free Section
-  const rowRequestedObj = metrics.find(m => m.name === 'ROW Request By Contractor');
-  const rowClearedObj = metrics.find(m => m.name === 'ROW Obstruction free Section');
+  // Typical Project Contract Limits for ROW & Utilities Compensation
+  const TYPICAL_WOREDA_COMPENSATION_LIMIT_M = 500; // 500 Million ETB
+  const TYPICAL_PAP_LIMIT_PER_WOREDA = 5000;
+  const TYPICAL_CORRIDOR_LENGTH_LIMIT_KM = 1000;
 
-  const requestedKm = rowRequestedObj ? (Number(rowRequestedObj.value) || 0) : 0;
-  const clearedKm = rowClearedObj ? (Number(rowClearedObj.value) || 0) : 0;
+  // Validation and Contract Limit Warnings
+  const rowValidationWarnings = useMemo(() => {
+    const list: string[] = [];
+
+    metrics.forEach((m) => {
+      if ((m.value || 0) < 0) {
+        list.push(`Metric "${m.name}": Entered value cannot be negative (${m.value}).`);
+      }
+      if (m.unit?.toLowerCase().includes('km') && (m.value || 0) > TYPICAL_CORRIDOR_LENGTH_LIMIT_KM) {
+        list.push(`Metric "${m.name}": Value (${m.value} Km) exceeds typical corridor length limit (${TYPICAL_CORRIDOR_LENGTH_LIMIT_KM} Km).`);
+      }
+    });
+
+    compensations.forEach((c) => {
+      if ((c.affectedPaps || 0) < 0) {
+        list.push(`ROW Compensation (${c.woreda || 'Woreda'}): PAP count cannot be negative.`);
+      }
+      if ((c.affectedPaps || 0) > TYPICAL_PAP_LIMIT_PER_WOREDA) {
+        list.push(`ROW Compensation (${c.woreda || 'Woreda'}): PAP count (${c.affectedPaps}) exceeds typical limit (${TYPICAL_PAP_LIMIT_PER_WOREDA} PAPs).`);
+      }
+      if ((c.compensationRequired || 0) < 0) {
+        list.push(`ROW Compensation (${c.woreda || 'Woreda'}): Required budget cannot be negative.`);
+      }
+      if ((c.compensationPaid || 0) < 0) {
+        list.push(`ROW Compensation (${c.woreda || 'Woreda'}): Paid budget cannot be negative.`);
+      }
+      if ((c.compensationRequired || 0) > TYPICAL_WOREDA_COMPENSATION_LIMIT_M) {
+        list.push(`ROW Compensation (${c.woreda || 'Woreda'}): Required budget (${formatAccounting(c.compensationRequired)} M) exceeds typical limit (${TYPICAL_WOREDA_COMPENSATION_LIMIT_M}M Birr).`);
+      }
+      if ((c.compensationPaid || 0) > TYPICAL_WOREDA_COMPENSATION_LIMIT_M) {
+        list.push(`ROW Compensation (${c.woreda || 'Woreda'}): Paid budget (${formatAccounting(c.compensationPaid)} M) exceeds typical limit (${TYPICAL_WOREDA_COMPENSATION_LIMIT_M}M Birr).`);
+      }
+      if ((c.compensationPaid || 0) > (c.compensationRequired || 0) && (c.compensationRequired || 0) > 0) {
+        list.push(`ROW Compensation (${c.woreda || 'Woreda'}): Paid amount (${formatAccounting(c.compensationPaid)} M) exceeds required budget (${formatAccounting(c.compensationRequired)} M).`);
+      }
+    });
+
+    utilityCompensations.forEach((u) => {
+      if ((u.compensationRequired || 0) < 0) {
+        list.push(`Utility (${u.utilityType || 'Utility'}): Required budget cannot be negative.`);
+      }
+      if ((u.compensationPaid || 0) < 0) {
+        list.push(`Utility (${u.utilityType || 'Utility'}): Paid budget cannot be negative.`);
+      }
+      if ((u.compensationRequired || 0) > TYPICAL_WOREDA_COMPENSATION_LIMIT_M) {
+        list.push(`Utility (${u.utilityType || 'Utility'}): Required budget (${formatAccounting(u.compensationRequired)} M) exceeds typical limit (${TYPICAL_WOREDA_COMPENSATION_LIMIT_M}M Birr).`);
+      }
+      if ((u.compensationPaid || 0) > TYPICAL_WOREDA_COMPENSATION_LIMIT_M) {
+        list.push(`Utility (${u.utilityType || 'Utility'}): Paid budget (${formatAccounting(u.compensationPaid)} M) exceeds typical limit (${TYPICAL_WOREDA_COMPENSATION_LIMIT_M}M Birr).`);
+      }
+      if ((u.compensationPaid || 0) > (u.compensationRequired || 0) && (u.compensationRequired || 0) > 0) {
+        list.push(`Utility (${u.utilityType || 'Utility'}): Paid amount (${formatAccounting(u.compensationPaid)} M) exceeds required budget (${formatAccounting(u.compensationRequired)} M).`);
+      }
+    });
+
+    return list;
+  }, [metrics, compensations, utilityCompensations]);
+
+  // ROW Evaluation KPI Variables
+  const reqMetric = metrics.find(m => m.name === 'ROW Request By Contractor');
+  const clearedMetric = metrics.find(m => m.name === 'ROW Obstruction free Section');
+  const requestedKm = reqMetric ? (reqMetric.value || 0) : 0;
+  const clearedKm = clearedMetric ? (clearedMetric.value || 0) : 0;
   const pendingKm = Math.max(0, requestedKm - clearedKm);
   const clearanceRate = requestedKm > 0 ? (clearedKm / requestedKm) * 100 : 0;
 
   return (
     <div className="space-y-6">
+      {/* Input Validation and Contract Limit Warnings Banner */}
+      {rowValidationWarnings.length > 0 && (
+        <div className="p-4 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/80 rounded-2xl text-amber-900 dark:text-amber-200 text-xs shadow-sm space-y-1.5 animate-fadeIn">
+          <div className="flex items-center gap-2 font-bold text-sm text-amber-800 dark:text-amber-300">
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>Input Validation & Contract Limit Warnings ({rowValidationWarnings.length})</span>
+          </div>
+          <ul className="list-disc list-inside space-y-1 pl-1 text-xs opacity-90 font-medium">
+            {rowValidationWarnings.map((warn, i) => (
+              <li key={i}>{warn}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* SECTION 1: Right-Of-Way Clearance & Technical Relocation Metrics */}
       <div className="space-y-4">
         {/* Header and Controls */}
@@ -401,13 +478,27 @@ export default function RowStatusView({
                         </div>
                       </td>
                       <td className="p-3 text-center">
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={m.value}
-                          onChange={(e) => handleFieldChange(idx, 'value', e.target.value)}
-                          className="w-28 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-center font-mono font-extrabold text-blue-600 dark:text-blue-400 text-xs focus:outline-none focus:border-blue-500"
-                        />
+                        <div className="flex flex-col items-center gap-0.5">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={m.value}
+                            onChange={(e) => handleFieldChange(idx, 'value', e.target.value)}
+                            className={`w-28 bg-slate-50 dark:bg-slate-900 border rounded-lg px-2 py-1 text-center font-mono font-extrabold text-xs focus:outline-none ${
+                              m.value < 0
+                                ? 'border-rose-500 text-rose-600 bg-rose-50/50 dark:bg-rose-950/40'
+                                : m.unit?.toLowerCase().includes('km') && m.value > TYPICAL_CORRIDOR_LENGTH_LIMIT_KM
+                                ? 'border-amber-400 text-amber-700 bg-amber-50/40 dark:bg-amber-950/30'
+                                : 'border-slate-200 dark:border-slate-700 text-blue-600 dark:text-blue-400 focus:border-blue-500'
+                            }`}
+                          />
+                          {m.value < 0 && (
+                            <span className="text-[10px] text-rose-500 font-bold block">Must be positive</span>
+                          )}
+                          {m.value >= 0 && m.unit?.toLowerCase().includes('km') && m.value > TYPICAL_CORRIDOR_LENGTH_LIMIT_KM && (
+                            <span className="text-[9px] text-amber-600 dark:text-amber-400 font-bold block">⚠️ &gt; 1,000 Km</span>
+                          )}
+                        </div>
                       </td>
                       <td className="p-3 text-center font-mono">
                         <input
@@ -549,37 +640,82 @@ export default function RowStatusView({
 
                       {/* PAPs Count */}
                       <td className="p-3 text-center">
-                        <input
-                          type="number"
-                          value={c.affectedPaps}
-                          onChange={(e) => handleCompFieldChange(idx, 'affectedPaps', e.target.value)}
-                          placeholder="0"
-                          className="w-24 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-center font-mono font-bold text-slate-700 dark:text-slate-300 focus:outline-none focus:border-blue-500"
-                        />
+                        <div className="flex flex-col items-center gap-0.5">
+                          <input
+                            type="number"
+                            value={c.affectedPaps}
+                            onChange={(e) => handleCompFieldChange(idx, 'affectedPaps', e.target.value)}
+                            placeholder="0"
+                            className={`w-24 bg-slate-50 dark:bg-slate-900 border rounded-lg px-2 py-1 text-center font-mono font-bold text-xs focus:outline-none ${
+                              c.affectedPaps < 0
+                                ? 'border-rose-500 text-rose-600 bg-rose-50/50 dark:bg-rose-950/40'
+                                : c.affectedPaps > TYPICAL_PAP_LIMIT_PER_WOREDA
+                                ? 'border-amber-400 text-amber-700 bg-amber-50/40 dark:bg-amber-950/30'
+                                : 'border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 focus:border-blue-500'
+                            }`}
+                          />
+                          {c.affectedPaps < 0 && (
+                            <span className="text-[10px] text-rose-500 font-bold block">Must be positive</span>
+                          )}
+                          {c.affectedPaps > TYPICAL_PAP_LIMIT_PER_WOREDA && (
+                            <span className="text-[9px] text-amber-600 dark:text-amber-400 font-bold block">⚠️ &gt; 5,000 PAPs</span>
+                          )}
+                        </div>
                       </td>
 
                       {/* Required Budget */}
                       <td className="p-3 text-center">
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={c.compensationRequired}
-                          onChange={(e) => handleCompFieldChange(idx, 'compensationRequired', e.target.value)}
-                          placeholder="0.00"
-                          className="w-28 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-center font-mono font-bold text-blue-600 dark:text-blue-400 focus:outline-none focus:border-blue-500"
-                        />
+                        <div className="flex flex-col items-center gap-0.5">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={c.compensationRequired}
+                            onChange={(e) => handleCompFieldChange(idx, 'compensationRequired', e.target.value)}
+                            placeholder="0.00"
+                            className={`w-28 bg-slate-50 dark:bg-slate-900 border rounded-lg px-2 py-1 text-center font-mono font-bold text-xs focus:outline-none ${
+                              c.compensationRequired < 0
+                                ? 'border-rose-500 text-rose-600 bg-rose-50/50 dark:bg-rose-950/40'
+                                : c.compensationRequired > TYPICAL_WOREDA_COMPENSATION_LIMIT_M
+                                ? 'border-amber-400 text-amber-700 bg-amber-50/40 dark:bg-amber-950/30'
+                                : 'border-slate-200 dark:border-slate-700 text-blue-600 dark:text-blue-400 focus:border-blue-500'
+                            }`}
+                          />
+                          {c.compensationRequired < 0 && (
+                            <span className="text-[10px] text-rose-500 font-bold block">Must be positive</span>
+                          )}
+                          {c.compensationRequired > TYPICAL_WOREDA_COMPENSATION_LIMIT_M && (
+                            <span className="text-[9px] text-amber-600 dark:text-amber-400 font-bold block">⚠️ &gt; 500M Birr</span>
+                          )}
+                        </div>
                       </td>
 
                       {/* Paid Budget */}
                       <td className="p-3 text-center">
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={c.compensationPaid}
-                          onChange={(e) => handleCompFieldChange(idx, 'compensationPaid', e.target.value)}
-                          placeholder="0.00"
-                          className="w-28 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-center font-mono font-bold text-emerald-600 dark:text-emerald-400 focus:outline-none focus:border-blue-500"
-                        />
+                        <div className="flex flex-col items-center gap-0.5">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={c.compensationPaid}
+                            onChange={(e) => handleCompFieldChange(idx, 'compensationPaid', e.target.value)}
+                            placeholder="0.00"
+                            className={`w-28 bg-slate-50 dark:bg-slate-900 border rounded-lg px-2 py-1 text-center font-mono font-bold text-xs focus:outline-none ${
+                              c.compensationPaid < 0
+                                ? 'border-rose-500 text-rose-600 bg-rose-50/50 dark:bg-rose-950/40'
+                                : (c.compensationPaid > c.compensationRequired && c.compensationRequired > 0) || c.compensationPaid > TYPICAL_WOREDA_COMPENSATION_LIMIT_M
+                                ? 'border-amber-400 text-amber-700 bg-amber-50/40 dark:bg-amber-950/30'
+                                : 'border-slate-200 dark:border-slate-700 text-emerald-600 dark:text-emerald-400 focus:border-blue-500'
+                            }`}
+                          />
+                          {c.compensationPaid < 0 && (
+                            <span className="text-[10px] text-rose-500 font-bold block">Must be positive</span>
+                          )}
+                          {c.compensationPaid >= 0 && c.compensationPaid > c.compensationRequired && c.compensationRequired > 0 && (
+                            <span className="text-[9px] text-amber-600 dark:text-amber-400 font-bold block">⚠️ Exceeds required</span>
+                          )}
+                          {c.compensationPaid >= 0 && (c.compensationRequired <= 0 || c.compensationPaid <= c.compensationRequired) && c.compensationPaid > TYPICAL_WOREDA_COMPENSATION_LIMIT_M && (
+                            <span className="text-[9px] text-amber-600 dark:text-amber-400 font-bold block">⚠️ &gt; 500M Birr</span>
+                          )}
+                        </div>
                       </td>
 
                       {/* Auto-calculated Unpaid Balance */}
