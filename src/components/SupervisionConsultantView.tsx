@@ -931,6 +931,28 @@ export default function SupervisionConsultantView({
       if (!isInactiveA && isInactiveB) return -1;
       if (isInactiveA && !isInactiveB) return 1;
 
+      // Hierarchical role order:
+      // 1. Resident Engineer / Team Leader
+      // 2. Assistant Resident Engineer / Deputy Resident Engineer
+      // 3. Senior Material Engineer / Materials Engineer
+      // 4. Key Staff / Key Experts
+      // 5. Intermediate Staff
+      // 6. Support Staff
+      const getPriority = (p: ConsultantPersonnel) => {
+        const pos = (p.position || '').toLowerCase();
+        if (pos.includes('resident engineer') || pos.includes('team leader')) return 0;
+        if (pos.includes('assistant') || pos.includes('deputy')) return 1;
+        if (pos.includes('material') || pos.includes('pavement')) return 2;
+        if (p.category === 'Key Personnel' || pos.includes('senior') || pos.includes('highway') || pos.includes('structural') || pos.includes('geotechnical') || pos.includes('surveyor')) return 3;
+        if (p.category === 'Intermediate Personnel' || pos.includes('intermediate')) return 4;
+        if (p.category === 'Support Staff' || pos.includes('inspector') || pos.includes('draft') || pos.includes('secretary') || pos.includes('chainman') || pos.includes('lab') || pos.includes('support')) return 5;
+        return 6;
+      };
+
+      const pA = getPriority(a);
+      const pB = getPriority(b);
+      if (pA !== pB) return pA - pB;
+
       let cmp = 0;
       if (personnelSortField === 'name') {
         cmp = (a.name || '').localeCompare(b.name || '');
@@ -942,6 +964,8 @@ export default function SupervisionConsultantView({
         cmp = (Number(a.manMonthsInput) || 0) - (Number(b.manMonthsInput) || 0);
       } else if (personnelSortField === 'status') {
         cmp = (a.status || '').localeCompare(b.status || '');
+      } else {
+        cmp = (a.name || '').localeCompare(b.name || '');
       }
       return personnelSortOrder === 'asc' ? cmp : -cmp;
     });
