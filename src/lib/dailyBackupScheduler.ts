@@ -3,6 +3,8 @@ import { db } from './firebase';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { recordSyncLog } from './apiSync';
 
+let firestoreDisabled = false;
+
 const BACKUP_TIMESTAMP_KEY = 'era_last_daily_progress_plan_backup_time';
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 
@@ -122,16 +124,22 @@ export async function syncProgressPlanHistoryToPersistentStorage(
   } catch (e) {}
 
   // Tier 3: Firebase Firestore Client Database
-  try {
-    const backupDocRef = doc(db, 'progress_plan_history_backups', projectId);
-    setDoc(backupDocRef, {
-      projectId,
-      projectName,
-      progressPlanHistory: history,
-      backedUpAt: timestamp,
-      recordCount: history.length
-    }, { merge: true }).catch(() => {});
-  } catch (e) {}
+  if (!firestoreDisabled && db) {
+    try {
+      const backupDocRef = doc(db, 'progress_plan_history_backups', projectId);
+      setDoc(backupDocRef, {
+        projectId,
+        projectName,
+        progressPlanHistory: history,
+        backedUpAt: timestamp,
+        recordCount: history.length
+      }, { merge: true }).catch(() => {
+        firestoreDisabled = true;
+      });
+    } catch (e) {
+      firestoreDisabled = true;
+    }
+  }
 
   // Also maintain localStorage backup key for fast local access
   try {
@@ -222,17 +230,21 @@ export async function restoreProgressPlanHistoryFromPersistentStorage(projectId:
   } catch (e) {}
 
   // 3. Try Direct Firestore collection
-  try {
-    const backupDocRef = doc(db, 'progress_plan_history_backups', projectId);
-    const snap = await getDoc(backupDocRef);
-    if (snap.exists()) {
-      const data = snap.data();
-      if (data && Array.isArray(data.progressPlanHistory) && data.progressPlanHistory.length > 0) {
-        console.log(`[ERA Restore] Recovered ${data.progressPlanHistory.length} history records from Firestore backup`);
-        return data.progressPlanHistory;
+  if (!firestoreDisabled && db) {
+    try {
+      const backupDocRef = doc(db, 'progress_plan_history_backups', projectId);
+      const snap = await getDoc(backupDocRef);
+      if (snap.exists()) {
+        const data = snap.data();
+        if (data && Array.isArray(data.progressPlanHistory) && data.progressPlanHistory.length > 0) {
+          console.log(`[ERA Restore] Recovered ${data.progressPlanHistory.length} history records from Firestore backup`);
+          return data.progressPlanHistory;
+        }
       }
+    } catch (e) {
+      firestoreDisabled = true;
     }
-  } catch (e) {}
+  }
 
   return null;
 }

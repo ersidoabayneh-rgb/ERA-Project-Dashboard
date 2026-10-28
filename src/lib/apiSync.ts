@@ -162,12 +162,20 @@ export async function reactivateSync(): Promise<void> {
 }
 
 export function handleFsError(err: any): void {
-  const msg = err?.message || String(err);
-  if (msg.includes('resource-exhausted') || msg.includes('Quota limit exceeded') || msg.includes('code=resource-exhausted')) {
-    if (!quotaExhaustedState) {
-      quotaExhaustedState = true;
+  const msg = err?.message || String(err || '');
+  if (
+    msg.includes('resource-exhausted') || 
+    msg.includes('Quota limit exceeded') || 
+    msg.includes('code=resource-exhausted') ||
+    msg.includes('PERMISSION_DENIED') ||
+    msg.includes('permission-denied') ||
+    msg.includes('Cloud Firestore API has not been used') ||
+    msg.includes('firestore.googleapis.com') ||
+    msg.includes('7 PERMISSION_DENIED')
+  ) {
+    if (!syncSuspendedState) {
       syncSuspendedState = true;
-      console.warn('[Firestore Notice]: Cloud Firestore daily write quota reached. Operating seamlessly in local mode.');
+      console.warn('[Firestore Notice]: Cloud Firestore unavailable or disabled on project. Operating seamlessly in resilient local & REST storage mode.');
     }
   }
 }

@@ -42,6 +42,8 @@ app.get('/api/health', (_req: Request, res: Response) => {
   });
 });
 
+let firestoreAdminDisabled = false;
+
 // Automated Daily Backup API for project progressPlanHistory records (Persistent File & Cloud Storage)
 app.post('/api/backup/progress-plan-history', async (req: Request, res: Response) => {
   const { projectId, progressPlanHistory, timestamp, projectName } = req.body;
@@ -62,11 +64,19 @@ app.post('/api/backup/progress-plan-history', async (req: Request, res: Response
     const filePath = path.join(BACKUP_DIR, `${projectId}.json`);
     fs.writeFileSync(filePath, JSON.stringify(backupPayload, null, 2), 'utf-8');
 
-    // 2. Also persist in Firestore database
-    try {
-      await db.collection('progress_plan_history_backups').doc(projectId).set(backupPayload, { merge: true });
-    } catch (fsErr) {
-      console.warn('[ERA Backup] Firestore history backup warning:', fsErr);
+    // 2. Also persist in Firestore database if available
+    if (!firestoreAdminDisabled) {
+      try {
+        await db.collection('progress_plan_history_backups').doc(projectId).set(backupPayload, { merge: true });
+      } catch (fsErr: any) {
+        const msg = fsErr?.message || String(fsErr || '');
+        if (msg.includes('PERMISSION_DENIED') || msg.includes('has not been used') || msg.includes('disabled')) {
+          firestoreAdminDisabled = true;
+          console.info('[ERA Backup] Cloud Firestore API is not enabled on this GCP project; utilizing persistent local disk storage.');
+        } else {
+          console.warn('[ERA Backup] Firestore history backup notice:', msg);
+        }
+      }
     }
 
     res.json({
@@ -74,7 +84,7 @@ app.post('/api/backup/progress-plan-history', async (req: Request, res: Response
       projectId,
       recordCount: progressPlanHistory.length,
       backedUpAt: backupPayload.backedUpAt,
-      storage: 'persistent_disk_and_firestore'
+      storage: firestoreAdminDisabled ? 'persistent_disk' : 'persistent_disk_and_firestore'
     });
   } catch (err: any) {
     console.error('[ERA Backup] Error saving progress plan history backup:', err);
@@ -94,13 +104,20 @@ app.get('/api/backup/progress-plan-history/:projectId', async (req: Request, res
     } catch (e) {}
   }
 
-  // 2. Fallback to Firestore
-  try {
-    const docSnap = await db.collection('progress_plan_history_backups').doc(projectId).get();
-    if (docSnap.exists) {
-      return res.json({ success: true, source: 'firestore', ...docSnap.data() });
+  // 2. Fallback to Firestore if enabled
+  if (!firestoreAdminDisabled) {
+    try {
+      const docSnap = await db.collection('progress_plan_history_backups').doc(projectId).get();
+      if (docSnap.exists) {
+        return res.json({ success: true, source: 'firestore', ...docSnap.data() });
+      }
+    } catch (e: any) {
+      const msg = e?.message || String(e || '');
+      if (msg.includes('PERMISSION_DENIED') || msg.includes('has not been used')) {
+        firestoreAdminDisabled = true;
+      }
     }
-  } catch (e) {}
+  }
 
   res.status(404).json({ error: 'No persistent backup found for project' });
 });

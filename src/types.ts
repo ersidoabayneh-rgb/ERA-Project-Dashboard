@@ -746,6 +746,29 @@ export interface DailyActivityEquipmentItem {
   status: 'Operating' | 'Standby' | 'Breakdown' | 'Maintenance';
 }
 
+export interface DailyProductionItem {
+  id: string;
+  facilityName: string;
+  itemProduced: string;
+  unit: string;
+  targetOutput: number;
+  actualOutput: number;
+  previousCumulative?: number;
+  operatingHours?: number;
+  efficiencyPct?: number;
+  remarks?: string;
+}
+
+export interface DailyStandstillRecord {
+  date: string;
+  isNoWorkDay: boolean;
+  reasonCategory: string;
+  customReason?: string;
+  standstillNotes?: string;
+  weatherCondition?: string;
+  standstillPersonnelCount?: number;
+}
+
 export interface DailyActivityLaborItem {
   category: 'Project Manager / Engineers' | 'Site Foremen / Supervisors' | 'Heavy Equipment Operators' | 'Skilled Labor / Masons' | 'Unskilled Labor / Flagmen' | string;
   count: number;
@@ -755,70 +778,78 @@ export interface DailyActivityRecord {
   id: string;
   date: string; // YYYY-MM-DD
   shift?: 'Day Shift (Standard)' | 'Night Shift' | 'Extended / Overtime' | string;
+  priority?: 'High' | 'Medium' | 'Low'; // Priority level with color coding
   
-  // Activity Category & Work Item
-  activityType: 'Earthworks & Clearing' | 'Drainage & Culverts' | 'Pavement & Surfacing' | 'Structures & Bridges' | 'Materials & Quality Testing' | 'Right-of-Way & Utilities' | 'Traffic & Safety' | 'Environmental & Safety' | string;
-  activityName: string; // Specific work (e.g., Subgrade Compaction Layer 2, Box Culvert Concrete Pouring)
-  description?: string; // Technical scope, specifications, or methodology
+  // Activity Category & Work Item (Mapping to 1-16 sections)
+  activityType: string; // e.g., '1. Clearing and Grubbing', '5. Embankment Construction'
+  subSection?: string; // e.g., '3.1 undercut Excavation'
+  activityName: string; // Specific work
+  description?: string; // Technical scope
   
   // Road Project Location Details
-  startStationKm: string; // e.g. '12+400' or 'Km 12+400'
-  endStationKm?: string; // e.g. '13+200' or 'Km 13+200'
-  side: 'LHS (Left Hand Side)' | 'RHS (Right Hand Side)' | 'Full Width / Carriageway' | 'Median' | 'Cross Drainage' | 'Off-Site / Quarry / Plant' | string;
-  specificLocation?: string; // e.g., 'Culvert #14 @ Km 12+850', 'Bridge #2 Abutment A', 'Borrow Pit #3'
-  sectionName?: string; // e.g., 'Lot 1 - Mountain Pass Section'
+  startStationKm: string; // e.g. '213+860'
+  endStationKm?: string; // e.g. '213+940'
+  side: 'LHS' | 'RHS' | 'BHS' | string; // BHS = Both Sides
   
-  // Executed Quantities
-  quantityExecuted: number;
-  unit: 'm³' | 'm²' | 'lm' | 'ton' | 'No.' | 'pcs' | 'km' | '%' | string;
-  cumulativeQuantityToDate?: number;
+  // Executed Quantities & Metrics (Generalized for the varied columns in the image)
+  quantityExecuted?: number;
+  unit?: string;
   
-  // Direct Link to Submittal and RFI Log
-  linkedSubmittalId?: string; // References ConsultantSubmittalKpi.id (WIR, Material Approval, Design Approval)
-  linkedSubmittalNo?: string; // e.g., 'WIR-2026-042', 'MAT-088'
-  linkedSubmittalTitle?: string;
-  linkedSubmittalStatus?: string;
-  linkedRfiId?: string; // References ConsultantSubmittalKpi.id for technical RFIs
-  linkedRfiNo?: string; // e.g., 'RFI-018'
-  linkedRfiSubject?: string;
-  rfiClarificationNote?: string;
+  // Specific Image Metrics
+  metricM?: number;
+  metricKm?: number;
+  metricM3?: number;
+  layerNr?: number;
+  layerProgress?: number;
+  progressPct?: number;
+  
+  // RCP Production
+  pcsThisDay?: number;
+  pcsPrevious?: number;
+  pcsToDate?: number;
+  
+  // RCP Construction / Special Tables
+  pipeLocation?: string;
+  pipeExcavationPct?: number;
+  pipeMasonryPct?: number;
+  pipePavedWaterwayPct?: number;
+  pipeInstallationPct?: number;
+  pipeBackfillPct?: number;
+  pipePreviousPct?: number;
+  pipeDailyProgressPct?: number;
+  pipeToDatePct?: number;
+  
+  // Bridge
+  bridgePrevious?: number;
+  bridgeDailyProgress?: number;
+  bridgeToDate?: number;
   
   // Quality & Inspection Status (WIR)
-  qcStatus: 'Approved / Passed Inspection' | 'Approved with Comments' | 'Pending Consultant WIR Inspection' | 'Inspection Scheduled' | 'Punch List / Rectification' | 'Rejected / Re-work Required' | string;
-  inspectorName?: string; // Resident Engineer / Quality Inspector
-  inspectionTime?: string;
-  wirReference?: string; // Work Inspection Request reference code
-  drawingRef?: string;
-  specificationRef?: string;
+  qcStatus: string;
+  inspectorName?: string;
+  wirReference?: string;
   
   // Weather & Site Conditions
-  weatherCondition: 'Sunny / Dry' | 'Partly Cloudy' | 'Light Rain (Work Continued)' | 'Heavy Rain (Work Suspended)' | 'Flooding / Saturated Ground' | 'Dusty / High Winds' | string;
-  workingHours: number; // e.g., 8.0
-  lostHoursRainOrObstruction?: number;
+  weatherCondition: string;
+  workingHours: number;
   
   // Machinery and Labor Deployment
   equipmentList?: DailyActivityEquipmentItem[];
   laborSummary?: DailyActivityLaborItem[];
   
-  // Remarks, Delays & Bottlenecks
-  delayOrObstructionNotes?: string;
+  // Remarks & Photos
   remarks?: string;
-  
-  // Site Photos & Attachments
   photos?: Array<{
     id: string;
     caption: string;
     url?: string;
     uploadedAt?: string;
-    stationKm?: string;
   }>;
   
-  // Governance & Sign-off
-  contractorSiteAgent?: string;
-  consultantResidentEngineer?: string;
   recordedBy?: string;
   createdAt: string;
   updatedAt?: string;
+  status?: 'Draft' | 'Archived' | string;
 }
 
 export interface ConsultantPersonnel {

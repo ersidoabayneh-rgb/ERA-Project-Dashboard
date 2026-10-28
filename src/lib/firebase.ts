@@ -69,13 +69,35 @@ if (typeof window !== 'undefined') {
       msg.includes('API key') ||
       msg.includes('INVALID_ARGUMENT') ||
       msg.includes('permission-denied') ||
+      msg.includes('PERMISSION_DENIED') ||
+      msg.includes('Cloud Firestore API has not been used') ||
+      msg.includes('firestore.googleapis.com') ||
       msg.includes('unavailable') ||
       msg.includes('Could not reach Cloud Firestore backend') ||
       msg.includes('Backend didn\'t respond') ||
-      msg.includes('client is offline')
+      msg.includes('client is offline') ||
+      msg.includes('7 PERMISSION_DENIED') ||
+      msg.includes('errorInfoMetadata') ||
+      msg.includes('google.rpc') ||
+      msg.includes('Exception occurred in retry method')
     ) {
       event.preventDefault();
       console.warn('Handled background Firebase notice gracefully:', msg);
+    }
+  });
+
+  window.addEventListener('error', (event) => {
+    const msg = event.message || String(event.error || '');
+    if (
+      msg.includes('PERMISSION_DENIED') ||
+      msg.includes('permission-denied') ||
+      msg.includes('Cloud Firestore API has not been used') ||
+      msg.includes('firestore.googleapis.com') ||
+      msg.includes('7 PERMISSION_DENIED') ||
+      msg.includes('google.rpc')
+    ) {
+      event.preventDefault();
+      console.warn('Handled background Firebase window error gracefully:', msg);
     }
   });
 }
