@@ -1588,6 +1588,25 @@ export default function DailyActivitiesView({
 
       <div className="max-w-[1180px] mx-auto space-y-4">
         
+        {/* PRINT-ONLY OFFICIAL HEADER WITH MINIMIZED LOGO */}
+        <div className="hidden print:block mb-3 border-b-2 border-slate-900 pb-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded bg-blue-900 text-white flex items-center justify-center font-black text-[10px]">
+                ERA
+              </div>
+              <div>
+                <h2 className="text-xs font-black text-slate-900 uppercase">ETHIOPIAN ROADS ADMINISTRATION</h2>
+                <p className="text-[9px] text-slate-600">Daily Project Progress Report (DPR) - {formatDisplayDate(selectedDate)}</p>
+              </div>
+            </div>
+            <div className="text-right text-[9px] text-slate-600">
+              <div>Project: <strong>{project.name}</strong></div>
+              <div>Date: {selectedDate}</div>
+            </div>
+          </div>
+        </div>
+
         {/* SIMPLE TOP NAV & SUMMARY BAR */}
         <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex flex-col md:flex-row justify-between items-center gap-3 print:hidden">
           <div className="flex items-center gap-3">
