@@ -4,7 +4,7 @@ import {
   Truck, Trash2, DownloadCloud, X, Eye, EyeOff,
   Activity, Sun, AlertTriangle, Package, ClipboardList,
   Calendar, Factory, CheckSquare, Square, Sliders, RefreshCw,
-  Check, Printer, RotateCcw, Layers, Filter, CheckCircle2
+  Check, Printer, RotateCcw, Layers, Filter, CheckCircle2, FileText
 } from 'lucide-react';
 import {
   Project, DailyActivityRecord, User, DailyProductionItem
@@ -169,12 +169,43 @@ export const SAMPLE_ERA_SLAB_CULVERT_RECORDS: Partial<DailyActivityRecord>[] = [
   { slabCulvertLocation: 'Slab Culvert @ Km 206+500 (Span 6m)', slabCulvertSelectedStage: 'Abutment Walls', slabExcavationPct: 100, slabAbutmentPct: 75, slabDeckPct: 0, slabWingwallsPct: 0, slabPitchingPct: 0, slabBackfillPct: 0, pipePreviousPct: 29, pipeDailyProgressPct: 0, pipeToDatePct: 29.2, metricKm: 0.005 }
 ];
 
+export interface ActivityTemplate {
+  id: string;
+  name: string;
+  description: string;
+  activities: Partial<DailyActivityRecord>[];
+}
+
+export const DEFAULT_ACTIVITY_TEMPLATES: ActivityTemplate[] = [
+  {
+    id: 'tpl_standard_pipes',
+    name: 'Standard 15 RCP Pipe Culverts Package',
+    description: 'Pre-fills the 15 standard ERA reinforced concrete pipe culverts with standard excavation, masonry, and installation stages.',
+    activities: SAMPLE_ERA_PIPE_RECORDS.map(r => ({ ...r, activityType: '14', activityName: 'RCP Pipe Construction', unit: 'No.' }))
+  },
+  {
+    id: 'tpl_standard_bridges',
+    name: 'Major River Bridges Package',
+    description: 'Pre-fills major river bridges (Dermi, Chiri, Nansebo, Wabe) with foundation, abutment, and girder stages.',
+    activities: SAMPLE_ERA_BRIDGE_RECORDS.map(r => ({ ...r, activityType: '17', activityName: 'Bridge Construction', unit: 'No.' }))
+  },
+  {
+    id: 'tpl_standard_culverts',
+    name: 'Standard Box & Slab Culverts Package',
+    description: 'Pre-fills standard RC box culverts and slab culverts along the project alignment.',
+    activities: [
+      ...SAMPLE_ERA_BOX_CULVERT_RECORDS.map(r => ({ ...r, activityType: '15', activityName: 'Box Culvert Construction', unit: 'No.' })),
+      ...SAMPLE_ERA_SLAB_CULVERT_RECORDS.map(r => ({ ...r, activityType: '16', activityName: 'Slab Culvert Construction', unit: 'No.' }))
+    ]
+  }
+];
+
 export function getDefaultUnit(sectionId: string): string {
   if (['1', '2', '10', '11', '12'].includes(sectionId)) return 'km';
   if (['3.1', '3.2', '4', '5'].includes(sectionId)) return 'm³';
-  if (['6', '7', '8', '9', '18', '16'].includes(sectionId)) return 'm';
+  if (['6', '7', '8', '9', '18'].includes(sectionId)) return 'm';
   if (sectionId === '13') return 'pcs';
-  if (['14', '14.1', '14.2', '15', '16', '17'].includes(sectionId)) return '%';
+  if (['14', '14.1', '14.2', '15', '16', '17'].includes(sectionId)) return 'No.';
   return 'km';
 }
 
@@ -298,6 +329,18 @@ export default function DailyActivitiesView({
   const [selectedSlabStagePct, setSelectedSlabStagePct] = useState<number>(100);
   const [selectedSlabStageKm, setSelectedSlabStageKm] = useState<number>(0.01);
   const [slabFilterStage, setSlabFilterStage] = useState<string>('ALL');
+
+  // Activity Templates State
+  const [templates, setTemplates] = useState<ActivityTemplate[]>(() => {
+    try {
+      const stored = localStorage.getItem(`era_activity_templates_${project.id}`);
+      if (stored) return JSON.parse(stored);
+    } catch {}
+    return DEFAULT_ACTIVITY_TEMPLATES;
+  });
+  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
+  const [newTemplateName, setNewTemplateName] = useState('');
+  const [newTemplateDesc, setNewTemplateDesc] = useState('');
 
   // Dynamic Activity Sections List (Allows deleting from activities and re-adding)
   const [sections, setSections] = useState<WorkRegisterSectionDef[]>(() => {
@@ -683,7 +726,7 @@ export default function DailyActivitiesView({
       bridgeDailyProgress: isBridge ? 0 : undefined,
       bridgeToDate: isBridge ? 100 : undefined,
       side: 'BHS',
-      unit: defaultUnit,
+      unit: (isPipe || isBox || isSlab || isBridge) ? 'No.' : defaultUnit,
       qcStatus: 'Approved',
       status: 'Draft',
       weatherCondition: weather,
@@ -793,7 +836,7 @@ export default function DailyActivitiesView({
       pipeToDatePct: item.pipeToDatePct,
       metricKm: item.metricKm || 0,
       side: 'BHS',
-      unit: '%',
+      unit: 'No.',
       qcStatus: 'Approved',
       status: 'Approved',
       weatherCondition: weather,
@@ -921,7 +964,7 @@ export default function DailyActivitiesView({
       bridgeToDate: item.bridgeToDate,
       metricKm: item.metricKm || 0,
       side: 'BHS',
-      unit: '%',
+      unit: 'No.',
       qcStatus: 'Approved',
       status: 'Approved',
       weatherCondition: weather,
@@ -1049,7 +1092,7 @@ export default function DailyActivitiesView({
       pipeToDatePct: item.pipeToDatePct,
       metricKm: item.metricKm || 0,
       side: 'BHS',
-      unit: '%',
+      unit: 'No.',
       qcStatus: 'Approved',
       status: 'Approved',
       weatherCondition: weather,
@@ -1177,7 +1220,7 @@ export default function DailyActivitiesView({
       pipeToDatePct: item.pipeToDatePct,
       metricKm: item.metricKm || 0,
       side: 'BHS',
-      unit: '%',
+      unit: 'No.',
       qcStatus: 'Approved',
       status: 'Approved',
       weatherCondition: weather,
@@ -1365,6 +1408,165 @@ export default function DailyActivitiesView({
     }, 250);
   };
 
+  const handleExportCSV = () => {
+    const headers = ['Section ID', 'Activity Name', 'Description', 'Station / Location', 'Side', 'Unit', 'Daily Qty', 'Previous Total', 'Daily Executed', 'To Date Progress (%)', 'Status'];
+    const rows = currentActivities.map(a => {
+      let toDate = 0;
+      if (a.activityType === '14') {
+        const exc = a.pipeExcavationPct ?? 100;
+        const mas = a.pipeMasonryPct ?? 100;
+        const paw = a.pipePavedWaterwayPct ?? 100;
+        const ins = a.pipeInstallationPct ?? 100;
+        const bck = a.pipeBackfillPct ?? 100;
+        toDate = Math.round((exc + mas + paw + ins + bck) / 5);
+      } else if (a.activityType === '15') {
+        const exc = a.boxExcavationPct ?? 100;
+        const btm = a.boxBottomSlabPct ?? 100;
+        const wll = a.boxWallsPct ?? 100;
+        const top = a.boxTopSlabPct ?? 100;
+        const wng = a.boxWingwallsPct ?? 100;
+        const bck = a.boxBackfillPct ?? 100;
+        toDate = Math.round((exc + btm + wll + top + wng + bck) / 6);
+      } else if (a.activityType === '16') {
+        const exc = a.slabExcavationPct ?? 100;
+        const abt = a.slabAbutmentPct ?? 100;
+        const dck = a.slabDeckPct ?? 100;
+        const wng = a.slabWingwallsPct ?? 100;
+        const ptc = a.slabPitchingPct ?? 100;
+        const bck = a.slabBackfillPct ?? 100;
+        toDate = Math.round((exc + abt + dck + wng + ptc + bck) / 6);
+      } else if (a.activityType === '17') {
+        const fnd = a.bridgeFoundationPct ?? 100;
+        const abt = a.bridgeAbutmentPct ?? 100;
+        const per = a.bridgePierPct ?? 100;
+        const gdr = a.bridgeGirderPct ?? 100;
+        const slb = a.bridgeSlabPct ?? 100;
+        const app = a.bridgeApproachPct ?? 100;
+        toDate = Math.round((fnd + abt + per + gdr + slb + app) / 6);
+      } else {
+        toDate = a.pipeToDatePct || 0;
+      }
+
+      return [
+        `"${a.activityType || ''}"`,
+        `"${a.activityName || ''}"`,
+        `"${(a.description || '').replace(/"/g, '""')}"`,
+        `"${a.startStationKm || a.pipeLocation || a.boxCulvertLocation || a.slabCulvertLocation || a.bridgeLocation || ''}"`,
+        `"${a.side || 'BHS'}"`,
+        `"${a.unit || 'No.'}"`,
+        a.metricKm ?? a.metricM3 ?? 0,
+        a.pipePreviousPct || 0,
+        a.pipeDailyProgressPct || 0,
+        toDate,
+        `"${a.qcStatus || 'Approved'}"`
+      ].join(',');
+    });
+
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `ERA_Daily_Progress_Report_${selectedDate}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleExportPDF = () => {
+    window.print();
+  };
+
+  const handleLoadTemplate = (tpl: ActivityTemplate) => {
+    if (!confirm(`Load template "${tpl.name}" into date ${selectedDate}? This will add its activities to your daily register.`)) return;
+    const tplActivities: DailyActivityRecord[] = tpl.activities.map((item, idx) => ({
+      id: 'tpl_act_' + Date.now() + '_' + idx + '_' + Math.random().toString(36).substr(2, 4),
+      date: selectedDate,
+      activityType: item.activityType || '14',
+      activityName: item.activityName || 'Construction Activity',
+      description: item.description || tpl.name,
+      startStationKm: item.startStationKm || item.pipeLocation || item.boxCulvertLocation || item.slabCulvertLocation || item.bridgeLocation || '200+000',
+      pipeLocation: item.pipeLocation,
+      pipeSelectedStage: item.pipeSelectedStage,
+      pipeExcavationPct: item.pipeExcavationPct ?? 100,
+      pipeMasonryPct: item.pipeMasonryPct ?? 100,
+      pipePavedWaterwayPct: item.pipePavedWaterwayPct ?? 100,
+      pipeInstallationPct: item.pipeInstallationPct ?? 100,
+      pipeBackfillPct: item.pipeBackfillPct ?? 100,
+      boxCulvertLocation: item.boxCulvertLocation,
+      boxCulvertSelectedStage: item.boxCulvertSelectedStage,
+      boxExcavationPct: item.boxExcavationPct ?? 100,
+      boxBottomSlabPct: item.boxBottomSlabPct ?? 100,
+      boxWallsPct: item.boxWallsPct ?? 100,
+      boxTopSlabPct: item.boxTopSlabPct ?? 100,
+      boxWingwallsPct: item.boxWingwallsPct ?? 100,
+      boxBackfillPct: item.boxBackfillPct ?? 100,
+      slabCulvertLocation: item.slabCulvertLocation,
+      slabCulvertSelectedStage: item.slabCulvertSelectedStage,
+      slabExcavationPct: item.slabExcavationPct ?? 100,
+      slabAbutmentPct: item.slabAbutmentPct ?? 100,
+      slabDeckPct: item.slabDeckPct ?? 100,
+      slabWingwallsPct: item.slabWingwallsPct ?? 100,
+      slabPitchingPct: item.slabPitchingPct ?? 100,
+      slabBackfillPct: item.slabBackfillPct ?? 100,
+      bridgeLocation: item.bridgeLocation,
+      bridgeSelectedStage: item.bridgeSelectedStage,
+      bridgeFoundationPct: item.bridgeFoundationPct ?? 100,
+      bridgeAbutmentPct: item.bridgeAbutmentPct ?? 100,
+      bridgePierPct: item.bridgePierPct ?? 100,
+      bridgeGirderPct: item.bridgeGirderPct ?? 100,
+      bridgeSlabPct: item.bridgeSlabPct ?? 100,
+      bridgeApproachPct: item.bridgeApproachPct ?? 100,
+      pipePreviousPct: item.pipePreviousPct ?? 100,
+      pipeDailyProgressPct: item.pipeDailyProgressPct ?? 0,
+      pipeToDatePct: item.pipeToDatePct ?? 100,
+      side: item.side || 'BHS',
+      unit: item.unit || 'No.',
+      metricKm: item.metricKm || 0,
+      qcStatus: 'Approved',
+      status: 'Approved',
+      weatherCondition: weather,
+      workingHours: 8.0,
+      createdAt: new Date().toISOString()
+    }));
+
+    const existingOtherDate = activities.filter(a => a.date !== selectedDate);
+    const updatedList = [...existingOtherDate, ...tplActivities];
+    setIsNoWorkDay(false);
+    triggerDebouncedSave(updatedList, `Loaded template "${tpl.name}"`);
+    setIsTemplateModalOpen(false);
+  };
+
+  const handleSaveCurrentAsTemplate = () => {
+    if (!newTemplateName.trim()) return;
+    if (currentActivities.length === 0) {
+      alert('No activities recorded on this date to save as a template.');
+      return;
+    }
+    const newTpl: ActivityTemplate = {
+      id: 'tpl_custom_' + Date.now(),
+      name: newTemplateName.trim(),
+      description: newTemplateDesc.trim() || `Custom template saved from ${selectedDate}`,
+      activities: currentActivities.map(a => ({ ...a, id: undefined }))
+    };
+    const updatedTemplates = [...templates, newTpl];
+    setTemplates(updatedTemplates);
+    try {
+      localStorage.setItem(`era_activity_templates_${project.id}`, JSON.stringify(updatedTemplates));
+    } catch {}
+    setNewTemplateName('');
+    setNewTemplateDesc('');
+    alert(`Template "${newTpl.name}" successfully saved!`);
+  };
+
+  const handleDeleteTemplate = (tplId: string) => {
+    if (!confirm('Delete this template?')) return;
+    const updated = templates.filter(t => t.id !== tplId);
+    setTemplates(updated);
+    try {
+      localStorage.setItem(`era_activity_templates_${project.id}`, JSON.stringify(updated));
+    } catch {}
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans p-3 md:p-6 print:p-0 print:bg-white relative">
       
@@ -1451,6 +1653,36 @@ export default function DailyActivitiesView({
             >
               <Printer className="w-4 h-4 text-blue-600" />
               <span>Print Specific Day</span>
+            </button>
+
+            {/* EXPORT CSV REPORT BUTTON */}
+            <button 
+              onClick={handleExportCSV}
+              className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg px-3 py-2 font-medium flex items-center gap-1.5 text-xs transition shadow-sm"
+              title="Export Current Weightage Progress Data as CSV"
+            >
+              <DownloadCloud className="w-4 h-4 text-emerald-600" />
+              <span>Export CSV</span>
+            </button>
+
+            {/* EXPORT PDF REPORT BUTTON */}
+            <button 
+              onClick={handleExportPDF}
+              className="bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-300 rounded-lg px-3 py-2 font-medium flex items-center gap-1.5 text-xs transition shadow-sm"
+              title="Export Current Progress as Formatted PDF Report"
+            >
+              <Printer className="w-4 h-4 text-purple-600" />
+              <span>Export PDF Report</span>
+            </button>
+
+            {/* TEMPLATES BUTTON */}
+            <button 
+              onClick={() => setIsTemplateModalOpen(true)}
+              className="bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-300 rounded-lg px-3 py-2 font-medium flex items-center gap-1.5 text-xs transition shadow-sm"
+              title="Save and Load Daily Activity Templates"
+            >
+              <FileText className="w-4 h-4 text-blue-600" />
+              <span>Templates ({templates.length})</span>
             </button>
 
             {/* QUICK PRINT CURRENT DATE BUTTON */}
@@ -5168,6 +5400,112 @@ export default function DailyActivitiesView({
                 className="px-4 py-1.5 bg-slate-900 text-white rounded-lg font-medium text-xs"
               >
                 Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: DAILY ACTIVITY TEMPLATES */}
+      {isTemplateModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm print:hidden animate-in fade-in">
+          <div className="bg-white rounded-2xl max-w-xl w-full shadow-2xl overflow-hidden border border-slate-200">
+            <div className="p-4 border-b bg-slate-900 text-white flex justify-between items-center">
+              <div>
+                <h3 className="text-sm font-bold flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-blue-400" /> Daily Activity Templates (RCP Pipe, Box, Slab & Bridge)
+                </h3>
+                <p className="text-[11px] text-slate-400 mt-0.5">Pre-fill common construction activities or save your current day's layout</p>
+              </div>
+              <button onClick={() => setIsTemplateModalOpen(false)} className="p-1 hover:bg-white/10 rounded">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-5 text-xs max-h-[70vh] overflow-y-auto">
+              
+              {/* Load Template Section */}
+              <div>
+                <h4 className="font-bold text-slate-800 uppercase text-[11px] mb-2.5">
+                  1. Load Activity Template into {formatDisplayDate(selectedDate)}
+                </h4>
+                <div className="space-y-2.5">
+                  {templates.map(tpl => (
+                    <div key={tpl.id} className="p-3 rounded-xl border border-slate-200 bg-slate-50 hover:bg-blue-50/40 transition flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <div className="font-bold text-slate-900 text-xs">{tpl.name}</div>
+                        <div className="text-[11px] text-slate-500 mt-0.5">{tpl.description}</div>
+                        <div className="text-[10px] text-blue-600 font-semibold mt-1">
+                          Contains {tpl.activities.length} activity items
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={() => handleLoadTemplate(tpl)}
+                          className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-xs shadow-xs transition"
+                        >
+                          Load Template
+                        </button>
+                        {tpl.id.startsWith('tpl_custom_') && (
+                          <button
+                            onClick={() => handleDeleteTemplate(tpl.id)}
+                            className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                            title="Delete custom template"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Save Current Day as Template Section */}
+              <div className="border-t border-slate-200 pt-4">
+                <h4 className="font-bold text-slate-800 uppercase text-[11px] mb-2.5">
+                  2. Save Current Day ({currentActivities.length} Activities) as New Template
+                </h4>
+                <div className="space-y-2.5 bg-slate-50 border border-slate-200 rounded-xl p-3">
+                  <div>
+                    <label className="block text-slate-500 text-[10px] uppercase font-bold mb-1">Template Name:</label>
+                    <input
+                      value={newTemplateName}
+                      onChange={e => setNewTemplateName(e.target.value)}
+                      placeholder="e.g. Km 200-215 Full Structure Package"
+                      className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs font-medium outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-500 text-[10px] uppercase font-bold mb-1">Description / Notes:</label>
+                    <input
+                      value={newTemplateDesc}
+                      onChange={e => setNewTemplateDesc(e.target.value)}
+                      placeholder="Brief description of activities included..."
+                      className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <div className="flex justify-end pt-1">
+                    <button
+                      onClick={handleSaveCurrentAsTemplate}
+                      disabled={!newTemplateName.trim() || currentActivities.length === 0}
+                      className="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white rounded-lg font-bold text-xs shadow-xs transition flex items-center gap-1.5"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Save Current as Template</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            <div className="p-3 border-t bg-slate-50 flex justify-end">
+              <button
+                onClick={() => setIsTemplateModalOpen(false)}
+                className="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-lg font-medium text-xs transition"
+              >
+                Close
               </button>
             </div>
           </div>
