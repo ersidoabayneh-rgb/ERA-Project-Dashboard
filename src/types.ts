@@ -810,6 +810,7 @@ export interface DailyActivityRecord {
   
   // RCP Construction / Special Tables
   pipeLocation?: string;
+  pipeSelectedStage?: 'Excavation' | 'Masonry inlet/outlet' | 'Paved Water way' | 'Pipe Installation' | 'Back fill' | string;
   pipeExcavationPct?: number;
   pipeMasonryPct?: number;
   pipePavedWaterwayPct?: number;
