@@ -820,10 +820,38 @@ export interface DailyActivityRecord {
   pipeDailyProgressPct?: number;
   pipeToDatePct?: number;
   
-  // Bridge
+  // Bridge Construction Special Tables
+  bridgeLocation?: string;
+  bridgeSelectedStage?: 'Foundation' | 'Abutment' | 'Pier' | 'Box girder / T-girder' | 'Slab' | 'Approach & Bearings' | string;
+  bridgeFoundationPct?: number;
+  bridgeAbutmentPct?: number;
+  bridgePierPct?: number;
+  bridgeGirderPct?: number;
+  bridgeSlabPct?: number;
+  bridgeApproachPct?: number;
   bridgePrevious?: number;
   bridgeDailyProgress?: number;
   bridgeToDate?: number;
+
+  // Box Culvert Construction Special Tables
+  boxCulvertLocation?: string;
+  boxCulvertSelectedStage?: 'Excavation & Blinding' | 'Bottom Slab' | 'Walls & Stem' | 'Top Slab' | 'Wingwalls & Apron' | 'Backfill' | string;
+  boxExcavationPct?: number;
+  boxBottomSlabPct?: number;
+  boxWallsPct?: number;
+  boxTopSlabPct?: number;
+  boxWingwallsPct?: number;
+  boxBackfillPct?: number;
+
+  // Slab Culvert Construction Special Tables
+  slabCulvertLocation?: string;
+  slabCulvertSelectedStage?: 'Excavation & Footing' | 'Abutment Walls' | 'RC Deck Slab' | 'Wingwalls & Parapet' | 'Bed Pitching' | 'Backfill' | string;
+  slabExcavationPct?: number;
+  slabAbutmentPct?: number;
+  slabDeckPct?: number;
+  slabWingwallsPct?: number;
+  slabPitchingPct?: number;
+  slabBackfillPct?: number;
   
   // Quality & Inspection Status (WIR)
   qcStatus: string;

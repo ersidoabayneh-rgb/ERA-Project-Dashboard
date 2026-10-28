@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
-  Plus, ChevronLeft, ChevronRight,
-  Truck, Trash2, DownloadCloud, X,
+  Plus, ChevronLeft, ChevronRight, ChevronDown, ChevronUp,
+  Truck, Trash2, DownloadCloud, X, Eye, EyeOff,
   Activity, Sun, AlertTriangle, Package, ClipboardList,
   Calendar, Factory, CheckSquare, Square, Sliders, RefreshCw,
   Check, Printer, RotateCcw, Layers, Filter, CheckCircle2
@@ -95,13 +95,86 @@ export const SAMPLE_ERA_PIPE_RECORDS: Partial<DailyActivityRecord>[] = [
   { pipeLocation: '217+415', pipeSelectedStage: 'Pipe Installation', pipeExcavationPct: 100, pipeMasonryPct: 100, pipePavedWaterwayPct: 100, pipeInstallationPct: 100, pipeBackfillPct: 100, pipePreviousPct: 100, pipeDailyProgressPct: 0, pipeToDatePct: 100, metricKm: 0.0 }
 ];
 
+// BRIDGE CONSTRUCTION STAGES & PRESETS
+export const BRIDGE_CONSTRUCTION_STAGES = [
+  'Foundation',
+  'Abutment',
+  'Pier',
+  'Box girder / T-girder',
+  'Slab',
+  'Approach & Bearings'
+] as const;
+
+export type BridgeConstructionStage = typeof BRIDGE_CONSTRUCTION_STAGES[number];
+
+export const PRESET_BRIDGE_LOCATIONS = [
+  'Bridge @ Km 198+450 (River Dermi)',
+  'Bridge @ Km 204+120 (Chiri River)',
+  'Bridge @ Km 215+800 (Nansebo River)',
+  'Bridge @ Km 221+300 (Wabe River)'
+];
+
+export const SAMPLE_ERA_BRIDGE_RECORDS: Partial<DailyActivityRecord>[] = [
+  { bridgeLocation: 'Bridge @ Km 198+450 (River Dermi)', bridgeSelectedStage: 'Box girder / T-girder', bridgeFoundationPct: 100, bridgeAbutmentPct: 100, bridgePierPct: 100, bridgeGirderPct: 75, bridgeSlabPct: 40, bridgeApproachPct: 20, bridgePrevious: 72, bridgeDailyProgress: 0.5, bridgeToDate: 72.5, metricKm: 0.02 },
+  { bridgeLocation: 'Bridge @ Km 204+120 (Chiri River)', bridgeSelectedStage: 'Pier', bridgeFoundationPct: 100, bridgeAbutmentPct: 85, bridgePierPct: 60, bridgeGirderPct: 0, bridgeSlabPct: 0, bridgeApproachPct: 0, bridgePrevious: 40, bridgeDailyProgress: 0.8, bridgeToDate: 40.8, metricKm: 0.01 },
+  { bridgeLocation: 'Bridge @ Km 215+800 (Nansebo River)', bridgeSelectedStage: 'Foundation', bridgeFoundationPct: 65, bridgeAbutmentPct: 0, bridgePierPct: 0, bridgeGirderPct: 0, bridgeSlabPct: 0, bridgeApproachPct: 0, bridgePrevious: 10, bridgeDailyProgress: 0.8, bridgeToDate: 10.8, metricKm: 0.0 }
+];
+
+// BOX CULVERT CONSTRUCTION STAGES & PRESETS
+export const BOX_CULVERT_STAGES = [
+  'Excavation & Blinding',
+  'Bottom Slab',
+  'Walls & Stem',
+  'Top Slab',
+  'Wingwalls & Apron',
+  'Backfill'
+] as const;
+
+export type BoxCulvertStage = typeof BOX_CULVERT_STAGES[number];
+
+export const PRESET_BOX_CULVERT_LOCATIONS = [
+  'Box Culvert @ Km 195+600 (2x2m)',
+  'Box Culvert @ Km 202+340 (Double Cell 3x2.5m)',
+  'Box Culvert @ Km 207+850 (3x3m)',
+  'Box Culvert @ Km 213+420 (Triple Cell 2.5x2m)'
+];
+
+export const SAMPLE_ERA_BOX_CULVERT_RECORDS: Partial<DailyActivityRecord>[] = [
+  { boxCulvertLocation: 'Box Culvert @ Km 195+600 (2x2m)', boxCulvertSelectedStage: 'Top Slab', boxExcavationPct: 100, boxBottomSlabPct: 100, boxWallsPct: 100, boxTopSlabPct: 80, boxWingwallsPct: 60, boxBackfillPct: 30, pipePreviousPct: 78, pipeDailyProgressPct: 0, pipeToDatePct: 78.3, metricKm: 0.015 },
+  { boxCulvertLocation: 'Box Culvert @ Km 202+340 (Double Cell 3x2.5m)', boxCulvertSelectedStage: 'Walls & Stem', boxExcavationPct: 100, boxBottomSlabPct: 100, boxWallsPct: 70, boxTopSlabPct: 0, boxWingwallsPct: 0, boxBackfillPct: 0, pipePreviousPct: 45, pipeDailyProgressPct: 0, pipeToDatePct: 45.0, metricKm: 0.01 },
+  { boxCulvertLocation: 'Box Culvert @ Km 207+850 (3x3m)', boxCulvertSelectedStage: 'Bottom Slab', boxExcavationPct: 100, boxBottomSlabPct: 85, boxWallsPct: 0, boxTopSlabPct: 0, boxWingwallsPct: 0, boxBackfillPct: 0, pipePreviousPct: 30, pipeDailyProgressPct: 0, pipeToDatePct: 30.8, metricKm: 0.0 }
+];
+
+// SLAB CULVERT CONSTRUCTION STAGES & PRESETS
+export const SLAB_CULVERT_STAGES = [
+  'Excavation & Footing',
+  'Abutment Walls',
+  'RC Deck Slab',
+  'Wingwalls & Parapet',
+  'Bed Pitching',
+  'Backfill'
+] as const;
+
+export type SlabCulvertStage = typeof SLAB_CULVERT_STAGES[number];
+
+export const PRESET_SLAB_CULVERT_LOCATIONS = [
+  'Slab Culvert @ Km 197+200 (Span 4m)',
+  'Slab Culvert @ Km 206+500 (Span 6m)',
+  'Slab Culvert @ Km 211+350 (Span 5m)',
+  'Slab Culvert @ Km 218+100 (Span 4m)'
+];
+
+export const SAMPLE_ERA_SLAB_CULVERT_RECORDS: Partial<DailyActivityRecord>[] = [
+  { slabCulvertLocation: 'Slab Culvert @ Km 197+200 (Span 4m)', slabCulvertSelectedStage: 'RC Deck Slab', slabExcavationPct: 100, slabAbutmentPct: 100, slabDeckPct: 80, slabWingwallsPct: 50, slabPitchingPct: 30, slabBackfillPct: 20, pipePreviousPct: 63, pipeDailyProgressPct: 0, pipeToDatePct: 63.3, metricKm: 0.01 },
+  { slabCulvertLocation: 'Slab Culvert @ Km 206+500 (Span 6m)', slabCulvertSelectedStage: 'Abutment Walls', slabExcavationPct: 100, slabAbutmentPct: 75, slabDeckPct: 0, slabWingwallsPct: 0, slabPitchingPct: 0, slabBackfillPct: 0, pipePreviousPct: 29, pipeDailyProgressPct: 0, pipeToDatePct: 29.2, metricKm: 0.005 }
+];
+
 export function getDefaultUnit(sectionId: string): string {
   if (['1', '2', '10', '11', '12'].includes(sectionId)) return 'km';
   if (['3.1', '3.2', '4', '5'].includes(sectionId)) return 'm³';
-  if (['6', '7', '8', '9', '16'].includes(sectionId)) return 'm';
+  if (['6', '7', '8', '9', '18', '16'].includes(sectionId)) return 'm';
   if (sectionId === '13') return 'pcs';
-  if (sectionId === '14') return '%';
-  if (sectionId === '15') return 'km';
+  if (['14', '14.1', '14.2', '15', '16', '17'].includes(sectionId)) return '%';
   return 'km';
 }
 
@@ -135,9 +208,11 @@ export const WORK_SECTIONS: WorkRegisterSectionDef[] = [
   { id: '11', name: 'AC', metrics: ['Description of Work', 'Station of Work', 'Side', 'Daily Executed (m)', 'Daily Executed (km)', 'Daily Executed (km)'] },
   { id: '12', name: 'Shoulder DBST', metrics: ['Description of Work', 'Station of Work', 'Side', 'Daily Executed (m)', 'Daily Executed (km)', 'Daily Executed (km)'] },
   { id: '13', name: 'RCP Production', metrics: ['Description of Work', 'Station of Work', 'This day', 'Previous', 'To date'] },
-  { id: '14', name: 'RCP Construction', isSpecial: true, metrics: [] },
-  { id: '15', name: 'Bridge', metrics: ['Description of Work', 'Station of Work', 'Previous', 'Daily Progress', 'To date', 'Daily Executed (km)'], customLabel: '15' },
-  { id: '16', name: 'Ditch Construction', metrics: ['Description of Work', 'Station of Work', 'Side', 'Daily Executed Stretch (m)', 'Volume(m³)', 'Net Daily Executed (km)'], customLabel: '15. Ditch' }
+  { id: '14', name: 'RCP Pipe Construction', isSpecial: true, metrics: [] },
+  { id: '15', name: 'Box Culvert Construction', isSpecial: true, metrics: [] },
+  { id: '16', name: 'Slab Culvert Construction', isSpecial: true, metrics: [] },
+  { id: '17', name: 'Bridge Construction', isSpecial: true, metrics: [] },
+  { id: '18', name: 'Ditch Construction', metrics: ['Description of Work', 'Station of Work', 'Side', 'Daily Executed Stretch (m)', 'Volume(m³)', 'Net Daily Executed (km)'] }
 ];
 
 export const STANDSTILL_REASONS = [
@@ -200,14 +275,80 @@ export default function DailyActivitiesView({
   const [selectedPipeStageKm, setSelectedPipeStageKm] = useState<number>(0.0);
   const [pipeFilterStage, setPipeFilterStage] = useState<string>('ALL');
 
-  // Dynamic Activity Sections List (Allows deleting from 16 and re-adding)
+  // Bridge Construction Quick Selection & Stage Filter States
+  const [selectedBridgeLocation, setSelectedBridgeLocation] = useState<string>('Bridge @ Km 198+450 (River Dermi)');
+  const [customBridgeLocation, setCustomBridgeLocation] = useState<string>('');
+  const [selectedBridgeStage, setSelectedBridgeStage] = useState<BridgeConstructionStage>('Foundation');
+  const [selectedBridgeStagePct, setSelectedBridgeStagePct] = useState<number>(100);
+  const [selectedBridgeStageKm, setSelectedBridgeStageKm] = useState<number>(0.02);
+  const [bridgeFilterStage, setBridgeFilterStage] = useState<string>('ALL');
+
+  // Box Culvert Construction Quick Selection & Stage Filter States
+  const [selectedBoxLocation, setSelectedBoxLocation] = useState<string>('Box Culvert @ Km 195+600 (2x2m)');
+  const [customBoxLocation, setCustomBoxLocation] = useState<string>('');
+  const [selectedBoxStage, setSelectedBoxStage] = useState<BoxCulvertStage>('Excavation & Blinding');
+  const [selectedBoxStagePct, setSelectedBoxStagePct] = useState<number>(100);
+  const [selectedBoxStageKm, setSelectedBoxStageKm] = useState<number>(0.015);
+  const [boxFilterStage, setBoxFilterStage] = useState<string>('ALL');
+
+  // Slab Culvert Construction Quick Selection & Stage Filter States
+  const [selectedSlabLocation, setSelectedSlabLocation] = useState<string>('Slab Culvert @ Km 197+200 (Span 4m)');
+  const [customSlabLocation, setCustomSlabLocation] = useState<string>('');
+  const [selectedSlabStage, setSelectedSlabStage] = useState<SlabCulvertStage>('Excavation & Footing');
+  const [selectedSlabStagePct, setSelectedSlabStagePct] = useState<number>(100);
+  const [selectedSlabStageKm, setSelectedSlabStageKm] = useState<number>(0.01);
+  const [slabFilterStage, setSlabFilterStage] = useState<string>('ALL');
+
+  // Dynamic Activity Sections List (Allows deleting from activities and re-adding)
   const [sections, setSections] = useState<WorkRegisterSectionDef[]>(() => {
     try {
       const stored = localStorage.getItem(`era_active_sections_${project.id}`);
-      if (stored) return JSON.parse(stored);
+      if (stored) {
+        const parsed: WorkRegisterSectionDef[] = JSON.parse(stored);
+        const hasBox = parsed.some(s => s.id === '15' && s.name.includes('Box'));
+        const hasSlab = parsed.some(s => s.id === '16' && s.name.includes('Slab'));
+        const hasBridge = parsed.some(s => s.id === '17');
+        if (!hasBox || !hasSlab || !hasBridge || parsed.some(s => s.id === '14.1' || s.id === '14.2')) {
+          localStorage.setItem(`era_active_sections_${project.id}`, JSON.stringify(WORK_SECTIONS));
+          return WORK_SECTIONS;
+        }
+        return parsed;
+      }
     } catch {}
     return WORK_SECTIONS;
   });
+
+  // Structure Views Visibility (Hide / Show) for Pipe, Box Culvert, Slab Culvert, Bridge
+  const [hiddenStructureViews, setHiddenStructureViews] = useState<{
+    pipe: boolean;
+    box: boolean;
+    slab: boolean;
+    bridge: boolean;
+  }>(() => {
+    try {
+      const stored = localStorage.getItem(`era_hidden_structures_${project.id}`);
+      if (stored) return JSON.parse(stored);
+    } catch {}
+    return { pipe: false, box: false, slab: false, bridge: false };
+  });
+
+  const toggleStructureVisibility = (type: 'pipe' | 'box' | 'slab' | 'bridge') => {
+    setHiddenStructureViews(prev => {
+      const updated = { ...prev, [type]: !prev[type] };
+      try {
+        localStorage.setItem(`era_hidden_structures_${project.id}`, JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  };
+
+  const toggleAllStructuresVisibility = (hideAll: boolean) => {
+    const updated = { pipe: hideAll, box: hideAll, slab: hideAll, bridge: hideAll };
+    setHiddenStructureViews(updated);
+    try {
+      localStorage.setItem(`era_hidden_structures_${project.id}`, JSON.stringify(updated));
+    } catch {}
+  };
 
   // Modal States
   const [isResourceModalOpen, setIsResourceModalOpen] = useState(false);
@@ -458,26 +599,89 @@ export default function DailyActivitiesView({
   };
 
   // Handlers for activity rows
-  const handleAddRowAt = (sectionId: string, pipeLocationPreset?: string) => {
+  // Handlers for activity rows
+  const handleAddRowAt = (sectionId: string, locationPreset?: string) => {
     const defaultUnit = getDefaultUnit(sectionId);
-    const loc = pipeLocationPreset || (sectionId === '14' ? (customPipeLocation || selectedPipeLocation || '200+313') : '');
+    let loc = locationPreset || '';
+    let actName = '';
+    let desc = '';
+    let stage: string | undefined = undefined;
+
+    const isPipe = sectionId === '14';
+    const isBox = sectionId === '15' || sectionId === '14.1';
+    const isSlab = sectionId === '16' || sectionId === '14.2';
+    const isBridge = sectionId === '17';
+
+    if (isPipe) {
+      loc = locationPreset || (customPipeLocation || selectedPipeLocation || '200+313');
+      actName = 'RCP Pipe Construction';
+      desc = `RCP Culvert at Stn ${loc} - ${selectedPipeStage}`;
+      stage = selectedPipeStage;
+    } else if (isBox) {
+      loc = locationPreset || (customBoxLocation || selectedBoxLocation || 'Box Culvert @ Km 195+600 (2x2m)');
+      actName = 'Box Culvert Construction';
+      desc = `Box Culvert at ${loc} - ${selectedBoxStage}`;
+      stage = selectedBoxStage;
+    } else if (isSlab) {
+      loc = locationPreset || (customSlabLocation || selectedSlabLocation || 'Slab Culvert @ Km 197+200 (Span 4m)');
+      actName = 'Slab Culvert Construction';
+      desc = `Slab Culvert at ${loc} - ${selectedSlabStage}`;
+      stage = selectedSlabStage;
+    } else if (isBridge) {
+      loc = locationPreset || (customBridgeLocation || selectedBridgeLocation || 'Bridge @ Km 198+450 (River Dermi)');
+      actName = 'Bridge Construction';
+      desc = `${loc} - ${selectedBridgeStage}`;
+      stage = selectedBridgeStage;
+    }
+
     const newAct: DailyActivityRecord = {
       id: 'act_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
       date: selectedDate,
       activityType: sectionId,
-      activityName: sectionId === '14' ? 'RCP Pipe Construction' : '',
-      description: sectionId === '14' ? `RCP Culvert at Stn ${loc} - ${selectedPipeStage}` : '',
+      activityName: actName,
+      description: desc,
       startStationKm: loc,
-      pipeLocation: sectionId === '14' ? loc : undefined,
-      pipeSelectedStage: sectionId === '14' ? selectedPipeStage : undefined,
-      pipeExcavationPct: sectionId === '14' ? 100 : undefined,
-      pipeMasonryPct: sectionId === '14' ? 100 : undefined,
-      pipePavedWaterwayPct: sectionId === '14' ? 100 : undefined,
-      pipeInstallationPct: sectionId === '14' ? 100 : undefined,
-      pipeBackfillPct: sectionId === '14' ? 100 : undefined,
-      pipePreviousPct: sectionId === '14' ? 100 : undefined,
-      pipeDailyProgressPct: sectionId === '14' ? 0 : undefined,
-      pipeToDatePct: sectionId === '14' ? 100 : undefined,
+      // Pipe fields
+      pipeLocation: isPipe ? loc : undefined,
+      pipeSelectedStage: isPipe ? stage : undefined,
+      pipeExcavationPct: isPipe ? 100 : undefined,
+      pipeMasonryPct: isPipe ? 100 : undefined,
+      pipePavedWaterwayPct: isPipe ? 100 : undefined,
+      pipeInstallationPct: isPipe ? 100 : undefined,
+      pipeBackfillPct: isPipe ? 100 : undefined,
+      pipePreviousPct: (isPipe || isBox || isSlab) ? 100 : undefined,
+      pipeDailyProgressPct: (isPipe || isBox || isSlab) ? 0 : undefined,
+      pipeToDatePct: (isPipe || isBox || isSlab) ? 100 : undefined,
+      // Box Culvert fields
+      boxCulvertLocation: isBox ? loc : undefined,
+      boxCulvertSelectedStage: isBox ? stage : undefined,
+      boxExcavationPct: isBox ? 100 : undefined,
+      boxBottomSlabPct: isBox ? 100 : undefined,
+      boxWallsPct: isBox ? 100 : undefined,
+      boxTopSlabPct: isBox ? 100 : undefined,
+      boxWingwallsPct: isBox ? 100 : undefined,
+      boxBackfillPct: isBox ? 100 : undefined,
+      // Slab Culvert fields
+      slabCulvertLocation: isSlab ? loc : undefined,
+      slabCulvertSelectedStage: isSlab ? stage : undefined,
+      slabExcavationPct: isSlab ? 100 : undefined,
+      slabAbutmentPct: isSlab ? 100 : undefined,
+      slabDeckPct: isSlab ? 100 : undefined,
+      slabWingwallsPct: isSlab ? 100 : undefined,
+      slabPitchingPct: isSlab ? 100 : undefined,
+      slabBackfillPct: isSlab ? 100 : undefined,
+      // Bridge fields
+      bridgeLocation: isBridge ? loc : undefined,
+      bridgeSelectedStage: isBridge ? stage : undefined,
+      bridgeFoundationPct: isBridge ? 100 : undefined,
+      bridgeAbutmentPct: isBridge ? 100 : undefined,
+      bridgePierPct: isBridge ? 100 : undefined,
+      bridgeGirderPct: isBridge ? 100 : undefined,
+      bridgeSlabPct: isBridge ? 100 : undefined,
+      bridgeApproachPct: isBridge ? 100 : undefined,
+      bridgePrevious: isBridge ? 100 : undefined,
+      bridgeDailyProgress: isBridge ? 0 : undefined,
+      bridgeToDate: isBridge ? 100 : undefined,
       side: 'BHS',
       unit: defaultUnit,
       qcStatus: 'Approved',
@@ -486,7 +690,7 @@ export default function DailyActivitiesView({
       workingHours: 8.0,
       createdAt: new Date().toISOString(),
       equipmentList: [
-        { id: 'eq_1', name: 'Equipment Unit', count: 1, status: 'Operating' }
+        { id: 'eq_1', name: 'Heavy Machinery Unit', count: 1, status: 'Operating' }
       ]
     };
 
@@ -611,6 +815,390 @@ export default function DailyActivitiesView({
         const ins = stageField === 'pipeInstallationPct' ? value : (copy.pipeInstallationPct ?? 100);
         const bck = stageField === 'pipeBackfillPct' ? value : (copy.pipeBackfillPct ?? 100);
         copy.pipeToDatePct = Math.round((exc + mas + paw + ins + bck) / 5);
+        return copy;
+      }
+      return a;
+    });
+    triggerDebouncedSave(updated, `Updated ${String(stageField)}`);
+  };
+
+  // ==================== BRIDGE CONSTRUCTION HANDLERS ====================
+  const handleApplyBridgeStageUpdate = () => {
+    const loc = (customBridgeLocation.trim() || selectedBridgeLocation).trim();
+    if (!loc) return;
+
+    const existingIdx = activities.findIndex(a => 
+      a.date === selectedDate && 
+      (a.activityType === '17' || a.activityType === '15') && 
+      (a.bridgeLocation === loc || a.startStationKm === loc)
+    );
+
+    let updatedList = [...activities];
+
+    if (existingIdx > -1) {
+      const existing = { ...updatedList[existingIdx] };
+      existing.activityType = '17';
+      existing.bridgeSelectedStage = selectedBridgeStage;
+      if (selectedBridgeStage === 'Foundation') existing.bridgeFoundationPct = selectedBridgeStagePct;
+      else if (selectedBridgeStage === 'Abutment') existing.bridgeAbutmentPct = selectedBridgeStagePct;
+      else if (selectedBridgeStage === 'Pier') existing.bridgePierPct = selectedBridgeStagePct;
+      else if (selectedBridgeStage === 'Box girder / T-girder') existing.bridgeGirderPct = selectedBridgeStagePct;
+      else if (selectedBridgeStage === 'Slab') existing.bridgeSlabPct = selectedBridgeStagePct;
+      else if (selectedBridgeStage === 'Approach & Bearings') existing.bridgeApproachPct = selectedBridgeStagePct;
+
+      const fnd = existing.bridgeFoundationPct ?? 100;
+      const abt = existing.bridgeAbutmentPct ?? 100;
+      const per = existing.bridgePierPct ?? 100;
+      const gdr = existing.bridgeGirderPct ?? 100;
+      const slb = existing.bridgeSlabPct ?? 100;
+      const app = existing.bridgeApproachPct ?? 100;
+      existing.bridgeToDate = Math.round((fnd + abt + per + gdr + slb + app) / 6);
+      if (selectedBridgeStageKm > 0) existing.metricKm = selectedBridgeStageKm;
+      existing.updatedAt = new Date().toISOString();
+      updatedList[existingIdx] = existing;
+    } else {
+      const newAct: DailyActivityRecord = {
+        id: 'act_bridge_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+        date: selectedDate,
+        activityType: '17',
+        activityName: 'Bridge Construction',
+        description: `${loc} - ${selectedBridgeStage}`,
+        startStationKm: loc,
+        bridgeLocation: loc,
+        bridgeSelectedStage: selectedBridgeStage,
+        bridgeFoundationPct: selectedBridgeStage === 'Foundation' ? selectedBridgeStagePct : 100,
+        bridgeAbutmentPct: selectedBridgeStage === 'Abutment' ? selectedBridgeStagePct : 100,
+        bridgePierPct: selectedBridgeStage === 'Pier' ? selectedBridgeStagePct : 100,
+        bridgeGirderPct: selectedBridgeStage === 'Box girder / T-girder' ? selectedBridgeStagePct : 100,
+        bridgeSlabPct: selectedBridgeStage === 'Slab' ? selectedBridgeStagePct : 100,
+        bridgeApproachPct: selectedBridgeStage === 'Approach & Bearings' ? selectedBridgeStagePct : 100,
+        bridgePrevious: 60,
+        bridgeDailyProgress: 0.5,
+        bridgeToDate: selectedBridgeStagePct,
+        side: 'BHS',
+        unit: '%',
+        metricKm: selectedBridgeStageKm,
+        qcStatus: 'Approved',
+        status: 'Draft',
+        weatherCondition: weather,
+        workingHours: 8.0,
+        createdAt: new Date().toISOString()
+      };
+      const fnd = newAct.bridgeFoundationPct ?? 100;
+      const abt = newAct.bridgeAbutmentPct ?? 100;
+      const per = newAct.bridgePierPct ?? 100;
+      const gdr = newAct.bridgeGirderPct ?? 100;
+      const slb = newAct.bridgeSlabPct ?? 100;
+      const app = newAct.bridgeApproachPct ?? 100;
+      newAct.bridgeToDate = Math.round((fnd + abt + per + gdr + slb + app) / 6);
+      updatedList.push(newAct);
+    }
+
+    if (customBridgeLocation) setCustomBridgeLocation('');
+    triggerDebouncedSave(updatedList, `Updated ${selectedBridgeStage} at ${loc}`);
+  };
+
+  const handlePopulateEraBridgeLocations = () => {
+    if (!confirm('Populate standard ERA bridge structures with their component stage progress?')) return;
+    const nonBridgeActivities = activities.filter(a => !(a.date === selectedDate && (a.activityType === '17' || (a.activityType === '15' && Boolean(a.bridgeLocation || a.bridgeSelectedStage)))));
+    const newBridgeActs: DailyActivityRecord[] = SAMPLE_ERA_BRIDGE_RECORDS.map((item, idx) => ({
+      id: 'act_bridge_era_' + Date.now() + '_' + idx,
+      date: selectedDate,
+      activityType: '17',
+      activityName: 'Bridge Construction',
+      description: `${item.bridgeLocation} - ${item.bridgeSelectedStage}`,
+      startStationKm: item.bridgeLocation || '',
+      bridgeLocation: item.bridgeLocation,
+      bridgeSelectedStage: item.bridgeSelectedStage,
+      bridgeFoundationPct: item.bridgeFoundationPct,
+      bridgeAbutmentPct: item.bridgeAbutmentPct,
+      bridgePierPct: item.bridgePierPct,
+      bridgeGirderPct: item.bridgeGirderPct,
+      bridgeSlabPct: item.bridgeSlabPct,
+      bridgeApproachPct: item.bridgeApproachPct,
+      bridgePrevious: item.bridgePrevious,
+      bridgeDailyProgress: item.bridgeDailyProgress,
+      bridgeToDate: item.bridgeToDate,
+      metricKm: item.metricKm || 0,
+      side: 'BHS',
+      unit: '%',
+      qcStatus: 'Approved',
+      status: 'Approved',
+      weatherCondition: weather,
+      workingHours: 8.0,
+      createdAt: new Date().toISOString()
+    }));
+
+    triggerDebouncedSave([...nonBridgeActivities, ...newBridgeActs], 'Populated standard ERA bridge structures');
+  };
+
+  const handleUpdateBridgeStageCell = (actId: string, stageField: keyof DailyActivityRecord, value: number) => {
+    const updated = activities.map(a => {
+      if (a.id === actId) {
+        const copy = { ...a, [stageField]: value, updatedAt: new Date().toISOString() };
+        const fnd = stageField === 'bridgeFoundationPct' ? value : (copy.bridgeFoundationPct ?? 100);
+        const abt = stageField === 'bridgeAbutmentPct' ? value : (copy.bridgeAbutmentPct ?? 100);
+        const per = stageField === 'bridgePierPct' ? value : (copy.bridgePierPct ?? 100);
+        const gdr = stageField === 'bridgeGirderPct' ? value : (copy.bridgeGirderPct ?? 100);
+        const slb = stageField === 'bridgeSlabPct' ? value : (copy.bridgeSlabPct ?? 100);
+        const app = stageField === 'bridgeApproachPct' ? value : (copy.bridgeApproachPct ?? 100);
+        copy.bridgeToDate = Math.round((fnd + abt + per + gdr + slb + app) / 6);
+        return copy;
+      }
+      return a;
+    });
+    triggerDebouncedSave(updated, `Updated ${String(stageField)}`);
+  };
+
+  // ==================== BOX CULVERT CONSTRUCTION HANDLERS ====================
+  const handleApplyBoxStageUpdate = () => {
+    const loc = (customBoxLocation.trim() || selectedBoxLocation).trim();
+    if (!loc) return;
+
+    const existingIdx = activities.findIndex(a => 
+      a.date === selectedDate && 
+      (a.activityType === '15' || a.activityType === '14.1') && 
+      (a.boxCulvertLocation === loc || a.startStationKm === loc)
+    );
+
+    let updatedList = [...activities];
+
+    if (existingIdx > -1) {
+      const existing = { ...updatedList[existingIdx] };
+      existing.activityType = '15';
+      existing.boxCulvertSelectedStage = selectedBoxStage;
+      if (selectedBoxStage === 'Excavation & Blinding') existing.boxExcavationPct = selectedBoxStagePct;
+      else if (selectedBoxStage === 'Bottom Slab') existing.boxBottomSlabPct = selectedBoxStagePct;
+      else if (selectedBoxStage === 'Walls & Stem') existing.boxWallsPct = selectedBoxStagePct;
+      else if (selectedBoxStage === 'Top Slab') existing.boxTopSlabPct = selectedBoxStagePct;
+      else if (selectedBoxStage === 'Wingwalls & Apron') existing.boxWingwallsPct = selectedBoxStagePct;
+      else if (selectedBoxStage === 'Backfill') existing.boxBackfillPct = selectedBoxStagePct;
+
+      const exc = existing.boxExcavationPct ?? 100;
+      const btm = existing.boxBottomSlabPct ?? 100;
+      const wll = existing.boxWallsPct ?? 100;
+      const top = existing.boxTopSlabPct ?? 100;
+      const wng = existing.boxWingwallsPct ?? 100;
+      const bck = existing.boxBackfillPct ?? 100;
+      existing.pipeToDatePct = Math.round((exc + btm + wll + top + wng + bck) / 6);
+      if (selectedBoxStageKm > 0) existing.metricKm = selectedBoxStageKm;
+      existing.updatedAt = new Date().toISOString();
+      updatedList[existingIdx] = existing;
+    } else {
+      const newAct: DailyActivityRecord = {
+        id: 'act_box_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+        date: selectedDate,
+        activityType: '15',
+        activityName: 'Box Culvert Construction',
+        description: `Box Culvert at ${loc} - ${selectedBoxStage}`,
+        startStationKm: loc,
+        boxCulvertLocation: loc,
+        boxCulvertSelectedStage: selectedBoxStage,
+        boxExcavationPct: selectedBoxStage === 'Excavation & Blinding' ? selectedBoxStagePct : 100,
+        boxBottomSlabPct: selectedBoxStage === 'Bottom Slab' ? selectedBoxStagePct : 100,
+        boxWallsPct: selectedBoxStage === 'Walls & Stem' ? selectedBoxStagePct : 100,
+        boxTopSlabPct: selectedBoxStage === 'Top Slab' ? selectedBoxStagePct : 100,
+        boxWingwallsPct: selectedBoxStage === 'Wingwalls & Apron' ? selectedBoxStagePct : 100,
+        boxBackfillPct: selectedBoxStage === 'Backfill' ? selectedBoxStagePct : 100,
+        pipePreviousPct: 50,
+        pipeDailyProgressPct: 0,
+        pipeToDatePct: selectedBoxStagePct,
+        side: 'BHS',
+        unit: '%',
+        metricKm: selectedBoxStageKm,
+        qcStatus: 'Approved',
+        status: 'Draft',
+        weatherCondition: weather,
+        workingHours: 8.0,
+        createdAt: new Date().toISOString()
+      };
+      const exc = newAct.boxExcavationPct ?? 100;
+      const btm = newAct.boxBottomSlabPct ?? 100;
+      const wll = newAct.boxWallsPct ?? 100;
+      const top = newAct.boxTopSlabPct ?? 100;
+      const wng = newAct.boxWingwallsPct ?? 100;
+      const bck = newAct.boxBackfillPct ?? 100;
+      newAct.pipeToDatePct = Math.round((exc + btm + wll + top + wng + bck) / 6);
+      updatedList.push(newAct);
+    }
+
+    if (customBoxLocation) setCustomBoxLocation('');
+    triggerDebouncedSave(updatedList, `Updated ${selectedBoxStage} at ${loc}`);
+  };
+
+  const handlePopulateEraBoxLocations = () => {
+    if (!confirm('Populate standard ERA box culvert locations with their component progress?')) return;
+    const nonBoxActivities = activities.filter(a => !(a.date === selectedDate && (a.activityType === '15' || a.activityType === '14.1') && Boolean(a.boxCulvertLocation)));
+    const newBoxActs: DailyActivityRecord[] = SAMPLE_ERA_BOX_CULVERT_RECORDS.map((item, idx) => ({
+      id: 'act_box_era_' + Date.now() + '_' + idx,
+      date: selectedDate,
+      activityType: '15',
+      activityName: 'Box Culvert Construction',
+      description: `Box Culvert at ${item.boxCulvertLocation} - ${item.boxCulvertSelectedStage}`,
+      startStationKm: item.boxCulvertLocation || '',
+      boxCulvertLocation: item.boxCulvertLocation,
+      boxCulvertSelectedStage: item.boxCulvertSelectedStage,
+      boxExcavationPct: item.boxExcavationPct,
+      boxBottomSlabPct: item.boxBottomSlabPct,
+      boxWallsPct: item.boxWallsPct,
+      boxTopSlabPct: item.boxTopSlabPct,
+      boxWingwallsPct: item.boxWingwallsPct,
+      boxBackfillPct: item.boxBackfillPct,
+      pipePreviousPct: item.pipePreviousPct,
+      pipeDailyProgressPct: item.pipeDailyProgressPct,
+      pipeToDatePct: item.pipeToDatePct,
+      metricKm: item.metricKm || 0,
+      side: 'BHS',
+      unit: '%',
+      qcStatus: 'Approved',
+      status: 'Approved',
+      weatherCondition: weather,
+      workingHours: 8.0,
+      createdAt: new Date().toISOString()
+    }));
+
+    triggerDebouncedSave([...nonBoxActivities, ...newBoxActs], 'Populated standard ERA box culverts');
+  };
+
+  const handleUpdateBoxStageCell = (actId: string, stageField: keyof DailyActivityRecord, value: number) => {
+    const updated = activities.map(a => {
+      if (a.id === actId) {
+        const copy = { ...a, [stageField]: value, updatedAt: new Date().toISOString() };
+        const exc = stageField === 'boxExcavationPct' ? value : (copy.boxExcavationPct ?? 100);
+        const btm = stageField === 'boxBottomSlabPct' ? value : (copy.boxBottomSlabPct ?? 100);
+        const wll = stageField === 'boxWallsPct' ? value : (copy.boxWallsPct ?? 100);
+        const top = stageField === 'boxTopSlabPct' ? value : (copy.boxTopSlabPct ?? 100);
+        const wng = stageField === 'boxWingwallsPct' ? value : (copy.boxWingwallsPct ?? 100);
+        const bck = stageField === 'boxBackfillPct' ? value : (copy.boxBackfillPct ?? 100);
+        copy.pipeToDatePct = Math.round((exc + btm + wll + top + wng + bck) / 6);
+        return copy;
+      }
+      return a;
+    });
+    triggerDebouncedSave(updated, `Updated ${String(stageField)}`);
+  };
+
+  // ==================== SLAB CULVERT CONSTRUCTION HANDLERS ====================
+  const handleApplySlabStageUpdate = () => {
+    const loc = (customSlabLocation.trim() || selectedSlabLocation).trim();
+    if (!loc) return;
+
+    const existingIdx = activities.findIndex(a => 
+      a.date === selectedDate && 
+      (a.activityType === '16' || a.activityType === '14.2') && 
+      (a.slabCulvertLocation === loc || a.startStationKm === loc)
+    );
+
+    let updatedList = [...activities];
+
+    if (existingIdx > -1) {
+      const existing = { ...updatedList[existingIdx] };
+      existing.activityType = '16';
+      existing.slabCulvertSelectedStage = selectedSlabStage;
+      if (selectedSlabStage === 'Excavation & Footing') existing.slabExcavationPct = selectedSlabStagePct;
+      else if (selectedSlabStage === 'Abutment Walls') existing.slabAbutmentPct = selectedSlabStagePct;
+      else if (selectedSlabStage === 'RC Deck Slab') existing.slabDeckPct = selectedSlabStagePct;
+      else if (selectedSlabStage === 'Wingwalls & Parapet') existing.slabWingwallsPct = selectedSlabStagePct;
+      else if (selectedSlabStage === 'Bed Pitching') existing.slabPitchingPct = selectedSlabStagePct;
+      else if (selectedSlabStage === 'Backfill') existing.slabBackfillPct = selectedSlabStagePct;
+
+      const exc = existing.slabExcavationPct ?? 100;
+      const abt = existing.slabAbutmentPct ?? 100;
+      const dck = existing.slabDeckPct ?? 100;
+      const wng = existing.slabWingwallsPct ?? 100;
+      const ptc = existing.slabPitchingPct ?? 100;
+      const bck = existing.slabBackfillPct ?? 100;
+      existing.pipeToDatePct = Math.round((exc + abt + dck + wng + ptc + bck) / 6);
+      if (selectedSlabStageKm > 0) existing.metricKm = selectedSlabStageKm;
+      existing.updatedAt = new Date().toISOString();
+      updatedList[existingIdx] = existing;
+    } else {
+      const newAct: DailyActivityRecord = {
+        id: 'act_slab_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+        date: selectedDate,
+        activityType: '16',
+        activityName: 'Slab Culvert Construction',
+        description: `Slab Culvert at ${loc} - ${selectedSlabStage}`,
+        startStationKm: loc,
+        slabCulvertLocation: loc,
+        slabCulvertSelectedStage: selectedSlabStage,
+        slabExcavationPct: selectedSlabStage === 'Excavation & Footing' ? selectedSlabStagePct : 100,
+        slabAbutmentPct: selectedSlabStage === 'Abutment Walls' ? selectedSlabStagePct : 100,
+        slabDeckPct: selectedSlabStage === 'RC Deck Slab' ? selectedSlabStagePct : 100,
+        slabWingwallsPct: selectedSlabStage === 'Wingwalls & Parapet' ? selectedSlabStagePct : 100,
+        slabPitchingPct: selectedSlabStage === 'Bed Pitching' ? selectedSlabStagePct : 100,
+        slabBackfillPct: selectedSlabStage === 'Backfill' ? selectedSlabStagePct : 100,
+        pipePreviousPct: 50,
+        pipeDailyProgressPct: 0,
+        pipeToDatePct: selectedSlabStagePct,
+        side: 'BHS',
+        unit: '%',
+        metricKm: selectedSlabStageKm,
+        qcStatus: 'Approved',
+        status: 'Draft',
+        weatherCondition: weather,
+        workingHours: 8.0,
+        createdAt: new Date().toISOString()
+      };
+      const exc = newAct.slabExcavationPct ?? 100;
+      const abt = newAct.slabAbutmentPct ?? 100;
+      const dck = newAct.slabDeckPct ?? 100;
+      const wng = newAct.slabWingwallsPct ?? 100;
+      const ptc = newAct.slabPitchingPct ?? 100;
+      const bck = newAct.slabBackfillPct ?? 100;
+      newAct.pipeToDatePct = Math.round((exc + abt + dck + wng + ptc + bck) / 6);
+      updatedList.push(newAct);
+    }
+
+    if (customSlabLocation) setCustomSlabLocation('');
+    triggerDebouncedSave(updatedList, `Updated ${selectedSlabStage} at ${loc}`);
+  };
+
+  const handlePopulateEraSlabLocations = () => {
+    if (!confirm('Populate standard ERA slab culvert locations with their component progress?')) return;
+    const nonSlabActivities = activities.filter(a => !(a.date === selectedDate && (a.activityType === '16' || a.activityType === '14.2') && Boolean(a.slabCulvertLocation)));
+    const newSlabActs: DailyActivityRecord[] = SAMPLE_ERA_SLAB_CULVERT_RECORDS.map((item, idx) => ({
+      id: 'act_slab_era_' + Date.now() + '_' + idx,
+      date: selectedDate,
+      activityType: '16',
+      activityName: 'Slab Culvert Construction',
+      description: `Slab Culvert at ${item.slabCulvertLocation} - ${item.slabCulvertSelectedStage}`,
+      startStationKm: item.slabCulvertLocation || '',
+      slabCulvertLocation: item.slabCulvertLocation,
+      slabCulvertSelectedStage: item.slabCulvertSelectedStage,
+      slabExcavationPct: item.slabExcavationPct,
+      slabAbutmentPct: item.slabAbutmentPct,
+      slabDeckPct: item.slabDeckPct,
+      slabWingwallsPct: item.slabWingwallsPct,
+      slabPitchingPct: item.slabPitchingPct,
+      slabBackfillPct: item.slabBackfillPct,
+      pipePreviousPct: item.pipePreviousPct,
+      pipeDailyProgressPct: item.pipeDailyProgressPct,
+      pipeToDatePct: item.pipeToDatePct,
+      metricKm: item.metricKm || 0,
+      side: 'BHS',
+      unit: '%',
+      qcStatus: 'Approved',
+      status: 'Approved',
+      weatherCondition: weather,
+      workingHours: 8.0,
+      createdAt: new Date().toISOString()
+    }));
+
+    triggerDebouncedSave([...nonSlabActivities, ...newSlabActs], 'Populated standard ERA slab culverts');
+  };
+
+  const handleUpdateSlabStageCell = (actId: string, stageField: keyof DailyActivityRecord, value: number) => {
+    const updated = activities.map(a => {
+      if (a.id === actId) {
+        const copy = { ...a, [stageField]: value, updatedAt: new Date().toISOString() };
+        const exc = stageField === 'slabExcavationPct' ? value : (copy.slabExcavationPct ?? 100);
+        const abt = stageField === 'slabAbutmentPct' ? value : (copy.slabAbutmentPct ?? 100);
+        const dck = stageField === 'slabDeckPct' ? value : (copy.slabDeckPct ?? 100);
+        const wng = stageField === 'slabWingwallsPct' ? value : (copy.slabWingwallsPct ?? 100);
+        const ptc = stageField === 'slabPitchingPct' ? value : (copy.slabPitchingPct ?? 100);
+        const bck = stageField === 'slabBackfillPct' ? value : (copy.slabBackfillPct ?? 100);
+        copy.pipeToDatePct = Math.round((exc + abt + dck + wng + ptc + bck) / 6);
         return copy;
       }
       return a;
@@ -1336,6 +1924,91 @@ export default function DailyActivitiesView({
               </div>
             </div>
 
+            {/* Structure Views Hide / Show Visibility Bar */}
+            <div className="bg-slate-50 border-b border-slate-200 px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-xs print:hidden">
+              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
+                  <Layers className="w-3.5 h-3.5 text-blue-600" /> Structure Tables:
+                </span>
+
+                {/* 14. Pipe Culvert Toggle */}
+                <button
+                  type="button"
+                  onClick={() => toggleStructureVisibility('pipe')}
+                  className={`px-2 py-1 rounded-md text-[11px] font-bold transition flex items-center gap-1 border ${!hiddenStructureViews.pipe ? 'bg-blue-600 text-white border-blue-600 shadow-xs' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-100'}`}
+                  title={hiddenStructureViews.pipe ? 'Click to Show 14. Pipe Culvert Table' : 'Click to Hide 14. Pipe Culvert Table'}
+                >
+                  {hiddenStructureViews.pipe ? <EyeOff className="w-3 h-3 text-slate-400" /> : <Eye className="w-3 h-3" />}
+                  <span>14. Pipe Culvert</span>
+                  <span className={`text-[10px] px-1 rounded ${!hiddenStructureViews.pipe ? 'bg-blue-700 text-blue-100' : 'bg-slate-200 text-slate-600 font-normal'}`}>
+                    {currentActivities.filter(a => a.activityType === '14' || Boolean(a.pipeLocation && !a.boxCulvertLocation && !a.slabCulvertLocation && !a.bridgeLocation)).length}
+                  </span>
+                </button>
+
+                {/* 15. Box Culvert Toggle */}
+                <button
+                  type="button"
+                  onClick={() => toggleStructureVisibility('box')}
+                  className={`px-2 py-1 rounded-md text-[11px] font-bold transition flex items-center gap-1 border ${!hiddenStructureViews.box ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-100'}`}
+                  title={hiddenStructureViews.box ? 'Click to Show 15. Box Culvert Table' : 'Click to Hide 15. Box Culvert Table'}
+                >
+                  {hiddenStructureViews.box ? <EyeOff className="w-3 h-3 text-slate-400" /> : <Eye className="w-3 h-3" />}
+                  <span>15. Box Culvert</span>
+                  <span className={`text-[10px] px-1 rounded ${!hiddenStructureViews.box ? 'bg-emerald-700 text-emerald-100' : 'bg-slate-200 text-slate-600 font-normal'}`}>
+                    {currentActivities.filter(a => a.activityType === '15' || a.activityType === '14.1' || Boolean(a.boxCulvertLocation && !a.bridgeLocation)).length}
+                  </span>
+                </button>
+
+                {/* 16. Slab Culvert Toggle */}
+                <button
+                  type="button"
+                  onClick={() => toggleStructureVisibility('slab')}
+                  className={`px-2 py-1 rounded-md text-[11px] font-bold transition flex items-center gap-1 border ${!hiddenStructureViews.slab ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-100'}`}
+                  title={hiddenStructureViews.slab ? 'Click to Show 16. Slab Culvert Table' : 'Click to Hide 16. Slab Culvert Table'}
+                >
+                  {hiddenStructureViews.slab ? <EyeOff className="w-3 h-3 text-slate-400" /> : <Eye className="w-3 h-3" />}
+                  <span>16. Slab Culvert</span>
+                  <span className={`text-[10px] px-1 rounded ${!hiddenStructureViews.slab ? 'bg-indigo-700 text-indigo-100' : 'bg-slate-200 text-slate-600 font-normal'}`}>
+                    {currentActivities.filter(a => a.activityType === '16' || a.activityType === '14.2' || Boolean(a.slabCulvertLocation)).length}
+                  </span>
+                </button>
+
+                {/* 17. Bridge Toggle */}
+                <button
+                  type="button"
+                  onClick={() => toggleStructureVisibility('bridge')}
+                  className={`px-2 py-1 rounded-md text-[11px] font-bold transition flex items-center gap-1 border ${!hiddenStructureViews.bridge ? 'bg-amber-600 text-white border-amber-600 shadow-xs' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-100'}`}
+                  title={hiddenStructureViews.bridge ? 'Click to Show 17. Bridge Table' : 'Click to Hide 17. Bridge Table'}
+                >
+                  {hiddenStructureViews.bridge ? <EyeOff className="w-3 h-3 text-slate-400" /> : <Eye className="w-3 h-3" />}
+                  <span>17. Bridge</span>
+                  <span className={`text-[10px] px-1 rounded ${!hiddenStructureViews.bridge ? 'bg-amber-700 text-amber-100' : 'bg-slate-200 text-slate-600 font-normal'}`}>
+                    {currentActivities.filter(a => a.activityType === '17' || (a.activityType === '15' && Boolean(a.bridgeLocation || a.bridgeSelectedStage))).length}
+                  </span>
+                </button>
+              </div>
+
+              {/* Quick Global Collapse/Expand */}
+              <div className="flex items-center gap-1.5 ml-auto">
+                <button
+                  type="button"
+                  onClick={() => toggleAllStructuresVisibility(false)}
+                  className="text-[11px] font-bold text-blue-700 hover:text-blue-900 px-2 py-0.5 rounded hover:bg-blue-50 border border-blue-200 transition"
+                  title="Expand and display all structure tables"
+                >
+                  Expand All
+                </button>
+                <button
+                  type="button"
+                  onClick={() => toggleAllStructuresVisibility(true)}
+                  className="text-[11px] font-bold text-slate-600 hover:text-slate-800 px-2 py-0.5 rounded hover:bg-slate-200 border border-slate-300 transition"
+                  title="Hide / collapse all structure tables"
+                >
+                  Hide All
+                </button>
+              </div>
+            </div>
+
             <div className="overflow-x-auto">
               <table className="w-full text-xs text-left border-collapse">
                 <thead>
@@ -1364,7 +2037,24 @@ export default function DailyActivitiesView({
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {sections.length > 0 ? sections.map(sec => {
-                    const secActivities = currentActivities.filter(a => a.activityType === sec.id);
+                    const secActivities = currentActivities.filter(a => {
+                      if (sec.id === '14') {
+                        return a.activityType === '14' || Boolean(a.pipeLocation && !a.boxCulvertLocation && !a.slabCulvertLocation && !a.bridgeLocation);
+                      }
+                      if (sec.id === '15' || sec.id === '14.1') {
+                        return a.activityType === '15' || a.activityType === '14.1' || Boolean(a.boxCulvertLocation && !a.bridgeLocation);
+                      }
+                      if (sec.id === '16' || sec.id === '14.2') {
+                        return a.activityType === '16' || a.activityType === '14.2' || Boolean(a.slabCulvertLocation);
+                      }
+                      if (sec.id === '17' || (sec.id === '15' && sec.name.includes('Bridge'))) {
+                        return a.activityType === '17' || (a.activityType === '15' && Boolean(a.bridgeLocation || a.bridgeSelectedStage));
+                      }
+                      if (sec.id === '18') {
+                        return a.activityType === '18' || (a.activityType === '16' && !a.slabCulvertLocation);
+                      }
+                      return a.activityType === sec.id;
+                    });
                     const totals = getSectionCumulativeTotals(sec.id);
                     const defaultUnit = getDefaultUnit(sec.id);
 
@@ -1398,46 +2088,89 @@ export default function DailyActivitiesView({
                                     ERA Special Sub-Register
                                   </span>
                                   <h4 className="text-sm font-black tracking-wide text-white flex items-center gap-1.5">
-                                    <span>14. RCP Construction (Reinforced Concrete Pipe Culverts)</span>
+                                    <span>14. RCP Pipe Construction (Reinforced Concrete Pipe Culverts)</span>
                                   </h4>
                                   <span className="text-blue-200 text-xs font-normal">
                                     ({secActivities.length} culvert locations active)
                                   </span>
                                 </div>
 
-                                {!isReadonly && (
-                                  <div className="flex items-center gap-2 print:hidden">
-                                    <button
-                                      onClick={() => handleAddRowAt('14')}
-                                      className="bg-blue-600 hover:bg-blue-500 text-white px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 shadow-sm transition"
-                                      title="Add new culvert station location"
-                                    >
-                                      <Plus className="w-3.5 h-3.5" />
-                                      <span>+ Add Location</span>
-                                    </button>
+                                <div className="flex items-center gap-2 print:hidden">
+                                  {/* Hide/Show View Toggle */}
+                                  <button
+                                    onClick={() => toggleStructureVisibility('pipe')}
+                                    className="bg-blue-800/90 hover:bg-blue-700 text-blue-100 hover:text-white px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 border border-blue-600/60 shadow-xs transition"
+                                    title={hiddenStructureViews.pipe ? "Expand Pipe Culvert View" : "Hide Pipe Culvert View"}
+                                  >
+                                    {hiddenStructureViews.pipe ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                                    <span>{hiddenStructureViews.pipe ? "Show View" : "Hide View"}</span>
+                                    {hiddenStructureViews.pipe ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
+                                  </button>
 
-                                    <button
-                                      onClick={handlePopulateEraPipeLocations}
-                                      className="bg-blue-800 hover:bg-blue-700 text-blue-100 hover:text-white px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1 border border-blue-700 transition"
-                                      title="Load the 15 standard culvert stations from the official ERA report"
-                                    >
-                                      <RotateCcw className="w-3 h-3 text-blue-300" />
-                                      <span>Populate 15 Standard Stations</span>
-                                    </button>
+                                  {!isReadonly && (
+                                    <>
+                                      <button
+                                        onClick={() => handleAddRowAt('14')}
+                                        className="bg-blue-600 hover:bg-blue-500 text-white px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 shadow-sm transition"
+                                        title="Add new culvert station location"
+                                      >
+                                        <Plus className="w-3.5 h-3.5" />
+                                        <span>+ Add Location</span>
+                                      </button>
 
-                                    <button 
-                                      onClick={() => handleDeleteSection('14')}
-                                      className="text-blue-300 hover:text-rose-300 p-1 rounded"
-                                      title="Delete Section 14 from daily register"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" />
-                                    </button>
-                                  </div>
-                                )}
+                                      <button
+                                        onClick={handlePopulateEraPipeLocations}
+                                        className="bg-blue-800 hover:bg-blue-700 text-blue-100 hover:text-white px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1 border border-blue-700 transition"
+                                        title="Load the 15 standard culvert stations from the official ERA report"
+                                      >
+                                        <RotateCcw className="w-3 h-3 text-blue-300" />
+                                        <span>Populate 15 Standard Stations</span>
+                                      </button>
+
+                                      <button 
+                                        onClick={() => handleDeleteSection('14')}
+                                        className="text-blue-300 hover:text-rose-300 p-1 rounded"
+                                        title="Delete Section 14 from daily register"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
                               </div>
 
-                              {/* DEDICATED QUICK STAGE SELECTION & UPDATE BAR */}
-                              <div className="bg-slate-100/90 border-b border-slate-300 p-3 print:hidden">
+                              {/* If Hidden: Compact Collapsible Summary Bar */}
+                              {hiddenStructureViews.pipe ? (
+                                <div 
+                                  onClick={() => toggleStructureVisibility('pipe')}
+                                  className="bg-blue-50/70 hover:bg-blue-100/70 cursor-pointer p-3.5 transition flex flex-wrap items-center justify-between gap-3 border-b border-blue-200"
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
+                                    <span className="text-xs font-bold text-blue-950">
+                                      RCP Pipe View Hidden ({secActivities.length} Locations)
+                                    </span>
+                                    <div className="flex items-center gap-2 text-xs text-slate-600">
+                                      <span className="bg-white border border-blue-200 px-2 py-0.5 rounded text-[11px] font-mono font-semibold text-blue-800">
+                                        Avg To-Date: {avgToDate}%
+                                      </span>
+                                      <span className="bg-white border border-blue-200 px-2 py-0.5 rounded text-[11px] font-mono font-semibold text-slate-800">
+                                        Total Extent: {totalKm.toFixed(3)} km
+                                      </span>
+                                      <span className="text-[11px] text-slate-500 hidden sm:inline">
+                                        [ Exc: {avgExc}% | Mas: {avgMas}% | Paw: {avgPaw}% | Inst: {avgIns}% | Backfill: {avgBck}% ]
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <div className="text-xs text-blue-700 font-semibold flex items-center gap-1 print:hidden">
+                                    <Eye className="w-3.5 h-3.5" />
+                                    <span>Click to Expand Table</span>
+                                  </div>
+                                </div>
+                              ) : (
+                                <>
+                                  {/* DEDICATED QUICK STAGE SELECTION & UPDATE BAR */}
+                                  <div className="bg-slate-100/90 border-b border-slate-300 p-3 print:hidden">
                                 <div className="bg-white border border-blue-200 rounded-xl p-3 shadow-xs space-y-2.5">
                                   <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
                                     <div className="flex items-center gap-1.5">
@@ -1853,6 +2586,1496 @@ export default function DailyActivitiesView({
                                   </tbody>
                                 </table>
                               </div>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    }
+
+                    // SPECIALIZED RENDERING FOR SECTION 15: BOX CULVERT CONSTRUCTION
+                    if ((sec.id === '15' && !sec.name.toLowerCase().includes('bridge')) || sec.id === '14.1' || (sec.name.toLowerCase().includes('box') && !sec.name.toLowerCase().includes('bridge'))) {
+                      const boxActivities = secActivities.filter(a => {
+                        if (boxFilterStage === 'ALL') return true;
+                        return a.boxCulvertSelectedStage === boxFilterStage;
+                      });
+
+                      const count = secActivities.length;
+                      const avgExc = count > 0 ? (secActivities.reduce((acc, a) => acc + (a.boxExcavationPct ?? 100), 0) / count).toFixed(1) : '0.0';
+                      const avgBtm = count > 0 ? (secActivities.reduce((acc, a) => acc + (a.boxBottomSlabPct ?? 100), 0) / count).toFixed(1) : '0.0';
+                      const avgWll = count > 0 ? (secActivities.reduce((acc, a) => acc + (a.boxWallsPct ?? 100), 0) / count).toFixed(1) : '0.0';
+                      const avgTop = count > 0 ? (secActivities.reduce((acc, a) => acc + (a.boxTopSlabPct ?? 100), 0) / count).toFixed(1) : '0.0';
+                      const avgWng = count > 0 ? (secActivities.reduce((acc, a) => acc + (a.boxWingwallsPct ?? 100), 0) / count).toFixed(1) : '0.0';
+                      const avgBck = count > 0 ? (secActivities.reduce((acc, a) => acc + (a.boxBackfillPct ?? 100), 0) / count).toFixed(1) : '0.0';
+                      const avgToDate = count > 0 ? (secActivities.reduce((acc, a) => acc + (a.pipeToDatePct ?? 100), 0) / count).toFixed(1) : '0.0';
+                      const totalKm = secActivities.reduce((acc, a) => acc + (Number(a.metricKm) || 0), 0);
+
+                      return (
+                        <tr key={`sec_box_${sec.id}`} className="border-b-2 border-slate-300">
+                          <td colSpan={isBulkEditMode ? 11 : 10} className="p-0">
+                            <div className="bg-white border-y-2 border-emerald-600/30">
+                              
+                              {/* 15. Box Culvert Header */}
+                              <div className="bg-gradient-to-r from-emerald-900 via-slate-900 to-emerald-900 text-white p-3 flex flex-wrap items-center justify-between gap-2 shadow-xs">
+                                <div className="flex items-center gap-2.5">
+                                  <span className="bg-emerald-600 text-white text-[10px] uppercase px-2 py-0.5 rounded font-black tracking-wider shadow-xs">
+                                    RC Box Culvert Structure
+                                  </span>
+                                  <h4 className="text-sm font-black tracking-wide text-white flex items-center gap-1.5">
+                                    <span>15. Box Culvert Construction (Reinforced Concrete Box Culverts)</span>
+                                  </h4>
+                                  <span className="text-emerald-200 text-xs font-normal">
+                                    ({secActivities.length} box culverts active)
+                                  </span>
+                                </div>
+
+                                <div className="flex items-center gap-2 print:hidden">
+                                  {/* Hide/Show View Toggle */}
+                                  <button
+                                    onClick={() => toggleStructureVisibility('box')}
+                                    className="bg-emerald-800/90 hover:bg-emerald-700 text-emerald-100 hover:text-white px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 border border-emerald-600/60 shadow-xs transition"
+                                    title={hiddenStructureViews.box ? "Expand Box Culvert View" : "Hide Box Culvert View"}
+                                  >
+                                    {hiddenStructureViews.box ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                                    <span>{hiddenStructureViews.box ? "Show View" : "Hide View"}</span>
+                                    {hiddenStructureViews.box ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
+                                  </button>
+
+                                  {!isReadonly && (
+                                    <>
+                                      <button
+                                        onClick={() => handleAddRowAt(sec.id)}
+                                        className="bg-emerald-600 hover:bg-emerald-500 text-white px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 shadow-sm transition"
+                                        title="Add new box culvert structure"
+                                      >
+                                        <Plus className="w-3.5 h-3.5" />
+                                        <span>+ Add Box Culvert</span>
+                                      </button>
+
+                                      <button
+                                        onClick={handlePopulateEraBoxLocations}
+                                        className="bg-emerald-800 hover:bg-emerald-700 text-emerald-100 hover:text-white px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1 border border-emerald-700 transition"
+                                        title="Load standard ERA box culvert structures"
+                                      >
+                                        <RotateCcw className="w-3 h-3 text-emerald-300" />
+                                        <span>Populate Standard Box Culverts</span>
+                                      </button>
+
+                                      <button 
+                                        onClick={() => handleDeleteSection(sec.id)}
+                                        className="text-emerald-300 hover:text-rose-300 p-1 rounded"
+                                        title="Delete Box Culvert Section"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* If Hidden: Compact Collapsible Summary Bar */}
+                              {hiddenStructureViews.box ? (
+                                <div 
+                                  onClick={() => toggleStructureVisibility('box')}
+                                  className="bg-emerald-50/70 hover:bg-emerald-100/70 cursor-pointer p-3.5 transition flex flex-wrap items-center justify-between gap-3 border-b border-emerald-200"
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                                    <span className="text-xs font-bold text-emerald-950">
+                                      Box Culvert View Hidden ({secActivities.length} Structures)
+                                    </span>
+                                    <div className="flex items-center gap-2 text-xs text-slate-600">
+                                      <span className="bg-white border border-emerald-200 px-2 py-0.5 rounded text-[11px] font-mono font-semibold text-emerald-800">
+                                        Avg To-Date: {avgToDate}%
+                                      </span>
+                                      <span className="bg-white border border-emerald-200 px-2 py-0.5 rounded text-[11px] font-mono font-semibold text-slate-800">
+                                        Total Extent: {totalKm.toFixed(3)} km
+                                      </span>
+                                      <span className="text-[11px] text-slate-500 hidden sm:inline">
+                                        [ Exc: {avgExc}% | Btm: {avgBtm}% | Wall: {avgWll}% | Top: {avgTop}% | Wing: {avgWng}% | Backfill: {avgBck}% ]
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <div className="text-xs text-emerald-700 font-semibold flex items-center gap-1 print:hidden">
+                                    <Eye className="w-3.5 h-3.5" />
+                                    <span>Click to Expand Table</span>
+                                  </div>
+                                </div>
+                              ) : (
+                                <>
+                                  {/* STAGE SELECTION TOOLBAR FOR BOX CULVERTS */}
+                                  <div className="bg-emerald-50/70 border-b border-emerald-200 p-3 print:hidden">
+                                <div className="bg-white border border-emerald-200 rounded-xl p-3 shadow-xs space-y-2.5">
+                                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse"></span>
+                                      <span className="text-xs font-bold text-slate-900">
+                                        Select Box Culvert Location & Specific Construction Stage:
+                                      </span>
+                                      <span className="text-[11px] text-emerald-800 font-semibold">
+                                        [ Excavation & Blinding, Bottom Slab, Walls & Stem, Top Slab, Wingwalls & Apron, Backfill ]
+                                      </span>
+                                    </div>
+
+                                    {/* Stage Filter Pills */}
+                                    <div className="flex items-center gap-1 text-[11px]">
+                                      <span className="text-slate-400 font-medium mr-1 flex items-center gap-1">
+                                        <Filter className="w-3 h-3" /> Filter:
+                                      </span>
+                                      <button
+                                        onClick={() => setBoxFilterStage('ALL')}
+                                        className={`px-2 py-0.5 rounded font-medium transition ${boxFilterStage === 'ALL' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                      >
+                                        All ({secActivities.length})
+                                      </button>
+                                      {BOX_CULVERT_STAGES.map(st => {
+                                        const stCount = secActivities.filter(a => a.boxCulvertSelectedStage === st).length;
+                                        return (
+                                          <button
+                                            key={st}
+                                            onClick={() => setBoxFilterStage(st)}
+                                            className={`px-2 py-0.5 rounded font-medium transition ${boxFilterStage === st ? 'bg-emerald-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                          >
+                                            {st} {stCount > 0 ? `(${stCount})` : ''}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+
+                                  {/* Quick Action Input Row */}
+                                  {!isReadonly && (
+                                    <div className="flex flex-wrap items-center gap-2.5 text-xs">
+                                      {/* Location Selector */}
+                                      <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-300 rounded-lg p-1.5">
+                                        <span className="text-[11px] font-bold text-slate-600 uppercase">Location:</span>
+                                        <select
+                                          value={selectedBoxLocation}
+                                          onChange={e => {
+                                            setSelectedBoxLocation(e.target.value);
+                                            setCustomBoxLocation('');
+                                          }}
+                                          className="bg-transparent font-medium text-slate-900 outline-none text-xs cursor-pointer max-w-xs truncate"
+                                        >
+                                          {Array.from(new Set([...PRESET_BOX_CULVERT_LOCATIONS, ...secActivities.map(a => a.boxCulvertLocation || a.startStationKm).filter(Boolean)])).map(loc => (
+                                            <option key={loc} value={loc}>{loc}</option>
+                                          ))}
+                                        </select>
+                                        <input
+                                          value={customBoxLocation}
+                                          onChange={e => setCustomBoxLocation(e.target.value)}
+                                          placeholder="or custom km..."
+                                          className="w-28 bg-white border border-slate-200 rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-emerald-500"
+                                        />
+                                      </div>
+
+                                      {/* Stage Selector */}
+                                      <div className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-300 rounded-lg p-1.5">
+                                        <span className="text-[11px] font-bold text-emerald-900 uppercase">Stage:</span>
+                                        <select
+                                          value={selectedBoxStage}
+                                          onChange={e => setSelectedBoxStage(e.target.value as BoxCulvertStage)}
+                                          className="bg-transparent font-bold text-emerald-800 outline-none text-xs cursor-pointer"
+                                        >
+                                          {BOX_CULVERT_STAGES.map(st => (
+                                            <option key={st} value={st}>{st}</option>
+                                          ))}
+                                        </select>
+                                      </div>
+
+                                      {/* Stage Progress % */}
+                                      <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-300 rounded-lg p-1.5">
+                                        <span className="text-[11px] font-bold text-slate-600 uppercase">Progress:</span>
+                                        <div className="flex items-center gap-1">
+                                          {[50, 70, 85, 95, 100].map(val => (
+                                            <button
+                                              key={val}
+                                              type="button"
+                                              onClick={() => setSelectedBoxStagePct(val)}
+                                              className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition ${selectedBoxStagePct === val ? 'bg-emerald-600 text-white' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'}`}
+                                            >
+                                              {val}%
+                                            </button>
+                                          ))}
+                                        </div>
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          max="100"
+                                          value={selectedBoxStagePct}
+                                          onChange={e => setSelectedBoxStagePct(Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
+                                          className="w-12 text-center bg-white border border-slate-300 rounded px-1 py-0.5 font-bold text-emerald-700 outline-none"
+                                        />
+                                        <span className="font-bold text-slate-600">%</span>
+                                      </div>
+
+                                      {/* Daily Executed (km) */}
+                                      <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-300 rounded-lg p-1.5">
+                                        <span className="text-[11px] font-bold text-slate-600 uppercase">Executed:</span>
+                                        <input
+                                          type="number"
+                                          step="0.005"
+                                          value={selectedBoxStageKm}
+                                          onChange={e => setSelectedBoxStageKm(parseFloat(e.target.value) || 0)}
+                                          placeholder="0.00"
+                                          className="w-16 text-center bg-white border border-slate-300 rounded px-1 py-0.5 font-bold text-slate-800 outline-none"
+                                        />
+                                        <span className="text-slate-500 text-[10px]">km</span>
+                                      </div>
+
+                                      {/* Apply Button */}
+                                      <button
+                                        onClick={handleApplyBoxStageUpdate}
+                                        className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-xs shadow-sm transition flex items-center gap-1 ml-auto"
+                                      >
+                                        <Check className="w-3.5 h-3.5" />
+                                        <span>Record / Update Stage</span>
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* DEDICATED BOX CULVERT TABLE */}
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-xs text-left border-collapse">
+                                  <thead>
+                                    <tr className="bg-slate-200 text-slate-800 font-bold text-[10px] uppercase tracking-wide border-b border-slate-300">
+                                      {isBulkEditMode && <th className="p-2 text-center border-r border-slate-300 print:hidden w-8">✓</th>}
+                                      <th className="p-2 border-r border-slate-300 w-44 text-center bg-slate-100">Box Culvert Location</th>
+                                      <th className="p-2 border-r border-slate-300 w-44 text-center bg-emerald-100/80 text-emerald-950 font-bold">
+                                        Selected Stage (Today)
+                                      </th>
+                                      <th className="p-2 border-r border-slate-300 w-24 text-center">Excavation & Blinding</th>
+                                      <th className="p-2 border-r border-slate-300 w-20 text-center">Bottom Slab</th>
+                                      <th className="p-2 border-r border-slate-300 w-20 text-center">Walls & Stem</th>
+                                      <th className="p-2 border-r border-slate-300 w-20 text-center">Top Slab</th>
+                                      <th className="p-2 border-r border-slate-300 w-24 text-center">Wingwalls & Apron</th>
+                                      <th className="p-2 border-r border-slate-300 w-20 text-center">Backfill</th>
+                                      <th className="p-2 border-r border-slate-300 w-16 text-center text-slate-600">Previous</th>
+                                      <th className="p-2 border-r border-slate-300 w-16 text-center text-emerald-700">Daily Progress</th>
+                                      <th className="p-2 border-r border-slate-300 w-16 text-center text-rose-700">To Date</th>
+                                      <th className="p-2 border-r border-slate-300 w-20 text-center">Daily Executed (km)</th>
+                                      {!isReadonly && <th className="p-2 text-center w-14 print:hidden">Action</th>}
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-100">
+                                    {boxActivities.length > 0 ? (
+                                      boxActivities.map(act => {
+                                        const loc = act.boxCulvertLocation || act.startStationKm || 'Km 195+600';
+                                        const activeStage = act.boxCulvertSelectedStage || 'Excavation & Blinding';
+                                        const exc = act.boxExcavationPct ?? 100;
+                                        const btm = act.boxBottomSlabPct ?? 100;
+                                        const wll = act.boxWallsPct ?? 100;
+                                        const top = act.boxTopSlabPct ?? 100;
+                                        const wng = act.boxWingwallsPct ?? 100;
+                                        const bck = act.boxBackfillPct ?? 100;
+                                        const toDateCalculated = Math.round((exc + btm + wll + top + wng + bck) / 6);
+                                        const toDateVal = act.pipeToDatePct !== undefined ? act.pipeToDatePct : toDateCalculated;
+
+                                        return (
+                                          <tr key={act.id} className="hover:bg-emerald-50/30 transition border-b border-slate-200 text-xs text-slate-800">
+                                            {isBulkEditMode && (
+                                              <td className="p-1.5 text-center border-r border-slate-200 print:hidden">
+                                                <input
+                                                  type="checkbox"
+                                                  checked={selectedRowIds.includes(act.id)}
+                                                  onChange={() => handleToggleSelectRow(act.id)}
+                                                  className="rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                                                />
+                                              </td>
+                                            )}
+
+                                            {/* Location */}
+                                            <td className="p-1.5 border-r border-slate-200 font-semibold text-slate-900 bg-slate-50/50">
+                                              <input
+                                                value={act.boxCulvertLocation || loc}
+                                                onChange={e => handleCellUpdate(act.id, 'boxCulvertLocation', e.target.value)}
+                                                className="w-full bg-transparent font-medium text-slate-900 outline-none hover:bg-white focus:bg-white rounded px-1 transition"
+                                              />
+                                            </td>
+
+                                            {/* Selected Stage (Today) Dropdown */}
+                                            <td className="p-1 border-r border-slate-200 bg-emerald-50/60 text-center">
+                                              <select
+                                                value={activeStage}
+                                                onChange={e => {
+                                                  const newStg = e.target.value as BoxCulvertStage;
+                                                  handleCellUpdate(act.id, 'boxCulvertSelectedStage', newStg);
+                                                }}
+                                                className="w-full bg-white border border-emerald-300 rounded px-1.5 py-0.5 text-[11px] font-bold text-emerald-900 shadow-xs cursor-pointer focus:outline-emerald-500"
+                                              >
+                                                {BOX_CULVERT_STAGES.map(st => (
+                                                  <option key={st} value={st}>{st}</option>
+                                                ))}
+                                              </select>
+                                            </td>
+
+                                            {/* 1. Excavation & Blinding */}
+                                            <td className={`p-1 border-r border-slate-200 text-center transition ${activeStage === 'Excavation & Blinding' ? 'bg-emerald-100/70 ring-1 ring-emerald-300 font-bold' : ''}`}>
+                                              <input
+                                                type="number"
+                                                min="0"
+                                                max="100"
+                                                value={exc}
+                                                onChange={e => handleUpdateBoxStageCell(act.id, 'boxExcavationPct', parseFloat(e.target.value) || 0)}
+                                                className="w-12 text-center bg-transparent rounded font-bold text-slate-800 outline-none focus:bg-white"
+                                              />%
+                                            </td>
+
+                                            {/* 2. Bottom Slab */}
+                                            <td className={`p-1 border-r border-slate-200 text-center transition ${activeStage === 'Bottom Slab' ? 'bg-emerald-100/70 ring-1 ring-emerald-300 font-bold' : ''}`}>
+                                              <input
+                                                type="number"
+                                                min="0"
+                                                max="100"
+                                                value={btm}
+                                                onChange={e => handleUpdateBoxStageCell(act.id, 'boxBottomSlabPct', parseFloat(e.target.value) || 0)}
+                                                className="w-12 text-center bg-transparent rounded font-bold text-slate-800 outline-none focus:bg-white"
+                                              />%
+                                            </td>
+
+                                            {/* 3. Walls & Stem */}
+                                            <td className={`p-1 border-r border-slate-200 text-center transition ${activeStage === 'Walls & Stem' ? 'bg-emerald-100/70 ring-1 ring-emerald-300 font-bold' : ''}`}>
+                                              <input
+                                                type="number"
+                                                min="0"
+                                                max="100"
+                                                value={wll}
+                                                onChange={e => handleUpdateBoxStageCell(act.id, 'boxWallsPct', parseFloat(e.target.value) || 0)}
+                                                className="w-12 text-center bg-transparent rounded font-bold text-slate-800 outline-none focus:bg-white"
+                                              />%
+                                            </td>
+
+                                            {/* 4. Top Slab */}
+                                            <td className={`p-1 border-r border-slate-200 text-center transition ${activeStage === 'Top Slab' ? 'bg-emerald-100/70 ring-1 ring-emerald-300 font-bold' : ''}`}>
+                                              <input
+                                                type="number"
+                                                min="0"
+                                                max="100"
+                                                value={top}
+                                                onChange={e => handleUpdateBoxStageCell(act.id, 'boxTopSlabPct', parseFloat(e.target.value) || 0)}
+                                                className="w-12 text-center bg-transparent rounded font-bold text-slate-800 outline-none focus:bg-white"
+                                              />%
+                                            </td>
+
+                                            {/* 5. Wingwalls & Apron */}
+                                            <td className={`p-1 border-r border-slate-200 text-center transition ${activeStage === 'Wingwalls & Apron' ? 'bg-emerald-100/70 ring-1 ring-emerald-300 font-bold' : ''}`}>
+                                              <input
+                                                type="number"
+                                                min="0"
+                                                max="100"
+                                                value={wng}
+                                                onChange={e => handleUpdateBoxStageCell(act.id, 'boxWingwallsPct', parseFloat(e.target.value) || 0)}
+                                                className="w-12 text-center bg-transparent rounded font-bold text-slate-800 outline-none focus:bg-white"
+                                              />%
+                                            </td>
+
+                                            {/* 6. Backfill */}
+                                            <td className={`p-1 border-r border-slate-200 text-center transition ${activeStage === 'Backfill' ? 'bg-emerald-100/70 ring-1 ring-emerald-300 font-bold' : ''}`}>
+                                              <input
+                                                type="number"
+                                                min="0"
+                                                max="100"
+                                                value={bck}
+                                                onChange={e => handleUpdateBoxStageCell(act.id, 'boxBackfillPct', parseFloat(e.target.value) || 0)}
+                                                className="w-12 text-center bg-transparent rounded font-bold text-slate-800 outline-none focus:bg-white"
+                                              />%
+                                            </td>
+
+                                            {/* Previous */}
+                                            <td className="p-1 border-r border-slate-200 text-center text-slate-500 font-medium">
+                                              <input
+                                                type="number"
+                                                value={act.pipePreviousPct ?? 50}
+                                                onChange={e => handleCellUpdate(act.id, 'pipePreviousPct', parseFloat(e.target.value) || 0)}
+                                                className="w-12 text-center bg-transparent text-slate-500 font-medium outline-none"
+                                              />%
+                                            </td>
+
+                                            {/* Daily Progress */}
+                                            <td className="p-1 border-r border-slate-200 text-center text-emerald-700 font-bold">
+                                              <input
+                                                type="number"
+                                                step="0.1"
+                                                value={act.pipeDailyProgressPct ?? 0}
+                                                onChange={e => handleCellUpdate(act.id, 'pipeDailyProgressPct', parseFloat(e.target.value) || 0)}
+                                                className="w-12 text-center bg-transparent text-emerald-700 font-bold outline-none"
+                                              />%
+                                            </td>
+
+                                            {/* To Date */}
+                                            <td className="p-1 border-r border-slate-200 text-center text-rose-700 font-black bg-rose-50/30">
+                                              {toDateVal}%
+                                            </td>
+
+                                            {/* Daily Executed (km) */}
+                                            <td className="p-1 border-r border-slate-200 text-center font-mono font-bold text-slate-800">
+                                              <input
+                                                type="number"
+                                                step="0.005"
+                                                value={act.metricKm || ''}
+                                                onChange={e => handleCellUpdate(act.id, 'metricKm', parseFloat(e.target.value) || 0)}
+                                                placeholder="0.000"
+                                                className="w-14 text-center bg-transparent font-mono font-bold text-slate-900 outline-none"
+                                              />
+                                            </td>
+
+                                            {/* Delete Action */}
+                                            {!isReadonly && (
+                                              <td className="p-1 text-center print:hidden">
+                                                <button
+                                                  onClick={() => handleDeleteRow(act.id)}
+                                                  className="text-slate-400 hover:text-rose-600 p-1 rounded hover:bg-rose-50 transition"
+                                                  title="Delete this box culvert row"
+                                                >
+                                                  <Trash2 className="w-3.5 h-3.5" />
+                                                </button>
+                                              </td>
+                                            )}
+                                          </tr>
+                                        );
+                                      })
+                                    ) : (
+                                      <tr>
+                                        <td colSpan={13} className="p-4 text-center text-slate-400 italic">
+                                          No box culvert records for {boxFilterStage === 'ALL' ? 'this date' : `stage: ${boxFilterStage}`}. Use the bar above to record progress or click "Populate Standard Box Culverts".
+                                        </td>
+                                      </tr>
+                                    )}
+
+                                    {/* Subtotal / Summary Row */}
+                                    {secActivities.length > 0 && (
+                                      <tr className="bg-slate-100 font-bold text-[10px] text-slate-900 border-b-2 border-slate-300">
+                                        {isBulkEditMode && <td className="p-1.5 border-r border-slate-200 print:hidden"></td>}
+                                        <td className="p-1.5 border-r border-slate-300 text-center uppercase tracking-wider text-slate-600 font-bold">
+                                          Total ({secActivities.length} Structures)
+                                        </td>
+                                        <td className="p-1.5 border-r border-slate-300 text-center text-slate-500 font-normal">
+                                          Averages:
+                                        </td>
+                                        <td className="p-1.5 border-r border-slate-300 text-center font-bold text-slate-700">{avgExc}%</td>
+                                        <td className="p-1.5 border-r border-slate-300 text-center font-bold text-slate-700">{avgBtm}%</td>
+                                        <td className="p-1.5 border-r border-slate-300 text-center font-bold text-slate-700">{avgWll}%</td>
+                                        <td className="p-1.5 border-r border-slate-300 text-center font-bold text-slate-700">{avgTop}%</td>
+                                        <td className="p-1.5 border-r border-slate-300 text-center font-bold text-slate-700">{avgWng}%</td>
+                                        <td className="p-1.5 border-r border-slate-300 text-center font-bold text-slate-700">{avgBck}%</td>
+                                        <td className="p-1.5 border-r border-slate-300 text-center text-slate-500 font-semibold">{avgToDate}%</td>
+                                        <td className="p-1.5 border-r border-slate-300 text-center text-emerald-700 font-bold">0.00%</td>
+                                        <td className="p-1.5 border-r border-slate-300 text-center text-rose-700 font-black">{avgToDate}%</td>
+                                        <td className="p-1.5 border-r border-slate-300 text-center font-mono font-bold text-slate-900">
+                                          {totalKm.toFixed(3)} km
+                                        </td>
+                                        {!isReadonly && (
+                                          <td className="p-1.5 text-center print:hidden">
+                                            <button
+                                              onClick={() => handleClearSectionEntries(sec.id)}
+                                              className="text-[10px] text-rose-500 hover:text-rose-700 font-normal underline"
+                                            >
+                                              Clear
+                                            </button>
+                                          </td>
+                                        )}
+                                      </tr>
+                                    )}
+                                  </tbody>
+                                </table>
+                              </div>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    }
+
+                    // SPECIALIZED RENDERING FOR SECTION 16: SLAB CULVERT CONSTRUCTION
+                    if (sec.id === '16' || sec.id === '14.2' || (sec.name.toLowerCase().includes('slab') && !sec.name.toLowerCase().includes('bridge'))) {
+                      const slabActivities = secActivities.filter(a => {
+                        if (slabFilterStage === 'ALL') return true;
+                        return a.slabCulvertSelectedStage === slabFilterStage;
+                      });
+
+                      const count = secActivities.length;
+                      const avgExc = count > 0 ? (secActivities.reduce((acc, a) => acc + (a.slabExcavationPct ?? 100), 0) / count).toFixed(1) : '0.0';
+                      const avgAbt = count > 0 ? (secActivities.reduce((acc, a) => acc + (a.slabAbutmentPct ?? 100), 0) / count).toFixed(1) : '0.0';
+                      const avgDck = count > 0 ? (secActivities.reduce((acc, a) => acc + (a.slabDeckPct ?? 100), 0) / count).toFixed(1) : '0.0';
+                      const avgWng = count > 0 ? (secActivities.reduce((acc, a) => acc + (a.slabWingwallsPct ?? 100), 0) / count).toFixed(1) : '0.0';
+                      const avgPtc = count > 0 ? (secActivities.reduce((acc, a) => acc + (a.slabPitchingPct ?? 100), 0) / count).toFixed(1) : '0.0';
+                      const avgBck = count > 0 ? (secActivities.reduce((acc, a) => acc + (a.slabBackfillPct ?? 100), 0) / count).toFixed(1) : '0.0';
+                      const avgToDate = count > 0 ? (secActivities.reduce((acc, a) => acc + (a.pipeToDatePct ?? 100), 0) / count).toFixed(1) : '0.0';
+                      const totalKm = secActivities.reduce((acc, a) => acc + (Number(a.metricKm) || 0), 0);
+
+                      return (
+                        <tr key={`sec_slab_${sec.id}`} className="border-b-2 border-slate-300">
+                          <td colSpan={isBulkEditMode ? 11 : 10} className="p-0">
+                            <div className="bg-white border-y-2 border-indigo-600/30">
+                              
+                              {/* 16. Slab Culvert Header */}
+                              <div className="bg-gradient-to-r from-indigo-950 via-slate-900 to-indigo-950 text-white p-3 flex flex-wrap items-center justify-between gap-2 shadow-xs">
+                                <div className="flex items-center gap-2.5">
+                                  <span className="bg-indigo-600 text-white text-[10px] uppercase px-2 py-0.5 rounded font-black tracking-wider shadow-xs">
+                                    RC Slab Culvert Structure
+                                  </span>
+                                  <h4 className="text-sm font-black tracking-wide text-white flex items-center gap-1.5">
+                                    <span>16. Slab Culvert Construction (Reinforced Concrete Slab Culverts)</span>
+                                  </h4>
+                                  <span className="text-indigo-200 text-xs font-normal">
+                                    ({secActivities.length} slab culverts active)
+                                  </span>
+                                </div>
+
+                                <div className="flex items-center gap-2 print:hidden">
+                                  {/* Hide/Show View Toggle */}
+                                  <button
+                                    onClick={() => toggleStructureVisibility('slab')}
+                                    className="bg-indigo-800/90 hover:bg-indigo-700 text-indigo-100 hover:text-white px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 border border-indigo-600/60 shadow-xs transition"
+                                    title={hiddenStructureViews.slab ? "Expand Slab Culvert View" : "Hide Slab Culvert View"}
+                                  >
+                                    {hiddenStructureViews.slab ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                                    <span>{hiddenStructureViews.slab ? "Show View" : "Hide View"}</span>
+                                    {hiddenStructureViews.slab ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
+                                  </button>
+
+                                  {!isReadonly && (
+                                    <>
+                                      <button
+                                        onClick={() => handleAddRowAt(sec.id)}
+                                        className="bg-indigo-600 hover:bg-indigo-500 text-white px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 shadow-sm transition"
+                                        title="Add new slab culvert structure"
+                                      >
+                                        <Plus className="w-3.5 h-3.5" />
+                                        <span>+ Add Slab Culvert</span>
+                                      </button>
+
+                                      <button
+                                        onClick={handlePopulateEraSlabLocations}
+                                        className="bg-indigo-800 hover:bg-indigo-700 text-indigo-100 hover:text-white px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1 border border-indigo-700 transition"
+                                        title="Load standard ERA slab culvert structures"
+                                      >
+                                        <RotateCcw className="w-3 h-3 text-indigo-300" />
+                                        <span>Populate Standard Slab Culverts</span>
+                                      </button>
+
+                                      <button 
+                                        onClick={() => handleDeleteSection(sec.id)}
+                                        className="text-indigo-300 hover:text-rose-300 p-1 rounded"
+                                        title="Delete Slab Culvert Section"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* If Hidden: Compact Collapsible Summary Bar */}
+                              {hiddenStructureViews.slab ? (
+                                <div 
+                                  onClick={() => toggleStructureVisibility('slab')}
+                                  className="bg-indigo-50/70 hover:bg-indigo-100/70 cursor-pointer p-3.5 transition flex flex-wrap items-center justify-between gap-3 border-b border-indigo-200"
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <span className="w-2.5 h-2.5 rounded-full bg-indigo-500"></span>
+                                    <span className="text-xs font-bold text-indigo-950">
+                                      Slab Culvert View Hidden ({secActivities.length} Structures)
+                                    </span>
+                                    <div className="flex items-center gap-2 text-xs text-slate-600">
+                                      <span className="bg-white border border-indigo-200 px-2 py-0.5 rounded text-[11px] font-mono font-semibold text-indigo-800">
+                                        Avg To-Date: {avgToDate}%
+                                      </span>
+                                      <span className="bg-white border border-indigo-200 px-2 py-0.5 rounded text-[11px] font-mono font-semibold text-slate-800">
+                                        Total Extent: {totalKm.toFixed(3)} km
+                                      </span>
+                                      <span className="text-[11px] text-slate-500 hidden sm:inline">
+                                        [ Exc: {avgExc}% | Abt: {avgAbt}% | Deck: {avgDck}% | Wing: {avgWng}% | Pitch: {avgPtc}% | Backfill: {avgBck}% ]
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <div className="text-xs text-indigo-700 font-semibold flex items-center gap-1 print:hidden">
+                                    <Eye className="w-3.5 h-3.5" />
+                                    <span>Click to Expand Table</span>
+                                  </div>
+                                </div>
+                              ) : (
+                                <>
+                                  {/* STAGE SELECTION TOOLBAR FOR SLAB CULVERTS */}
+                                  <div className="bg-indigo-50/70 border-b border-indigo-200 p-3 print:hidden">
+                                <div className="bg-white border border-indigo-200 rounded-xl p-3 shadow-xs space-y-2.5">
+                                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse"></span>
+                                      <span className="text-xs font-bold text-slate-900">
+                                        Select Slab Culvert Location & Specific Construction Stage:
+                                      </span>
+                                      <span className="text-[11px] text-indigo-800 font-semibold">
+                                        [ Excavation & Footing, Abutment Walls, RC Deck Slab, Wingwalls & Parapet, Bed Pitching, Backfill ]
+                                      </span>
+                                    </div>
+
+                                    {/* Stage Filter Pills */}
+                                    <div className="flex items-center gap-1 text-[11px]">
+                                      <span className="text-slate-400 font-medium mr-1 flex items-center gap-1">
+                                        <Filter className="w-3 h-3" /> Filter:
+                                      </span>
+                                      <button
+                                        onClick={() => setSlabFilterStage('ALL')}
+                                        className={`px-2 py-0.5 rounded font-medium transition ${slabFilterStage === 'ALL' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                      >
+                                        All ({secActivities.length})
+                                      </button>
+                                      {SLAB_CULVERT_STAGES.map(st => {
+                                        const stCount = secActivities.filter(a => a.slabCulvertSelectedStage === st).length;
+                                        return (
+                                          <button
+                                            key={st}
+                                            onClick={() => setSlabFilterStage(st)}
+                                            className={`px-2 py-0.5 rounded font-medium transition ${slabFilterStage === st ? 'bg-indigo-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                          >
+                                            {st} {stCount > 0 ? `(${stCount})` : ''}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+
+                                  {/* Quick Action Input Row */}
+                                  {!isReadonly && (
+                                    <div className="flex flex-wrap items-center gap-2.5 text-xs">
+                                      {/* Location Selector */}
+                                      <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-300 rounded-lg p-1.5">
+                                        <span className="text-[11px] font-bold text-slate-600 uppercase">Location:</span>
+                                        <select
+                                          value={selectedSlabLocation}
+                                          onChange={e => {
+                                            setSelectedSlabLocation(e.target.value);
+                                            setCustomSlabLocation('');
+                                          }}
+                                          className="bg-transparent font-medium text-slate-900 outline-none text-xs cursor-pointer max-w-xs truncate"
+                                        >
+                                          {Array.from(new Set([...PRESET_SLAB_CULVERT_LOCATIONS, ...secActivities.map(a => a.slabCulvertLocation || a.startStationKm).filter(Boolean)])).map(loc => (
+                                            <option key={loc} value={loc}>{loc}</option>
+                                          ))}
+                                        </select>
+                                        <input
+                                          value={customSlabLocation}
+                                          onChange={e => setCustomSlabLocation(e.target.value)}
+                                          placeholder="or custom km..."
+                                          className="w-28 bg-white border border-slate-200 rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-indigo-500"
+                                        />
+                                      </div>
+
+                                      {/* Stage Selector */}
+                                      <div className="flex items-center gap-1.5 bg-indigo-50 border border-indigo-300 rounded-lg p-1.5">
+                                        <span className="text-[11px] font-bold text-indigo-900 uppercase">Stage:</span>
+                                        <select
+                                          value={selectedSlabStage}
+                                          onChange={e => setSelectedSlabStage(e.target.value as SlabCulvertStage)}
+                                          className="bg-transparent font-bold text-indigo-800 outline-none text-xs cursor-pointer"
+                                        >
+                                          {SLAB_CULVERT_STAGES.map(st => (
+                                            <option key={st} value={st}>{st}</option>
+                                          ))}
+                                        </select>
+                                      </div>
+
+                                      {/* Stage Progress % */}
+                                      <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-300 rounded-lg p-1.5">
+                                        <span className="text-[11px] font-bold text-slate-600 uppercase">Progress:</span>
+                                        <div className="flex items-center gap-1">
+                                          {[50, 70, 85, 95, 100].map(val => (
+                                            <button
+                                              key={val}
+                                              type="button"
+                                              onClick={() => setSelectedSlabStagePct(val)}
+                                              className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition ${selectedSlabStagePct === val ? 'bg-indigo-600 text-white' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'}`}
+                                            >
+                                              {val}%
+                                            </button>
+                                          ))}
+                                        </div>
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          max="100"
+                                          value={selectedSlabStagePct}
+                                          onChange={e => setSelectedSlabStagePct(Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
+                                          className="w-12 text-center bg-white border border-slate-300 rounded px-1 py-0.5 font-bold text-indigo-700 outline-none"
+                                        />
+                                        <span className="font-bold text-slate-600">%</span>
+                                      </div>
+
+                                      {/* Daily Executed (km) */}
+                                      <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-300 rounded-lg p-1.5">
+                                        <span className="text-[11px] font-bold text-slate-600 uppercase">Executed:</span>
+                                        <input
+                                          type="number"
+                                          step="0.005"
+                                          value={selectedSlabStageKm}
+                                          onChange={e => setSelectedSlabStageKm(parseFloat(e.target.value) || 0)}
+                                          placeholder="0.00"
+                                          className="w-16 text-center bg-white border border-slate-300 rounded px-1 py-0.5 font-bold text-slate-800 outline-none"
+                                        />
+                                        <span className="text-slate-500 text-[10px]">km</span>
+                                      </div>
+
+                                      {/* Apply Button */}
+                                      <button
+                                        onClick={handleApplySlabStageUpdate}
+                                        className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold text-xs shadow-sm transition flex items-center gap-1 ml-auto"
+                                      >
+                                        <Check className="w-3.5 h-3.5" />
+                                        <span>Record / Update Stage</span>
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* DEDICATED SLAB CULVERT TABLE */}
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-xs text-left border-collapse">
+                                  <thead>
+                                    <tr className="bg-slate-200 text-slate-800 font-bold text-[10px] uppercase tracking-wide border-b border-slate-300">
+                                      {isBulkEditMode && <th className="p-2 text-center border-r border-slate-300 print:hidden w-8">✓</th>}
+                                      <th className="p-2 border-r border-slate-300 w-44 text-center bg-slate-100">Slab Culvert Location</th>
+                                      <th className="p-2 border-r border-slate-300 w-44 text-center bg-indigo-100/80 text-indigo-950 font-bold">
+                                        Selected Stage (Today)
+                                      </th>
+                                      <th className="p-2 border-r border-slate-300 w-24 text-center">Excavation & Footing</th>
+                                      <th className="p-2 border-r border-slate-300 w-20 text-center">Abutment Walls</th>
+                                      <th className="p-2 border-r border-slate-300 w-20 text-center">RC Deck Slab</th>
+                                      <th className="p-2 border-r border-slate-300 w-24 text-center">Wingwalls & Parapet</th>
+                                      <th className="p-2 border-r border-slate-300 w-20 text-center">Bed Pitching</th>
+                                      <th className="p-2 border-r border-slate-300 w-20 text-center">Backfill</th>
+                                      <th className="p-2 border-r border-slate-300 w-16 text-center text-slate-600">Previous</th>
+                                      <th className="p-2 border-r border-slate-300 w-16 text-center text-indigo-700">Daily Progress</th>
+                                      <th className="p-2 border-r border-slate-300 w-16 text-center text-rose-700">To Date</th>
+                                      <th className="p-2 border-r border-slate-300 w-20 text-center">Daily Executed (km)</th>
+                                      {!isReadonly && <th className="p-2 text-center w-14 print:hidden">Action</th>}
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-100">
+                                    {slabActivities.length > 0 ? (
+                                      slabActivities.map(act => {
+                                        const loc = act.slabCulvertLocation || act.startStationKm || 'Km 197+200';
+                                        const activeStage = act.slabCulvertSelectedStage || 'Excavation & Footing';
+                                        const exc = act.slabExcavationPct ?? 100;
+                                        const abt = act.slabAbutmentPct ?? 100;
+                                        const dck = act.slabDeckPct ?? 100;
+                                        const wng = act.slabWingwallsPct ?? 100;
+                                        const ptc = act.slabPitchingPct ?? 100;
+                                        const bck = act.slabBackfillPct ?? 100;
+                                        const toDateCalculated = Math.round((exc + abt + dck + wng + ptc + bck) / 6);
+                                        const toDateVal = act.pipeToDatePct !== undefined ? act.pipeToDatePct : toDateCalculated;
+
+                                        return (
+                                          <tr key={act.id} className="hover:bg-indigo-50/30 transition border-b border-slate-200 text-xs text-slate-800">
+                                            {isBulkEditMode && (
+                                              <td className="p-1.5 text-center border-r border-slate-200 print:hidden">
+                                                <input
+                                                  type="checkbox"
+                                                  checked={selectedRowIds.includes(act.id)}
+                                                  onChange={() => handleToggleSelectRow(act.id)}
+                                                  className="rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                                />
+                                              </td>
+                                            )}
+
+                                            {/* Location */}
+                                            <td className="p-1.5 border-r border-slate-200 font-semibold text-slate-900 bg-slate-50/50">
+                                              <input
+                                                value={act.slabCulvertLocation || loc}
+                                                onChange={e => handleCellUpdate(act.id, 'slabCulvertLocation', e.target.value)}
+                                                className="w-full bg-transparent font-medium text-slate-900 outline-none hover:bg-white focus:bg-white rounded px-1 transition"
+                                              />
+                                            </td>
+
+                                            {/* Selected Stage (Today) Dropdown */}
+                                            <td className="p-1 border-r border-slate-200 bg-indigo-50/60 text-center">
+                                              <select
+                                                value={activeStage}
+                                                onChange={e => {
+                                                  const newStg = e.target.value as SlabCulvertStage;
+                                                  handleCellUpdate(act.id, 'slabCulvertSelectedStage', newStg);
+                                                }}
+                                                className="w-full bg-white border border-indigo-300 rounded px-1.5 py-0.5 text-[11px] font-bold text-indigo-900 shadow-xs cursor-pointer focus:outline-indigo-500"
+                                              >
+                                                {SLAB_CULVERT_STAGES.map(st => (
+                                                  <option key={st} value={st}>{st}</option>
+                                                ))}
+                                              </select>
+                                            </td>
+
+                                            {/* 1. Excavation & Footing */}
+                                            <td className={`p-1 border-r border-slate-200 text-center transition ${activeStage === 'Excavation & Footing' ? 'bg-indigo-100/70 ring-1 ring-indigo-300 font-bold' : ''}`}>
+                                              <input
+                                                type="number"
+                                                min="0"
+                                                max="100"
+                                                value={exc}
+                                                onChange={e => handleUpdateSlabStageCell(act.id, 'slabExcavationPct', parseFloat(e.target.value) || 0)}
+                                                className="w-12 text-center bg-transparent rounded font-bold text-slate-800 outline-none focus:bg-white"
+                                              />%
+                                            </td>
+
+                                            {/* 2. Abutment Walls */}
+                                            <td className={`p-1 border-r border-slate-200 text-center transition ${activeStage === 'Abutment Walls' ? 'bg-indigo-100/70 ring-1 ring-indigo-300 font-bold' : ''}`}>
+                                              <input
+                                                type="number"
+                                                min="0"
+                                                max="100"
+                                                value={abt}
+                                                onChange={e => handleUpdateSlabStageCell(act.id, 'slabAbutmentPct', parseFloat(e.target.value) || 0)}
+                                                className="w-12 text-center bg-transparent rounded font-bold text-slate-800 outline-none focus:bg-white"
+                                              />%
+                                            </td>
+
+                                            {/* 3. RC Deck Slab */}
+                                            <td className={`p-1 border-r border-slate-200 text-center transition ${activeStage === 'RC Deck Slab' ? 'bg-indigo-100/70 ring-1 ring-indigo-300 font-bold' : ''}`}>
+                                              <input
+                                                type="number"
+                                                min="0"
+                                                max="100"
+                                                value={dck}
+                                                onChange={e => handleUpdateSlabStageCell(act.id, 'slabDeckPct', parseFloat(e.target.value) || 0)}
+                                                className="w-12 text-center bg-transparent rounded font-bold text-slate-800 outline-none focus:bg-white"
+                                              />%
+                                            </td>
+
+                                            {/* 4. Wingwalls & Parapet */}
+                                            <td className={`p-1 border-r border-slate-200 text-center transition ${activeStage === 'Wingwalls & Parapet' ? 'bg-indigo-100/70 ring-1 ring-indigo-300 font-bold' : ''}`}>
+                                              <input
+                                                type="number"
+                                                min="0"
+                                                max="100"
+                                                value={wng}
+                                                onChange={e => handleUpdateSlabStageCell(act.id, 'slabWingwallsPct', parseFloat(e.target.value) || 0)}
+                                                className="w-12 text-center bg-transparent rounded font-bold text-slate-800 outline-none focus:bg-white"
+                                              />%
+                                            </td>
+
+                                            {/* 5. Bed Pitching */}
+                                            <td className={`p-1 border-r border-slate-200 text-center transition ${activeStage === 'Bed Pitching' ? 'bg-indigo-100/70 ring-1 ring-indigo-300 font-bold' : ''}`}>
+                                              <input
+                                                type="number"
+                                                min="0"
+                                                max="100"
+                                                value={ptc}
+                                                onChange={e => handleUpdateSlabStageCell(act.id, 'slabPitchingPct', parseFloat(e.target.value) || 0)}
+                                                className="w-12 text-center bg-transparent rounded font-bold text-slate-800 outline-none focus:bg-white"
+                                              />%
+                                            </td>
+
+                                            {/* 6. Backfill */}
+                                            <td className={`p-1 border-r border-slate-200 text-center transition ${activeStage === 'Backfill' ? 'bg-indigo-100/70 ring-1 ring-indigo-300 font-bold' : ''}`}>
+                                              <input
+                                                type="number"
+                                                min="0"
+                                                max="100"
+                                                value={bck}
+                                                onChange={e => handleUpdateSlabStageCell(act.id, 'slabBackfillPct', parseFloat(e.target.value) || 0)}
+                                                className="w-12 text-center bg-transparent rounded font-bold text-slate-800 outline-none focus:bg-white"
+                                              />%
+                                            </td>
+
+                                            {/* Previous */}
+                                            <td className="p-1 border-r border-slate-200 text-center text-slate-500 font-medium">
+                                              <input
+                                                type="number"
+                                                value={act.pipePreviousPct ?? 50}
+                                                onChange={e => handleCellUpdate(act.id, 'pipePreviousPct', parseFloat(e.target.value) || 0)}
+                                                className="w-12 text-center bg-transparent text-slate-500 font-medium outline-none"
+                                              />%
+                                            </td>
+
+                                            {/* Daily Progress */}
+                                            <td className="p-1 border-r border-slate-200 text-center text-indigo-700 font-bold">
+                                              <input
+                                                type="number"
+                                                step="0.1"
+                                                value={act.pipeDailyProgressPct ?? 0}
+                                                onChange={e => handleCellUpdate(act.id, 'pipeDailyProgressPct', parseFloat(e.target.value) || 0)}
+                                                className="w-12 text-center bg-transparent text-indigo-700 font-bold outline-none"
+                                              />%
+                                            </td>
+
+                                            {/* To Date */}
+                                            <td className="p-1 border-r border-slate-200 text-center text-rose-700 font-black bg-rose-50/30">
+                                              {toDateVal}%
+                                            </td>
+
+                                            {/* Daily Executed (km) */}
+                                            <td className="p-1 border-r border-slate-200 text-center font-mono font-bold text-slate-800">
+                                              <input
+                                                type="number"
+                                                step="0.005"
+                                                value={act.metricKm || ''}
+                                                onChange={e => handleCellUpdate(act.id, 'metricKm', parseFloat(e.target.value) || 0)}
+                                                placeholder="0.000"
+                                                className="w-14 text-center bg-transparent font-mono font-bold text-slate-900 outline-none"
+                                              />
+                                            </td>
+
+                                            {/* Delete Action */}
+                                            {!isReadonly && (
+                                              <td className="p-1 text-center print:hidden">
+                                                <button
+                                                  onClick={() => handleDeleteRow(act.id)}
+                                                  className="text-slate-400 hover:text-rose-600 p-1 rounded hover:bg-rose-50 transition"
+                                                  title="Delete this slab culvert row"
+                                                >
+                                                  <Trash2 className="w-3.5 h-3.5" />
+                                                </button>
+                                              </td>
+                                            )}
+                                          </tr>
+                                        );
+                                      })
+                                    ) : (
+                                      <tr>
+                                        <td colSpan={13} className="p-4 text-center text-slate-400 italic">
+                                          No slab culvert records for {slabFilterStage === 'ALL' ? 'this date' : `stage: ${slabFilterStage}`}. Use the bar above to record progress or click "Populate Standard Slab Culverts".
+                                        </td>
+                                      </tr>
+                                    )}
+
+                                    {/* Subtotal / Summary Row */}
+                                    {secActivities.length > 0 && (
+                                      <tr className="bg-slate-100 font-bold text-[10px] text-slate-900 border-b-2 border-slate-300">
+                                        {isBulkEditMode && <td className="p-1.5 border-r border-slate-200 print:hidden"></td>}
+                                        <td className="p-1.5 border-r border-slate-300 text-center uppercase tracking-wider text-slate-600 font-bold">
+                                          Total ({secActivities.length} Structures)
+                                        </td>
+                                        <td className="p-1.5 border-r border-slate-300 text-center text-slate-500 font-normal">
+                                          Averages:
+                                        </td>
+                                        <td className="p-1.5 border-r border-slate-300 text-center font-bold text-slate-700">{avgExc}%</td>
+                                        <td className="p-1.5 border-r border-slate-300 text-center font-bold text-slate-700">{avgAbt}%</td>
+                                        <td className="p-1.5 border-r border-slate-300 text-center font-bold text-slate-700">{avgDck}%</td>
+                                        <td className="p-1.5 border-r border-slate-300 text-center font-bold text-slate-700">{avgWng}%</td>
+                                        <td className="p-1.5 border-r border-slate-300 text-center font-bold text-slate-700">{avgPtc}%</td>
+                                        <td className="p-1.5 border-r border-slate-300 text-center font-bold text-slate-700">{avgBck}%</td>
+                                        <td className="p-1.5 border-r border-slate-300 text-center text-slate-500 font-semibold">{avgToDate}%</td>
+                                        <td className="p-1.5 border-r border-slate-300 text-center text-indigo-700 font-bold">0.00%</td>
+                                        <td className="p-1.5 border-r border-slate-300 text-center text-rose-700 font-black">{avgToDate}%</td>
+                                        <td className="p-1.5 border-r border-slate-300 text-center font-mono font-bold text-slate-900">
+                                          {totalKm.toFixed(3)} km
+                                        </td>
+                                        {!isReadonly && (
+                                          <td className="p-1.5 text-center print:hidden">
+                                            <button
+                                              onClick={() => handleClearSectionEntries(sec.id)}
+                                              className="text-[10px] text-rose-500 hover:text-rose-700 font-normal underline"
+                                            >
+                                              Clear
+                                            </button>
+                                          </td>
+                                        )}
+                                      </tr>
+                                    )}
+                                  </tbody>
+                                </table>
+                              </div>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    }
+
+                    // SPECIALIZED RENDERING FOR SECTION 17: BRIDGE CONSTRUCTION
+                    if (sec.id === '17' || (sec.id === '15' && (sec.name.toLowerCase().includes('bridge') || !sec.name.toLowerCase().includes('box'))) || (sec.name.toLowerCase().includes('bridge') && !sec.name.toLowerCase().includes('culvert'))) {
+                      const bridgeActivities = secActivities.filter(a => {
+                        if (bridgeFilterStage === 'ALL') return true;
+                        return a.bridgeSelectedStage === bridgeFilterStage;
+                      });
+
+                      const count = secActivities.length;
+                      const avgFnd = count > 0 ? (secActivities.reduce((acc, a) => acc + (a.bridgeFoundationPct ?? 100), 0) / count).toFixed(1) : '0.0';
+                      const avgAbt = count > 0 ? (secActivities.reduce((acc, a) => acc + (a.bridgeAbutmentPct ?? 100), 0) / count).toFixed(1) : '0.0';
+                      const avgPer = count > 0 ? (secActivities.reduce((acc, a) => acc + (a.bridgePierPct ?? 100), 0) / count).toFixed(1) : '0.0';
+                      const avgGdr = count > 0 ? (secActivities.reduce((acc, a) => acc + (a.bridgeGirderPct ?? 100), 0) / count).toFixed(1) : '0.0';
+                      const avgSlb = count > 0 ? (secActivities.reduce((acc, a) => acc + (a.bridgeSlabPct ?? 100), 0) / count).toFixed(1) : '0.0';
+                      const avgApp = count > 0 ? (secActivities.reduce((acc, a) => acc + (a.bridgeApproachPct ?? 100), 0) / count).toFixed(1) : '0.0';
+                      const avgToDate = count > 0 ? (secActivities.reduce((acc, a) => acc + (a.bridgeToDate ?? 100), 0) / count).toFixed(1) : '0.0';
+                      const totalKm = secActivities.reduce((acc, a) => acc + (Number(a.metricKm) || 0), 0);
+
+                      return (
+                        <tr key={`sec_bridge_${sec.id}`} className="border-b-2 border-slate-300">
+                          <td colSpan={isBulkEditMode ? 11 : 10} className="p-0">
+                            <div className="bg-white border-y-2 border-amber-600/30">
+                              
+                              {/* 17. Bridge Construction Header */}
+                              <div className="bg-gradient-to-r from-amber-950 via-slate-900 to-amber-950 text-white p-3 flex flex-wrap items-center justify-between gap-2 shadow-xs">
+                                <div className="flex items-center gap-2.5">
+                                  <span className="bg-amber-600 text-white text-[10px] uppercase px-2 py-0.5 rounded font-black tracking-wider shadow-xs">
+                                    Bridge Structures Sub-Register
+                                  </span>
+                                  <h4 className="text-sm font-black tracking-wide text-white flex items-center gap-1.5">
+                                    <span>17. Bridge Construction (Major Crossings & River Overpasses)</span>
+                                  </h4>
+                                  <span className="text-amber-200 text-xs font-normal">
+                                    ({secActivities.length} bridge structures active)
+                                  </span>
+                                </div>
+
+                                <div className="flex items-center gap-2 print:hidden">
+                                  {/* Hide/Show View Toggle */}
+                                  <button
+                                    onClick={() => toggleStructureVisibility('bridge')}
+                                    className="bg-amber-800/90 hover:bg-amber-700 text-amber-100 hover:text-white px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 border border-amber-600/60 shadow-xs transition"
+                                    title={hiddenStructureViews.bridge ? "Expand Bridge Construction View" : "Hide Bridge Construction View"}
+                                  >
+                                    {hiddenStructureViews.bridge ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                                    <span>{hiddenStructureViews.bridge ? "Show View" : "Hide View"}</span>
+                                    {hiddenStructureViews.bridge ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
+                                  </button>
+
+                                  {!isReadonly && (
+                                    <>
+                                      <button
+                                        onClick={() => handleAddRowAt(sec.id)}
+                                        className="bg-amber-600 hover:bg-amber-500 text-white px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 shadow-sm transition"
+                                        title="Add new bridge structure"
+                                      >
+                                        <Plus className="w-3.5 h-3.5" />
+                                        <span>+ Add Bridge</span>
+                                      </button>
+
+                                      <button
+                                        onClick={handlePopulateEraBridgeLocations}
+                                        className="bg-amber-800 hover:bg-amber-700 text-amber-100 hover:text-white px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1 border border-amber-700 transition"
+                                        title="Load standard ERA bridge structures"
+                                      >
+                                        <RotateCcw className="w-3 h-3 text-amber-300" />
+                                        <span>Populate Standard Bridges</span>
+                                      </button>
+
+                                      <button 
+                                        onClick={() => handleDeleteSection(sec.id)}
+                                        className="text-amber-300 hover:text-rose-300 p-1 rounded"
+                                        title="Delete Bridge Construction Section"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* If Hidden: Compact Collapsible Summary Bar */}
+                              {hiddenStructureViews.bridge ? (
+                                <div 
+                                  onClick={() => toggleStructureVisibility('bridge')}
+                                  className="bg-amber-50/70 hover:bg-amber-100/70 cursor-pointer p-3.5 transition flex flex-wrap items-center justify-between gap-3 border-b border-amber-200"
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                                    <span className="text-xs font-bold text-amber-950">
+                                      Bridge View Hidden ({secActivities.length} Structures)
+                                    </span>
+                                    <div className="flex items-center gap-2 text-xs text-slate-600">
+                                      <span className="bg-white border border-amber-200 px-2 py-0.5 rounded text-[11px] font-mono font-semibold text-amber-800">
+                                        Avg To-Date: {avgToDate}%
+                                      </span>
+                                      <span className="bg-white border border-amber-200 px-2 py-0.5 rounded text-[11px] font-mono font-semibold text-slate-800">
+                                        Total Extent: {totalKm.toFixed(3)} km
+                                      </span>
+                                      <span className="text-[11px] text-slate-500 hidden sm:inline">
+                                        [ Fnd: {avgFnd}% | Abt: {avgAbt}% | Pier: {avgPer}% | Girder: {avgGdr}% | Slab: {avgSlb}% | Approach: {avgApp}% ]
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <div className="text-xs text-amber-700 font-semibold flex items-center gap-1 print:hidden">
+                                    <Eye className="w-3.5 h-3.5" />
+                                    <span>Click to Expand Table</span>
+                                  </div>
+                                </div>
+                              ) : (
+                                <>
+                                  {/* STAGE SELECTION TOOLBAR FOR BRIDGES */}
+                                  <div className="bg-amber-50/70 border-b border-amber-200 p-3 print:hidden">
+                                <div className="bg-white border border-amber-200 rounded-xl p-3 shadow-xs space-y-2.5">
+                                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="w-2 h-2 rounded-full bg-amber-600 animate-pulse"></span>
+                                      <span className="text-xs font-bold text-slate-900">
+                                        Select Bridge Location & Specific Construction Stage:
+                                      </span>
+                                      <span className="text-[11px] text-amber-900 font-semibold">
+                                        [ Foundation, Abutment, Pier, Box girder / T-girder, Slab, Approach & Bearings ]
+                                      </span>
+                                    </div>
+
+                                    {/* Stage Filter Pills */}
+                                    <div className="flex items-center gap-1 text-[11px]">
+                                      <span className="text-slate-400 font-medium mr-1 flex items-center gap-1">
+                                        <Filter className="w-3 h-3" /> Filter:
+                                      </span>
+                                      <button
+                                        onClick={() => setBridgeFilterStage('ALL')}
+                                        className={`px-2 py-0.5 rounded font-medium transition ${bridgeFilterStage === 'ALL' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                      >
+                                        All ({secActivities.length})
+                                      </button>
+                                      {BRIDGE_CONSTRUCTION_STAGES.map(st => {
+                                        const stCount = secActivities.filter(a => a.bridgeSelectedStage === st).length;
+                                        return (
+                                          <button
+                                            key={st}
+                                            onClick={() => setBridgeFilterStage(st)}
+                                            className={`px-2 py-0.5 rounded font-medium transition ${bridgeFilterStage === st ? 'bg-amber-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                          >
+                                            {st} {stCount > 0 ? `(${stCount})` : ''}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+
+                                  {/* Quick Action Input Row */}
+                                  {!isReadonly && (
+                                    <div className="flex flex-wrap items-center gap-2.5 text-xs">
+                                      {/* Location Selector */}
+                                      <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-300 rounded-lg p-1.5">
+                                        <span className="text-[11px] font-bold text-slate-600 uppercase">Bridge Location:</span>
+                                        <select
+                                          value={selectedBridgeLocation}
+                                          onChange={e => {
+                                            setSelectedBridgeLocation(e.target.value);
+                                            setCustomBridgeLocation('');
+                                          }}
+                                          className="bg-transparent font-medium text-slate-900 outline-none text-xs cursor-pointer max-w-xs truncate"
+                                        >
+                                          {Array.from(new Set([...PRESET_BRIDGE_LOCATIONS, ...secActivities.map(a => a.bridgeLocation || a.startStationKm).filter(Boolean)])).map(loc => (
+                                            <option key={loc} value={loc}>{loc}</option>
+                                          ))}
+                                        </select>
+                                        <input
+                                          value={customBridgeLocation}
+                                          onChange={e => setCustomBridgeLocation(e.target.value)}
+                                          placeholder="or custom km..."
+                                          className="w-28 bg-white border border-slate-200 rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-amber-500"
+                                        />
+                                      </div>
+
+                                      {/* Stage Selector */}
+                                      <div className="flex items-center gap-1.5 bg-amber-50 border border-amber-300 rounded-lg p-1.5">
+                                        <span className="text-[11px] font-bold text-amber-900 uppercase">Stage:</span>
+                                        <select
+                                          value={selectedBridgeStage}
+                                          onChange={e => setSelectedBridgeStage(e.target.value as BridgeConstructionStage)}
+                                          className="bg-transparent font-bold text-amber-900 outline-none text-xs cursor-pointer"
+                                        >
+                                          {BRIDGE_CONSTRUCTION_STAGES.map(st => (
+                                            <option key={st} value={st}>{st}</option>
+                                          ))}
+                                        </select>
+                                      </div>
+
+                                      {/* Stage Progress % */}
+                                      <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-300 rounded-lg p-1.5">
+                                        <span className="text-[11px] font-bold text-slate-600 uppercase">Progress:</span>
+                                        <div className="flex items-center gap-1">
+                                          {[25, 50, 75, 90, 100].map(val => (
+                                            <button
+                                              key={val}
+                                              type="button"
+                                              onClick={() => setSelectedBridgeStagePct(val)}
+                                              className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition ${selectedBridgeStagePct === val ? 'bg-amber-600 text-white' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'}`}
+                                            >
+                                              {val}%
+                                            </button>
+                                          ))}
+                                        </div>
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          max="100"
+                                          value={selectedBridgeStagePct}
+                                          onChange={e => setSelectedBridgeStagePct(Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
+                                          className="w-12 text-center bg-white border border-slate-300 rounded px-1 py-0.5 font-bold text-amber-800 outline-none"
+                                        />
+                                        <span className="font-bold text-slate-600">%</span>
+                                      </div>
+
+                                      {/* Daily Executed (km) */}
+                                      <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-300 rounded-lg p-1.5">
+                                        <span className="text-[11px] font-bold text-slate-600 uppercase">Executed:</span>
+                                        <input
+                                          type="number"
+                                          step="0.005"
+                                          value={selectedBridgeStageKm}
+                                          onChange={e => setSelectedBridgeStageKm(parseFloat(e.target.value) || 0)}
+                                          placeholder="0.00"
+                                          className="w-16 text-center bg-white border border-slate-300 rounded px-1 py-0.5 font-bold text-slate-800 outline-none"
+                                        />
+                                        <span className="text-slate-500 text-[10px]">km</span>
+                                      </div>
+
+                                      {/* Apply Button */}
+                                      <button
+                                        onClick={handleApplyBridgeStageUpdate}
+                                        className="px-4 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold text-xs shadow-sm transition flex items-center gap-1 ml-auto"
+                                      >
+                                        <Check className="w-3.5 h-3.5" />
+                                        <span>Record / Update Stage</span>
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* DEDICATED BRIDGE TABLE */}
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-xs text-left border-collapse">
+                                  <thead>
+                                    <tr className="bg-slate-200 text-slate-800 font-bold text-[10px] uppercase tracking-wide border-b border-slate-300">
+                                      {isBulkEditMode && <th className="p-2 text-center border-r border-slate-300 print:hidden w-8">✓</th>}
+                                      <th className="p-2 border-r border-slate-300 w-48 text-center bg-slate-100">Bridge Location</th>
+                                      <th className="p-2 border-r border-slate-300 w-44 text-center bg-amber-100/80 text-amber-950 font-bold">
+                                        Selected Stage (Today)
+                                      </th>
+                                      <th className="p-2 border-r border-slate-300 w-20 text-center">Foundation</th>
+                                      <th className="p-2 border-r border-slate-300 w-20 text-center">Abutment</th>
+                                      <th className="p-2 border-r border-slate-300 w-20 text-center">Pier</th>
+                                      <th className="p-2 border-r border-slate-300 w-28 text-center">Box girder / T-girder</th>
+                                      <th className="p-2 border-r border-slate-300 w-20 text-center">Slab</th>
+                                      <th className="p-2 border-r border-slate-300 w-28 text-center">Approach & Bearings</th>
+                                      <th className="p-2 border-r border-slate-300 w-16 text-center text-slate-600">Previous</th>
+                                      <th className="p-2 border-r border-slate-300 w-16 text-center text-amber-700">Daily Progress</th>
+                                      <th className="p-2 border-r border-slate-300 w-16 text-center text-rose-700">To Date</th>
+                                      <th className="p-2 border-r border-slate-300 w-20 text-center">Daily Executed (km)</th>
+                                      {!isReadonly && <th className="p-2 text-center w-14 print:hidden">Action</th>}
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-100">
+                                    {bridgeActivities.length > 0 ? (
+                                      bridgeActivities.map(act => {
+                                        const loc = act.bridgeLocation || act.startStationKm || 'Bridge Structure';
+                                        const activeStage = act.bridgeSelectedStage || 'Foundation';
+                                        const fnd = act.bridgeFoundationPct ?? 100;
+                                        const abt = act.bridgeAbutmentPct ?? 100;
+                                        const per = act.bridgePierPct ?? 100;
+                                        const gdr = act.bridgeGirderPct ?? 100;
+                                        const slb = act.bridgeSlabPct ?? 100;
+                                        const app = act.bridgeApproachPct ?? 100;
+                                        const toDateCalculated = Math.round((fnd + abt + per + gdr + slb + app) / 6);
+                                        const toDateVal = act.bridgeToDate !== undefined ? act.bridgeToDate : toDateCalculated;
+
+                                        return (
+                                          <tr key={act.id} className="hover:bg-amber-50/30 transition border-b border-slate-200 text-xs text-slate-800">
+                                            {isBulkEditMode && (
+                                              <td className="p-1.5 text-center border-r border-slate-200 print:hidden">
+                                                <input
+                                                  type="checkbox"
+                                                  checked={selectedRowIds.includes(act.id)}
+                                                  onChange={() => handleToggleSelectRow(act.id)}
+                                                  className="rounded text-amber-600 focus:ring-amber-500 cursor-pointer"
+                                                />
+                                              </td>
+                                            )}
+
+                                            {/* Location */}
+                                            <td className="p-1.5 border-r border-slate-200 font-semibold text-slate-900 bg-slate-50/50">
+                                              <input
+                                                value={act.bridgeLocation || loc}
+                                                onChange={e => handleCellUpdate(act.id, 'bridgeLocation', e.target.value)}
+                                                className="w-full bg-transparent font-medium text-slate-900 outline-none hover:bg-white focus:bg-white rounded px-1 transition"
+                                              />
+                                            </td>
+
+                                            {/* Selected Stage (Today) Dropdown */}
+                                            <td className="p-1 border-r border-slate-200 bg-amber-50/60 text-center">
+                                              <select
+                                                value={activeStage}
+                                                onChange={e => {
+                                                  const newStg = e.target.value as BridgeConstructionStage;
+                                                  handleCellUpdate(act.id, 'bridgeSelectedStage', newStg);
+                                                }}
+                                                className="w-full bg-white border border-amber-300 rounded px-1.5 py-0.5 text-[11px] font-bold text-amber-900 shadow-xs cursor-pointer focus:outline-amber-500"
+                                              >
+                                                {BRIDGE_CONSTRUCTION_STAGES.map(st => (
+                                                  <option key={st} value={st}>{st}</option>
+                                                ))}
+                                              </select>
+                                            </td>
+
+                                            {/* 1. Foundation */}
+                                            <td className={`p-1 border-r border-slate-200 text-center transition ${activeStage === 'Foundation' ? 'bg-amber-100/70 ring-1 ring-amber-300 font-bold' : ''}`}>
+                                              <input
+                                                type="number"
+                                                min="0"
+                                                max="100"
+                                                value={fnd}
+                                                onChange={e => handleUpdateBridgeStageCell(act.id, 'bridgeFoundationPct', parseFloat(e.target.value) || 0)}
+                                                className="w-12 text-center bg-transparent rounded font-bold text-slate-800 outline-none focus:bg-white"
+                                              />%
+                                            </td>
+
+                                            {/* 2. Abutment */}
+                                            <td className={`p-1 border-r border-slate-200 text-center transition ${activeStage === 'Abutment' ? 'bg-amber-100/70 ring-1 ring-amber-300 font-bold' : ''}`}>
+                                              <input
+                                                type="number"
+                                                min="0"
+                                                max="100"
+                                                value={abt}
+                                                onChange={e => handleUpdateBridgeStageCell(act.id, 'bridgeAbutmentPct', parseFloat(e.target.value) || 0)}
+                                                className="w-12 text-center bg-transparent rounded font-bold text-slate-800 outline-none focus:bg-white"
+                                              />%
+                                            </td>
+
+                                            {/* 3. Pier */}
+                                            <td className={`p-1 border-r border-slate-200 text-center transition ${activeStage === 'Pier' ? 'bg-amber-100/70 ring-1 ring-amber-300 font-bold' : ''}`}>
+                                              <input
+                                                type="number"
+                                                min="0"
+                                                max="100"
+                                                value={per}
+                                                onChange={e => handleUpdateBridgeStageCell(act.id, 'bridgePierPct', parseFloat(e.target.value) || 0)}
+                                                className="w-12 text-center bg-transparent rounded font-bold text-slate-800 outline-none focus:bg-white"
+                                              />%
+                                            </td>
+
+                                            {/* 4. Box girder / T-girder */}
+                                            <td className={`p-1 border-r border-slate-200 text-center transition ${activeStage === 'Box girder / T-girder' ? 'bg-amber-100/70 ring-1 ring-amber-300 font-bold' : ''}`}>
+                                              <input
+                                                type="number"
+                                                min="0"
+                                                max="100"
+                                                value={gdr}
+                                                onChange={e => handleUpdateBridgeStageCell(act.id, 'bridgeGirderPct', parseFloat(e.target.value) || 0)}
+                                                className="w-12 text-center bg-transparent rounded font-bold text-slate-800 outline-none focus:bg-white"
+                                              />%
+                                            </td>
+
+                                            {/* 5. Slab */}
+                                            <td className={`p-1 border-r border-slate-200 text-center transition ${activeStage === 'Slab' ? 'bg-amber-100/70 ring-1 ring-amber-300 font-bold' : ''}`}>
+                                              <input
+                                                type="number"
+                                                min="0"
+                                                max="100"
+                                                value={slb}
+                                                onChange={e => handleUpdateBridgeStageCell(act.id, 'bridgeSlabPct', parseFloat(e.target.value) || 0)}
+                                                className="w-12 text-center bg-transparent rounded font-bold text-slate-800 outline-none focus:bg-white"
+                                              />%
+                                            </td>
+
+                                            {/* 6. Approach & Bearings */}
+                                            <td className={`p-1 border-r border-slate-200 text-center transition ${activeStage === 'Approach & Bearings' ? 'bg-amber-100/70 ring-1 ring-amber-300 font-bold' : ''}`}>
+                                              <input
+                                                type="number"
+                                                min="0"
+                                                max="100"
+                                                value={app}
+                                                onChange={e => handleUpdateBridgeStageCell(act.id, 'bridgeApproachPct', parseFloat(e.target.value) || 0)}
+                                                className="w-12 text-center bg-transparent rounded font-bold text-slate-800 outline-none focus:bg-white"
+                                              />%
+                                            </td>
+
+                                            {/* Previous */}
+                                            <td className="p-1 border-r border-slate-200 text-center text-slate-500 font-medium">
+                                              <input
+                                                type="number"
+                                                value={act.bridgePrevious ?? 60}
+                                                onChange={e => handleCellUpdate(act.id, 'bridgePrevious', parseFloat(e.target.value) || 0)}
+                                                className="w-12 text-center bg-transparent text-slate-500 font-medium outline-none"
+                                              />%
+                                            </td>
+
+                                            {/* Daily Progress */}
+                                            <td className="p-1 border-r border-slate-200 text-center text-amber-700 font-bold">
+                                              <input
+                                                type="number"
+                                                step="0.1"
+                                                value={act.bridgeDailyProgress ?? 0}
+                                                onChange={e => handleCellUpdate(act.id, 'bridgeDailyProgress', parseFloat(e.target.value) || 0)}
+                                                className="w-12 text-center bg-transparent text-amber-700 font-bold outline-none"
+                                              />%
+                                            </td>
+
+                                            {/* To Date */}
+                                            <td className="p-1 border-r border-slate-200 text-center text-rose-700 font-black bg-rose-50/30">
+                                              {toDateVal}%
+                                            </td>
+
+                                            {/* Daily Executed (km) */}
+                                            <td className="p-1 border-r border-slate-200 text-center font-mono font-bold text-slate-800">
+                                              <input
+                                                type="number"
+                                                step="0.005"
+                                                value={act.metricKm || ''}
+                                                onChange={e => handleCellUpdate(act.id, 'metricKm', parseFloat(e.target.value) || 0)}
+                                                placeholder="0.000"
+                                                className="w-14 text-center bg-transparent font-mono font-bold text-slate-900 outline-none"
+                                              />
+                                            </td>
+
+                                            {/* Delete Action */}
+                                            {!isReadonly && (
+                                              <td className="p-1 text-center print:hidden">
+                                                <button
+                                                  onClick={() => handleDeleteRow(act.id)}
+                                                  className="text-slate-400 hover:text-rose-600 p-1 rounded hover:bg-rose-50 transition"
+                                                  title="Delete this bridge row"
+                                                >
+                                                  <Trash2 className="w-3.5 h-3.5" />
+                                                </button>
+                                              </td>
+                                            )}
+                                          </tr>
+                                        );
+                                      })
+                                    ) : (
+                                      <tr>
+                                        <td colSpan={13} className="p-4 text-center text-slate-400 italic">
+                                          No bridge records for {bridgeFilterStage === 'ALL' ? 'this date' : `stage: ${bridgeFilterStage}`}. Use the bar above to record progress or click "Populate Standard Bridges".
+                                        </td>
+                                      </tr>
+                                    )}
+
+                                    {/* Subtotal / Summary Row */}
+                                    {secActivities.length > 0 && (
+                                      <tr className="bg-slate-100 font-bold text-[10px] text-slate-900 border-b-2 border-slate-300">
+                                        {isBulkEditMode && <td className="p-1.5 border-r border-slate-200 print:hidden"></td>}
+                                        <td className="p-1.5 border-r border-slate-300 text-center uppercase tracking-wider text-slate-600 font-bold">
+                                          Total ({secActivities.length} Structures)
+                                        </td>
+                                        <td className="p-1.5 border-r border-slate-300 text-center text-slate-500 font-normal">
+                                          Averages:
+                                        </td>
+                                        <td className="p-1.5 border-r border-slate-300 text-center font-bold text-slate-700">{avgFnd}%</td>
+                                        <td className="p-1.5 border-r border-slate-300 text-center font-bold text-slate-700">{avgAbt}%</td>
+                                        <td className="p-1.5 border-r border-slate-300 text-center font-bold text-slate-700">{avgPer}%</td>
+                                        <td className="p-1.5 border-r border-slate-300 text-center font-bold text-slate-700">{avgGdr}%</td>
+                                        <td className="p-1.5 border-r border-slate-300 text-center font-bold text-slate-700">{avgSlb}%</td>
+                                        <td className="p-1.5 border-r border-slate-300 text-center font-bold text-slate-700">{avgApp}%</td>
+                                        <td className="p-1.5 border-r border-slate-300 text-center text-slate-500 font-semibold">{avgToDate}%</td>
+                                        <td className="p-1.5 border-r border-slate-300 text-center text-amber-700 font-bold">0.00%</td>
+                                        <td className="p-1.5 border-r border-slate-300 text-center text-rose-700 font-black">{avgToDate}%</td>
+                                        <td className="p-1.5 border-r border-slate-300 text-center font-mono font-bold text-slate-900">
+                                          {totalKm.toFixed(3)} km
+                                        </td>
+                                        {!isReadonly && (
+                                          <td className="p-1.5 text-center print:hidden">
+                                            <button
+                                              onClick={() => handleClearSectionEntries(sec.id)}
+                                              className="text-[10px] text-rose-500 hover:text-rose-700 font-normal underline"
+                                            >
+                                              Clear
+                                            </button>
+                                          </td>
+                                        )}
+                                      </tr>
+                                    )}
+                                  </tbody>
+                                </table>
+                              </div>
+                                </>
+                              )}
                             </div>
                           </td>
                         </tr>
