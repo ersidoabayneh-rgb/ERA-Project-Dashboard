@@ -54,8 +54,8 @@ input:disabled, select:disabled {
 
 /* Printable Document Layout & PDF Export Standards */
 @page {
-  size: portrait !important;
-  margin: 0.5in !important;
+  size: A4 portrait !important;
+  margin: 0.4in !important;
 }
 
 /* Global Report Table Print & PDF Helpers */
@@ -281,15 +281,19 @@ td.col-firm,
     box-sizing: border-box !important;
   }
 
-  /* Automatic content-adaptive table row height and font-size reduction for dense / multi-column tables */
+  /* Automatic content-adaptive table row height, font-size reduction, and shrink-to-fit scaling for dense / multi-column tables */
   table:has(th:nth-child(6)),
   table:has(th:nth-child(7)),
   table:has(th:nth-child(8)),
   table:has(th:nth-child(9)),
   table:has(th:nth-child(10)),
   table:has(th:nth-child(11)),
-  table:has(th:nth-child(12)) {
-    font-size: 7.5pt !important;
+  table:has(th:nth-child(12)),
+  table:has(th:nth-child(13)) {
+    font-size: 6.8pt !important;
+    transform: scale(0.96) !important;
+    transform-origin: top left !important;
+    width: 104% !important; /* Compensate slightly for scale */
   }
 
   table:has(th:nth-child(6)) td, table:has(th:nth-child(6)) th,
@@ -298,10 +302,11 @@ td.col-firm,
   table:has(th:nth-child(9)) td, table:has(th:nth-child(9)) th,
   table:has(th:nth-child(10)) td, table:has(th:nth-child(10)) th,
   table:has(th:nth-child(11)) td, table:has(th:nth-child(11)) th,
-  table:has(th:nth-child(12)) td, table:has(th:nth-child(12)) th {
-    font-size: 7pt !important;
-    padding: 2.5px 3.5px !important;
-    line-height: 1.12 !important;
+  table:has(th:nth-child(12)) td, table:has(th:nth-child(12)) th,
+  table:has(th:nth-child(13)) td, table:has(th:nth-child(13)) th {
+    font-size: 6.5pt !important;
+    padding: 2px 3px !important;
+    line-height: 1.1 !important;
   }
 
   /* Ensure inner text elements in cells wrap without warping */

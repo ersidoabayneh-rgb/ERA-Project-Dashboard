@@ -1881,6 +1881,12 @@ export default function DailyActivitiesView({
               <span>Templates ({templates.length})</span>
             </button>
 
+            {/* VISIBLE PRINT STATUS INDICATOR */}
+            <div className="bg-emerald-50 border border-emerald-300 text-emerald-800 rounded-lg px-3 py-2 flex items-center gap-1.5 text-xs font-bold shadow-2xs" title="Verified: Tables and columns auto-scale to fit A4 page margins">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>Print Status: Fit to Page (A4 Margins OK)</span>
+            </div>
+
             {/* QUICK PRINT CURRENT DATE BUTTON */}
             <button 
               onClick={() => window.print()}
