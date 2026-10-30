@@ -41,6 +41,7 @@ import jsPDF from 'jspdf';
 import { drawEraLogo } from '../lib/pdfReportEngine';
 import { Project, SupervisionConsultantInfo, ConsultantInvoice, ConsultantPersonnel, ContractReimbursableCondition1 } from '../types';
 import { DEFAULT_CONDITION_1_STAFF } from '../data/defaultContractAmount';
+import { numberToWords } from '../lib/numberToWords';
 
 export interface EditableStaffRow {
   id: string;
@@ -5870,6 +5871,9 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                         </div>
                       </div>
                       <span className="text-[10px] text-purple-600/80 block font-mono">Linked to Contract Table 1 Item D</span>
+                      <div className="mt-1 text-[11px] font-semibold text-purple-900 dark:text-purple-200 bg-purple-100/70 dark:bg-purple-900/50 p-1.5 rounded-lg border border-purple-200 dark:border-purple-800">
+                        <span className="font-bold">VAT Amount in Words:</span> {numberToWords(vatThisInvoice)}
+                      </div>
                     </td>
                     <td className="py-2.5 px-4 text-right font-mono text-purple-700 dark:text-purple-300">{fmt(vatContract)}</td>
                     {isUsdModeActive && <td className="py-2.5 px-4 text-right font-mono text-purple-700 dark:text-purple-300 bg-purple-50/20">${fmt(vatContractUsd)}</td>}
@@ -6051,9 +6055,12 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                             </span>
                           )}
                         </div>
-                        <span className="text-[11px] text-emerald-800 dark:text-emerald-300 font-normal">
+                        <span className="text-[11px] text-emerald-800 dark:text-emerald-300 font-normal block">
                           Official ERA Net Payment Certificate: Gross Invoice Claim minus 15% VAT, minus contractual deductions, plus overtime.
                         </span>
+                        <div className="mt-1 text-[11px] font-semibold text-emerald-900 dark:text-emerald-200 bg-emerald-200/60 dark:bg-emerald-900/60 p-1.5 rounded-lg border border-emerald-300 dark:border-emerald-700">
+                          <span className="font-bold">Net Payable Amount in Words:</span> {numberToWords(netDueThisInvoice)}
+                        </div>
                       </div>
                     </td>
                     <td className="py-3.5 px-4 text-right font-mono text-slate-700 dark:text-slate-300 font-bold">{fmt(contractNetAmount)}</td>

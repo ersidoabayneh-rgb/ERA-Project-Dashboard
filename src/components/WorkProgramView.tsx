@@ -31,6 +31,7 @@ import CPMChart from './CPMChart';
 import { parseWorkProgramFile, calculateCPM, ParseResult } from '../lib/mppParser';
 import { extractFileForMapping, RawFilePreview, ColumnMappingConfig } from '../lib/columnMapper';
 import { ColumnMappingModal } from './ColumnMappingModal';
+import { generateCpmPdfReport } from '../lib/cpmPdfGenerator';
 
 interface UploadedScheduleMeta {
   fileName: string;
@@ -518,14 +519,24 @@ export default function WorkProgramView({ project, onUpdateActivities }: WorkPro
           </button>
 
           {activities.length > 0 && (
-            <button
-              onClick={handleExportCsv}
-              className="bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-250 text-xs font-bold py-1.5 px-3 rounded-xl flex items-center gap-1.5 transition"
-              title="Export schedule to CSV format"
-            >
-              <Download className="w-3.5 h-3.5 text-slate-500" />
-              Export CSV
-            </button>
+            <>
+              <button
+                onClick={() => generateCpmPdfReport(project, activities)}
+                className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold py-1.5 px-3 rounded-xl flex items-center gap-1.5 transition shadow-xs"
+                title="Export Critical Path Method diagram, activity table, and CPM logic to PDF"
+              >
+                <Download className="w-3.5 h-3.5" />
+                Export CPM PDF
+              </button>
+              <button
+                onClick={handleExportCsv}
+                className="bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-250 text-xs font-bold py-1.5 px-3 rounded-xl flex items-center gap-1.5 transition"
+                title="Export schedule to CSV format"
+              >
+                <Download className="w-3.5 h-3.5 text-slate-500" />
+                Export CSV
+              </button>
+            </>
           )}
 
           <button

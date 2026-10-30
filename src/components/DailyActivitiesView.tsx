@@ -7,7 +7,7 @@ import {
   Check, Printer, RotateCcw, Layers, Filter, CheckCircle2, FileText
 } from 'lucide-react';
 import {
-  Project, DailyActivityRecord, User, DailyProductionItem
+  Project, DailyActivityRecord, User, DailyProductionItem, QtyItem
 } from '../types';
 
 interface DailyActivitiesViewProps {
@@ -222,6 +222,70 @@ export function formatDisplayDate(dateStr: string): string {
   } catch {
     return dateStr;
   }
+}
+
+export interface BoqVarianceInfo {
+  hasBoq: boolean;
+  boqItemName?: string;
+  boqDesignQty?: number;
+  boqUnit?: string;
+  exceedsVariance: boolean;
+  variancePct: number;
+  warningMessage?: string;
+}
+
+export function checkBoqQuantityVariance(
+  activityType: string,
+  activityName: string,
+  enteredQty: number,
+  quantities?: QtyItem[]
+): BoqVarianceInfo {
+  if (!quantities || quantities.length === 0 || !enteredQty || enteredQty <= 0) {
+    return { hasBoq: false, exceedsVariance: false, variancePct: 0 };
+  }
+
+  const matched = quantities.find(q => {
+    const qName = q.name.toLowerCase();
+    const aType = activityType.toLowerCase();
+    const aName = (activityName || '').toLowerCase();
+
+    if (aType === '1' || aName.includes('clearing')) return qName.includes('clearing') || qName.includes('site clearing');
+    if (aType === '2' || aName.includes('road bed')) return qName.includes('excavation') || qName.includes('earthwork');
+    if (aType === '3.1' || aName.includes('undercut excavation')) return qName.includes('common excavation') || qName.includes('rock excavation');
+    if (aType === '3.2' || aType === '5' || aName.includes('embankment') || aName.includes('fill')) return qName.includes('embankment') || qName.includes('fill');
+    if (aType === '4' || aName.includes('cut to spoil')) return qName.includes('common excavation') || qName.includes('rock excavation');
+    if (aType === '6' || aName.includes('capping')) return qName.includes('capping');
+    if (aType === '7' || aName.includes('subgrade')) return qName.includes('subgrade') || qName.includes('common excavation');
+    if (aType === '8' || aName.includes('sub-base') || aName.includes('subbase')) return qName.includes('sub base') || qName.includes('sub-base') || qName.includes('subbase');
+    if (aType === '9' || aName.includes('base course') || aName.includes('basecourse')) return qName.includes('base course') || qName.includes('basecourse');
+    if (aType === '10' || aName.includes('prime')) return qName.includes('prime');
+    if (aType === '11' || aName.includes('ac') || aName.includes('asphalt')) return qName.includes('asphalt');
+    if (aType === '14' || aName.includes('pipe')) return qName.includes('pipe culvert') || qName.includes('pipe');
+    if (aType === '15' || aName.includes('box culvert')) return qName.includes('box culvert');
+    if (aType === '16' || aName.includes('slab culvert')) return qName.includes('slab culvert');
+    if (aType === '17' || aName.includes('bridge')) return qName.includes('bridge');
+    if (aType === '18' || aName.includes('ditch')) return qName.includes('retaining wall') || qName.includes('drainage') || qName.includes('ditch');
+    return qName.includes(aName) || aName.includes(qName);
+  });
+
+  if (!matched || !matched.design || matched.design <= 0) {
+    return { hasBoq: false, exceedsVariance: false, variancePct: 0 };
+  }
+
+  const variancePct = ((enteredQty - matched.design) / matched.design) * 100;
+  const exceedsVariance = variancePct > 20;
+
+  return {
+    hasBoq: true,
+    boqItemName: matched.name,
+    boqDesignQty: matched.design,
+    boqUnit: matched.unit || '',
+    exceedsVariance,
+    variancePct: Number(variancePct.toFixed(1)),
+    warningMessage: exceedsVariance
+      ? `Actual Quantity (${enteredQty}) exceeds BOQ Quantity (${matched.design} ${matched.unit || ''}) by ${variancePct.toFixed(1)}% (exceeds allowable 20% variance threshold).`
+      : undefined
+  };
 }
 
 export const WORK_SECTIONS: WorkRegisterSectionDef[] = [
@@ -592,6 +656,23 @@ export default function DailyActivitiesView({
     };
   }, [equipmentFleet, currentActivities, productionList]);
 
+  // Check activities exceeding BOQ quantity threshold (> 20% variance)
+  const activitiesExceedingBoq = useMemo(() => {
+    if (!project.quantities || project.quantities.length === 0) return [];
+    return currentActivities.map(act => {
+      const secTarget = sections.find(s => s.id === act.activityType);
+      const secName = secTarget?.name || act.activityName || '';
+      const qty = Number(act.quantityExecuted ?? act.metricKm ?? act.metricM3 ?? act.pcsThisDay ?? 0);
+      const boqInfo = checkBoqQuantityVariance(act.activityType, secName, qty, project.quantities);
+      return {
+        act,
+        secName,
+        qty,
+        boqInfo
+      };
+    }).filter(item => item.boqInfo.exceedsVariance);
+  }, [currentActivities, sections, project.quantities]);
+
   // Available Standard 16 Activities not currently in the active sections list
   const removedStandardSections = useMemo(() => {
     const activeIds = new Set(sections.map(s => s.id));
@@ -769,8 +850,13 @@ export default function DailyActivitiesView({
       const paw = existing.pipePavedWaterwayPct ?? 100;
       const ins = existing.pipeInstallationPct ?? 100;
       const bck = existing.pipeBackfillPct ?? 100;
-      existing.pipeToDatePct = Math.round((exc + mas + paw + ins + bck) / 5);
-      if (selectedPipeStageKm > 0) existing.metricKm = selectedPipeStageKm;
+      existing.pipeToDatePct = Math.round((exc * 0.20) + (mas * 0.20) + (paw * 0.20) + (ins * 0.20) + (bck * 0.20));
+      const toDateNo = existing.pipeToDatePct / 100;
+      const prevNo = (existing.pipePreviousPct ?? 0) / 100;
+      existing.quantityExecuted = Math.max(0, Number((toDateNo - prevNo).toFixed(3)));
+      existing.pipeDailyProgressPct = Math.max(0, existing.pipeToDatePct - (existing.pipePreviousPct ?? 0));
+      existing.metricKm = existing.quantityExecuted;
+      existing.unit = 'No.';
       existing.updatedAt = new Date().toISOString();
       updatedList[existingIdx] = existing;
     } else {
@@ -792,8 +878,9 @@ export default function DailyActivitiesView({
         pipeDailyProgressPct: 0,
         pipeToDatePct: selectedPipeStagePct,
         side: 'BHS',
-        unit: '%',
-        metricKm: selectedPipeStageKm,
+        unit: 'No.',
+        metricKm: 0,
+        quantityExecuted: 0,
         qcStatus: 'Approved',
         status: 'Draft',
         weatherCondition: weather,
@@ -805,7 +892,12 @@ export default function DailyActivitiesView({
       const paw = newAct.pipePavedWaterwayPct ?? 100;
       const ins = newAct.pipeInstallationPct ?? 100;
       const bck = newAct.pipeBackfillPct ?? 100;
-      newAct.pipeToDatePct = Math.round((exc + mas + paw + ins + bck) / 5);
+      newAct.pipeToDatePct = Math.round((exc * 0.20) + (mas * 0.20) + (paw * 0.20) + (ins * 0.20) + (bck * 0.20));
+      const toDateNo = newAct.pipeToDatePct / 100;
+      const prevNo = (newAct.pipePreviousPct ?? 0) / 100;
+      newAct.quantityExecuted = Math.max(0, Number((toDateNo - prevNo).toFixed(3)));
+      newAct.metricKm = newAct.quantityExecuted;
+      newAct.pipeDailyProgressPct = Math.max(0, newAct.pipeToDatePct - (newAct.pipePreviousPct ?? 0));
       updatedList.push(newAct);
     }
 
@@ -835,6 +927,7 @@ export default function DailyActivitiesView({
       pipeDailyProgressPct: item.pipeDailyProgressPct,
       pipeToDatePct: item.pipeToDatePct,
       metricKm: item.metricKm || 0,
+      quantityExecuted: item.metricKm || 0,
       side: 'BHS',
       unit: 'No.',
       qcStatus: 'Approved',
@@ -851,13 +944,18 @@ export default function DailyActivitiesView({
   const handleUpdatePipeStageCell = (actId: string, stageField: keyof DailyActivityRecord, value: number) => {
     const updated = activities.map(a => {
       if (a.id === actId) {
-        const copy = { ...a, [stageField]: value, updatedAt: new Date().toISOString() };
+        const copy = { ...a, [stageField]: value, unit: 'No.', updatedAt: new Date().toISOString() };
         const exc = stageField === 'pipeExcavationPct' ? value : (copy.pipeExcavationPct ?? 100);
         const mas = stageField === 'pipeMasonryPct' ? value : (copy.pipeMasonryPct ?? 100);
         const paw = stageField === 'pipePavedWaterwayPct' ? value : (copy.pipePavedWaterwayPct ?? 100);
         const ins = stageField === 'pipeInstallationPct' ? value : (copy.pipeInstallationPct ?? 100);
         const bck = stageField === 'pipeBackfillPct' ? value : (copy.pipeBackfillPct ?? 100);
-        copy.pipeToDatePct = Math.round((exc + mas + paw + ins + bck) / 5);
+        copy.pipeToDatePct = Math.round((exc * 0.20) + (mas * 0.20) + (paw * 0.20) + (ins * 0.20) + (bck * 0.20));
+        const toDateNo = copy.pipeToDatePct / 100;
+        const prevNo = (copy.pipePreviousPct ?? 0) / 100;
+        copy.quantityExecuted = Math.max(0, Number((toDateNo - prevNo).toFixed(3)));
+        copy.pipeDailyProgressPct = Math.max(0, copy.pipeToDatePct - (copy.pipePreviousPct ?? 0));
+        copy.metricKm = copy.quantityExecuted;
         return copy;
       }
       return a;
@@ -896,7 +994,12 @@ export default function DailyActivitiesView({
       const slb = existing.bridgeSlabPct ?? 100;
       const app = existing.bridgeApproachPct ?? 100;
       existing.bridgeToDate = Math.round((fnd + abt + per + gdr + slb + app) / 6);
-      if (selectedBridgeStageKm > 0) existing.metricKm = selectedBridgeStageKm;
+      const toDateNo = existing.bridgeToDate / 100;
+      const prevNo = (existing.bridgePrevious ?? 0) / 100;
+      existing.quantityExecuted = Math.max(0, Number((toDateNo - prevNo).toFixed(3)));
+      existing.bridgeDailyProgress = existing.quantityExecuted;
+      existing.metricKm = existing.quantityExecuted;
+      existing.unit = 'No.';
       existing.updatedAt = new Date().toISOString();
       updatedList[existingIdx] = existing;
     } else {
@@ -916,11 +1019,12 @@ export default function DailyActivitiesView({
         bridgeSlabPct: selectedBridgeStage === 'Slab' ? selectedBridgeStagePct : 100,
         bridgeApproachPct: selectedBridgeStage === 'Approach & Bearings' ? selectedBridgeStagePct : 100,
         bridgePrevious: 60,
-        bridgeDailyProgress: 0.5,
+        bridgeDailyProgress: 0,
         bridgeToDate: selectedBridgeStagePct,
         side: 'BHS',
-        unit: '%',
-        metricKm: selectedBridgeStageKm,
+        unit: 'No.',
+        metricKm: 0,
+        quantityExecuted: 0,
         qcStatus: 'Approved',
         status: 'Draft',
         weatherCondition: weather,
@@ -934,6 +1038,11 @@ export default function DailyActivitiesView({
       const slb = newAct.bridgeSlabPct ?? 100;
       const app = newAct.bridgeApproachPct ?? 100;
       newAct.bridgeToDate = Math.round((fnd + abt + per + gdr + slb + app) / 6);
+      const toDateNo = newAct.bridgeToDate / 100;
+      const prevNo = (newAct.bridgePrevious ?? 0) / 100;
+      newAct.quantityExecuted = Math.max(0, Number((toDateNo - prevNo).toFixed(3)));
+      newAct.bridgeDailyProgress = newAct.quantityExecuted;
+      newAct.metricKm = newAct.quantityExecuted;
       updatedList.push(newAct);
     }
 
@@ -963,6 +1072,7 @@ export default function DailyActivitiesView({
       bridgeDailyProgress: item.bridgeDailyProgress,
       bridgeToDate: item.bridgeToDate,
       metricKm: item.metricKm || 0,
+      quantityExecuted: item.metricKm || 0,
       side: 'BHS',
       unit: 'No.',
       qcStatus: 'Approved',
@@ -978,7 +1088,7 @@ export default function DailyActivitiesView({
   const handleUpdateBridgeStageCell = (actId: string, stageField: keyof DailyActivityRecord, value: number) => {
     const updated = activities.map(a => {
       if (a.id === actId) {
-        const copy = { ...a, [stageField]: value, updatedAt: new Date().toISOString() };
+        const copy = { ...a, [stageField]: value, unit: 'No.', updatedAt: new Date().toISOString() };
         const fnd = stageField === 'bridgeFoundationPct' ? value : (copy.bridgeFoundationPct ?? 100);
         const abt = stageField === 'bridgeAbutmentPct' ? value : (copy.bridgeAbutmentPct ?? 100);
         const per = stageField === 'bridgePierPct' ? value : (copy.bridgePierPct ?? 100);
@@ -986,6 +1096,12 @@ export default function DailyActivitiesView({
         const slb = stageField === 'bridgeSlabPct' ? value : (copy.bridgeSlabPct ?? 100);
         const app = stageField === 'bridgeApproachPct' ? value : (copy.bridgeApproachPct ?? 100);
         copy.bridgeToDate = Math.round((fnd + abt + per + gdr + slb + app) / 6);
+        const toDateNo = copy.bridgeToDate / 100;
+        const prevNo = (copy.bridgePrevious ?? 0) / 100;
+        const dailyExecNo = Math.max(0, Number((toDateNo - prevNo).toFixed(3)));
+        copy.quantityExecuted = dailyExecNo;
+        copy.bridgeDailyProgress = dailyExecNo;
+        copy.metricKm = dailyExecNo;
         return copy;
       }
       return a;
@@ -1024,7 +1140,12 @@ export default function DailyActivitiesView({
       const wng = existing.boxWingwallsPct ?? 100;
       const bck = existing.boxBackfillPct ?? 100;
       existing.pipeToDatePct = Math.round((exc + btm + wll + top + wng + bck) / 6);
-      if (selectedBoxStageKm > 0) existing.metricKm = selectedBoxStageKm;
+      const toDateNo = existing.pipeToDatePct / 100;
+      const prevNo = (existing.pipePreviousPct ?? 0) / 100;
+      existing.quantityExecuted = Math.max(0, Number((toDateNo - prevNo).toFixed(3)));
+      existing.pipeDailyProgressPct = Math.max(0, existing.pipeToDatePct - (existing.pipePreviousPct ?? 0));
+      existing.metricKm = existing.quantityExecuted;
+      existing.unit = 'No.';
       existing.updatedAt = new Date().toISOString();
       updatedList[existingIdx] = existing;
     } else {
@@ -1047,8 +1168,9 @@ export default function DailyActivitiesView({
         pipeDailyProgressPct: 0,
         pipeToDatePct: selectedBoxStagePct,
         side: 'BHS',
-        unit: '%',
-        metricKm: selectedBoxStageKm,
+        unit: 'No.',
+        metricKm: 0,
+        quantityExecuted: 0,
         qcStatus: 'Approved',
         status: 'Draft',
         weatherCondition: weather,
@@ -1062,6 +1184,11 @@ export default function DailyActivitiesView({
       const wng = newAct.boxWingwallsPct ?? 100;
       const bck = newAct.boxBackfillPct ?? 100;
       newAct.pipeToDatePct = Math.round((exc + btm + wll + top + wng + bck) / 6);
+      const toDateNo = newAct.pipeToDatePct / 100;
+      const prevNo = (newAct.pipePreviousPct ?? 0) / 100;
+      newAct.quantityExecuted = Math.max(0, Number((toDateNo - prevNo).toFixed(3)));
+      newAct.pipeDailyProgressPct = Math.max(0, newAct.pipeToDatePct - (newAct.pipePreviousPct ?? 0));
+      newAct.metricKm = newAct.quantityExecuted;
       updatedList.push(newAct);
     }
 
@@ -1091,6 +1218,7 @@ export default function DailyActivitiesView({
       pipeDailyProgressPct: item.pipeDailyProgressPct,
       pipeToDatePct: item.pipeToDatePct,
       metricKm: item.metricKm || 0,
+      quantityExecuted: item.metricKm || 0,
       side: 'BHS',
       unit: 'No.',
       qcStatus: 'Approved',
@@ -1106,7 +1234,7 @@ export default function DailyActivitiesView({
   const handleUpdateBoxStageCell = (actId: string, stageField: keyof DailyActivityRecord, value: number) => {
     const updated = activities.map(a => {
       if (a.id === actId) {
-        const copy = { ...a, [stageField]: value, updatedAt: new Date().toISOString() };
+        const copy = { ...a, [stageField]: value, unit: 'No.', updatedAt: new Date().toISOString() };
         const exc = stageField === 'boxExcavationPct' ? value : (copy.boxExcavationPct ?? 100);
         const btm = stageField === 'boxBottomSlabPct' ? value : (copy.boxBottomSlabPct ?? 100);
         const wll = stageField === 'boxWallsPct' ? value : (copy.boxWallsPct ?? 100);
@@ -1114,6 +1242,12 @@ export default function DailyActivitiesView({
         const wng = stageField === 'boxWingwallsPct' ? value : (copy.boxWingwallsPct ?? 100);
         const bck = stageField === 'boxBackfillPct' ? value : (copy.boxBackfillPct ?? 100);
         copy.pipeToDatePct = Math.round((exc + btm + wll + top + wng + bck) / 6);
+        const toDateNo = copy.pipeToDatePct / 100;
+        const prevNo = (copy.pipePreviousPct ?? 0) / 100;
+        const dailyExecNo = Math.max(0, Number((toDateNo - prevNo).toFixed(3)));
+        copy.quantityExecuted = dailyExecNo;
+        copy.pipeDailyProgressPct = Math.max(0, copy.pipeToDatePct - (copy.pipePreviousPct ?? 0));
+        copy.metricKm = dailyExecNo;
         return copy;
       }
       return a;
@@ -1152,7 +1286,12 @@ export default function DailyActivitiesView({
       const ptc = existing.slabPitchingPct ?? 100;
       const bck = existing.slabBackfillPct ?? 100;
       existing.pipeToDatePct = Math.round((exc + abt + dck + wng + ptc + bck) / 6);
-      if (selectedSlabStageKm > 0) existing.metricKm = selectedSlabStageKm;
+      const toDateNo = existing.pipeToDatePct / 100;
+      const prevNo = (existing.pipePreviousPct ?? 0) / 100;
+      existing.quantityExecuted = Math.max(0, Number((toDateNo - prevNo).toFixed(3)));
+      existing.pipeDailyProgressPct = Math.max(0, existing.pipeToDatePct - (existing.pipePreviousPct ?? 0));
+      existing.metricKm = existing.quantityExecuted;
+      existing.unit = 'No.';
       existing.updatedAt = new Date().toISOString();
       updatedList[existingIdx] = existing;
     } else {
@@ -1175,8 +1314,9 @@ export default function DailyActivitiesView({
         pipeDailyProgressPct: 0,
         pipeToDatePct: selectedSlabStagePct,
         side: 'BHS',
-        unit: '%',
-        metricKm: selectedSlabStageKm,
+        unit: 'No.',
+        metricKm: 0,
+        quantityExecuted: 0,
         qcStatus: 'Approved',
         status: 'Draft',
         weatherCondition: weather,
@@ -1190,6 +1330,11 @@ export default function DailyActivitiesView({
       const ptc = newAct.slabPitchingPct ?? 100;
       const bck = newAct.slabBackfillPct ?? 100;
       newAct.pipeToDatePct = Math.round((exc + abt + dck + wng + ptc + bck) / 6);
+      const toDateNo = newAct.pipeToDatePct / 100;
+      const prevNo = (newAct.pipePreviousPct ?? 0) / 100;
+      newAct.quantityExecuted = Math.max(0, Number((toDateNo - prevNo).toFixed(3)));
+      newAct.pipeDailyProgressPct = Math.max(0, newAct.pipeToDatePct - (newAct.pipePreviousPct ?? 0));
+      newAct.metricKm = newAct.quantityExecuted;
       updatedList.push(newAct);
     }
 
@@ -1219,6 +1364,7 @@ export default function DailyActivitiesView({
       pipeDailyProgressPct: item.pipeDailyProgressPct,
       pipeToDatePct: item.pipeToDatePct,
       metricKm: item.metricKm || 0,
+      quantityExecuted: item.metricKm || 0,
       side: 'BHS',
       unit: 'No.',
       qcStatus: 'Approved',
@@ -1234,7 +1380,7 @@ export default function DailyActivitiesView({
   const handleUpdateSlabStageCell = (actId: string, stageField: keyof DailyActivityRecord, value: number) => {
     const updated = activities.map(a => {
       if (a.id === actId) {
-        const copy = { ...a, [stageField]: value, updatedAt: new Date().toISOString() };
+        const copy = { ...a, [stageField]: value, unit: 'No.', updatedAt: new Date().toISOString() };
         const exc = stageField === 'slabExcavationPct' ? value : (copy.slabExcavationPct ?? 100);
         const abt = stageField === 'slabAbutmentPct' ? value : (copy.slabAbutmentPct ?? 100);
         const dck = stageField === 'slabDeckPct' ? value : (copy.slabDeckPct ?? 100);
@@ -1242,6 +1388,12 @@ export default function DailyActivitiesView({
         const ptc = stageField === 'slabPitchingPct' ? value : (copy.slabPitchingPct ?? 100);
         const bck = stageField === 'slabBackfillPct' ? value : (copy.slabBackfillPct ?? 100);
         copy.pipeToDatePct = Math.round((exc + abt + dck + wng + ptc + bck) / 6);
+        const toDateNo = copy.pipeToDatePct / 100;
+        const prevNo = (copy.pipePreviousPct ?? 0) / 100;
+        const dailyExecNo = Math.max(0, Number((toDateNo - prevNo).toFixed(3)));
+        copy.quantityExecuted = dailyExecNo;
+        copy.pipeDailyProgressPct = Math.max(0, copy.pipeToDatePct - (copy.pipePreviousPct ?? 0));
+        copy.metricKm = dailyExecNo;
         return copy;
       }
       return a;
@@ -2175,6 +2327,31 @@ export default function DailyActivitiesView({
               </div>
             </div>
 
+            {/* BOQ Quantity Variance Warning Alert Banner */}
+            {activitiesExceedingBoq.length > 0 && (
+              <div className="bg-amber-50 border-b border-amber-300 px-4 py-2.5 flex items-start gap-2.5 text-xs text-amber-900 shadow-2xs">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div className="space-y-1 flex-1">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="font-black uppercase tracking-wide text-amber-950">
+                      BOQ Quantity Variance Warning ({activitiesExceedingBoq.length} item{activitiesExceedingBoq.length > 1 ? 's' : ''}):
+                    </span>
+                    <span className="text-[11px] text-amber-800">
+                      The entered actual quantity exceeds the project's Bill of Quantities (BOQ) design quantity by more than the allowable 20% variance threshold:
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {activitiesExceedingBoq.map((item, idx) => (
+                      <span key={idx} className="bg-white border border-amber-300 rounded px-2 py-0.5 font-mono text-[11px] text-amber-900 shadow-2xs">
+                        <strong>{item.secName || item.act.activityType}:</strong> Entered {item.qty} {item.act.unit || ''} vs BOQ {item.boqInfo.boqDesignQty} {item.boqInfo.boqUnit} (
+                        <span className="font-bold text-rose-700">+{item.boqInfo.variancePct}%</span>)
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Structure Views Hide / Show Visibility Bar */}
             <div className="bg-slate-50 border-b border-slate-200 px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-xs print:hidden">
               <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
@@ -2526,18 +2703,18 @@ export default function DailyActivitiesView({
                                         <span className="font-bold text-slate-600">%</span>
                                       </div>
 
-                                      {/* 4. Daily Executed (km) */}
+                                      {/* 4. Daily Executed (No.) */}
                                       <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-300 rounded-lg p-1.5">
                                         <span className="text-[11px] font-bold text-slate-600 uppercase">Executed:</span>
                                         <input
                                           type="number"
-                                          step="0.005"
+                                          step="0.01"
                                           value={selectedPipeStageKm}
                                           onChange={e => setSelectedPipeStageKm(parseFloat(e.target.value) || 0)}
                                           placeholder="0.00"
                                           className="w-16 text-center bg-white border border-slate-300 rounded px-1 py-0.5 font-bold text-slate-800 outline-none"
                                         />
-                                        <span className="text-slate-500 text-[10px]">km</span>
+                                        <span className="text-slate-500 text-[10px]">No.</span>
                                       </div>
 
                                       {/* Apply Button */}
@@ -2571,7 +2748,7 @@ export default function DailyActivitiesView({
                                       <th className="p-2 border-r border-slate-300 w-16 text-center text-slate-600">Previous</th>
                                       <th className="p-2 border-r border-slate-300 w-16 text-center text-blue-700">Daily Progress</th>
                                       <th className="p-2 border-r border-slate-300 w-16 text-center text-rose-700">To Date</th>
-                                      <th className="p-2 border-r border-slate-300 w-20 text-center">Daily Executed (km)</th>
+                                      <th className="p-2 border-r border-slate-300 w-24 text-center">Daily Executed (No.)</th>
                                       {!isReadonly && <th className="p-2 text-center w-14 print:hidden">Action</th>}
                                     </tr>
                                   </thead>
@@ -2735,14 +2912,18 @@ export default function DailyActivitiesView({
                                               <span>{toDateVal}%</span>
                                             </td>
 
-                                            {/* 11. Daily Executed (km) */}
+                                            {/* 11. Daily Executed (No.) */}
                                             <td className="p-1 border-r border-slate-200 text-center font-mono">
                                               <input
                                                 type="number"
-                                                step="0.005"
-                                                value={act.metricKm ?? 0}
-                                                onChange={e => handleCellUpdate(act.id, 'metricKm', parseFloat(e.target.value) || 0)}
-                                                className="w-14 text-center bg-transparent font-mono outline-none"
+                                                step="0.01"
+                                                value={act.quantityExecuted !== undefined ? act.quantityExecuted : (act.metricKm ?? 0)}
+                                                onChange={e => {
+                                                  const val = parseFloat(e.target.value) || 0;
+                                                  handleCellUpdate(act.id, 'quantityExecuted', val);
+                                                  handleCellUpdate(act.id, 'metricKm', val);
+                                                }}
+                                                className="w-14 text-center bg-transparent font-mono font-bold outline-none"
                                               />
                                             </td>
 
@@ -2806,7 +2987,7 @@ export default function DailyActivitiesView({
                                       <tr className="bg-slate-100 font-bold text-[10px] text-slate-900 border-b-2 border-slate-300">
                                         {isBulkEditMode && <td className="p-1.5 border-r border-slate-200 print:hidden"></td>}
                                         <td className="p-1.5 border-r border-slate-300 text-center uppercase tracking-wider text-slate-600 font-bold">
-                                          Total ({secActivities.length} Pcs)
+                                          Total ({secActivities.length} No.)
                                         </td>
                                         <td className="p-1.5 border-r border-slate-300 text-center text-slate-500 font-normal">
                                           Averages:
@@ -2820,7 +3001,7 @@ export default function DailyActivitiesView({
                                         <td className="p-1.5 border-r border-slate-300 text-center text-blue-700 font-bold">0.00%</td>
                                         <td className="p-1.5 border-r border-slate-300 text-center text-rose-700 font-black">{avgToDate}%</td>
                                         <td className="p-1.5 border-r border-slate-300 text-center font-mono font-bold text-slate-900">
-                                          {totalKm.toFixed(3)} km
+                                          {totalKm.toFixed(3)} No.
                                         </td>
                                         {!isReadonly && (
                                           <td className="p-1.5 text-center print:hidden">
@@ -3061,18 +3242,18 @@ export default function DailyActivitiesView({
                                         <span className="font-bold text-slate-600">%</span>
                                       </div>
 
-                                      {/* Daily Executed (km) */}
+                                      {/* Daily Executed (No.) */}
                                       <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-300 rounded-lg p-1.5">
                                         <span className="text-[11px] font-bold text-slate-600 uppercase">Executed:</span>
                                         <input
                                           type="number"
-                                          step="0.005"
+                                          step="0.01"
                                           value={selectedBoxStageKm}
                                           onChange={e => setSelectedBoxStageKm(parseFloat(e.target.value) || 0)}
                                           placeholder="0.00"
                                           className="w-16 text-center bg-white border border-slate-300 rounded px-1 py-0.5 font-bold text-slate-800 outline-none"
                                         />
-                                        <span className="text-slate-500 text-[10px]">km</span>
+                                        <span className="text-slate-500 text-[10px]">No.</span>
                                       </div>
 
                                       {/* Apply Button */}
@@ -3107,7 +3288,7 @@ export default function DailyActivitiesView({
                                       <th className="p-2 border-r border-slate-300 w-16 text-center text-slate-600">Previous</th>
                                       <th className="p-2 border-r border-slate-300 w-16 text-center text-emerald-700">Daily Progress</th>
                                       <th className="p-2 border-r border-slate-300 w-16 text-center text-rose-700">To Date</th>
-                                      <th className="p-2 border-r border-slate-300 w-20 text-center">Daily Executed (km)</th>
+                                      <th className="p-2 border-r border-slate-300 w-24 text-center">Daily Executed (No.)</th>
                                       {!isReadonly && <th className="p-2 text-center w-14 print:hidden">Action</th>}
                                     </tr>
                                   </thead>
@@ -3261,14 +3442,18 @@ export default function DailyActivitiesView({
                                               {toDateVal}%
                                             </td>
 
-                                            {/* Daily Executed (km) */}
+                                            {/* Daily Executed (No.) */}
                                             <td className="p-1 border-r border-slate-200 text-center font-mono font-bold text-slate-800">
                                               <input
                                                 type="number"
-                                                step="0.005"
-                                                value={act.metricKm || ''}
-                                                onChange={e => handleCellUpdate(act.id, 'metricKm', parseFloat(e.target.value) || 0)}
-                                                placeholder="0.000"
+                                                step="0.01"
+                                                value={act.quantityExecuted !== undefined ? act.quantityExecuted : (act.metricKm || '')}
+                                                onChange={e => {
+                                                  const val = parseFloat(e.target.value) || 0;
+                                                  handleCellUpdate(act.id, 'quantityExecuted', val);
+                                                  handleCellUpdate(act.id, 'metricKm', val);
+                                                }}
+                                                placeholder="0.00"
                                                 className="w-14 text-center bg-transparent font-mono font-bold text-slate-900 outline-none"
                                               />
                                             </td>
@@ -3316,7 +3501,7 @@ export default function DailyActivitiesView({
                                         <td className="p-1.5 border-r border-slate-300 text-center text-emerald-700 font-bold">0.00%</td>
                                         <td className="p-1.5 border-r border-slate-300 text-center text-rose-700 font-black">{avgToDate}%</td>
                                         <td className="p-1.5 border-r border-slate-300 text-center font-mono font-bold text-slate-900">
-                                          {totalKm.toFixed(3)} km
+                                          {totalKm.toFixed(3)} No.
                                         </td>
                                         {!isReadonly && (
                                           <td className="p-1.5 text-center print:hidden">
@@ -3557,18 +3742,18 @@ export default function DailyActivitiesView({
                                         <span className="font-bold text-slate-600">%</span>
                                       </div>
 
-                                      {/* Daily Executed (km) */}
+                                      {/* Daily Executed (No.) */}
                                       <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-300 rounded-lg p-1.5">
                                         <span className="text-[11px] font-bold text-slate-600 uppercase">Executed:</span>
                                         <input
                                           type="number"
-                                          step="0.005"
+                                          step="0.01"
                                           value={selectedSlabStageKm}
                                           onChange={e => setSelectedSlabStageKm(parseFloat(e.target.value) || 0)}
                                           placeholder="0.00"
                                           className="w-16 text-center bg-white border border-slate-300 rounded px-1 py-0.5 font-bold text-slate-800 outline-none"
                                         />
-                                        <span className="text-slate-500 text-[10px]">km</span>
+                                        <span className="text-slate-500 text-[10px]">No.</span>
                                       </div>
 
                                       {/* Apply Button */}
@@ -3603,7 +3788,7 @@ export default function DailyActivitiesView({
                                       <th className="p-2 border-r border-slate-300 w-16 text-center text-slate-600">Previous</th>
                                       <th className="p-2 border-r border-slate-300 w-16 text-center text-indigo-700">Daily Progress</th>
                                       <th className="p-2 border-r border-slate-300 w-16 text-center text-rose-700">To Date</th>
-                                      <th className="p-2 border-r border-slate-300 w-20 text-center">Daily Executed (km)</th>
+                                      <th className="p-2 border-r border-slate-300 w-24 text-center">Daily Executed (No.)</th>
                                       {!isReadonly && <th className="p-2 text-center w-14 print:hidden">Action</th>}
                                     </tr>
                                   </thead>
@@ -3757,14 +3942,18 @@ export default function DailyActivitiesView({
                                               {toDateVal}%
                                             </td>
 
-                                            {/* Daily Executed (km) */}
+                                            {/* Daily Executed (No.) */}
                                             <td className="p-1 border-r border-slate-200 text-center font-mono font-bold text-slate-800">
                                               <input
                                                 type="number"
-                                                step="0.005"
-                                                value={act.metricKm || ''}
-                                                onChange={e => handleCellUpdate(act.id, 'metricKm', parseFloat(e.target.value) || 0)}
-                                                placeholder="0.000"
+                                                step="0.01"
+                                                value={act.quantityExecuted !== undefined ? act.quantityExecuted : (act.metricKm || '')}
+                                                onChange={e => {
+                                                  const val = parseFloat(e.target.value) || 0;
+                                                  handleCellUpdate(act.id, 'quantityExecuted', val);
+                                                  handleCellUpdate(act.id, 'metricKm', val);
+                                                }}
+                                                placeholder="0.00"
                                                 className="w-14 text-center bg-transparent font-mono font-bold text-slate-900 outline-none"
                                               />
                                             </td>
@@ -3812,7 +4001,7 @@ export default function DailyActivitiesView({
                                         <td className="p-1.5 border-r border-slate-300 text-center text-indigo-700 font-bold">0.00%</td>
                                         <td className="p-1.5 border-r border-slate-300 text-center text-rose-700 font-black">{avgToDate}%</td>
                                         <td className="p-1.5 border-r border-slate-300 text-center font-mono font-bold text-slate-900">
-                                          {totalKm.toFixed(3)} km
+                                          {totalKm.toFixed(3)} No.
                                         </td>
                                         {!isReadonly && (
                                           <td className="p-1.5 text-center print:hidden">
@@ -4053,18 +4242,18 @@ export default function DailyActivitiesView({
                                         <span className="font-bold text-slate-600">%</span>
                                       </div>
 
-                                      {/* Daily Executed (km) */}
+                                      {/* Daily Executed (No.) */}
                                       <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-300 rounded-lg p-1.5">
                                         <span className="text-[11px] font-bold text-slate-600 uppercase">Executed:</span>
                                         <input
                                           type="number"
-                                          step="0.005"
+                                          step="0.01"
                                           value={selectedBridgeStageKm}
                                           onChange={e => setSelectedBridgeStageKm(parseFloat(e.target.value) || 0)}
                                           placeholder="0.00"
                                           className="w-16 text-center bg-white border border-slate-300 rounded px-1 py-0.5 font-bold text-slate-800 outline-none"
                                         />
-                                        <span className="text-slate-500 text-[10px]">km</span>
+                                        <span className="text-slate-500 text-[10px]">No.</span>
                                       </div>
 
                                       {/* Apply Button */}
@@ -4099,7 +4288,7 @@ export default function DailyActivitiesView({
                                       <th className="p-2 border-r border-slate-300 w-16 text-center text-slate-600">Previous</th>
                                       <th className="p-2 border-r border-slate-300 w-16 text-center text-amber-700">Daily Progress</th>
                                       <th className="p-2 border-r border-slate-300 w-16 text-center text-rose-700">To Date</th>
-                                      <th className="p-2 border-r border-slate-300 w-20 text-center">Daily Executed (km)</th>
+                                      <th className="p-2 border-r border-slate-300 w-24 text-center">Daily Executed (No.)</th>
                                       {!isReadonly && <th className="p-2 text-center w-14 print:hidden">Action</th>}
                                     </tr>
                                   </thead>
@@ -4253,14 +4442,18 @@ export default function DailyActivitiesView({
                                               {toDateVal}%
                                             </td>
 
-                                            {/* Daily Executed (km) */}
+                                            {/* Daily Executed (No.) */}
                                             <td className="p-1 border-r border-slate-200 text-center font-mono font-bold text-slate-800">
                                               <input
                                                 type="number"
-                                                step="0.005"
-                                                value={act.metricKm || ''}
-                                                onChange={e => handleCellUpdate(act.id, 'metricKm', parseFloat(e.target.value) || 0)}
-                                                placeholder="0.000"
+                                                step="0.01"
+                                                value={act.quantityExecuted !== undefined ? act.quantityExecuted : (act.metricKm || '')}
+                                                onChange={e => {
+                                                  const val = parseFloat(e.target.value) || 0;
+                                                  handleCellUpdate(act.id, 'quantityExecuted', val);
+                                                  handleCellUpdate(act.id, 'metricKm', val);
+                                                }}
+                                                placeholder="0.00"
                                                 className="w-14 text-center bg-transparent font-mono font-bold text-slate-900 outline-none"
                                               />
                                             </td>
@@ -4308,7 +4501,7 @@ export default function DailyActivitiesView({
                                         <td className="p-1.5 border-r border-slate-300 text-center text-amber-700 font-bold">0.00%</td>
                                         <td className="p-1.5 border-r border-slate-300 text-center text-rose-700 font-black">{avgToDate}%</td>
                                         <td className="p-1.5 border-r border-slate-300 text-center font-mono font-bold text-slate-900">
-                                          {totalKm.toFixed(3)} km
+                                          {totalKm.toFixed(3)} No.
                                         </td>
                                         {!isReadonly && (
                                           <td className="p-1.5 text-center print:hidden">
