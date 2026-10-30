@@ -21,7 +21,8 @@ import {
   isCurrentMonth,
   matchCanonicalKpiPeriod,
   getSixMonthCumulativeGrading,
-  SixMonthSemesterGrading
+  SixMonthSemesterGrading,
+  calculateAndPersistSixMonthAverages
 } from '../data/defaultProject';
 import { calculateProjectEvm } from '../lib/evmCalculations';
 import { getProjectConsultantEvaluation } from '../data/consultantEvaluationMatrix';
@@ -372,7 +373,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
       updatedList = [newRec, ...updatedList];
     }
     // Filter any future month and sort
-    const cleanList = updatedList
+    const cleanList = calculateAndPersistSixMonthAverages(updatedList)
       .filter(r => !isMonthAboveCurrentMonth(r.month, r.recordedDate))
       .sort((a, b) => compareMonthsDesc(a.month, b.month, a.recordedDate, b.recordedDate));
 
@@ -3415,7 +3416,6 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                               <th className="py-2.5 px-3.5 text-left">Monthly Plan & Execution %</th>
                               <th className="py-2.5 px-3 text-center">Contractor Grade</th>
                               <th className="py-2.5 px-3.5 text-left">Contractor Remarks & Delay Exceptions</th>
-                              <th className="py-2.5 px-3 text-center w-24 no-print">Actions</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 font-normal font-sans">
@@ -3474,6 +3474,9 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                                       <span className="text-xs font-black">Grade {rec.contractorGrade || 'B'}</span>
                                       <span className="text-[9px] font-mono font-extrabold">{(rec.contractorScore ?? 80).toFixed(1)}%</span>
                                     </div>
+                                    {rec.status === 'Finalized' && (
+                                      <span className="block text-[8px] font-bold bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 px-1.5 py-0.5 rounded uppercase mt-1">Locked</span>
+                                    )}
                                     <span className="block text-[8.5px] text-slate-400 mt-1 max-w-[110px] mx-auto truncate" title={rec.contractorStanding}>
                                       {rec.contractorStanding}
                                     </span>
@@ -3484,36 +3487,6 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                                     <p className="text-[10px] text-slate-600 dark:text-slate-300 leading-normal break-words max-w-md">
                                       {rec.contractorRemarks || rec.notes || 'No specific contractor delay exceptions logged for this audit cycle.'}
                                     </p>
-                                  </td>
-
-                                  {/* Actions */}
-                                  <td className="py-2.5 px-3 text-center no-print">
-                                    <div className="flex items-center justify-center gap-1.5">
-                                      <button
-                                        type="button"
-                                        onClick={() => setSelectedGradingDetailModal(rec)}
-                                        className="p-1 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer"
-                                        title="View Detailed Monthly Audit Breakdown"
-                                      >
-                                        <Eye className="w-3.5 h-3.5" />
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => openEditGradingModal(rec)}
-                                        className="p-1 text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer"
-                                        title="Edit Month Grading"
-                                      >
-                                        <Edit3 className="w-3.5 h-3.5" />
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleDeleteGradingRecord(rec.id)}
-                                        className="p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors cursor-pointer"
-                                        title="Delete Record"
-                                      >
-                                        <Trash2 className="w-3.5 h-3.5" />
-                                      </button>
-                                    </div>
                                   </td>
                                 </tr>
                               );
@@ -5220,6 +5193,20 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                     <p>
                       <strong>Consultant Remarks:</strong> {selectedGradingDetailModal.consultantRemarks || 'Supervisory team responded to RFI submittals and site work inspection requests within prescribed SLA limits.'}
                     </p>
+                    <div className="grid grid-cols-2 gap-3 text-[11px] mb-4">
+                      <div className="p-2 bg-amber-50 dark:bg-amber-950/20 rounded border border-amber-200 dark:border-amber-900">
+                        <span className="block font-semibold text-amber-800 dark:text-amber-300">6-Month Avg Contractor Score</span>
+                        <span className="text-lg font-black text-amber-900 dark:text-amber-100">
+                          {selectedGradingDetailModal.sixMonthAverageContractorScore ? `${selectedGradingDetailModal.sixMonthAverageContractorScore}%` : 'N/A'}
+                        </span>
+                      </div>
+                      <div className="p-2 bg-indigo-50 dark:bg-indigo-950/20 rounded border border-indigo-200 dark:border-indigo-900">
+                        <span className="block font-semibold text-indigo-800 dark:text-indigo-300">6-Month Avg Consultant Score</span>
+                        <span className="text-lg font-black text-indigo-900 dark:text-indigo-100">
+                          {selectedGradingDetailModal.sixMonthAverageConsultantScore ? `${selectedGradingDetailModal.sixMonthAverageConsultantScore}%` : 'N/A'}
+                        </span>
+                      </div>
+                    </div>
                     {selectedGradingDetailModal.notes && (
                       <p>
                         <strong>Audit Notes:</strong> {selectedGradingDetailModal.notes}

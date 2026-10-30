@@ -2774,3 +2774,25 @@ export function getSixMonthCumulativeGrading(records: MonthlyGradingRecord[]): S
     return a.semesterType === 'H2' ? -1 : 1;
   });
 }
+
+export function calculateAndPersistSixMonthAverages(records: MonthlyGradingRecord[]): MonthlyGradingRecord[] {
+  const semesters = getSixMonthCumulativeGrading(records);
+  const recordsMap = new Map<string, MonthlyGradingRecord>();
+  records.forEach(r => recordsMap.set(r.id, { ...r }));
+
+  semesters.forEach(sem => {
+    const sortedRecs = [...sem.records].sort((a, b) => compareMonthsDesc(b.month, a.month, b.recordedDate, a.recordedDate));
+    if (sortedRecs.length > 0) {
+      const latestRec = recordsMap.get(sortedRecs[0].id);
+      if (latestRec) {
+        const sumContractorScore = sortedRecs.reduce((acc, r) => acc + (typeof r.contractorScore === 'number' ? r.contractorScore : 80), 0);
+        latestRec.sixMonthAverageContractorScore = Number((sumContractorScore / sortedRecs.length).toFixed(1));
+        
+        const sumConsultantScore = sortedRecs.reduce((acc, r) => acc + (typeof r.consultantOverallScore === 'number' ? r.consultantOverallScore : 82.5), 0);
+        latestRec.sixMonthAverageConsultantScore = Number((sumConsultantScore / sortedRecs.length).toFixed(1));
+      }
+    }
+  });
+
+  return Array.from(recordsMap.values());
+}

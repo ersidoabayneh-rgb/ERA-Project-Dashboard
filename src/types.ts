@@ -329,6 +329,10 @@ export interface MonthlyGradingRecord {
   consultantAvgRfiDays?: number; // days
   consultantRemarks?: string;
   
+  // 6-month averages
+  sixMonthAverageContractorScore?: number;
+  sixMonthAverageConsultantScore?: number;
+  
   notes?: string;
 }
 
