@@ -32,7 +32,7 @@ import {
   getFidicRecommendations 
 } from '../lib/fidicClauseEngine';
 import eraLogo from '../assets/logo.png';
-import { drawEraLogo, STRICT_1_INCH_MARGIN } from '../lib/pdfReportEngine';
+import { drawEraLogo, STRICT_1_INCH_MARGIN, drawSafeTable } from '../lib/pdfReportEngine';
 import ChangelogAuditHistory from './ChangelogAuditHistory';
 
 export interface InconsistencyAlert {
@@ -1818,105 +1818,31 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
 
     curY += 46;
 
-    // Table Header
-    checkSpace(35);
-    doc.setFillColor(30, 41, 59); // slate-800
-    doc.roundedRect(margin, curY, usableWidth, 18, 2, 2, 'F');
-    
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(6.5);
-    doc.setTextColor(255, 255, 255);
-    doc.text("MONTH / PERIOD", margin + 6, curY + 12);
-    doc.text("MONTHLY PLAN / ACT", margin + 78, curY + 12);
-    doc.text("VARIANCE", margin + 165, curY + 12);
-    doc.text("CUM ACT (SPI)", margin + 222, curY + 12);
-    doc.text("GRADE / SCORE", margin + 288, curY + 12);
-    doc.text("STATUS", margin + 352, curY + 12);
-    doc.text("CONTRACTOR REMARKS & AUDIT EXCEPTIONS", margin + 398, curY + 12);
-
-    curY += 18;
-
-    // Table Rows with dynamic text wrapping
-    const colWRemarks = usableWidth - 392; // 131.28 pt
-
-    records.forEach((mg, mgIdx) => {
-      const remarksText = mg.contractorRemarks || mg.notes || 'No specific contractor audit exceptions logged for this cycle.';
-      const remarkLines = doc.splitTextToSize(remarksText, colWRemarks - 8);
-      const dynamicRowHeight = Math.max(22, (remarkLines.length * 8) + 12);
-
-      checkSpace(dynamicRowHeight + 4);
-
-      const isEven = mgIdx % 2 === 0;
-      doc.setFillColor(isEven ? 255 : 248, isEven ? 255 : 250, isEven ? 255 : 252);
-      doc.setDrawColor(226, 232, 240);
-      doc.rect(margin, curY, usableWidth, dynamicRowHeight, 'DF');
-
-      // Month name
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(6.8);
-      doc.setTextColor(15, 23, 42);
-      doc.text(mg.monthName || mg.month, margin + 6, curY + 10);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(5);
-      doc.setTextColor(100, 116, 139);
-      doc.text(`Rec: ${mg.recordedDate || 'N/A'}`, margin + 6, curY + 18);
-
-      // Monthly Plan vs Actual
-      const planM = typeof mg.contractorPlanMonthly === 'number' ? mg.contractorPlanMonthly : 0;
-      const actM = typeof mg.contractorActualMonthly === 'number' ? mg.contractorActualMonthly : 0;
-      const varM = typeof mg.contractorVariance === 'number' ? mg.contractorVariance : (actM - planM);
-
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(6.5);
-      doc.setTextColor(51, 65, 85);
-      doc.text(`Pln: ${planM.toFixed(2)}% | Act: ${actM.toFixed(2)}%`, margin + 78, curY + 12);
-
-      // Variance
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(6.5);
-      doc.setTextColor(varM >= 0 ? 5 : 220, varM >= 0 ? 150 : 38, varM >= 0 ? 105 : 38);
-      doc.text(`${varM >= 0 ? '+' : ''}${varM.toFixed(2)}%`, margin + 165, curY + 12);
-
-      // Cumulative & SPI
-      const cumAct = typeof mg.contractorActualCumulative === 'number' ? mg.contractorActualCumulative : 0;
-      const spi = typeof mg.contractorSpi === 'number' ? mg.contractorSpi : 1.0;
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(6);
-      doc.setTextColor(51, 65, 85);
-      doc.text(`Cum: ${cumAct.toFixed(2)}%`, margin + 222, curY + 9);
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(spi >= 1.0 ? 5 : 217, spi >= 1.0 ? 150 : 119, spi >= 1.0 ? 105 : 6);
-      doc.text(`SPI: ${spi.toFixed(2)}`, margin + 222, curY + 17);
-
-      // Grade Badge
-      let cGradeColor = [16, 185, 129];
-      if (mg.contractorGrade === 'B') cGradeColor = [13, 148, 136];
-      else if (mg.contractorGrade === 'C') cGradeColor = [217, 119, 6];
-      else if (mg.contractorGrade === 'D') cGradeColor = [234, 88, 12];
-      else if (mg.contractorGrade === 'F') cGradeColor = [220, 38, 38];
-
-      doc.setFillColor(cGradeColor[0], cGradeColor[1], cGradeColor[2]);
-      doc.roundedRect(margin + 288, curY + 3, 52, 14, 2, 2, 'F');
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(6);
-      doc.setTextColor(255, 255, 255);
-      doc.text(`GR ${mg.contractorGrade || 'B'} • ${(mg.contractorScore || 80).toFixed(1)}%`, margin + 314, curY + 12.5, { align: 'center' });
-
-      // Status
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(5.5);
-      doc.setTextColor(mg.status === 'Approved' ? 5 : 71, mg.status === 'Approved' ? 150 : 85, mg.status === 'Approved' ? 105 : 105);
-      doc.text((mg.status || 'Finalized').toUpperCase(), margin + 352, curY + 12);
-
-      // Wrapped Remarks Line by Line
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(5.8);
-      doc.setTextColor(71, 85, 105);
-      remarkLines.forEach((line: string, lIdx: number) => {
-        doc.text(line, margin + 398, curY + 9 + (lIdx * 7.5));
-      });
-
-      curY += dynamicRowHeight;
+    // Table
+    curY = drawSafeTable(doc, {
+      startY: curY,
+      margin: margin,
+      maxWidth: usableWidth,
+      headerBgColor: [30, 41, 59],
+      headerTextColor: [255, 255, 255],
+      columns: [
+        { header: "MONTH / PERIOD", dataKey: "period", widthPercent: 14 },
+        { header: "MONTHLY PLAN / ACT", dataKey: "planActual", widthPercent: 18 },
+        { header: "VARIANCE", dataKey: "variance", widthPercent: 10 },
+        { header: "CUM ACT (SPI)", dataKey: "cumSpi", widthPercent: 14 },
+        { header: "GRADE / SCORE", dataKey: "grade", widthPercent: 14 },
+        { header: "STATUS", dataKey: "status", widthPercent: 10 },
+        { header: "CONTRACTOR REMARKS & AUDIT EXCEPTIONS", dataKey: "remarks", widthPercent: 20 },
+      ],
+      rows: records.map(mg => ({
+        period: `${mg.monthName || mg.month}\nRec: ${mg.recordedDate || 'N/A'}`,
+        planActual: `Pln: ${(mg.contractorPlanMonthly ?? 0).toFixed(2)}% | Act: ${(mg.contractorActualMonthly ?? 0).toFixed(2)}%`,
+        variance: `${(mg.contractorVariance ?? 0) >= 0 ? '+' : ''}${(mg.contractorVariance ?? 0).toFixed(2)}%`,
+        cumSpi: `Cum: ${(mg.contractorActualCumulative ?? 0).toFixed(2)}%\nSPI: ${(mg.contractorSpi ?? 1.0).toFixed(2)}`,
+        grade: `GR ${mg.contractorGrade || 'B'} • ${(mg.contractorScore || 80).toFixed(1)}%`,
+        status: (mg.status || 'Finalized').toUpperCase(),
+        remarks: mg.contractorRemarks || mg.notes || 'No specific contractor audit exceptions logged.'
+      }))
     });
 
     curY += 16;
@@ -2129,7 +2055,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
 
     curY += 46;
 
-    // Table Header
+    // Table Header replaced
     checkSpace(35);
     doc.setFillColor(79, 70, 229); // indigo-600
     doc.roundedRect(margin, curY, usableWidth, 18, 2, 2, 'F');
