@@ -1,30 +1,52 @@
-# Implementation Plan: Ethiopian Roads Table Consistency and Functionality
+# Implementation Plan & Completed Work: Monthly Record Locking Governance
 
 ## Goal
-Improve table consistency, remove unnecessary buttons, implement draggable column resizing, and link reimbursement calculations between the Contract Amount and Fee Invoice pages.
+Implement statutory approval and locking governance for elapsed months & EFY history records on the Progress Comparisons page (`ProgressPlanView.tsx`), ensuring that Directorate Admins can approve and lock monthly records against editing and deletion, while only Master Admins can revert changes or unlock records.
 
-## Proposed Changes
+## Key Changes Implemented
 
-### 1. Table Row Standardization
-- **Goal:** Make row structures consistent for Construction Staff, Reimbursable Expenses, and Invoice/Payment tables across `ContractAmountTab.tsx` and `MonthlyInvoiceCalculationTable.tsx`.
-- **Action:** Review table header and cell definitions in both components. Align columns (e.g., Position, Unit, Rate, Quantity, Amount) and ensure consistent styling.
+### 1. Data Schema & Types (`src/types.ts`)
+- Defined audit and lock governance metadata fields on `ProgressPlanHistoryItem`:
+  - `isLocked?: boolean`
+  - `approvedByDirectorate?: boolean`
+  - `approvedAt?: string`
+  - `approvedBy?: string`
+  - `lockedAt?: string`
+  - `lockedBy?: string`
+- Enforced role resolution using `isMasterAdminOnly` alongside role definitions.
 
-### 2. UI Cleanup
-- **Goal:** Remove "Add DLP Position" and "Add Reimbursable" buttons from the `Fee Invoices & Payments` page (`MonthlyInvoiceCalculationTable.tsx`).
-- **Action:** Locate the button components and remove them from the UI.
+### 2. Lock & Revert Authorization Logic (`src/components/ProgressPlanView.tsx`)
+- **Approval & Lock Permission:** Directorate Admins (`isDirectorateAdmin`) and Master Admins can approve and lock records.
+- **Revert & Unlock Permission:** Exclusively restricted to Master Admins (`isMasterAdmin`). When a locked record is selected, non-Master Admins are blocked with an explicit security alert.
+- **Modification Guard:**
+  - `handleSaveActiveToSnapshot`: Checks if an existing snapshot for the current month is locked. Non-Master Admins cannot overwrite or save changes to a locked month.
+  - `handleDeleteSnapshot`: Blocked for locked records unless user is Master Admin.
+  - `handleClearThisProjectHistory`: Blocked if any locked records exist unless user is Master Admin.
+  - `handleClearAllProjectsHistory`: Restricted exclusively to Master Admin.
+  - `handleOpenEditModal` & `handleSaveModalUpdates`: Blocked for locked records unless user is Master Admin.
 
-### 3. Draggable Column Separators
-- **Goal:** Allow users to dynamically resize column widths for `.col-engineer`, `.col-contractor`, and `.col-firm`.
-- **Action:** 
-    - Reuse or adapt `src/components/ColumnResizer.tsx` if applicable, or implement a standard draggable handler using `onMouseDown` events to update column width state in the parent components.
-
-### 4. Linking Table B to Sub Total 2
-- **Goal:** Ensure changes in `Table B - Reimbursable Direct Expenses Schedule` in the Contract Amount page reflect in `Sub Total 2 - Reimbursable Operating Direct Costs Calculation` on the Fee Invoices & Payments page.
-- **Action:** 
-    - The current codebase appears to save contract amount data in the project state (`onUpdateProject`). I need to ensure `MonthlyInvoiceCalculationTable.tsx` is properly reading and synchronizing with the updated `reimbursableList` from the `consultant.contractAmountSchedule.condition1` state.
+### 3. Visual Indicators & Action Controls
+- **Main Status Card:**
+  - Added a top action button for Directorate Admins: `Approve & Lock ({monthLabel})` when viewing an unlocked active month.
+  - Rendered a high-visibility lock banner above the comparison table:
+    - Non-Master Admin view: displays `🔒 Monthly Record Validated & Locked by Directorate Admin` and details that modifications are restricted to Master Admin.
+    - Master Admin view: displays `Master Admin Override Active` badge with a one-click `Revert / Unlock Record` button.
+  - Disabled table inputs for Contractor, ERA, and Actual plans when the current month is locked for non-Master Admins.
+  - Disabled month, quarter, and EFY period inputs when locked.
+- **Left Panel (Archived/Elapsed Record):**
+  - Displays lock status indicator with Master Admin revert action button.
+  - Disabled `Save & Update to {monthLabel}` button when locked.
+- **Right Panel (History List - Grid & List Views):**
+  - Added `🔒 Locked` status badge on locked cards/rows and `Open` badge on unlocked ones.
+  - Added dedicated Lock / Unlock action button:
+    - Master Admin: `Revert / Unlock Record` button.
+    - Directorate Admin: `Approve & Lock Record` button on open records.
+    - Non-Master Admin on locked record: disabled lock indicator with tooltip.
+  - Disabled Edit and Delete buttons on locked records for non-Master Admins.
+- **Edit Modal:**
+  - Rendered locked record notification banner with in-modal Master Admin `Revert Lock` button.
+  - Disabled all input fields and the Save button when the record is locked unless accessed by Master Admin.
 
 ## Verification
-- Run `compile_applet` to ensure no build errors.
-- Verify table structure in UI.
-- Test draggable resizing for the specified columns.
-- Test that updating Table B in Contract Amount updates Sub Total 2 in Invoice/Payments.
+- `lint_applet` passed with zero errors (`tsc --noEmit`).
+- `compile_applet` verified production build success.

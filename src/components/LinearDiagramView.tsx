@@ -37,6 +37,7 @@ interface LinearDiagramViewProps {
   onUpdateMainLength?: (mainRoadLengthKm: number) => void;
   onUpdateProjectLength?: (lengthKm: number) => void;
   onToggleCappingLayer?: (hasCappingLayer: boolean) => void;
+  onToggleSpurRoad?: (hasSpurRoad: boolean) => void;
   onUpdateProject?: (project: Project, sectionName: string) => void;
 }
 
@@ -57,6 +58,7 @@ export default function LinearDiagramView({
   onUpdateMainLength,
   onUpdateProjectLength,
   onToggleCappingLayer,
+  onToggleSpurRoad,
   onUpdateProject
 }: LinearDiagramViewProps) {
   // Road & View State
@@ -416,6 +418,19 @@ export default function LinearDiagramView({
         </div>
       </div>
 
+      {/* Dynamic Quantity Alignment Banner */}
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border border-blue-200/60 dark:border-blue-800/40 p-3.5 rounded-xl flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
+          <Link2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+          <span>
+            <strong className="text-indigo-700 dark:text-indigo-300">Quantity Alignment Active:</strong> Subgrade, Capping, Sub-base, Base-Course, and Asphalt Concrete scheduled plans and actual progress stay dynamically linked across Quantity and Linear Diagram pages.
+          </span>
+        </div>
+        <div className="flex items-center gap-1 text-[11px] font-mono text-indigo-700 dark:text-indigo-300 font-bold bg-white/70 dark:bg-slate-900/60 px-2 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-800">
+          5 Layers Aligned
+        </div>
+      </div>
+
       {/* Main Controls: Road Selection & View Navigation */}
       <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/60 p-3 rounded-2xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3">
         {/* Road Type Selector */}
@@ -434,15 +449,19 @@ export default function LinearDiagramView({
           </button>
           <button
             type="button"
-            onClick={() => setRoadType('spur')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-              roadType === 'spur'
-                ? 'bg-emerald-600 text-white shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            disabled={project.hasSpurRoad === false}
+            onClick={() => project.hasSpurRoad !== false && setRoadType('spur')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+              project.hasSpurRoad === false
+                ? 'opacity-40 cursor-not-allowed text-slate-400 dark:text-slate-600'
+                : roadType === 'spur'
+                ? 'bg-emerald-600 text-white shadow-xs cursor-pointer'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white cursor-pointer'
             }`}
+            title={project.hasSpurRoad === false ? 'Spur Road is disabled in settings' : `Spur Road (${spurRoadTargetKm} Km)`}
           >
             <Navigation className="w-3.5 h-3.5 rotate-45" />
-            Spur Road ({spurRoadTargetKm} Km)
+            Spur Road {project.hasSpurRoad === false ? '(Disabled)' : `(${spurRoadTargetKm} Km)`}
           </button>
         </div>
 
@@ -493,23 +512,49 @@ export default function LinearDiagramView({
               </div>
             </div>
 
-            {/* Capping toggle */}
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                className="sr-only peer"
-                checked={project.hasCappingLayer !== false}
-                onChange={(e) => {
-                  if (onToggleCappingLayer) {
-                    onToggleCappingLayer(e.target.checked);
-                  }
-                }}
-              />
-              <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-slate-600 peer-checked:bg-blue-600"></div>
-              <span className="ml-2 text-xs font-bold text-slate-700 dark:text-slate-300">
-                {project.hasCappingLayer !== false ? 'Capping Enabled' : 'Capping Disabled'}
-              </span>
-            </label>
+            <div className="flex items-center gap-4">
+              {/* Spur Road Option toggle */}
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="sr-only peer"
+                  checked={project.hasSpurRoad !== false}
+                  onChange={(e) => {
+                    const enabled = e.target.checked;
+                    if (onToggleSpurRoad) {
+                      onToggleSpurRoad(enabled);
+                    } else if (onUpdateProject) {
+                      onUpdateProject({ ...project, hasSpurRoad: enabled }, 'Spur Road Option Toggled');
+                    }
+                    if (!enabled) {
+                      setRoadType('main');
+                    }
+                  }}
+                />
+                <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-slate-600 peer-checked:bg-emerald-600"></div>
+                <span className="ml-2 text-xs font-bold text-slate-700 dark:text-slate-300">
+                  {project.hasSpurRoad !== false ? 'Spur Road Enabled' : 'Spur Road Disabled'}
+                </span>
+              </label>
+
+              {/* Capping toggle */}
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="sr-only peer"
+                  checked={project.hasCappingLayer !== false}
+                  onChange={(e) => {
+                    if (onToggleCappingLayer) {
+                      onToggleCappingLayer(e.target.checked);
+                    }
+                  }}
+                />
+                <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-slate-600 peer-checked:bg-blue-600"></div>
+                <span className="ml-2 text-xs font-bold text-slate-700 dark:text-slate-300">
+                  {project.hasCappingLayer !== false ? 'Capping Enabled' : 'Capping Disabled'}
+                </span>
+              </label>
+            </div>
           </div>
 
           {/* SpreadSheet Scroller Grid */}

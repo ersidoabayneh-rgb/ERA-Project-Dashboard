@@ -179,12 +179,38 @@ td.col-firm,
   }
 
   /* Unclip table scroll containers during print / export so all columns fit on page */
-  .overflow-x-auto, .overflow-y-auto, .overflow-auto, [class*="overflow-"] {
+  .overflow-x-auto, .overflow-y-auto, .overflow-auto {
     overflow: visible !important;
     max-height: none !important;
     height: auto !important;
     width: 100% !important;
     max-width: 100% !important;
+  }
+
+  /* Minimized official logos in print header */
+  img[src*="logo"],
+  img[alt*="Logo"],
+  img[alt*="logo"],
+  .era-logo,
+  .print-header-logo,
+  .print-logo-min {
+    max-width: 44px !important;
+    max-height: 44px !important;
+    width: 44px !important;
+    height: 44px !important;
+    object-fit: contain !important;
+    display: inline-block !important;
+  }
+
+  .print-logo-container {
+    width: 48px !important;
+    height: 48px !important;
+    max-width: 48px !important;
+    max-height: 48px !important;
+    overflow: hidden !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
   }
 
   /* Body text defaults for dense professional print reports */

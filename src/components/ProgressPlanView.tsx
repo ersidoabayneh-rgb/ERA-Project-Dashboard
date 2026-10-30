@@ -15,7 +15,8 @@ import {
   ProgressPlan, 
   ProgressPlanHistoryItem, 
   PlanSet, 
-  formatAccounting 
+  formatAccounting,
+  isMasterAdminOnly
 } from '../types';
 import { getProgressHealth } from '../lib/healthUtils';
 import { 
@@ -47,7 +48,9 @@ import {
   History,
   Sparkles,
   AlertTriangle,
-  ArrowUpDown
+  ArrowUpDown,
+  Lock,
+  Unlock
 } from 'lucide-react';
 import { generateProgressComparisonPdf } from '../lib/progressComparisonPdfGenerator';
 import { getCredentialSignatures } from '../lib/pdfReportEngine';
@@ -146,14 +149,27 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
   // 1. Initial State Resolution
   const totalLength = project.lengthKm || 65.0;
 
-  // Deletion permission check: Directorate admin, Master admin, and CPM admin only
-  const canDeleteHistory = Boolean(
+  const isMasterAdmin = Boolean(
+    isMasterAdminOnly(currentUser) ||
     currentUser?.role === 'master_admin' || 
     currentUser?.role === 'admin' || 
+    currentUser?.username === 'proj_1781786415663' ||
+    (currentUser?.username && currentUser.username.toLowerCase().includes('ersido')) ||
+    (currentUser?.username && currentUser.username.toLowerCase().includes('admin') && currentUser?.role !== 'directorate_admin' && currentUser?.role !== 'pmo_admin' && currentUser?.role !== 'cpm_admin')
+  );
+
+  const isDirectorateAdmin = Boolean(
+    isMasterAdmin ||
+    currentUser?.role === 'directorate_admin' ||
+    (currentUser?.role && currentUser.role.includes('directorate'))
+  );
+
+  // Deletion permission check: Directorate admin, Master admin, and CPM admin only
+  const canDeleteHistory = Boolean(
+    isMasterAdmin || 
     currentUser?.role === 'cpm_admin' || 
     currentUser?.role === 'directorate_admin' ||
-    (currentUser?.role && (currentUser.role.includes('admin') || currentUser.role.includes('directorate') || currentUser.role.includes('cpm'))) ||
-    currentUser?.username === 'proj_1781786415663'
+    (currentUser?.role && (currentUser.role.includes('admin') || currentUser.role.includes('directorate') || currentUser.role.includes('cpm')))
   );
 
   // Selected Category filter / view
@@ -232,6 +248,13 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
   const selectedArchivedItem = useMemo<ProgressPlanHistoryItem | null>(() => {
     return historyList.find(h => h.id === selectedArchivedKey) || historyList[0] || null;
   }, [historyList, selectedArchivedKey]);
+
+  // Check if current active comparison month is validated and locked
+  const activeRecordMatch = useMemo(() => {
+    return historyList.find(h => h.monthLabel.trim().toLowerCase() === monthLabel.trim().toLowerCase()) || null;
+  }, [historyList, monthLabel]);
+
+  const isActiveMonthLocked = Boolean(activeRecordMatch?.isLocked);
 
   // Modal State for Editing / Adding Previous Milestone Record
   const [editingItem, setEditingItem] = useState<ProgressPlanHistoryItem | null>(null);
@@ -348,6 +371,14 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
       : (project.physicalProgress || 0);
 
     const snapshotId = `hist_${monthLabel.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()}`;
+    const existing = project.progressPlanHistory && project.progressPlanHistory.length > 0 ? project.progressPlanHistory : historyList;
+    const existingTarget = existing.find(h => h.id === snapshotId || h.monthLabel.trim().toLowerCase() === monthLabel.trim().toLowerCase());
+
+    if (existingTarget?.isLocked && !isMasterAdmin) {
+      alert(`Unauthorized: The monthly record for "${existingTarget.monthLabel}" has been validated and locked by Directorate Admin. Modifications or overwriting can only be made or reverted by Master Admin.`);
+      return;
+    }
+
     const newSnapshot: ProgressPlanHistoryItem = {
       id: snapshotId,
       monthLabel,
@@ -365,10 +396,15 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
       actualQuarter: activePlan.actual.quarter,
       actualEfy: activePlan.actual.efy,
       actualTodate: activePlan.actual.todate,
-      physicalProgress: calculatedPhysicalProgress
+      physicalProgress: calculatedPhysicalProgress,
+      isLocked: existingTarget?.isLocked,
+      approvedByDirectorate: existingTarget?.approvedByDirectorate,
+      approvedAt: existingTarget?.approvedAt,
+      approvedBy: existingTarget?.approvedBy,
+      lockedAt: existingTarget?.lockedAt,
+      lockedBy: existingTarget?.lockedBy
     };
 
-    const existing = project.progressPlanHistory && project.progressPlanHistory.length > 0 ? project.progressPlanHistory : historyList;
     const filtered = existing.filter(h => h.id !== snapshotId && h.monthLabel !== monthLabel);
     const updatedHistory = sortProgressPlanHistoryDescending([newSnapshot, ...filtered]);
 
@@ -388,15 +424,69 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
     setTimeout(() => setSaveSuccessMsg(null), 3000);
   };
 
+  // Toggle Approve & Lock for Directorate Admin / Unlock for Master Admin
+  const handleToggleLockAndApproveRecord = (item: ProgressPlanHistoryItem, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+
+    const isCurrentlyLocked = Boolean(item.isLocked);
+
+    if (isCurrentlyLocked) {
+      if (!isMasterAdmin) {
+        alert(`Unauthorized: Monthly record for "${item.monthLabel}" is approved and locked. Only Master Admin is authorized to unlock or revert this record.`);
+        return;
+      }
+      if (!window.confirm(`Revert and unlock monthly record for "${item.monthLabel}"? This will allow edits by authorized personnel.`)) {
+        return;
+      }
+    } else {
+      if (!isDirectorateAdmin) {
+        alert('Unauthorized: Approving and locking monthly records is restricted to Directorate Admin and Master Admin only.');
+        return;
+      }
+      if (!window.confirm(`Approve & Lock monthly record for "${item.monthLabel}"? Once locked, modification and deletion will be restricted to Master Admin only.`)) {
+        return;
+      }
+    }
+
+    const updatedItem: ProgressPlanHistoryItem = {
+      ...item,
+      isLocked: !isCurrentlyLocked,
+      approvedByDirectorate: !isCurrentlyLocked,
+      approvedAt: !isCurrentlyLocked ? new Date().toISOString() : undefined,
+      approvedBy: !isCurrentlyLocked ? (currentUser?.name || currentUser?.username || 'Directorate Admin') : undefined,
+      lockedAt: !isCurrentlyLocked ? new Date().toISOString() : undefined,
+      lockedBy: !isCurrentlyLocked ? (currentUser?.name || currentUser?.username || 'Directorate Admin') : undefined
+    };
+
+    const existing = project.progressPlanHistory && project.progressPlanHistory.length > 0 ? project.progressPlanHistory : historyList;
+    const updatedHistory = existing.map(h => h.id === item.id ? updatedItem : h);
+    const sortedHistory = sortProgressPlanHistoryDescending(updatedHistory);
+
+    try {
+      localStorage.setItem(`era_hist_backup_${project.id}`, JSON.stringify(sortedHistory));
+    } catch {}
+
+    onUpdateProject({ progressPlanHistory: sortedHistory }, !isCurrentlyLocked ? `Approved & Locked monthly record for ${item.monthLabel}` : `Unlocked monthly record for ${item.monthLabel}`);
+    setSaveSuccessMsg(!isCurrentlyLocked ? `Monthly record for "${item.monthLabel}" officially approved & locked!` : `Monthly record for "${item.monthLabel}" unlocked by Master Admin.`);
+    setTimeout(() => setSaveSuccessMsg(null), 3000);
+  };
+
   // Delete an archived record (Directorate admin, Master admin, and CPM admin only)
   const handleDeleteSnapshot = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    const existing = project.progressPlanHistory && project.progressPlanHistory.length > 0 ? project.progressPlanHistory : historyList;
+    const target = existing.find(h => h.id === id);
+
+    if (target?.isLocked && !isMasterAdmin) {
+      alert(`Unauthorized: Monthly record for "${target?.monthLabel || id}" is approved and locked by Directorate Admin. Modifications and deletions are restricted to Master Admin only.`);
+      return;
+    }
+
     if (!canDeleteHistory) {
       alert('Unauthorized: Deleting milestone history snapshots is restricted to Directorate admin, Master admin, and CPM admin only.');
       return;
     }
     if (!window.confirm('Are you sure you want to delete this archived snapshot?')) return;
-    const existing = project.progressPlanHistory && project.progressPlanHistory.length > 0 ? project.progressPlanHistory : historyList;
     const updatedHistory = existing.filter(h => h.id !== id);
     try {
       localStorage.setItem(`era_hist_backup_${project.id}`, JSON.stringify(updatedHistory));
@@ -409,6 +499,12 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
 
   // Delete all history records from this project (Directorate admin, Master admin, and CPM admin only)
   const handleClearThisProjectHistory = () => {
+    const existing = project.progressPlanHistory && project.progressPlanHistory.length > 0 ? project.progressPlanHistory : historyList;
+    if (existing.some(h => h.isLocked) && !isMasterAdmin) {
+      alert('Unauthorized: One or more elapsed month records are approved and locked by Directorate Admin. Deleting or clearing locked records is restricted exclusively to Master Admin.');
+      return;
+    }
+
     if (!canDeleteHistory) {
       alert('Unauthorized: Clearing project milestone history is restricted to Directorate admin, Master admin, and CPM admin only.');
       return;
@@ -423,10 +519,10 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
     setTimeout(() => setSaveSuccessMsg(null), 3000);
   };
 
-  // Delete all history records from all projects (Directorate admin, Master admin, and CPM admin only)
+  // Delete all history records from all projects (Restricted to Master Admin when locked records exist)
   const handleClearAllProjectsHistory = () => {
-    if (!canDeleteHistory) {
-      alert('Unauthorized: Deleting history records across all projects is restricted to Directorate admin, Master admin, and CPM admin only.');
+    if (!isMasterAdmin) {
+      alert('Unauthorized: Deleting elapsed months & EFY history records across all projects is restricted exclusively to Master Admin.');
       return;
     }
     if (!window.confirm('Are you sure you want to delete all elapsed months & EFY history records across ALL projects? This action cannot be undone.')) return;
@@ -449,6 +545,10 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
   // Open Edit Modal
   const handleOpenEditModal = (item: ProgressPlanHistoryItem, e: React.MouseEvent) => {
     e.stopPropagation();
+    if (item.isLocked && !isMasterAdmin) {
+      alert(`Unauthorized: Monthly record for "${item.monthLabel}" is approved and locked by Directorate Admin. Modifications are restricted to Master Admin only.`);
+      return;
+    }
     setEditingItem({ ...item });
     setModalMode('edit');
     setIsModalOpen(true);
@@ -500,6 +600,11 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
   // Save Modal Updates
   const handleSaveModalUpdates = () => {
     if (!editingItem) return;
+
+    if (editingItem.isLocked && !isMasterAdmin) {
+      alert(`Unauthorized: Monthly record for "${editingItem.monthLabel}" is approved and locked by Directorate Admin. Modifications are restricted to Master Admin only.`);
+      return;
+    }
 
     // Recalculate physical progress from actual todate / lengthKm
     const calculatedProgress = totalLength > 0 && editingItem.actualTodate !== undefined
@@ -646,7 +751,19 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5 shrink-0">
+          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+            {activeRecordMatch && !isActiveMonthLocked && isDirectorateAdmin && (
+              <button
+                type="button"
+                onClick={(e) => handleToggleLockAndApproveRecord(activeRecordMatch, e)}
+                className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-black uppercase tracking-wide flex items-center gap-2 transition cursor-pointer shadow-xs"
+                title="Directorate Admin: Approve and lock this active monthly record against modifications & deletion"
+              >
+                <Lock className="w-3.5 h-3.5" />
+                <span>Approve & Lock ({monthLabel})</span>
+              </button>
+            )}
+
             <button
               onClick={handleExportCsv}
               className="px-3.5 py-2 rounded-xl bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 text-white text-xs font-black uppercase tracking-wide flex items-center gap-2 transition cursor-pointer shadow-xs border border-slate-700"
@@ -666,6 +783,56 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
             </button>
           </div>
         </div>
+
+        {/* Active Period Lock Status Alert / Administrative Action Banner */}
+        {isActiveMonthLocked && (
+          <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 ${
+            isMasterAdmin 
+              ? 'bg-amber-50/90 dark:bg-amber-950/40 border-amber-300 dark:border-amber-700 text-amber-950 dark:text-amber-200' 
+              : 'bg-rose-50/90 dark:bg-rose-950/40 border-rose-300 dark:border-rose-700 text-rose-950 dark:text-rose-200'
+          }`}>
+            <div className="flex items-start sm:items-center gap-3">
+              <div className={`p-2.5 rounded-xl shrink-0 ${isMasterAdmin ? 'bg-amber-200 dark:bg-amber-800 text-amber-900 dark:text-amber-100' : 'bg-rose-200 dark:bg-rose-800 text-rose-900 dark:text-rose-100'}`}>
+                <Lock className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="text-xs font-black uppercase tracking-wider flex items-center gap-2">
+                  <span>Monthly Record Validated & Locked ({monthLabel})</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-600 text-white font-bold">
+                    Locked by Directorate Admin
+                  </span>
+                  {isMasterAdmin && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-600 text-white font-bold">
+                      Master Admin Override Active
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] opacity-90 mt-0.5 leading-relaxed">
+                  {isMasterAdmin 
+                    ? 'This record has been officially approved and locked by Directorate Admin. As Master Admin, you have exclusive privilege to edit values, delete, or revert this lock.' 
+                    : 'This monthly record has been officially validated and locked by Directorate Admin. All fields and historical snapshots are locked against modifications and deletions. Only Master Admin can revert changes.'}
+                  {activeRecordMatch?.approvedAt && (
+                    <span className="ml-1 text-[10px] font-semibold opacity-75">
+                      • Locked on {new Date(activeRecordMatch.approvedAt).toLocaleDateString()} {activeRecordMatch.approvedBy ? `by ${activeRecordMatch.approvedBy}` : ''}
+                    </span>
+                  )}
+                </p>
+              </div>
+            </div>
+
+            {isMasterAdmin && activeRecordMatch && (
+              <button
+                type="button"
+                onClick={(e) => handleToggleLockAndApproveRecord(activeRecordMatch, e)}
+                className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-black uppercase tracking-wide flex items-center gap-2 shrink-0 transition cursor-pointer shadow-xs"
+                title="Revert lock for this monthly record (Master Admin only)"
+              >
+                <Unlock className="w-4 h-4" />
+                <span>Revert / Unlock Record</span>
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Category Selector Badges */}
         <div className="flex flex-wrap items-center gap-3">
@@ -700,8 +867,11 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
             <input
               type="text"
               value={monthLabel}
+              disabled={isActiveMonthLocked && !isMasterAdmin}
               onChange={(e) => setMonthLabel(e.target.value)}
-              className="w-full px-2.5 py-1 bg-white dark:bg-slate-800 rounded-lg border border-slate-300 dark:border-slate-700 font-bold text-slate-850 dark:text-slate-100"
+              className={`w-full px-2.5 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-bold text-slate-850 dark:text-slate-100 ${
+                isActiveMonthLocked && !isMasterAdmin ? 'bg-slate-100 dark:bg-slate-800/50 cursor-not-allowed opacity-75' : 'bg-white dark:bg-slate-800'
+              }`}
               placeholder="e.g. Sep '24"
             />
           </div>
@@ -710,8 +880,11 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
             <input
               type="text"
               value={quarterLabel}
+              disabled={isActiveMonthLocked && !isMasterAdmin}
               onChange={(e) => setQuarterLabel(e.target.value)}
-              className="w-full px-2.5 py-1 bg-white dark:bg-slate-800 rounded-lg border border-slate-300 dark:border-slate-700 font-bold text-slate-850 dark:text-slate-100"
+              className={`w-full px-2.5 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-bold text-slate-850 dark:text-slate-100 ${
+                isActiveMonthLocked && !isMasterAdmin ? 'bg-slate-100 dark:bg-slate-800/50 cursor-not-allowed opacity-75' : 'bg-white dark:bg-slate-800'
+              }`}
               placeholder="e.g. July 2024-September 2024"
             />
           </div>
@@ -720,8 +893,11 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
             <input
               type="text"
               value={efyLabel}
+              disabled={isActiveMonthLocked && !isMasterAdmin}
               onChange={(e) => setEfyLabel(e.target.value)}
-              className="w-full px-2.5 py-1 bg-white dark:bg-slate-800 rounded-lg border border-slate-300 dark:border-slate-700 font-bold text-slate-850 dark:text-slate-100"
+              className={`w-full px-2.5 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-bold text-slate-850 dark:text-slate-100 ${
+                isActiveMonthLocked && !isMasterAdmin ? 'bg-slate-100 dark:bg-slate-800/50 cursor-not-allowed opacity-75' : 'bg-white dark:bg-slate-800'
+              }`}
               placeholder="e.g. EFY 2017"
             />
           </div>
@@ -764,11 +940,14 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                       type="number"
                       step="0.01"
                       value={activePlan.contractor.month}
+                      disabled={isActiveMonthLocked && !isMasterAdmin}
                       onChange={(e) => setActivePlan({
                         ...activePlan,
                         contractor: { ...activePlan.contractor, month: parseFloat(e.target.value) || 0 }
                       })}
-                      className="w-24 text-center px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg font-black text-sm text-slate-850 dark:text-slate-100"
+                      className={`w-24 text-center px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg font-black text-sm text-slate-850 dark:text-slate-100 ${
+                        isActiveMonthLocked && !isMasterAdmin ? 'cursor-not-allowed opacity-70' : ''
+                      }`}
                     />
                     <div className="text-[10px] text-slate-400 mt-1 font-bold">{toPct(activePlan.contractor.month)}</div>
                   </td>
@@ -777,11 +956,14 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                       type="number"
                       step="0.01"
                       value={activePlan.contractor.quarter}
+                      disabled={isActiveMonthLocked && !isMasterAdmin}
                       onChange={(e) => setActivePlan({
                         ...activePlan,
                         contractor: { ...activePlan.contractor, quarter: parseFloat(e.target.value) || 0 }
                       })}
-                      className="w-24 text-center px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg font-black text-sm text-slate-850 dark:text-slate-100"
+                      className={`w-24 text-center px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg font-black text-sm text-slate-850 dark:text-slate-100 ${
+                        isActiveMonthLocked && !isMasterAdmin ? 'cursor-not-allowed opacity-70' : ''
+                      }`}
                     />
                     <div className="text-[10px] text-slate-400 mt-1 font-bold">{toPct(activePlan.contractor.quarter)}</div>
                   </td>
@@ -790,11 +972,14 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                       type="number"
                       step="0.01"
                       value={activePlan.contractor.efy}
+                      disabled={isActiveMonthLocked && !isMasterAdmin}
                       onChange={(e) => setActivePlan({
                         ...activePlan,
                         contractor: { ...activePlan.contractor, efy: parseFloat(e.target.value) || 0 }
                       })}
-                      className="w-24 text-center px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg font-black text-sm text-slate-850 dark:text-slate-100"
+                      className={`w-24 text-center px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg font-black text-sm text-slate-850 dark:text-slate-100 ${
+                        isActiveMonthLocked && !isMasterAdmin ? 'cursor-not-allowed opacity-70' : ''
+                      }`}
                     />
                     <div className="text-[10px] text-slate-400 mt-1 font-bold">{toPct(activePlan.contractor.efy)}</div>
                   </td>
@@ -803,11 +988,14 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                       type="number"
                       step="0.01"
                       value={activePlan.contractor.todate}
+                      disabled={isActiveMonthLocked && !isMasterAdmin}
                       onChange={(e) => setActivePlan({
                         ...activePlan,
                         contractor: { ...activePlan.contractor, todate: parseFloat(e.target.value) || 0 }
                       })}
-                      className="w-24 text-center px-2 py-1 bg-blue-100/50 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-700 rounded-lg font-black text-sm text-blue-900 dark:text-blue-100"
+                      className={`w-24 text-center px-2 py-1 bg-blue-100/50 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-700 rounded-lg font-black text-sm text-blue-900 dark:text-blue-100 ${
+                        isActiveMonthLocked && !isMasterAdmin ? 'cursor-not-allowed opacity-70' : ''
+                      }`}
                     />
                     <div className="text-[10px] text-blue-600 dark:text-blue-400 mt-1 font-bold">{toPct(activePlan.contractor.todate)}</div>
                   </td>
@@ -826,11 +1014,14 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                       type="number"
                       step="0.01"
                       value={activePlan.era.month}
+                      disabled={isActiveMonthLocked && !isMasterAdmin}
                       onChange={(e) => setActivePlan({
                         ...activePlan,
                         era: { ...activePlan.era, month: parseFloat(e.target.value) || 0 }
                       })}
-                      className="w-24 text-center px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg font-black text-sm text-slate-850 dark:text-slate-100"
+                      className={`w-24 text-center px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg font-black text-sm text-slate-850 dark:text-slate-100 ${
+                        isActiveMonthLocked && !isMasterAdmin ? 'cursor-not-allowed opacity-70' : ''
+                      }`}
                     />
                     <div className="text-[10px] text-slate-400 mt-1 font-bold">{toPct(activePlan.era.month)}</div>
                   </td>
@@ -839,11 +1030,14 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                       type="number"
                       step="0.01"
                       value={activePlan.era.quarter}
+                      disabled={isActiveMonthLocked && !isMasterAdmin}
                       onChange={(e) => setActivePlan({
                         ...activePlan,
                         era: { ...activePlan.era, quarter: parseFloat(e.target.value) || 0 }
                       })}
-                      className="w-24 text-center px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg font-black text-sm text-slate-850 dark:text-slate-100"
+                      className={`w-24 text-center px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg font-black text-sm text-slate-850 dark:text-slate-100 ${
+                        isActiveMonthLocked && !isMasterAdmin ? 'cursor-not-allowed opacity-70' : ''
+                      }`}
                     />
                     <div className="text-[10px] text-slate-400 mt-1 font-bold">{toPct(activePlan.era.quarter)}</div>
                   </td>
@@ -852,11 +1046,14 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                       type="number"
                       step="0.01"
                       value={activePlan.era.efy}
+                      disabled={isActiveMonthLocked && !isMasterAdmin}
                       onChange={(e) => setActivePlan({
                         ...activePlan,
                         era: { ...activePlan.era, efy: parseFloat(e.target.value) || 0 }
                       })}
-                      className="w-24 text-center px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg font-black text-sm text-slate-850 dark:text-slate-100"
+                      className={`w-24 text-center px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg font-black text-sm text-slate-850 dark:text-slate-100 ${
+                        isActiveMonthLocked && !isMasterAdmin ? 'cursor-not-allowed opacity-70' : ''
+                      }`}
                     />
                     <div className="text-[10px] text-slate-400 mt-1 font-bold">{toPct(activePlan.era.efy)}</div>
                   </td>
@@ -865,11 +1062,14 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                       type="number"
                       step="0.01"
                       value={activePlan.era.todate}
+                      disabled={isActiveMonthLocked && !isMasterAdmin}
                       onChange={(e) => setActivePlan({
                         ...activePlan,
                         era: { ...activePlan.era, todate: parseFloat(e.target.value) || 0 }
                       })}
-                      className="w-24 text-center px-2 py-1 bg-emerald-100/50 dark:bg-emerald-900/30 border border-emerald-300 dark:border-emerald-700 rounded-lg font-black text-sm text-emerald-900 dark:text-emerald-100"
+                      className={`w-24 text-center px-2 py-1 bg-emerald-100/50 dark:bg-emerald-900/30 border border-emerald-300 dark:border-emerald-700 rounded-lg font-black text-sm text-emerald-900 dark:text-emerald-100 ${
+                        isActiveMonthLocked && !isMasterAdmin ? 'cursor-not-allowed opacity-70' : ''
+                      }`}
                     />
                     <div className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-1 font-bold">{toPct(activePlan.era.todate)}</div>
                   </td>
@@ -888,11 +1088,14 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                       type="number"
                       step="0.01"
                       value={activePlan.actual.month}
+                      disabled={isActiveMonthLocked && !isMasterAdmin}
                       onChange={(e) => setActivePlan({
                         ...activePlan,
                         actual: { ...activePlan.actual, month: parseFloat(e.target.value) || 0 }
                       })}
-                      className="w-24 text-center px-2 py-1 bg-white dark:bg-slate-800 border-2 border-indigo-400 dark:border-indigo-600 rounded-lg font-black text-sm text-indigo-700 dark:text-indigo-300 shadow-xs"
+                      className={`w-24 text-center px-2 py-1 bg-white dark:bg-slate-800 border-2 border-indigo-400 dark:border-indigo-600 rounded-lg font-black text-sm text-indigo-700 dark:text-indigo-300 shadow-xs ${
+                        isActiveMonthLocked && !isMasterAdmin ? 'cursor-not-allowed opacity-70' : ''
+                      }`}
                     />
                     <div className="text-[10px] text-indigo-600 dark:text-indigo-400 mt-1 font-bold">{toPct(activePlan.actual.month)}</div>
                   </td>
@@ -901,11 +1104,14 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                       type="number"
                       step="0.01"
                       value={activePlan.actual.quarter}
+                      disabled={isActiveMonthLocked && !isMasterAdmin}
                       onChange={(e) => setActivePlan({
                         ...activePlan,
                         actual: { ...activePlan.actual, quarter: parseFloat(e.target.value) || 0 }
                       })}
-                      className="w-24 text-center px-2 py-1 bg-white dark:bg-slate-800 border-2 border-indigo-400 dark:border-indigo-600 rounded-lg font-black text-sm text-indigo-700 dark:text-indigo-300 shadow-xs"
+                      className={`w-24 text-center px-2 py-1 bg-white dark:bg-slate-800 border-2 border-indigo-400 dark:border-indigo-600 rounded-lg font-black text-sm text-indigo-700 dark:text-indigo-300 shadow-xs ${
+                        isActiveMonthLocked && !isMasterAdmin ? 'cursor-not-allowed opacity-70' : ''
+                      }`}
                     />
                     <div className="text-[10px] text-indigo-600 dark:text-indigo-400 mt-1 font-bold">{toPct(activePlan.actual.quarter)}</div>
                   </td>
@@ -914,11 +1120,14 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                       type="number"
                       step="0.01"
                       value={activePlan.actual.efy}
+                      disabled={isActiveMonthLocked && !isMasterAdmin}
                       onChange={(e) => setActivePlan({
                         ...activePlan,
                         actual: { ...activePlan.actual, efy: parseFloat(e.target.value) || 0 }
                       })}
-                      className="w-24 text-center px-2 py-1 bg-white dark:bg-slate-800 border-2 border-indigo-400 dark:border-indigo-600 rounded-lg font-black text-sm text-indigo-700 dark:text-indigo-300 shadow-xs"
+                      className={`w-24 text-center px-2 py-1 bg-white dark:bg-slate-800 border-2 border-indigo-400 dark:border-indigo-600 rounded-lg font-black text-sm text-indigo-700 dark:text-indigo-300 shadow-xs ${
+                        isActiveMonthLocked && !isMasterAdmin ? 'cursor-not-allowed opacity-70' : ''
+                      }`}
                     />
                     <div className="text-[10px] text-indigo-600 dark:text-indigo-400 mt-1 font-bold">{toPct(activePlan.actual.efy)}</div>
                   </td>
@@ -927,11 +1136,14 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                       type="number"
                       step="0.01"
                       value={activePlan.actual.todate}
+                      disabled={isActiveMonthLocked && !isMasterAdmin}
                       onChange={(e) => setActivePlan({
                         ...activePlan,
                         actual: { ...activePlan.actual, todate: parseFloat(e.target.value) || 0 }
                       })}
-                      className="w-24 text-center px-2 py-1 bg-indigo-600 text-white border-2 border-indigo-700 rounded-lg font-black text-sm shadow-xs"
+                      className={`w-24 text-center px-2 py-1 bg-indigo-600 text-white border-2 border-indigo-700 rounded-lg font-black text-sm shadow-xs ${
+                        isActiveMonthLocked && !isMasterAdmin ? 'cursor-not-allowed opacity-70' : ''
+                      }`}
                     />
                     <div className="text-[10px] text-indigo-600 dark:text-indigo-400 mt-1 font-black">{toPct(activePlan.actual.todate)}</div>
                   </td>
@@ -1027,6 +1239,45 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
               <div className="text-[11px] text-slate-500 font-medium">{quarterLabel} | {efyLabel}</div>
             </div>
 
+            {/* Lock Status & Quick Action in Left Panel */}
+            {activeRecordMatch && (
+              isActiveMonthLocked ? (
+                <div className={`p-3 rounded-xl border flex items-center justify-between gap-2 ${
+                  isMasterAdmin 
+                    ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200' 
+                    : 'bg-rose-50 dark:bg-rose-950/30 border-rose-300 dark:border-rose-700 text-rose-900 dark:text-rose-200'
+                }`}>
+                  <div className="flex items-center gap-2 text-xs font-black">
+                    <Lock className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400 shrink-0" />
+                    <span>Validated & Locked</span>
+                  </div>
+                  {isMasterAdmin && (
+                    <button
+                      type="button"
+                      onClick={(e) => handleToggleLockAndApproveRecord(activeRecordMatch, e)}
+                      className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-black uppercase flex items-center gap-1 cursor-pointer transition shadow-2xs"
+                      title="Master Admin: Revert lock for this record"
+                    >
+                      <Unlock className="w-3 h-3" />
+                      <span>Revert Lock</span>
+                    </button>
+                  )}
+                </div>
+              ) : (
+                isDirectorateAdmin && (
+                  <button
+                    type="button"
+                    onClick={(e) => handleToggleLockAndApproveRecord(activeRecordMatch, e)}
+                    className="w-full py-2 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold uppercase tracking-wide flex items-center justify-center gap-2 border border-slate-300 dark:border-slate-700 cursor-pointer transition"
+                    title="Directorate Admin: Approve and lock this month against edits & deletion"
+                  >
+                    <Lock className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Approve & Lock Record</span>
+                  </button>
+                )
+              )
+            )}
+
             <div className="p-3 bg-slate-50 dark:bg-slate-900/40 rounded-xl border border-slate-100 dark:border-slate-800 space-y-2">
               <div className="flex items-center justify-between text-[11px]">
                 <span className="text-slate-500 font-medium">Contractor Plan:</span>
@@ -1066,10 +1317,16 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
 
           <button
             onClick={handleSaveActiveToSnapshot}
-            className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 shadow-sm transition cursor-pointer"
+            disabled={isActiveMonthLocked && !isMasterAdmin}
+            className={`w-full py-3 px-4 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 shadow-sm transition ${
+              isActiveMonthLocked && !isMasterAdmin
+                ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed border border-slate-300 dark:border-slate-700'
+                : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white cursor-pointer'
+            }`}
+            title={isActiveMonthLocked && !isMasterAdmin ? 'Locked by Directorate Admin - Only Master Admin can modify or revert' : undefined}
           >
-            <Save className="w-4 h-4" />
-            <span>Save & Update to {monthLabel}</span>
+            {isActiveMonthLocked && !isMasterAdmin ? <Lock className="w-4 h-4 text-slate-400" /> : <Save className="w-4 h-4" />}
+            <span>{isActiveMonthLocked && !isMasterAdmin ? `Locked Against Modification (${monthLabel})` : `Save & Update to ${monthLabel}`}</span>
           </button>
         </section>
 
@@ -1335,12 +1592,27 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                       }`}
                     >
                       <div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-black text-slate-900 dark:text-white">
-                            {item.monthLabel}
-                          </span>
+                        <div className="flex items-center justify-between gap-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-sm font-black text-slate-900 dark:text-white">
+                              {item.monthLabel}
+                            </span>
+                            {item.isLocked ? (
+                              <span 
+                                className="px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 text-[9px] font-black uppercase tracking-wide flex items-center gap-1 border border-rose-200 dark:border-rose-900/50"
+                                title={item.approvedBy ? `Validated & Locked by ${item.approvedBy} on ${item.approvedAt ? new Date(item.approvedAt).toLocaleDateString() : 'record'}` : 'Validated & Locked by Directorate Admin'}
+                              >
+                                <Lock className="w-2.5 h-2.5 text-rose-600" />
+                                <span>Locked</span>
+                              </span>
+                            ) : (
+                              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold text-slate-400 bg-slate-100 dark:bg-slate-800/80">
+                                Open
+                              </span>
+                            )}
+                          </div>
                           {isActive && (
-                            <span className="px-2 py-0.5 rounded-md bg-blue-600 text-white text-[9px] font-black uppercase tracking-wider">
+                            <span className="px-2 py-0.5 rounded-md bg-blue-600 text-white text-[9px] font-black uppercase tracking-wider shrink-0">
                               Active View
                             </span>
                           )}
@@ -1377,18 +1649,68 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                         </span>
 
                         <div className="flex items-center gap-1.5">
+                          {/* Lock / Unlock (Revert) Action Button */}
+                          {item.isLocked ? (
+                            isMasterAdmin ? (
+                              <button
+                                type="button"
+                                onClick={(e) => handleToggleLockAndApproveRecord(item, e)}
+                                className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/50 dark:hover:bg-amber-900/60 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-800 transition cursor-pointer"
+                                title="Master Admin: Revert and unlock this monthly record"
+                              >
+                                <Unlock className="w-3.5 h-3.5" />
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  alert(`Unauthorized: Monthly record for "${item.monthLabel}" has been validated and locked by Directorate Admin. Only Master Admin is authorized to revert changes.`);
+                                }}
+                                className="p-1.5 rounded-lg bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-900/40 cursor-not-allowed opacity-80"
+                                title="Validated & Locked by Directorate Admin. Only Master Admin can revert changes."
+                              >
+                                <Lock className="w-3.5 h-3.5" />
+                              </button>
+                            )
+                          ) : (
+                            isDirectorateAdmin && (
+                              <button
+                                type="button"
+                                onClick={(e) => handleToggleLockAndApproveRecord(item, e)}
+                                className="p-1.5 rounded-lg bg-slate-100 hover:bg-emerald-50 dark:bg-slate-800 dark:hover:bg-emerald-950/40 text-slate-600 hover:text-emerald-700 dark:text-slate-300 dark:hover:text-emerald-300 transition cursor-pointer"
+                                title="Directorate Admin: Approve and lock this monthly record against edits & deletion"
+                              >
+                                <Lock className="w-3.5 h-3.5" />
+                              </button>
+                            )
+                          )}
+
                           <button
+                            type="button"
                             onClick={(e) => handleOpenEditModal(item, e)}
-                            className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition"
-                            title="Edit archived record"
+                            disabled={item.isLocked && !isMasterAdmin}
+                            className={`p-1.5 rounded-lg transition ${
+                              item.isLocked && !isMasterAdmin
+                                ? 'bg-slate-100 dark:bg-slate-800 text-slate-300 dark:text-slate-600 cursor-not-allowed'
+                                : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 cursor-pointer'
+                            }`}
+                            title={item.isLocked && !isMasterAdmin ? 'Locked by Directorate Admin (Master Admin only)' : 'Edit archived record'}
                           >
                             <Edit className="w-3.5 h-3.5" />
                           </button>
+
                           {canDeleteHistory && (
                             <button
+                              type="button"
                               onClick={(e) => handleDeleteSnapshot(item.id, e)}
-                              className="p-1.5 rounded-lg bg-slate-100 hover:bg-rose-100 dark:bg-slate-800 dark:hover:bg-rose-950/40 text-slate-500 hover:text-rose-600 transition"
-                              title="Delete snapshot (Directorate admin, Master admin, and CPM admin only)"
+                              disabled={item.isLocked && !isMasterAdmin}
+                              className={`p-1.5 rounded-lg transition ${
+                                item.isLocked && !isMasterAdmin
+                                  ? 'bg-slate-100 dark:bg-slate-800 text-slate-300 dark:text-slate-600 cursor-not-allowed'
+                                  : 'bg-slate-100 hover:bg-rose-100 dark:bg-slate-800 dark:hover:bg-rose-950/40 text-slate-500 hover:text-rose-600 cursor-pointer'
+                              }`}
+                              title={item.isLocked && !isMasterAdmin ? 'Locked by Directorate Admin (Master Admin only)' : 'Delete snapshot (Directorate admin, Master admin, and CPM admin only)'}
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -1440,9 +1762,22 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                       }`}
                     >
                       <div className="flex items-center gap-3">
-                        <div className="min-w-24">
+                        <div className="min-w-28">
                           <div className="text-xs font-black text-slate-900 dark:text-white flex items-center gap-1.5">
-                            {item.monthLabel}
+                            <span>{item.monthLabel}</span>
+                            {item.isLocked ? (
+                              <span 
+                                className="px-1.5 py-0.2 rounded-full bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 text-[9px] font-black uppercase flex items-center gap-0.5 border border-rose-200 dark:border-rose-900/50"
+                                title="Validated & Locked by Directorate Admin"
+                              >
+                                <Lock className="w-2.5 h-2.5 text-rose-600" />
+                                <span>Locked</span>
+                              </span>
+                            ) : (
+                              <span className="px-1 py-0.2 rounded text-[9px] font-bold text-slate-400 bg-slate-100 dark:bg-slate-800/80">
+                                Open
+                              </span>
+                            )}
                             {isActive && (
                               <span className="w-1.5 h-1.5 rounded-full bg-blue-600"></span>
                             )}
@@ -1481,18 +1816,68 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
 
                       {/* Actions */}
                       <div className="flex items-center gap-1.5 shrink-0 self-end md:self-auto">
+                        {/* Lock / Revert Action */}
+                        {item.isLocked ? (
+                          isMasterAdmin ? (
+                            <button
+                              type="button"
+                              onClick={(e) => handleToggleLockAndApproveRecord(item, e)}
+                              className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/50 dark:hover:bg-amber-900/60 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-800 transition cursor-pointer"
+                              title="Master Admin: Revert and unlock this monthly record"
+                            >
+                              <Unlock className="w-3.5 h-3.5" />
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                alert(`Unauthorized: Monthly record for "${item.monthLabel}" has been validated and locked by Directorate Admin. Only Master Admin is authorized to revert changes.`);
+                              }}
+                              className="p-1.5 rounded-lg bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-900/40 cursor-not-allowed opacity-80"
+                              title="Validated & Locked by Directorate Admin. Only Master Admin can revert changes."
+                            >
+                              <Lock className="w-3.5 h-3.5" />
+                            </button>
+                          )
+                        ) : (
+                          isDirectorateAdmin && (
+                            <button
+                              type="button"
+                              onClick={(e) => handleToggleLockAndApproveRecord(item, e)}
+                              className="p-1.5 rounded-lg bg-slate-100 hover:bg-emerald-50 dark:bg-slate-800 dark:hover:bg-emerald-950/40 text-slate-600 hover:text-emerald-700 dark:text-slate-300 dark:hover:text-emerald-300 transition cursor-pointer"
+                              title="Directorate Admin: Approve and lock this monthly record against edits & deletion"
+                            >
+                              <Lock className="w-3.5 h-3.5" />
+                            </button>
+                          )
+                        )}
+
                         <button
+                          type="button"
                           onClick={(e) => handleOpenEditModal(item, e)}
-                          className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition"
-                          title="Edit archived record"
+                          disabled={item.isLocked && !isMasterAdmin}
+                          className={`p-1.5 rounded-lg transition ${
+                            item.isLocked && !isMasterAdmin
+                              ? 'bg-slate-100 dark:bg-slate-800 text-slate-300 dark:text-slate-600 cursor-not-allowed'
+                              : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 cursor-pointer'
+                          }`}
+                          title={item.isLocked && !isMasterAdmin ? 'Locked by Directorate Admin (Master Admin only)' : 'Edit archived record'}
                         >
                           <Edit className="w-3.5 h-3.5" />
                         </button>
+
                         {canDeleteHistory && (
                           <button
+                            type="button"
                             onClick={(e) => handleDeleteSnapshot(item.id, e)}
-                            className="p-1.5 rounded-lg bg-slate-100 hover:bg-rose-100 dark:bg-slate-800 dark:hover:bg-rose-950/40 text-slate-500 hover:text-rose-600 transition"
-                            title="Delete snapshot (Directorate admin, Master admin, and CPM admin only)"
+                            disabled={item.isLocked && !isMasterAdmin}
+                            className={`p-1.5 rounded-lg transition ${
+                              item.isLocked && !isMasterAdmin
+                                ? 'bg-slate-100 dark:bg-slate-800 text-slate-300 dark:text-slate-600 cursor-not-allowed'
+                                : 'bg-slate-100 hover:bg-rose-100 dark:bg-slate-800 dark:hover:bg-rose-950/40 text-slate-500 hover:text-rose-600 cursor-pointer'
+                            }`}
+                            title={item.isLocked && !isMasterAdmin ? 'Locked by Directorate Admin (Master Admin only)' : 'Delete snapshot (Directorate admin, Master admin, and CPM admin only)'}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -1719,6 +2104,68 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
               </button>
             </div>
 
+            {/* Locked Milestone Notification Banner */}
+            {editingItem.isLocked && (
+              <div className={`p-3.5 rounded-2xl border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 ${
+                isMasterAdmin 
+                  ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-700 text-amber-950 dark:text-amber-200' 
+                  : 'bg-rose-50 dark:bg-rose-950/40 border-rose-300 dark:border-rose-700 text-rose-950 dark:text-rose-200'
+              }`}>
+                <div className="flex items-center gap-3">
+                  <div className={`p-2 rounded-xl shrink-0 ${isMasterAdmin ? 'bg-amber-200 dark:bg-amber-800 text-amber-900' : 'bg-rose-200 dark:bg-rose-800 text-rose-900'}`}>
+                    <Lock className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-black uppercase tracking-wider flex items-center gap-2">
+                      <span>Monthly Record Validated & Locked</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-600 text-white font-bold">
+                        Directorate Admin Lock
+                      </span>
+                      {isMasterAdmin && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-600 text-white font-bold">
+                          Master Admin Override
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[11px] opacity-90 mt-0.5">
+                      {isMasterAdmin 
+                        ? 'Master Admin privilege is active. You can edit values directly or revert this lock.' 
+                        : 'This milestone record has been locked by Directorate Admin. Modifications and deletions are restricted exclusively to Master Admin.'}
+                      {editingItem.approvedAt && (
+                        <span className="ml-1 opacity-75">
+                          (Locked on {new Date(editingItem.approvedAt).toLocaleDateString()}{editingItem.approvedBy ? ` by ${editingItem.approvedBy}` : ''})
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {isMasterAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm(`Revert and unlock milestone record for "${editingItem.monthLabel}"?`)) {
+                        setEditingItem({
+                          ...editingItem,
+                          isLocked: false,
+                          approvedByDirectorate: false,
+                          approvedAt: undefined,
+                          approvedBy: undefined,
+                          lockedAt: undefined,
+                          lockedBy: undefined
+                        });
+                      }
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-black uppercase tracking-wide flex items-center gap-1.5 shrink-0 transition cursor-pointer shadow-xs"
+                    title="Revert lock for this record (Master Admin privilege)"
+                  >
+                    <Unlock className="w-3.5 h-3.5" />
+                    <span>Revert Lock</span>
+                  </button>
+                )}
+              </div>
+            )}
+
             {/* Current Project Progress Benchmark Banner */}
             <div className="p-3.5 bg-gradient-to-r from-blue-50/90 to-indigo-50/90 dark:from-blue-950/40 dark:to-indigo-950/40 rounded-2xl border border-blue-200 dark:border-blue-900/50 space-y-2.5">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -1732,6 +2179,7 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                   </span>
                   <button
                     type="button"
+                    disabled={editingItem.isLocked && !isMasterAdmin}
                     onClick={() => {
                       const decrActual = Math.max(0, Number((activePlan.actual.todate - 1.0).toFixed(2)));
                       const decrContr = Math.max(0, Number((activePlan.contractor.todate - 1.5).toFixed(2)));
@@ -1744,7 +2192,7 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                         physicalProgress: Number(((decrActual / totalLength) * 100).toFixed(2))
                       });
                     }}
-                    className="px-2.5 py-1 rounded-lg bg-blue-700 hover:bg-blue-800 text-white text-[10px] font-black uppercase tracking-wide transition cursor-pointer flex items-center gap-1 shadow-xs"
+                    className="px-2.5 py-1 rounded-lg bg-blue-700 hover:bg-blue-800 disabled:opacity-50 text-white text-[10px] font-black uppercase tracking-wide transition cursor-pointer flex items-center gap-1 shadow-xs"
                     title="Set safe previous values lower by 1.0 Km"
                   >
                     <Sparkles className="w-3 h-3" />
@@ -1793,9 +2241,12 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                 <input
                   type="text"
                   value={editingItem.monthLabel}
+                  disabled={editingItem.isLocked && !isMasterAdmin}
                   onChange={(e) => setEditingItem({ ...editingItem, monthLabel: e.target.value })}
                   placeholder="e.g. Aug '24"
-                  className="w-full px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-white"
+                  className={`w-full px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-white ${
+                    editingItem.isLocked && !isMasterAdmin ? 'bg-slate-100 dark:bg-slate-900 cursor-not-allowed opacity-75' : 'bg-slate-50 dark:bg-slate-800'
+                  }`}
                 />
               </div>
               <div>
@@ -1803,9 +2254,12 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                 <input
                   type="text"
                   value={editingItem.quarterLabel || ''}
+                  disabled={editingItem.isLocked && !isMasterAdmin}
                   onChange={(e) => setEditingItem({ ...editingItem, quarterLabel: e.target.value })}
                   placeholder="e.g. July 2024-September 2024"
-                  className="w-full px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-white"
+                  className={`w-full px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-white ${
+                    editingItem.isLocked && !isMasterAdmin ? 'bg-slate-100 dark:bg-slate-900 cursor-not-allowed opacity-75' : 'bg-slate-50 dark:bg-slate-800'
+                  }`}
                 />
               </div>
               <div>
@@ -1813,9 +2267,12 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                 <input
                   type="text"
                   value={editingItem.efyLabel}
+                  disabled={editingItem.isLocked && !isMasterAdmin}
                   onChange={(e) => setEditingItem({ ...editingItem, efyLabel: e.target.value })}
                   placeholder="e.g. EFY 2017"
-                  className="w-full px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-white"
+                  className={`w-full px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-white ${
+                    editingItem.isLocked && !isMasterAdmin ? 'bg-slate-100 dark:bg-slate-900 cursor-not-allowed opacity-75' : 'bg-slate-50 dark:bg-slate-800'
+                  }`}
                 />
               </div>
             </div>
@@ -1846,8 +2303,11 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                         type="number"
                         step="0.01"
                         value={editingItem.contractorMonth}
+                        disabled={editingItem.isLocked && !isMasterAdmin}
                         onChange={(e) => setEditingItem({ ...editingItem, contractorMonth: parseFloat(e.target.value) || 0 })}
-                        className="w-20 text-center px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold"
+                        className={`w-20 text-center px-2 py-1 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold ${
+                          editingItem.isLocked && !isMasterAdmin ? 'bg-slate-100 dark:bg-slate-900 cursor-not-allowed opacity-75' : 'bg-slate-50 dark:bg-slate-800'
+                        }`}
                       />
                     </td>
                     <td className="p-3 text-center">
@@ -1855,8 +2315,11 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                         type="number"
                         step="0.01"
                         value={editingItem.contractorQuarter || 0}
+                        disabled={editingItem.isLocked && !isMasterAdmin}
                         onChange={(e) => setEditingItem({ ...editingItem, contractorQuarter: parseFloat(e.target.value) || 0 })}
-                        className="w-20 text-center px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold"
+                        className={`w-20 text-center px-2 py-1 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold ${
+                          editingItem.isLocked && !isMasterAdmin ? 'bg-slate-100 dark:bg-slate-900 cursor-not-allowed opacity-75' : 'bg-slate-50 dark:bg-slate-800'
+                        }`}
                       />
                     </td>
                     <td className="p-3 text-center">
@@ -1864,8 +2327,11 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                         type="number"
                         step="0.01"
                         value={editingItem.contractorEfy}
+                        disabled={editingItem.isLocked && !isMasterAdmin}
                         onChange={(e) => setEditingItem({ ...editingItem, contractorEfy: parseFloat(e.target.value) || 0 })}
-                        className="w-20 text-center px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold"
+                        className={`w-20 text-center px-2 py-1 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold ${
+                          editingItem.isLocked && !isMasterAdmin ? 'bg-slate-100 dark:bg-slate-900 cursor-not-allowed opacity-75' : 'bg-slate-50 dark:bg-slate-800'
+                        }`}
                       />
                     </td>
                     <td className="p-3 text-center bg-blue-50/30 dark:bg-blue-950/10">
@@ -1873,8 +2339,11 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                         type="number"
                         step="0.01"
                         value={editingItem.contractorTodate || 0}
+                        disabled={editingItem.isLocked && !isMasterAdmin}
                         onChange={(e) => setEditingItem({ ...editingItem, contractorTodate: parseFloat(e.target.value) || 0 })}
-                        className="w-24 text-center px-2 py-1 bg-white dark:bg-slate-800 border border-blue-300 dark:border-blue-700 rounded-lg text-xs font-bold text-blue-900 dark:text-blue-100"
+                        className={`w-24 text-center px-2 py-1 border border-blue-300 dark:border-blue-700 rounded-lg text-xs font-bold text-blue-900 dark:text-blue-100 ${
+                          editingItem.isLocked && !isMasterAdmin ? 'bg-slate-100 dark:bg-slate-900 cursor-not-allowed opacity-75' : 'bg-white dark:bg-slate-800'
+                        }`}
                       />
                       <div className="text-[9px] mt-1 font-bold">
                         {editingItem.contractorTodate !== undefined && editingItem.contractorTodate <= activePlan.contractor.todate ? (
@@ -1899,8 +2368,11 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                         type="number"
                         step="0.01"
                         value={editingItem.eraMonth}
+                        disabled={editingItem.isLocked && !isMasterAdmin}
                         onChange={(e) => setEditingItem({ ...editingItem, eraMonth: parseFloat(e.target.value) || 0 })}
-                        className="w-20 text-center px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold"
+                        className={`w-20 text-center px-2 py-1 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold ${
+                          editingItem.isLocked && !isMasterAdmin ? 'bg-slate-100 dark:bg-slate-900 cursor-not-allowed opacity-75' : 'bg-slate-50 dark:bg-slate-800'
+                        }`}
                       />
                     </td>
                     <td className="p-3 text-center">
@@ -1908,8 +2380,11 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                         type="number"
                         step="0.01"
                         value={editingItem.eraQuarter || 0}
+                        disabled={editingItem.isLocked && !isMasterAdmin}
                         onChange={(e) => setEditingItem({ ...editingItem, eraQuarter: parseFloat(e.target.value) || 0 })}
-                        className="w-20 text-center px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold"
+                        className={`w-20 text-center px-2 py-1 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold ${
+                          editingItem.isLocked && !isMasterAdmin ? 'bg-slate-100 dark:bg-slate-900 cursor-not-allowed opacity-75' : 'bg-slate-50 dark:bg-slate-800'
+                        }`}
                       />
                     </td>
                     <td className="p-3 text-center">
@@ -1917,8 +2392,11 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                         type="number"
                         step="0.01"
                         value={editingItem.eraEfy}
+                        disabled={editingItem.isLocked && !isMasterAdmin}
                         onChange={(e) => setEditingItem({ ...editingItem, eraEfy: parseFloat(e.target.value) || 0 })}
-                        className="w-20 text-center px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold"
+                        className={`w-20 text-center px-2 py-1 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold ${
+                          editingItem.isLocked && !isMasterAdmin ? 'bg-slate-100 dark:bg-slate-900 cursor-not-allowed opacity-75' : 'bg-slate-50 dark:bg-slate-800'
+                        }`}
                       />
                     </td>
                     <td className="p-3 text-center bg-blue-50/30 dark:bg-blue-950/10">
@@ -1926,8 +2404,11 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                         type="number"
                         step="0.01"
                         value={editingItem.eraTodate || 0}
+                        disabled={editingItem.isLocked && !isMasterAdmin}
                         onChange={(e) => setEditingItem({ ...editingItem, eraTodate: parseFloat(e.target.value) || 0 })}
-                        className="w-24 text-center px-2 py-1 bg-white dark:bg-slate-800 border border-emerald-300 dark:border-emerald-700 rounded-lg text-xs font-bold text-emerald-900 dark:text-emerald-100"
+                        className={`w-24 text-center px-2 py-1 border border-emerald-300 dark:border-emerald-700 rounded-lg text-xs font-bold text-emerald-900 dark:text-emerald-100 ${
+                          editingItem.isLocked && !isMasterAdmin ? 'bg-slate-100 dark:bg-slate-900 cursor-not-allowed opacity-75' : 'bg-white dark:bg-slate-800'
+                        }`}
                       />
                       <div className="text-[9px] mt-1 font-bold">
                         {editingItem.eraTodate !== undefined && editingItem.eraTodate <= activePlan.era.todate ? (
@@ -1952,8 +2433,11 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                         type="number"
                         step="0.01"
                         value={editingItem.actualMonth}
+                        disabled={editingItem.isLocked && !isMasterAdmin}
                         onChange={(e) => setEditingItem({ ...editingItem, actualMonth: parseFloat(e.target.value) || 0 })}
-                        className="w-20 text-center px-2 py-1 bg-white dark:bg-slate-800 border border-indigo-400 rounded-lg text-xs font-black text-indigo-700 dark:text-indigo-300 shadow-2xs"
+                        className={`w-20 text-center px-2 py-1 border border-indigo-400 rounded-lg text-xs font-black text-indigo-700 dark:text-indigo-300 shadow-2xs ${
+                          editingItem.isLocked && !isMasterAdmin ? 'bg-slate-100 dark:bg-slate-900 cursor-not-allowed opacity-75' : 'bg-white dark:bg-slate-800'
+                        }`}
                       />
                     </td>
                     <td className="p-3 text-center">
@@ -1961,8 +2445,11 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                         type="number"
                         step="0.01"
                         value={editingItem.actualQuarter || 0}
+                        disabled={editingItem.isLocked && !isMasterAdmin}
                         onChange={(e) => setEditingItem({ ...editingItem, actualQuarter: parseFloat(e.target.value) || 0 })}
-                        className="w-20 text-center px-2 py-1 bg-white dark:bg-slate-800 border border-indigo-400 rounded-lg text-xs font-black text-indigo-700 dark:text-indigo-300 shadow-2xs"
+                        className={`w-20 text-center px-2 py-1 border border-indigo-400 rounded-lg text-xs font-black text-indigo-700 dark:text-indigo-300 shadow-2xs ${
+                          editingItem.isLocked && !isMasterAdmin ? 'bg-slate-100 dark:bg-slate-900 cursor-not-allowed opacity-75' : 'bg-white dark:bg-slate-800'
+                        }`}
                       />
                     </td>
                     <td className="p-3 text-center">
@@ -1970,8 +2457,11 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                         type="number"
                         step="0.01"
                         value={editingItem.actualEfy}
+                        disabled={editingItem.isLocked && !isMasterAdmin}
                         onChange={(e) => setEditingItem({ ...editingItem, actualEfy: parseFloat(e.target.value) || 0 })}
-                        className="w-20 text-center px-2 py-1 bg-white dark:bg-slate-800 border border-indigo-400 rounded-lg text-xs font-black text-indigo-700 dark:text-indigo-300 shadow-2xs"
+                        className={`w-20 text-center px-2 py-1 border border-indigo-400 rounded-lg text-xs font-black text-indigo-700 dark:text-indigo-300 shadow-2xs ${
+                          editingItem.isLocked && !isMasterAdmin ? 'bg-slate-100 dark:bg-slate-900 cursor-not-allowed opacity-75' : 'bg-white dark:bg-slate-800'
+                        }`}
                       />
                     </td>
                     <td className="p-3 text-center bg-indigo-100/40 dark:bg-indigo-900/30">
@@ -1979,6 +2469,7 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                         type="number"
                         step="0.01"
                         value={editingItem.actualTodate || 0}
+                        disabled={editingItem.isLocked && !isMasterAdmin}
                         onChange={(e) => {
                           const val = parseFloat(e.target.value) || 0;
                           setEditingItem({ 
@@ -1987,7 +2478,9 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                             physicalProgress: totalLength > 0 ? Number(((val / totalLength) * 100).toFixed(2)) : 0
                           });
                         }}
-                        className="w-24 text-center px-2 py-1 bg-indigo-600 text-white rounded-lg text-xs font-black shadow-xs"
+                        className={`w-24 text-center px-2 py-1 rounded-lg text-xs font-black shadow-xs ${
+                          editingItem.isLocked && !isMasterAdmin ? 'bg-slate-400 text-slate-200 cursor-not-allowed opacity-75' : 'bg-indigo-600 text-white'
+                        }`}
                       />
                       <div className="text-[9px] mt-1 font-bold">
                         {editingItem.actualTodate !== undefined && editingItem.actualTodate <= activePlan.actual.todate ? (
@@ -2035,10 +2528,15 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
               <button
                 type="button"
                 onClick={handleSaveModalUpdates}
-                className="px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wide bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+                disabled={editingItem.isLocked && !isMasterAdmin}
+                className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wide shadow-xs transition flex items-center gap-1.5 ${
+                  editingItem.isLocked && !isMasterAdmin
+                    ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed'
+                    : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white cursor-pointer'
+                }`}
               >
                 <Check className="w-4 h-4" />
-                <span>{modalMode === 'add_previous' ? 'Save Previous Milestone Record' : 'Save Updates'}</span>
+                <span>{editingItem.isLocked && !isMasterAdmin ? 'Locked Record (Master Admin Only)' : (modalMode === 'add_previous' ? 'Save Previous Milestone Record' : 'Save Updates')}</span>
               </button>
             </div>
           </div>

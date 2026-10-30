@@ -666,6 +666,7 @@ export interface Project {
   lengthKm: number;
   spurRoadLengthKm?: number;
   hasCappingLayer?: boolean;
+  hasSpurRoad?: boolean;
   classification: string;
   contractorGrade?: string;
   contractType: 'DB' | 'DBB';
@@ -720,6 +721,10 @@ export interface Project {
   enableUsdPayments?: boolean; // When true, enables foreign currency (USD) tracking in Financial Data / IPCs
   hasForeignCurrency?: boolean;
   isAmountLocked?: boolean; // When true, locks contract amount page table data entry preventing edits by non-admin users
+  isProjectInfoLocked?: boolean; // When true, locks project information page preventing edits except for Interim EOT
+  projectInfoLockedBy?: string;
+  projectInfoLockedAt?: string;
+  projectInfoLockedRole?: string;
   risks?: RiskItem[];
   issues?: IssueLogItem[];
   dailyActivities?: DailyActivityRecord[];
@@ -1552,6 +1557,13 @@ export interface ProgressPlanHistoryItem {
   physicalProgress?: number;
   contractorMonths?: number[];
   eraMonths?: number[];
+  // Lock & Directorate Approval Governance
+  isLocked?: boolean;
+  approvedByDirectorate?: boolean;
+  approvedAt?: string;
+  approvedBy?: string;
+  lockedAt?: string;
+  lockedBy?: string;
 }
 
 export interface CustomScoringCriterion {

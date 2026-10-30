@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { Plus, Trash2, Sliders, CheckSquare, Activity, AlertCircle } from 'lucide-react';
+import { Plus, Trash2, Sliders, CheckSquare, Activity, AlertCircle, Link2, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { Project, QtyItem } from '../types';
+import { matchPavementLayer, syncQuantitiesWithLinear, PAVEMENT_LAYERS, getLinearLayerTotals } from '../utils/quantityLinearSync';
 
 interface CriticalQtyAnalysis {
   name: string;
@@ -112,10 +113,12 @@ function evaluateEngineeringQuantities(quantities: QtyItem[]): {
 interface QuantityEditorViewProps {
   project: Project;
   onUpdateQuantities: (quantities: QtyItem[]) => void;
+  onUpdateProject?: (project: Project, sectionName: string) => void;
 }
 
-export default function QuantityEditorView({ project, onUpdateQuantities }: QuantityEditorViewProps) {
+export default function QuantityEditorView({ project, onUpdateQuantities, onUpdateProject }: QuantityEditorViewProps) {
   const quantities = project.quantities || [];
+  const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
 
   const handleFieldChange = (idx: number, field: keyof QtyItem, value: any) => {
     const updated = quantities.map((q, i) => {
@@ -128,6 +131,13 @@ export default function QuantityEditorView({ project, onUpdateQuantities }: Quan
       return q;
     });
     onUpdateQuantities(updated);
+  };
+
+  const handleManualSyncWithLinear = () => {
+    const synced = syncQuantitiesWithLinear(project);
+    onUpdateQuantities(synced);
+    setSyncFeedback('Pavement quantities synchronized with Linear Diagram baseline & actuals');
+    setTimeout(() => setSyncFeedback(null), 3500);
   };
 
   const handleAddQtyRow = () => {
@@ -165,19 +175,48 @@ export default function QuantityEditorView({ project, onUpdateQuantities }: Quan
 
         <div className="flex flex-wrap items-center gap-1.5 self-start md:self-auto">
           <button
+            onClick={handleManualSyncWithLinear}
+            className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 dark:hover:bg-indigo-900/60 text-xs font-bold py-1.5 px-3 rounded-xl transition flex items-center gap-1.5 border border-indigo-200 dark:border-indigo-800/60 cursor-pointer"
+            title="Explicitly synchronize Subgrade, Capping, Sub-base, Base-Course, and Asphalt Concrete with Linear Diagram"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            Sync with Linear Diagram
+          </button>
+          <button
             onClick={handleAddQtyRow}
-            className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-250 text-xs font-bold py-1.5 px-3 rounded-xl transition flex items-center gap-1"
+            className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-250 text-xs font-bold py-1.5 px-3 rounded-xl transition flex items-center gap-1 cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
             Add Qty Row
           </button>
           <button
             onClick={handleRemoveLastRow}
-            className="bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/20 dark:text-rose-455 px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1"
+            className="bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/20 dark:text-rose-455 px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer"
           >
             <Trash2 className="w-3.5 h-3.5" />
             Remove Last
           </button>
+        </div>
+      </div>
+
+      {/* Sync Notification Banner */}
+      {syncFeedback && (
+        <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/50 p-3 rounded-xl flex items-center gap-2 text-xs font-bold text-emerald-800 dark:text-emerald-300 animate-fadeIn">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span>{syncFeedback}</span>
+        </div>
+      )}
+
+      {/* Dynamic Linking Information Banner */}
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border border-blue-200/60 dark:border-blue-800/40 p-3.5 rounded-xl flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
+          <Link2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+          <span>
+            <strong className="text-indigo-700 dark:text-indigo-300">Bidirectional Alignment Active:</strong> Subgrade, Capping, Sub-base, Base-Course, and Asphalt Concrete Program Scheduled Plans and Actual Progress are dynamically linked with the Linear Diagram page.
+          </span>
+        </div>
+        <div className="flex items-center gap-1 text-[11px] font-mono text-indigo-700 dark:text-indigo-300 font-bold bg-white/70 dark:bg-slate-900/60 px-2 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-800">
+          5 Layers Aligned
         </div>
       </div>
 
@@ -198,6 +237,9 @@ export default function QuantityEditorView({ project, onUpdateQuantities }: Quan
             </thead>
             <tbody className="divide-y divide-slate-55 dark:divide-slate-700/40">
               {quantities.map((q, idx) => {
+                const layerKey = matchPavementLayer(q.name);
+                const isLinkedLayer = Boolean(layerKey);
+
                 const planPct = q.plan > 0 ? (q.exec / q.plan) * 100 : 0;
                 let pctColor = 'text-slate-500';
                 if (planPct >= 95) {
@@ -209,15 +251,28 @@ export default function QuantityEditorView({ project, onUpdateQuantities }: Quan
                 }
 
                 return (
-                  <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/10">
+                  <tr key={idx} className={`hover:bg-slate-50/50 dark:hover:bg-slate-900/10 ${isLinkedLayer ? 'bg-indigo-50/20 dark:bg-indigo-950/10' : ''}`}>
                     <td className="p-3 text-center font-bold text-slate-400 font-mono">{idx + 1}</td>
                     <td className="p-3">
-                      <input
-                        type="text"
-                        value={q.name}
-                        onChange={(e) => handleFieldChange(idx, 'name', e.target.value)}
-                        className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold px-2.5 py-1 rounded-lg text-slate-800 dark:text-slate-100"
-                      />
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={q.name}
+                            onChange={(e) => handleFieldChange(idx, 'name', e.target.value)}
+                            className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold px-2.5 py-1 rounded-lg text-slate-800 dark:text-slate-100"
+                          />
+                          {isLinkedLayer && (
+                            <span 
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9.5px] font-bold bg-indigo-100 text-indigo-700 dark:bg-indigo-950/80 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 whitespace-nowrap"
+                              title="Dynamically synchronized with Linear Diagram baseline plan and actual progress"
+                            >
+                              <Link2 className="w-3 h-3" />
+                              Linked to Linear Diagram
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     </td>
                     <td className="p-3 text-right">
                       <input
@@ -228,20 +283,26 @@ export default function QuantityEditorView({ project, onUpdateQuantities }: Quan
                       />
                     </td>
                     <td className="p-3 text-right">
-                      <input
-                        type="text"
-                        value={formatMoney(q.plan)}
-                        onChange={(e) => handleFieldChange(idx, 'plan', e.target.value)}
-                        className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-right font-mono text-xs px-2.5 py-1 rounded-lg text-amber-600"
-                      />
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={formatMoney(q.plan)}
+                          onChange={(e) => handleFieldChange(idx, 'plan', e.target.value)}
+                          className={`w-full bg-slate-50 dark:bg-slate-900 border ${isLinkedLayer ? 'border-amber-300 dark:border-amber-700 font-bold' : 'border-slate-200 dark:border-slate-700'} text-right font-mono text-xs px-2.5 py-1 rounded-lg text-amber-600 dark:text-amber-400`}
+                          title={isLinkedLayer ? 'Program Scheduled Plan (Updates Linear Diagram Plan Baseline)' : 'Program Scheduled Plan'}
+                        />
+                      </div>
                     </td>
                     <td className="p-3 text-right">
-                      <input
-                        type="text"
-                        value={formatMoney(q.exec)}
-                        onChange={(e) => handleFieldChange(idx, 'exec', e.target.value)}
-                        className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-right font-mono text-blue-600 dark:text-blue-400 font-bold text-xs px-2.5 py-1 rounded-lg"
-                      />
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={formatMoney(q.exec)}
+                          onChange={(e) => handleFieldChange(idx, 'exec', e.target.value)}
+                          className={`w-full bg-slate-50 dark:bg-slate-900 border ${isLinkedLayer ? 'border-blue-300 dark:border-blue-700 font-bold' : 'border-slate-200 dark:border-slate-700'} text-right font-mono text-blue-600 dark:text-blue-400 font-bold text-xs px-2.5 py-1 rounded-lg`}
+                          title={isLinkedLayer ? 'To-Date Contractor Executed (Updates Linear Diagram Actual Progress)' : 'To-Date Contractor Executed'}
+                        />
+                      </div>
                     </td>
                     <td className={`p-3 text-center font-mono ${pctColor}`}>
                       {planPct.toFixed(2)}%

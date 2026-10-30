@@ -396,6 +396,12 @@ export default function SupervisionConsultantView({
   const [invoiceViewMode, setInvoiceViewMode] = useState<'table' | 'cards' | 'calculationTables'>('calculationTables');
   const [selectedInvoiceForPdfModal, setSelectedInvoiceForPdfModal] = useState<ConsultantInvoice | null>(null);
   const [isInlineTableEdit, setIsInlineTableEdit] = useState<boolean>(false);
+  // Collapsible cards toggle states
+  const [isOverviewCardsCollapsed, setIsOverviewCardsCollapsed] = useState(false);
+  const [isAgreementCollapsed, setIsAgreementCollapsed] = useState(false);
+  const [isContinuationCollapsed, setIsContinuationCollapsed] = useState(false);
+  const [isHeadOfficeCollapsed, setIsHeadOfficeCollapsed] = useState(false);
+  const [isReCollapsed, setIsReCollapsed] = useState(false);
 
   // Form state for Replacing Personnel with a Successor
   const [replaceForm, setReplaceForm] = useState({
@@ -2783,30 +2789,43 @@ export default function SupervisionConsultantView({
           {/* Right Header Area: Utility Group */}
           <div className="flex items-center gap-1.5">
             <button
+              onClick={() => setIsOverviewCardsCollapsed(!isOverviewCardsCollapsed)}
+              title={isOverviewCardsCollapsed ? "Show Contract Summary Cards" : "Hide Contract Summary Cards"}
+              className={`px-3 py-2 rounded-xl text-xs font-bold transition cursor-pointer border flex items-center gap-1.5 ${
+                isOverviewCardsCollapsed 
+                  ? 'bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800'
+                  : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700'
+              }`}
+            >
+              {isOverviewCardsCollapsed ? <ToggleLeft className="w-4 h-4" /> : <ToggleRight className="w-4 h-4" />}
+              <span>{isOverviewCardsCollapsed ? 'Show Summary Cards' : 'Hide Summary Cards'}</span>
+            </button>
+
+            <button
               onClick={() => setIsWorkloadReportOpen(true)}
               title="Print Workload Report"
-                className="p-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 transition cursor-pointer border border-indigo-200 dark:border-indigo-800"
-              >
-                <Table className="w-4 h-4" />
-              </button>
-              
-              <button
-                onClick={handleExportPDF}
-                title="Export Project PDF"
-                className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition cursor-pointer border border-slate-200 dark:border-slate-700"
-              >
-                <Printer className="w-4 h-4" />
-              </button>
-              
-              <button
-                onClick={handleExportCSV}
-                title="Export Excel/CSV"
-                className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition cursor-pointer border border-slate-200 dark:border-slate-700"
-              >
-                <Download className="w-4 h-4" />
-              </button>
-            </div>
+              className="p-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 transition cursor-pointer border border-indigo-200 dark:border-indigo-800"
+            >
+              <Table className="w-4 h-4" />
+            </button>
+            
+            <button
+              onClick={handleExportPDF}
+              title="Export Project PDF"
+              className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition cursor-pointer border border-slate-200 dark:border-slate-700"
+            >
+              <Printer className="w-4 h-4" />
+            </button>
+            
+            <button
+              onClick={handleExportCSV}
+              title="Export Excel/CSV"
+              className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition cursor-pointer border border-slate-200 dark:border-slate-700"
+            >
+              <Download className="w-4 h-4" />
+            </button>
           </div>
+        </div>
 
         {/* Supervision Time Assigned Completed / Expiration Alert Banner */}
         {scheduleStatus.effectiveCompletionDate && (scheduleStatus.isTimeExpired || scheduleStatus.daysRemaining <= 180) && (
@@ -3014,270 +3033,318 @@ export default function SupervisionConsultantView({
           )}
 
           {/* Section 1: Supervision Contract & Scope Profile */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Main Contract Details Card */}
-            <div className="lg:col-span-2 space-y-6">
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-5">
-                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
-                  <div>
-                    <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                      <Briefcase className="w-4 h-4 text-blue-600" />
-                      Supervision Agreement & Contractual Terms
-                    </h3>
-                    <span className="text-xs text-slate-400">Official consultancy parameters and remuneration structure</span>
-                  </div>
-                  {!isReadonly && !Boolean(project.isAmountLocked || consultant.isContractLocked || consultant.contractAmountSchedule?.condition1?.isLocked) && (
-                    <button
-                      onClick={() => {
-                        setConsultantForm(consultant);
-                        setEditModalSection('all');
-                        setIsEditConsultantOpen(true);
-                      }}
-                      className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
-                    >
-                      <Edit3 className="w-3 h-3" />
-                      Edit Contract
-                    </button>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                  <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-2xl border border-slate-100 dark:border-slate-800">
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-400 font-semibold uppercase tracking-wider text-[10px] block">Consulting Firm</span>
+          {!isOverviewCardsCollapsed && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Main Contract Details Card */}
+              <div className="lg:col-span-2 space-y-6">
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-5">
+                  <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
+                    <div>
+                      <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                        <Briefcase className="w-4 h-4 text-blue-600" />
+                        Supervision Agreement & Contractual Terms
+                      </h3>
+                      <span className="text-xs text-slate-400">Official consultancy parameters and remuneration structure</span>
                     </div>
-                    <div className="font-bold text-slate-900 dark:text-white text-sm mt-1 flex flex-wrap items-center gap-2">
-                      <span>{consultant.firmName || '-'}</span>
-                      <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800" title="Bidirectionally linked with Supervising Consultant on Project Information">
-                        🔗 Linked to Project Info
-                      </span>
-                    </div>
-                  </div>
-
-                  <div>
-                    <span className="text-slate-400 font-semibold uppercase tracking-wider text-[10px] block">
-                      {consultant.associationType === 'Sole Consultant' ? 'Engagement / Consultancy Model' : 'Association / JV Arrangement'}
-                    </span>
-                    <div className="font-bold text-slate-800 dark:text-slate-200 text-sm mt-0.5">
-                      {consultant.associationType || 'Sole Consultant'}
-                    </div>
-                    {consultant.associationType !== 'Sole Consultant' && consultant.jvPartners && (
-                      <div className="text-[11px] text-slate-500 mt-0.5">
-                        Partners: {consultant.jvPartners}
-                      </div>
-                    )}
-                  </div>
-
-                  <div>
-                    <span className="text-slate-400 font-semibold uppercase tracking-wider text-[10px] block">Contract Agreement Reference</span>
-                    <div className="font-mono font-bold text-slate-800 dark:text-slate-200 text-sm mt-0.5">
-                      {consultant.contractRefNo || 'N/A'}
-                    </div>
-                  </div>
-
-                  <div>
-                    <span className="text-slate-400 font-semibold uppercase tracking-wider text-[10px] block">Contract Remuneration Type</span>
-                    <div className="font-bold text-slate-800 dark:text-slate-200 text-sm mt-0.5">
-                      {consultant.contractType || 'Time-Based (Man-Months + Reimbursables)'}
-                    </div>
-                  </div>
-
-                  <div>
-                    <span className="text-slate-400 font-semibold uppercase tracking-wider text-[10px] block">Contract Signing Date</span>
-                    <div className="font-mono font-bold text-slate-800 dark:text-slate-200 mt-0.5">
-                      {consultant.contractSignDate || 'N/A'}
-                    </div>
-                  </div>
-
-                  <div>
-                    <span className="text-slate-400 font-semibold uppercase tracking-wider text-[10px] block">Supervision Commencement Date</span>
-                    <div className="font-mono font-bold text-indigo-600 dark:text-indigo-400 mt-0.5">
-                      {consultant.commencementDate || 'N/A'}
-                    </div>
-                  </div>
-
-                  <div>
-                    <span className="text-slate-400 font-semibold uppercase tracking-wider text-[10px] block">Original Completion Date</span>
-                    <div className="font-mono font-bold text-slate-800 dark:text-slate-200 mt-0.5">
-                      {consultant.originalCompletionDate || 'N/A'}
-                    </div>
-                  </div>
-
-                  <div>
-                    <span className="text-slate-400 font-semibold uppercase tracking-wider text-[10px] block">Revised / Approved Completion Date</span>
-                    <div className="font-mono font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">
-                      {consultant.revisedCompletionDate || consultant.originalCompletionDate || 'N/A'}
-                    </div>
-                  </div>
-                </div>
-
-
-              </div>
-
-              {/* Service Continuation & Handover Management Card */}
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-                  <div className="flex items-center gap-2">
-                    <ArrowRightLeft className="w-4 h-4 text-amber-500" />
-                    <h4 className="font-bold text-slate-900 dark:text-white text-sm">
-                      Service Continuation & Successor Assignment
-                    </h4>
-                  </div>
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                    scheduleStatus.isTimeExpired ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300' : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
-                  }`}>
-                    {scheduleStatus.isTimeExpired ? 'Time Expired' : 'Active Contract'}
-                  </span>
-                </div>
-
-                <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                  When the time assigned for the supervision consultant is completed (including all approved contract time extensions), or if a contract transition is necessary, you can assign a new consulting firm as continuation of service. The current consultant's historical invoices, personnel records, and baseline financial schedule are fully archived in the project service history.
-                </p>
-
-                <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-                  <div className="text-xs text-slate-500">
-                    <span>Archived Predecessors: </span>
-                    <span className="font-bold text-slate-800 dark:text-slate-200">{consultant.previousConsultants?.length || 0} firms on record</span>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab('history')}
-                      className="text-xs font-bold text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1 cursor-pointer"
-                    >
-                      <History className="w-3.5 h-3.5" />
-                      <span>View Service History</span>
-                    </button>
-                    {!isReadonly && (
+                    <div className="flex items-center gap-2">
+                      {!isReadonly && !Boolean(project.isAmountLocked || consultant.isContractLocked || consultant.contractAmountSchedule?.condition1?.isLocked) && (
+                        <button
+                          onClick={() => {
+                            setConsultantForm(consultant);
+                            setEditModalSection('all');
+                            setIsEditConsultantOpen(true);
+                          }}
+                          className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
+                        >
+                          <Edit3 className="w-3 h-3" />
+                          Edit Contract
+                        </button>
+                      )}
                       <button
                         type="button"
-                        onClick={handleOpenAssignNewConsultant}
-                        className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-xl transition shadow-xs flex items-center gap-1 cursor-pointer"
+                        onClick={() => setIsAgreementCollapsed(!isAgreementCollapsed)}
+                        className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                        title={isAgreementCollapsed ? "Expand Card" : "Collapse Card"}
                       >
-                        <ArrowRightLeft className="w-3.5 h-3.5" />
-                        <span>Assign Continuation</span>
+                        <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isAgreementCollapsed ? '-rotate-90' : ''}`} />
                       </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Right Column: Head Office & Resident Engineer Profile Cards */}
-            <div className="space-y-6">
-              {/* Head Office Details Card */}
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 flex items-center justify-center text-blue-600 dark:text-blue-400">
-                      <Building2 className="w-4 h-4" />
                     </div>
-                    <div>
-                      <h4 className="font-black text-slate-900 dark:text-white text-sm">
-                        Head Office & Corporate Contacts
+                  </div>
+
+                  {!isAgreementCollapsed && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                      <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-2xl border border-slate-100 dark:border-slate-800">
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400 font-semibold uppercase tracking-wider text-[10px] block">Consulting Firm</span>
+                        </div>
+                        <div className="font-bold text-slate-900 dark:text-white text-sm mt-1 flex flex-wrap items-center gap-2">
+                          <span>{consultant.firmName || '-'}</span>
+                          <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800" title="Bidirectionally linked with Supervising Consultant on Project Information">
+                            🔗 Linked to Project Info
+                          </span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <span className="text-slate-400 font-semibold uppercase tracking-wider text-[10px] block">
+                          {consultant.associationType === 'Sole Consultant' ? 'Engagement / Consultancy Model' : 'Association / JV Arrangement'}
+                        </span>
+                        <div className="font-bold text-slate-800 dark:text-slate-200 text-sm mt-0.5">
+                          {consultant.associationType || 'Sole Consultant'}
+                        </div>
+                        {consultant.associationType !== 'Sole Consultant' && consultant.jvPartners && (
+                          <div className="text-[11px] text-slate-500 mt-0.5">
+                            Partners: {consultant.jvPartners}
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <span className="text-slate-400 font-semibold uppercase tracking-wider text-[10px] block">Contract Agreement Reference</span>
+                        <div className="font-mono font-bold text-slate-800 dark:text-slate-200 text-sm mt-0.5">
+                          {consultant.contractRefNo || 'N/A'}
+                        </div>
+                      </div>
+
+                      <div>
+                        <span className="text-slate-400 font-semibold uppercase tracking-wider text-[10px] block">Contract Remuneration Type</span>
+                        <div className="font-bold text-slate-800 dark:text-slate-200 text-sm mt-0.5">
+                          {consultant.contractType || 'Time-Based (Man-Months + Reimbursables)'}
+                        </div>
+                      </div>
+
+                      <div>
+                        <span className="text-slate-400 font-semibold uppercase tracking-wider text-[10px] block">Contract Signing Date</span>
+                        <div className="font-mono font-bold text-slate-800 dark:text-slate-200 mt-0.5">
+                          {consultant.contractSignDate || 'N/A'}
+                        </div>
+                      </div>
+
+                      <div>
+                        <span className="text-slate-400 font-semibold uppercase tracking-wider text-[10px] block">Supervision Commencement Date</span>
+                        <div className="font-mono font-bold text-indigo-600 dark:text-indigo-400 mt-0.5">
+                          {consultant.commencementDate || 'N/A'}
+                        </div>
+                      </div>
+
+                      <div>
+                        <span className="text-slate-400 font-semibold uppercase tracking-wider text-[10px] block">Original Completion Date</span>
+                        <div className="font-mono font-bold text-slate-800 dark:text-slate-200 mt-0.5">
+                          {consultant.originalCompletionDate || 'N/A'}
+                        </div>
+                      </div>
+
+                      <div>
+                        <span className="text-slate-400 font-semibold uppercase tracking-wider text-[10px] block">Revised / Approved Completion Date</span>
+                        <div className="font-mono font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">
+                          {consultant.revisedCompletionDate || consultant.originalCompletionDate || 'N/A'}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Service Continuation & Handover Management Card */}
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-4">
+                  <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                    <div className="flex items-center gap-2">
+                      <ArrowRightLeft className="w-4 h-4 text-amber-500" />
+                      <h4 className="font-bold text-slate-900 dark:text-white text-sm">
+                        Service Continuation & Successor Assignment
                       </h4>
-                      <span className="text-[10px] text-slate-400 block">Consultant Headquarters</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        scheduleStatus.isTimeExpired ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300' : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                      }`}>
+                        {scheduleStatus.isTimeExpired ? 'Time Expired' : 'Active Contract'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setIsContinuationCollapsed(!isContinuationCollapsed)}
+                        className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                        title={isContinuationCollapsed ? "Expand Card" : "Collapse Card"}
+                      >
+                        <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isContinuationCollapsed ? '-rotate-90' : ''}`} />
+                      </button>
                     </div>
                   </div>
 
-                  {!isReadonly && !Boolean(project.isAmountLocked || consultant.isContractLocked || consultant.contractAmountSchedule?.condition1?.isLocked) && (
+                  {!isContinuationCollapsed && (
+                    <>
+                      <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                        When the time assigned for the supervision consultant is completed (including all approved contract time extensions), or if a contract transition is necessary, you can assign a new consulting firm as continuation of service. The current consultant's historical invoices, personnel records, and baseline financial schedule are fully archived in the project service history.
+                      </p>
+
+                      <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                        <div className="text-xs text-slate-500">
+                          <span>Archived Predecessors: </span>
+                          <span className="font-bold text-slate-800 dark:text-slate-200">{consultant.previousConsultants?.length || 0} firms on record</span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setActiveTab('history')}
+                            className="text-xs font-bold text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1 cursor-pointer"
+                          >
+                            <History className="w-3.5 h-3.5" />
+                            <span>View Service History</span>
+                          </button>
+                          {!isReadonly && (
+                            <button
+                              type="button"
+                              onClick={handleOpenAssignNewConsultant}
+                              className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-xl transition shadow-xs flex items-center gap-1 cursor-pointer"
+                            >
+                              <ArrowRightLeft className="w-3.5 h-3.5" />
+                              <span>Assign Continuation</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Right Column: Head Office & Resident Engineer Profile Cards */}
+              <div className="space-y-6">
+                {/* Head Office Details Card */}
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-4">
+                  <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 flex items-center justify-center text-blue-600 dark:text-blue-400">
+                        <Building2 className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="font-black text-slate-900 dark:text-white text-sm">
+                          Head Office & Corporate Contacts
+                        </h4>
+                        <span className="text-[10px] text-slate-400 block">Consultant Headquarters</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {!isReadonly && !Boolean(project.isAmountLocked || consultant.isContractLocked || consultant.contractAmountSchedule?.condition1?.isLocked) && (
+                        <button
+                          onClick={() => {
+                            setHeadOfficeForm({
+                              headOfficeAddress: consultant.headOfficeAddress || '',
+                              headOfficePhone: consultant.headOfficePhone || '',
+                              headOfficeEmail: consultant.headOfficeEmail || '',
+                              headOfficeContactPerson: consultant.headOfficeContactPerson || ''
+                            });
+                            setIsEditHeadOfficeQuickOpen(true);
+                          }}
+                          className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
+                        >
+                          <Edit3 className="w-3 h-3" />
+                          Edit
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setIsHeadOfficeCollapsed(!isHeadOfficeCollapsed)}
+                        className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                        title={isHeadOfficeCollapsed ? "Expand Card" : "Collapse Card"}
+                      >
+                        <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isHeadOfficeCollapsed ? '-rotate-90' : ''}`} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {!isHeadOfficeCollapsed && (
+                    <div className="space-y-3 text-xs">
+                      <div>
+                        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Physical Address</span>
+                        <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5 flex items-start gap-1.5">
+                          <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+                          <span>{consultant.headOfficeAddress || 'Head Office Address not specified'}</span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Contact Person / Authorized Representative</span>
+                        <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">
+                          {consultant.headOfficeContactPerson || 'Managing Director / Corporate Liaison'}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                        <div>
+                          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Phone Number</span>
+                          <div className="font-mono text-slate-700 dark:text-slate-300 mt-0.5 flex items-center gap-1.5">
+                            <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <span>{consultant.headOfficePhone || 'N/A'}</span>
+                          </div>
+                        </div>
+
+                        <div>
+                          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Corporate Email</span>
+                          <div className="text-slate-700 dark:text-slate-300 mt-0.5 flex items-center gap-1.5 truncate">
+                            <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <span className="truncate">{consultant.headOfficeEmail || 'N/A'}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Resident Engineer Profile Card */}
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 flex items-center justify-center text-indigo-600 dark:text-indigo-400 font-black text-lg">
+                        RE
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider block">Resident Engineer</span>
+                        <h4 className="font-black text-slate-900 dark:text-white text-base">
+                          {consultant.residentEngineerName || 'Eng. Girma Bekele'}
+                        </h4>
+                        <span className="text-xs text-slate-400">Team Leader / Project Director</span>
+                      </div>
+                    </div>
                     <button
-                      onClick={() => {
-                        setHeadOfficeForm({
-                          headOfficeAddress: consultant.headOfficeAddress || '',
-                          headOfficePhone: consultant.headOfficePhone || '',
-                          headOfficeEmail: consultant.headOfficeEmail || '',
-                          headOfficeContactPerson: consultant.headOfficeContactPerson || ''
-                        });
-                        setIsEditHeadOfficeQuickOpen(true);
-                      }}
-                      className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
+                      type="button"
+                      onClick={() => setIsReCollapsed(!isReCollapsed)}
+                      className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                      title={isReCollapsed ? "Expand Card" : "Collapse Card"}
                     >
-                      <Edit3 className="w-3 h-3" />
-                      Edit
+                      <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isReCollapsed ? '-rotate-90' : ''}`} />
                     </button>
-                  )}
-                </div>
-
-                <div className="space-y-3 text-xs">
-                  <div>
-                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Physical Address</span>
-                    <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5 flex items-start gap-1.5">
-                      <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
-                      <span>{consultant.headOfficeAddress || 'Head Office Address not specified'}</span>
-                    </div>
                   </div>
 
-                  <div>
-                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Contact Person / Authorized Representative</span>
-                    <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">
-                      {consultant.headOfficeContactPerson || 'Managing Director / Corporate Liaison'}
-                    </div>
-                  </div>
+                  {!isReCollapsed && (
+                    <div className="space-y-2.5 pt-3 border-t border-slate-100 dark:border-slate-800 text-xs">
+                      {consultant.residentEngineerPhone && (
+                        <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
+                          <Phone className="w-4 h-4 text-slate-400" />
+                          <span className="font-mono">{consultant.residentEngineerPhone}</span>
+                        </div>
+                      )}
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                    <div>
-                      <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Phone Number</span>
-                      <div className="font-mono text-slate-700 dark:text-slate-300 mt-0.5 flex items-center gap-1.5">
-                        <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <span>{consultant.headOfficePhone || 'N/A'}</span>
-                      </div>
-                    </div>
+                      {consultant.residentEngineerEmail && (
+                        <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300 truncate">
+                          <Mail className="w-4 h-4 text-slate-400 shrink-0" />
+                          <span className="truncate">{consultant.residentEngineerEmail}</span>
+                        </div>
+                      )}
 
-                    <div>
-                      <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Corporate Email</span>
-                      <div className="text-slate-700 dark:text-slate-300 mt-0.5 flex items-center gap-1.5 truncate">
-                        <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <span className="truncate">{consultant.headOfficeEmail || 'N/A'}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Resident Engineer Profile Card */}
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 flex items-center justify-center text-indigo-600 dark:text-indigo-400 font-black text-lg">
-                    RE
-                  </div>
-                  <div>
-                    <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider block">Resident Engineer</span>
-                    <h4 className="font-black text-slate-900 dark:text-white text-base">
-                      {consultant.residentEngineerName || 'Eng. Girma Bekele'}
-                    </h4>
-                    <span className="text-xs text-slate-400">Team Leader / Project Director</span>
-                  </div>
-                </div>
-
-                <div className="space-y-2.5 pt-3 border-t border-slate-100 dark:border-slate-800 text-xs">
-                  {consultant.residentEngineerPhone && (
-                    <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
-                      <Phone className="w-4 h-4 text-slate-400" />
-                      <span className="font-mono">{consultant.residentEngineerPhone}</span>
-                    </div>
-                  )}
-
-                  {consultant.residentEngineerEmail && (
-                    <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300 truncate">
-                      <Mail className="w-4 h-4 text-slate-400 shrink-0" />
-                      <span className="truncate">{consultant.residentEngineerEmail}</span>
-                    </div>
-                  )}
-
-                  {consultant.siteOfficeLocation && (
-                    <div className="flex items-start gap-2 text-slate-700 dark:text-slate-300">
-                      <MapPin className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
-                      <span>{consultant.siteOfficeLocation}</span>
+                      {consultant.siteOfficeLocation && (
+                        <div className="flex items-start gap-2 text-slate-700 dark:text-slate-300">
+                          <MapPin className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+                          <span>{consultant.siteOfficeLocation}</span>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
               </div>
-
-
             </div>
-          </div>
+          )}
 
           {/* Section 2: Contract Financial Remuneration & Fees Baseline Schedule */}
           <div className="pt-2">

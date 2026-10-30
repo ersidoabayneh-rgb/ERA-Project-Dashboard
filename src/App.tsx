@@ -50,12 +50,14 @@ import {
   Palette,
   Landmark,
   Save,
-  Edit3
+  Edit3,
+  Unlock
 } from 'lucide-react';
 
 import { Project, User, ApprovalRequest, PrivateDraft, WorkflowAuditLogEntry, KpiAllocatedItem, SeriesItem, MonthlyProgress, LinearData, RowMetric, ProgressPlan, PaymentItem, AnnualItem, WorkProgramActivity, BondGuarantee, formatAccounting, ProjectDocument, ALL_EDITABLE_PAGES, EditablePageOption, ProjectLifecycleStatus, isProjectClosed, isProjectArchived, isCpmOrMasterAdmin, isMasterAdminOnly, isRecentlyUpdated, formatRelativeTime, ContractorScoringWeights, ConsultantScoringWeights, DEFAULT_CONTRACTOR_SCORING_WEIGHTS, DEFAULT_CONSULTANT_SCORING_WEIGHTS, SupervisionConsultantInfo, ThemeSettings, DEFAULT_THEME_SETTINGS, PdfReportConfig, DEFAULT_PDF_REPORT_CONFIG, ETHIOPIAN_REGIONAL_STATES, EthiopianRegionalState } from './types';
 import { createProjectHistoryEntry } from './lib/projectAuditDiff';
 import { getProjectDlpInfo, calculateCappedElapsedTimePct } from './lib/dlpUtils';
+import { syncProjectQuantitiesAndLinear } from './utils/quantityLinearSync';
 import DlpDefectModal from './components/DlpDefectModal';
 import DatabaseSavedPopupModal from './components/DatabaseSavedPopupModal';
 import { 
@@ -3158,32 +3160,9 @@ let isBatchSyncRunning = false;
       }
     }
 
-    // 2. Linear Diagram vs Quantities automatic integration (Main Road + Spur Road combined)
-    if ((fields.linear !== undefined || fields.linearSpur !== undefined) && updatedProject.quantities) {
-      const mainLinear = updatedProject.linear || { subgrade: [], capping: [], subbase: [], basecourse: [], asphalt: [] };
-      const spurLinear = updatedProject.linearSpur || { subgrade: [], capping: [], subbase: [], basecourse: [], asphalt: [] };
-
-      const sumSubbase = (mainLinear.subbase || []).reduce((acc, seg) => acc + (seg.exec || 0), 0) +
-                         (spurLinear.subbase || []).reduce((acc, seg) => acc + (seg.exec || 0), 0);
-      const sumBasecourse = (mainLinear.basecourse || []).reduce((acc, seg) => acc + (seg.exec || 0), 0) +
-                            (spurLinear.basecourse || []).reduce((acc, seg) => acc + (seg.exec || 0), 0);
-      const sumAsphalt = (mainLinear.asphalt || []).reduce((acc, seg) => acc + (seg.exec || 0), 0) +
-                         (spurLinear.asphalt || []).reduce((acc, seg) => acc + (seg.exec || 0), 0);
-
-      updatedProject.quantities = updatedProject.quantities.map(q => {
-        const nameLower = q.name.toLowerCase();
-        if (nameLower.includes('sub base') || nameLower.includes('subbase')) {
-          return { ...q, exec: sumSubbase };
-        }
-        if (nameLower.includes('base course') || nameLower.includes('basecourse')) {
-          return { ...q, exec: sumBasecourse };
-        }
-        if (nameLower.includes('asphalt concrete') || nameLower.includes('asphalt') || nameLower.includes('prime coating')) {
-          return { ...q, exec: sumAsphalt };
-        }
-        return q;
-      });
-    }
+    // 2. Linear Diagram vs Quantities bidirectional dynamic alignment (Subgrade, Capping, Sub-base, Base-Course, and Asphalt Concrete)
+    const alignedUpdates = syncProjectQuantitiesAndLinear(currentProject, fields);
+    Object.assign(updatedProject, alignedUpdates);
 
     // 3. Keep 'Total Todate Bill Summary' and 'Remaining' in payment synced with 'te' and series contract sum, and auto-calculate Original Cost Sum G = F + E
     const isDB = updatedProject.contractType === 'DB';
@@ -3664,6 +3643,21 @@ let isBatchSyncRunning = false;
       alert('🔒 ACCESS RESTRICTED: Project information can only be updated by authorized personnel.');
       return;
     }
+
+    const isLocked = Boolean(currentProject.isProjectInfoLocked);
+    const isMaster = isMasterAdminOnly(currentUserObj);
+
+    if (isLocked && !isMaster) {
+      // Directorate Admin or assigned user when project information is locked
+      // Can ONLY edit interim EOT days!
+      handleProjectUpdate(
+        { interimEotDays: editInterimEotDays },
+        'Project Information: Interim EOT updated (Project Locked by Directorate Admin)'
+      );
+      setIsEditingDossier(false);
+      return;
+    }
+
     const trimmedConsultant = editConsultant.trim();
     const trimmedName = editProjectName.trim();
     const fields: Partial<Project> = {
@@ -3697,6 +3691,36 @@ let isBatchSyncRunning = false;
     };
     handleProjectUpdate(fields, 'Project Information & Specifications updated');
     setIsEditingDossier(false);
+  };
+
+  const handleLockProjectInfo = () => {
+    if (!currentProject || !currentUserObj) return;
+    const canLock = currentUserObj.role === 'directorate_admin' || isMasterAdminOnly(currentUserObj);
+    if (!canLock) {
+      alert('🔒 ACCESS RESTRICTED: Only Directorate Admin or Master Admin can validate and lock Project Information.');
+      return;
+    }
+    const lockedBy = currentUserObj.name || currentUserObj.username || 'Directorate Admin';
+    handleProjectUpdate({
+      isProjectInfoLocked: true,
+      projectInfoLockedBy: lockedBy,
+      projectInfoLockedAt: new Date().toISOString(),
+      projectInfoLockedRole: currentUserObj.role
+    }, 'Project Information validated and locked by Directorate Admin');
+  };
+
+  const handleUnlockProjectInfo = () => {
+    if (!currentProject || !currentUserObj) return;
+    if (!isMasterAdminOnly(currentUserObj)) {
+      alert('🔒 ACCESS RESTRICTED: Project information validation lock can only be reverted or unlocked by Master Admin.');
+      return;
+    }
+    handleProjectUpdate({
+      isProjectInfoLocked: false,
+      projectInfoLockedBy: undefined,
+      projectInfoLockedAt: undefined,
+      projectInfoLockedRole: undefined
+    }, 'Project Information unlocked and reverted by Master Admin');
   };
 
   const getApprovedClaimsCostSum = (proj: Project) => {
@@ -4011,7 +4035,7 @@ let isBatchSyncRunning = false;
             className="flex-grow max-w-7xl mx-auto p-3 md:p-5 w-full space-y-3 sm:space-y-4 relative z-10"
           >
             {/* Project Cockpit Header */}
-            <header className="bg-white dark:bg-slate-850 px-3 py-1 sm:px-3.5 sm:py-1 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-2xs flex flex-col gap-1">
+            <header className="bg-white dark:bg-slate-850 px-3 py-1 sm:px-3.5 sm:py-1 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-2xs flex flex-col gap-1 print:hidden">
               {/* Row 1: Dedicated Row for Project Name Container */}
               <div className="flex items-center gap-2.5 w-full">
                 <button
@@ -4038,11 +4062,11 @@ let isBatchSyncRunning = false;
                     </div>
                   </div>
                 ) : (
-                  <div className="w-6 h-6 sm:w-7 sm:h-7 bg-white rounded-md border border-slate-200 dark:border-slate-700/60 p-0.5 flex items-center justify-center overflow-hidden shrink-0">
+                  <div className="w-6 h-6 sm:w-7 sm:h-7 bg-white rounded-md border border-slate-200 dark:border-slate-700/60 p-0.5 flex items-center justify-center overflow-hidden shrink-0 print-logo-container print:w-7 print:h-7">
                     <img
                       src={eraLogo}
                       alt="Ethiopian Roads Administration Logo"
-                      className="w-full h-full object-contain"
+                      className="w-full h-full object-contain print-logo-min"
                       referrerPolicy="no-referrer"
                     />
                   </div>
@@ -4291,7 +4315,7 @@ let isBatchSyncRunning = false;
               <motion.div
                 initial={{ opacity: 0, y: -6 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="bg-gradient-to-r from-amber-500/15 via-amber-500/10 to-amber-500/5 border border-amber-500/30 dark:border-amber-500/40 rounded-xl p-2 sm:p-2.5 mb-1.5 flex items-center justify-between flex-wrap gap-2 shadow-2xs"
+                className="bg-gradient-to-r from-amber-500/15 via-amber-500/10 to-amber-500/5 border border-amber-500/30 dark:border-amber-500/40 rounded-xl p-2 sm:p-2.5 mb-1.5 flex items-center justify-between flex-wrap gap-2 shadow-2xs print:hidden"
               >
                 <div className="flex items-center gap-2">
                   <div className="w-6 h-6 rounded-lg bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-2xs animate-pulse">
@@ -4354,7 +4378,7 @@ let isBatchSyncRunning = false;
                   <motion.div
                     initial={{ opacity: 0, y: -8 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="bg-gradient-to-r from-indigo-500/15 via-indigo-500/10 to-indigo-500/5 border border-indigo-500/30 dark:border-indigo-500/40 rounded-2xl p-3.5 mb-2 flex items-center justify-between flex-wrap gap-3 shadow-xs"
+                    className="bg-gradient-to-r from-indigo-500/15 via-indigo-500/10 to-indigo-500/5 border border-indigo-500/30 dark:border-indigo-500/40 rounded-2xl p-3.5 mb-2 flex items-center justify-between flex-wrap gap-3 shadow-xs print:hidden"
                   >
                     <div className="flex items-center gap-3">
                       <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs animate-pulse">
@@ -4421,7 +4445,7 @@ let isBatchSyncRunning = false;
                   <motion.div
                     initial={{ opacity: 0, y: -8 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-500/5 border-2 border-amber-500/40 dark:border-amber-500/50 rounded-2xl p-3.5 mb-2 flex items-center justify-between flex-wrap gap-3 shadow-xs"
+                    className="bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-500/5 border-2 border-amber-500/40 dark:border-amber-500/50 rounded-2xl p-3.5 mb-2 flex items-center justify-between flex-wrap gap-3 shadow-xs print:hidden"
                   >
                     <div className="flex items-center gap-3">
                       <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs animate-spin">
@@ -4463,7 +4487,7 @@ let isBatchSyncRunning = false;
             )}
 
             {/* Contract Specifications Cards deck */}
-            <section className="bg-white dark:bg-slate-850 py-2 px-4 border border-slate-100 dark:border-slate-800 shadow-sm rounded-2xl grid grid-cols-2 lg:grid-cols-5 gap-3 text-xs font-semibold text-slate-700 dark:text-slate-300">
+            <section className="bg-white dark:bg-slate-850 py-2 px-4 border border-slate-100 dark:border-slate-800 shadow-sm rounded-2xl grid grid-cols-2 lg:grid-cols-5 gap-3 text-xs font-semibold text-slate-700 dark:text-slate-300 print:hidden">
               <div className="py-1 px-1 border-r border-slate-100 dark:border-slate-800/80 flex flex-col justify-center">
                 <span className="text-[9px] text-slate-400 font-extrabold uppercase block tracking-wider mb-0.5">Original Contract Amount</span>
                 <span className="text-xs sm:text-sm font-black font-mono text-slate-800 dark:text-white leading-none">
@@ -4505,7 +4529,7 @@ let isBatchSyncRunning = false;
             </section>
 
             {/* Collapsible Contract Specifications & Project Information Section above Page Selection */}
-            <section className="bg-white dark:bg-slate-850 border border-slate-150 dark:border-slate-800 p-5 rounded-3xl shadow-sm space-y-4">
+            <section className="bg-white dark:bg-slate-850 border border-slate-150 dark:border-slate-800 p-5 rounded-3xl shadow-sm space-y-4 print:hidden">
               <div className="w-full flex flex-wrap justify-between items-center gap-3">
                 <div 
                   onClick={() => setIsDossierExpanded(!isDossierExpanded)}
@@ -4540,22 +4564,88 @@ let isBatchSyncRunning = false;
                 </div>
               </div>
 
-              {isDossierExpanded && (
+              {isDossierExpanded && (() => {
+                const isInfoLockedForUser = Boolean(currentProject.isProjectInfoLocked && !isMasterAdminOnly(currentUserObj));
+                const canLock = (currentUserObj.role === 'directorate_admin' || isMasterAdminOnly(currentUserObj));
+                const isMaster = isMasterAdminOnly(currentUserObj);
+
+                return (
                 <div className="border-t border-slate-100 dark:border-slate-800/80 pt-4 space-y-4">
+                  {/* Governance Lock Status Banner */}
+                  {currentProject.isProjectInfoLocked && (
+                    <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/70 p-3.5 rounded-2xl flex items-center justify-between flex-wrap gap-2.5">
+                      <div className="flex items-center gap-2.5">
+                        <div className="p-2 bg-amber-100 dark:bg-amber-900/60 rounded-xl text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
+                          <Lock className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs font-black uppercase tracking-wide text-amber-900 dark:text-amber-200">
+                              Project Information Validated & Locked by Directorate Admin
+                            </span>
+                            <span className="text-[10px] bg-amber-200 dark:bg-amber-800 text-amber-850 dark:text-amber-100 px-2 py-0.2 rounded-full font-mono font-bold">
+                              Interim EOT Accessible
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-amber-800 dark:text-amber-300/90 mt-0.5">
+                            Locked by <strong className="font-bold">{currentProject.projectInfoLockedBy || 'Directorate Admin'}</strong>{currentProject.projectInfoLockedAt ? ` on ${new Date(currentProject.projectInfoLockedAt).toLocaleDateString()}` : ''}. All project parameters are locked against modification and deletion except Interim EOT. Unlocking & reverting is restricted exclusively to Master Admin.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {isMaster ? (
+                          <button
+                            type="button"
+                            onClick={handleUnlockProjectInfo}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-amber-600 to-rose-600 hover:from-amber-700 hover:to-rose-700 text-white rounded-xl text-xs font-black uppercase tracking-wider cursor-pointer shadow-xs transition"
+                            title="Master Admin exclusive privilege: Revert / Unlock Project Information validation"
+                          >
+                            <Unlock className="w-3.5 h-3.5" />
+                            <span>Unlock / Revert Lock</span>
+                          </button>
+                        ) : (
+                          <span className="text-[10px] font-mono text-amber-700 dark:text-amber-400 bg-white/80 dark:bg-slate-900/60 px-2.5 py-1 rounded-lg border border-amber-200 dark:border-amber-800 font-semibold">
+                            🔒 Master Admin Revert Only
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Top Action Bar INSIDE expanded details only */}
                   <div className="bg-gradient-to-r from-blue-500/10 via-indigo-500/10 to-emerald-500/10 border border-blue-200 dark:border-blue-900/60 rounded-2xl p-3 flex items-center justify-between flex-wrap gap-2">
                     <div className="flex items-center gap-2">
-                      {isEditingDossier && (
+                      {isEditingDossier ? (
                         <>
                           <Sparkles className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
                           <span className="text-xs text-blue-950 dark:text-blue-200 font-bold">
-                            Editing Mode Active: Modify project parameters below, then click "Save Project Information".
+                            {isInfoLockedForUser
+                              ? '🔒 Locked by Directorate Admin: Only Interim EOT (INT. EOT) is editable and can be saved.'
+                              : 'Editing Mode Active: Modify project parameters below, then click "Save Project Information".'}
                           </span>
                         </>
+                      ) : (
+                        <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300 font-medium">
+                          <FolderOpen className="w-4 h-4 text-blue-500" />
+                          <span>Comprehensive Project Dossier & Contract Framework</span>
+                        </div>
                       )}
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {/* Directorate Admin / Master Admin Lock Button */}
+                      {!currentProject.isProjectInfoLocked && canLock && (
+                        <button
+                          type="button"
+                          onClick={handleLockProjectInfo}
+                          className="inline-flex items-center gap-1.5 text-xs font-black uppercase tracking-wide bg-gradient-to-r from-slate-800 to-slate-950 hover:from-black hover:to-slate-900 text-amber-300 px-3.5 py-1.5 rounded-xl shadow-xs transition cursor-pointer border border-amber-400/40"
+                          title="Directorate Admin: Validate and lock project information against editing (Interim EOT remains accessible)"
+                        >
+                          <Lock className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Validate & Lock Project Info</span>
+                        </button>
+                      )}
+
                       {!isEditingDossier ? (
                         <button
                           type="button"
@@ -4563,7 +4653,9 @@ let isBatchSyncRunning = false;
                           className="inline-flex items-center gap-1.5 text-xs font-black uppercase tracking-wide bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-4 py-1.5 rounded-xl shadow-xs transition cursor-pointer border border-blue-500/30"
                         >
                           <Edit3 className="w-3.5 h-3.5" />
-                          <span>Edit Project Information</span>
+                          <span>
+                            {isInfoLockedForUser ? 'Edit Interim EOT' : 'Edit Project Information'}
+                          </span>
                         </button>
                       ) : (
                         <div className="flex items-center gap-2">
@@ -4604,7 +4696,9 @@ let isBatchSyncRunning = false;
                             className="inline-flex items-center gap-1.5 text-xs font-black uppercase tracking-wide bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-1.5 rounded-lg shadow-xs transition cursor-pointer"
                           >
                             <Save className="w-3.5 h-3.5" />
-                            <span>Save Project Information</span>
+                            <span>
+                              {isInfoLockedForUser ? 'Save Interim EOT' : 'Save Project Information'}
+                            </span>
                           </button>
                         </div>
                       )}
@@ -4881,6 +4975,15 @@ let isBatchSyncRunning = false;
                     </div>
                   ) : (
                     <div className="space-y-4">
+                      {isInfoLockedForUser && (
+                        <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/80 p-3 rounded-xl flex items-center gap-2.5 text-xs text-amber-900 dark:text-amber-200 font-bold">
+                          <Lock className="w-4 h-4 text-amber-600 shrink-0" />
+                          <span>
+                            🔒 Project Information is validated and locked by Directorate Admin. All fields below are read-only except <strong className="underline text-amber-950 dark:text-amber-100">Interim EOT (INT. EOT)</strong>. Only Master Admin can unlock or revert changes.
+                          </span>
+                        </div>
+                      )}
+
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs font-semibold text-slate-700 dark:text-slate-200">
                         
                         {/* Section 1 Edit: Corporate Stakeholders & Project Identification */}
@@ -4892,9 +4995,10 @@ let isBatchSyncRunning = false;
                             <input
                               type="text"
                               value={editProjectName}
+                              disabled={isInfoLockedForUser}
                               onChange={(e) => setEditProjectName(e.target.value)}
                               placeholder="Project title..."
-                              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1.5 rounded-lg text-slate-850 dark:text-zinc-100 outline-none focus:border-blue-500 focus:ring-1 font-bold text-xs"
+                              className={`w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1.5 rounded-lg text-slate-850 dark:text-zinc-100 outline-none focus:border-blue-500 focus:ring-1 font-bold text-xs ${isInfoLockedForUser ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-800' : ''}`}
                             />
                           </div>
 
@@ -4903,8 +5007,9 @@ let isBatchSyncRunning = false;
                             <input
                               type="text"
                               value={editClient}
+                              disabled={isInfoLockedForUser}
                               onChange={(e) => setEditClient(e.target.value)}
-                              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1.5 rounded-lg text-slate-850 dark:text-zinc-100 outline-none focus:border-blue-500 focus:ring-1"
+                              className={`w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1.5 rounded-lg text-slate-850 dark:text-zinc-100 outline-none focus:border-blue-500 focus:ring-1 ${isInfoLockedForUser ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-800' : ''}`}
                             />
                           </div>
 
@@ -4916,9 +5021,10 @@ let isBatchSyncRunning = false;
                             <input
                               type="text"
                               value={editConsultant}
+                              disabled={isInfoLockedForUser}
                               onChange={(e) => setEditConsultant(e.target.value)}
                               placeholder="Consulting Firm / Lead Partner Name"
-                              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1.5 rounded-lg text-slate-850 dark:text-zinc-100 outline-none focus:border-blue-500 focus:ring-1"
+                              className={`w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1.5 rounded-lg text-slate-850 dark:text-zinc-100 outline-none focus:border-blue-500 focus:ring-1 ${isInfoLockedForUser ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-800' : ''}`}
                             />
                           </div>
 
@@ -4927,8 +5033,9 @@ let isBatchSyncRunning = false;
                             <input
                               type="text"
                               value={editContractor}
+                              disabled={isInfoLockedForUser}
                               onChange={(e) => setEditContractor(e.target.value)}
-                              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1.5 rounded-lg text-slate-850 dark:text-zinc-100 outline-none focus:border-blue-500 focus:ring-1"
+                              className={`w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1.5 rounded-lg text-slate-850 dark:text-zinc-100 outline-none focus:border-blue-500 focus:ring-1 ${isInfoLockedForUser ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-800' : ''}`}
                             />
                           </div>
 
@@ -4936,8 +5043,9 @@ let isBatchSyncRunning = false;
                             <label className="text-[9px] text-indigo-500 block font-mono font-bold">PROGRAM DIRECTORATE</label>
                             <select
                               value={editProgramDirectorate}
+                              disabled={isInfoLockedForUser}
                               onChange={(e) => setEditProgramDirectorate(e.target.value)}
-                              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1.5 rounded-lg text-slate-850 dark:text-zinc-100 outline-none font-bold"
+                              className={`w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1.5 rounded-lg text-slate-850 dark:text-zinc-100 outline-none font-bold ${isInfoLockedForUser ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-800' : ''}`}
                             >
                               {programDirectorates.map((pd, pdIdx) => (
                                 <option key={`edit-pd-${pd}-${pdIdx}`} value={pd}>{pd}</option>
@@ -4949,8 +5057,9 @@ let isBatchSyncRunning = false;
                             <label className="text-[9px] text-purple-500 block font-mono font-bold">PMO ASSIGNMENT</label>
                             <select
                               value={editPmo}
+                              disabled={isInfoLockedForUser}
                               onChange={(e) => setEditPmo(e.target.value)}
-                              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1.5 rounded-lg text-slate-850 dark:text-zinc-100 outline-none font-bold"
+                              className={`w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1.5 rounded-lg text-slate-850 dark:text-zinc-100 outline-none font-bold ${isInfoLockedForUser ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-800' : ''}`}
                             >
                               {pmos.map((p, pIdx) => (
                                 <option key={`edit-pmo-${p}-${pIdx}`} value={p}>{p}</option>
@@ -4967,10 +5076,11 @@ let isBatchSyncRunning = false;
                               {ETHIOPIAN_REGIONAL_STATES.map((region, rIdx) => {
                                 const isChecked = editRegionalState.includes(region);
                                 return (
-                                  <label key={`edit-reg-chk-${region}-${rIdx}`} className="flex items-center gap-2 text-[10px] text-slate-700 dark:text-slate-200 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 p-1 rounded transition select-none">
+                                  <label key={`edit-reg-chk-${region}-${rIdx}`} className={`flex items-center gap-2 text-[10px] text-slate-700 dark:text-slate-200 p-1 rounded transition select-none ${isInfoLockedForUser ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
                                     <input
                                       type="checkbox"
                                       checked={isChecked}
+                                      disabled={isInfoLockedForUser}
                                       onChange={(e) => {
                                         if (e.target.checked) {
                                           setEditRegionalState([...editRegionalState, region]);
@@ -4982,7 +5092,7 @@ let isBatchSyncRunning = false;
                                           }
                                         }
                                       }}
-                                      className="rounded border-slate-300 text-amber-600 focus:ring-amber-500 w-3.5 h-3.5 cursor-pointer"
+                                      className="rounded border-slate-300 text-amber-600 focus:ring-amber-500 w-3.5 h-3.5 cursor-pointer disabled:cursor-not-allowed"
                                     />
                                     <span>🏛️ {region}</span>
                                   </label>
@@ -5001,8 +5111,9 @@ let isBatchSyncRunning = false;
                             <input
                               type="date"
                               value={editSignDate}
+                              disabled={isInfoLockedForUser}
                               onChange={(e) => setEditSignDate(e.target.value)}
-                              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1 text-slate-850 dark:text-zinc-150 outline-none font-mono"
+                              className={`w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1 text-slate-850 dark:text-zinc-150 outline-none font-mono ${isInfoLockedForUser ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-800' : ''}`}
                             />
                           </div>
 
@@ -5011,8 +5122,9 @@ let isBatchSyncRunning = false;
                             <input
                               type="date"
                               value={editStartDate}
+                              disabled={isInfoLockedForUser}
                               onChange={(e) => setEditStartDate(e.target.value)}
-                              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1 text-slate-850 dark:text-zinc-150 outline-none font-mono"
+                              className={`w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1 text-slate-850 dark:text-zinc-150 outline-none font-mono ${isInfoLockedForUser ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-800' : ''}`}
                             />
                           </div>
 
@@ -5022,8 +5134,9 @@ let isBatchSyncRunning = false;
                               <input
                                 type="number"
                                 value={editOrigDays}
+                                disabled={isInfoLockedForUser}
                                 onChange={(e) => setEditOrigDays(parseInt(e.target.value) || 0)}
-                                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-705 text-center py-0.5 rounded font-mono text-slate-850 text-2xs outline-none"
+                                className={`w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-705 text-center py-0.5 rounded font-mono text-slate-850 text-2xs outline-none ${isInfoLockedForUser ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-800' : ''}`}
                               />
                             </div>
                             <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-1 rounded-lg border border-slate-100">
@@ -5031,17 +5144,26 @@ let isBatchSyncRunning = false;
                               <input
                                 type="number"
                                 value={editEotDays}
+                                disabled={isInfoLockedForUser}
                                 onChange={(e) => setEditEotDays(parseInt(e.target.value) || 0)}
-                                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-705 text-center py-0.5 rounded font-mono text-slate-850 text-2xs outline-none"
+                                className={`w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-705 text-center py-0.5 rounded font-mono text-slate-850 text-2xs outline-none ${isInfoLockedForUser ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-800' : ''}`}
                               />
                             </div>
-                            <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-1 rounded-lg border border-slate-100">
-                              <label className="text-[8px] text-slate-400 block font-mono">INT. EOT</label>
+                            <div className={`space-y-1 ${isInfoLockedForUser ? 'bg-amber-50/90 dark:bg-amber-950/70 p-1 rounded-lg border-2 border-amber-500 shadow-xs' : 'bg-slate-50 dark:bg-slate-900/50 p-1 rounded-lg border border-slate-100'}`}>
+                              <div className="flex items-center justify-between">
+                                <label className="text-[8px] text-slate-500 dark:text-slate-300 block font-mono font-bold">INT. EOT</label>
+                                {isInfoLockedForUser && (
+                                  <span className="text-[7.5px] font-mono font-black text-amber-700 dark:text-amber-300">
+                                    Accessible
+                                  </span>
+                                )}
+                              </div>
                               <input
                                 type="number"
                                 value={editInterimEotDays}
                                 onChange={(e) => setEditInterimEotDays(parseInt(e.target.value) || 0)}
-                                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-705 text-center py-0.5 rounded font-mono text-slate-850 text-2xs outline-none"
+                                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-705 text-center py-0.5 rounded font-mono text-slate-850 dark:text-zinc-100 font-bold text-2xs outline-none focus:ring-1 focus:ring-amber-500"
+                                title="Interim EOT (Days) - Accessible for Directorate Admin even when project is locked"
                               />
                             </div>
                           </div>
@@ -5066,16 +5188,18 @@ let isBatchSyncRunning = false;
                                 <div className="flex items-center gap-1">
                                   <button
                                     type="button"
+                                    disabled={isInfoLockedForUser}
                                     onClick={() => setEditDlpStartDate(new Date().toISOString().split('T')[0])}
-                                    className="text-[7.5px] font-mono px-1.5 py-0.5 bg-white dark:bg-slate-800 hover:bg-slate-100 text-slate-700 dark:text-slate-300 rounded border border-slate-200 dark:border-slate-700 cursor-pointer transition"
+                                    className={`text-[7.5px] font-mono px-1.5 py-0.5 rounded border transition ${isInfoLockedForUser ? 'opacity-50 cursor-not-allowed bg-slate-100 dark:bg-slate-800 text-slate-400' : 'bg-white dark:bg-slate-800 hover:bg-slate-100 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 cursor-pointer'}`}
                                   >
                                     Today
                                   </button>
                                   {currentProject.completionDate && (
                                     <button
                                       type="button"
+                                      disabled={isInfoLockedForUser}
                                       onClick={() => setEditDlpStartDate(currentProject.completionDate || '')}
-                                      className="text-[7.5px] font-mono px-1.5 py-0.5 bg-emerald-100 dark:bg-emerald-900/60 hover:bg-emerald-200 text-emerald-800 dark:text-emerald-300 rounded border border-emerald-300 dark:border-emerald-800 cursor-pointer transition"
+                                      className={`text-[7.5px] font-mono px-1.5 py-0.5 rounded border transition ${isInfoLockedForUser ? 'opacity-50 cursor-not-allowed bg-slate-100 dark:bg-slate-800 text-slate-400' : 'bg-emerald-100 dark:bg-emerald-900/60 hover:bg-emerald-200 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800 cursor-pointer'}`}
                                       title={`Use recorded completion date: ${currentProject.completionDate}`}
                                     >
                                       Use Comp Date
@@ -5084,8 +5208,9 @@ let isBatchSyncRunning = false;
                                   {editDlpStartDate && (
                                     <button
                                       type="button"
+                                      disabled={isInfoLockedForUser}
                                       onClick={() => setEditDlpStartDate('')}
-                                      className="text-[7.5px] font-mono px-1.5 py-0.5 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 text-rose-600 dark:text-rose-400 rounded border border-rose-200 dark:border-rose-900 cursor-pointer transition"
+                                      className={`text-[7.5px] font-mono px-1.5 py-0.5 rounded border transition ${isInfoLockedForUser ? 'opacity-50 cursor-not-allowed bg-slate-100 dark:bg-slate-800 text-slate-400' : 'bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-900 cursor-pointer'}`}
                                     >
                                       Clear
                                     </button>
@@ -5095,8 +5220,9 @@ let isBatchSyncRunning = false;
                               <input
                                 type="date"
                                 value={editDlpStartDate}
+                                disabled={isInfoLockedForUser}
                                 onChange={(e) => setEditDlpStartDate(e.target.value)}
-                                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1 text-slate-850 dark:text-zinc-150 outline-none font-mono text-xs rounded focus:ring-1 focus:ring-emerald-500"
+                                className={`w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1 text-slate-850 dark:text-zinc-150 outline-none font-mono text-xs rounded focus:ring-1 focus:ring-emerald-500 ${isInfoLockedForUser ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-800' : ''}`}
                               />
                             </div>
 
@@ -5113,9 +5239,10 @@ let isBatchSyncRunning = false;
                                   type="number"
                                   min="0"
                                   value={editDlpDays}
+                                  disabled={isInfoLockedForUser}
                                   onChange={(e) => setEditDlpDays(Math.max(0, parseInt(e.target.value) || 0))}
                                   placeholder="e.g. 365"
-                                  className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1 text-slate-850 dark:text-zinc-150 outline-none font-mono font-bold text-xs rounded focus:ring-1 focus:ring-emerald-500"
+                                  className={`w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1 text-slate-850 dark:text-zinc-150 outline-none font-mono font-bold text-xs rounded focus:ring-1 focus:ring-emerald-500 ${isInfoLockedForUser ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-800' : ''}`}
                                 />
                                 <span className="absolute right-2 text-[10px] font-mono font-bold text-slate-400 select-none pointer-events-none">
                                   Days
@@ -5132,11 +5259,14 @@ let isBatchSyncRunning = false;
                                   <button
                                     key={preset.days}
                                     type="button"
+                                    disabled={isInfoLockedForUser}
                                     onClick={() => setEditDlpDays(preset.days)}
-                                    className={`text-[7.5px] font-mono px-1.5 py-0.5 rounded border transition cursor-pointer ${
-                                      editDlpDays === preset.days
-                                        ? 'bg-emerald-600 text-white border-emerald-600 font-bold'
-                                        : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:border-emerald-400'
+                                    className={`text-[7.5px] font-mono px-1.5 py-0.5 rounded border transition ${
+                                      isInfoLockedForUser
+                                        ? 'opacity-40 cursor-not-allowed bg-slate-100 dark:bg-slate-800 text-slate-400'
+                                        : editDlpDays === preset.days
+                                        ? 'bg-emerald-600 text-white border-emerald-600 font-bold cursor-pointer'
+                                        : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:border-emerald-400 cursor-pointer'
                                     }`}
                                   >
                                     {preset.label}
@@ -5164,8 +5294,9 @@ let isBatchSyncRunning = false;
                               type="number"
                               step="0.01"
                               value={editOrigAmount}
+                              disabled={isInfoLockedForUser}
                               onChange={(e) => setEditOrigAmount(parseFloat(e.target.value) || 0)}
-                              className="w-full bg-white dark:bg-slate-900 text-slate-850 dark:text-zinc-100 border border-slate-200 dark:border-slate-700 px-2 py-1 outline-none font-mono font-bold"
+                              className={`w-full bg-white dark:bg-slate-900 text-slate-850 dark:text-zinc-100 border border-slate-200 dark:border-slate-700 px-2 py-1 outline-none font-mono font-bold ${isInfoLockedForUser ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-800' : ''}`}
                             />
                           </div>
 
@@ -5175,8 +5306,9 @@ let isBatchSyncRunning = false;
                               type="number"
                               step="0.01"
                               value={editProvisionalSum}
+                              disabled={isInfoLockedForUser}
                               onChange={(e) => setEditProvisionalSum(parseFloat(e.target.value) || 0)}
-                              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1 text-slate-850 dark:text-zinc-150 outline-none font-mono"
+                              className={`w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1 text-slate-850 dark:text-zinc-150 outline-none font-mono ${isInfoLockedForUser ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-800' : ''}`}
                             />
                           </div>
 
@@ -5197,6 +5329,7 @@ let isBatchSyncRunning = false;
                                 type="text"
                                 inputMode="decimal"
                                 value={editVariationStr}
+                                disabled={isInfoLockedForUser}
                                 onFocus={(e) => e.target.select()}
                                 onChange={(e) => {
                                   const rawVal = e.target.value;
@@ -5210,7 +5343,7 @@ let isBatchSyncRunning = false;
                                 onBlur={() => {
                                   setEditVariationStr(formatAccounting(editVariation, ''));
                                 }}
-                                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 pl-8 pr-2 py-1 text-slate-850 dark:text-zinc-150 outline-none font-mono text-xs rounded font-bold"
+                                className={`w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 pl-8 pr-2 py-1 text-slate-850 dark:text-zinc-150 outline-none font-mono text-xs rounded font-bold ${isInfoLockedForUser ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-800' : ''}`}
                                 placeholder="0.00"
                               />
                             </div>
@@ -5228,10 +5361,11 @@ let isBatchSyncRunning = false;
                               <input
                                 type="checkbox"
                                 checked={editEnableUsdPayments}
+                                disabled={isInfoLockedForUser}
                                 onChange={(e) => setEditEnableUsdPayments(e.target.checked)}
                                 className="sr-only peer"
                               />
-                              <div className="w-8 h-4 bg-slate-200 dark:bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-blue-600"></div>
+                              <div className="w-8 h-4 bg-slate-200 dark:bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-blue-600 disabled:opacity-50"></div>
                             </label>
                           </div>
                         </div>
@@ -5246,8 +5380,9 @@ let isBatchSyncRunning = false;
                               type="number"
                               step="0.01"
                               value={editLengthKm}
+                              disabled={isInfoLockedForUser}
                               onChange={(e) => setEditLengthKm(parseFloat(e.target.value) || 0)}
-                              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1 text-slate-850 dark:text-zinc-150 outline-none font-mono"
+                              className={`w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1 text-slate-850 dark:text-zinc-150 outline-none font-mono ${isInfoLockedForUser ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-800' : ''}`}
                             />
                           </div>
 
@@ -5256,8 +5391,9 @@ let isBatchSyncRunning = false;
                             <input
                               type="text"
                               value={editClassification}
+                              disabled={isInfoLockedForUser}
                               onChange={(e) => setEditClassification(e.target.value)}
-                              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1.5 rounded-lg text-slate-850 dark:text-zinc-100 outline-none"
+                              className={`w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1.5 rounded-lg text-slate-850 dark:text-zinc-100 outline-none ${isInfoLockedForUser ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-800' : ''}`}
                             />
                           </div>
 
@@ -5269,6 +5405,7 @@ let isBatchSyncRunning = false;
                                   ? 'Other' 
                                   : (['DB', 'DBB', 'EPC', 'BOOT', 'ItemRate'].includes(editContractType) ? editContractType : 'Other')
                               }
+                              disabled={isInfoLockedForUser}
                               onChange={(e) => {
                                 const nextVal = e.target.value;
                                 if (nextVal === 'Other') {
@@ -5284,7 +5421,7 @@ let isBatchSyncRunning = false;
                                   }
                                 }
                               }}
-                              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-705 px-2 py-1 rounded-lg text-slate-850 dark:text-zinc-100 outline-none font-bold"
+                              className={`w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-705 px-2 py-1 rounded-lg text-slate-850 dark:text-zinc-100 outline-none font-bold ${isInfoLockedForUser ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-800' : ''}`}
                             >
                               <option value="DB">Design-Build (DB)</option>
                               <option value="DBB">Design-Bid-Build (DBB)</option>
@@ -5299,13 +5436,14 @@ let isBatchSyncRunning = false;
                                 <input
                                   type="text"
                                   value={customContractTypeInput}
+                                  disabled={isInfoLockedForUser}
                                   onChange={(e) => {
                                     const val = e.target.value;
                                     setCustomContractTypeInput(val);
                                     setEditContractType(val || 'Custom Contract');
                                   }}
                                   placeholder="Enter custom contract type (e.g. Alliance, Framework...)"
-                                  className="w-full bg-white dark:bg-slate-900 border border-blue-400 dark:border-blue-600 px-2 py-1 rounded-lg text-slate-850 dark:text-zinc-100 outline-none font-bold text-xs"
+                                  className={`w-full bg-white dark:bg-slate-900 border border-blue-400 dark:border-blue-600 px-2 py-1 rounded-lg text-slate-850 dark:text-zinc-100 outline-none font-bold text-xs ${isInfoLockedForUser ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-800' : ''}`}
                                 />
                                 <span className="text-[8px] text-slate-400 block font-sans">
                                   Specify your custom contract type name.
@@ -5318,8 +5456,9 @@ let isBatchSyncRunning = false;
                             <label className="text-[9px] text-slate-400 block font-mono">FIDIC CONTRACT TYPE</label>
                             <select
                               value={editFidicContractType || getFidicOptions(editContractType)[0]}
+                              disabled={isInfoLockedForUser}
                               onChange={(e) => setEditFidicContractType(e.target.value)}
-                              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-705 px-2 py-1 rounded-lg text-slate-850 dark:text-zinc-100 outline-none font-bold"
+                              className={`w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-705 px-2 py-1 rounded-lg text-slate-850 dark:text-zinc-100 outline-none font-bold ${isInfoLockedForUser ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-800' : ''}`}
                             >
                               {getFidicOptions(editContractType).map((opt) => (
                                 <option key={opt} value={opt}>{opt}</option>
@@ -5380,11 +5519,12 @@ let isBatchSyncRunning = false;
                     </div>
                   )}
                 </div>
-              )}
+                );
+              })()}
             </section>
 
             {/* Navigation Tabs Bar */}
-            <div className="flex items-center gap-1 overflow-x-auto scroller-none py-1 border-b border-slate-200 dark:border-slate-800 text-xs font-bold font-mono">
+            <div className="flex items-center gap-1 overflow-x-auto scroller-none py-1 border-b border-slate-200 dark:border-slate-800 text-xs font-bold font-mono print:hidden">
               {[
                 { id: 'dash', label: '📊 Dashboard' },
                 { id: 'seriesEditor', label: '📋 Financial Data' },
@@ -5643,6 +5783,8 @@ let isBatchSyncRunning = false;
                   }}
                   onUpdateProjectLength={(lengthKm) => handleProjectUpdate({ lengthKm }, 'Total Contract length altered')}
                   onToggleCappingLayer={(hasCappingLayer) => handleProjectUpdate({ hasCappingLayer }, 'Capping Layer configuration altered')}
+                  onToggleSpurRoad={(hasSpurRoad) => handleProjectUpdate({ hasSpurRoad }, 'Spur Road Option Toggled')}
+                  onUpdateProject={handleProjectUpdate}
                 />
               )}
 
@@ -5661,6 +5803,7 @@ let isBatchSyncRunning = false;
                 <QuantityEditorView
                   project={currentProject}
                   onUpdateQuantities={(quantities) => handleProjectUpdate({ quantities }, 'Quantity volumes modified')}
+                  onUpdateProject={handleProjectUpdate}
                 />
               )}
 

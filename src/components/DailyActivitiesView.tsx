@@ -9,6 +9,7 @@ import {
 import {
   Project, DailyActivityRecord, User, DailyProductionItem, QtyItem
 } from '../types';
+import eraLogo from '../assets/logo.png';
 
 interface DailyActivitiesViewProps {
   project: Project;
@@ -1740,21 +1741,45 @@ export default function DailyActivitiesView({
 
       <div className="max-w-[1180px] mx-auto space-y-4">
         
-        {/* PRINT-ONLY OFFICIAL HEADER WITH MINIMIZED LOGO */}
-        <div className="hidden print:block mb-3 border-b-2 border-slate-900 pb-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded bg-blue-900 text-white flex items-center justify-center font-black text-[10px]">
-                ERA
+        {/* PRINT-ONLY OFFICIAL HEADER WITH MINIMIZED LOGO (ON HEADER ONLY) */}
+        <div className="hidden print:block mb-4 border-b-2 border-slate-900 pb-3 print:break-inside-avoid">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-lg bg-white border border-slate-300 p-0.5 flex items-center justify-center shrink-0 print-logo-container">
+                <img
+                  src={eraLogo}
+                  alt="Ethiopian Roads Administration Logo"
+                  className="w-10 h-10 object-contain print-logo-min"
+                  style={{ width: '40px', height: '40px', maxWidth: '40px', maxHeight: '40px' }}
+                />
               </div>
               <div>
-                <h2 className="text-xs font-black text-slate-900 uppercase">ETHIOPIAN ROADS ADMINISTRATION</h2>
-                <p className="text-[9px] text-slate-600">Daily Project Progress Report (DPR) - {formatDisplayDate(selectedDate)}</p>
+                <h2 className="text-sm font-black text-slate-900 uppercase tracking-wide leading-tight">
+                  ETHIOPIAN ROADS ADMINISTRATION
+                </h2>
+                <p className="text-[10px] font-bold text-slate-700">
+                  Daily Project Progress Report (DPR) • {formatDisplayDate(selectedDate)}
+                </p>
+                <div className="text-[8.5px] text-slate-600 flex items-center gap-2 mt-0.5 font-medium">
+                  <span>Directorate: <strong>{project.programDirectorate || 'Southern'}</strong></span>
+                  <span>•</span>
+                  <span>PMO: <strong>{project.pmo || 'PMO 1'}</strong></span>
+                  {weather && (
+                    <>
+                      <span>•</span>
+                      <span>Weather: <strong>{weather}</strong></span>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
-            <div className="text-right text-[9px] text-slate-600">
-              <div>Project: <strong>{project.name}</strong></div>
-              <div>Date: {selectedDate}</div>
+            <div className="text-right text-[8.5px] text-slate-700 space-y-0.5 font-medium">
+              <div>Project: <strong className="text-slate-900 font-bold">{project.name}</strong></div>
+              <div>Contractor: <strong>{project.contractor || 'N/A'}</strong></div>
+              <div>Consultant: <strong>{project.supervisionConsultant?.firmName || project.consultant || 'N/A'}</strong></div>
+              <div className="text-slate-500 font-mono text-[8px] pt-0.5">
+                Target Date: {selectedDate} • Official Daily Register
+              </div>
             </div>
           </div>
         </div>

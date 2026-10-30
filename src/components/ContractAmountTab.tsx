@@ -100,6 +100,7 @@ export const ContractAmountTab: React.FC<Props> = ({
   };
 
   const savedSchedule = consultant.contractAmountSchedule?.condition1;
+  const [isHeaderBarCollapsed, setIsHeaderBarCollapsed] = useState(false);
 
   // Initialize Condition 1 State with independent Construction and DLP staff schedules
   const [c1Data, setC1Data] = useState<ContractCondition1Data>(() => {
@@ -688,6 +689,12 @@ export const ContractAmountTab: React.FC<Props> = ({
     const grandTotal = baseBeforeVat + vat;
     const grandTotalUsd = baseBeforeVatUsd + vatUsd;
 
+    // Combined formulas for USD Option: Total Contract Price = Total ETB + (USD * exchangeRate), Contingency = ETB + (USD * exchangeRate)
+    const combinedContingency = contingency + (contingencyUsd * effRate);
+    const combinedGrandTotal = grandTotal + (grandTotalUsd * effRate);
+    const combinedDirectSubTotal = directSubTotal + (directSubTotalUsd * effRate);
+    const combinedVat = vat + (vatUsd * effRate);
+
     return {
       feesConstruction,
       feesConstructionUsd,
@@ -702,15 +709,19 @@ export const ContractAmountTab: React.FC<Props> = ({
       contingencyPct,
       contingency,
       contingencyUsd,
+      combinedContingency,
       baseBeforeVat,
       baseBeforeVatUsd,
       vatPct,
       vat,
       vatUsd,
       grandTotal,
-      grandTotalUsd
+      grandTotalUsd,
+      combinedGrandTotal,
+      combinedDirectSubTotal,
+      combinedVat
     };
-  }, [constructionSubtotals, dlpSubtotals, reimbursableTotal, reimbursableTotalUsd, c1Data.contingencyPct, c1Data.vatPct]);
+  }, [constructionSubtotals, dlpSubtotals, reimbursableTotal, reimbursableTotalUsd, c1Data.contingencyPct, c1Data.vatPct, effRate]);
 
   const activeSummaryPrice = useMemo(() => {
     return {
@@ -1055,140 +1066,150 @@ export const ContractAmountTab: React.FC<Props> = ({
           ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 shadow-xs' 
           : 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200 shadow-xs'
       }`}>
-        <div className="flex items-center gap-3">
-          <div className={`p-2.5 rounded-2xl ${isLocked ? 'bg-amber-200 text-amber-800' : 'bg-emerald-200 text-emerald-800'}`}>
-            {isLocked ? <Lock className="w-5 h-5" /> : <Unlock className="w-5 h-5" />}
+        <div className="flex items-center justify-between w-full md:w-auto gap-3">
+          <div className="flex items-center gap-3">
+            <div className={`p-2.5 rounded-2xl ${isLocked ? 'bg-amber-200 text-amber-800' : 'bg-emerald-200 text-emerald-800'}`}>
+              {isLocked ? <Lock className="w-5 h-5" /> : <Unlock className="w-5 h-5" />}
+            </div>
+            <div>
+              <h4 className="font-bold text-sm">
+                {isLocked ? 'Contract Data is VALIDATED and LOCKED' : 'Contract Data Entry & Remuneration Schedule'}
+              </h4>
+              <p className="text-xs opacity-90">
+                {isLocked 
+                  ? `Validated and locked by ${c1Data.validatedBy || 'Directorate Admin'}. Modifications are frozen. Only Master Admin can revert/unlock.`
+                  : 'Data entry is open. Directorate Admin or Master Admin can validate and lock contract data.'}
+              </p>
+            </div>
           </div>
-          <div>
-            <h4 className="font-bold text-sm">
-              {isLocked ? 'Contract Data is VALIDATED and LOCKED' : 'Contract Data Entry & Remuneration Schedule'}
-            </h4>
-            <p className="text-xs opacity-90">
-              {isLocked 
-                ? `Validated and locked by ${c1Data.validatedBy || 'Directorate Admin'}. Modifications are frozen. Only Master Admin can revert/unlock.`
-                : 'Data entry is open. Directorate Admin or Master Admin can validate and lock contract data.'}
-            </p>
-          </div>
+          <button
+            type="button"
+            onClick={() => setIsHeaderBarCollapsed(!isHeaderBarCollapsed)}
+            className="p-1.5 rounded-xl bg-white/60 hover:bg-white dark:bg-slate-800/60 text-slate-700 dark:text-slate-200 cursor-pointer"
+            title={isHeaderBarCollapsed ? "Show Action Controls" : "Hide Action Controls"}
+          >
+            {isHeaderBarCollapsed ? 'Show Controls' : 'Hide Controls'}
+          </button>
         </div>
 
         {/* Global Action Bar & Currency Controls */}
-        <div className="flex flex-wrap items-center gap-2.5">
-          {/* USD Contract Active Status Toggle Button */}
-          <button
-            type="button"
-            onClick={() => {
-              if (onToggleUsdPayments) {
-                onToggleUsdPayments();
-              } else if (onUpdateProject) {
-                const nextVal = !hasUsdOption;
-                onUpdateProject({
-                  supervisionConsultant: {
-                    ...consultant,
-                    enableUsdPayments: nextVal
-                  }
-                }, `${nextVal ? 'Enabled' : 'Disabled'} USD foreign currency remuneration option`);
-              }
-            }}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs border ${
-              hasUsdOption
-                ? 'bg-purple-100 text-purple-800 border-purple-300 dark:bg-purple-950/60 dark:text-purple-300 dark:border-purple-800'
-                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-50'
-            }`}
-            title="Toggle USD foreign currency remuneration option"
-          >
-            <ShieldCheck className={`w-4 h-4 ${hasUsdOption ? 'text-purple-600 dark:text-purple-400' : 'text-slate-400'}`} />
-            <span>{hasUsdOption ? 'USD Contract Active' : 'Enable USD Option'}</span>
-          </button>
-
-          {/* Operational Exchange Rate Inline Input - Only show when USD option is enabled */}
-          {hasUsdOption && (
-            <div className="flex items-center gap-2 bg-white dark:bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold shadow-xs">
-              <span className="text-slate-500 font-semibold text-[11px] whitespace-nowrap">Operational Exchange Rate</span>
-              <span className="text-slate-600 dark:text-slate-300 text-xs font-mono font-bold">1 USD =</span>
-              <input
-                type="number"
-                step="0.01"
-                disabled={isReadonly || isLocked}
-                value={rateInput}
-                onChange={(e) => setRateInput(parseFloat(e.target.value) || 0)}
-                className="w-16 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-0.5 text-xs font-mono font-black text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-              />
-              <span className="text-slate-500 text-xs font-mono">ETB</span>
-              {!isReadonly && !isLocked && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (rateInput <= 0) return;
-                    if (onSaveExchangeRate) {
-                      onSaveExchangeRate(rateInput);
-                    } else if (onUpdateProject) {
-                      onUpdateProject({
-                        supervisionConsultant: {
-                          ...consultant,
-                          exchangeRate: rateInput
-                        }
-                      }, `Updated operational exchange rate to 1 USD = ${rateInput.toFixed(2)} ETB`);
+        {!isHeaderBarCollapsed && (
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* USD Contract Active Status Toggle Button */}
+            <button
+              type="button"
+              onClick={() => {
+                if (onToggleUsdPayments) {
+                  onToggleUsdPayments();
+                } else if (onUpdateProject) {
+                  const nextVal = !hasUsdOption;
+                  onUpdateProject({
+                    supervisionConsultant: {
+                      ...consultant,
+                      enableUsdPayments: nextVal
                     }
-                  }}
-                  className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold rounded-lg transition cursor-pointer shadow-2xs"
-                >
-                  Apply
-                </button>
-              )}
-            </div>
-          )}
-
-          {canLockContract && (
-            <button
-              type="button"
-              onClick={handleToggleLockContract}
-              className={`px-4 py-2 text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-xs border cursor-pointer ${
-                isLocked
-                  ? (isMasterAdmin ? 'bg-rose-600 hover:bg-rose-700 text-white border-rose-700 shadow-sm' : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-300 dark:border-slate-700 cursor-not-allowed')
-                  : 'bg-amber-500 hover:bg-amber-600 text-white border-amber-600 shadow-sm'
+                  }, `${nextVal ? 'Enabled' : 'Disabled'} USD foreign currency remuneration option`);
+                }
+              }}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs border ${
+                hasUsdOption
+                  ? 'bg-purple-100 text-purple-800 border-purple-300 dark:bg-purple-950/60 dark:text-purple-300 dark:border-purple-800'
+                  : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-50'
               }`}
-              title={
-                isLocked
-                  ? (isMasterAdmin ? "Unlock and revert validation (Master Admin privilege)" : "Contract data validated & locked by Directorate Admin. Only Master Admin can revert.")
-                  : "Officially validate and lock contract data (freezes edits)"
-              }
+              title="Toggle USD foreign currency remuneration option"
             >
-              <Lock className="w-4 h-4" />
-              <span>
-                {isLocked
-                  ? (isMasterAdmin ? '🔓 Unlock / Revert Validation (Master Admin)' : '🔒 Locked & Validated (Master Admin Revert)')
-                  : '🔒 Validate & Lock Contract Data'}
-              </span>
+              <ShieldCheck className={`w-4 h-4 ${hasUsdOption ? 'text-purple-600 dark:text-purple-400' : 'text-slate-400'}`} />
+              <span>{hasUsdOption ? 'USD Contract Active' : 'Enable USD Option'}</span>
             </button>
-          )}
 
-          {isLocked && onNavigateToHistory && (
-            <button
-              type="button"
-              onClick={onNavigateToHistory}
-              className="px-4 py-2 text-xs font-bold rounded-xl bg-amber-500 hover:bg-amber-600 text-white transition flex items-center gap-1.5 shadow-xs border border-amber-600 cursor-pointer"
-              title="Assign continuation Supervision Consultant under Service History"
-            >
-              <ArrowRightLeft className="w-3.5 h-3.5" />
-              <span>Assign New Consultant</span>
-            </button>
-          )}
+            {/* Operational Exchange Rate Inline Input - Only show when USD option is enabled */}
+            {hasUsdOption && (
+              <div className="flex items-center gap-2 bg-white dark:bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold shadow-xs">
+                <span className="text-slate-500 font-semibold text-[11px] whitespace-nowrap">Operational Exchange Rate</span>
+                <span className="text-slate-600 dark:text-slate-300 text-xs font-mono font-bold">1 USD =</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  disabled={isReadonly || isLocked}
+                  value={rateInput}
+                  onChange={(e) => setRateInput(parseFloat(e.target.value) || 0)}
+                  className="w-16 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-0.5 text-xs font-mono font-black text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+                <span className="text-slate-500 text-xs font-mono">ETB</span>
+                {!isReadonly && !isLocked && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (rateInput <= 0) return;
+                      if (onSaveExchangeRate) {
+                        onSaveExchangeRate(rateInput);
+                      } else if (onUpdateProject) {
+                        onUpdateProject({
+                          supervisionConsultant: {
+                            ...consultant,
+                            exchangeRate: rateInput
+                          }
+                        }, `Updated operational exchange rate to 1 USD = ${rateInput.toFixed(2)} ETB`);
+                      }
+                    }}
+                    className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold rounded-lg transition cursor-pointer shadow-2xs"
+                  >
+                    Apply
+                  </button>
+                )}
+              </div>
+            )}
 
-          {!effectiveReadonly && (
-            <button
-              type="button"
-              onClick={handleSaveAndSyncContract}
-              className="px-4 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition flex items-center gap-1.5 shadow-xs cursor-pointer"
-              title="Save contract schedule and link staff rates directly to monthly invoice calculation engine"
-            >
-              <Save className="w-3.5 h-3.5" />
-              <span>Save & Link to Invoices</span>
-            </button>
-          )}
-        </div>
+            {canLockContract && (
+              <button
+                type="button"
+                onClick={handleToggleLockContract}
+                className={`px-4 py-2 text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-xs border cursor-pointer ${
+                  isLocked
+                    ? (isMasterAdmin ? 'bg-rose-600 hover:bg-rose-700 text-white border-rose-700 shadow-sm' : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-300 dark:border-slate-700 cursor-not-allowed')
+                    : 'bg-amber-500 hover:bg-amber-600 text-white border-amber-600 shadow-sm'
+                }`}
+                title={
+                  isLocked
+                    ? (isMasterAdmin ? "Unlock and revert validation (Master Admin privilege)" : "Contract data validated & locked by Directorate Admin. Only Master Admin can revert.")
+                    : "Officially validate and lock contract data (freezes edits)"
+                }
+              >
+                <Lock className="w-4 h-4" />
+                <span>
+                  {isLocked
+                    ? (isMasterAdmin ? '🔓 Unlock / Revert Validation (Master Admin)' : '🔒 Locked & Validated (Master Admin Revert)')
+                    : '🔒 Validate & Lock Contract Data'}
+                </span>
+              </button>
+            )}
+
+            {isLocked && onNavigateToHistory && (
+              <button
+                type="button"
+                onClick={onNavigateToHistory}
+                className="px-4 py-2 text-xs font-bold rounded-xl bg-amber-500 hover:bg-amber-600 text-white transition flex items-center gap-1.5 shadow-xs border border-amber-600 cursor-pointer"
+                title="Assign continuation Supervision Consultant under Service History"
+              >
+                <ArrowRightLeft className="w-3.5 h-3.5" />
+                <span>Assign New Consultant</span>
+              </button>
+            )}
+
+            {!effectiveReadonly && (
+              <button
+                type="button"
+                onClick={handleSaveAndSyncContract}
+                className="px-4 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                title="Save contract schedule and link staff rates directly to monthly invoice calculation engine"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>Save & Link to Invoices</span>
+              </button>
+            )}
+          </div>
+        )}
       </div>
-
-
 
       {/* Success Notification */}
       {saveSuccessMessage && (

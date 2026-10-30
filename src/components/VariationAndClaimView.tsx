@@ -451,6 +451,10 @@ export default function VariationAndClaimView({ project, onProjectUpdate, curren
   };
 
   const handleEditVo = (vo: VariationOrder) => {
+    if (vo.status?.toLowerCase() === 'approved' && !isMasterAdmin) {
+      alert('Unauthorized: Approved Variation Orders are locked against modification and can only be edited by Master Admin.');
+      return;
+    }
     setEditingVo(vo);
     setVoNumber(vo.voNumber);
     setVoReason(vo.reasonForIssue);
@@ -565,6 +569,10 @@ export default function VariationAndClaimView({ project, onProjectUpdate, curren
   };
 
   const handleEditClaim = (claim: ContractClaim) => {
+    if (claim.status?.toLowerCase() === 'approved' && !isMasterAdmin) {
+      alert('Unauthorized: Approved Contract Claims are locked against modification and can only be edited by Master Admin.');
+      return;
+    }
     setEditingClaim(claim);
     setClaimNo(claim.claimNo);
     setClaimNoticeDate(claim.noticeDate);
