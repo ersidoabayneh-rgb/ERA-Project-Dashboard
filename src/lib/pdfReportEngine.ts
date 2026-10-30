@@ -1,6 +1,7 @@
 import { jsPDF } from 'jspdf';
 import { ERA_LOGO_BASE64 } from '../assets/eraLogoBase64';
 import { formatPdfDate } from './dateUtils';
+import { isProjectArchived } from '../types';
 
 /**
  * Standard PDF border padding in standard PDF points (36 pt = 0.5 inch / 12.7 mm).
@@ -811,5 +812,30 @@ export function drawDocumentWatermark(
       // ignore
     }
   }
+}
+
+/**
+ * Guard clause utility in the PDF export utility.
+ * Checks the project's lifecycle status. If the project is archived,
+ * ensures exported group reports and project documents are strictly sourced only from archived data
+ * (e.g. project.archivedData or historical snapshots) and prevents any retrieval from active project paths.
+ */
+export function enforceArchivedProjectDataSource<T = any>(project: any, activeDataFetcher: () => T): T {
+  if (project && isProjectArchived(project.status)) {
+    if (project.archivedData) {
+      return project.archivedData;
+    }
+    return {
+      ...project,
+      monthly: project.monthly || [],
+      progressPlan: project.progressPlan || {
+        contractor: { month: 0, quarter: 0, efy: 0, todate: 0 },
+        era: { month: 0, quarter: 0, efy: 0, todate: 0 },
+        actual: { month: 0, quarter: 0, efy: 0, todate: 0 }
+      },
+      isArchivedRestrictedSource: true
+    };
+  }
+  return activeDataFetcher();
 }
 

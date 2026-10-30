@@ -402,6 +402,7 @@ export default function GroupReportGenerator({
   const [isPrintWorkloadModalOpen, setIsPrintWorkloadModalOpen] = useState(false);
   const [isInstitutesModalOpen, setIsInstitutesModalOpen] = useState(false);
   const [institutesModalTab, setInstitutesModalTab] = useState<'institutes' | 'guaranties'>('guaranties');
+  const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false);
 
   // EFY Month Definitions (12 Fiscal Months in Gregorian Calendar: Jul to Jun)
   const EFY_MONTH_DEFINITIONS = [
@@ -9660,7 +9661,7 @@ export default function GroupReportGenerator({
       curY += 16;
 
       groups.forEach((grp, idx) => {
-        const rowHeight = 32;
+        const rowHeight = 36;
 
         if (curY + rowHeight > pageHeight - 55) {
           doc.addPage();
@@ -9699,36 +9700,42 @@ export default function GroupReportGenerator({
         doc.text(grp.name, colX.name + 6, curY + 13);
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(6);
-        doc.text(`${grp.type === 'directorate' ? 'Program Directorate' : 'Project Management Office'}`, colX.name + 6, curY + 23);
+        doc.text(`${grp.type === 'directorate' ? 'Program Directorate' : 'Project Management Office'} • ${grp.projectCount} Proj`, colX.name + 6, curY + 24);
 
         // 2. Scope
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(7);
-        doc.text(`${grp.projectCount} Projects`, colX.scope + 6, curY + 13);
+        doc.text(`${grp.totalLengthKm.toFixed(1)} Km`, colX.scope + 6, curY + 13);
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(6);
-        doc.text(`${grp.totalLengthKm.toFixed(1)} Km total`, colX.scope + 6, curY + 23);
+        doc.text(`${grp.projectCount} proj • ${grp.totalLengthKm.toFixed(0)} Km tot`, colX.scope + 6, curY + 24);
 
         // 3. Monthly
         doc.setFont('helvetica', 'normal');
-        doc.setFontSize(6.5);
-        doc.text(`ERA: ${eraM.toFixed(2)} Km  |  Act: ${actM.toFixed(2)} Km`, colX.month + 6, curY + 12);
+        doc.setFontSize(6);
+        doc.setTextColor(0, 0, 0);
+        doc.text(`ERA Plan: ${eraM.toFixed(2)} Km`, colX.month + 6, curY + 10);
+        doc.text(`Actual: ${actM.toFixed(2)} Km`, colX.month + 6, curY + 18);
         doc.setFont('helvetica', 'bold');
-        doc.text(`% vs ERA Plan: ${grp.monthRatio.toFixed(1)}%`, colX.month + 6, curY + 23);
+        doc.text(`% vs ERA: ${grp.monthRatio.toFixed(1)}%`, colX.month + 6, curY + 27);
 
         // 4. Quarterly
         doc.setFont('helvetica', 'normal');
-        doc.setFontSize(6.5);
-        doc.text(`ERA: ${eraQ.toFixed(2)} Km  |  Act: ${actQ.toFixed(2)} Km`, colX.quarter + 6, curY + 12);
+        doc.setFontSize(6);
+        doc.setTextColor(0, 0, 0);
+        doc.text(`ERA Plan: ${eraQ.toFixed(2)} Km`, colX.quarter + 6, curY + 10);
+        doc.text(`Actual: ${actQ.toFixed(2)} Km`, colX.quarter + 6, curY + 18);
         doc.setFont('helvetica', 'bold');
-        doc.text(`% vs ERA Plan: ${grp.quarterRatio.toFixed(1)}%`, colX.quarter + 6, curY + 23);
+        doc.text(`% vs ERA: ${grp.quarterRatio.toFixed(1)}%`, colX.quarter + 6, curY + 27);
 
         // 5. EFY
         doc.setFont('helvetica', 'normal');
-        doc.setFontSize(6.5);
-        doc.text(`ERA: ${eraE.toFixed(2)} Km  |  Act: ${actE.toFixed(2)} Km`, colX.efy + 6, curY + 12);
+        doc.setFontSize(6);
+        doc.setTextColor(0, 0, 0);
+        doc.text(`ERA Plan: ${eraE.toFixed(2)} Km`, colX.efy + 6, curY + 10);
+        doc.text(`Actual: ${actE.toFixed(2)} Km`, colX.efy + 6, curY + 18);
         doc.setFont('helvetica', 'bold');
-        doc.text(`% vs ERA Plan: ${grp.efyRatio.toFixed(1)}%`, colX.efy + 6, curY + 23);
+        doc.text(`% vs ERA: ${grp.efyRatio.toFixed(1)}%`, colX.efy + 6, curY + 27);
 
         // 6. Health Badge
         const statusX = colX.status + 4;
@@ -9751,6 +9758,97 @@ export default function GroupReportGenerator({
     renderGroupRows(filteredDirectorates, `PROGRAM DIRECTORATE GROUPINGS (${filteredDirectorates.length} DIRECTORATES)`);
     curY += 8;
     renderGroupRows(filteredPmos, `PMO GROUPINGS (${filteredPmos.length} PMO OFFICES)`);
+
+    // PORTFOLIO OVERALL TOTAL row
+    if (overallPortfolioAverages) {
+      curY += 6;
+      const rowHeight = 36;
+
+      if (curY + rowHeight > pageHeight - 55) {
+        doc.addPage();
+        pageNumber++;
+        drawPageHeader(pageNumber);
+        curY = 54;
+        curY += drawTableHeader(curY);
+      }
+
+      doc.setFillColor(241, 245, 249);
+      doc.rect(40, curY, pageWidth - 80, rowHeight, 'F');
+
+      doc.setDrawColor(99, 102, 241);
+      doc.setLineWidth(1);
+      doc.rect(40, curY, pageWidth - 80, rowHeight, 'S');
+
+      doc.line(colX.scope, curY, colX.scope, curY + rowHeight);
+      doc.line(colX.month, curY, colX.month, curY + rowHeight);
+      doc.line(colX.quarter, curY, colX.quarter, curY + rowHeight);
+      doc.line(colX.efy, curY, colX.efy, curY + rowHeight);
+      doc.line(colX.status, curY, colX.status, curY + rowHeight);
+
+      // Title
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(30, 27, 75);
+      doc.text("PORTFOLIO OVERALL TOTAL", colX.name + 6, curY + 13);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6);
+      doc.setTextColor(71, 85, 105);
+      doc.text(`All ${overallPortfolioAverages.projectCount} Projects Combined`, colX.name + 6, curY + 24);
+
+      // Scope
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7);
+      doc.setTextColor(0, 0, 0);
+      doc.text(`${overallPortfolioAverages.totalLengthKm.toFixed(1)} Km`, colX.scope + 6, curY + 13);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6);
+      doc.text(`${overallPortfolioAverages.projectCount} Projects`, colX.scope + 6, curY + 24);
+
+      // Month
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6);
+      doc.setTextColor(0, 0, 0);
+      doc.text(`ERA Plan: ${overallPortfolioAverages.totalEraMonth.toFixed(2)} Km`, colX.month + 6, curY + 10);
+      doc.text(`Actual: ${overallPortfolioAverages.totalActMonth.toFixed(2)} Km`, colX.month + 6, curY + 18);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(30, 58, 138);
+      doc.text(`% vs ERA: ${overallPortfolioAverages.monthRatio.toFixed(1)}%`, colX.month + 6, curY + 27);
+
+      // Quarter
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6);
+      doc.setTextColor(0, 0, 0);
+      doc.text(`ERA Plan: ${overallPortfolioAverages.totalEraQuarter.toFixed(2)} Km`, colX.quarter + 6, curY + 10);
+      doc.text(`Actual: ${overallPortfolioAverages.totalActQuarter.toFixed(2)} Km`, colX.quarter + 6, curY + 18);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(67, 56, 202);
+      doc.text(`% vs ERA: ${overallPortfolioAverages.quarterRatio.toFixed(1)}%`, colX.quarter + 6, curY + 27);
+
+      // EFY
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6);
+      doc.setTextColor(0, 0, 0);
+      doc.text(`ERA Plan: ${overallPortfolioAverages.totalEraEfy.toFixed(2)} Km`, colX.efy + 6, curY + 10);
+      doc.text(`Actual: ${overallPortfolioAverages.totalActEfy.toFixed(2)} Km`, colX.efy + 6, curY + 18);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(107, 33, 168);
+      doc.text(`% vs ERA: ${overallPortfolioAverages.efyRatio.toFixed(1)}%`, colX.efy + 6, curY + 27);
+
+      // Health Badge
+      const statusX = colX.status + 4;
+      const statusW = colW.status - 8;
+      const statusH = 15;
+      const statusY = curY + (rowHeight - statusH) / 2;
+      doc.setFillColor(79, 70, 229);
+      doc.setDrawColor(67, 56, 202);
+      doc.setTextColor(255, 255, 255);
+      doc.roundedRect(statusX, statusY, statusW, statusH, 3, 3, 'FD');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6);
+      doc.text("PORTFOLIO", statusX + statusW / 2, statusY + 10, { align: 'center' });
+
+      curY += rowHeight;
+    }
 
     // Sign-off block
     curY = drawUniversalSignatureBlock(doc, curY, 'l');
@@ -11387,6 +11485,19 @@ export default function GroupReportGenerator({
                     </div>
 
                     <div className="flex items-center gap-2 flex-wrap self-start md:self-auto">
+                      {/* Real-Time Print Preview Button */}
+                      <button
+                        type="button"
+                        onClick={() => setIsPrintPreviewOpen(true)}
+                        disabled={!activeMilestone}
+                        className="px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-400/40 shadow-sm cursor-pointer disabled:opacity-50"
+                        title="Real-time simulated A4 page print preview to verify table fit and margins before printing"
+                        id="btn-open-print-preview-modal"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>A4 Print Preview</span>
+                      </button>
+
                       {/* Export Summary PDF Button */}
                       <button
                         type="button"
@@ -14687,6 +14798,283 @@ export default function GroupReportGenerator({
               </div>
             </div>
           </motion.div>
+        </div>
+      )}
+
+      {/* Real-Time A4 Print Preview Modal Overlay */}
+      {isPrintPreviewOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex flex-col p-2 sm:p-6 overflow-y-auto">
+          {/* Top Modal Control Bar */}
+          <div className="max-w-[1100px] w-full mx-auto bg-slate-900 text-white rounded-2xl p-4 mb-4 border border-slate-700/80 shadow-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shrink-0">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-emerald-500/20 border border-emerald-500/40 rounded-xl text-emerald-400">
+                <Printer className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-black tracking-tight text-white flex items-center gap-2">
+                  <span>A4 Landscape Real-Time Print Preview</span>
+                  <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3" /> Fit Guaranteed
+                  </span>
+                </h3>
+                <p className="text-xs text-slate-400 font-medium mt-0.5">
+                  Simulated A4 Page (297mm × 210mm) • Margins & Table Alignment Verified Before Browser Print
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto justify-end">
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black transition flex items-center gap-1.5 shadow-md cursor-pointer"
+              >
+                <Printer className="w-4 h-4" />
+                <span>Trigger Browser Print</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleExportDirectoratePmoSummaryPDF()}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black transition flex items-center gap-1.5 shadow-md cursor-pointer"
+              >
+                <Download className="w-4 h-4" />
+                <span>Download Summary PDF</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsPrintPreviewOpen(false)}
+                className="p-2 text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-xl transition cursor-pointer"
+                title="Close Print Preview"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Simulated A4 Paper Card */}
+          <div className="max-w-[1100px] w-full mx-auto bg-white text-slate-900 rounded-xl shadow-2xl p-6 sm:p-8 border border-slate-300 font-sans space-y-6 printable-area">
+            {/* ERA Header Block */}
+            <div className="flex items-center justify-between gap-4 border-b-2 border-slate-900 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-slate-900 text-white flex items-center justify-center font-black rounded-lg text-lg">
+                  ERA
+                </div>
+                <div>
+                  <h1 className="text-base font-black text-slate-900 uppercase tracking-tight">
+                    ETHIOPIAN ROADS ADMINISTRATION (ERA)
+                  </h1>
+                  <h2 className="text-xs font-bold text-slate-700 uppercase">
+                    {currentUserObj.role === 'pmo_admin' || currentUserObj.assignedPmo
+                      ? `DIRECTORATE & PMO PERFORMANCE SUMMARY • PMO: ${(currentUserObj.assignedPmo || 'PMO 1').toUpperCase()}`
+                      : currentUserObj.role === 'directorate_admin' || currentUserObj.assignedDirectorate
+                      ? `DIRECTORATE & PMO PERFORMANCE SUMMARY • DIRECTORATE: ${(currentUserObj.assignedDirectorate || 'Southern').toUpperCase()}`
+                      : "PROGRAM DIRECTORATE & PMO GROUP PERFORMANCE SUMMARY REPORT"}
+                  </h2>
+                  <p className="text-[10px] text-slate-500 font-medium">
+                    Aggregated ERA Baseline Plan vs Actual Accomplishment (Group Total Sum)
+                  </p>
+                </div>
+              </div>
+
+              <div className="text-right border border-slate-300 bg-slate-50 p-2.5 rounded-lg space-y-0.5">
+                <div className="text-[9px] font-black text-slate-500 uppercase tracking-widest">
+                  OFFICIAL SUMMARY REPORT
+                </div>
+                <div className="text-xs font-black text-slate-900">
+                  {new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                </div>
+                <div className="text-[9px] font-bold text-slate-600 uppercase">
+                  BY: {currentUserObj.username.toUpperCase()} • ERA CMS
+                </div>
+              </div>
+            </div>
+
+            {/* Metadata Ribbon */}
+            <div className="bg-slate-100 p-2.5 rounded-lg border border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs font-bold">
+              <div>
+                <span className="text-slate-500">GROUPS: </span>
+                <span className="text-slate-900">{directorateComparisonSummary.length} Directorates • {pmoComparisonSummary.length} PMO Offices</span>
+              </div>
+              <div>
+                <span className="text-slate-500">TARGET MILESTONE: </span>
+                <span className="text-indigo-700 font-black">{activeMilestone?.monthLabel} ({activeMilestone?.quarterLabel} • EFY {activeMilestone?.efyLabel})</span>
+              </div>
+              <div>
+                <span className="text-slate-500">METRIC BASIS: </span>
+                <span className="text-slate-900 font-black">GROUP TOTAL SUM (KM)</span>
+              </div>
+            </div>
+
+            {/* Print Preview Table */}
+            <div className="overflow-x-auto rounded-lg border border-slate-300">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-slate-900 text-white text-[10px] font-extrabold uppercase">
+                    <th className="p-2.5 border-r border-slate-700 min-w-[180px]">Group Entity (Directorate / PMO)</th>
+                    <th className="p-2.5 border-r border-slate-700 text-center min-w-[90px]">Projects & Scope</th>
+                    <th className="p-2.5 border-r border-slate-700 text-center min-w-[150px]">
+                      Month: {activeMilestone?.monthLabel} (ERA vs Act)
+                    </th>
+                    <th className="p-2.5 border-r border-slate-700 text-center min-w-[150px]">
+                      Quarter: {activeMilestone?.quarterLabel} (ERA vs Act)
+                    </th>
+                    <th className="p-2.5 border-r border-slate-700 text-center min-w-[150px]">
+                      EFY {activeMilestone?.efyLabel} (ERA vs Act)
+                    </th>
+                    <th className="p-2.5 text-center min-w-[90px]">Health</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200 text-[11px]">
+                  {/* Directorate Rows */}
+                  {directorateComparisonSummary.map((grp, idx) => (
+                    <tr key={`prev_dir_${grp.name}`} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
+                      <td className="p-2.5 border-r border-slate-200 font-extrabold text-slate-900">
+                        <div>{grp.name} Directorate</div>
+                        <div className="text-[10px] font-normal text-slate-500">Program Directorate • {grp.projectCount} Proj</div>
+                      </td>
+                      <td className="p-2.5 border-r border-slate-200 text-center font-mono">
+                        <div className="font-bold">{grp.totalLengthKm.toFixed(1)} Km</div>
+                        <div className="text-[10px] text-slate-500">{grp.projectCount} proj • {grp.totalLengthKm.toFixed(0)} Km tot</div>
+                      </td>
+                      <td className="p-2.5 border-r border-slate-200 font-mono">
+                        <div className="text-slate-600">ERA Plan: <strong className="text-purple-700">{grp.totalEraMonth.toFixed(2)} Km</strong></div>
+                        <div className="text-slate-900 font-bold">Actual: <strong className="text-emerald-700">{grp.totalActMonth.toFixed(2)} Km</strong></div>
+                        <div className="text-[10px] font-black text-blue-700">% vs ERA: {grp.monthRatio.toFixed(1)}%</div>
+                      </td>
+                      <td className="p-2.5 border-r border-slate-200 font-mono">
+                        <div className="text-slate-600">ERA Plan: <strong className="text-purple-700">{grp.totalEraQuarter.toFixed(2)} Km</strong></div>
+                        <div className="text-slate-900 font-bold">Actual: <strong className="text-emerald-700">{grp.totalActQuarter.toFixed(2)} Km</strong></div>
+                        <div className="text-[10px] font-black text-indigo-700">% vs ERA: {grp.quarterRatio.toFixed(1)}%</div>
+                      </td>
+                      <td className="p-2.5 border-r border-slate-200 font-mono">
+                        <div className="text-slate-600">ERA Plan: <strong className="text-purple-700">{grp.totalEraEfy.toFixed(2)} Km</strong></div>
+                        <div className="text-slate-900 font-bold">Actual: <strong className="text-emerald-700">{grp.totalActEfy.toFixed(2)} Km</strong></div>
+                        <div className="text-[10px] font-black text-purple-700">% vs ERA: {grp.efyRatio.toFixed(1)}%</div>
+                      </td>
+                      <td className="p-2.5 text-center">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold border ${
+                          grp.healthStatus === 'Ahead' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' :
+                          grp.healthStatus === 'On Track' ? 'bg-blue-100 text-blue-800 border-blue-300' :
+                          grp.healthStatus === 'Lagging' ? 'bg-amber-100 text-amber-800 border-amber-300' :
+                          'bg-rose-100 text-rose-800 border-rose-300'
+                        }`}>
+                          {grp.healthStatus}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+
+                  {/* PMO Rows */}
+                  {pmoComparisonSummary.map((grp, idx) => (
+                    <tr key={`prev_pmo_${grp.name}`} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
+                      <td className="p-2.5 border-r border-slate-200 font-extrabold text-slate-900">
+                        <div>{grp.name}</div>
+                        <div className="text-[10px] font-normal text-slate-500">Project Management Office • {grp.projectCount} Proj</div>
+                      </td>
+                      <td className="p-2.5 border-r border-slate-200 text-center font-mono">
+                        <div className="font-bold">{grp.totalLengthKm.toFixed(1)} Km</div>
+                        <div className="text-[10px] text-slate-500">{grp.projectCount} proj • {grp.totalLengthKm.toFixed(0)} Km tot</div>
+                      </td>
+                      <td className="p-2.5 border-r border-slate-200 font-mono">
+                        <div className="text-slate-600">ERA Plan: <strong className="text-purple-700">{grp.totalEraMonth.toFixed(2)} Km</strong></div>
+                        <div className="text-slate-900 font-bold">Actual: <strong className="text-emerald-700">{grp.totalActMonth.toFixed(2)} Km</strong></div>
+                        <div className="text-[10px] font-black text-blue-700">% vs ERA: {grp.monthRatio.toFixed(1)}%</div>
+                      </td>
+                      <td className="p-2.5 border-r border-slate-200 font-mono">
+                        <div className="text-slate-600">ERA Plan: <strong className="text-purple-700">{grp.totalEraQuarter.toFixed(2)} Km</strong></div>
+                        <div className="text-slate-900 font-bold">Actual: <strong className="text-emerald-700">{grp.totalActQuarter.toFixed(2)} Km</strong></div>
+                        <div className="text-[10px] font-black text-indigo-700">% vs ERA: {grp.quarterRatio.toFixed(1)}%</div>
+                      </td>
+                      <td className="p-2.5 border-r border-slate-200 font-mono">
+                        <div className="text-slate-600">ERA Plan: <strong className="text-purple-700">{grp.totalEraEfy.toFixed(2)} Km</strong></div>
+                        <div className="text-slate-900 font-bold">Actual: <strong className="text-emerald-700">{grp.totalActEfy.toFixed(2)} Km</strong></div>
+                        <div className="text-[10px] font-black text-purple-700">% vs ERA: {grp.efyRatio.toFixed(1)}%</div>
+                      </td>
+                      <td className="p-2.5 text-center">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold border ${
+                          grp.healthStatus === 'Ahead' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' :
+                          grp.healthStatus === 'On Track' ? 'bg-blue-100 text-blue-800 border-blue-300' :
+                          grp.healthStatus === 'Lagging' ? 'bg-amber-100 text-amber-800 border-amber-300' :
+                          'bg-rose-100 text-rose-800 border-rose-300'
+                        }`}>
+                          {grp.healthStatus}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+
+                  {/* PORTFOLIO OVERALL TOTAL Footer Row */}
+                  {overallPortfolioAverages && (
+                    <tr className="bg-slate-100 font-black text-slate-900 border-t-2 border-indigo-500">
+                      <td className="p-2.5 border-r border-slate-300">
+                        <div className="flex items-center gap-1.5 text-indigo-950 font-black">
+                          <Sparkles className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                          <span>PORTFOLIO OVERALL TOTAL</span>
+                        </div>
+                        <div className="text-[10px] font-medium text-slate-500">
+                          All {overallPortfolioAverages.projectCount} Projects Combined
+                        </div>
+                      </td>
+                      <td className="p-2.5 border-r border-slate-300 text-center font-mono">
+                        <div className="font-bold">{overallPortfolioAverages.totalLengthKm.toFixed(1)} Km</div>
+                        <div className="text-[10px] font-normal text-slate-500">{overallPortfolioAverages.projectCount} Projects</div>
+                      </td>
+                      <td className="p-2.5 border-r border-slate-300 font-mono bg-blue-50/60">
+                        <div className="text-slate-700 font-bold">ERA: {overallPortfolioAverages.totalEraMonth.toFixed(2)} Km</div>
+                        <div className="text-emerald-800 font-extrabold">Act: {overallPortfolioAverages.totalActMonth.toFixed(2)} Km</div>
+                        <div className="text-[10px] text-blue-800 font-black">% vs ERA: {overallPortfolioAverages.monthRatio.toFixed(1)}%</div>
+                      </td>
+                      <td className="p-2.5 border-r border-slate-300 font-mono bg-indigo-50/60">
+                        <div className="text-slate-700 font-bold">ERA: {overallPortfolioAverages.totalEraQuarter.toFixed(2)} Km</div>
+                        <div className="text-emerald-800 font-extrabold">Act: {overallPortfolioAverages.totalActQuarter.toFixed(2)} Km</div>
+                        <div className="text-[10px] text-indigo-800 font-black">% vs ERA: {overallPortfolioAverages.quarterRatio.toFixed(1)}%</div>
+                      </td>
+                      <td className="p-2.5 border-r border-slate-300 font-mono bg-purple-50/60">
+                        <div className="text-slate-700 font-bold">ERA: {overallPortfolioAverages.totalEraEfy.toFixed(2)} Km</div>
+                        <div className="text-emerald-800 font-extrabold">Act: {overallPortfolioAverages.totalActEfy.toFixed(2)} Km</div>
+                        <div className="text-[10px] text-purple-800 font-black">% vs ERA: {overallPortfolioAverages.efyRatio.toFixed(1)}%</div>
+                      </td>
+                      <td className="p-2.5 text-center">
+                        <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-indigo-600 text-white">
+                          Portfolio
+                        </span>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Executive Review & Sign-off Block */}
+            <div className="pt-4 border-t border-slate-300 space-y-4">
+              <div className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">
+                EXECUTIVE REVIEW & SIGN-OFF
+              </div>
+              <div className="grid grid-cols-3 gap-6 pt-2 text-xs">
+                <div className="border-t border-slate-400 pt-1.5 space-y-0.5">
+                  <div className="font-bold text-slate-800">
+                    Printed By: {currentUserObj.role === 'pmo_admin' ? 'PMO Admin' : currentUserObj.role === 'directorate_admin' ? 'Directorate Admin' : 'System Administrator'}
+                  </div>
+                  <div className="text-[10px] text-slate-500">Signature / Timestamp</div>
+                </div>
+                <div className="border-t border-slate-400 pt-1.5 space-y-0.5">
+                  <div className="font-bold text-slate-800">Verified By: Program Director</div>
+                  <div className="text-[10px] text-slate-500">Signature / Timestamp</div>
+                </div>
+                <div className="border-t border-slate-400 pt-1.5 space-y-0.5">
+                  <div className="font-bold text-slate-800">Approved By: CPM DDG</div>
+                  <div className="text-[10px] text-slate-500">Signature / Official Seal</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Simulated Page Footer */}
+            <div className="text-[10px] text-slate-500 text-center pt-4 border-t border-slate-200">
+              Page 1 of 1 • Ethiopian Roads Administration CMS • Program Directorate & PMO Performance Briefing
+            </div>
+          </div>
         </div>
       )}
     </motion.div>

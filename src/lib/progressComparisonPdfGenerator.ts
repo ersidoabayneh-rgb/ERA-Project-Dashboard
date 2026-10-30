@@ -4,7 +4,8 @@ import {
   drawStandardPdfPageFrame, 
   drawSafeTable, 
   getCredentialSignatures,
-  STRICT_1_INCH_MARGIN
+  STRICT_1_INCH_MARGIN,
+  enforceArchivedProjectDataSource
 } from './pdfReportEngine';
 import { formatPdfDate } from './dateUtils';
 
@@ -20,17 +21,17 @@ export interface ProgressComparisonPdfOptions {
   includeVerificationStamps?: boolean;
 }
 
-export function generateProgressComparisonPdf({
-  project,
-  currentUser,
-  activePlan,
-  monthLabel,
-  quarterLabel,
-  efyLabel,
-  historyList,
-  includeHistoryTable = true,
-  includeVerificationStamps = true
-}: ProgressComparisonPdfOptions): jsPDF {
+export function generateProgressComparisonPdf(options: ProgressComparisonPdfOptions): jsPDF {
+  const rawProject = options.project;
+  const project = enforceArchivedProjectDataSource(rawProject, () => rawProject);
+  const currentUser = options.currentUser;
+  const activePlan = options.activePlan;
+  const monthLabel = options.monthLabel;
+  const quarterLabel = options.quarterLabel;
+  const efyLabel = options.efyLabel;
+  const historyList = options.historyList;
+  const includeHistoryTable = options.includeHistoryTable ?? true;
+  const includeVerificationStamps = options.includeVerificationStamps ?? true;
   // Landscape A4 orientation: 841.89 pt width x 595.28 pt height
   const doc = new jsPDF('l', 'pt', 'a4');
   const pageWidth = doc.internal.pageSize.getWidth();

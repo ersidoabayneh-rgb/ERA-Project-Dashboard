@@ -1,9 +1,10 @@
 import { jsPDF } from 'jspdf';
 import { BondGuarantee, Project, formatAccounting } from '../types';
-import { drawEraLogo } from './pdfReportEngine';
+import { drawEraLogo, enforceArchivedProjectDataSource } from './pdfReportEngine';
 import { formatPdfDate } from './dateUtils';
 
-export function generateBondGuaranteePdf(bond: BondGuarantee, project: Project): jsPDF {
+export function generateBondGuaranteePdf(bond: BondGuarantee, rawProject: Project): jsPDF {
+  const project = enforceArchivedProjectDataSource(rawProject, () => rawProject);
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',

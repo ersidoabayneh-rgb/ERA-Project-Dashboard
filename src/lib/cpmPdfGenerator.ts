@@ -1,8 +1,9 @@
 import jsPDF from 'jspdf';
 import { Project, WorkProgramActivity } from '../types';
-import { drawEraLogo } from './pdfReportEngine';
+import { drawEraLogo, enforceArchivedProjectDataSource } from './pdfReportEngine';
 
-export function generateCpmPdfReport(project: Project, activities: WorkProgramActivity[]) {
+export function generateCpmPdfReport(rawProject: Project, activities: WorkProgramActivity[]) {
+  const project = enforceArchivedProjectDataSource(rawProject, () => rawProject);
   const doc = new jsPDF({
     orientation: 'landscape',
     unit: 'pt',
