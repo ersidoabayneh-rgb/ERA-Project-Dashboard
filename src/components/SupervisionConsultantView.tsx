@@ -2241,41 +2241,114 @@ export default function SupervisionConsultantView({
       doc.text(`ASSIGNED SUPERVISION PERSONNEL (${(consultant.personnel || []).length} Staff Members)`, margin, y);
       y += 5;
 
-      // Personnel Table Headers
-      doc.setFillColor(241, 245, 249);
-      doc.rect(margin, y, contentWidth, 7, 'F');
-      doc.setFontSize(7);
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(51, 65, 85);
-      doc.text('#', margin + 2, y + 5);
-      doc.text('Personnel Name', margin + 8, y + 5);
-      doc.text('Specific Position', margin + 45, y + 5);
-      doc.text('Date of Assignment', margin + 85, y + 5);
-      doc.text('Qualifications / Role', margin + 115, y + 5);
-      doc.text('Status', margin + 145, y + 5);
-      y += 8;
+      // Personnel Table Headers (Normalized to exactly contentWidth = 184.6 mm)
+      const personnelCols = [
+        { title: '#', width: 8, align: 'center' as const },
+        { title: 'Personnel Name', width: 46, align: 'left' as const },
+        { title: 'Specific Position', width: 42, align: 'left' as const },
+        { title: 'Date of Assignment', width: 26, align: 'left' as const },
+        { title: 'Qualifications / Role', width: 38, align: 'left' as const },
+        { title: 'Status', width: 24.6, align: 'center' as const }
+      ];
+
+      const drawPersonnelHeader = (curY: number) => {
+        doc.setFillColor(30, 41, 59); // slate-800
+        doc.rect(margin, curY, contentWidth, 7, 'F');
+        doc.setFontSize(6.5);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(255, 255, 255);
+
+        let hX = margin;
+        personnelCols.forEach(col => {
+          if (col.align === 'center') {
+            doc.text(col.title, hX + col.width / 2, curY + 4.8, { align: 'center' });
+          } else {
+            doc.text(col.title, hX + 2, curY + 4.8);
+          }
+          hX += col.width;
+        });
+      };
+
+      drawPersonnelHeader(y);
+      y += 7;
 
       // Personnel Table Rows
       doc.setFont('helvetica', 'normal');
       (consultant.personnel || []).forEach((p, idx) => {
-        if (y > pageHeight - margin - 20) {
+        const nameLines = doc.splitTextToSize(p.name || '-', personnelCols[1].width - 3);
+        const posLines = doc.splitTextToSize(p.position || '-', personnelCols[2].width - 3);
+        const dateLines = doc.splitTextToSize(p.assignmentDate || '-', personnelCols[3].width - 3);
+        const qualLines = doc.splitTextToSize(p.qualification || p.category || '-', personnelCols[4].width - 3);
+        const statusLines = doc.splitTextToSize(p.status || 'Active', personnelCols[5].width - 3);
+
+        const maxLines = Math.max(nameLines.length, posLines.length, dateLines.length, qualLines.length, statusLines.length, 1);
+        const rowH = Math.max(5.5, maxLines * 2.8 + 2);
+
+        if (y + rowH > pageHeight - margin - 20) {
           doc.addPage();
           pageNum++;
           drawPageFrame(pageNum);
           y = margin + 10;
+          drawPersonnelHeader(y);
+          y += 7;
         }
-        doc.setFontSize(6.5);
-        doc.setTextColor(30, 41, 59);
-        doc.text(String(idx + 1), margin + 2, y + 4);
-        doc.text(p.name || '-', margin + 8, y + 4);
-        doc.text(p.position || '-', margin + 45, y + 4);
-        doc.text(p.assignmentDate || '-', margin + 85, y + 4);
-        doc.text((p.qualification || p.category || '-').substring(0, 20), margin + 115, y + 4);
-        doc.text(p.status || 'Active', margin + 145, y + 4);
 
-        doc.setDrawColor(241, 245, 249);
-        doc.line(margin, y + 6, pageWidth - margin, y + 6);
-        y += 6;
+        if (idx % 2 === 1) {
+          doc.setFillColor(248, 250, 252);
+          doc.rect(margin, y, contentWidth, rowH, 'F');
+        }
+
+        doc.setFontSize(6);
+        doc.setTextColor(30, 41, 59);
+
+        let rX = margin;
+        // #
+        doc.text(String(idx + 1), rX + personnelCols[0].width / 2, y + 3.8, { align: 'center' });
+        rX += personnelCols[0].width;
+
+        // Name
+        doc.setFont('helvetica', 'bold');
+        nameLines.forEach((l: string, li: number) => {
+          doc.text(l, rX + 1.5, y + 3.8 + (li * 2.8));
+        });
+        doc.setFont('helvetica', 'normal');
+        rX += personnelCols[1].width;
+
+        // Position
+        posLines.forEach((l: string, li: number) => {
+          doc.text(l, rX + 1.5, y + 3.8 + (li * 2.8));
+        });
+        rX += personnelCols[2].width;
+
+        // Assignment Date
+        dateLines.forEach((l: string, li: number) => {
+          doc.text(l, rX + 1.5, y + 3.8 + (li * 2.8));
+        });
+        rX += personnelCols[3].width;
+
+        // Qualification
+        qualLines.forEach((l: string, li: number) => {
+          doc.text(l, rX + 1.5, y + 3.8 + (li * 2.8));
+        });
+        rX += personnelCols[4].width;
+
+        // Status
+        doc.text(statusLines[0] || 'Active', rX + personnelCols[5].width / 2, y + 3.8, { align: 'center' });
+
+        // Cell borders
+        doc.setDrawColor(226, 232, 240);
+        doc.setLineWidth(0.2);
+        doc.line(margin, y + rowH, margin + contentWidth, y + rowH);
+        doc.line(margin, y, margin, y + rowH);
+        doc.line(margin + contentWidth, y, margin + contentWidth, y + rowH);
+
+        let divX = margin;
+        personnelCols.slice(0, -1).forEach(c => {
+          divX += c.width;
+          doc.line(divX, y, divX, y + rowH);
+        });
+
+        y += rowH;
       });
 
       y += 8;
@@ -2293,55 +2366,145 @@ export default function SupervisionConsultantView({
       doc.text(`CONSULTANT INVOICES & FEE CERTIFICATES (${(consultant.invoices || []).length} Invoices)`, margin, y);
       y += 5;
 
-      // Invoice Table Headers
-      doc.setFillColor(241, 245, 249);
-      doc.rect(margin, y, contentWidth, 7, 'F');
-      doc.setFontSize(7);
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(51, 65, 85);
-      doc.text('Invoice #', margin + 2, y + 5);
-      doc.text('Period', margin + 24, y + 5);
-      doc.text('Submission', margin + 46, y + 5);
-      if (hasUsdPayments) {
-        doc.text('Gross Amount (ETB)', margin + 68, y + 5);
-        doc.text('Net Payable (ETB)', margin + 98, y + 5);
-        doc.text('USD', margin + 128, y + 5);
-        doc.text('Status', margin + 144, y + 5);
-      } else {
-        doc.text('Gross Amount (ETB)', margin + 70, y + 5);
-        doc.text('Net Payable (ETB)', margin + 104, y + 5);
-        doc.text('Status', margin + 138, y + 5);
-      }
-      y += 8;
+      // Invoice Table Headers (Normalized to exactly contentWidth = 184.6 mm)
+      const invoiceCols = hasUsdPayments ? [
+        { title: 'Invoice #', width: 24, align: 'left' as const },
+        { title: 'Period', width: 26, align: 'left' as const },
+        { title: 'Submission', width: 22, align: 'left' as const },
+        { title: 'Gross Claim (ETB)', width: 32, align: 'right' as const },
+        { title: 'Net Payable (ETB)', width: 32, align: 'right' as const },
+        { title: 'USD', width: 24, align: 'right' as const },
+        { title: 'Status', width: 24.6, align: 'center' as const }
+      ] : [
+        { title: 'Invoice #', width: 26, align: 'left' as const },
+        { title: 'Period', width: 34, align: 'left' as const },
+        { title: 'Submission', width: 26, align: 'left' as const },
+        { title: 'Gross Claim (ETB)', width: 38, align: 'right' as const },
+        { title: 'Net Payable (ETB)', width: 38, align: 'right' as const },
+        { title: 'Status', width: 22.6, align: 'center' as const }
+      ];
+
+      const drawInvoiceHeader = (curY: number) => {
+        doc.setFillColor(30, 41, 59); // slate-800
+        doc.rect(margin, curY, contentWidth, 7, 'F');
+        doc.setFontSize(6.5);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(255, 255, 255);
+
+        let hX = margin;
+        invoiceCols.forEach(col => {
+          if (col.align === 'right') {
+            doc.text(col.title, hX + col.width - 2, curY + 4.8, { align: 'right' });
+          } else if (col.align === 'center') {
+            doc.text(col.title, hX + col.width / 2, curY + 4.8, { align: 'center' });
+          } else {
+            doc.text(col.title, hX + 2, curY + 4.8);
+          }
+          hX += col.width;
+        });
+      };
+
+      drawInvoiceHeader(y);
+      y += 7;
 
       // Invoice Table Rows
       doc.setFont('helvetica', 'normal');
-      (consultant.invoices || []).forEach((inv) => {
-        if (y > pageHeight - margin - 20) {
+      (consultant.invoices || []).forEach((inv, idx) => {
+        const invLines = doc.splitTextToSize(inv.invoiceNo || '-', invoiceCols[0].width - 3);
+        const periodLines = doc.splitTextToSize(inv.billingPeriod || '-', invoiceCols[1].width - 3);
+        const subLines = doc.splitTextToSize(inv.submissionDate || '-', invoiceCols[2].width - 3);
+        const maxLines = Math.max(invLines.length, periodLines.length, subLines.length, 1);
+        const rowH = Math.max(5.5, maxLines * 2.8 + 2);
+
+        if (y + rowH > pageHeight - margin - 20) {
           doc.addPage();
           pageNum++;
           drawPageFrame(pageNum);
           y = margin + 10;
-        }
-        doc.setFontSize(6.5);
-        doc.setTextColor(30, 41, 59);
-        doc.text(inv.invoiceNo || '-', margin + 2, y + 4);
-        doc.text(inv.billingPeriod || '-', margin + 24, y + 4);
-        doc.text(inv.submissionDate || '-', margin + 46, y + 4);
-        if (hasUsdPayments) {
-          doc.text(formatAccounting(inv.grossAmountEtb || 0, ''), margin + 68, y + 4);
-          doc.text(formatAccounting(inv.netAmountEtb || 0, ''), margin + 98, y + 4);
-          doc.text(`$${formatAccounting(inv.foreignCurrencyAmount || 0, '')}`, margin + 128, y + 4);
-          doc.text(inv.status || 'Submitted', margin + 144, y + 4);
-        } else {
-          doc.text(formatAccounting(inv.grossAmountEtb || 0, ''), margin + 70, y + 4);
-          doc.text(formatAccounting(inv.netAmountEtb || 0, ''), margin + 104, y + 4);
-          doc.text(inv.status || 'Submitted', margin + 138, y + 4);
+          drawInvoiceHeader(y);
+          y += 7;
         }
 
-        doc.setDrawColor(241, 245, 249);
-        doc.line(margin, y + 6, pageWidth - margin, y + 6);
-        y += 6;
+        if (idx % 2 === 1) {
+          doc.setFillColor(248, 250, 252);
+          doc.rect(margin, y, contentWidth, rowH, 'F');
+        }
+
+        doc.setFontSize(6);
+        doc.setTextColor(30, 41, 59);
+
+        let rX = margin;
+
+        // Invoice No
+        doc.setFont('helvetica', 'bold');
+        invLines.forEach((l: string, li: number) => {
+          doc.text(l, rX + 1.5, y + 3.8 + (li * 2.8));
+        });
+        doc.setFont('helvetica', 'normal');
+        rX += invoiceCols[0].width;
+
+        // Period
+        periodLines.forEach((l: string, li: number) => {
+          doc.text(l, rX + 1.5, y + 3.8 + (li * 2.8));
+        });
+        rX += invoiceCols[1].width;
+
+        // Submission
+        subLines.forEach((l: string, li: number) => {
+          doc.text(l, rX + 1.5, y + 3.8 + (li * 2.8));
+        });
+        rX += invoiceCols[2].width;
+
+        if (hasUsdPayments) {
+          // Gross ETB
+          doc.text(formatAccounting(inv.grossAmountEtb || 0, ''), rX + invoiceCols[3].width - 2, y + 3.8, { align: 'right' });
+          rX += invoiceCols[3].width;
+
+          // Net ETB
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(16, 149, 114);
+          doc.text(formatAccounting(inv.netAmountEtb || 0, ''), rX + invoiceCols[4].width - 2, y + 3.8, { align: 'right' });
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(30, 41, 59);
+          rX += invoiceCols[4].width;
+
+          // USD
+          doc.text(`$${formatAccounting(inv.foreignCurrencyAmount || 0, '')}`, rX + invoiceCols[5].width - 2, y + 3.8, { align: 'right' });
+          rX += invoiceCols[5].width;
+
+          // Status
+          doc.text(inv.status || 'Submitted', rX + invoiceCols[6].width / 2, y + 3.8, { align: 'center' });
+        } else {
+          // Gross ETB
+          doc.text(formatAccounting(inv.grossAmountEtb || 0, ''), rX + invoiceCols[3].width - 2, y + 3.8, { align: 'right' });
+          rX += invoiceCols[3].width;
+
+          // Net ETB
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(16, 149, 114);
+          doc.text(formatAccounting(inv.netAmountEtb || 0, ''), rX + invoiceCols[4].width - 2, y + 3.8, { align: 'right' });
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(30, 41, 59);
+          rX += invoiceCols[4].width;
+
+          // Status
+          doc.text(inv.status || 'Submitted', rX + invoiceCols[5].width / 2, y + 3.8, { align: 'center' });
+        }
+
+        // Cell borders
+        doc.setDrawColor(226, 232, 240);
+        doc.setLineWidth(0.2);
+        doc.line(margin, y + rowH, margin + contentWidth, y + rowH);
+        doc.line(margin, y, margin, y + rowH);
+        doc.line(margin + contentWidth, y, margin + contentWidth, y + rowH);
+
+        let divX = margin;
+        invoiceCols.slice(0, -1).forEach(c => {
+          divX += c.width;
+          doc.line(divX, y, divX, y + rowH);
+        });
+
+        y += rowH;
       });
 
       doc.save(`Supervision_Consultant_Report_${(project.name || 'Project').replace(/\s+/g, '_')}.pdf`);
@@ -2482,19 +2645,19 @@ export default function SupervisionConsultantView({
 
       y += 46;
 
-      // Table Header for Invoice Audit Ledger
+      // Table Header for Invoice Audit Ledger (Normalized to exactly contentWidth - 12 = 757.89 pt)
       const headers = [
-        { title: 'No', width: 24, align: 'center' },
-        { title: 'Invoice No.', width: 66, align: 'left' },
-        { title: 'Billing Period', width: 90, align: 'left' },
-        { title: 'Submission', width: 62, align: 'left' },
-        { title: 'Payment Date', width: 62, align: 'left' },
-        { title: 'Gross Claim (ETB)', width: 85, align: 'right' },
-        { title: 'Deductions (ETB)', width: 75, align: 'right' },
-        { title: '15% VAT (ETB)', width: 70, align: 'right' },
-        { title: 'Net Payable (ETB)', width: 85, align: 'right' },
-        { title: 'Status', width: 55, align: 'center' },
-        { title: 'Payment Ref / Notes', width: 95, align: 'left' }
+        { title: 'No', width: 24, align: 'center' as const },
+        { title: 'Invoice No.', width: 66, align: 'left' as const },
+        { title: 'Billing Period', width: 88, align: 'left' as const },
+        { title: 'Submission', width: 56, align: 'left' as const },
+        { title: 'Payment Date', width: 56, align: 'left' as const },
+        { title: 'Gross Claim (ETB)', width: 80, align: 'right' as const },
+        { title: 'Deductions (ETB)', width: 72, align: 'right' as const },
+        { title: '15% VAT (ETB)', width: 68, align: 'right' as const },
+        { title: 'Net Payable (ETB)', width: 80, align: 'right' as const },
+        { title: 'Status', width: 52, align: 'center' as const },
+        { title: 'Payment Ref / Notes', width: 115.89, align: 'left' as const }
       ];
 
       const drawTableHeader = (curY: number) => {
@@ -2504,8 +2667,8 @@ export default function SupervisionConsultantView({
         doc.setFontSize(6.5);
         doc.setTextColor(255, 255, 255);
 
-        let hX = margin + 8;
-        headers.forEach(h => {
+        let hX = margin + 6;
+        headers.forEach((h, hIdx) => {
           if (h.align === 'right') {
             doc.text(h.title, hX + h.width - 2, curY + 11, { align: 'right' });
           } else if (h.align === 'center') {
@@ -2514,6 +2677,11 @@ export default function SupervisionConsultantView({
             doc.text(h.title, hX + 2, curY + 11);
           }
           hX += h.width;
+          if (hIdx < headers.length - 1) {
+            doc.setDrawColor(71, 85, 105);
+            doc.setLineWidth(0.5);
+            doc.line(hX, curY, hX, curY + 18);
+          }
         });
       };
 
@@ -2527,15 +2695,6 @@ export default function SupervisionConsultantView({
       let totalNet = 0;
 
       filteredInvoices.forEach((inv, idx) => {
-        if (y > pageHeight - margin - 60) {
-          doc.addPage();
-          pageNum++;
-          drawFrame(pageNum);
-          y = margin + 52;
-          drawTableHeader(y);
-          y += 20;
-        }
-
         const gross = inv.grossAmountEtb || 0;
         const ded = (inv.advanceDeductionEtb || 0) + (inv.taxDeductionEtb || 0) + (inv.overtimeDeductionEtb || 0);
         const vat = inv.vatAmountEtb || Number((gross * 0.15 / 1.15).toFixed(2));
@@ -2546,71 +2705,111 @@ export default function SupervisionConsultantView({
         totalVat += vat;
         totalNet += net;
 
+        const invLines = doc.splitTextToSize(inv.invoiceNo || '-', headers[1].width - 4);
+        const periodLines = doc.splitTextToSize(inv.billingPeriod || '-', headers[2].width - 4);
+        const subLines = doc.splitTextToSize(inv.submissionDate || '-', headers[3].width - 4);
+        const payDateLines = doc.splitTextToSize(inv.paymentDate || inv.certificationDate || '-', headers[4].width - 4);
+        const statusLines = doc.splitTextToSize(inv.status || 'Submitted', headers[9].width - 4);
+        const refNote = inv.paymentReference || inv.remarks || '-';
+        const refLines = doc.splitTextToSize(refNote, headers[10].width - 4);
+
+        const maxLines = Math.max(invLines.length, periodLines.length, subLines.length, payDateLines.length, statusLines.length, refLines.length, 1);
+        const rowHeight = Math.max(14, maxLines * 7.5 + 4);
+
+        if (y + rowHeight > pageHeight - margin - 60) {
+          doc.addPage();
+          pageNum++;
+          drawFrame(pageNum);
+          y = margin + 52;
+          drawTableHeader(y);
+          y += 20;
+        }
+
         // Alternating row background
         if (idx % 2 === 1) {
           doc.setFillColor(248, 250, 252);
-          doc.rect(margin + 6, y, contentWidth - 12, 14, 'F');
+          doc.rect(margin + 6, y, contentWidth - 12, rowHeight, 'F');
         }
 
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(6.5);
         doc.setTextColor(30, 41, 59);
 
-        let rX = margin + 8;
+        let rX = margin + 6;
+
         // No
-        doc.text(String(idx + 1), rX + 12, y + 9.5, { align: 'center' });
-        rX += 24;
+        doc.text(String(idx + 1), rX + headers[0].width / 2, y + 9.5, { align: 'center' });
+        rX += headers[0].width;
 
         // Invoice No
         doc.setFont('helvetica', 'bold');
-        doc.text(inv.invoiceNo || '-', rX + 2, y + 9.5);
+        invLines.forEach((l: string, li: number) => {
+          doc.text(l, rX + 2, y + 9.5 + (li * 7.5));
+        });
         doc.setFont('helvetica', 'normal');
-        rX += 66;
+        rX += headers[1].width;
 
         // Billing Period
-        doc.text(inv.billingPeriod || '-', rX + 2, y + 9.5);
-        rX += 90;
+        periodLines.forEach((l: string, li: number) => {
+          doc.text(l, rX + 2, y + 9.5 + (li * 7.5));
+        });
+        rX += headers[2].width;
 
         // Submission
-        doc.text(inv.submissionDate || '-', rX + 2, y + 9.5);
-        rX += 62;
+        subLines.forEach((l: string, li: number) => {
+          doc.text(l, rX + 2, y + 9.5 + (li * 7.5));
+        });
+        rX += headers[3].width;
 
         // Payment Date
-        doc.text(inv.paymentDate || inv.certificationDate || '-', rX + 2, y + 9.5);
-        rX += 62;
+        payDateLines.forEach((l: string, li: number) => {
+          doc.text(l, rX + 2, y + 9.5 + (li * 7.5));
+        });
+        rX += headers[4].width;
 
         // Gross Claim
-        doc.text(formatAccounting(gross, ''), rX + 85 - 2, y + 9.5, { align: 'right' });
-        rX += 85;
+        doc.text(formatAccounting(gross, ''), rX + headers[5].width - 2, y + 9.5, { align: 'right' });
+        rX += headers[5].width;
 
         // Deductions
-        doc.text(ded > 0 ? `-${formatAccounting(ded, '')}` : '-', rX + 75 - 2, y + 9.5, { align: 'right' });
-        rX += 75;
+        doc.text(ded > 0 ? `-${formatAccounting(ded, '')}` : '-', rX + headers[6].width - 2, y + 9.5, { align: 'right' });
+        rX += headers[6].width;
 
         // VAT
-        doc.text(formatAccounting(vat, ''), rX + 70 - 2, y + 9.5, { align: 'right' });
-        rX += 70;
+        doc.text(formatAccounting(vat, ''), rX + headers[7].width - 2, y + 9.5, { align: 'right' });
+        rX += headers[7].width;
 
         // Net Payable
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(16, 149, 114);
-        doc.text(formatAccounting(net, ''), rX + 85 - 2, y + 9.5, { align: 'right' });
+        doc.text(formatAccounting(net, ''), rX + headers[8].width - 2, y + 9.5, { align: 'right' });
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(30, 41, 59);
-        rX += 85;
+        rX += headers[8].width;
 
         // Status badge
-        doc.text(inv.status || 'Submitted', rX + 27, y + 9.5, { align: 'center' });
-        rX += 55;
+        doc.text(statusLines[0] || 'Submitted', rX + headers[9].width / 2, y + 9.5, { align: 'center' });
+        rX += headers[9].width;
 
         // Ref / Remarks
-        const refNote = inv.paymentReference || inv.remarks || '-';
-        doc.text(refNote.length > 20 ? `${refNote.substring(0, 18)}...` : refNote, rX + 2, y + 9.5);
+        refLines.forEach((l: string, li: number) => {
+          doc.text(l, rX + 2, y + 9.5 + (li * 7.5));
+        });
 
-        // Row dividing line
-        doc.setDrawColor(241, 245, 249);
-        doc.line(margin + 6, y + 14, margin + contentWidth - 6, y + 14);
-        y += 14;
+        // Cell borders
+        doc.setDrawColor(226, 232, 240);
+        doc.setLineWidth(0.5);
+        doc.line(margin + 6, y + rowHeight, margin + contentWidth - 6, y + rowHeight);
+        doc.line(margin + 6, y, margin + 6, y + rowHeight);
+        doc.line(margin + contentWidth - 6, y, margin + contentWidth - 6, y + rowHeight);
+
+        let divX = margin + 6;
+        headers.slice(0, -1).forEach(h => {
+          divX += h.width;
+          doc.line(divX, y, divX, y + rowHeight);
+        });
+
+        y += rowHeight;
       });
 
       // Total Summary Row
@@ -2628,15 +2827,15 @@ export default function SupervisionConsultantView({
       doc.setTextColor(15, 23, 42);
       doc.text("PERIOD TOTALS:", margin + 14, y + 11);
 
-      let tX = margin + 8 + 24 + 66 + 90 + 62 + 62;
-      doc.text(formatAccounting(totalGross, ''), tX + 85 - 2, y + 11, { align: 'right' });
-      tX += 85;
-      doc.text(formatAccounting(totalDeductions, ''), tX + 75 - 2, y + 11, { align: 'right' });
-      tX += 75;
-      doc.text(formatAccounting(totalVat, ''), tX + 70 - 2, y + 11, { align: 'right' });
-      tX += 70;
+      let tX = margin + 6 + headers.slice(0, 5).reduce((s, h) => s + h.width, 0);
+      doc.text(formatAccounting(totalGross, ''), tX + headers[5].width - 2, y + 11, { align: 'right' });
+      tX += headers[5].width;
+      doc.text(formatAccounting(totalDeductions, ''), tX + headers[6].width - 2, y + 11, { align: 'right' });
+      tX += headers[6].width;
+      doc.text(formatAccounting(totalVat, ''), tX + headers[7].width - 2, y + 11, { align: 'right' });
+      tX += headers[7].width;
       doc.setTextColor(16, 149, 114);
-      doc.text(formatAccounting(totalNet, ''), tX + 85 - 2, y + 11, { align: 'right' });
+      doc.text(formatAccounting(totalNet, ''), tX + headers[8].width - 2, y + 11, { align: 'right' });
 
       y += 24;
 

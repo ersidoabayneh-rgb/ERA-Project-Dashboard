@@ -9444,18 +9444,9 @@ export default function GroupReportGenerator({
   const handleExportDirectoratePmoSummaryPDF = () => {
     if (!activeMilestone) return;
 
-    let filteredDirectorates = [...directorateComparisonSummary];
-    let filteredPmos = [...pmoComparisonSummary];
-
-    if (currentUserObj.role === 'pmo_admin' || currentUserObj.assignedPmo) {
-      const assignedPmo = (currentUserObj.assignedPmo || 'PMO 1').toLowerCase().trim();
-      filteredPmos = filteredPmos.filter(p => p.name.toLowerCase().trim() === assignedPmo);
-      filteredDirectorates = [];
-    } else if (currentUserObj.role === 'directorate_admin' || currentUserObj.assignedDirectorate) {
-      const assignedDir = (currentUserObj.assignedDirectorate || 'Southern').toLowerCase().trim();
-      filteredDirectorates = filteredDirectorates.filter(d => d.name.toLowerCase().trim() === assignedDir);
-      filteredPmos = [];
-    }
+    // Show all Directorates and PMOs on the summary report
+    const filteredDirectorates = [...directorateComparisonSummary];
+    const filteredPmos = [...pmoComparisonSummary];
 
     const doc = new jsPDF('l', 'pt', 'a4'); // Landscape A4 (841.89 pt x 595.28 pt)
     const pageWidth = doc.internal.pageSize.getWidth();
@@ -9549,17 +9540,7 @@ export default function GroupReportGenerator({
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(6.5);
         doc.setTextColor(0, 0, 0);
-
-        let groupsText = `GROUPS: ${filteredDirectorates.length} Directorates • ${filteredPmos.length} PMOs`;
-        if (currentUserObj.role === 'pmo_admin' || currentUserObj.assignedPmo) {
-          const pmoName = (currentUserObj.assignedPmo || 'PMO 1').toUpperCase();
-          groupsText = `ASSIGNED PMO: ${pmoName} • PMO ADMIN: ${currentUserObj.username.toUpperCase()}`;
-        } else if (currentUserObj.role === 'directorate_admin' || currentUserObj.assignedDirectorate) {
-          const dirName = (currentUserObj.assignedDirectorate || 'Southern').toUpperCase();
-          groupsText = `ASSIGNED DIRECTORATE: ${dirName} • DIRECTORATE ADMIN: ${currentUserObj.username.toUpperCase()}`;
-        } else if (currentUserObj.role === 'cpm_admin') {
-          groupsText = `GROUPS: ${filteredDirectorates.length} Directorates • ${filteredPmos.length} PMOs`;
-        }
+        const groupsText = `GROUPS: ${filteredDirectorates.length} Directorates • ${filteredPmos.length} PMOs (All Entities)`;
         doc.text(groupsText, 48, 73);
 
         doc.setFont('helvetica', 'normal');
@@ -9575,17 +9556,7 @@ export default function GroupReportGenerator({
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(6.5);
         doc.setTextColor(0, 0, 0);
-
-        let dirSubPageLabel = `Period: ${activeMilestone.monthLabel} • Page ${pNum}`;
-        if (currentUserObj.role === 'pmo_admin' || currentUserObj.assignedPmo) {
-          const pmoName = (currentUserObj.assignedPmo || 'PMO 1').toUpperCase();
-          dirSubPageLabel = `Period: ${activeMilestone.monthLabel} • PMO: ${pmoName} • Page ${pNum}`;
-        } else if (currentUserObj.role === 'directorate_admin' || currentUserObj.assignedDirectorate) {
-          const dirName = (currentUserObj.assignedDirectorate || 'Southern').toUpperCase();
-          dirSubPageLabel = `Period: ${activeMilestone.monthLabel} • Directorate: ${dirName} • Page ${pNum}`;
-        } else if (currentUserObj.role === 'cpm_admin') {
-          dirSubPageLabel = `Period: ${activeMilestone.monthLabel} • Page ${pNum}`;
-        }
+        const dirSubPageLabel = `Period: ${activeMilestone.monthLabel} • Page ${pNum}`;
         doc.text(dirSubPageLabel, 40, 45);
       }
     };
@@ -9637,7 +9608,75 @@ export default function GroupReportGenerator({
     };
 
     drawPageHeader(1);
-    let curY = 88;
+
+    // 4 Executive KPI Highlight Cards at top of Page 1
+    const cardY = 84;
+    const cardH = 28;
+    const numCards = 4;
+    const cardSpacing = 8;
+    const totalCardW = pageWidth - 80;
+    const singleCardW = (totalCardW - (cardSpacing * (numCards - 1))) / numCards;
+
+    const cardsData = [
+      {
+        title: `PMO GROUPINGS (${filteredPmos.length})`,
+        value: `${overallPortfolioAverages ? overallPortfolioAverages.totalLengthKm.toFixed(1) : 0} Km`,
+        sub: `${overallPortfolioAverages ? overallPortfolioAverages.projectCount : 0} Projects • ${filteredDirectorates.length} Dir`,
+        bg: [248, 250, 252],
+        border: [203, 213, 225],
+        textColor: [15, 23, 42]
+      },
+      {
+        title: "PORTFOLIO MONTHLY FULFILLMENT",
+        value: `${overallPortfolioAverages ? overallPortfolioAverages.monthRatio.toFixed(1) : '0.0'}%`,
+        sub: `ERA: ${overallPortfolioAverages ? overallPortfolioAverages.totalEraMonth.toFixed(2) : 0} Km | Act: ${overallPortfolioAverages ? overallPortfolioAverages.totalActMonth.toFixed(2) : 0} Km`,
+        bg: [239, 246, 255],
+        border: [191, 219, 254],
+        textColor: [29, 78, 216]
+      },
+      {
+        title: "PORTFOLIO EFY FULFILLMENT",
+        value: `${overallPortfolioAverages ? overallPortfolioAverages.efyRatio.toFixed(1) : '0.0'}%`,
+        sub: `ERA: ${overallPortfolioAverages ? overallPortfolioAverages.totalEraEfy.toFixed(2) : 0} Km | Act: ${overallPortfolioAverages ? overallPortfolioAverages.totalActEfy.toFixed(2) : 0} Km`,
+        bg: [245, 243, 255],
+        border: [221, 214, 254],
+        textColor: [109, 40, 217]
+      },
+      {
+        title: "MILESTONE PERIOD",
+        value: `Month: ${activeMilestone.monthLabel.toUpperCase()}`,
+        sub: `Quarter: ${activeMilestone.quarterLabel} • EFY: ${activeMilestone.efyLabel}`,
+        bg: [240, 253, 244],
+        border: [187, 247, 208],
+        textColor: [21, 128, 61]
+      }
+    ];
+
+    cardsData.forEach((c, cIdx) => {
+      const cX = 40 + cIdx * (singleCardW + cardSpacing);
+      doc.setFillColor(c.bg[0], c.bg[1], c.bg[2]);
+      doc.setDrawColor(c.border[0], c.border[1], c.border[2]);
+      doc.setLineWidth(0.75);
+      doc.roundedRect(cX, cardY, singleCardW, cardH, 3, 3, 'FD');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(5.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text(c.title, cX + 6, cardY + 8);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(c.textColor[0], c.textColor[1], c.textColor[2]);
+      doc.text(c.value, cX + 6, cardY + 18);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(5);
+      doc.setTextColor(71, 85, 105);
+      const wrappedSub = doc.splitTextToSize(c.sub, singleCardW - 12);
+      doc.text(wrappedSub[0] || c.sub, cX + 6, cardY + 25);
+    });
+
+    let curY = cardY + cardH + 10;
     curY += drawTableHeader(curY);
 
     const renderGroupRows = (groups: typeof directorateComparisonSummary, groupTitle: string) => {
@@ -9697,18 +9736,24 @@ export default function GroupReportGenerator({
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(7.5);
         doc.setTextColor(0, 0, 0);
-        doc.text(grp.name, colX.name + 6, curY + 13);
+        const nameLines = doc.splitTextToSize(grp.name, colW.name - 12);
+        doc.text(nameLines[0] || grp.name, colX.name + 6, curY + 13);
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(6);
-        doc.text(`${grp.type === 'directorate' ? 'Program Directorate' : 'Project Management Office'} • ${grp.projectCount} Proj`, colX.name + 6, curY + 24);
+        const subStr = `${grp.type === 'directorate' ? 'Program Directorate' : 'Project Management Office'} • ${grp.projectCount} Proj`;
+        const subLines = doc.splitTextToSize(subStr, colW.name - 12);
+        doc.text(subLines[0] || subStr, colX.name + 6, curY + 24);
 
         // 2. Scope
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(7);
-        doc.text(`${grp.totalLengthKm.toFixed(1)} Km`, colX.scope + 6, curY + 13);
+        const scopeKmStr = `${grp.totalLengthKm.toFixed(1)} Km`;
+        doc.text(scopeKmStr, colX.scope + 6, curY + 13);
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(6);
-        doc.text(`${grp.projectCount} proj • ${grp.totalLengthKm.toFixed(0)} Km tot`, colX.scope + 6, curY + 24);
+        const scopeProjStr = `${grp.projectCount} proj • ${grp.totalLengthKm.toFixed(0)} Km tot`;
+        const scopeLines = doc.splitTextToSize(scopeProjStr, colW.scope - 10);
+        doc.text(scopeLines[0] || scopeProjStr, colX.scope + 6, curY + 24);
 
         // 3. Monthly
         doc.setFont('helvetica', 'normal');

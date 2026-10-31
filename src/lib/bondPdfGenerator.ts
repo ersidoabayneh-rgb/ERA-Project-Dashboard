@@ -88,23 +88,32 @@ export function generateBondGuaranteePdf(bond: BondGuarantee, rawProject: Projec
   let currentY = margin + 46;
 
   const drawRow = (label: string, value: string, isHighlight: boolean = false) => {
+    const valLines = doc.splitTextToSize(value, contentWidth - 68);
+    const labelLines = doc.splitTextToSize(label, 60);
+    const numLines = Math.max(valLines.length, labelLines.length, 1);
+    const rowH = Math.max(7.5, numLines * 3.8 + 2.5);
+
     doc.setFillColor(isHighlight ? 248 : 255, isHighlight ? 250 : 255, isHighlight ? 252 : 255);
-    doc.rect(margin, currentY, contentWidth, 7.5, 'F');
+    doc.rect(margin, currentY, contentWidth, rowH, 'F');
     doc.setDrawColor(226, 232, 240);
     doc.setLineWidth(0.2);
-    doc.rect(margin, currentY, contentWidth, 7.5, 'S');
+    doc.rect(margin, currentY, contentWidth, rowH, 'S');
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8.5);
     doc.setTextColor(51, 65, 85);
-    doc.text(label, margin + 4, currentY + 5);
+    labelLines.forEach((ll: string, li: number) => {
+      doc.text(ll, margin + 4, currentY + 4.5 + (li * 3.8));
+    });
 
     doc.setFont('helvetica', isHighlight ? 'bold' : 'normal');
     doc.setFontSize(8.5);
     doc.setTextColor(isHighlight ? 15 : 71, isHighlight ? 23 : 85, isHighlight ? 42 : 105);
-    doc.text(value, margin + 65, currentY + 5, { maxWidth: contentWidth - 70 });
+    valLines.forEach((vl: string, vi: number) => {
+      doc.text(vl, margin + 65, currentY + 4.5 + (vi * 3.8));
+    });
 
-    currentY += 7.5;
+    currentY += rowH;
   };
 
   drawRow('1. Project Title:', project.name || 'N/A', true);

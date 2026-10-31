@@ -2055,110 +2055,37 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
 
     curY += 46;
 
-    // Table Header replaced
-    checkSpace(35);
-    doc.setFillColor(79, 70, 229); // indigo-600
-    doc.roundedRect(margin, curY, usableWidth, 18, 2, 2, 'F');
-    
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(6.5);
-    doc.setTextColor(255, 255, 255);
-    doc.text("MONTH / PERIOD", margin + 6, curY + 12);
-    doc.text("PILLAR 1: SLA TURNAROUND %", margin + 80, curY + 12);
-    doc.text("PILLAR 2: 5-DIM TECH %", margin + 175, curY + 12);
-    doc.text("COMBINED RATING", margin + 265, curY + 12);
-    doc.text("CONS. GRADE", margin + 335, curY + 12);
-    doc.text("STATUS", margin + 388, curY + 12);
-    doc.text("SUPERVISORY FINDINGS & DIRECTIVES", margin + 428, curY + 12);
-
-    curY += 18;
-
-    // Table Rows with dynamic text wrapping
-    const colWFindings = usableWidth - 422; // 101.28 pt
-
-    records.forEach((mg, mgIdx) => {
-      const findingsText = mg.consultantRemarks || mg.notes || 'Standard supervisory inspection and submittal compliance logged.';
-      const findingLines = doc.splitTextToSize(findingsText, colWFindings - 8);
-      const dynamicRowHeight = Math.max(22, (findingLines.length * 8) + 12);
-
-      checkSpace(dynamicRowHeight + 4);
-
-      const isEven = mgIdx % 2 === 0;
-      doc.setFillColor(isEven ? 255 : 248, isEven ? 255 : 250, isEven ? 255 : 252);
-      doc.setDrawColor(226, 232, 240);
-      doc.rect(margin, curY, usableWidth, dynamicRowHeight, 'DF');
-
-      // Month name
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(6.8);
-      doc.setTextColor(15, 23, 42);
-      doc.text(mg.monthName || mg.month, margin + 6, curY + 10);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(5);
-      doc.setTextColor(100, 116, 139);
-      doc.text(`Rec: ${mg.recordedDate || 'N/A'}`, margin + 6, curY + 18);
-
-      // Pillar 1 SLA Score
-      const slaScore = typeof mg.consultantSlaTurnaroundScore === 'number' ? mg.consultantSlaTurnaroundScore : 85;
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(6.5);
-      doc.setTextColor(51, 65, 85);
-      doc.text(`${slaScore.toFixed(1)}% On-Time`, margin + 80, curY + 10);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(5);
-      doc.setTextColor(100, 116, 139);
-      doc.text(`Avg RFI: ${mg.consultantAvgRfiDays || 6}d`, margin + 80, curY + 18);
-
-      // Pillar 2 5-Dim Score
-      const dimScore = typeof mg.consultantFiveDimScore === 'number' ? mg.consultantFiveDimScore : 80;
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(6.5);
-      doc.setTextColor(51, 65, 85);
-      doc.text(`${dimScore.toFixed(1)}% Technical`, margin + 175, curY + 10);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(5);
-      doc.setTextColor(100, 116, 139);
-      doc.text("5 Matrix Dims", margin + 175, curY + 18);
-
-      // Combined Rating
-      const combinedScore = typeof mg.consultantOverallScore === 'number' ? mg.consultantOverallScore : ((slaScore + dimScore) / 2);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7);
-      doc.setTextColor(79, 70, 229);
-      doc.text(`${combinedScore.toFixed(1)}%`, margin + 265, curY + 12);
-
-      // Consultant Grade Badge
-      let consGradeColor = [16, 185, 129];
-      if (mg.consultantGrade === 'B') consGradeColor = [13, 148, 136];
-      else if (mg.consultantGrade === 'C') consGradeColor = [217, 119, 6];
-      else if (mg.consultantGrade === 'D') consGradeColor = [234, 88, 12];
-      else if (mg.consultantGrade === 'F') consGradeColor = [220, 38, 38];
-
-      doc.setFillColor(consGradeColor[0], consGradeColor[1], consGradeColor[2]);
-      doc.roundedRect(margin + 335, curY + 3, 46, 14, 2, 2, 'F');
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(6);
-      doc.setTextColor(255, 255, 255);
-      doc.text(`GR ${mg.consultantGrade || 'B'}`, margin + 358, curY + 12.5, { align: 'center' });
-
-      // Status
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(5.5);
-      doc.setTextColor(mg.status === 'Approved' ? 5 : 71, mg.status === 'Approved' ? 150 : 85, mg.status === 'Approved' ? 105 : 105);
-      doc.text((mg.status || 'Finalized').toUpperCase(), margin + 388, curY + 12);
-
-      // Wrapped Findings Line by Line
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(5.8);
-      doc.setTextColor(71, 85, 105);
-      findingLines.forEach((line: string, lIdx: number) => {
-        doc.text(line, margin + 428, curY + 9 + (lIdx * 7.5));
-      });
-
-      curY += dynamicRowHeight;
+    // Table
+    curY = drawSafeTable(doc, {
+      startY: curY,
+      margin: margin,
+      maxWidth: usableWidth,
+      headerBgColor: [79, 70, 229], // indigo-600
+      headerTextColor: [255, 255, 255],
+      columns: [
+        { header: "MONTH / PERIOD", dataKey: "period", widthPercent: 15 },
+        { header: "PILLAR 1: SLA %", dataKey: "sla", widthPercent: 15 },
+        { header: "PILLAR 2: 5-DIM %", dataKey: "tech", widthPercent: 15 },
+        { header: "COMBINED", dataKey: "combined", widthPercent: 12 },
+        { header: "CONS. GRADE", dataKey: "grade", widthPercent: 12 },
+        { header: "STATUS", dataKey: "status", widthPercent: 10 },
+        { header: "SUPERVISORY FINDINGS & DIRECTIVES", dataKey: "findings", widthPercent: 21 },
+      ],
+      rows: records.map(mg => {
+        const slaScore = typeof mg.consultantSlaTurnaroundScore === 'number' ? mg.consultantSlaTurnaroundScore : 85;
+        const dimScore = typeof mg.consultantFiveDimScore === 'number' ? mg.consultantFiveDimScore : 80;
+        const combinedScore = typeof mg.consultantOverallScore === 'number' ? mg.consultantOverallScore : ((slaScore + dimScore) / 2);
+        return {
+          period: `${mg.monthName || mg.month}\nRec: ${mg.recordedDate || 'N/A'}`,
+          sla: `${slaScore.toFixed(1)}% On-Time\nAvg RFI: ${mg.consultantAvgRfiDays || 6}d`,
+          tech: `${dimScore.toFixed(1)}% Technical\n5 Matrix Dims`,
+          combined: `${combinedScore.toFixed(1)}%`,
+          grade: `GR ${mg.consultantGrade || 'B'}`,
+          status: (mg.status || 'Finalized').toUpperCase(),
+          findings: mg.consultantRemarks || mg.notes || 'Standard supervisory inspection and submittal compliance logged.'
+        };
+      })
     });
-
-    curY += 16;
 
     // Sign-Off Block
     checkSpace(65);
@@ -2321,96 +2248,40 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     doc.text("PART A: CONTRACTOR MONTHLY PHYSICAL PROGRESS & SCHEDULE EXECUTION LEDGER", margin + 8, curY + 12);
     curY += 22;
 
-    // Contractor Table Header
-    doc.setFillColor(241, 245, 249);
-    doc.rect(margin, curY, usableWidth, 16, 'F');
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(6);
-    doc.setTextColor(71, 85, 105);
-    doc.text("MONTH / PERIOD", margin + 6, curY + 11);
-    doc.text("PLAN / ACTUAL %", margin + 80, curY + 11);
-    doc.text("VARIANCE", margin + 160, curY + 11);
-    doc.text("CUM ACT (SPI)", margin + 215, curY + 11);
-    doc.text("CONT. GRADE", margin + 278, curY + 11);
-    doc.text("STATUS", margin + 338, curY + 11);
-    doc.text("CONTRACTOR AUDIT REMARKS", margin + 382, curY + 11);
-
-    curY += 16;
-
-    const colWContRemarks = usableWidth - 376; // 147.28 pt
-    records.forEach((mg, mgIdx) => {
-      const remarksText = mg.contractorRemarks || mg.notes || 'No specific contractor audit exceptions logged.';
-      const remarkLines = doc.splitTextToSize(remarksText, colWContRemarks - 8);
-      const dynamicRowHeight = Math.max(20, (remarkLines.length * 7.5) + 10);
-
-      checkSpace(dynamicRowHeight + 4);
-
-      const isEven = mgIdx % 2 === 0;
-      doc.setFillColor(isEven ? 255 : 248, isEven ? 255 : 250, isEven ? 255 : 252);
-      doc.setDrawColor(226, 232, 240);
-      doc.rect(margin, curY, usableWidth, dynamicRowHeight, 'DF');
-
-      // Month name
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(6.5);
-      doc.setTextColor(15, 23, 42);
-      doc.text(mg.monthName || mg.month, margin + 6, curY + 9);
-
-      // Monthly Plan vs Actual
-      const planM = typeof mg.contractorPlanMonthly === 'number' ? mg.contractorPlanMonthly : 0;
-      const actM = typeof mg.contractorActualMonthly === 'number' ? mg.contractorActualMonthly : 0;
-      const varM = typeof mg.contractorVariance === 'number' ? mg.contractorVariance : (actM - planM);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(6);
-      doc.setTextColor(51, 65, 85);
-      doc.text(`P: ${planM.toFixed(2)}% | A: ${actM.toFixed(2)}%`, margin + 80, curY + 9);
-
-      // Variance
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(6);
-      doc.setTextColor(varM >= 0 ? 5 : 220, varM >= 0 ? 150 : 38, varM >= 0 ? 105 : 38);
-      doc.text(`${varM >= 0 ? '+' : ''}${varM.toFixed(2)}%`, margin + 160, curY + 9);
-
-      // Cumulative & SPI
-      const cumAct = typeof mg.contractorActualCumulative === 'number' ? mg.contractorActualCumulative : 0;
-      const spi = typeof mg.contractorSpi === 'number' ? mg.contractorSpi : 1.0;
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(6);
-      doc.setTextColor(51, 65, 85);
-      doc.text(`${cumAct.toFixed(2)}% (SPI: ${spi.toFixed(2)})`, margin + 215, curY + 9);
-
-      // Grade Badge
-      let cGradeColor = [16, 185, 129];
-      if (mg.contractorGrade === 'B') cGradeColor = [13, 148, 136];
-      else if (mg.contractorGrade === 'C') cGradeColor = [217, 119, 6];
-      else if (mg.contractorGrade === 'D') cGradeColor = [234, 88, 12];
-      else if (mg.contractorGrade === 'F') cGradeColor = [220, 38, 38];
-
-      doc.setFillColor(cGradeColor[0], cGradeColor[1], cGradeColor[2]);
-      doc.roundedRect(margin + 278, curY + 2, 48, 12, 2, 2, 'F');
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(5.5);
-      doc.setTextColor(255, 255, 255);
-      doc.text(`GR ${mg.contractorGrade || 'B'} • ${(mg.contractorScore || 80).toFixed(1)}%`, margin + 302, curY + 10, { align: 'center' });
-
-      // Status
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(5.5);
-      doc.setTextColor(mg.status === 'Approved' ? 5 : 71, mg.status === 'Approved' ? 150 : 85, mg.status === 'Approved' ? 105 : 105);
-      doc.text((mg.status || 'Finalized').toUpperCase(), margin + 338, curY + 9);
-
-      // Remarks
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(5.5);
-      doc.setTextColor(71, 85, 105);
-      remarkLines.forEach((line: string, lIdx: number) => {
-        doc.text(line, margin + 382, curY + 8 + (lIdx * 7));
-      });
-
-      curY += dynamicRowHeight;
+    curY = drawSafeTable(doc, {
+      startY: curY,
+      margin: margin,
+      maxWidth: usableWidth,
+      headerBgColor: [15, 23, 42],
+      headerTextColor: [255, 255, 255],
+      columns: [
+        { header: "MONTH / PERIOD", dataKey: "period", widthPercent: 14 },
+        { header: "PLAN / ACT %", dataKey: "planAct", widthPercent: 18 },
+        { header: "VARIANCE", dataKey: "variance", widthPercent: 10 },
+        { header: "CUM ACT (SPI)", dataKey: "cumSpi", widthPercent: 14 },
+        { header: "CONT. GRADE", dataKey: "grade", widthPercent: 14 },
+        { header: "STATUS", dataKey: "status", widthPercent: 10 },
+        { header: "CONTRACTOR AUDIT REMARKS", dataKey: "remarks", widthPercent: 20 },
+      ],
+      rows: records.map(mg => {
+        const planM = typeof mg.contractorPlanMonthly === 'number' ? mg.contractorPlanMonthly : 0;
+        const actM = typeof mg.contractorActualMonthly === 'number' ? mg.contractorActualMonthly : 0;
+        const varM = typeof mg.contractorVariance === 'number' ? mg.contractorVariance : (actM - planM);
+        const cumAct = typeof mg.contractorActualCumulative === 'number' ? mg.contractorActualCumulative : 0;
+        const spi = typeof mg.contractorSpi === 'number' ? mg.contractorSpi : 1.0;
+        return {
+          period: `${mg.monthName || mg.month}\nRec: ${mg.recordedDate || 'N/A'}`,
+          planAct: `P: ${planM.toFixed(2)}% | A: ${actM.toFixed(2)}%`,
+          variance: `${varM >= 0 ? '+' : ''}${varM.toFixed(2)}%`,
+          cumSpi: `${cumAct.toFixed(2)}%\n(SPI: ${spi.toFixed(2)})`,
+          grade: `GR ${mg.contractorGrade || 'B'} • ${(mg.contractorScore || 80).toFixed(1)}%`,
+          status: (mg.status || 'Finalized').toUpperCase(),
+          remarks: mg.contractorRemarks || mg.notes || 'No specific contractor audit exceptions logged.'
+        };
+      })
     });
 
-    curY += 16;
+    curY += 12;
 
     // SECTION 2: SUPERVISION CONSULTANT DUAL-PILLAR AUDIT LEDGER
     checkSpace(50);
@@ -2422,91 +2293,35 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     doc.text("PART B: SUPERVISION CONSULTANT DUAL-PILLAR COMPLIANCE & SLA LEDGER", margin + 8, curY + 12);
     curY += 22;
 
-    // Consultant Table Header
-    doc.setFillColor(241, 245, 249);
-    doc.rect(margin, curY, usableWidth, 16, 'F');
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(6);
-    doc.setTextColor(71, 85, 105);
-    doc.text("MONTH / PERIOD", margin + 6, curY + 11);
-    doc.text("PILLAR 1: SLA ON-TIME %", margin + 80, curY + 11);
-    doc.text("PILLAR 2: 5-DIM TECH %", margin + 175, curY + 11);
-    doc.text("COMBINED RATING", margin + 265, curY + 11);
-    doc.text("CONS. GRADE", margin + 335, curY + 11);
-    doc.text("STATUS", margin + 388, curY + 11);
-    doc.text("SUPERVISORY FINDINGS & OBSERVATIONS", margin + 428, curY + 11);
-
-    curY += 16;
-
-    const colWConsRemarks = usableWidth - 422; // 101.28 pt
-    records.forEach((mg, mgIdx) => {
-      const findingsText = mg.consultantRemarks || mg.notes || 'Standard supervisory inspection and submittal compliance logged.';
-      const findingLines = doc.splitTextToSize(findingsText, colWConsRemarks - 8);
-      const dynamicRowHeight = Math.max(20, (findingLines.length * 7.5) + 10);
-
-      checkSpace(dynamicRowHeight + 4);
-
-      const isEven = mgIdx % 2 === 0;
-      doc.setFillColor(isEven ? 255 : 248, isEven ? 255 : 250, isEven ? 255 : 252);
-      doc.setDrawColor(226, 232, 240);
-      doc.rect(margin, curY, usableWidth, dynamicRowHeight, 'DF');
-
-      // Month name
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(6.5);
-      doc.setTextColor(15, 23, 42);
-      doc.text(mg.monthName || mg.month, margin + 6, curY + 9);
-
-      // SLA Turnaround
-      const slaScore = typeof mg.consultantSlaTurnaroundScore === 'number' ? mg.consultantSlaTurnaroundScore : 85;
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(6);
-      doc.setTextColor(51, 65, 85);
-      doc.text(`${slaScore.toFixed(1)}% (Avg RFI ${mg.consultantAvgRfiDays || 6}d)`, margin + 80, curY + 9);
-
-      // 5-Dim Tech
-      const dimScore = typeof mg.consultantFiveDimScore === 'number' ? mg.consultantFiveDimScore : 80;
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(6);
-      doc.setTextColor(51, 65, 85);
-      doc.text(`${dimScore.toFixed(1)}% Technical`, margin + 175, curY + 9);
-
-      // Combined Rating
-      const combinedScore = typeof mg.consultantOverallScore === 'number' ? mg.consultantOverallScore : ((slaScore + dimScore) / 2);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(6.5);
-      doc.setTextColor(79, 70, 229);
-      doc.text(`${combinedScore.toFixed(1)}%`, margin + 265, curY + 9);
-
-      // Grade Badge
-      let consGradeColor = [16, 185, 129];
-      if (mg.consultantGrade === 'B') consGradeColor = [13, 148, 136];
-      else if (mg.consultantGrade === 'C') consGradeColor = [217, 119, 6];
-      else if (mg.consultantGrade === 'D') consGradeColor = [234, 88, 12];
-      else if (mg.consultantGrade === 'F') consGradeColor = [220, 38, 38];
-
-      doc.setFillColor(consGradeColor[0], consGradeColor[1], consGradeColor[2]);
-      doc.roundedRect(margin + 335, curY + 2, 44, 12, 2, 2, 'F');
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(5.5);
-      doc.setTextColor(255, 255, 255);
-      doc.text(`GR ${mg.consultantGrade || 'B'}`, margin + 357, curY + 10, { align: 'center' });
-
-      // Status
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(5.5);
-      doc.setTextColor(mg.status === 'Approved' ? 5 : 71, mg.status === 'Approved' ? 150 : 85, mg.status === 'Approved' ? 105 : 105);
-      doc.text((mg.status || 'Finalized').toUpperCase(), margin + 388, curY + 9);
-
-      // Findings
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(5.5);
-      doc.setTextColor(71, 85, 105);
-      findingLines.forEach((line: string, lIdx: number) => {
-        doc.text(line, margin + 428, curY + 8 + (lIdx * 7));
-      });
-
-      curY += dynamicRowHeight;
+    curY = drawSafeTable(doc, {
+      startY: curY,
+      margin: margin,
+      maxWidth: usableWidth,
+      headerBgColor: [79, 70, 229],
+      headerTextColor: [255, 255, 255],
+      columns: [
+        { header: "MONTH / PERIOD", dataKey: "period", widthPercent: 15 },
+        { header: "PILLAR 1: SLA %", dataKey: "sla", widthPercent: 15 },
+        { header: "PILLAR 2: 5-DIM %", dataKey: "tech", widthPercent: 15 },
+        { header: "COMBINED", dataKey: "combined", widthPercent: 12 },
+        { header: "CONS. GRADE", dataKey: "grade", widthPercent: 12 },
+        { header: "STATUS", dataKey: "status", widthPercent: 10 },
+        { header: "SUPERVISORY FINDINGS & OBSERVATIONS", dataKey: "findings", widthPercent: 21 },
+      ],
+      rows: records.map(mg => {
+        const slaScore = typeof mg.consultantSlaTurnaroundScore === 'number' ? mg.consultantSlaTurnaroundScore : 85;
+        const dimScore = typeof mg.consultantFiveDimScore === 'number' ? mg.consultantFiveDimScore : 80;
+        const combinedScore = typeof mg.consultantOverallScore === 'number' ? mg.consultantOverallScore : ((slaScore + dimScore) / 2);
+        return {
+          period: `${mg.monthName || mg.month}\nRec: ${mg.recordedDate || 'N/A'}`,
+          sla: `${slaScore.toFixed(1)}% On-Time\nAvg RFI: ${mg.consultantAvgRfiDays || 6}d`,
+          tech: `${dimScore.toFixed(1)}% Technical\n5 Matrix Dims`,
+          combined: `${combinedScore.toFixed(1)}%`,
+          grade: `GR ${mg.consultantGrade || 'B'}`,
+          status: (mg.status || 'Finalized').toUpperCase(),
+          findings: mg.consultantRemarks || mg.notes || 'Standard supervisory inspection and submittal compliance logged.'
+        };
+      })
     });
 
     curY += 16;
